@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { runMigrations } from "./migrate";
 
 export interface OpenDatabaseOptions {
   path?: string;
@@ -24,10 +25,9 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Database {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA journal_mode = WAL");
     database.exec("PRAGMA busy_timeout = 5000");
-    runMigrations(
-      database,
-      options.migrationsDirectory ?? defaultMigrationsDirectory,
-    );
+    migrate(drizzle(database), {
+      migrationsFolder: options.migrationsDirectory ?? defaultMigrationsDirectory,
+    });
     return database;
   } catch (error) {
     database.close();
