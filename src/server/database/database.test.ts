@@ -40,7 +40,7 @@ describe("openDatabase", () => {
 
     expect(
       database.query("SELECT count(*) AS count FROM __drizzle_migrations").get(),
-    ).toEqual({ count: 0 });
+    ).toEqual({ count: 1 });
 
     database.close();
     reopened.close();
