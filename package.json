@@ -8,7 +8,8 @@
     "build": "vite build",
     "start": "bun src/server/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "bun src/server/database/seed.ts",
+    "db:teardown": "bun src/server/database/teardown.ts",
     "test": "bun test"
   },
   "dependencies": {
