@@ -1,36 +1,37 @@
 import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
 export interface OpenDatabaseOptions {
-  path?: string;
-  migrationsDirectory?: string;
+	path?: string;
+	migrationsDirectory?: string;
 }
 
 const defaultDatabasePath = join(process.cwd(), "data", "ditzytavern.sqlite");
 const defaultMigrationsDirectory = join(import.meta.dir, "migrations");
 
 export function openDatabase(options: OpenDatabaseOptions = {}): Database {
-  const path = options.path ?? defaultDatabasePath;
+	const path = options.path ?? defaultDatabasePath;
 
-  if (path !== ":memory:") {
-    mkdirSync(dirname(path), { recursive: true });
-  }
+	if (path !== ":memory:") {
+		mkdirSync(dirname(path), { recursive: true });
+	}
 
-  const database = new Database(path, { create: true });
+	const database = new Database(path, { create: true });
 
-  try {
-    database.exec("PRAGMA foreign_keys = ON");
-    database.exec("PRAGMA journal_mode = WAL");
-    database.exec("PRAGMA busy_timeout = 5000");
-    migrate(drizzle(database), {
-      migrationsFolder: options.migrationsDirectory ?? defaultMigrationsDirectory,
-    });
-    return database;
-  } catch (error) {
-    database.close();
-    throw error;
-  }
+	try {
+		database.exec("PRAGMA foreign_keys = ON");
+		database.exec("PRAGMA journal_mode = WAL");
+		database.exec("PRAGMA busy_timeout = 5000");
+		migrate(drizzle(database), {
+			migrationsFolder:
+				options.migrationsDirectory ?? defaultMigrationsDirectory,
+		});
+		return database;
+	} catch (error) {
+		database.close();
+		throw error;
+	}
 }

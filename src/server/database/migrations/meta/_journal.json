@@ -1,20 +1,20 @@
 {
-  "version": "7",
-  "dialect": "sqlite",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "6",
-      "when": 1787054222320,
-      "tag": "0000_marvelous_slipstream",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1787062931706,
-      "tag": "0001_strong_sunset_bain",
-      "breakpoints": true
-    }
-  ]
+	"version": "7",
+	"dialect": "sqlite",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "6",
+			"when": 1787054222320,
+			"tag": "0000_marvelous_slipstream",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "6",
+			"when": 1787062931706,
+			"tag": "0001_strong_sunset_bain",
+			"breakpoints": true
+		}
+	]
 }
