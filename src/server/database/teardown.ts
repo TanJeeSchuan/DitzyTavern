@@ -35,15 +35,22 @@ export function teardown(databasePath?: string) {
 			.map((row) => row.id);
 
 		if (seededChatIds.length > 0) {
-			const membershipResult = db
-				.delete(chatCharacterTable)
+			const membershipCount = db
+				.select({
+					chat_id: chatCharacterTable.chat_id,
+					character_id: chatCharacterTable.character_id,
+				})
+				.from(chatCharacterTable)
+				.where(inArray(chatCharacterTable.chat_id, seededChatIds))
+				.all().length;
+
+			db.delete(chatCharacterTable)
 				.where(inArray(chatCharacterTable.chat_id, seededChatIds))
 				.run();
-			log(`removed ${membershipResult.changes} chat_character rows`);
+			log(`removed ${membershipCount} chat_character rows`);
 		}
 
-		const chatResult = db
-			.delete(chatTable)
+		db.delete(chatTable)
 			.where(
 				or(
 					...seedChats.map((chat) =>
@@ -56,13 +63,17 @@ export function teardown(databasePath?: string) {
 				),
 			)
 			.run();
-		log(`removed ${chatResult.changes} chat rows`);
+		log(`removed ${seededChatIds.length} chat rows`);
 
-		const characterResult = db
-			.delete(characterTable)
+		const characterCount = db
+			.select({ id: characterTable.id })
+			.from(characterTable)
+			.where(inArray(characterTable.name, characterNames))
+			.all().length;
+		db.delete(characterTable)
 			.where(inArray(characterTable.name, characterNames))
 			.run();
-		log(`removed ${characterResult.changes} character rows`);
+		log(`removed ${characterCount} character rows`);
 	} finally {
 		database.close();
 	}
