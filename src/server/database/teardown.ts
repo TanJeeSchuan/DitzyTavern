@@ -15,7 +15,7 @@ export function teardown(databasePath?: string) {
 
 	try {
 		const characterNames = characters.map((character) => character.name);
-		const seedChats = chats.map(({ characterIds, ...chat }) => chat);
+		const seedChats = chats.map(({ characterIds: _characterIds, ...chat }) => chat);
 
 		const seededChatIds = db
 			.select({ id: chatTable.id })

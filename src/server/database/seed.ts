@@ -56,7 +56,7 @@ export function seed(databasePath?: string) {
 		db.insert(characterTable).values(characters).all();
 
 		db.insert(chatTable)
-			.values(chats.map(({ characterIds, ...chat }) => chat))
+			.values(chats.map(({ characterIds: _characterIds, ...chat }) => chat))
 			.all();
 
 		const memberships = chats.flatMap((chat, index) =>
