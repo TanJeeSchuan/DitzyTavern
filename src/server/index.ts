@@ -5,17 +5,16 @@ import { openDatabase } from "./database/database";
 const database = openDatabase();
 
 const serveIndex = () => Bun.file("dist/index.html");
+const staticAssets = await staticPlugin({
+	assets: "dist",
+	prefix: "/",
+	indexHTML: true,
+	alwaysStatic: true,
+});
 
 const app = contract
 	.get("/", serveIndex)
-	.use(
-		staticPlugin({
-			assets: "dist",
-			prefix: "/",
-			indexHTML: true,
-			alwaysStatic: true,
-		}),
-	)
+	.use(staticAssets)
 	.onError(({ code, path }) => {
 		if (
 			code === "NOT_FOUND" &&

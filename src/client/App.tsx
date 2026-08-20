@@ -73,17 +73,43 @@ export function App() {
 }
 
 function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace }) {
+	if (!initialWorkspace.activeChat) {
+		return <WorkspaceWithoutChats />;
+	}
+
+	return (
+		<ActiveWritingWorkspace
+			initialWorkspace={{
+				...initialWorkspace,
+				activeChat: initialWorkspace.activeChat,
+			}}
+		/>
+	);
+}
+
+function ActiveWritingWorkspace({
+	initialWorkspace,
+}: {
+	initialWorkspace: Workspace & { activeChat: ChatSummary };
+}) {
 	const [messages, setMessages] = useState(initialWorkspace.messages);
+	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
 	const [primaryPanel, setPrimaryPanel] = useState<PrimaryPanel>(null);
 	const [detailMessageId, setDetailMessageId] = useState<string | null>(null);
 	const [identityId, setIdentityId] = useState("writer");
 	const [theme, setTheme] = useState<ThemePreference>("system");
 	const [draft, setDraft] = useState("");
-	const [isGenerating, setIsGenerating] = useState(false);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [isAtLatest, setIsAtLatest] = useState(true);
 	const storyScrollRef = useRef<HTMLDivElement>(null);
 	const latestRef = useRef<HTMLDivElement>(null);
+	const isGenerating = false;
+	const activeChat =
+		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
+		initialWorkspace.activeChat;
+	const activeCast = initialWorkspace.identities.filter((identity) =>
+		activeChat.castIds.includes(identity.id),
+	);
 
 	const identitiesById = useMemo(
 		() =>
@@ -105,7 +131,9 @@ function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace })
 		} else {
 			root.dataset.theme = theme;
 		}
-		return () => delete root.dataset.theme;
+		return () => {
+			delete root.dataset.theme;
+		};
 	}, [theme]);
 
 	useEffect(() => {
@@ -131,6 +159,13 @@ function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace })
 	const showMessageDetails = (messageId: string) => {
 		setPrimaryPanel(null);
 		setDetailMessageId(messageId);
+	};
+
+	const selectChat = (chatId: string) => {
+		setActiveChatId(chatId);
+		setMessages([]);
+		setDetailMessageId(null);
+		setPrimaryPanel(null);
 	};
 
 	const updateMessage = (messageId: string, text: string) => {
@@ -164,28 +199,8 @@ function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace })
 		);
 	};
 
-	const submitMessage = async (event: FormEvent) => {
+	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		const text = draft.trim();
-		if (!text || isGenerating) {
-			return;
-		}
-
-		setDraft("");
-		setIsGenerating(true);
-		try {
-			const reply = await workspaceClient.createMockReply(currentIdentity, text);
-			setMessages((current) => [
-				...current,
-				reply.writerMessage,
-				reply.generatedMessage,
-			]);
-			window.requestAnimationFrame(() =>
-				latestRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }),
-			);
-		} finally {
-			setIsGenerating(false);
-		}
 	};
 
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
@@ -201,28 +216,27 @@ function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace })
 			<PrimaryPanelView
 				panel={primaryPanel}
 				workspace={initialWorkspace}
+				activeChat={activeChat}
+				activeCast={activeCast}
 				theme={theme}
 				onThemeChange={setTheme}
+				onSelectChat={selectChat}
 				onClose={() => setPrimaryPanel(null)}
 			/>
 
 			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
-					chat={initialWorkspace.activeChat}
-					cast={initialWorkspace.identities.filter((identity) =>
-						initialWorkspace.activeChat.castIds.includes(identity.id),
-					)}
+					chat={activeChat}
+					cast={activeCast}
 					isGenerating={isGenerating}
 					onOpenCast={() => togglePanel("cast")}
 				/>
 
 				<div className="story-scroll" ref={storyScrollRef}>
 					<div className="story-content">
-						<div className="chapter-opening" aria-hidden="true">
-							<span />
-							<p>Rain at the Lantern House</p>
-							<span />
-						</div>
+						{messages.length === 0 && (
+							<EmptyChat cast={activeCast} />
+						)}
 						{messages.map((message) => (
 							<StoryMessageView
 								key={message.id}
@@ -243,6 +257,7 @@ function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace })
 					currentIdentity={currentIdentity}
 					draft={draft}
 					isGenerating={isGenerating}
+					canWrite={false}
 					isReceded={composerIsReceded}
 					onDraftChange={setDraft}
 					onIdentityChange={setIdentityId}
@@ -333,14 +348,20 @@ function RailButton({
 function PrimaryPanelView({
 	panel,
 	workspace,
+	activeChat,
+	activeCast,
 	theme,
 	onThemeChange,
+	onSelectChat,
 	onClose,
 }: {
 	panel: PrimaryPanel;
 	workspace: Workspace;
+	activeChat: ChatSummary;
+	activeCast: Identity[];
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
+	onSelectChat: (chatId: string) => void;
 	onClose: () => void;
 }) {
 	return (
@@ -352,14 +373,14 @@ function PrimaryPanelView({
 						onClose={onClose}
 					/>
 					{panel === "chats" && (
-						<ChatsPanel chats={workspace.chats} activeId={workspace.activeChat.id} />
+						<ChatsPanel
+							chats={workspace.chats}
+							activeId={activeChat.id}
+							onSelect={onSelectChat}
+						/>
 					)}
 					{panel === "cast" && (
-						<CastPanel
-							identities={workspace.identities.filter((identity) =>
-								workspace.activeChat.castIds.includes(identity.id),
-							)}
-						/>
+						<CastPanel identities={activeCast} />
 					)}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
@@ -384,7 +405,15 @@ function PanelHeader({ title, onClose }: { title: string; onClose: () => void })
 	);
 }
 
-function ChatsPanel({ chats, activeId }: { chats: ChatSummary[]; activeId: string }) {
+function ChatsPanel({
+	chats,
+	activeId,
+	onSelect,
+}: {
+	chats: ChatSummary[];
+	activeId: string;
+	onSelect: (chatId: string) => void;
+}) {
 	const [query, setQuery] = useState("");
 	const filteredChats = chats.filter((chat) =>
 		chat.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
@@ -404,14 +433,13 @@ function ChatsPanel({ chats, activeId }: { chats: ChatSummary[]; activeId: strin
 						data-active={chat.id === activeId}
 						type="button"
 						key={chat.id}
-						disabled={chat.id !== activeId}
+						onClick={() => onSelect(chat.id)}
 					>
 						<span>{chat.title}</span>
 						<small>{chat.id === activeId ? "Open now" : chat.updatedAt}</small>
 					</button>
 				))}
 			</div>
-			<p className="panel-note">Chat switching will connect here when the conversation RPC is available.</p>
 		</div>
 	);
 }
@@ -516,6 +544,25 @@ function StoryHeader({
 				<ChevronDown aria-hidden="true" />
 			</button>
 		</header>
+	);
+}
+
+function EmptyChat({ cast }: { cast: Identity[] }) {
+	return (
+		<section className="empty-chat">
+			{cast.length > 0 && (
+				<div className="empty-chat-cast" aria-label="Current Cast">
+					{cast.map((identity) => (
+						<div key={identity.id}>
+							<Portrait identity={identity} size="large" />
+							<span>{identity.name}</span>
+						</div>
+					))}
+				</div>
+			)}
+			<h2>This Chat has no stored Messages yet</h2>
+			<p>Chat and Cast are connected. Writing will become available when Message storage is added.</p>
+		</section>
 	);
 }
 
@@ -681,6 +728,7 @@ function Composer({
 	currentIdentity,
 	draft,
 	isGenerating,
+	canWrite,
 	isReceded,
 	onDraftChange,
 	onIdentityChange,
@@ -691,6 +739,7 @@ function Composer({
 	currentIdentity: Identity;
 	draft: string;
 	isGenerating: boolean;
+	canWrite: boolean;
 	isReceded: boolean;
 	onDraftChange: (value: string) => void;
 	onIdentityChange: (id: string) => void;
@@ -702,6 +751,7 @@ function Composer({
 	return (
 		<form
 			className="composer"
+			data-disabled={!canWrite}
 			data-receded={isReceded}
 			onSubmit={onSubmit}
 			onFocus={() => onFocusChange(true)}
@@ -751,10 +801,17 @@ function Composer({
 				id="writer-message"
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder={currentIdentity.kind === "writer" ? "Guide what happens next..." : `Write as ${currentIdentity.name}...`}
+				placeholder={
+					canWrite
+						? currentIdentity.kind === "writer"
+							? "Guide what happens next..."
+							: `Write as ${currentIdentity.name}...`
+						: "Message storage is not available yet"
+				}
+				disabled={!canWrite}
 				rows={1}
 			/>
-			<button className="send-button" type="submit" disabled={!draft.trim() || isGenerating} aria-label="Send Message">
+			<button className="send-button" type="submit" disabled={!canWrite || !draft.trim() || isGenerating} aria-label="Send Message">
 				<Send aria-hidden="true" />
 			</button>
 		</form>
@@ -849,6 +906,18 @@ function WorkspaceError({ onRetry }: { onRetry: () => void }) {
 				<h1>The Chat could not be opened</h1>
 				<p>Your story is still safe. Try loading the workspace again.</p>
 				<button className="primary-button" type="button" onClick={onRetry}>Try again</button>
+			</div>
+		</main>
+	);
+}
+
+function WorkspaceWithoutChats() {
+	return (
+		<main className="workspace-error">
+			<div>
+				<MessageSquare aria-hidden="true" />
+				<h1>No Chats found</h1>
+				<p>Create or seed a Chat to open the writing workspace.</p>
 			</div>
 		</main>
 	);

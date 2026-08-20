@@ -35,3 +35,18 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Database {
 		throw error;
 	}
 }
+
+export function withDatabase<T>(
+	database: Database | undefined,
+	query: (connection: Database) => T,
+): T {
+	const connection = database ?? openDatabase();
+
+	try {
+		return query(connection);
+	} finally {
+		if (!database) {
+			connection.close();
+		}
+	}
+}

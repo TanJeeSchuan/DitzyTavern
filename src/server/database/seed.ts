@@ -19,25 +19,25 @@ export const chats = [
 		name: "The Lantern House",
 		creation_time: "2026-07-02T10:15:00.000Z",
 		last_message_time: "2026-08-17T21:04:00.000Z",
-		characterIds: [1, 2, 3],
+		characterNames: ["Maren Voss", "Juno Ashfeld", "Theodora Kline"],
 	},
 	{
 		name: "Salt and Ember",
 		creation_time: "2026-07-19T18:30:00.000Z",
 		last_message_time: "2026-08-18T09:12:00.000Z",
-		characterIds: [4, 5],
+		characterNames: ["Silas Mercer", "Isolde Fairfax"],
 	},
 	{
 		name: "The Cartographer's Daughter",
 		creation_time: "2026-08-01T12:00:00.000Z",
 		last_message_time: "2026-08-15T23:47:00.000Z",
-		characterIds: [2, 5, 6],
+		characterNames: ["Juno Ashfeld", "Isolde Fairfax", "Bram Okafor"],
 	},
 	{
 		name: "Night Shift at the Observatory",
 		creation_time: "2026-08-10T20:20:00.000Z",
 		last_message_time: "2026-08-18T14:55:00.000Z",
-		characterIds: [1, 6],
+		characterNames: ["Maren Voss", "Bram Okafor"],
 	},
 ];
 
@@ -53,18 +53,37 @@ export function seed(databasePath?: string) {
 			return;
 		}
 
-		db.insert(characterTable).values(characters).all();
-
-		db.insert(chatTable)
-			.values(chats.map(({ characterIds: _characterIds, ...chat }) => chat))
+		const insertedCharacters = db
+			.insert(characterTable)
+			.values(characters)
+			.returning({ id: characterTable.id, name: characterTable.name })
 			.all();
-
-		const memberships = chats.flatMap((chat, index) =>
-			chat.characterIds.map((characterId) => ({
-				chat_id: index + 1,
-				character_id: characterId,
-			})),
+		const characterIdByName = new Map(
+			insertedCharacters.map((character) => [character.name, character.id]),
 		);
+
+		const insertedChats = db
+			.insert(chatTable)
+			.values(chats.map(({ characterNames: _characterNames, ...chat }) => chat))
+			.returning({ id: chatTable.id, name: chatTable.name })
+			.all();
+		const chatIdByName = new Map(insertedChats.map((chat) => [chat.name, chat.id]));
+
+		const memberships = chats.flatMap((chat) => {
+			const chatId = chatIdByName.get(chat.name);
+			if (!chatId) {
+				throw new Error(`Missing inserted Chat: ${chat.name}`);
+			}
+
+			return chat.characterNames.map((characterName) => {
+				const characterId = characterIdByName.get(characterName);
+				if (!characterId) {
+					throw new Error(`Missing inserted Character: ${characterName}`);
+				}
+
+				return { chat_id: chatId, character_id: characterId };
+			});
+		});
 		db.insert(chatCharacterTable).values(memberships).all();
 
 		log(
