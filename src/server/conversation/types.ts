@@ -8,6 +8,7 @@ export interface ConversationVariantSnapshot {
 	id: number;
 	position: number;
 	content: string;
+	timestamp: string;
 	selected: boolean;
 	data: ConversationDataEntry[];
 }
@@ -67,6 +68,27 @@ export interface ConversationCommand {
 }
 
 export interface ConversationModule {
+	create(input: ConversationCreationInput): ConversationSnapshot;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
+}
+
+export interface ConversationCreationVariant {
+	content: string;
+	timestamp: string;
+	selected: boolean;
+	data?: readonly ConversationDataEntry[];
+}
+
+export interface ConversationCreationMessage {
+	timestamp: string;
+	variants: readonly ConversationCreationVariant[];
+	data?: readonly ConversationDataEntry[];
+}
+
+export interface ConversationCreationInput {
+	name: string;
+	characterIds?: readonly number[];
+	messages?: readonly ConversationCreationMessage[];
+	data?: readonly ConversationDataEntry[];
 }

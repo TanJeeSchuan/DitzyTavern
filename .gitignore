@@ -3,3 +3,5 @@ dist
 data
 .env
 .dsh-thread-statuses.json
+.scratch/
+test_data/

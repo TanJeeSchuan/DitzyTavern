@@ -10,7 +10,7 @@ export interface CreateVariantInput {
 }
 
 export function createVariant(db: ConversationDatabase, input: CreateVariantInput) {
-	requireMessage(db, input.conversationId, input.messageId);
+	const message = requireMessage(db, input.conversationId, input.messageId);
 	const latestPosition = db
 		.select({ value: max(messageVariantTable.position) })
 		.from(messageVariantTable)
@@ -26,6 +26,7 @@ export function createVariant(db: ConversationDatabase, input: CreateVariantInpu
 			message_id: input.messageId,
 			position: (latestPosition ?? 0) + 1,
 			content: input.content,
+			timestamp: message.timestamp,
 			selected: true,
 		})
 		.run();

@@ -48,6 +48,7 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 				message_id: message.id,
 				position: index + 1,
 				content,
+				timestamp: input.timestamp,
 				selected: index === selectedVariantIndex,
 			})),
 		)

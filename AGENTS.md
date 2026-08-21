@@ -1,5 +1,8 @@
 # AGENTS.md
 
+## Database persistance
+- Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
+
 ## Database seeding and teardown
 
 - `bun run db:seed` inserts test data. It is idempotent: it skips when the `character` table already contains rows.

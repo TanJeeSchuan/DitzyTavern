@@ -2,13 +2,13 @@
 
 A model-generated Message may retain multiple alternative Variants at the same position in a Conversation. Swiping generates a new Variant instead of destructively regenerating the Message; users can reproduce replacement-style regeneration by generating a Variant and deleting alternatives they no longer want.
 
-Exactly one Variant is selected for each model-generated Message. Only the selected Variant participates in prompt assembly, and switching selection is a revisioned Conversation mutation that preserves all later Messages.
+Every stored Message owns at least one Variant, and exactly one Variant is selected. Deleting the final Variant is forbidden; deleting the Message removes its entire Variant collection.
+
+For a model-generated Message, only the selected Variant participates in prompt assembly, and switching selection is a revisioned Conversation mutation that preserves all later Messages.
 
 The server may generate a new Variant only for the latest model-generated Message and only while that Message's stamped Participant occupies the active model Control seat. Existing Variants remain selectable and editable regardless of current Control, but another Participant can never generate a Variant under the Message's authorship.
 
 Swiping may start several sibling Generations in parallel for the latest model-generated Message. Every sibling uses the same preceding Conversation history position but independently captures the current Prompt Plan and Generation Settings when it starts. Sending a new Message remains blocked until all sibling Generations finish or are stopped.
-
-A model-generated Message owns all of its Variants and must retain at least one. Deleting the final Variant is forbidden; deleting the Message removes its entire Variant collection.
 
 A provider `finish_reason` of `length` persists the Variant with a distinct `length-limited` outcome and a visible truncation indicator. It is neither silently treated as natural completion nor auto-continued. It does not block subsequent Send, Generate, or Swipe commands, and the Variant retains the raw provider finish reason as compact outcome metadata.
 

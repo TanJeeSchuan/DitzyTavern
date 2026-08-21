@@ -94,6 +94,7 @@ export function readConversationSnapshot(
 			id: variant.id,
 			position: variant.position,
 			content: variant.content,
+			timestamp: variant.timestamp,
 			selected: variant.selected,
 			data: variantDataByVariant.get(variant.id) ?? [],
 		});

@@ -25,3 +25,10 @@ export class InvalidConversationCommandError extends Error {
 		this.name = "InvalidConversationCommandError";
 	}
 }
+
+export class InvalidConversationCreationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidConversationCreationError";
+	}
+}

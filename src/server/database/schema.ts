@@ -46,6 +46,7 @@ export const messageVariantTable = sqliteTable(
 			.references(() => messageTable.id, { onDelete: "cascade" }),
 		position: int().notNull(),
 		content: text().notNull(),
+		timestamp: text().notNull(),
 		selected: int({ mode: "boolean" }).notNull().default(false),
 	},
 	(table) => [
