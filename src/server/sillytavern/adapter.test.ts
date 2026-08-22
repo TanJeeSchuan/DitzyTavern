@@ -5,6 +5,7 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	VARIANT_KEYS,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
 import type { SillyTavernImportMeta } from "./adapter";
@@ -14,7 +15,9 @@ import {
 	emptyContentFixture as emptyContent,
 	headerFixture as header,
 	jsonl,
+	provenancedPayloadFixture as provenancedPayload,
 	rulershipFixture as second,
+	swipeRecordFixture as swiped,
 	writerFixture as first,
 } from "./fixtures";
 
@@ -276,5 +279,299 @@ describe("SillyTavern JSONL adapter", () => {
 		expect(() =>
 			parseSillyTavernChatJsonl(jsonl([header, numericName]), meta),
 		).toThrow(/Message at position 1 has no captured author name/);
+	});
+
+	test("derives one Variant per Swipe in source order and selects exactly swipe_id", () => {
+		const { input, report } = parseSillyTavernChatJsonl(
+			jsonl([header, swiped]),
+			meta,
+		);
+
+		const message = input.messages?.[0];
+		expect(message).toEqual({
+			// Message time is the earliest timestamp among its own Variants,
+			// not the row send_date (13:04:55.256Z).
+			timestamp: "2026-08-08T13:04:50.000Z",
+			data: [
+				{
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.authorName,
+					value: "TANJS",
+				},
+			],
+			variants: [
+				{
+					content: "First alternative text",
+					timestamp: "2026-08-08T13:04:50.000Z",
+					selected: false,
+					data: [
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "0" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationId, value: "1786194665138" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationStarted, value: "2026-08-08T13:04:48.000Z" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationFinished, value: "2026-08-08T13:04:49.500Z" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationDuration, value: "1500" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.timeToFirstToken, value: "1235" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.finishReason, value: "stop" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningDuration, value: "25407" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningType, value: "model" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningText, value: "reasoning for the first alternative" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningSignature, value: "signature-abc" },
+					],
+				},
+				{
+					content: "Second alternative, still saved",
+					timestamp: "2026-08-08T13:04:55.256Z",
+					selected: true,
+					data: [
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "1" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationId, value: "1786194665138" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationStarted, value: "2026-08-08T13:04:52.000Z" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationFinished, value: "2026-08-08T13:04:54.000Z" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.timeToFirstToken, value: "1256" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningDuration, value: "76921" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningType, value: "model" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningText, value: "reasoning for the saved alternative" },
+						// reasoning_signature is null in the source: not promoted.
+					],
+				},
+				{
+					content: "Second alternative, still saved",
+					timestamp: "2026-08-08T13:04:57.000Z",
+					selected: false,
+					data: [
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "2" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
+						// Empty reasoning and null signature are not promoted.
+					],
+				},
+				{
+					content: "",
+					timestamp: "2026-08-08T13:05:00.000Z",
+					selected: false,
+					data: [
+						{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "3" },
+						// No swipe_info extra: nothing else to promote.
+					],
+				},
+			],
+		});
+
+		// Duplicate-text and empty Swipes stay distinct in the count.
+		expect(report.counts).toEqual({ messages: 1, variants: 4 });
+	});
+
+	test("never promotes the duplicated top-level assistant payload when Swipes exist", () => {
+		const { input, report } = parseSillyTavernChatJsonl(
+			jsonl([header, swiped]),
+			meta,
+		);
+
+		// Row-level values duplicated from the saved alternative (mes,
+		// extra.api/model/gen_id, reasoning, gen_started/gen_finished) must
+		// not appear anywhere in the native Message/Variant projection.
+		const projection = JSON.stringify(input.messages);
+		expect(projection).not.toContain("duplicate-api");
+		expect(projection).not.toContain("duplicate-model");
+		expect(projection).not.toContain("999999");
+		expect(projection).not.toContain("duplicate reasoning");
+
+		// The duplicated payload remains value-lossless in the raw archive.
+		const archive = input.data?.find(
+			(entry) =>
+				entry.namespace === ARCHIVE_NAMESPACE && entry.key === ARCHIVE_KEY,
+		);
+		// SAFETY: archive.value was produced by JSON.stringify over the same fixture object.
+		const archived = JSON.parse(archive?.value ?? "") as {
+			messages: unknown[];
+		};
+		expect(archived.messages[0]).toEqual(swiped);
+
+		// No duplicate-import warnings are emitted for valid Swipe state.
+		expect(report.warnings).toEqual([]);
+	});
+
+	test("selects an empty Swipe when the source saved it", () => {
+		const emptySelected = {
+			name: "TANJS",
+			is_user: false,
+			send_date: "2026-08-08T13:40:00.000Z",
+			mes: "",
+			swipes: ["", "A nonempty alternative"],
+			swipe_id: 0,
+			swipe_info: [
+				{ send_date: "2026-08-08T13:40:00.000Z" },
+				{ send_date: "2026-08-08T13:40:05.000Z" },
+			],
+		};
+		const { input, report } = parseSillyTavernChatJsonl(
+			jsonl([header, emptySelected]),
+			meta,
+		);
+
+		const variants = input.messages?.[0]?.variants ?? [];
+		expect(variants).toHaveLength(2);
+		expect(variants[0]?.content).toBe("");
+		expect(variants[0]?.selected).toBe(true);
+		expect(variants[1]?.selected).toBe(false);
+		expect(input.messages?.[0]?.timestamp).toBe("2026-08-08T13:40:00.000Z");
+		expect(report.warnings).toEqual([]);
+	});
+
+	test("attaches row-level provenance to a payload-only Variant", () => {
+		const { input } = parseSillyTavernChatJsonl(
+			jsonl([header, provenancedPayload]),
+			meta,
+		);
+
+		expect(input.messages).toEqual([
+			{
+				timestamp: "2026-08-08T13:30:00.000Z",
+				data: [
+					{
+						namespace: IMPORT_NAMESPACE,
+						key: IMPORT_KEYS.authorName,
+						value: "Writer",
+					},
+				],
+				variants: [
+					{
+						content: "A payload-only message with row provenance",
+						timestamp: "2026-08-08T13:30:00.000Z",
+						selected: true,
+						data: [
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationId, value: "1786194665138" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationStarted, value: "2026-08-08T13:29:58.000Z" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationFinished, value: "2026-08-08T13:30:00.000Z" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationDuration, value: "2000" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.timeToFirstToken, value: "100" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.finishReason, value: "length" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningDuration, value: "500" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningType, value: "model" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningText, value: "row-level reasoning text" },
+							{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningSignature, value: "signature-row" },
+							// No swipe index: this Variant is not a Swipe.
+						],
+					},
+				],
+			},
+		]);
+	});
+
+	test("aborts when swipe_info does not match the swipes array", () => {
+		const mismatched = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a", "b"],
+			swipe_id: 0,
+			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z" }],
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, mismatched]), meta),
+		).toThrow(/swipe_info that does not match its swipes array/);
+
+		const missing = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a", "b"],
+			swipe_id: 0,
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, missing]), meta),
+		).toThrow(/swipe_info that does not match its swipes array/);
+	});
+
+	test("aborts on an out-of-range swipe_id", () => {
+		const tooHigh = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a", "b"],
+			swipe_id: 2,
+			swipe_info: [
+				{ send_date: "2026-08-08T13:04:55.256Z" },
+				{ send_date: "2026-08-08T13:04:55.256Z" },
+			],
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, tooHigh]), meta),
+		).toThrow(/out-of-range swipe_id/);
+
+		const negative = { ...tooHigh, swipe_id: -1 };
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, negative]), meta),
+		).toThrow(/out-of-range swipe_id/);
+
+		const fractional = { ...tooHigh, swipe_id: 1.5 };
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, fractional]), meta),
+		).toThrow(/out-of-range swipe_id/);
+
+		const missingId = { ...tooHigh, swipe_id: undefined };
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, missingId]), meta),
+		).toThrow(/out-of-range swipe_id/);
+	});
+
+	test("aborts on a non-string Swipe and on a non-array swipes value", () => {
+		const nonStringSwipe = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a", 42],
+			swipe_id: 0,
+			swipe_info: [
+				{ send_date: "2026-08-08T13:04:55.256Z" },
+				{ send_date: "2026-08-08T13:04:55.256Z" },
+			],
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, nonStringSwipe]), meta),
+		).toThrow(/swipe 1 is not a string/);
+
+		const nonArray = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: "nope",
+			swipe_id: 0,
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, nonArray]), meta),
+		).toThrow(/swipes value that is not an array/);
+	});
+
+	test("aborts on invalid Swipe timestamps", () => {
+		const badSendDate = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a"],
+			swipe_id: 0,
+			swipe_info: [{ send_date: "yesterday" }],
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, badSendDate]), meta),
+		).toThrow(/swipe 0 send_date has an invalid timestamp/);
+
+		const badGenStarted = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a"],
+			swipe_id: 0,
+			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z", gen_started: "soon" }],
+		};
+		expect(() =>
+			parseSillyTavernChatJsonl(jsonl([header, badGenStarted]), meta),
+		).toThrow(/swipe 0 gen_started has an invalid timestamp/);
 	});
 });

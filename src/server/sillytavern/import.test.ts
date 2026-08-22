@@ -19,6 +19,7 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	VARIANT_KEYS,
 	importSillyTavernChat,
 } from "./index";
 import { SillyTavernImportError } from "./errors";
@@ -28,7 +29,9 @@ import {
 	blankNameFixture as blankName,
 	headerFixture as header,
 	jsonl,
+	provenancedPayloadFixture as provenancedPayload,
 	rulershipFixture as second,
+	swipeRecordFixture as swiped,
 	writerFixture as first,
 } from "./fixtures";
 
@@ -186,6 +189,109 @@ describe("SillyTavern chat import", () => {
 
 	test("aborts the whole import atomically on a structural defect", () => {
 		const path = writeSource([header, first, '{"broken"', second]);
+		expect(() => importSillyTavernChat(database, path)).toThrow(
+			SillyTavernImportError,
+		);
+		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(messageTable)).toBe(0);
+		expect(countRows(messageVariantTable)).toBe(0);
+		expect(countRows(chatDataTable)).toBe(0);
+	});
+
+	test("imports Swipes end to end with exact selection and derived chronology", () => {
+		const path = writeSource([header, swiped, provenancedPayload]);
+		const result = importSillyTavernChat(database, path);
+		const conversation = result.conversation;
+
+		// 2 Messages; the Swipe record owns 4 Variants in source order and
+		// the payload-only record owns 1.
+		expect(result.report.counts).toEqual({ messages: 2, variants: 5 });
+		expect(conversation.messages).toHaveLength(2);
+
+		const [swipeMessage, payloadMessage] = conversation.messages;
+		expect(swipeMessage?.variants.map((variant) => variant.content)).toEqual([
+			"First alternative text",
+			"Second alternative, still saved",
+			"Second alternative, still saved",
+			"",
+		]);
+		expect(
+			swipeMessage?.variants.map((variant) => variant.selected),
+		).toEqual([false, true, false, false]);
+		// Message time is the earliest owned Variant time.
+		expect(swipeMessage?.timestamp).toBe("2026-08-08T13:04:50.000Z");
+		expect(payloadMessage?.timestamp).toBe("2026-08-08T13:30:00.000Z");
+
+		// Promoted provenance persists as Variant-scoped data rows. The
+		// snapshot orders scoped data by namespace and key.
+		const expectedFirstVariantData = [
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "0" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationId, value: "1786194665138" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationStarted, value: "2026-08-08T13:04:48.000Z" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationFinished, value: "2026-08-08T13:04:49.500Z" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationDuration, value: "1500" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.timeToFirstToken, value: "1235" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.finishReason, value: "stop" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningDuration, value: "25407" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningType, value: "model" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningText, value: "reasoning for the first alternative" },
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningSignature, value: "signature-abc" },
+		].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+		expect(swipeMessage?.variants[0]?.data).toEqual(expectedFirstVariantData);
+		expect(
+			swipeMessage?.variants[3]?.data,
+		).toEqual([
+			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "3" },
+		]);
+		expect(payloadMessage?.variants[0]?.data).toContainEqual({
+			namespace: IMPORT_NAMESPACE,
+			key: VARIANT_KEYS.reasoningSignature,
+			value: "signature-row",
+		});
+
+		// Chat creation time is the earliest Message time; activity time is
+		// the latest timestamp across every Variant.
+		const chatRow = drizzle(database)
+			.select()
+			.from(chatTable)
+			.where(eq(chatTable.id, conversation.id))
+			.get();
+		expect(chatRow?.creation_time).toBe("2026-08-08T13:04:50.000Z");
+		expect(chatRow?.last_message_time).toBe("2026-08-08T13:30:00.000Z");
+
+		// The canonical archive still holds the complete parsed source,
+		// including the duplicated top-level assistant payload.
+		const archive = findEntry(
+			conversation.data,
+			ARCHIVE_NAMESPACE,
+			ARCHIVE_KEY,
+		);
+		expect(JSON.parse(archive?.value ?? "")).toEqual({
+			header,
+			messages: [swiped, provenancedPayload],
+		});
+
+		expect(
+			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
+				?.value,
+		).toBe("5");
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id),
+		).toEqual(conversation);
+	});
+
+	test("aborts the whole import atomically on a mismatched Swipe array", () => {
+		const broken = {
+			name: "TANJS",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "x",
+			swipes: ["a", "b"],
+			swipe_id: 0,
+			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z" }],
+		};
+		const path = writeSource([header, swiped, broken]);
 		expect(() => importSillyTavernChat(database, path)).toThrow(
 			SillyTavernImportError,
 		);

@@ -4,6 +4,7 @@ export {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	VARIANT_KEYS,
 	importReportEntries,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
