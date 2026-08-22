@@ -10,6 +10,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:seed": "bun src/server/database/seed.ts",
 		"db:teardown": "bun src/server/database/teardown.ts",
+		"db:import": "bun src/server/database/import-chat.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix"
 	},
