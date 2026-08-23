@@ -15,7 +15,6 @@
 // Control; zero- and one-Participant sources commit as incomplete
 // Conversations whose playability derives once the missing seat is filled.
 
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, parse } from "node:path";
 import type { Database } from "bun:sqlite";
@@ -23,6 +22,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	mediaTypeFromFilename,
+	sha256Hex,
 	storeExactArtifactCopy,
 } from "../artifact";
 import type { ArtifactMetadata } from "../artifact";
@@ -121,7 +121,7 @@ export function importSillyTavernChat(
 	const filename = basename(sourcePath);
 	const name = chatNameFromFilename(filename);
 	const bytes = readSourceBytes(sourcePath);
-	const sha256 = createHash("sha256").update(bytes).digest("hex");
+	const sha256 = sha256Hex(bytes);
 	const sourceText = decodeUtf8(bytes);
 
 	const parsed = parseSillyTavernChatJsonl(sourceText, { name, filename, sha256 });

@@ -51,7 +51,10 @@ export const mediaTypeFromFilename = (filename: string): string => {
 };
 
 // Resolves a managed relative path strictly inside the managed root so a
-// metadata row can never read outside the managed directory.
+// metadata row can never read outside the managed directory. An escaping
+// path is an infrastructure inconsistency (the artifact is unavailable),
+// never silently treated as provenance loss: only absent or corrupt files
+// report the cleaned-up outcome.
 export const resolveManagedPath = (root: string, relativePath: string): string => {
 	const base = resolve(root);
 	const candidate = resolve(base, relativePath);
@@ -63,7 +66,10 @@ export const resolveManagedPath = (root: string, relativePath: string): string =
 	return candidate;
 };
 
-const sha256Hex = (bytes: Buffer): string =>
+// The raw-byte SHA-256 authority shared by every managed copy: the exact
+// stored bytes must reproduce this digest, preserving BOM, line endings,
+// whitespace, escape spelling, blank lines, and trailing newline.
+export const sha256Hex = (bytes: Buffer): string =>
 	createHash("sha256").update(bytes).digest("hex");
 
 // Copies the exact validated bytes into a unique managed relative path
