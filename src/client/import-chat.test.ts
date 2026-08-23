@@ -139,6 +139,108 @@ describe("Chat import client boundary", () => {
 		expect(afterDiscard.status).toBe("expired");
 	});
 
+	test("commits the resolved plan and reports the committed Chat with its receipt", async () => {
+		const staged = await transport.stage(file([header, writer]), "lantern-house.jsonl");
+		expect(staged.status).toBe("staged");
+		if (staged.status !== "staged") return;
+
+		const outcome = await transport.commit(staged.token, staged.preview.sha256, {
+			title: "Lantern House",
+			duplicateConfirmed: true,
+			participants: [
+				{
+					name: "Writer",
+					outcome: { type: "chat-only" },
+					messagePositions: [1],
+				},
+			],
+		});
+		expect(outcome.status).toBe("committed");
+		if (outcome.status !== "committed") return;
+		expect(outcome.conversationId).toBe(outcome.receipt.conversationId);
+		expect(outcome.receipt.title).toBe("Lantern House");
+		expect(outcome.receipt.sha256).toBe(staged.preview.sha256);
+		expect(outcome.receipt.participants).toEqual([
+			{ name: "Writer", outcome: "chat-only", sourceCharacterId: null },
+		]);
+
+		// A lost response retries the same token and payload; the boundary
+		// returns the same committed Chat instead of a second one.
+		const retry = await transport.commit(staged.token, staged.preview.sha256, {
+			title: "Lantern House",
+			duplicateConfirmed: true,
+			participants: [
+				{
+					name: "Writer",
+					outcome: { type: "chat-only" },
+					messagePositions: [1],
+				},
+			],
+		});
+		expect(retry.status).toBe("committed");
+		if (retry.status !== "committed") return;
+		expect(retry.conversationId).toBe(outcome.conversationId);
+		expect(retry.receipt).toEqual(outcome.receipt);
+	});
+
+	test("maps commit failures to typed outcomes: invalid plans, hash mismatches, and expiry", async () => {
+		const staged = await transport.stage(file([header, writer, {
+			name: "Rulership",
+			send_date: "2026-08-08T13:04:55.256Z",
+			mes: "Second message",
+		}]), "two.jsonl");
+		expect(staged.status).toBe("staged");
+		if (staged.status !== "staged") return;
+
+		// A plan skipping a Message is a contextual invalid outcome and the
+		// staged flow stays available for correction.
+		const invalidPlan = await transport.commit(
+			staged.token,
+			staged.preview.sha256,
+			{
+				title: "Skips",
+				duplicateConfirmed: true,
+				participants: [
+					{
+						name: "Writer",
+						outcome: { type: "chat-only" },
+						messagePositions: [1],
+					},
+				],
+			},
+		);
+		expect(invalidPlan.status).toBe("invalid");
+		expect(invalidPlan.status === "invalid" ? invalidPlan.reason : "").toMatch(
+			/assigned/,
+		);
+
+		// The corrected plan commits; a stale hash afterwards is invalid and
+		// an unknown handle is expired.
+		const corrected = await transport.commit(
+			staged.token,
+			staged.preview.sha256,
+			{
+				title: "Two",
+				duplicateConfirmed: true,
+				participants: [
+					{
+						name: "Writer",
+						outcome: { type: "chat-only" },
+						messagePositions: [1, 2],
+					},
+				],
+			},
+		);
+		expect(corrected.status).toBe("committed");
+
+		const unknown = await transport.commit("never-staged", "abc", {
+			title: "X",
+			duplicateConfirmed: true,
+			participants: [],
+		});
+		expect(unknown.status).toBe("expired");
+	});
+
 	test("surfaces network failures without losing the typed outcome shape", async () => {
 		const failing = createChatImportTransport({
 			base,

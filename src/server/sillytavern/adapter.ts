@@ -415,7 +415,7 @@ const chronological = (a: string, b: string) => Date.parse(a) - Date.parse(b);
 // the history itself is the preserved record, and no identity content is
 // fabricated. Names follow the shared Definition rules (leading and trailing
 // whitespace removed, case and Unicode preserved).
-const emptyImportedPrompt = (): ParticipantDefinitionPrompt => ({
+export const emptyImportedPrompt = (): ParticipantDefinitionPrompt => ({
 	systemInstruction: "",
 	identity: "",
 	scenario: "",
@@ -438,7 +438,7 @@ const authorGroupKey = (rawName: string): string | null => {
 // unseated. A one-Participant import reserves only the human seat so that
 // adding the missing Participant later preserves it and fills the model seat;
 // zero Participants commit with no Control (both seats stay incomplete).
-const deterministicControl = (
+export const deterministicImportControl = (
 	groupCount: number,
 ): ConversationControlSeed | undefined => {
 	if (groupCount === 0) return undefined;
@@ -446,15 +446,18 @@ const deterministicControl = (
 	return { human: 0, model: 1 };
 };
 
-interface BuildMessagesResult {
+interface DecodedMessagesResult {
 	messages: ConversationCreationMessage[];
-	participants: ConversationParticipantSeed[];
-	control: ConversationControlSeed | undefined;
 	warnings: string[];
 	authors: SillyTavernExactAuthor[];
 }
 
-const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
+// Decodes every retained record into one position-ordered Message with its
+// exact captured author value. No Participant, group, or Control decision is
+// made here: the developer-import path and the staged resolver each map the
+// decoded Messages onto their own author grouping later, and every retained
+// Message is always assigned to exactly one resolved Participant.
+const decodeMessages = (messageRecords: JsonValue[]): DecodedMessagesResult => {
 	const decoded: { position: number; authorName: string; message: DecodedMessage }[] = [];
 	const warnings: string[] = [];
 	messageRecords.forEach((record, index) => {
@@ -468,14 +471,66 @@ const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
 		decoded.push({ position, authorName: message.authorName, message });
 	});
 
+	const messages: ConversationCreationMessage[] = decoded.map((entry) => {
+		// The Message time is the earliest timestamp among its own Variants,
+		// so changing Variant selection can never change Message chronology.
+		// No user, assistant, or system role is derived.
+		// SAFETY: decodeMessage always returns at least one Variant (a
+		// payload-only record receives one, and a record with an empty swipes
+		// array aborts through the swipe_id range check), so the sorted
+		// minimum is never undefined.
+		const messageTime = entry.message.variants
+			.map((variant) => variant.timestamp)
+			.sort(chronological)[0] as string;
+		return {
+			timestamp: messageTime,
+			// The exact raw source author value — including blank strings —
+			// stays untouched here, while the native Author Stamp uses the
+			// resolved Participant name chosen by the import flow.
+			data: [authorEntry(entry.authorName)],
+			variants: entry.message.variants,
+		};
+	});
+
+	return {
+		messages,
+		warnings,
+		// The verbatim captured value per retained record (never trimmed or
+		// normalized) powers user-facing preview grouping; the trimmed
+		// grouping above stays the developer-import resolution rule.
+		authors: decoded.map((entry) => ({
+			position: entry.position,
+			name: entry.authorName,
+			variantCount: entry.message.variants.length,
+		})),
+	};
+};
+
+// The developer-import author resolution outcome: resolved Participants in
+// first-appearance order, deterministic Control, and Messages stamped with
+// their resolved seed index.
+interface DeveloperAuthorGroups {
+	participants: ConversationParticipantSeed[];
+	control: ConversationControlSeed | undefined;
+	messages: ConversationCreationMessage[];
+}
+
+// Developer-import author resolution: one Participant per trimmed resolved
+// author group in first-appearance order, deterministic Control, and the
+// exact same Message-to-group mapping the older developer command committed.
+// The staged resolver never uses this function; it maps Messages onto the
+// user-confirmed Participant plan instead.
+const resolveDeveloperAuthorGroups = (
+	decoded: Pick<DecodedMessagesResult, "messages" | "authors">,
+): DeveloperAuthorGroups => {
 	// Resolve author groups by first resolved appearance. Exact duplicates
 	// collapse into one Participant; raw values that trim to the same name
 	// (and all blanks) share a group while remaining distinct from other
 	// groups whose names merely look alike after any other transformation.
 	const groupIndexOf = new Map<string | null, number>();
 	const groups: (string | null)[] = [];
-	for (const entry of decoded) {
-		const key = authorGroupKey(entry.authorName);
+	for (const author of decoded.authors) {
+		const key = authorGroupKey(author.name);
 		if (!groupIndexOf.has(key)) {
 			groupIndexOf.set(key, groups.length);
 			groups.push(key);
@@ -490,60 +545,51 @@ const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
 		},
 	}));
 
-	const messages: ConversationCreationMessage[] = decoded.map((entry) => {
+	const messages = decoded.messages.map((message, index) => {
+		// SAFETY: authors is the parallel per-record projection of messages,
+		// so the author row for this Message always exists.
+		const author = decoded.authors[index] as SillyTavernExactAuthor;
 		// SAFETY: every decoded Message has a captured author name, so its
 		// group (and thus the Participant index) always exists.
 		const authorParticipantIndex = groupIndexOf.get(
-			authorGroupKey(entry.authorName),
+			authorGroupKey(author.name),
 		) as number;
-		// The Message time is the earliest timestamp among its own Variants,
-		// so changing Variant selection can never change Message chronology.
-		// No user, assistant, or system role is derived.
-		// SAFETY: decodeMessage always returns at least one Variant (a
-		// payload-only record receives one, and a record with an empty swipes
-		// array aborts through the swipe_id range check), so the sorted
-		// minimum is never undefined.
-		const messageTime = entry.message.variants
-			.map((variant) => variant.timestamp)
-			.sort(chronological)[0] as string;
-		return {
-			timestamp: messageTime,
-			authorParticipantIndex,
-			// The exact raw source author value — including blank strings —
-			// stays untouched here, while the native Author Stamp uses the
-			// resolved Participant name.
-			data: [authorEntry(entry.authorName)],
-			variants: entry.message.variants,
-		};
+		return { ...message, authorParticipantIndex };
 	});
 
 	return {
-		messages,
 		participants,
-		control: deterministicControl(participants.length),
-		warnings,
-		// The verbatim captured value per retained record (never trimmed or
-		// normalized) powers user-facing preview grouping; the trimmed
-		// grouping above stays the developer-import resolution rule.
-		authors: decoded.map((entry) => ({
-			position: entry.position,
-			name: entry.authorName,
-			variantCount: entry.message.variants.length,
-		})),
+		control: deterministicImportControl(participants.length),
+		messages,
 	};
 };
 
-interface ParsedSillyTavernSource extends ParsedSillyTavernChat {
+export interface SillyTavernDecodedImportSource {
+	// One native Message per retained record in source order. The exact raw
+	// captured author value stays in each Message's `author.name` data entry
+	// so preserved source values never depend on later merge, split, or
+	// Character selection. No authorParticipantIndex is set here; every
+	// import path maps Messages onto its own resolved Participants later.
+	messages: ConversationCreationMessage[];
+	// The verbatim captured author value per retained record (never trimmed
+	// or normalized), parallel to `messages` by record position.
 	authors: SillyTavernExactAuthor[];
+	// Canonical archive plus source-identity entries. The orchestration
+	// appends the final warnings and report entries after duplicate
+	// detection, exactly like the developer import path.
+	data: ConversationDataEntry[];
+	report: SillyTavernImportReport;
 }
 
-// Complete single-pass parse shared by the developer import path and the
-// staged preview: identical validation, counts, archive, and report, plus
-// the per-record exact author values only the preview groups on.
-const parseSillyTavernSource = (
+// Complete single-pass source decode shared by the developer import path,
+// the staged preview, and the staged commit: identical validation, counts,
+// archive, and report, plus the per-record exact author values the resolver
+// groups on. Previewing and committing re-decode the exact same staged bytes,
+// so the review can never describe one file while another is committed.
+export function decodeSillyTavernImportSource(
 	sourceText: string,
 	meta: SillyTavernImportMeta,
-): ParsedSillyTavernSource => {
+): SillyTavernDecodedImportSource {
 	const records = decodeRecords(sourceText);
 	const [headerRecord, ...messageRecords] = records;
 	if (headerRecord === undefined) {
@@ -551,9 +597,7 @@ const parseSillyTavernSource = (
 	}
 	const header = decodeHeader(headerRecord);
 	const integrity = sourceIntegrity(header);
-	const { messages, participants, control, warnings, authors } = buildMessages(
-		messageRecords,
-	);
+	const { messages, warnings, authors } = decodeMessages(messageRecords);
 	const variantCount = messages.reduce(
 		(total, message) => total + message.variants.length,
 		0,
@@ -622,25 +666,26 @@ const parseSillyTavernSource = (
 		warnings,
 	};
 
-	return {
-		input: {
-			name: meta.name,
-			participants,
-			control,
-			messages,
-			data,
-		},
-		report,
-		authors,
-	};
+	return { messages, authors, data, report };
 }
 
 export function parseSillyTavernChatJsonl(
 	sourceText: string,
 	meta: SillyTavernImportMeta,
 ): ParsedSillyTavernChat {
-	const { input, report } = parseSillyTavernSource(sourceText, meta);
-	return { input, report };
+	const decoded = decodeSillyTavernImportSource(sourceText, meta);
+	const { participants, control, messages } =
+		resolveDeveloperAuthorGroups(decoded);
+	return {
+		input: {
+			name: meta.name,
+			participants,
+			control,
+			messages,
+			data: decoded.data,
+		},
+		report: decoded.report,
+	};
 }
 
 // Preview-oriented inspection: the full structural validation of the import
@@ -651,8 +696,8 @@ export function inspectSillyTavernChatJsonl(
 	sourceText: string,
 	meta: SillyTavernImportMeta,
 ): SillyTavernChatInspection {
-	const { report, authors } = parseSillyTavernSource(sourceText, meta);
-	return { report, authors };
+	const decoded = decodeSillyTavernImportSource(sourceText, meta);
+	return { report: decoded.report, authors: decoded.authors };
 }
 
 // Conversation-scoped entries derived from the final report. They are built

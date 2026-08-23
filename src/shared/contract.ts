@@ -28,7 +28,9 @@ import {
 } from "../server/workflows";
 import { defaultArtifactDirectory } from "../server/artifact";
 import {
+	StagedChatImportDuplicateConfirmationError,
 	StagedChatImportExpiredError,
+	StagedChatImportPlanError,
 	StagedChatImportTokenMismatchError,
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
@@ -939,6 +941,8 @@ const importGroup = t.Object({
 	key: t.String(),
 	isBlank: t.Boolean(),
 	messagePositions: t.Array(t.Integer()),
+	// Parallel per-Message Variant counts for inspection and split selection.
+	messageVariantCounts: t.Array(t.Integer()),
 	messageCount: t.Integer(),
 	variantCount: t.Integer(),
 	participantNameDefault: t.String(),
@@ -974,6 +978,74 @@ const stagedOutcome = t.Object({
 	outcome: t.Literal("staged"),
 	token: t.String(),
 	preview: chatImportPreview,
+});
+
+// User-confirmed resolution plan for the commit: three outcomes only, whole
+// Messages referenced by 1-based record positions, and a nonblank native
+// name per Participant (derived from the selected Profile for forks).
+const importResolutionOutcome = t.Union([
+	t.Object({
+		type: t.Literal("fork"),
+		characterId: t.Integer(),
+	}),
+	t.Object({ type: t.Literal("new-character") }),
+	t.Object({ type: t.Literal("chat-only") }),
+]);
+
+const importResolvedParticipant = t.Object({
+	name: t.String(),
+	outcome: importResolutionOutcome,
+	messagePositions: t.Array(t.Integer()),
+});
+
+const chatImportCommitBody = t.Object({
+	// The SHA-256 the client already knows from the preview; only the exact
+	// staged bytes that produced the preview may be committed.
+	sha256: t.String(),
+	title: t.String(),
+	// Explicit Import another copy confirmation, required for exact
+	// duplicates (matching raw-byte SHA-256); related-source matches stay
+	// advisory.
+	duplicateConfirmed: t.Boolean(),
+	participants: t.Array(importResolvedParticipant),
+});
+
+// Receipt participant outcome labels: existing Profile fork, new Profile
+// creation, or a complete Chat-only Participant.
+const importReceiptParticipant = t.Object({
+	name: t.String(),
+	outcome: t.Union([
+		t.Literal("fork"),
+		t.Literal("new-character"),
+		t.Literal("chat-only"),
+	]),
+	sourceCharacterId: t.Nullable(t.Integer()),
+});
+
+// Compact post-commit receipt; the committed Conversation is returned too so
+// the client can open the new Chat immediately without a round trip.
+const chatImportReceipt = t.Object({
+	conversationId: t.Integer(),
+	title: t.String(),
+	originalFilename: t.String(),
+	sha256: t.String(),
+	byteLength: t.Integer(),
+	counts: t.Object({
+		messages: t.Integer(),
+		variants: t.Integer(),
+	}),
+	participants: t.Array(importReceiptParticipant),
+	warnings: t.Array(t.String()),
+	duplicates: t.Object({
+		exact: t.Array(importDuplicateMatch),
+		related: t.Array(importDuplicateMatch),
+	}),
+});
+
+const commitOutcome = t.Object({
+	outcome: t.Literal("committed"),
+	conversation: conversationSnapshot,
+	receipt: chatImportReceipt,
 });
 
 // Thin typed adapters over the deep staged Chat import seam. The stage
@@ -1070,6 +1142,73 @@ export const createChatImportRoutes = (
 						outcome: t.Literal("available"),
 						preview: chatImportPreview,
 					}),
+					410: t.Union([
+						t.Object({ outcome: t.Literal("expired") }),
+						t.Object({
+							outcome: t.Literal("unavailable"),
+							reason: t.Union([
+								t.Literal("missing"),
+								t.Literal("corrupt"),
+							]),
+						}),
+					]),
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/imports/chats/:token/commit",
+			({ params, body, status }) => {
+				try {
+					const result = withChatImport(
+						database,
+						artifactDirectory,
+						(chatImport) =>
+							chatImport.commit(params.token, {
+								sha256: body.sha256,
+								title: body.title,
+								duplicateConfirmed: body.duplicateConfirmed,
+								participants: body.participants,
+							}),
+					);
+					return {
+						outcome: "committed" as const,
+						conversation: toConversationPayload(result.conversation),
+						receipt: result.receipt,
+					};
+				} catch (error) {
+					if (error instanceof StagedChatImportExpiredError) {
+						return status(410, { outcome: "expired" as const });
+					}
+					if (error instanceof StagedChatImportUnavailableError) {
+						return status(410, {
+							outcome: "unavailable" as const,
+							reason: error.reason,
+						});
+					}
+					if (
+						error instanceof StagedChatImportTokenMismatchError ||
+						error instanceof StagedChatImportPlanError ||
+						error instanceof StagedChatImportDuplicateConfirmationError ||
+						error instanceof SillyTavernImportError ||
+						error instanceof CharacterNotFoundError ||
+						error instanceof InvalidCharacterDefinitionError ||
+						error instanceof InvalidCharacterCommandError ||
+						error instanceof InvalidConversationCreationError
+					) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ token: t.String() }),
+				body: chatImportCommitBody,
+				response: {
+					200: commitOutcome,
 					410: t.Union([
 						t.Object({ outcome: t.Literal("expired") }),
 						t.Object({

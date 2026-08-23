@@ -52,6 +52,10 @@ type PrimaryPanel = "chats" | "cast" | "library" | "settings" | null;
 
 export function App() {
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
+	// A just-imported Chat to open after the workspace reloads. It lives at
+	// App level because reloading the workspace unmounts the whole tree, and
+	// the selection must survive until the reloaded chat list contains it.
+	const [importLaunchChatId, setImportLaunchChatId] = useState<string | null>(null);
 
 	const loadWorkspace = useCallback(async () => {
 		setState({ status: "loading" });
@@ -62,6 +66,20 @@ export function App() {
 			setState({ status: "error" });
 		}
 	}, []);
+
+	const handleImportLaunched = useCallback(
+		async (conversationId: number) => {
+			setImportLaunchChatId(String(conversationId));
+			try {
+				await loadWorkspace();
+			} finally {
+				// Clears after the reloaded workspace rendered, so the selection
+				// effect could observe the target in the refreshed chat list.
+				window.setTimeout(() => setImportLaunchChatId(null), 0);
+			}
+		},
+		[loadWorkspace],
+	);
 
 	useEffect(() => {
 		void loadWorkspace();
@@ -79,6 +97,10 @@ export function App() {
 		<WritingWorkspace
 			initialWorkspace={state.workspace}
 			onReload={loadWorkspace}
+			importLaunchChatId={importLaunchChatId}
+			onImportLaunched={(conversationId) =>
+				void handleImportLaunched(conversationId)
+			}
 		/>
 	);
 }
@@ -86,9 +108,13 @@ export function App() {
 function WritingWorkspace({
 	initialWorkspace,
 	onReload,
+	importLaunchChatId,
+	onImportLaunched,
 }: {
 	initialWorkspace: Workspace;
 	onReload: () => Promise<void>;
+	importLaunchChatId: string | null;
+	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [newChatOpen, setNewChatOpen] = useState(false);
 
@@ -123,6 +149,8 @@ function WritingWorkspace({
 				newChatOpen={newChatOpen}
 				onNewChatClose={() => setNewChatOpen(false)}
 				onNewChatCreated={() => void handleCreated()}
+				importLaunchChatId={importLaunchChatId}
+				onImportLaunched={onImportLaunched}
 			/>
 		</>
 	);
@@ -149,12 +177,16 @@ function ActiveWritingWorkspace({
 	newChatOpen,
 	onNewChatClose,
 	onNewChatCreated,
+	importLaunchChatId,
+	onImportLaunched,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
 	onNewChat: () => void;
 	newChatOpen: boolean;
 	onNewChatClose: () => void;
 	onNewChatCreated: () => void;
+	importLaunchChatId: string | null;
+	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [messages, setMessages] = useState(initialWorkspace.messages);
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
@@ -224,6 +256,21 @@ function ActiveWritingWorkspace({
 			.then(setConversation)
 			.catch(() => setConversation(null));
 	}, [activeChatId]);
+
+	// A just-imported Chat is selected as soon as the refreshed workspace
+	// list contains it; the selection effect is idempotent and never fires
+	// for a target that is not yet present.
+	useEffect(() => {
+		if (importLaunchChatId === null || importLaunchChatId === activeChatId) {
+			return;
+		}
+		const present = initialWorkspace.chats.some(
+			(chat) => chat.id === importLaunchChatId,
+		);
+		if (present) {
+			selectChat(importLaunchChatId);
+		}
+	}, [importLaunchChatId, activeChatId, initialWorkspace.chats]);
 
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
 		setDetailMessageId(null);
@@ -296,6 +343,7 @@ function ActiveWritingWorkspace({
 				onSelectChat={selectChat}
 				onNewChat={onNewChat}
 				onClose={() => setPrimaryPanel(null)}
+				onImportLaunched={onImportLaunched}
 				conversation={conversation}
 				onConversationChange={setConversation}
 				libraryFocusCharacterId={libraryFocusCharacterId}
@@ -452,6 +500,7 @@ function PrimaryPanelView({
 	onSelectChat,
 	onNewChat,
 	onClose,
+	onImportLaunched,
 	conversation,
 	onConversationChange,
 	libraryFocusCharacterId,
@@ -466,6 +515,7 @@ function PrimaryPanelView({
 	onSelectChat: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
+	onImportLaunched: (conversationId: number) => void;
 	conversation: ConversationSnapshot | null;
 	onConversationChange: (conversation: ConversationSnapshot | null) => void;
 	libraryFocusCharacterId: number | null;
@@ -480,9 +530,11 @@ function PrimaryPanelView({
 				open={panel === "chats"}
 				chats={workspace.chats}
 				activeId={activeChat.id}
+				characters={workspace.characters}
 				onSelect={onSelectChat}
 				onNewChat={onNewChat}
 				onClose={onClose}
+				onImportLaunched={onImportLaunched}
 			/>
 			{panel !== null && panel !== "chats" && (
 				<>

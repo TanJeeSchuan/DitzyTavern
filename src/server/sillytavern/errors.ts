@@ -40,3 +40,28 @@ export class StagedChatImportTokenMismatchError extends Error {
 		this.name = "StagedChatImportTokenMismatchError";
 	}
 }
+
+// The user-confirmed resolution plan cannot be committed as it stands: a
+// Participant name is blank, a Message is unassigned, assigned twice, or
+// references an unknown position, or a fork references a Character that no
+// longer exists. The failure is recoverable: the staged preview, the staged
+// bytes, and every resolution choice stay intact for correction.
+export class StagedChatImportPlanError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "StagedChatImportPlanError";
+	}
+}
+
+// The staged source is an exact duplicate (matching raw-byte SHA-256) of a
+// prior import, and the user has not yet explicitly confirmed the
+// independent-copy intent. The commit is refused until that confirmation;
+// the staged preview and every resolution choice stay intact.
+export class StagedChatImportDuplicateConfirmationError extends Error {
+	constructor() {
+		super(
+			"This exact source was already imported. Confirm that you want to import another independent copy.",
+		);
+		this.name = "StagedChatImportDuplicateConfirmationError";
+	}
+}

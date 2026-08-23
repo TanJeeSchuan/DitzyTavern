@@ -8,13 +8,17 @@ export {
 	IMPORTER_VERSION,
 	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
+	decodeSillyTavernImportSource,
 	decodeSillyTavernSourceBytes,
+	deterministicImportControl,
+	emptyImportedPrompt,
 	importReportEntries,
 	inspectSillyTavernChatJsonl,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
 export type {
 	SillyTavernChatInspection,
+	SillyTavernDecodedImportSource,
 	SillyTavernExactAuthor,
 	ParsedSillyTavernChat,
 	SillyTavernImportMeta,
@@ -23,7 +27,9 @@ export type {
 } from "./adapter";
 export {
 	SillyTavernImportError,
+	StagedChatImportDuplicateConfirmationError,
 	StagedChatImportExpiredError,
+	StagedChatImportPlanError,
 	StagedChatImportTokenMismatchError,
 	StagedChatImportUnavailableError,
 } from "./errors";
@@ -38,13 +44,20 @@ export {
 	withChatImport,
 } from "./staged";
 export type {
+	ChatImportCommitInput,
+	ChatImportCommitResult,
 	ChatImportDuplicateMatch,
 	ChatImportGroup,
 	ChatImportModule,
 	ChatImportModuleOptions,
 	ChatImportPreview,
+	ChatImportReceipt,
+	ChatImportReceiptParticipant,
+	ChatImportResolvedOutcome,
+	ChatImportResolvedParticipantPlan,
 	ChatImportStageInput,
 	ChatImportSuggestion,
+	ImportResolutionOutcome,
 	StagedChatImportResult,
 	SuggestionMatchKind,
 } from "./staged";

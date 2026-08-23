@@ -26,7 +26,6 @@ interface ChatsPanelProps {
 	onNewChat: () => void;
 	onImportChat: () => void;
 }
-
 export function ChatsPanel({
 	chats,
 	activeId,
@@ -82,18 +81,24 @@ interface ImportChatHostProps {
 	open: boolean;
 	chats: ChatSummary[];
 	activeId: string;
+	// Library Characters the resolver can fork from.
+	characters: { id: number; name: string }[];
 	onSelect: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
+	// A committed import opens its Chat: reloads the workspace and selects it.
+	onImportLaunched: (conversationId: number) => void;
 }
 
 export function ImportChatHost({
 	open,
 	chats,
 	activeId,
+	characters,
 	onSelect,
 	onNewChat,
 	onClose,
+	onImportLaunched,
 }: ImportChatHostProps) {
 	const [chatsNested, setChatsNested] = useState<"list" | "import">("list");
 	const [importFlow, dispatchImportFlow] = useReducer(
@@ -109,6 +114,11 @@ export function ImportChatHost({
 			<ImportChatPanel
 				flow={importFlow}
 				onDispatch={dispatchImportFlow}
+				characters={characters}
+				onImportLaunched={(conversationId) => {
+					onImportLaunched(conversationId);
+					closeImport();
+				}}
 				onBackToList={() => {
 					discardStagedImport(importFlow.handle?.token ?? null);
 					closeImport();

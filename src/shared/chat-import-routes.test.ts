@@ -10,7 +10,7 @@ import {
 	clearStagedImportRegistry,
 	createChatImportModule,
 } from "../server/sillytavern/staged";
-import { headerFixture as header, jsonl, writerFixture as writer } from "../server/sillytavern/fixtures";
+import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../server/sillytavern/fixtures";
 import { createChatImportRoutes } from "./contract";
 
 // Transport tests cover the typed upload/preview/discard contract only; the
@@ -62,6 +62,30 @@ describe("Chat import transport adapters", () => {
 		app.handle(
 			new Request(`http://localhost/api/imports/chats/${token}/discard`, {
 				method: "POST",
+			}),
+		);
+
+	const commit = (
+		token: string,
+		sha256: string,
+		body: {
+			title: string;
+			duplicateConfirmed: boolean;
+			participants: {
+				name: string;
+				outcome:
+					| { type: "fork"; characterId: number }
+					| { type: "new-character" }
+					| { type: "chat-only" };
+				messagePositions: number[];
+			}[];
+		},
+	) =>
+		app.handle(
+			new Request(`http://localhost/api/imports/chats/${token}/commit`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ sha256, ...body }),
 			}),
 		);
 
@@ -224,5 +248,149 @@ describe("Chat import transport adapters", () => {
 		const stagedAgain = await stage(bytes, "large-export.jsonl");
 		const again = await stagedAgain.json();
 		expect(again.token).not.toBe(body.token);
+	});
+
+	test("commits the confirmed plan with the typed committed outcome and receipt", async () => {
+		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
+		const staged = await stage(bytes, "lantern-house.jsonl");
+		const { token, preview } = await staged.json();
+
+		const response = await commit(token, preview.sha256, {
+			title: "Lantern House",
+			duplicateConfirmed: true,
+			participants: [
+				{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] },
+			],
+		});
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.outcome).toBe("committed");
+		expect(body.conversation.name).toBe("Lantern House");
+		expect(body.receipt).toMatchObject({
+			conversationId: body.conversation.id,
+			title: "Lantern House",
+			originalFilename: "lantern-house.jsonl",
+			sha256: preview.sha256,
+			byteLength: bytes.length,
+			counts: { messages: 1, variants: 1 },
+		});
+		expect(body.receipt.participants).toEqual([
+			{ name: "Writer", outcome: "chat-only", sourceCharacterId: null },
+		]);
+
+		// Retrying the same token after a lost response returns the same
+		// committed Chat rather than creating another one.
+		const retry = await commit(token, preview.sha256, {
+			title: "Lantern House",
+			duplicateConfirmed: true,
+			participants: [
+				{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] },
+			],
+		});
+		expect(retry.status).toBe(200);
+		const retryBody = await retry.json();
+		expect(retryBody.conversation.id).toBe(body.conversation.id);
+		expect(retryBody.receipt).toEqual(body.receipt);
+	});
+
+	test("maps plan, duplicate-confirmation, and hash failures to typed 422 and expired handles to 410", async () => {
+		const bytes = Buffer.from(jsonl([header, writer, rulershipFixture]), "utf8");
+		const staged = await stage(bytes);
+		const { token, preview } = await staged.json();
+
+		// The exact-duplicate confirmation gate maps to the typed invalid
+		// outcome without creating a Chat.
+		const unconfirmed = await commit(token, preview.sha256, {
+			title: "Before any prior import",
+			duplicateConfirmed: true,
+			participants: [
+				{
+					name: "Writer",
+					outcome: { type: "chat-only" },
+					messagePositions: [1, 2],
+				},
+			],
+		});
+		// No prior import exists, so the commit succeeds and burns the token.
+		expect(unconfirmed.status).toBe(200);
+
+		// A plan that skips a Message is a typed invalid outcome.
+		const skipping = await stage(bytes, "skipping.jsonl");
+		const skippingBody = await skipping.json();
+		const invalid = await commit(skippingBody.token, skippingBody.preview.sha256, {
+			title: "Skips",
+			duplicateConfirmed: true,
+			participants: [
+				{
+					name: "Writer",
+					outcome: { type: "chat-only" },
+					messagePositions: [1],
+				},
+			],
+		});
+		expect(invalid.status).toBe(422);
+		expect(await invalid.json()).toMatchObject({ outcome: "invalid" });
+
+		// A consumed or unknown token is expired.
+		const unknown = await commit("never-staged", preview.sha256, {
+			title: "X",
+			duplicateConfirmed: true,
+			participants: [],
+		});
+		expect(unknown.status).toBe(410);
+		expect(await unknown.json()).toEqual({ outcome: "expired" });
+
+		// A hash that does not match the binding is rejected.
+		const mismatchStaged = await stage(bytes, "mismatch.jsonl");
+		const mismatchBody = await mismatchStaged.json();
+		const mismatched = await commit(
+			mismatchBody.token,
+			sha256Of(Buffer.from("other")),
+			{
+				title: "X",
+				duplicateConfirmed: true,
+				participants: [],
+			},
+		);
+		expect(mismatched.status).toBe(422);
+		expect(await mismatched.json()).toMatchObject({ outcome: "invalid" });
+	});
+
+	test("requires the explicit duplicate copy confirmation over the transport", async () => {
+		// A committed prior Chat provides the exact duplicate evidence.
+		const priorPath = join(files[0] ?? "", "prior-duplicate.jsonl");
+		writeFileSync(priorPath, jsonl([header, writer]), "utf8");
+		const prior = importSillyTavernChat(database, priorPath, artifactDirectory).conversation;
+
+		const staged = await stage(
+			Buffer.from(jsonl([header, writer]), "utf8"),
+			"copy.jsonl",
+		);
+		const { token, preview } = await staged.json();
+
+		const blocked = await commit(token, preview.sha256, {
+			title: "Copy",
+			duplicateConfirmed: false,
+			participants: [
+				{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] },
+			],
+		});
+		expect(blocked.status).toBe(422);
+		expect(await blocked.json()).toMatchObject({ outcome: "invalid" });
+
+		const confirmed = await commit(token, preview.sha256, {
+			title: "Copy",
+			duplicateConfirmed: true,
+			participants: [
+				{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] },
+			],
+		});
+		expect(confirmed.status).toBe(200);
+		const confirmedBody = await confirmed.json();
+		expect(confirmedBody.receipt.duplicates.exact).toEqual([
+			{ id: prior.id, name: prior.name },
+		]);
+		// The independent copy gets its own Chat identity, never a rerun.
+		expect(confirmedBody.conversation.id).not.toBe(prior.id);
 	});
 });
