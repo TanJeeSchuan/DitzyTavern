@@ -57,6 +57,13 @@
       "when": 1787467181041,
       "tag": "0007_legal_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787502493500,
+      "tag": "0008_naive_daredevil",
+      "breakpoints": true
     }
   ]
 }

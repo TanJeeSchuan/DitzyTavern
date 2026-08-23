@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { createArtifactModule, type ArtifactModule } from "../artifact";
 import { openDatabase } from "../database/database";
 import {
+	artifactTable,
 	chatDataTable,
 	chatTable,
 	conversationControlTable,
@@ -18,6 +20,8 @@ import {
 import {
 	ARCHIVE_KEY,
 	ARCHIVE_NAMESPACE,
+	EXACT_SOURCE_ARTIFACT_KEY,
+	EXACT_SOURCE_ARTIFACT_NAMESPACE,
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
@@ -55,20 +59,38 @@ const findEntry = (
 describe("SillyTavern chat import", () => {
 	let database: Database;
 	let files: string[];
+	let artifactDirectory: string;
+	let artifacts: ArtifactModule;
 
 	beforeEach(() => {
 		database = openDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
+		artifactDirectory = join(directory, "managed-artifacts");
+		artifacts = createArtifactModule(database, { directory: artifactDirectory });
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
 
+	// Every import call in these tests preserves the exact source bytes in
+	// an isolated managed artifact directory, through the same public
+	// signature the developer command uses.
+	const importChat = (sourcePath: string) =>
+		importSillyTavernChat(database, sourcePath, artifactDirectory);
+
 	const writeSource = (records: unknown[], filename = "lantern-house.jsonl") => {
 		const path = join(files[0] ?? "", filename);
 		writeFileSync(path, jsonl(records), "utf8");
+		return path;
+	};
+
+	// Writes raw source bytes (BOM, CRLF, escape spelling, and trailing
+	// newlines included) without re-serializing through the fixture helper.
+	const writeSourceRaw = (text: string, filename: string) => {
+		const path = join(files[0] ?? "", filename);
+		writeFileSync(path, Buffer.from(text, "utf8"));
 		return path;
 	};
 
@@ -77,12 +99,19 @@ describe("SillyTavern chat import", () => {
 			.update(Buffer.from(jsonl(records), "utf8"))
 			.digest("hex");
 
-	const countRows = (table: typeof chatTable | typeof messageTable | typeof messageVariantTable | typeof chatDataTable) =>
-		drizzle(database).select().from(table).all().length;
+	const countRows = (
+		table:
+			| typeof chatTable
+			| typeof messageTable
+			| typeof messageVariantTable
+			| typeof chatDataTable
+			| typeof artifactTable
+			| typeof participantTable,
+	) => drizzle(database).select().from(table).all().length;
 
 	test("imports a payload-only JSONL file end to end as a Participant Conversation", () => {
 		const path = writeSource([header, first, second, blankName]);
-		const result = importSillyTavernChat(database, path);
+		const result = importChat(path);
 		const conversation = result.conversation;
 
 		// The Chat takes its temporary name from the filename stem.
@@ -253,7 +282,7 @@ describe("SillyTavern chat import", () => {
 
 	test("commits a zero-Participant source atomically as an incomplete archive", () => {
 		const path = writeSource([header]);
-		const result = importSillyTavernChat(database, path);
+		const result = importChat(path);
 		const conversation = result.conversation;
 
 		expect(conversation.cast).toEqual([]);
@@ -298,7 +327,7 @@ describe("SillyTavern chat import", () => {
 
 	test("reserves only the human seat for a one-Participant source and commits it incomplete", () => {
 		const path = writeSource([header, first]);
-		const result = importSillyTavernChat(database, path);
+		const result = importChat(path);
 		const conversation = result.conversation;
 
 		expect(conversation.cast.map((participant) => participant.name)).toEqual([
@@ -347,7 +376,7 @@ describe("SillyTavern chat import", () => {
 		// seat; Writer (is_user true) appears second and becomes the model
 		// seat — legacy role hints never drive identity or Control.
 		const path = writeSource([header, second, first]);
-		const { conversation } = importSillyTavernChat(database, path);
+		const { conversation } = importChat(path);
 
 		expect(conversation.cast.map((participant) => participant.name)).toEqual([
 			"Rulership",
@@ -370,8 +399,7 @@ describe("SillyTavern chat import", () => {
 			{ name: "Gamma", is_user: true, send_date: "2026-08-08T12:02:00.000Z", mes: "c" },
 			{ name: "Delta", is_user: false, send_date: "2026-08-08T12:03:00.000Z", mes: "d" },
 		];
-		const { conversation } = importSillyTavernChat(
-			database,
+		const { conversation } = importChat(
 			writeSource([header, ...records]),
 		);
 
@@ -418,8 +446,7 @@ describe("SillyTavern chat import", () => {
 			send_date: "2026-08-08T12:55:00.000Z",
 			mes: "case-preserved separate group",
 		};
-		const { conversation } = importSillyTavernChat(
-			database,
+		const { conversation } = importChat(
 			writeSource([header, first, trailingSpace, lowerCase]),
 		);
 
@@ -452,8 +479,7 @@ describe("SillyTavern chat import", () => {
 			send_date: "2026-08-08T13:11:00.000Z",
 			mes: "also missing an author name",
 		};
-		const { conversation, report } = importSillyTavernChat(
-			database,
+		const { conversation, report } = importChat(
 			writeSource([header, blankName, anotherBlank]),
 		);
 
@@ -487,8 +513,7 @@ describe("SillyTavern chat import", () => {
 			send_date: "2026-08-08T13:12:00.000Z",
 			mes: "a real captured author named exactly like the resolved fallback",
 		};
-		const { conversation, report } = importSillyTavernChat(
-			database,
+		const { conversation, report } = importChat(
 			writeSource([header, blankName, literalBlankAuthor]),
 		);
 
@@ -520,8 +545,7 @@ describe("SillyTavern chat import", () => {
 	});
 
 	test("blocks Compose, Generate, and Swipe in an incomplete import with the same typed reason", async () => {
-		const { conversation } = importSillyTavernChat(
-			database,
+		const { conversation } = importChat(
 			writeSource([header, first]),
 		);
 		const module = createConversationModule(database);
@@ -647,8 +671,7 @@ describe("SillyTavern chat import", () => {
 	});
 
 	test("keeps imported Variants selectable and editable but denies new sibling generation", async () => {
-		const { conversation } = importSillyTavernChat(
-			database,
+		const { conversation } = importChat(
 			writeSource([header, swiped, second]),
 		);
 		const module = createConversationModule(database);
@@ -715,8 +738,7 @@ describe("SillyTavern chat import", () => {
 	});
 
 	test("native generation after completion captures ordinary authorship and historical Control", async () => {
-		const { conversation } = importSillyTavernChat(
-			database,
+		const { conversation } = importChat(
 			writeSource([header, first]),
 		);
 		const module = createConversationModule(database);
@@ -790,8 +812,8 @@ describe("SillyTavern chat import", () => {
 
 	test("allows re-importing the same source as an independent Chat with a warning", () => {
 		const path = writeSource([header, first, second]);
-		const firstImport = importSillyTavernChat(database, path);
-		const secondImport = importSillyTavernChat(database, path);
+		const firstImport = importChat(path);
+		const secondImport = importChat(path);
 
 		expect(secondImport.conversation.id).not.toBe(firstImport.conversation.id);
 		expect(secondImport.duplicateChatIds).toEqual([firstImport.conversation.id]);
@@ -816,7 +838,7 @@ describe("SillyTavern chat import", () => {
 
 	test("aborts the whole import atomically on a structural defect", () => {
 		const path = writeSource([header, first, '{"broken"', second]);
-		expect(() => importSillyTavernChat(database, path)).toThrow(
+		expect(() => importChat(path)).toThrow(
 			SillyTavernImportError,
 		);
 		expect(countRows(chatTable)).toBe(0);
@@ -827,7 +849,7 @@ describe("SillyTavern chat import", () => {
 
 	test("imports Swipes end to end with exact selection and derived chronology", () => {
 		const path = writeSource([header, swiped, provenancedPayload]);
-		const result = importSillyTavernChat(database, path);
+		const result = importChat(path);
 		const conversation = result.conversation;
 
 		// 2 Messages; the Swipe record owns 4 Variants in source order and
@@ -919,7 +941,7 @@ describe("SillyTavern chat import", () => {
 			swipe_info: [{ send_date: "2026-08-08T13:04:55.256Z" }],
 		};
 		const path = writeSource([header, swiped, broken]);
-		expect(() => importSillyTavernChat(database, path)).toThrow(
+		expect(() => importChat(path)).toThrow(
 			SillyTavernImportError,
 		);
 		expect(countRows(chatTable)).toBe(0);
@@ -930,28 +952,28 @@ describe("SillyTavern chat import", () => {
 
 	test("rejects a missing source file", () => {
 		expect(() =>
-			importSillyTavernChat(database, join(files[0] ?? "", "missing.jsonl")),
+			importChat(join(files[0] ?? "", "missing.jsonl")),
 		).toThrow(/Could not read/);
 	});
 
 	test("rejects a source that is not valid UTF-8", () => {
 		const path = join(files[0] ?? "", "binary.jsonl");
 		writeFileSync(path, Buffer.from([0xc3, 0x28, 0x0a]));
-		expect(() => importSillyTavernChat(database, path)).toThrow(
+		expect(() => importChat(path)).toThrow(
 			/The source is not valid UTF-8/,
 		);
 	});
 
 	test("derives a chat name that is the filename stem", () => {
 		const path = writeSource([header, first], "archive-2026-08-08.jsonl");
-		const { conversation, report } = importSillyTavernChat(database, path);
+		const { conversation, report } = importChat(path);
 		expect(conversation.name).toBe("archive-2026-08-08");
 		expect(report.source.filename).toBe("archive-2026-08-08.jsonl");
 	});
 
 	test("stores the full JSON report with the conversation", () => {
 		const path = writeSource([header, first, blankName]);
-		const { conversation, report } = importSillyTavernChat(database, path);
+		const { conversation, report } = importChat(path);
 		// SAFETY: reportJson.value was serialized from the same report we compare against.
 		const stored = JSON.parse(
 			findEntry(
@@ -965,5 +987,284 @@ describe("SillyTavern chat import", () => {
 		expect(stored.warnings).toHaveLength(1);
 		expect(stored.warnings[0]).toContain("blank captured author name");
 		expect(stored.source.integrity).toBe("9543f21f-8aab-42c8-92a4-1f6453d4b63c");
+	});
+
+	const exactArtifact = (chatId: number) =>
+		artifacts.getArtifact(
+			chatId,
+			EXACT_SOURCE_ARTIFACT_NAMESPACE,
+			EXACT_SOURCE_ARTIFACT_KEY,
+		);
+
+	test("preserves an exact-byte copy that keeps BOM, CRLF, escapes, blank lines, and trailing newlines", () => {
+		// Two source texts that parse to the same canonical chat but differ
+		// only in bytes: BOM prefix, CRLF line endings, \u002d escape
+		// spelling for every hyphen, a blank line, and a trailing newline
+		// versus the clean LF form used by every other fixture.
+		const escapedHeader = JSON.stringify(header).replace(/-/g, "\\u002d");
+		const variantA = `\uFEFF${escapedHeader}\r\n${JSON.stringify(first)}\r\n\r\n${JSON.stringify(second)}\r\n`;
+		const variantB = jsonl([header, first, second]);
+
+		const pathA = writeSourceRaw(variantA, "bom-crlf.jsonl");
+		const pathB = writeSourceRaw(variantB, "clean.jsonl");
+
+		const chatA = importChat(pathA).conversation;
+		const chatB = importChat(pathB).conversation;
+
+		// The source SHA is authoritative over the raw bytes: the two files
+		// differ in BOM, line endings, escape spelling, blank lines, and the
+		// trailing newline, yet both remain valid.
+		const bytesA = Buffer.from(variantA, "utf8");
+		const bytesB = Buffer.from(variantB, "utf8");
+		expect(bytesA.equals(bytesB)).toBe(false);
+
+		const shaA = createHash("sha256").update(bytesA).digest("hex");
+		const shaB = createHash("sha256").update(bytesB).digest("hex");
+		expect(shaA).not.toBe(shaB);
+
+		const artifactA = exactArtifact(chatA.id);
+		const artifactB = exactArtifact(chatB.id);
+		expect(artifactA?.availability).toEqual({ status: "available" });
+		expect(artifactA?.sha256).toBe(shaA);
+		expect(artifactA?.originalFilename).toBe("bom-crlf.jsonl");
+		expect(artifactA?.byteLength).toBe(bytesA.length);
+		expect(artifactB?.availability).toEqual({ status: "available" });
+		expect(artifactB?.sha256).toBe(shaB);
+
+		// Exact-byte round trips through the public artifact seam: the
+		// downloaded bytes equal the raw source file bytes, BOM and CRLF and
+		// all, never a normalized re-serialization.
+		const readA = artifacts.readArtifact(
+			chatA.id,
+			EXACT_SOURCE_ARTIFACT_NAMESPACE,
+			EXACT_SOURCE_ARTIFACT_KEY,
+		);
+		const readB = artifacts.readArtifact(
+			chatB.id,
+			EXACT_SOURCE_ARTIFACT_NAMESPACE,
+			EXACT_SOURCE_ARTIFACT_KEY,
+		);
+		expect(readA?.status).toBe("available");
+		expect(readB?.status).toBe("available");
+		if (readA?.status !== "available" || readB?.status !== "available") return;
+		expect(readA.bytes).toEqual(bytesA);
+		expect(readB.bytes).toEqual(bytesB);
+		expect(readA.artifact.sha256).toBe(shaA);
+		expect(readA.artifact.originalFilename).toBe("bom-crlf.jsonl");
+		expect(readA.artifact.byteLength).toBe(bytesA.length);
+		expect(readB.artifact.sha256).toBe(shaB);
+		expect(readB.artifact.originalFilename).toBe("clean.jsonl");
+
+		// Both parse to the identical canonical archive despite the byte
+		// differences: the exact representation and the canonical one are
+		// preserved independently.
+		const archiveOf = (data: { namespace: string; key: string; value: string }[]) =>
+			JSON.parse(
+				findEntry(data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "",
+			);
+		expect(archiveOf(chatA.data)).toEqual({
+			header,
+			messages: [first, second],
+		});
+		expect(archiveOf(chatB.data)).toEqual({
+			header,
+			messages: [first, second],
+		});
+	});
+
+	test("returns the exact artifact metadata with the import result and keeps the canonical archive separate", () => {
+		const path = writeSource([header, first, blankName], "lantern-house.jsonl");
+		const rawBytes = readFileSync(path);
+		const result = importChat(path);
+		const { conversation, artifact, report } = result;
+
+		// The committed metadata carries the full generic record.
+		expect(artifact).toEqual({
+			chatId: conversation.id,
+			namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
+			key: EXACT_SOURCE_ARTIFACT_KEY,
+			relativePath: expect.any(String),
+			originalFilename: "lantern-house.jsonl",
+			mediaType: "application/jsonl",
+			byteLength: rawBytes.length,
+			sha256: report.source.sha256,
+		});
+
+		// The canonical parsed archive and compact report remain separate
+		// conversation-scoped data; the exact artifact lives only in the
+		// managed store behind the artifact seam.
+		expect(JSON.parse(findEntry(conversation.data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
+			header,
+			messages: [first, blankName],
+		});
+		expect(
+			JSON.parse(
+				findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
+					?.value ?? "",
+			),
+		).toEqual(report);
+		const inspection = exactArtifact(conversation.id);
+		expect(inspection?.availability).toEqual({ status: "available" });
+		expect(inspection?.byteLength).toBe(rawBytes.length);
+		expect(inspection?.originalFilename).toBe("lantern-house.jsonl");
+		expect(inspection?.relativePath).toBe(artifact.relativePath);
+
+		// The archived value is a parsed re-serialization, never the exact
+		// bytes: canonical and exact remain distinguishable.
+		expect(
+			drizzle(database)
+				.select()
+				.from(chatDataTable)
+				.where(
+					and(
+						eq(chatDataTable.chat_id, conversation.id),
+						eq(chatDataTable.namespace, ARCHIVE_NAMESPACE),
+						eq(chatDataTable.key, ARCHIVE_KEY),
+					),
+				)
+				.get()?.value,
+		).not.toBe(rawBytes.toString("utf8"));
+	});
+
+	test("stores an independent physical copy per import even for identical SHA-256", () => {
+		const path = writeSource([header, first, second]);
+		const firstChat = importChat(path);
+		const secondChat = importChat(path);
+
+		expect(secondChat.report.source.sha256).toBe(firstChat.report.source.sha256);
+		expect(secondChat.artifact.relativePath).not.toBe(
+			firstChat.artifact.relativePath,
+		);
+		expect(secondChat.artifact.chatId).not.toBe(firstChat.artifact.chatId);
+
+		// Both physical copies exist at their own managed paths and both
+		// deliver the exact same bytes; nothing is deduplicated.
+		expect(
+			readFileSync(join(artifactDirectory, firstChat.artifact.relativePath)),
+		).toEqual(readFileSync(path));
+		expect(
+			readFileSync(join(artifactDirectory, secondChat.artifact.relativePath)),
+		).toEqual(readFileSync(path));
+		expect(exactArtifact(firstChat.conversation.id)?.availability).toEqual({
+			status: "available",
+		});
+		expect(exactArtifact(secondChat.conversation.id)?.availability).toEqual({
+			status: "available",
+		});
+	});
+
+	test("aborts before creating any database rows when the exact artifact cannot be stored", () => {
+		const path = writeSource([header, first, second]);
+		// A regular file in place of a directory makes the managed root
+		// impossible to create, forcing the initial storage failure.
+		const blocker = join(files[0] ?? "", "blocker");
+		writeFileSync(blocker, "not a directory");
+		const brokenArtifactDirectory = join(blocker, "managed-artifacts");
+
+		expect(() =>
+			importSillyTavernChat(database, path, brokenArtifactDirectory),
+		).toThrow(/preserve the exact source artifact/);
+
+		// The abort happens before the database creation operation begins:
+		// no Chat, Participant, Profile, Message, Variant, Roster, Author
+		// Stamp, or artifact metadata row exists.
+		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(participantTable)).toBe(0);
+		expect(countRows(messageTable)).toBe(0);
+		expect(countRows(messageVariantTable)).toBe(0);
+		expect(countRows(chatDataTable)).toBe(0);
+		expect(countRows(artifactTable)).toBe(0);
+	});
+
+	test("reports a missing or corrupt exact artifact as cleaned up while native Conversation behavior stays usable", () => {
+		const path = writeSource([header, first]);
+		const { conversation, artifact } = importChat(path);
+		const module = createConversationModule(database);
+
+		// Nonfatal disappearance: deleting the physical copy never throws
+		// and never impairs the native Conversation.
+		rmSync(join(artifactDirectory, artifact.relativePath));
+
+		expect(exactArtifact(conversation.id)?.availability).toEqual({
+			status: "cleaned-up",
+			reason: "missing",
+		});
+		expect(
+			artifacts.readArtifact(
+				conversation.id,
+				EXACT_SOURCE_ARTIFACT_NAMESPACE,
+				EXACT_SOURCE_ARTIFACT_KEY,
+			)?.status,
+		).toBe("cleaned-up");
+
+		// The native Chat and its canonical archive remain fully usable.
+		const snapshot = module.getSnapshot(conversation.id);
+		expect(snapshot?.id).toBe(conversation.id);
+		expect(snapshot?.playable).toBe(false);
+		expect(JSON.parse(findEntry(snapshot?.data ?? [], ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
+			header,
+			messages: [first],
+		});
+		expect(snapshot?.messages).toHaveLength(1);
+
+		// Normal Conversation commands keep working after the disappearance.
+		const writer = snapshot?.cast[0];
+		expect(writer).toBeDefined();
+		const renamed = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: snapshot?.revision ?? 0,
+			action: {
+				type: "rename-participant",
+				participantId: writer?.id ?? 0,
+				name: "Renamed After Cleanup",
+			},
+		});
+		expect(renamed.cast[0]?.name).toBe("Renamed After Cleanup");
+		expect(renamed.revision).toBe(1);
+
+		// A corrupt file (wrong bytes) is likewise cleaned up, not fatal.
+		const corruptPath = join(artifactDirectory, artifact.relativePath);
+		writeFileSync(corruptPath, Buffer.from("different bytes", "utf8"));
+		expect(exactArtifact(conversation.id)?.availability).toEqual({
+			status: "cleaned-up",
+			reason: "corrupt",
+		});
+	});
+
+	test("never automatically deletes committed artifact copies when the Chat is removed", () => {
+		const path = writeSource([header, first]);
+		const { conversation, artifact } = importChat(path);
+		const storedPath = join(artifactDirectory, artifact.relativePath);
+
+		// No public Chat-deletion seam exists; removing the Chat row directly
+		// simulates the future deletion path. The metadata row follows the
+		// Chat, but the committed physical copy is never automatically
+		// deleted and no cleanup subsystem touches it.
+		database.run("DELETE FROM chat WHERE id = ?", [conversation.id]);
+		expect(exactArtifact(conversation.id)).toBeUndefined();
+		expect(
+			artifacts.readArtifact(
+				conversation.id,
+				EXACT_SOURCE_ARTIFACT_NAMESPACE,
+				EXACT_SOURCE_ARTIFACT_KEY,
+			),
+		).toBeUndefined();
+		expect(readFileSync(storedPath)).toEqual(readFileSync(path));
+	});
+
+	test("downloads the exact artifact under the stored original leaf filename", () => {
+		const path = writeSource([header, first], "archive-2026-08-08.jsonl");
+		const { conversation } = importChat(path);
+		const download = artifacts.downloadArtifact(
+			conversation.id,
+			EXACT_SOURCE_ARTIFACT_NAMESPACE,
+			EXACT_SOURCE_ARTIFACT_KEY,
+		);
+		expect(download?.status).toBe("available");
+		if (download?.status !== "available") return;
+		expect(download.contentDisposition).toBe(
+			'attachment; filename="archive-2026-08-08.jsonl"',
+		);
+		expect(download.bytes).toEqual(readFileSync(path));
 	});
 });

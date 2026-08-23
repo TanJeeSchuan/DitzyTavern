@@ -50,6 +50,12 @@ export const RESOLVED_BLANK_AUTHOR_NAME = "Blank Author";
 export const IMPORT_NAMESPACE = "import.sillytavern";
 export const ARCHIVE_NAMESPACE = "archive";
 export const ARCHIVE_KEY = "source";
+// Generic artifact identity of the exact preserved source bytes. The
+// artifact metadata row commits with the Conversation while the opaque
+// original bytes live in the managed artifact directory under a unique
+// relative path; the canonical parsed archive above stays separate.
+export const EXACT_SOURCE_ARTIFACT_NAMESPACE = IMPORT_NAMESPACE;
+export const EXACT_SOURCE_ARTIFACT_KEY = "source.exact";
 export const IMPORT_KEYS = {
 	integrity: "source.integrity",
 	sha256: "source.sha256",

@@ -283,5 +283,39 @@ export const messageVariantDataTable = sqliteTable(
 	],
 );
 
+// Generic Conversation artifact metadata: one row per owned filesystem
+// artifact. The row commits atomically with its Conversation through the
+// creation seam while the exact bytes live outside SQLite under a unique
+// managed relative path; committed physical copies are never automatically
+// deleted (a deleted Chat cascades only this metadata row, leaving the file
+// for manual recovery).
+export const artifactTable = sqliteTable(
+	"artifact",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		chat_id: int()
+			.notNull()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		namespace: text().notNull(),
+		key: text().notNull(),
+		// Path relative to the managed artifact directory of the owning
+		// deployment, never an absolute filesystem path.
+		relative_path: text().notNull(),
+		// The original leaf filename carried by the source, used verbatim for
+		// download presentation (sanitized only in response metadata).
+		original_filename: text().notNull(),
+		media_type: text().notNull(),
+		byte_length: int().notNull(),
+		sha256: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("artifact_chat_namespace_key_unique").on(
+			table.chat_id,
+			table.namespace,
+			table.key,
+		),
+	],
+);
+
 // logical tables end here.
 

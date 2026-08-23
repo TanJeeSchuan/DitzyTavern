@@ -4,6 +4,7 @@ import {
 	type MacroContext,
 } from "../prompt-compiler";
 import {
+	artifactTable,
 	chatDataTable,
 	chatTable,
 	conversationControlTable,
@@ -19,12 +20,82 @@ import { InvalidConversationCreationError } from "./errors";
 import { type ConversationDatabase, connectConversationDatabase } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
 import type {
+	ConversationArtifactSeed,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationDataEntry,
 	ConversationSnapshot,
 	ParticipantDefinition,
 } from "./types";
+
+const validateArtifact = (
+	artifact: ConversationArtifactSeed,
+	position: number,
+) => {
+	if (
+		artifact.namespace.trim() === "" ||
+		artifact.key.trim() === "" ||
+		artifact.relativePath.trim() === "" ||
+		artifact.originalFilename.trim() === "" ||
+		artifact.mediaType.trim() === ""
+	) {
+		throw new InvalidConversationCreationError(
+			`Artifact at position ${position} requires nonblank namespace, key, managed relative path, original filename, and media type.`,
+		);
+	}
+	if (!Number.isInteger(artifact.byteLength) || artifact.byteLength < 0) {
+		throw new InvalidConversationCreationError(
+			`Artifact at position ${position} has an invalid byte length.`,
+		);
+	}
+	// The raw-byte SHA-256 is the verification authority for the exact
+	// stored artifact; a malformed digest cannot be verified later.
+	if (!/^[0-9a-f]{64}$/.test(artifact.sha256)) {
+		throw new InvalidConversationCreationError(
+			`Artifact at position ${position} has an invalid SHA-256 value.`,
+		);
+	}
+};
+
+const validateArtifacts = (artifacts: readonly ConversationArtifactSeed[]) => {
+	const identities = new Set<string>();
+	artifacts.forEach((artifact, index) => {
+		const position = index + 1;
+		validateArtifact(artifact, position);
+		// Artifact identity is unique within the Conversation by (namespace,
+		// key); the structural unique index enforces the same rule across
+		// separate creations.
+		const identity = `${artifact.namespace}\u0000${artifact.key}`;
+		if (identities.has(identity)) {
+			throw new InvalidConversationCreationError(
+				`Artifact at position ${position} duplicates the (namespace, key) identity of an earlier artifact.`,
+			);
+		}
+		identities.add(identity);
+	});
+};
+
+const insertArtifacts = (
+	db: ConversationDatabase,
+	conversationId: number,
+	artifacts: readonly ConversationArtifactSeed[],
+) => {
+	if (artifacts.length === 0) return;
+	db.insert(artifactTable)
+		.values(
+			artifacts.map((artifact) => ({
+				chat_id: conversationId,
+				namespace: artifact.namespace,
+				key: artifact.key,
+				relative_path: artifact.relativePath,
+				original_filename: artifact.originalFilename,
+				media_type: artifact.mediaType,
+				byte_length: artifact.byteLength,
+				sha256: artifact.sha256,
+			})),
+		)
+		.run();
+};
 
 // Names follow the shared Definition rules: surrounding whitespace removed
 // while case and Unicode are preserved; a nonblank result is required.
@@ -281,6 +352,9 @@ export function createConversation(
 			validateMessage(message, index + 1, seeds.length),
 		);
 
+		const artifacts = input.artifacts ?? [];
+		validateArtifacts(artifacts);
+
 		const baseTime = input.createdAt ?? new Date().toISOString();
 		const greeting =
 			explicitMessages.length === 0
@@ -341,6 +415,11 @@ export function createConversation(
 			(entry) => ({ ...entry, chat_id: conversation.id }),
 			(rows) => db.insert(chatDataTable).values(rows).run(),
 		);
+
+		// Artifact metadata rows are Conversation database state and commit
+		// with the rest of the creation; the physical bytes stay outside the
+		// transaction under the managed relative path.
+		insertArtifacts(db, conversation.id, artifacts);
 
 		for (const [messageIndex, message] of messages.entries()) {
 			const greetingMessage = greeting !== null && messageIndex === 0;

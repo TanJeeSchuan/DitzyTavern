@@ -8,6 +8,21 @@ export interface ConversationDataEntry {
 	value: string;
 }
 
+// Generic filesystem artifact ownership seed. The metadata row commits
+// atomically with the Conversation through the creation seam; the exact
+// bytes live outside SQLite under the caller-provided unique managed
+// relative path and are never automatically deleted. Identity is unique per
+// Conversation by (namespace, key).
+export interface ConversationArtifactSeed {
+	namespace: string;
+	key: string;
+	relativePath: string;
+	originalFilename: string;
+	mediaType: string;
+	byteLength: number;
+	sha256: string;
+}
+
 // A complete Conversation-local identity Definition. Structurally identical
 // to a library Definition so application workflows can copy either direction
 // without translation, while this seam stays independent of the library.
@@ -326,6 +341,10 @@ export interface ConversationCreationInput {
 	control?: ConversationControlSeed | undefined;
 	messages?: readonly ConversationCreationMessage[];
 	data?: readonly ConversationDataEntry[];
+	// Filesystem artifact metadata committed with the Conversation. The
+	// physical bytes themselves are placed by the caller before creation
+	// and are never part of ordinary Conversation snapshots.
+	artifacts?: readonly ConversationArtifactSeed[];
 	// Base time for Conversations whose history does not carry timestamps.
 	createdAt?: string | undefined;
 }

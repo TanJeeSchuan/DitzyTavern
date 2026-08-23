@@ -28,6 +28,7 @@ export type {
 	CommitGenerationInput,
 	CommitSiblingVariantInput,
 	ConversationAction,
+	ConversationArtifactSeed,
 	ConversationCapabilities,
 	ConversationCommand,
 	ConversationControlSeed,
