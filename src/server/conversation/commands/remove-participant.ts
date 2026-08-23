@@ -67,8 +67,10 @@ export function removeParticipant(
 	} else {
 		// Tombstone: keep the minimal base row for structural references;
 		// strip the Definition children and leave the Cast. The tombstone
-		// carries no Cast position (tombstones are never exposed as Cast
-		// members; only active positions are unique).
+		// carries the position sentinel 0 (it is not a Cast member, and the
+		// partial unique index covers only active rows), and only stable
+		// identity, final name, Conversation identity, and Character
+		// provenance are retained.
 		db.update(participantTable)
 			.set({ deleted_at: new Date().toISOString(), position: 0 })
 			.where(eq(participantTable.id, participant.id))

@@ -146,8 +146,10 @@ export const participantTable = sqliteTable(
 		name: text().notNull(),
 		// Explicit, stable Cast position. Contiguity is maintained by the
 		// Conversation domain; uniqueness is enforced structurally on active
-		// Participants. Tombstones are not in the Cast and carry no position
-		// (the remaining row is never exposed as a Cast member).
+		// Participants. Tombstones are not in the Cast and carry no position:
+		// removal writes the sentinel 0 (never used by active members, which
+		// start at 1), and the partial unique index below excludes tombstoned
+		// rows so the sentinel never collides.
 		position: int().notNull(),
 		source_character_id: int().references(() => characterTable.id),
 		// Null while the Participant is active in the Cast; set when reduced

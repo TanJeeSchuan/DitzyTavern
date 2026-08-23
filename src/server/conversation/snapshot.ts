@@ -12,7 +12,7 @@ import {
 	participantPromptTable,
 	participantTable,
 } from "../database/schema";
-import { type ConversationDatabase, readControlAssignment } from "./internal";
+import { type ConversationDatabase, messageReferencesParticipant, readControlAssignment } from "./internal";
 import type {
 	AuthorStampSnapshot,
 	CapabilityAvailability,
@@ -131,14 +131,25 @@ const deriveRemovalEligibility = (
 		let referenced = false;
 		let affectedGenerationCount = 0;
 		for (const message of messages) {
-			const context = message.historicalContext;
+			const row = {
+				authorParticipantId: message.author?.participantId ?? null,
+				contextHumanParticipantId:
+					message.historicalContext?.humanParticipantId ?? null,
+				contextModelParticipantId:
+					message.historicalContext?.modelParticipantId ?? null,
+			};
+			// Same retained-reference rule the command enforces, so the derived
+			// impact can never drift from the persisted behavior.
+			if (messageReferencesParticipant(row, participant.id)) {
+				referenced = true;
+			}
+			// Author-only references are retained (tombstone required) but never
+			// count as regeneration loss: only Messages whose captured historical
+			// pair includes this Participant and that currently could generate a
+			// new sibling Variant lose that ability when it is removed.
 			const referencesContext =
-				context !== null &&
-				(context.humanParticipantId === participant.id ||
-					context.modelParticipantId === participant.id);
-			const referencesAuthor =
-				message.author?.participantId === participant.id;
-			if (referencesContext || referencesAuthor) referenced = true;
+				row.contextHumanParticipantId === participant.id ||
+				row.contextModelParticipantId === participant.id;
 			if (referencesContext && message.swipe.eligible) {
 				affectedGenerationCount += 1;
 			}

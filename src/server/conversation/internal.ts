@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationControlTable,
@@ -116,30 +116,47 @@ export const requireParticipant = (
 	return participant;
 };
 
-// Whether any Message of the Conversation still refers to the Participant
-// through its immutable Author Stamp or its captured historical Control
-// pair. These are the retained references that demand a tombstone; without
-// any, the Participant can be hard-deleted.
+// The reference columns a Message uses to refer to a Participant: its
+// immutable Author Stamp or either side of its captured historical Control
+// pair. The neutral shape lets the DB commands and the snapshot derivation
+// share one predicate.
+export interface ParticipantReferenceRow {
+	authorParticipantId: number | null;
+	contextHumanParticipantId: number | null;
+	contextModelParticipantId: number | null;
+}
+
+// The single retained-reference rule shared by the snapshot derivation and
+// the removal and tombstone-collection commands: a Message refers to a
+// Participant through its Author Stamp or its historical Control pair.
+// Every site consumes this predicate so a new reference kind can never
+// drift between derivation and enforcement.
+export const messageReferencesParticipant = (
+	message: ParticipantReferenceRow,
+	participantId: number,
+): boolean =>
+	message.authorParticipantId === participantId ||
+	message.contextHumanParticipantId === participantId ||
+	message.contextModelParticipantId === participantId;
+
+// Whether any Message of the Conversation still refers to the Participant.
+// These are the retained references that demand a tombstone; without any,
+// the Participant can be hard-deleted.
 export const hasRetainedParticipantReference = (
 	db: ConversationDatabase,
 	conversationId: number,
 	participantId: number,
 ) =>
-	(db
-		.select({ id: messageTable.id })
+	db
+		.select({
+			authorParticipantId: messageTable.author_participant_id,
+			contextHumanParticipantId: messageTable.context_human_participant_id,
+			contextModelParticipantId: messageTable.context_model_participant_id,
+		})
 		.from(messageTable)
-		.where(
-			and(
-				eq(messageTable.chat_id, conversationId),
-				or(
-					eq(messageTable.author_participant_id, participantId),
-					eq(messageTable.context_human_participant_id, participantId),
-					eq(messageTable.context_model_participant_id, participantId),
-				),
-			),
-		)
-		.limit(1)
-		.get() !== undefined);
+		.where(eq(messageTable.chat_id, conversationId))
+		.all()
+		.some((message) => messageReferencesParticipant(message, participantId));
 
 export const requireMessage = (
 	db: ConversationDatabase,
