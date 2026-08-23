@@ -592,7 +592,37 @@ describe("Cast and Control management", () => {
 		expect(updated.cast.map((participant) => participant.name)).toEqual([
 			"Writer",
 		]);
+		expect(updated.control).toEqual({
+			humanParticipantId: updated.cast[0]?.id ?? null,
+			modelParticipantId: null,
+		});
+		// With neither seat assigned the first added Participant fills the
+		// human seat; playability still derives only when the model seat is
+		// filled by a second distinct Participant.
+		expect(updated.controlValidity).toEqual({
+			valid: false,
+			reason: "missing-seat",
+		});
 		expect(updated.playable).toBe(false);
+		expect(updated.capabilities).toEqual({
+			compose: { available: false, reason: "conversation-not-playable" },
+			generate: { available: false, reason: "conversation-not-playable" },
+			swipe: { available: false, reason: "conversation-not-playable" },
+		});
+		// Configuration commands remain available to incomplete
+		// Conversations: the added Participant can be renamed and its seeded
+		// Prompt row is read back normally.
+		const renamed = module.execute({
+			conversationId: updated.id,
+			expectedRevision: updated.revision,
+			action: {
+				type: "rename-participant",
+				participantId: updated.cast[0]?.id ?? 0,
+				name: "Local Writer",
+			},
+		});
+		expect(renamed.cast[0]?.name).toBe("Local Writer");
+		expect(renamed.playable).toBe(false);
 		// New Participant appears with its Prompt row persisted.
 		const promptCount = drizzle(database)
 			.select()
@@ -608,14 +638,73 @@ describe("Cast and Control management", () => {
 		expect(
 			drizzle(database).select().from(messageTable).all().length,
 		).toBe(1);
+		// The first added Participant occupies exactly the human seat.
 		expect(
 			drizzle(database)
 				.select()
 				.from(conversationControlTable)
 				.all().length,
-		).toBe(0);
+		).toBe(1);
 		expect(
 			drizzle(database).select().from(participantTable).all().length,
 		).toBe(1);
+	});
+
+	test("adding the missing Participant completes an incomplete Conversation while preserving the existing seat", () => {
+		const module = createConversationModule(database);
+		const oneSeat = module.create({
+			name: "Preserved",
+			participants: [{ definition: adHoc("Writer") }],
+			// The incomplete-import exception reserves the first resolved
+			// Participant's seat (human) before the model seat is filled.
+			control: { human: 0 },
+			messages: [
+				{
+					timestamp: "2026-08-20T10:00:00Z",
+					authorParticipantIndex: 0,
+					variants: [
+						{ content: "Preserved", timestamp: "2026-08-20T10:00:00Z", selected: true },
+					],
+				},
+			],
+		});
+		expect(oneSeat.playable).toBe(false);
+		expect(oneSeat.control.humanParticipantId).toBe(
+			oneSeat.cast[0]?.id ?? null,
+		);
+		expect(oneSeat.control.modelParticipantId).toBeNull();
+
+		// Adding the missing Participant fills only the empty model seat; the
+		// existing human assignment is never reshuffled.
+		const completed = module.execute({
+			conversationId: oneSeat.id,
+			expectedRevision: oneSeat.revision,
+			action: { type: "add-participant", definition: adHoc("Rulership") },
+		});
+		expect(completed.cast.map((participant) => participant.name)).toEqual([
+			"Writer",
+			"Rulership",
+		]);
+		expect(completed.control).toEqual({
+			humanParticipantId: oneSeat.cast[0]?.id ?? null,
+			modelParticipantId: completed.cast[1]?.id ?? null,
+		});
+		expect(completed.controlValidity).toEqual({
+			valid: true,
+			reason: null,
+		});
+		// Completion derives playability automatically; no status toggle.
+		expect(completed.playable).toBe(true);
+		expect(completed.capabilities).toEqual({
+			compose: { available: true, reason: null },
+			generate: { available: true, reason: null },
+			swipe: { available: true, reason: null },
+		});
+		expect(
+			drizzle(database)
+				.select()
+				.from(conversationControlTable)
+				.all().length,
+		).toBe(2);
 	});
 });

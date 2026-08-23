@@ -50,6 +50,42 @@ export const isPlayable = (control: ControlAssignmentState): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
 
+// Writes a complete Control assignment by deleting the Conversation's rows
+// and reinserting the occupied seats. Replace-all avoids a temporary unique
+// violation on the per-Participant Control index during an atomic swap or an
+// incomplete-import completion fill. Shared by assign-control and by the
+// add-participant completion path so seat writes never diverge.
+export const writeControlAssignment = (
+	db: ConversationDatabase,
+	conversationId: number,
+	assignment: {
+		humanParticipantId: number | null;
+		modelParticipantId: number | null;
+	},
+) => {
+	db.delete(conversationControlTable)
+		.where(eq(conversationControlTable.chat_id, conversationId))
+		.run();
+	const rows = [];
+	if (assignment.humanParticipantId !== null) {
+		rows.push({
+			chat_id: conversationId,
+			seat: "human" as const,
+			participant_id: assignment.humanParticipantId,
+		});
+	}
+	if (assignment.modelParticipantId !== null) {
+		rows.push({
+			chat_id: conversationId,
+			seat: "model" as const,
+			participant_id: assignment.modelParticipantId,
+		});
+	}
+	if (rows.length > 0) {
+		db.insert(conversationControlTable).values(rows).run();
+	}
+};
+
 // Names follow the shared Definition rules: surrounding whitespace is
 // removed while case and Unicode are preserved; a nonblank result is
 // required for every Participant.

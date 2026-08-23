@@ -50,7 +50,11 @@ const validateDefinition = (
 	});
 };
 
-const validateMessage = (message: ConversationCreationMessage, position: number) => {
+const validateMessage = (
+	message: ConversationCreationMessage,
+	position: number,
+	participantCount: number,
+) => {
 	if (message.variants.length === 0) {
 		throw new InvalidConversationCreationError(
 			`Message at position ${position} has no Variants.`,
@@ -63,6 +67,18 @@ const validateMessage = (message: ConversationCreationMessage, position: number)
 		throw new InvalidConversationCreationError(
 			`Message at position ${position} must have exactly one selected Variant, but ${selectedCount} are selected.`,
 		);
+	}
+	if (message.authorParticipantIndex !== undefined) {
+		const index = message.authorParticipantIndex;
+		if (
+			!Number.isInteger(index) ||
+			index < 0 ||
+			index >= participantCount
+		) {
+			throw new InvalidConversationCreationError(
+				`Message at position ${position} references an author Participant outside the created Cast.`,
+			);
+		}
 	}
 };
 
@@ -171,7 +187,15 @@ const deriveGreetingFromInput = (
 	baseTime: string,
 ): ConversationCreationMessage | null => {
 	const participants = input.participants ?? [];
-	if (input.control === undefined || (input.messages?.length ?? 0) > 0) {
+	if (
+		input.control === undefined ||
+		(input.messages?.length ?? 0) > 0 ||
+		input.control.human === undefined ||
+		input.control.model === undefined
+	) {
+		// No greeting without a complete human/model pair: partial Control
+		// seeds belong to the incomplete-import completion path, where the
+		// imported history is explicit and no greeting is ever derived.
 		return null;
 	}
 	const modelSeed = participants[input.control.model];
@@ -223,28 +247,38 @@ export function createConversation(
 		if (input.control !== undefined) {
 			humanIndex = input.control.human;
 			modelIndex = input.control.model;
-			if (
-				!Number.isInteger(humanIndex) ||
-				humanIndex < 0 ||
-				humanIndex >= seeds.length ||
-				!Number.isInteger(modelIndex) ||
-				modelIndex < 0 ||
-				modelIndex >= seeds.length
-			) {
+			const requireSeatInCast = (index: number | undefined) => {
+				if (index === undefined) return;
+				if (
+					!Number.isInteger(index) ||
+					index < 0 ||
+					index >= seeds.length
+				) {
+					throw new InvalidConversationCreationError(
+						"Control seats must reference Participants of the created Cast.",
+					);
+				}
+			};
+			requireSeatInCast(humanIndex);
+			requireSeatInCast(modelIndex);
+			if (humanIndex !== undefined && modelIndex !== undefined) {
+				if (humanIndex === modelIndex) {
+					throw new InvalidConversationCreationError(
+						"The human and model seats must be held by distinct Participants.",
+					);
+				}
+			} else if (humanIndex === undefined && modelIndex === undefined) {
+				// Empty control seeds are a caller mistake: the incomplete-import
+				// exception fills one seat, never zero.
 				throw new InvalidConversationCreationError(
-					"Control seats must reference Participants of the created Cast.",
-				);
-			}
-			if (humanIndex === modelIndex) {
-				throw new InvalidConversationCreationError(
-					"The human and model seats must be held by distinct Participants.",
+					"Control seeds must occupy at least one seat.",
 				);
 			}
 		}
 
 		const explicitMessages = input.messages ?? [];
 		explicitMessages.forEach((message, index) =>
-			validateMessage(message, index + 1),
+			validateMessage(message, index + 1, seeds.length),
 		);
 
 		const baseTime = input.createdAt ?? new Date().toISOString();
@@ -283,21 +317,23 @@ export function createConversation(
 			),
 		);
 
-		if (humanIndex !== undefined && modelIndex !== undefined) {
-			db.insert(conversationControlTable)
-				.values([
-					{
-						chat_id: conversation.id,
-						seat: "human",
-						participant_id: insertedParticipants[humanIndex].id,
-					},
-					{
-						chat_id: conversation.id,
-						seat: "model",
-						participant_id: insertedParticipants[modelIndex].id,
-					},
-				])
-				.run();
+		const controlRows = [];
+		if (humanIndex !== undefined) {
+			controlRows.push({
+				chat_id: conversation.id,
+				seat: "human" as const,
+				participant_id: insertedParticipants[humanIndex].id,
+			});
+		}
+		if (modelIndex !== undefined) {
+			controlRows.push({
+				chat_id: conversation.id,
+				seat: "model" as const,
+				participant_id: insertedParticipants[modelIndex].id,
+			});
+		}
+		if (controlRows.length > 0) {
+			db.insert(conversationControlTable).values(controlRows).run();
 		}
 
 		insertScopedData(
@@ -308,9 +344,12 @@ export function createConversation(
 
 		for (const [messageIndex, message] of messages.entries()) {
 			const greetingMessage = greeting !== null && messageIndex === 0;
-			const author =
-				greetingMessage && modelIndex !== undefined
+			const author = greetingMessage
+				? modelIndex !== undefined
 					? insertedParticipants[modelIndex]
+					: undefined
+				: message.authorParticipantIndex !== undefined
+					? insertedParticipants[message.authorParticipantIndex]
 					: undefined;
 			// The greeting carries the historical Control pair captured at
 			// creation; preservation records never receive a fabricated pair.

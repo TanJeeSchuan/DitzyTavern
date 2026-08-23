@@ -294,6 +294,12 @@ export interface ConversationCreationVariant {
 export interface ConversationCreationMessage {
 	timestamp: string;
 	variants: readonly ConversationCreationVariant[];
+	// Immutable Author Stamp for explicit history: references the authoring
+	// Participant by its zero-based seed order (see ConversationParticipantSeed).
+	// Preservation records without a resolved author omit this, mirroring the
+	// null stamp allowed by the snapshot. Never carries historical Control
+	// context: only native generation captures a pair.
+	authorParticipantIndex?: number | undefined;
 	data?: readonly ConversationDataEntry[];
 }
 
@@ -304,11 +310,14 @@ export interface ConversationParticipantSeed {
 	sourceCharacterId?: number | undefined;
 }
 
-// Seats reference Cast entries by their zero-based seed order. The seats
-// must be distinct; native creation assigns both.
+// Seats reference Cast entries by their zero-based seed order. Both seats
+// are required for native creation; a partial assignment (one seat only) is
+// the narrow incomplete-import exception that reserves the first resolved
+// Participant's seat before the missing seat is filled by adding the second.
+// No seat at all preserves an empty archive without fabricating Control.
 export interface ConversationControlSeed {
-	human: number;
-	model: number;
+	human?: number | undefined;
+	model?: number | undefined;
 }
 
 export interface ConversationCreationInput {

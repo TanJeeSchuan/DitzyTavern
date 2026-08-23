@@ -240,6 +240,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Selecting the opposite seat's occupant is visibly described as a swap and performs one atomic exchange of the two assignments, so a two-Participant Cast can never become locked.
 - Selecting an unseated Participant replaces only the chosen seat; the displaced Participant stays in the Cast and becomes removable.
 - Neither seat can be cleared; the selectors offer only Cast Participants, named with computed duplicate labels.
+- Incomplete imported Chats are the narrow exception to always-seated Control: an import that resolved fewer than two Participants keeps its history visible while a persistent setup panel names the empty seat(s) and withholds play actions. Adding the missing Participant fills only the empty seat and derives playability automatically; there is no separate imported mode.
 - A guidance persona (often named Writer) simply means the human seat holds an ordinary Participant; it carries no special behavior.
 - Character identity frames the submission as in-character writing, chosen through the same two seat selectors rather than a separate mode toggle.
 - The composer floats above the lower edge of the central story surface as an opaque tonal layer.

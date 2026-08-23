@@ -1,11 +1,10 @@
-import { eq } from "drizzle-orm";
-import { conversationControlTable } from "../../database/schema";
 import { resolveControlChange } from "../../../shared/cast";
 import { InvalidConversationCommandError } from "../errors";
 import {
 	type ConversationDatabase,
 	readControlAssignment,
 	requireParticipant,
+	writeControlAssignment,
 } from "../internal";
 
 export interface AssignControlInput {
@@ -13,40 +12,6 @@ export interface AssignControlInput {
 	seat: "human" | "model";
 	participantId: number;
 }
-
-// Writes a complete Control assignment by deleting the Conversation's rows
-// and reinserting the occupied seats. Replace-all avoids a temporary unique
-// violation on the per-Participant Control index during an atomic swap.
-const writeAssignment = (
-	db: ConversationDatabase,
-	conversationId: number,
-	assignment: {
-		humanParticipantId: number | null;
-		modelParticipantId: number | null;
-	},
-) => {
-	db.delete(conversationControlTable)
-		.where(eq(conversationControlTable.chat_id, conversationId))
-		.run();
-	const rows = [];
-	if (assignment.humanParticipantId !== null) {
-		rows.push({
-			chat_id: conversationId,
-			seat: "human" as const,
-			participant_id: assignment.humanParticipantId,
-		});
-	}
-	if (assignment.modelParticipantId !== null) {
-		rows.push({
-			chat_id: conversationId,
-			seat: "model" as const,
-			participant_id: assignment.modelParticipantId,
-		});
-	}
-	if (rows.length > 0) {
-		db.insert(conversationControlTable).values(rows).run();
-	}
-};
 
 // Assigns one Control seat to a Cast Participant. Selecting the opposite
 // seat's occupant swaps the two assignments atomically, so a two-person
@@ -91,5 +56,5 @@ export function assignControl(db: ConversationDatabase, input: AssignControlInpu
 		}
 	}
 
-	writeAssignment(db, input.conversationId, next);
+	writeControlAssignment(db, input.conversationId, next);
 }

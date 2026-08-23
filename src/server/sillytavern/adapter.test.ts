@@ -5,6 +5,7 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
@@ -27,6 +28,22 @@ const meta: SillyTavernImportMeta = {
 	sha256: "0f5c3e0a9d0c8f5b3a9e4d6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
 };
 
+// Imported Participants start with an empty typed Prompt and no openings:
+// the resolved identity carries only a native nonblank name.
+const importedSeed = (name: string) => ({
+	definition: {
+		name,
+		prompt: {
+			systemInstruction: "",
+			identity: "",
+			scenario: "",
+			exampleDialogue: "",
+			postHistoryInstruction: "",
+		},
+		openings: [],
+	},
+});
+
 describe("SillyTavern JSONL adapter", () => {
 	test("maps a header and payload-only records into a generic creation input", () => {
 		const { input } = parseSillyTavernChatJsonl(
@@ -35,10 +52,19 @@ describe("SillyTavern JSONL adapter", () => {
 		);
 
 		expect(input.name).toBe("lantern-house");
-		expect(input.participants).toBeUndefined();
+		expect(input.participants).toEqual([
+			importedSeed("Writer"),
+			importedSeed("Rulership"),
+			importedSeed(RESOLVED_BLANK_AUTHOR_NAME),
+		]);
+		// Deterministic seating by first resolved appearance: Writer human,
+		// Rulership model, the blank-resolved Participant unseated. Role
+		// hints (is_user etc.) had no effect on either identity or Control.
+		expect(input.control).toEqual({ human: 0, model: 1 });
 		expect(input.messages).toEqual([
 			{
 				timestamp: "2026-08-08T12:53:02.008Z",
+				authorParticipantIndex: 0,
 				data: [
 					{
 						namespace: IMPORT_NAMESPACE,
@@ -56,6 +82,7 @@ describe("SillyTavern JSONL adapter", () => {
 			},
 			{
 				timestamp: "2026-08-08T13:04:55.256Z",
+				authorParticipantIndex: 1,
 				data: [
 					{
 						namespace: IMPORT_NAMESPACE,
@@ -73,6 +100,7 @@ describe("SillyTavern JSONL adapter", () => {
 			},
 			{
 				timestamp: "2026-08-08T13:10:00.000Z",
+				authorParticipantIndex: 2,
 				data: [
 					{
 						namespace: IMPORT_NAMESPACE,
@@ -292,6 +320,7 @@ describe("SillyTavern JSONL adapter", () => {
 			// Message time is the earliest timestamp among its own Variants,
 			// not the row send_date (13:04:55.256Z).
 			timestamp: "2026-08-08T13:04:50.000Z",
+			authorParticipantIndex: 0,
 			data: [
 				{
 					namespace: IMPORT_NAMESPACE,
@@ -431,6 +460,7 @@ describe("SillyTavern JSONL adapter", () => {
 		expect(input.messages).toEqual([
 			{
 				timestamp: "2026-08-08T13:30:00.000Z",
+				authorParticipantIndex: 0,
 				data: [
 					{
 						namespace: IMPORT_NAMESPACE,

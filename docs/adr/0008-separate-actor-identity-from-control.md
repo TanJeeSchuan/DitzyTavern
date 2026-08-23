@@ -6,6 +6,8 @@ Version-one Conversations retain a Roster of every Conversation-local Participan
 
 Both seats are required invariants. Conversation creation atomically adds at least two distinct Participants and assigns both seats; commands may reassign them but may never leave either seat empty or assign the same Participant to both.
 
+Imported Chats make one narrow exception: a preservation-oriented import that resolves zero or one source-author group persists as an incomplete Conversation with no Control or a single reserved human seat rather than fabricating identities or failing preservation. Adding the missing Participant fills only the empty seat, preserving any existing assignment, and derives playability automatically; afterwards the Conversation follows the same Control, removal, generation, and Swipe rules as native Conversations.
+
 Stored Messages retain Participant authorship through an Author Stamp rather than provider roles. Provider-role mapping for history is derived from the active Control assignment when a Prompt Plan is compiled rather than stored as Message authorship. Messages authored by the currently model-controlled Participant map to `assistant`; Messages by every other active or inactive Roster Participant map to `user`. Each compiled historical message is textually prefixed with its immutable Author Stamp name so inactive speakers remain distinguishable.
 
 Changing either active seat is a revisioned Conversation command and is rejected while a Generation is active. The user must let every Generation finish or stop it before changing which Participant they play or which Participant responds.
