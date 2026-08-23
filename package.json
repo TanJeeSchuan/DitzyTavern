@@ -12,7 +12,8 @@
 		"db:teardown": "bun src/server/database/teardown.ts",
 		"db:import": "bun src/server/database/import-chat.ts",
 		"lint": "oxlint",
-		"lint:fix": "oxlint --fix"
+		"lint:fix": "oxlint --fix",
+		"screenshots:capture": "node scripts/capture-screenshots.ts"
 	},
 	"dependencies": {
 		"@elysiajs/eden": "^1.4.9",
@@ -40,6 +41,7 @@
 		"@vitejs/plugin-react": "^6.0.5",
 		"drizzle-kit": "^0.31.10",
 		"oxlint": "1.79.0",
+		"playwright": "1.62.1",
 		"tailwindcss": "^4.3.3",
 		"typescript": "^7.0.2",
 		"vite": "^8.2.1"

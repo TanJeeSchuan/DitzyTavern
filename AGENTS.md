@@ -1,5 +1,7 @@
 # AGENTS.md
 
+There is `playwright-cli` installed
+
 ## Ticket implementation
 - Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
 
