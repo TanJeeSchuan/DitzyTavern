@@ -38,6 +38,15 @@ export type { SillyTavernImportResult } from "./import";
 export { findPriorImportsBySource } from "./prior-imports";
 export type { PriorImportMatch, PriorImportMatchKind } from "./prior-imports";
 export {
+	createChatImportDetailsModule,
+	withChatImportDetails,
+} from "./import-details";
+export type {
+	ChatImportDetails,
+	ChatImportDetailsDuplicateMatch,
+	ChatImportDetailsModule,
+} from "./import-details";
+export {
 	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	clearStagedImportRegistry,
 	createChatImportModule,

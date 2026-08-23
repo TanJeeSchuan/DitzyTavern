@@ -11,7 +11,7 @@ import {
 	createChatImportModule,
 } from "../server/sillytavern/staged";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../server/sillytavern/fixtures";
-import { createChatImportRoutes } from "./contract";
+import { createChatImportRoutes, createConversationRoutes } from "./contract";
 
 // Transport tests cover the typed upload/preview/discard contract only; the
 // domain matrix lives behind the deep SillyTavern Import module tests. Each
@@ -392,5 +392,107 @@ describe("Chat import transport adapters", () => {
 		]);
 		// The independent copy gets its own Chat identity, never a rerun.
 		expect(confirmedBody.conversation.id).not.toBe(prior.id);
+	});
+
+	test("serves paginated history and Import Details contracts after a committed import", async () => {
+		const bytes = Buffer.from(jsonl([header, writer, rulershipFixture]), "utf8");
+		const staged = await stage(bytes, "lantern-house.jsonl");
+		const { token, preview } = await staged.json();
+		const response = await commit(token, preview.sha256, {
+			title: "Lantern House",
+			duplicateConfirmed: true,
+			participants: [
+				{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] },
+				{
+					name: "Rulership",
+					outcome: { type: "chat-only" },
+					messagePositions: [2],
+				},
+			],
+		});
+		const committed = await response.json();
+		// SAFETY: the commit outcome contract returns the committed
+		// Conversation inside `conversation`; the typed route response was
+		// validated by the bindings in the test setup above.
+		const conversationId = committed.conversation.id as number;
+
+		// Paginated history: one page with both Messages, stable Author
+		// Stamps, and the lightweight fields only. The history read model
+		// mounts with the Conversation routes surface.
+		const conversationApp = createConversationRoutes(database);
+		const history = await conversationApp.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/history?page=1&pageSize=1`,
+			),
+		);
+		expect(history.status).toBe(200);
+		const historyBody = await history.json();
+		expect(historyBody.page).toEqual({
+			index: 1,
+			pageSize: 1,
+			totalMessages: 2,
+			totalPages: 2,
+			hasPrevious: false,
+			hasNext: true,
+		});
+		expect(historyBody.messages).toHaveLength(1);
+		expect(historyBody.messages[0].author.capturedName).toBe("Writer");
+
+		const pageTwoBody = await (await conversationApp.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/history?page=2&pageSize=1`,
+			),
+		)).json();
+		expect(pageTwoBody.messages).toHaveLength(1);
+		expect(pageTwoBody.messages[0].author.capturedName).toBe("Rulership");
+
+		// Import Details: the persisted receipt, source identity, duplicate
+		// evidence excluding self, and exact-artifact availability.
+		const details = await app.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/import-details`,
+			),
+		);
+		expect(details.status).toBe(200);
+		const detailsBody = await details.json();
+		expect(detailsBody.receipt).toMatchObject({
+			originalFilename: "lantern-house.jsonl",
+			sha256: preview.sha256,
+			byteLength: bytes.length,
+			integrity: "9543f21f-8aab-42c8-92a4-1f6453d4b63c",
+			counts: { messages: 2, variants: 2 },
+		});
+		expect(detailsBody.duplicates).toEqual({ exact: [], related: [] });
+		expect(detailsBody.artifact.availability).toEqual({ status: "available" });
+
+		// A Chat without import provenance reports the typed not-found.
+		const noProvenance = await app.handle(
+			new Request("http://localhost/api/conversations/999999/import-details"),
+		);
+		expect(noProvenance.status).toBe(404);
+		expect(await noProvenance.json()).toEqual({ outcome: "not-found" });
+
+		// Exact download streams the stored bytes with the original leaf
+		// filename and the exact media type.
+		const download = await app.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/import-source`,
+			),
+		);
+		expect(download.status).toBe(200);
+		expect(download.headers.get("content-type")).toBe("application/jsonl");
+		expect(download.headers.get("content-disposition")).toContain(
+			"lantern-house.jsonl",
+		);
+		expect(sha256Of(new Uint8Array(await download.arrayBuffer()))).toBe(
+			preview.sha256,
+		);
+
+		// Missing Chat: typed not-found on both detail and download routes.
+		const missingSource = await app.handle(
+			new Request("http://localhost/api/conversations/999999/import-source"),
+		);
+		expect(missingSource.status).toBe(404);
+		expect(await missingSource.json()).toEqual({ outcome: "not-found" });
 	});
 });

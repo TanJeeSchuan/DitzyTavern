@@ -4,13 +4,11 @@ import {
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
-	Copy,
 	Edit3,
 	Info,
 	MessageSquare,
 	Monitor,
 	Moon,
-	MoreHorizontal,
 	Plus,
 	Send,
 	Settings,
@@ -21,23 +19,32 @@ import {
 	type FormEvent,
 	useCallback,
 	useEffect,
+	useReducer,
 	useRef,
 	useState,
 } from "react";
 import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
 import { CastPanel } from "./CastPanel";
+import { ChatInformationPanel } from "./ChatInformationPanel";
 import { ComposerControlSelectors } from "./ComposerControls";
 import { ImportChatHost } from "./ImportChatHost";
 import { NewChatPanel } from "./NewChatPanel";
 import { PanelHeader } from "./PanelHeader";
+import { chatHistoryTransport } from "./chat-history";
 import {
+	createStoryState,
+	moveActiveSwipe,
+	reduceStory,
+	visibleVariantContent,
+	type StoryMessage,
+} from "./story";
+import {
+	applyConversationCommand,
 	loadConversation,
 	type ConversationSnapshot,
 } from "./conversation";
 import {
 	type ChatSummary,
-	type GeneratedMessage,
-	type StoryMessage,
 	type ThemePreference,
 	type Workspace,
 	workspaceClient,
@@ -188,13 +195,13 @@ function ActiveWritingWorkspace({
 	importLaunchChatId: string | null;
 	onImportLaunched: (conversationId: number) => void;
 }) {
-	const [messages, setMessages] = useState(initialWorkspace.messages);
+	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
 	const [primaryPanel, setPrimaryPanel] = useState<PrimaryPanel>(null);
 	const [conversation, setConversation] = useState<ConversationSnapshot | null>(
 		null,
 	);
-	const [detailMessageId, setDetailMessageId] = useState<string | null>(null);
+	const [chatInfoOpen, setChatInfoOpen] = useState(false);
 	const [theme, setTheme] = useState<ThemePreference>("system");
 	const [draft, setDraft] = useState("");
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
@@ -211,10 +218,6 @@ function ActiveWritingWorkspace({
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
-	const detailMessage = messages.find(
-		(message): message is GeneratedMessage =>
-			message.id === detailMessageId && message.type === "generated",
-	);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -241,7 +244,7 @@ function ActiveWritingWorkspace({
 		);
 		observer.observe(latest);
 		return () => observer.disconnect();
-	}, [messages.length, isGenerating]);
+	}, [story.messages.length, isGenerating]);
 
 	// Load the authoritative Conversation snapshot for the active Chat so
 	// the Cast drawer and the composer Control selectors reflect real
@@ -255,6 +258,31 @@ function ActiveWritingWorkspace({
 		loadConversation(conversationId)
 			.then(setConversation)
 			.catch(() => setConversation(null));
+	}, [activeChatId]);
+
+	// Load the native history in stable chronological pages: the story reads
+	// through the paginated seam, never the full Conversation with all its
+	// provenance. A stale response for a Chat the user already left is
+	// ignored by the per-Chat cancellation guard.
+	useEffect(() => {
+		const conversationId = Number(activeChatId);
+		if (!Number.isInteger(conversationId) || conversationId <= 0) {
+			return;
+		}
+		dispatchStory({ type: "chat-opened", conversationId });
+		setChatInfoOpen(false);
+		let cancelled = false;
+		void chatHistoryTransport.loadHistory(conversationId, { page: 1 }).then((outcome) => {
+			if (cancelled) return;
+			if (outcome.status === "available") {
+				dispatchStory({ type: "first-page", page: outcome.page });
+			} else {
+				dispatchStory({ type: "history-failed" });
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
 	}, [activeChatId]);
 
 	// A just-imported Chat is selected as soon as the refreshed workspace
@@ -273,51 +301,105 @@ function ActiveWritingWorkspace({
 	}, [importLaunchChatId, activeChatId, initialWorkspace.chats]);
 
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
-		setDetailMessageId(null);
+		setChatInfoOpen(false);
 		setPrimaryPanel((current) => (current === panel ? null : panel));
-	};
-
-	const showMessageDetails = (messageId: string) => {
-		setPrimaryPanel(null);
-		setDetailMessageId(messageId);
 	};
 
 	const selectChat = (chatId: string) => {
 		setActiveChatId(chatId);
-		setMessages([]);
-		setDetailMessageId(null);
+		setChatInfoOpen(false);
 		setPrimaryPanel(null);
 	};
 
-	const updateMessage = (messageId: string, text: string) => {
-		setMessages((current) =>
-			current.map((message) => {
-				if (message.id !== messageId || message.type !== "generated") {
-					return message;
-				}
-				return {
-					...message,
-					swipes: message.swipes.map((swipe, index) =>
-						index === message.activeSwipe ? { ...swipe, text } : swipe,
-					),
-				};
-			}),
-		);
+	// Requests the next stable chronological page and appends it to the
+	// accumulated story; the button stays disabled while a load is in flight.
+	const loadMoreHistory = async () => {
+		const conversationId = story.conversationId;
+		const next = (story.page?.index ?? 0) + 1;
+		if (conversationId === null || story.page?.hasNext !== true) return;
+		dispatchStory({ type: "load-more-started" });
+		const outcome = await chatHistoryTransport.loadHistory(conversationId, {
+			page: next,
+		});
+		if (outcome.status === "available") {
+			dispatchStory({ type: "next-page-arrived", page: outcome.page });
+		} else {
+			dispatchStory({ type: "history-failed" });
+		}
 	};
 
-	const moveSwipe = (messageId: string, direction: -1 | 1) => {
-		setMessages((current) =>
-			current.map((message) => {
-				if (message.id !== messageId || message.type !== "generated") {
-					return message;
-				}
-				const next = Math.min(
-					message.swipes.length - 1,
-					Math.max(0, message.activeSwipe + direction),
-				);
-				return { ...message, activeSwipe: next };
-			}),
-		);
+	// Normal swipe navigation: the local position updates immediately (empty
+	// and duplicate Variants are separate positions, and an exact empty
+	// Variant shows a presentation-only placeholder), then the existing
+	// revisioned Variant-selection command persists the selection. A conflict
+	// reloads the authoritative state instead of rewriting the plan.
+	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
+		const storyMessage = story.messages.find((entry) => entry.id === messageId);
+		if (storyMessage === undefined) return;
+		const target = storyMessage.swipes[moveActiveSwipe(storyMessage, direction)];
+		if (target === undefined) return;
+		dispatchStory({
+			type: "swipe-selected",
+			messageId,
+			variantId: target.id,
+		});
+		const conversationId = story.conversationId;
+		if (conversationId === null) return;
+		const expectedRevision = conversation?.revision ?? story.revision ?? -1;
+		if (expectedRevision < 0) return;
+		const outcome = await applyConversationCommand(conversationId, expectedRevision, {
+			type: "select-variant",
+			messageId,
+			variantId: target.id,
+		});
+		if (outcome.status === "applied") {
+			setConversation(outcome.conversation);
+			return;
+		}
+		// Conflicting revision or transport failure: fall back to the
+		// authoritative snapshot so the visible selection never diverges.
+		if (outcome.status === "conflict") {
+			setConversation(outcome.currentConversation);
+		}
+		const fresh = await loadConversation(conversationId);
+		if (fresh !== null) setConversation(fresh);
+	};
+
+	// Normal Message editing: the Edit action persists through the existing
+	// revisioned edit-variant command and updates the story locally; only
+	// native domain state changes, never either preserved source.
+	const editStoryMessage = async (messageId: number, content: string) => {
+		const storyMessage = story.messages.find((entry) => entry.id === messageId);
+		if (storyMessage === undefined) return;
+		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
+		if (variantId === undefined) return;
+		const conversationId = story.conversationId;
+		if (conversationId === null) return;
+		const expectedRevision = conversation?.revision ?? story.revision ?? -1;
+		if (expectedRevision < 0) return;
+		const outcome = await applyConversationCommand(conversationId, expectedRevision, {
+			type: "edit-variant",
+			messageId,
+			variantId,
+			content,
+		});
+		if (outcome.status === "applied") {
+			setConversation(outcome.conversation);
+			// Reload the first page so the authoritative content replaces the
+			// locally edited text without drifting.
+			const fresh = await chatHistoryTransport.loadHistory(conversationId, {
+				page: 1,
+			});
+			if (fresh.status === "available") {
+				dispatchStory({ type: "first-page", page: fresh.page });
+			}
+			return;
+		}
+		if (outcome.status === "conflict") {
+			setConversation(outcome.currentConversation);
+		}
+		const fresh = await loadConversation(conversationId);
+		if (fresh !== null) setConversation(fresh);
 	};
 
 	const submitMessage = (event: FormEvent) => {
@@ -362,21 +444,52 @@ function ActiveWritingWorkspace({
 					chat={activeChat}
 					isGenerating={isGenerating}
 					onOpenCast={() => togglePanel("cast")}
+					onOpenInfo={() => {
+						setChatInfoOpen(true);
+						setPrimaryPanel(null);
+					}}
 				/>
 
 				<div className="story-scroll" ref={storyScrollRef}>
 					<div className="story-content">
-						{messages.length === 0 && <EmptyChat />}
-						{messages.map((message) => (
+						{story.messages.length === 0 && story.status !== "loading-first" && (
+							<EmptyChat />
+						)}
+						{story.messages.map((message) => (
 							<StoryMessageView
 								key={message.id}
 								message={message}
-								authorName={message.authorId}
-								onMoveSwipe={moveSwipe}
-								onShowDetails={showMessageDetails}
-								onUpdate={updateMessage}
-							/>
+								onMoveSwipe={(messageId, direction) =>
+									void changeSwipe(messageId, direction)
+							}
+							onEdit={(messageId, content) =>
+								void editStoryMessage(messageId, content)
+							}
+						/>
 						))}
+						{story.page?.hasNext === true && (
+							<div className="history-load-more">
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={story.status === "loading-more"}
+									onClick={() => void loadMoreHistory()}
+								>
+									{story.status === "loading-more"
+										? "Loading more Messages…"
+										: "Load more Messages"}
+								</button>
+							</div>
+						)}
+						{story.status === "loading-first" && (
+							<HistoryLoading />
+						)}
+						{story.status === "error" && (
+							<p className="history-error" role="alert">
+								The Chat history could not be loaded. Try opening the Chat
+								again.
+							</p>
+						)}
 						{isGenerating && <GenerationPlaceholder />}
 						<div className="latest-anchor" ref={latestRef} aria-hidden="true" />
 					</div>
@@ -401,11 +514,13 @@ function ActiveWritingWorkspace({
 				/>
 			</main>
 
-			<MessageDetailsPanel
-				message={detailMessage}
-				authorName={detailMessage?.authorId}
-				onClose={() => setDetailMessageId(null)}
-			/>
+			{chatInfoOpen && (
+				<ChatInformationPanel
+					conversationId={Number(activeChatId)}
+					chatTitle={activeChat.title}
+					onClose={() => setChatInfoOpen(false)}
+				/>
+			)}
 
 			{newChatOpen && (
 				<NewChatSurface
@@ -616,10 +731,12 @@ function StoryHeader({
 	chat,
 	isGenerating,
 	onOpenCast,
+	onOpenInfo,
 }: {
 	chat: ChatSummary;
 	isGenerating: boolean;
 	onOpenCast: () => void;
+	onOpenInfo: () => void;
 }) {
 	return (
 		<header className="story-header">
@@ -633,6 +750,14 @@ function StoryHeader({
 					Writing
 				</div>
 			)}
+			<button
+				className="icon-button chat-info-button"
+				type="button"
+				onClick={onOpenInfo}
+				aria-label="Chat information"
+			>
+				<Info aria-hidden="true" />
+			</button>
 			<button className="cast-control" type="button" onClick={onOpenCast}>
 				<span>Cast</span>
 				<ChevronDown aria-hidden="true" />
@@ -646,165 +771,158 @@ function EmptyChat() {
 		<section className="empty-chat">
 			<h2>This Chat has no stored Messages yet</h2>
 			<p>
-				Native Chats begin with the model Participant's openings as their first
-				Message. Writing will become available when Message storage is added.
+				Native Chats begin with the model Participant's openings as their
+				first Message. History appears here as Messages are added.
 			</p>
 		</section>
 	);
 }
 
-function StoryMessageView({
-	message,
-	authorName,
-	onMoveSwipe,
-	onShowDetails,
-	onUpdate,
-}: {
-	message: StoryMessage;
-	authorName?: string;
-	onMoveSwipe: (messageId: string, direction: -1 | 1) => void;
-	onShowDetails: (messageId: string) => void;
-	onUpdate: (messageId: string, text: string) => void;
-}) {
-	if (message.type === "writer") {
-		return (
-			<article className="writer-message">
-				<header>
-					<span>{authorName ?? "Unknown author"}</span>
-					<time>{message.createdAt}</time>
-				</header>
-				<p>{message.text}</p>
-			</article>
-		);
-	}
-
+function HistoryLoading() {
 	return (
-		<GeneratedStoryMessage
-			message={message}
-			authorName={authorName}
-			onMoveSwipe={onMoveSwipe}
-			onShowDetails={onShowDetails}
-			onUpdate={onUpdate}
-		/>
+		<div className="generation-placeholder" role="status" aria-live="polite">
+			<div className="placeholder-header">
+				<span className="skeleton portrait-skeleton" />
+				<span className="skeleton label-skeleton" />
+			</div>
+			<div className="skeleton prose-skeleton wide" />
+			<div className="skeleton prose-skeleton" />
+			<span className="sr-only">Loading history</span>
+		</div>
 	);
 }
 
-function GeneratedStoryMessage({
+const formatTimestamp = (value: string): string => {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) {
+		return value;
+	}
+	return new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(date);
+};
+
+// The story renders one native Message from the paginated read model: the
+// immutable Author Stamp name, the persisted selected Variant, and the
+// existing Swipe navigation. Empty and duplicate Variants stay separate
+// positions; an exact empty Variant renders a presentation-only placeholder
+// and its stored text is never modified.
+function StoryMessageView({
 	message,
-	authorName,
 	onMoveSwipe,
-	onShowDetails,
-	onUpdate,
+	onEdit,
 }: {
-	message: GeneratedMessage;
-	authorName?: string;
-	onMoveSwipe: (messageId: string, direction: -1 | 1) => void;
-	onShowDetails: (messageId: string) => void;
-	onUpdate: (messageId: string, text: string) => void;
+	message: StoryMessage;
+	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
+	onEdit: (messageId: number, content: string) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
-	const [isSelected, setIsSelected] = useState(false);
-	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const [copied, setCopied] = useState(false);
-	const activeSwipe = message.swipes[message.activeSwipe];
-	const [editText, setEditText] = useState(activeSwipe.text);
+	const active = message.swipes[message.activeSwipe];
+	const [editText, setEditText] = useState("");
+	const authorName = message.authorName ?? "Unknown author";
 
 	useEffect(() => {
-		setEditText(activeSwipe.text);
-		setIsEditing(false);
-	}, [activeSwipe.id, activeSwipe.text]);
-
-	const copyMessage = async () => {
-		await navigator.clipboard.writeText(activeSwipe.text);
-		setCopied(true);
-		setIsMenuOpen(false);
-		window.setTimeout(() => setCopied(false), 1600);
-	};
+		if (active !== undefined) {
+			setEditText(active.content);
+			setIsEditing(false);
+		}
+	}, [active?.id, active?.content]);
 
 	const saveEdit = () => {
 		const value = editText.trim();
-		if (!value) {
-			return;
-		}
-		onUpdate(message.id, value);
+		if (!value || active === undefined) return;
+		onEdit(message.id, value);
 		setIsEditing(false);
 	};
 
 	return (
 		<article
-			className="generated-message"
-			data-selected={isSelected}
-			onClick={(event) => {
-				if (
-					!(event.target instanceof Element) ||
-					!event.target.closest("button, textarea")
-				) {
-					setIsSelected((current) => !current);
-				}
-			}}
+			className="story-message"
+			data-message-id={message.id}
+			data-author-in-cast={message.inCast}
 		>
 			<header className="message-header">
 				<Portrait name={authorName} size="medium" />
 				<div className="message-author">
-					<strong>{authorName ?? "Unknown author"}</strong>
+					<strong>{authorName}</strong>
 					<div className="message-meta">
-						<span>{message.generation.profile}</span>
-						<time>{message.createdAt}</time>
-					</div>
-				</div>
-				<div className="advanced-actions">
-					<button className="icon-button" type="button" onClick={() => onShowDetails(message.id)} aria-label={`Details for ${authorName ?? "Message"}`}>
-						<Info aria-hidden="true" />
-					</button>
-					<div className="more-menu-wrap">
-						<button className="icon-button" type="button" onClick={() => setIsMenuOpen((current) => !current)} aria-label="More Message actions" aria-expanded={isMenuOpen}>
-							<MoreHorizontal aria-hidden="true" />
-						</button>
-						{isMenuOpen && (
-							<div className="message-menu">
-								<button type="button" onClick={() => void copyMessage()}>
-									<Copy aria-hidden="true" /> Copy Message
-								</button>
-								<button type="button" onClick={() => onShowDetails(message.id)}>
-									<Info aria-hidden="true" /> Inspect Prompt
-								</button>
-							</div>
-						)}
+						<time>{formatTimestamp(message.timestamp)}</time>
+						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
 					</div>
 				</div>
 			</header>
 
-			{isEditing ? (
+			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<label htmlFor={`edit-${message.id}`}>Edit Message</label>
-					<textarea id={`edit-${message.id}`} value={editText} onChange={(event) => setEditText(event.target.value)} autoFocus />
+					<textarea
+						id={`edit-${message.id}`}
+						value={editText}
+						onChange={(event) => setEditText(event.target.value)}
+						autoFocus
+					/>
 					<div>
-						<button className="secondary-button" type="button" onClick={() => setIsEditing(false)}>Cancel</button>
-						<button className="primary-button" type="button" onClick={saveEdit}>Save</button>
+						<button
+							className="secondary-button"
+							type="button"
+							onClick={() => setIsEditing(false)}
+						>
+							Cancel
+						</button>
+						<button
+							className="primary-button"
+							type="button"
+							onClick={saveEdit}
+						>
+							Save
+						</button>
 					</div>
 				</div>
 			) : (
-				<div className="prose">
-					{activeSwipe.text.split("\n\n").map((paragraph) => (
-						<p key={paragraph}>{paragraph}</p>
-					))}
+				<div
+					className="prose"
+					data-empty-variant={active?.empty === true}
+				>
+					{active !== undefined
+						? visibleVariantContent(active)
+								.split("\n\n")
+								.map((paragraph) => <p key={paragraph}>{paragraph}</p>)
+						: null}
 				</div>
 			)}
 
 			<footer className="message-actions">
-				<button className="edit-action" type="button" onClick={() => setIsEditing(true)}>
+				<button
+					className="edit-action"
+					type="button"
+					onClick={() => setIsEditing(true)}
+				>
 					<Edit3 aria-hidden="true" /> Edit
 				</button>
 				<div className="swipe-controls" aria-label="Swipe controls">
-					<button className="icon-button" type="button" onClick={() => onMoveSwipe(message.id, -1)} disabled={message.activeSwipe === 0} aria-label="Previous Swipe">
+					<button
+						className="icon-button"
+						type="button"
+						onClick={() => onMoveSwipe(message.id, -1)}
+						disabled={message.activeSwipe === 0}
+						aria-label="Previous Swipe"
+					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
-					<span>{message.activeSwipe + 1} of {message.swipes.length}</span>
-					<button className="icon-button" type="button" onClick={() => onMoveSwipe(message.id, 1)} disabled={message.activeSwipe === message.swipes.length - 1} aria-label="Next Swipe">
+					<span>
+						{message.activeSwipe + 1} of {message.swipes.length}
+					</span>
+					<button
+						className="icon-button"
+						type="button"
+						onClick={() => onMoveSwipe(message.id, 1)}
+						disabled={message.activeSwipe === message.swipes.length - 1}
+						aria-label="Next Swipe"
+					>
 						<ChevronRight aria-hidden="true" />
 					</button>
 				</div>
-				{copied && <span className="copy-confirmation" role="status"><Check aria-hidden="true" /> Copied</span>}
 			</footer>
 		</article>
 	);
@@ -860,46 +978,6 @@ function Composer({
 				<Send aria-hidden="true" />
 			</button>
 		</form>
-	);
-}
-
-function MessageDetailsPanel({
-	message,
-	authorName,
-	onClose,
-}: {
-	message?: GeneratedMessage;
-	authorName?: string;
-	onClose: () => void;
-}) {
-	return (
-		<aside className="details-panel" data-open={Boolean(message)} aria-hidden={!message}>
-			{message && (
-				<>
-					<PanelHeader title="Message details" onClose={onClose} />
-					<div className="panel-body details-body">
-						<section className="author-detail">
-							<Portrait name={authorName} size="large" />
-							<div>
-								<span>Author</span>
-								<strong>{authorName ?? "Unknown author"}</strong>
-							</div>
-						</section>
-						<dl className="detail-list">
-							<div><dt>Generation profile</dt><dd>{message.generation.profile}</dd></div>
-							<div><dt>Model</dt><dd>{message.generation.model}</dd></div>
-							<div><dt>Created</dt><dd>{message.createdAt}</dd></div>
-							<div><dt>Swipe</dt><dd>{message.activeSwipe + 1} of {message.swipes.length}</dd></div>
-						</dl>
-						<section className="prompt-inspection">
-							<h3>Prompt</h3>
-							<p>{message.generation.prompt}</p>
-						</section>
-						<p className="panel-note">Full provenance will connect here when Message inspection RPCs are available.</p>
-					</div>
-				</>
-			)}
-		</aside>
 	);
 }
 

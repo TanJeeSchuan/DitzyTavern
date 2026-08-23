@@ -35,6 +35,7 @@ import {
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
 	withChatImport,
+	withChatImportDetails,
 } from "../server/sillytavern";
 
 // Typed transport schemas mirror the Character Library seam's public types.
@@ -426,6 +427,53 @@ const toConversationPayload = (conversation: ConversationSnapshot) => ({
 	data: [...conversation.data],
 });
 
+// Lightweight paginated history read contract: stable chronological pages
+// of native Messages with the Participant identity and selected Variant
+// state needed for rendering. Heavy provenance never crosses this contract.
+const chatHistoryVariant = t.Object({
+	id: t.Integer(),
+	position: t.Integer(),
+	content: t.String(),
+	timestamp: t.String(),
+	selected: t.Boolean(),
+});
+
+const chatHistoryMessage = t.Object({
+	id: t.Integer(),
+	position: t.Integer(),
+	timestamp: t.String(),
+	author: t.Nullable(
+		t.Object({
+			participantId: t.Nullable(t.Integer()),
+			capturedName: t.Nullable(t.String()),
+			inCast: t.Boolean(),
+		}),
+	),
+	variants: t.Array(chatHistoryVariant),
+});
+
+const chatHistoryPage = t.Object({
+	conversationId: t.Integer(),
+	name: t.String(),
+	revision: t.Integer(),
+	cast: t.Array(
+		t.Object({
+			id: t.Integer(),
+			position: t.Integer(),
+			name: t.String(),
+		}),
+	),
+	page: t.Object({
+		index: t.Integer(),
+		pageSize: t.Integer(),
+		totalMessages: t.Integer(),
+		totalPages: t.Integer(),
+		hasPrevious: t.Boolean(),
+		hasNext: t.Boolean(),
+	}),
+	messages: t.Array(chatHistoryMessage),
+});
+
 // Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative snapshot is re-read and returned inside the 409
 // conflict payload, or a 404 when the Conversation disappeared in the
@@ -726,6 +774,32 @@ export const createConversationRoutes = (database: Database | undefined) =>
 				params: t.Object({ id: t.Numeric() }),
 				response: {
 					200: conversationSnapshot,
+					404: notFoundOutcome,
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/history",
+			({ params, query, status }) => {
+				const history = withDatabase(database, (connection) =>
+					createConversationModule(connection).readHistory(params.id, {
+						page: query.page,
+						pageSize: query.pageSize,
+					}),
+				);
+				if (history === undefined) {
+					return status(404, { outcome: "not-found" as const });
+				}
+				return history;
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				query: t.Object({
+					page: t.Optional(t.Numeric()),
+					pageSize: t.Optional(t.Numeric()),
+				}),
+				response: {
+					200: chatHistoryPage,
 					404: notFoundOutcome,
 				},
 			},
@@ -1048,6 +1122,56 @@ const commitOutcome = t.Object({
 	receipt: chatImportReceipt,
 });
 
+// Derived, never stored: whether the physical exact-source copy currently
+// satisfies the committed metadata. Missing or corrupt files report cleaned
+// up so provenance loss never makes the native Chat look corrupt.
+const importDetailsArtifactAvailability = t.Union([
+	t.Object({ status: t.Literal("available") }),
+	t.Object({
+		status: t.Literal("cleaned-up"),
+		reason: t.Union([t.Literal("missing"), t.Literal("corrupt")]),
+	}),
+]);
+
+const importDetailsArtifact = t.Object({
+	chatId: t.Integer(),
+	namespace: t.String(),
+	key: t.String(),
+	relativePath: t.String(),
+	originalFilename: t.String(),
+	mediaType: t.String(),
+	byteLength: t.Integer(),
+	sha256: t.String(),
+	availability: importDetailsArtifactAvailability,
+});
+
+// The complete Import Details payload: the persisted receipt and source
+// identity, structured duplicate evidence, and exact-artifact availability.
+// Heavy provenance (archive text, reasoning, signatures, exact bytes) is
+// never part of this contract; exact bytes load only through the download
+// route.
+const chatImportDetails = t.Object({
+	conversationId: t.Integer(),
+	title: t.String(),
+	receipt: t.Object({
+		originalFilename: t.String(),
+		sha256: t.String(),
+		byteLength: t.Nullable(t.Integer()),
+		integrity: t.Nullable(t.String()),
+		counts: t.Object({
+			messages: t.Integer(),
+			variants: t.Integer(),
+		}),
+		warnings: t.Array(t.String()),
+		importerVersion: t.String(),
+	}),
+	duplicates: t.Object({
+		exact: t.Array(importDuplicateMatch),
+		related: t.Array(importDuplicateMatch),
+	}),
+	artifact: t.Nullable(importDetailsArtifact),
+});
+
 // Thin typed adapters over the deep staged Chat import seam. The stage
 // route deliberately declares no body schema: Elysia must leave the raw
 // request stream untouched so the module can stream the uploaded bytes into
@@ -1237,6 +1361,75 @@ export const createChatImportRoutes = (
 				params: t.Object({ token: t.String() }),
 				response: {
 					200: t.Object({ outcome: t.Literal("discarded") }),
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/import-details",
+			({ params, status }) => {
+				const details = withChatImportDetails(
+					database,
+					artifactDirectory,
+					(importDetails) => importDetails.importDetails(params.id),
+				);
+				if (details === undefined) {
+					// Either the Chat is missing or it carries no import
+					// provenance; the client treats both as "no Import Details".
+					return status(404, { outcome: "not-found" as const });
+				}
+				return details;
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				response: {
+					200: chatImportDetails,
+					404: notFoundOutcome,
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/import-source",
+			({ params, status }) => {
+				const result = withChatImportDetails(
+					database,
+					artifactDirectory,
+					(importDetails) =>
+						importDetails.downloadExactSource(params.id),
+				);
+				if (result === undefined) {
+					return status(404, { outcome: "not-found" as const });
+				}
+				if (result.status === "cleaned-up") {
+					// Missing or corrupt exact artifacts are described as cleaned
+					// up and disable only exact download; normal Chat reading and
+					// every Conversation command stay available.
+					return status(410, {
+						outcome: "cleaned-up" as const,
+						reason: result.reason,
+					});
+				}
+				// The exact managed bytes stream verbatim; only response metadata
+				// (media type and the sanitized original leaf filename) derives
+				// from the stored artifact.
+				return new Response(new Uint8Array(result.bytes), {
+					headers: {
+						"content-type": result.artifact.mediaType,
+						"content-disposition": result.contentDisposition,
+						"content-length": String(result.bytes.length),
+					},
+				});
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				response: {
+					404: notFoundOutcome,
+					410: t.Object({
+						outcome: t.Literal("cleaned-up"),
+						reason: t.Union([
+							t.Literal("missing"),
+							t.Literal("corrupt"),
+						]),
+					}),
 				},
 			},
 		);

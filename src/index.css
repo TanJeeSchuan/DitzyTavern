@@ -856,7 +856,7 @@ input:focus-visible {
 
 .story-header {
 	display: grid;
-	grid-template-columns: 1fr auto auto;
+	grid-template-columns: 1fr auto auto auto;
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
@@ -1097,7 +1097,8 @@ input:focus-visible {
 	line-height: 1.62;
 }
 
-.generated-message {
+.generated-message,
+.story-message {
 	position: relative;
 	margin-bottom: 3.6rem;
 	outline: none;
@@ -1151,9 +1152,22 @@ input:focus-visible {
 .generated-message[data-selected="true"] .message-meta,
 .generated-message:hover .advanced-actions,
 .generated-message:focus-within .advanced-actions,
-.generated-message[data-selected="true"] .advanced-actions {
+.generated-message[data-selected="true"] .advanced-actions,
+.story-message:hover .message-meta,
+.story-message:focus-within .message-meta {
 	opacity: 1;
 	transform: translateY(0);
+}
+
+.not-in-cast {
+	padding: 0.1rem 0.4rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface-muted);
+	color: var(--text-muted);
+	font-size: 0.62rem;
+	font-weight: 640;
+	letter-spacing: 0.02em;
 }
 
 .more-menu-wrap {
@@ -1888,7 +1902,7 @@ input:focus-visible {
 	}
 
 	.story-header {
-		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr) auto auto;
 		padding: 0 0.75rem 0 1rem;
 	}
 
@@ -3184,4 +3198,148 @@ input:focus-visible {
 	.import-blank-confirm .secondary-button {
 		margin-left: 0;
 	}
+}
+
+/* ---- Graduated Chat reading ---- */
+
+.chat-info-button {
+	padding: 0.15rem;
+}
+
+/* An exact empty Variant renders a presentation-only placeholder: the copy
+   is clearly a substitute so an empty alternative is never mistaken for a
+   rendering glitch, and the stored text is never rewritten. */
+.prose[data-empty-variant="true"] {
+	color: var(--text-muted);
+	font-style: italic;
+	opacity: 0.72;
+}
+
+.history-load-more {
+	display: grid;
+	justify-items: center;
+	padding: 0.5rem 0 1.5rem;
+}
+
+.history-error {
+	max-width: 28rem;
+	margin: 2rem auto;
+	padding: 0.9rem 1rem;
+	border: 1px solid color-mix(in oklch, var(--destructive) 40%, var(--border));
+	border-radius: 0.8rem;
+	background: color-mix(in oklch, var(--destructive) 9%, transparent);
+	color: var(--foreground);
+	font-size: 0.82rem;
+	line-height: 1.55;
+	text-align: center;
+}
+
+/* ---- Chat information and Import Details ---- */
+
+.chat-info-body .detail-list {
+	margin-bottom: 1.1rem;
+}
+
+.import-details-section {
+	display: grid;
+	gap: 1rem;
+}
+
+.import-details-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.55rem;
+}
+
+.import-details-heading svg {
+	width: 1.05rem;
+	height: 1.05rem;
+	color: var(--accent);
+	stroke-width: 1.8;
+}
+
+.import-details-heading h3 {
+	margin: 0;
+	font-size: 0.92rem;
+	font-weight: 680;
+	letter-spacing: -0.015em;
+}
+
+.import-details-duplicates,
+.import-details-available,
+.import-details-cleaned {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.55rem;
+	padding: 0.7rem 0.8rem;
+	border-radius: 0.8rem;
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+
+.import-details-duplicates {
+	border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--border));
+	background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+
+.import-details-available {
+	border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--border));
+	background: color-mix(in oklch, var(--accent) 7%, transparent);
+	color: var(--foreground);
+}
+
+.import-details-cleaned {
+	border: 1px solid color-mix(in oklch, var(--destructive) 35%, var(--border));
+	background: color-mix(in oklch, var(--destructive) 8%, transparent);
+}
+
+.import-details-duplicates svg,
+.import-details-available svg,
+.import-details-cleaned svg {
+	flex: none;
+	width: 1rem;
+	height: 1rem;
+	margin-top: 0.1rem;
+	stroke-width: 1.8;
+}
+
+.import-details-duplicates svg {
+	color: var(--accent);
+}
+
+.import-details-available svg {
+	color: var(--accent);
+}
+
+.import-details-cleaned svg {
+	color: var(--destructive);
+}
+
+.import-details-artifact h3 {
+	margin: 0 0 0.6rem;
+	font-size: 0.8rem;
+	font-weight: 650;
+	letter-spacing: 0.01em;
+	color: var(--text-muted);
+}
+
+.import-details-artifact > .secondary-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+}
+
+.chat-info-body .panel-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.45rem;
+}
+
+.chat-info-body .panel-note svg {
+	flex: none;
+	width: 0.95rem;
+	height: 0.95rem;
+	margin-top: 0.12rem;
+	color: var(--text-muted);
+	stroke-width: 1.8;
 }

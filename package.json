@@ -13,7 +13,8 @@
 		"db:import": "bun src/server/database/import-chat.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
-		"screenshots:capture": "node scripts/capture-screenshots.ts"
+		"screenshots:capture": "node scripts/capture-screenshots.ts",
+		"smoke:import": "node scripts/import-chat-smoke.ts"
 	},
 	"dependencies": {
 		"@elysiajs/eden": "^1.4.9",

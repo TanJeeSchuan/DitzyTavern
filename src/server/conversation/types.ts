@@ -188,6 +188,67 @@ export interface ConversationSnapshot {
 	data: ConversationDataEntry[];
 }
 
+// One lightweight Variant in a paginated history read. Heavy provenance
+// (generation IDs, reasoning, signatures, and other scoped data) is
+// deliberately absent: it loads only through deliberate detail operations,
+// never as part of ordinary Chat reading.
+export interface ChatHistoryVariant {
+	id: number;
+	position: number;
+	content: string;
+	timestamp: string;
+	// The source-selected Swipe initializes the selected Variant at commit;
+	// afterwards this reflects the persisted native selection only.
+	selected: boolean;
+}
+
+// Stable Participant identity needed to render one Message: the immutable
+// Author Stamp name plus the current active-Cast state. No prompts,
+// openings, provenance, or editable Definition content is included.
+export interface ChatHistoryMessage {
+	id: number;
+	position: number;
+	timestamp: string;
+	// Immutable Author Stamp created from the resolved Participant name at
+	// commit; no source Writer or role flag has any special treatment.
+	author: AuthorStampSnapshot | null;
+	// Variant order is preserved exactly as stored; empty and duplicate
+	// variants remain separate positions with their exact content.
+	variants: ChatHistoryVariant[];
+}
+
+// The normal Chat read model for reading history: stable chronological
+// pages of native Messages with the lightweight Participant identity needed
+// for rendering. Exact artifact bytes, the canonical archive text,
+// reasoning, signatures, and other heavy provenance are excluded and only
+// load through deliberate detail operations.
+export interface ChatHistoryPage {
+	conversationId: number;
+	name: string;
+	revision: number;
+	// Active Cast identity only (stable id, position, current name).
+	cast: { id: number; position: number; name: string }[];
+	// Stable chronological paging state: pages index the position-ordered
+	// Message sequence, never unstable or derived orderings.
+	page: {
+		// 1-based page number actually served, bounded to the available range.
+		index: number;
+		pageSize: number;
+		totalMessages: number;
+		totalPages: number;
+		hasPrevious: boolean;
+		hasNext: boolean;
+	};
+	messages: ChatHistoryMessage[];
+}
+
+export interface ChatHistoryPageRequest {
+	// 1-based page within the stable position-ordered chronology.
+	page?: number;
+	// Page size; bounded by the module default and maximum.
+	pageSize?: number;
+}
+
 export type ConversationDataScope =
 	| { type: "conversation" }
 	| { type: "message"; messageId: number }
@@ -262,6 +323,16 @@ export interface ConversationCommand {
 export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
+	// Reads one stable chronological page of the normal Chat history read
+	// model. Pages carry the lightweight Participant identity, immutable
+	// Author Stamp names, Message chronology, Variant order, and selected
+	// Variant state needed for rendering; heavy provenance loads only
+	// through deliberate detail operations. Undefined for a missing
+	// Conversation.
+	readHistory(
+		conversationId: number,
+		request?: ChatHistoryPageRequest,
+	): ChatHistoryPage | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
 	// Server-side commit of a finished current Generate; see
 	// CommitGenerationInput. Not a client-submitted command.
