@@ -114,6 +114,25 @@ export interface ParsedSillyTavernChat {
 	report: SillyTavernImportReport;
 }
 
+// One retained message record's exact raw captured author value in source
+// order. `position` is the 1-based record position used by every contextual
+// validation message; `name` is the verbatim captured value, never trimmed
+// or normalized; `variantCount` counts the record's native Variants.
+export interface SillyTavernExactAuthor {
+	position: number;
+	name: string;
+	variantCount: number;
+}
+
+// Inspection result for staged previews: the same complete source
+// validation as the import path plus the per-record exact author values.
+// Preview grouping keys on these verbatim values so case and whitespace
+// variants (and each blank captured name) stay initially separate.
+export interface SillyTavernChatInspection {
+	report: SillyTavernImportReport;
+	authors: SillyTavernExactAuthor[];
+}
+
 type JsonObject = { [key: string]: JsonValue };
 type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
 
@@ -128,6 +147,18 @@ const isNumber = (value: JsonValue): value is number =>
 
 const isTimestamp = (value: JsonValue): value is string =>
 	isString(value) && Number.isFinite(Date.parse(value));
+
+// Strict UTF-8 decoding of the exact source bytes. Invalid UTF-8 is a
+// validation failure before any record is parsed; every byte sequence that
+// is valid (BOM, CRLF, whitespace, escape spelling, blank lines, trailing
+// newline) survives untouched.
+export const decodeSillyTavernSourceBytes = (bytes: Buffer): string => {
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+	} catch {
+		throw new SillyTavernImportError("The source is not valid UTF-8.");
+	}
+};
 
 // Parsed JSON output can only be the JSON scalars, arrays, and plain
 // objects; constructor identity is therefore a sound discriminator here.
@@ -420,6 +451,7 @@ interface BuildMessagesResult {
 	participants: ConversationParticipantSeed[];
 	control: ConversationControlSeed | undefined;
 	warnings: string[];
+	authors: SillyTavernExactAuthor[];
 }
 
 const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
@@ -490,13 +522,28 @@ const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
 		participants,
 		control: deterministicControl(participants.length),
 		warnings,
+		// The verbatim captured value per retained record (never trimmed or
+		// normalized) powers user-facing preview grouping; the trimmed
+		// grouping above stays the developer-import resolution rule.
+		authors: decoded.map((entry) => ({
+			position: entry.position,
+			name: entry.authorName,
+			variantCount: entry.message.variants.length,
+		})),
 	};
 };
 
-export function parseSillyTavernChatJsonl(
+interface ParsedSillyTavernSource extends ParsedSillyTavernChat {
+	authors: SillyTavernExactAuthor[];
+}
+
+// Complete single-pass parse shared by the developer import path and the
+// staged preview: identical validation, counts, archive, and report, plus
+// the per-record exact author values only the preview groups on.
+const parseSillyTavernSource = (
 	sourceText: string,
 	meta: SillyTavernImportMeta,
-): ParsedSillyTavernChat {
+): ParsedSillyTavernSource => {
 	const records = decodeRecords(sourceText);
 	const [headerRecord, ...messageRecords] = records;
 	if (headerRecord === undefined) {
@@ -504,7 +551,7 @@ export function parseSillyTavernChatJsonl(
 	}
 	const header = decodeHeader(headerRecord);
 	const integrity = sourceIntegrity(header);
-	const { messages, participants, control, warnings } = buildMessages(
+	const { messages, participants, control, warnings, authors } = buildMessages(
 		messageRecords,
 	);
 	const variantCount = messages.reduce(
@@ -584,7 +631,28 @@ export function parseSillyTavernChatJsonl(
 			data,
 		},
 		report,
+		authors,
 	};
+}
+
+export function parseSillyTavernChatJsonl(
+	sourceText: string,
+	meta: SillyTavernImportMeta,
+): ParsedSillyTavernChat {
+	const { input, report } = parseSillyTavernSource(sourceText, meta);
+	return { input, report };
+}
+
+// Preview-oriented inspection: the full structural validation of the import
+// path (UTF-8 strictness, JSON line errors, header shape, per-record
+// structural defects) plus the exact author values preview groups on. No
+// Participant, Message, or native record is created.
+export function inspectSillyTavernChatJsonl(
+	sourceText: string,
+	meta: SillyTavernImportMeta,
+): SillyTavernChatInspection {
+	const { report, authors } = parseSillyTavernSource(sourceText, meta);
+	return { report, authors };
 }
 
 // Conversation-scoped entries derived from the final report. They are built

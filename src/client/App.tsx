@@ -18,19 +18,27 @@ import {
 	Send,
 	Settings,
 	Sun,
+	Upload,
 	Users,
 } from "lucide-react";
 import {
 	type FormEvent,
 	useCallback,
 	useEffect,
+	useReducer,
 	useRef,
 	useState,
 } from "react";
 import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
 import { CastPanel } from "./CastPanel";
 import { ComposerControlSelectors } from "./ComposerControls";
+import { ImportChatPanel } from "./ImportChatPanel";
 import { NewChatPanel } from "./NewChatPanel";
+import { chatImportTransport } from "./import-chat";
+import {
+	createChatImportFlowState,
+	reduceChatImportFlow,
+} from "./import-chat-flow";
 import {
 	loadConversation,
 	type ConversationSnapshot,
@@ -473,46 +481,93 @@ function PrimaryPanelView({
 	onLibraryFocusConsumed: () => void;
 	onOpenLibraryCharacter: (characterId: number) => void;
 }) {
+	// The Import Chat flow lives inside the Chats primary panel as a nested
+	// step. The state stays here so closing and reopening the panel does not
+	// discard the staged preview: only explicit Back-to-selection or a
+	// confirmed Cancel removes uncommitted staging data.
+	const [chatsNested, setChatsNested] = useState<"list" | "import">("list");
+	const [importFlow, dispatchImportFlow] = useReducer(
+		reduceChatImportFlow,
+		undefined,
+		createChatImportFlowState,
+	);
+
+	const openImport = () => {
+		dispatchImportFlow({ type: "begin" });
+		setChatsNested("import");
+	};
+	const closeImport = () => {
+		setChatsNested("list");
+		dispatchImportFlow({ type: "reset" });
+	};
+	const discardStaged = (token: string | null) => {
+		if (token === null) return;
+		void chatImportTransport.discard(token);
+	};
+
 	return (
 		<aside className="primary-panel" data-open={Boolean(panel)} aria-hidden={!panel}>
 			{panel && (
 				<>
-					<PanelHeader
-						title={
-							panel === "chats"
-								? "Chats"
-								: panel === "cast"
-									? "Cast"
-									: panel === "library"
-										? "Character Library"
-										: "Settings"
-						}
-						onClose={onClose}
-					/>
-					{panel === "chats" && (
-						<ChatsPanel
-							chats={workspace.chats}
-							activeId={activeChat.id}
-							onSelect={onSelectChat}
-							onNewChat={onNewChat}
+					{panel === "chats" && chatsNested === "import" ? (
+						<ImportChatPanel
+							flow={importFlow}
+							onDispatch={dispatchImportFlow}
+							onBackToList={() => {
+								// Back from the choosing step closes the nested flow;
+								// any staged handle is discarded with it.
+								discardStaged(importFlow.token);
+								closeImport();
+							}}
+							onClose={() => {
+								discardStaged(importFlow.token);
+								closeImport();
+							}}
 						/>
-					)}
-					{panel === "cast" && (
-						<CastPanel
-							conversationId={Number(activeChat.id)}
-							conversation={conversation}
-							onConversationChange={onConversationChange}
-							onOpenLibraryCharacter={onOpenLibraryCharacter}
-						/>
-					)}
-					{panel === "library" && (
-						<CharacterLibraryPanel
-							focusCharacterId={libraryFocusCharacterId}
-							onFocusConsumed={onLibraryFocusConsumed}
-						/>
-					)}
-					{panel === "settings" && (
-						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
+					) : (
+						<>
+							<PanelHeader
+								title={
+									panel === "chats"
+										? "Chats"
+										: panel === "cast"
+											? "Cast"
+											: panel === "library"
+												? "Character Library"
+												: "Settings"
+								}
+								onClose={onClose}
+							/>
+							{panel === "chats" && (
+								<ChatsPanel
+									chats={workspace.chats}
+									activeId={activeChat.id}
+									onSelect={onSelectChat}
+									onNewChat={onNewChat}
+									onImportChat={openImport}
+								/>
+							)}
+							{panel === "cast" && (
+								<CastPanel
+									conversationId={Number(activeChat.id)}
+									conversation={conversation}
+									onConversationChange={onConversationChange}
+									onOpenLibraryCharacter={onOpenLibraryCharacter}
+								/>
+							)}
+							{panel === "library" && (
+								<CharacterLibraryPanel
+									focusCharacterId={libraryFocusCharacterId}
+									onFocusConsumed={onLibraryFocusConsumed}
+								/>
+							)}
+							{panel === "settings" && (
+								<SettingsPanel
+									theme={theme}
+									onThemeChange={onThemeChange}
+								/>
+							)}
+						</>
 					)}
 				</>
 			)}
@@ -539,11 +594,13 @@ function ChatsPanel({
 	activeId,
 	onSelect,
 	onNewChat,
+	onImportChat,
 }: {
 	chats: ChatSummary[];
 	activeId: string;
 	onSelect: (chatId: string) => void;
 	onNewChat: () => void;
+	onImportChat: () => void;
 }) {
 	const [query, setQuery] = useState("");
 	const filteredChats = chats.filter((chat) =>
@@ -553,6 +610,9 @@ function ChatsPanel({
 	return (
 		<div className="panel-body">
 			<div className="chats-actions">
+				<button className="secondary-button" type="button" onClick={onImportChat}>
+					<Upload aria-hidden="true" /> Import Chat
+				</button>
 				<button className="secondary-button" type="button" onClick={onNewChat}>
 					<Plus aria-hidden="true" /> New Chat
 				</button>

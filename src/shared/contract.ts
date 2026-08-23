@@ -26,6 +26,14 @@ import {
 	createNativeConversation,
 	saveParticipantAsCharacter,
 } from "../server/workflows";
+import { defaultArtifactDirectory } from "../server/artifact";
+import {
+	StagedChatImportExpiredError,
+	StagedChatImportTokenMismatchError,
+	StagedChatImportUnavailableError,
+	SillyTavernImportError,
+	withChatImport,
+} from "../server/sillytavern";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -914,6 +922,186 @@ export const createConversationRoutes = (database: Database | undefined) =>
 			},
 		);
 
+const importSuggestion = t.Object({
+	characterId: t.Integer(),
+	name: t.String(),
+	match: t.Union([
+		t.Literal("exact"),
+		t.Literal("case-insensitive"),
+		t.Literal("fuzzy"),
+	]),
+	// The strongest suggestion is always pre-filled but unconfirmed; final
+	// review cannot pass until the user approves it.
+	confirmed: t.Boolean(),
+});
+
+const importGroup = t.Object({
+	key: t.String(),
+	isBlank: t.Boolean(),
+	messagePositions: t.Array(t.Integer()),
+	messageCount: t.Integer(),
+	variantCount: t.Integer(),
+	participantNameDefault: t.String(),
+	suggestion: t.Nullable(importSuggestion),
+});
+
+const importDuplicateMatch = t.Object({
+	id: t.Integer(),
+	name: t.String(),
+});
+
+// The staged preview contract mirrors the deep SillyTavern Import module's
+// public preview; routes only transport it.
+const chatImportPreview = t.Object({
+	title: t.String(),
+	originalFilename: t.String(),
+	sha256: t.String(),
+	byteLength: t.Integer(),
+	integrity: t.Nullable(t.String()),
+	counts: t.Object({
+		messages: t.Integer(),
+		variants: t.Integer(),
+	}),
+	warnings: t.Array(t.String()),
+	groups: t.Array(importGroup),
+	duplicates: t.Object({
+		exact: t.Array(importDuplicateMatch),
+		related: t.Array(importDuplicateMatch),
+	}),
+});
+
+const stagedOutcome = t.Object({
+	outcome: t.Literal("staged"),
+	token: t.String(),
+	preview: chatImportPreview,
+});
+
+// Thin typed adapters over the deep staged Chat import seam. The stage
+// route deliberately declares no body schema: Elysia must leave the raw
+// request stream untouched so the module can stream the uploaded bytes into
+// managed temporary storage exactly once instead of buffering the artifact.
+// The preview and discard routes stay tiny mappings of typed outcomes.
+export const createChatImportRoutes = (
+	database: Database | undefined,
+	artifactDirectory: string,
+) =>
+	new Elysia()
+		.post(
+			"/api/imports/chats/stage",
+			async ({ request, status }) => {
+				const originalFilename =
+					request.headers.get("x-import-filename") ?? "";
+				if (originalFilename === "") {
+					return status(422, {
+						outcome: "invalid" as const,
+						reason: "A file name is required with this upload.",
+					});
+				}
+				const body = request.body;
+				if (body === null) {
+					return status(422, {
+						outcome: "invalid" as const,
+						reason: "The upload body is empty.",
+					});
+				}
+				try {
+					const result = await withChatImport(
+						database,
+						artifactDirectory,
+						(chatImport) =>
+							chatImport.stageFile({
+								bytes: body,
+								originalFilename,
+							}),
+					);
+					return { outcome: "staged" as const, ...result };
+				} catch (error) {
+					if (error instanceof SillyTavernImportError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				response: {
+					200: stagedOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/imports/chats/:token/preview",
+			({ params, body, status }) => {
+				try {
+					const preview = withChatImport(
+						database,
+						artifactDirectory,
+						(chatImport) =>
+							chatImport.preview(params.token, body.sha256),
+					);
+					return { outcome: "available" as const, preview };
+				} catch (error) {
+					if (error instanceof StagedChatImportExpiredError) {
+						return status(410, { outcome: "expired" as const });
+					}
+					if (error instanceof StagedChatImportUnavailableError) {
+						return status(410, {
+							outcome: "unavailable" as const,
+							reason: error.reason,
+						});
+					}
+					if (error instanceof StagedChatImportTokenMismatchError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ token: t.String() }),
+				body: t.Object({ sha256: t.String() }),
+				response: {
+					200: t.Object({
+						outcome: t.Literal("available"),
+						preview: chatImportPreview,
+					}),
+					410: t.Union([
+						t.Object({ outcome: t.Literal("expired") }),
+						t.Object({
+							outcome: t.Literal("unavailable"),
+							reason: t.Union([
+								t.Literal("missing"),
+								t.Literal("corrupt"),
+							]),
+						}),
+					]),
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/imports/chats/:token/discard",
+			({ params }) => {
+				// Discard is idempotent: unknown and already-discarded handles
+				// report the same removed outcome without touching anything.
+				withChatImport(database, artifactDirectory, (chatImport) =>
+					chatImport.discard(params.token),
+				);
+				return { outcome: "discarded" as const };
+			},
+			{
+				params: t.Object({ token: t.String() }),
+				response: {
+					200: t.Object({ outcome: t.Literal("discarded") }),
+				},
+			},
+		);
+
 export const contract = new Elysia()
 	.get("/api/health", () => ({ ok: true }), {
 		response: t.Object({ ok: t.Boolean() }),
@@ -927,6 +1115,7 @@ export const contract = new Elysia()
 	})
 	.use(createCharacterLibraryRoutes(undefined))
 	.use(createNativeConversationRoutes(undefined))
-	.use(createConversationRoutes(undefined));
+	.use(createConversationRoutes(undefined))
+	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()));
 
 export type Contract = typeof contract;

@@ -18,8 +18,6 @@
 import { readFileSync } from "node:fs";
 import { basename, parse } from "node:path";
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray, or } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	mediaTypeFromFilename,
 	sha256Hex,
@@ -28,18 +26,17 @@ import {
 import type { ArtifactMetadata } from "../artifact";
 import { createConversationModule } from "../conversation";
 import type { ConversationSnapshot } from "../conversation/types";
-import { chatDataTable, chatTable } from "../database/schema";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
-	IMPORT_KEYS,
-	IMPORT_NAMESPACE,
+	decodeSillyTavernSourceBytes,
 	importReportEntries,
 	parseSillyTavernChatJsonl,
 	type SillyTavernImportReport,
 	type SillyTavernImportSource,
 } from "./adapter";
 import { SillyTavernImportError } from "./errors";
+import { findPriorImportsBySource } from "./prior-imports";
 
 export interface SillyTavernImportResult {
 	conversation: ConversationSnapshot;
@@ -61,54 +58,17 @@ const readSourceBytes = (sourcePath: string): Buffer => {
 	}
 };
 
-const decodeUtf8 = (bytes: Buffer): string => {
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-	} catch {
-		throw new SillyTavernImportError("The source is not valid UTF-8.");
-	}
-};
+const decodeUtf8 = decodeSillyTavernSourceBytes;
 
+// The developer import path treats every prior match the same: one warning
+// per prior Chat and every id listed as a duplicate. The classification
+// helper feeds this merged view; the staged preview reads the same helper
+// to separate exact duplicates from related sources.
 const findPriorImports = (
 	database: Database,
 	source: SillyTavernImportSource,
-): { id: number; name: string }[] => {
-	const conditions = [
-		and(
-			eq(chatDataTable.namespace, IMPORT_NAMESPACE),
-			eq(chatDataTable.key, IMPORT_KEYS.sha256),
-			eq(chatDataTable.value, source.sha256),
-		),
-	];
-	if (source.integrity !== undefined) {
-		conditions.push(
-			and(
-				eq(chatDataTable.namespace, IMPORT_NAMESPACE),
-				eq(chatDataTable.key, IMPORT_KEYS.integrity),
-				eq(chatDataTable.value, source.integrity),
-			),
-		);
-	}
-
-	const db = drizzle(database);
-	const priorChatIds = [
-		...new Set(
-			db
-				.select({ chatId: chatDataTable.chat_id })
-				.from(chatDataTable)
-				.where(or(...conditions))
-				.all()
-				.map((row) => row.chatId),
-		),
-	];
-	if (priorChatIds.length === 0) return [];
-
-	return db
-		.select({ id: chatTable.id, name: chatTable.name })
-		.from(chatTable)
-		.where(inArray(chatTable.id, priorChatIds))
-		.all();
-};
+): { id: number; name: string }[] =>
+	findPriorImportsBySource(database, source).map(({ id, name }) => ({ id, name }));
 
 export function importSillyTavernChat(
 	database: Database,

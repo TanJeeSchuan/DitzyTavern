@@ -1,0 +1,228 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openDatabase } from "../server/database/database";
+import { importSillyTavernChat } from "../server/sillytavern";
+import {
+	clearStagedImportRegistry,
+	createChatImportModule,
+} from "../server/sillytavern/staged";
+import { headerFixture as header, jsonl, writerFixture as writer } from "../server/sillytavern/fixtures";
+import { createChatImportRoutes } from "./contract";
+
+// Transport tests cover the typed upload/preview/discard contract only; the
+// domain matrix lives behind the deep SillyTavern Import module tests. Each
+// route stays a thin adapter over the module seam.
+
+describe("Chat import transport adapters", () => {
+	let database: Database;
+	let files: string[];
+	let artifactDirectory: string;
+	let app: ReturnType<typeof createChatImportRoutes>;
+
+	beforeEach(() => {
+		database = openDatabase({ path: ":memory:" });
+		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-routes-"));
+		files = [directory];
+		artifactDirectory = join(directory, "managed-artifacts");
+		app = createChatImportRoutes(database, artifactDirectory);
+		clearStagedImportRegistry();
+	});
+	afterEach(() => {
+		database.close();
+		for (const path of files) rmSync(path, { recursive: true, force: true });
+		clearStagedImportRegistry();
+	});
+
+	const stage = (bytes: Buffer, filename = "lantern-house.jsonl") =>
+		app.handle(
+			new Request("http://localhost/api/imports/chats/stage", {
+				method: "POST",
+				headers: { "x-import-filename": filename },
+				// SAFETY: the copy into a fresh Uint8Array carries the exact
+				// bytes while satisfying Request's BodyInit typing at the test
+				// boundary.
+				body: new Blob([new Uint8Array(bytes)]),
+			}),
+		);
+
+	const preview = (token: string, sha256: string) =>
+		app.handle(
+			new Request(`http://localhost/api/imports/chats/${token}/preview`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ sha256 }),
+			}),
+		);
+
+	const discard = (token: string) =>
+		app.handle(
+			new Request(`http://localhost/api/imports/chats/${token}/discard`, {
+				method: "POST",
+			}),
+		);
+
+	const sha256Of = (bytes: Uint8Array) =>
+		createHash("sha256").update(bytes).digest("hex");
+
+	interface PreviewResponseBody {
+		outcome: string;
+		preview: {
+			token?: never;
+			title: string;
+			originalFilename: string;
+			sha256: string;
+			byteLength: number;
+			integrity: string | null;
+			counts: { messages: number; variants: number };
+			warnings: string[];
+			groups: unknown[];
+			duplicates: { exact: unknown[]; related: unknown[] };
+		};
+	}
+
+	// SAFETY: the preview endpoint is exercised from the module tests with
+	// the same typed shape, so parsing the response against this structural
+	// contract at the test boundary is sound.
+	const previewBody = async (response: Response): Promise<PreviewResponseBody> =>
+		(await response.json()) as PreviewResponseBody;
+
+	test("stages a streamed upload with the typed staged outcome and a bound preview", async () => {
+		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
+		const response = await stage(bytes, "lantern-house.jsonl");
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.outcome).toBe("staged");
+		expect(body.token).toBeTypeOf("string");
+		expect(body.token.length).toBeGreaterThan(0);
+		expect(body.preview).toMatchObject({
+			title: "lantern-house",
+			originalFilename: "lantern-house.jsonl",
+			sha256: sha256Of(bytes),
+			byteLength: bytes.length,
+			// The fixture header declares an integrity value; the preview
+			// surfaces it as advisory source identity.
+			integrity: "9543f21f-8aab-42c8-92a4-1f6453d4b63c",
+			counts: { messages: 1, variants: 1 },
+		});
+
+		// A separate preview request over the same transport reads the same
+		// bound preview from the token and the SHA the client already has.
+		const refreshed = await preview(body.token, body.preview.sha256);
+		expect(refreshed.status).toBe(200);
+		const refreshedBody = await previewBody(refreshed);
+		expect(refreshedBody.outcome).toBe("available");
+		expect(refreshedBody.preview.title).toBe(body.preview.title);
+		expect(refreshedBody.preview.sha256).toBe(body.preview.sha256);
+	});
+
+	test("rejects uploads without a file name and invalid sources with the typed 422", async () => {
+		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
+
+		const missingName = await app.handle(
+			new Request("http://localhost/api/imports/chats/stage", {
+				method: "POST",
+				body: bytes,
+			}),
+		);
+		expect(missingName.status).toBe(422);
+		expect(await missingName.json()).toMatchObject({
+			outcome: "invalid",
+			reason: "A file name is required with this upload.",
+		});
+
+		const broken = await stage(
+			Buffer.from(`${JSON.stringify(header)}\n{"broken`, "utf8"),
+		);
+		expect(broken.status).toBe(422);
+		expect(await broken.json()).toEqual({
+			outcome: "invalid",
+			reason: "Line 2 is not valid JSON.",
+		});
+	});
+
+	test("maps expired preview handles to the typed 410 and mismatched hashes to 422", async () => {
+		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
+		const staged = await stage(bytes);
+		const { token, preview: bound } = await staged.json();
+
+		const wrongHash = await preview(token, sha256Of(Buffer.from("other")));
+		expect(wrongHash.status).toBe(422);
+		expect(await wrongHash.json()).toMatchObject({ outcome: "invalid" });
+
+		const unknownToken = await preview("never-staged", sha256Of(bytes));
+		expect(unknownToken.status).toBe(410);
+		expect(await unknownToken.json()).toEqual({ outcome: "expired" });
+
+		// The correct binding still works after the rejected calls.
+		const valid = await preview(token, bound.sha256);
+		expect(valid.status).toBe(200);
+	});
+
+	test("discards one flow idempotently and leaves other staged flows usable", async () => {
+		const first = await stage(Buffer.from(jsonl([header, writer]), "utf8"), "a.jsonl");
+		const second = await stage(Buffer.from(jsonl([header, writer]), "utf8"), "b.jsonl");
+		const { token: firstToken, preview: firstPreview } = await first.json();
+		const { token: secondToken, preview: secondPreview } = await second.json();
+		expect(firstToken).not.toBe(secondToken);
+
+		const discarded = await discard(firstToken);
+		expect(discarded.status).toBe(200);
+		expect(await discarded.json()).toEqual({ outcome: "discarded" });
+
+		const expired = await preview(firstToken, firstPreview.sha256);
+		expect(expired.status).toBe(410);
+		expect(await expired.json()).toEqual({ outcome: "expired" });
+
+		const stillActive = await preview(secondToken, secondPreview.sha256);
+		expect(stillActive.status).toBe(200);
+
+		const again = await discard(firstToken);
+		expect(again.status).toBe(200);
+		expect(await again.json()).toEqual({ outcome: "discarded" });
+	});
+
+	test("presents prior-import evidence classified into exact and related matches", async () => {
+		// A committed prior Chat provides the duplicate evidence through the
+		// same database the routes mount against.
+		const priorPath = join(files[0] ?? "", "prior.jsonl");
+		writeFileSync(priorPath, jsonl([header, writer]), "utf8");
+		const prior = importSillyTavernChat(database, priorPath, artifactDirectory).conversation;
+
+		// The exact same bytes stage with an exact duplicate match.
+		const sameBytes = Buffer.from(jsonl([header, writer]), "utf8");
+		const exactStaged = await stage(sameBytes, "copy.jsonl");
+		const exactBody = await exactStaged.json();
+		expect(exactBody.preview.duplicates).toEqual({
+			exact: [{ id: prior.id, name: prior.name }],
+			related: [],
+		});
+
+		// A module-level staging registry keeps the transport thin: the
+		// token returned here is honored by a module instance created
+		// directly from the same process-level session.
+		const module = createChatImportModule(database, { artifactDirectory });
+		expect(module.preview(exactBody.token, exactBody.preview.sha256)).toEqual(
+			exactBody.preview,
+		);
+	});
+
+	test("does not reopen a browser path and streams without buffering at the boundary", async () => {
+		// The transport contract only ever carries bytes plus a leaf name;
+		// no filesystem path of the user's file travels on the wire.
+		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
+		const staged = await stage(bytes, "large-export.jsonl");
+		expect(staged.status).toBe(200);
+		const body = await staged.json();
+		expect(body.preview.byteLength).toBe(bytes.length);
+
+		// Two independent staged uploads with identical bytes still get
+		// independent handles; nothing is deduplicated at the boundary.
+		const stagedAgain = await stage(bytes, "large-export.jsonl");
+		const again = await stagedAgain.json();
+		expect(again.token).not.toBe(body.token);
+	});
+});

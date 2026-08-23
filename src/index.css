@@ -2010,6 +2010,8 @@ input:focus-visible {
 
 .chats-actions {
 	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
 	justify-content: flex-end;
 	margin-bottom: 0.85rem;
 }
@@ -2438,4 +2440,372 @@ input:focus-visible {
 
 .composer-control-note.is-error {
 	color: var(--accent);
+}
+
+/* ---- Import Chat flow (nested inside the Chats primary panel) ---- */
+
+.import-flow {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	height: 100%;
+	min-height: 0;
+}
+
+.import-flow-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.65rem;
+	min-height: 4.5rem;
+	padding: 0 1rem 0 1.25rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.import-flow-header h2 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 670;
+	letter-spacing: -0.02em;
+}
+
+.import-flow-back,
+.import-flow-cancel {
+	flex: none;
+}
+
+.import-choose {
+	display: grid;
+	gap: 1rem;
+	align-content: start;
+}
+
+.import-file-button {
+	display: grid;
+	place-items: center;
+	gap: 0.45rem;
+	width: 100%;
+	min-height: 9rem;
+	padding: 1.25rem;
+	border: 1px dashed var(--border-strong);
+	border-radius: 1rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.import-file-button:hover,
+.import-file-button:focus-visible {
+	border-color: var(--focus);
+	background: var(--surface-raised);
+}
+
+.import-file-button strong {
+	font-size: 0.9rem;
+	font-weight: 650;
+}
+
+.import-file-button small {
+	color: var(--text-muted);
+	font-size: 0.76rem;
+}
+
+.import-file-icon {
+	display: grid;
+	width: 2.6rem;
+	height: 2.6rem;
+	place-items: center;
+	border-radius: 0.85rem;
+	background: var(--accent-soft);
+	color: var(--accent-foreground);
+}
+
+.import-file-icon svg {
+	width: 1.2rem;
+	height: 1.2rem;
+	stroke-width: 1.8;
+}
+
+.import-problem {
+	margin: 0;
+	padding: 0.75rem 0.85rem;
+	border: 1px solid color-mix(in oklch, var(--destructive) 40%, var(--border));
+	border-radius: 0.8rem;
+	background: color-mix(in oklch, var(--destructive) 9%, transparent);
+	color: var(--foreground);
+	font-size: 0.82rem;
+	line-height: 1.5;
+}
+
+.import-staging {
+	display: grid;
+	place-items: center;
+	align-content: center;
+	gap: 0.6rem;
+	min-height: 16rem;
+	text-align: center;
+	color: var(--text-muted);
+}
+
+.import-staging strong {
+	color: var(--foreground);
+	font-size: 0.9rem;
+}
+
+.import-staging p {
+	max-width: 26rem;
+	margin: 0;
+	font-size: 0.8rem;
+	line-height: 1.55;
+}
+
+.import-spinner {
+	width: 1.3rem;
+	height: 1.3rem;
+	color: var(--accent);
+	animation: import-spin 900ms linear infinite;
+}
+
+@keyframes import-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.import-spinner {
+		animation-duration: 2200ms;
+	}
+}
+
+.import-preview {
+	display: grid;
+	gap: 1.1rem;
+	align-content: start;
+}
+
+.import-preview-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.import-preview-actions .secondary-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.import-duplicate-banner,
+.import-related-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.55rem;
+	margin: 0;
+	padding: 0.75rem 0.85rem;
+	border-radius: 0.8rem;
+	font-size: 0.82rem;
+	line-height: 1.5;
+}
+
+.import-duplicate-banner {
+	border: 1px solid color-mix(in oklch, var(--destructive) 40%, var(--border));
+	background: color-mix(in oklch, var(--destructive) 9%, transparent);
+}
+
+.import-duplicate-banner svg {
+	flex: none;
+	width: 1rem;
+	height: 1rem;
+	color: var(--destructive);
+	stroke-width: 1.8;
+	margin-top: 0.1rem;
+}
+
+.import-related-banner {
+	border: 1px solid var(--border);
+	background: var(--surface-muted);
+	color: var(--text-muted);
+}
+
+.import-source h3,
+.import-warnings h3,
+.import-groups h3 {
+	margin: 0 0 0.6rem;
+	font-size: 0.8rem;
+	font-weight: 650;
+	letter-spacing: 0.01em;
+	color: var(--text-muted);
+}
+
+.import-meta-list {
+	gap: 0.4rem;
+}
+
+.import-sha {
+	font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+	word-break: break-all;
+	font-size: 0.72rem;
+	line-height: 1.5;
+}
+
+.import-warnings ul {
+	display: grid;
+	gap: 0.4rem;
+	margin: 0;
+	padding: 0.75rem 0.85rem 0.75rem 1.6rem;
+	border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--border));
+	border-radius: 0.8rem;
+	background: color-mix(in oklch, var(--accent) 8%, transparent);
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+
+.import-groups {
+	display: grid;
+	gap: 0.7rem;
+	align-content: start;
+}
+
+.import-group {
+	display: grid;
+	gap: 0.65rem;
+	padding: 0.85rem;
+	border: 1px solid var(--border);
+	border-radius: 0.9rem;
+	background: var(--surface-muted);
+}
+
+.import-group-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.6rem;
+}
+
+.import-group-header > div {
+	display: grid;
+	gap: 0.15rem;
+	min-width: 0;
+}
+
+.import-group-header strong {
+	font-size: 0.88rem;
+	font-weight: 650;
+	word-break: break-word;
+}
+
+.import-group-header small {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+}
+
+.import-suggest-tag {
+	flex: none;
+	padding: 0.22rem 0.55rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface-raised);
+	color: var(--text-muted);
+	font-size: 0.68rem;
+	font-weight: 650;
+	letter-spacing: 0.02em;
+}
+
+.import-suggest-tag[data-approved="true"] {
+	border-color: color-mix(in oklch, var(--accent) 45%, var(--border));
+	background: var(--accent-soft);
+	color: var(--accent-foreground);
+}
+
+.import-suggestion {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.6rem;
+	padding: 0.6rem 0.7rem;
+	border: 1px solid color-mix(in oklch, var(--accent) 35%, var(--border));
+	border-radius: 0.75rem;
+	background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+
+.import-suggestion span {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	min-width: 0;
+	font-size: 0.8rem;
+	line-height: 1.45;
+}
+
+.import-suggestion span svg {
+	flex: none;
+	width: 0.95rem;
+	height: 0.95rem;
+	color: var(--accent-foreground);
+	stroke-width: 1.8;
+}
+
+.import-suggestion .primary-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex: none;
+	min-height: 2.2rem;
+}
+
+.import-confirm-cancel {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 0.7rem;
+	padding: 0.9rem;
+	border: 1px solid color-mix(in oklch, var(--destructive) 45%, var(--border));
+	border-radius: 0.9rem;
+	background: color-mix(in oklch, var(--destructive) 9%, transparent);
+}
+
+.import-confirm-cancel > svg {
+	width: 1.15rem;
+	height: 1.15rem;
+	color: var(--destructive);
+	stroke-width: 1.8;
+	margin-top: 0.15rem;
+}
+
+.import-confirm-cancel strong {
+	font-size: 0.86rem;
+	font-weight: 650;
+}
+
+.import-confirm-cancel p {
+	margin: 0.2rem 0 0;
+	color: var(--text-muted);
+	font-size: 0.78rem;
+	line-height: 1.5;
+}
+
+.import-confirm-actions {
+	grid-column: 2;
+	display: flex;
+	gap: 0.55rem;
+}
+
+.import-preview-footer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.55rem;
+	align-items: center;
+	border-top: 1px solid var(--border);
+	padding-top: 1rem;
+}
+
+.import-preview-footer .panel-note {
+	margin: 0 0 0 auto;
+	max-width: 20rem;
+}
+
+@media (max-width: 40rem) {
+	.import-preview-footer .panel-note {
+		max-width: none;
+		margin-top: 0.4rem;
+		flex-basis: 100%;
+	}
 }
