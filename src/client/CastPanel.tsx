@@ -1,6 +1,15 @@
 import { Pin, Plus, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { libraryPickerEntries } from "./cast";
+import { presentRemovalOutcome, removalConfirmationCopy } from "./cast-remove";
 import {
 	presentSaveParticipantOutcome,
 	type SavedCharacterReference,
@@ -81,6 +90,10 @@ export function CastPanel({
 	);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
+	// Identifies the Participant whose removal confirmation dialog is open.
+	// The confirmation copy is derived from the snapshot's removal impact
+	// (deletion mode and affected-generation count) shown before dispatch.
+	const [removeTargetId, setRemoveTargetId] = useState<number | null>(null);
 	const [adHocDraft, setAdHocDraft] = useState<AdHocDraft>(emptyAdHocDraft);
 	// Announces a completed promotion and the navigation action to the new
 	// Character Library entry; cleared when the next save attempt starts so
@@ -109,6 +122,41 @@ export function CastPanel({
 			setNotice("The Conversation could not be reached.");
 		}
 	}, [conversationId, onConversationChange]);
+
+	// Removes one unseated Participant after the confirmation dialog. The
+	// impact was already shown from the snapshot; the typed not-removable
+	// outcome covers the race where Control changed before the command
+	// landed, and the authoritative Cast is reloaded after it.
+	const applyRemove = async (participant: {
+		id: number;
+		duplicateLabel: string;
+	}) => {
+		if (conversation === null) return;
+		setRemoveTargetId(null);
+		await runCommand(async () => {
+			const outcome = await applyConversationCommand(
+				conversationId,
+				conversation.revision,
+				{ type: "remove-participant", participantId: participant.id },
+			);
+			const presentation = presentRemovalOutcome(
+				outcome,
+				participant.duplicateLabel,
+			);
+			if (presentation.reloadConversation) {
+				await refreshConversation();
+			}
+			if (outcome.status === "applied") {
+				onConversationChange(outcome.conversation);
+				setNotice(null);
+				return { ok: true };
+			}
+			if (presentation.notice !== null) {
+				return { ok: false, message: presentation.notice };
+			}
+			return { ok: true };
+		});
+	};
 
 	const pickerEntries = useMemo(
 		() => libraryPickerEntries(characters ?? [], conversation?.cast ?? []),
@@ -248,6 +296,21 @@ export function CastPanel({
 			return { ok: true };
 		});
 	};
+
+	// Removes the targeted unseated Participant after an explicit confirmation
+	// showing the snapshot-derived impact (hard delete versus tombstone and
+	// the exact regeneration loss). Success refreshes Control, ordering,
+	// history labels, and capabilities from the authoritative snapshot.
+	const removeTarget =
+		removeTargetId !== null
+			? (conversation.cast.find(
+					(participant) => participant.id === removeTargetId,
+				) ?? null)
+			: null;
+	const removeConfirmation =
+		removeTarget !== null
+			? removalConfirmationCopy(removeTarget.duplicateLabel, removeTarget.removal)
+			: null;
 
 	return (
 		<div className="panel-body">
@@ -460,6 +523,7 @@ export function CastPanel({
 									onSaveAsCharacter={() =>
 										void applySaveParticipant(participant)
 									}
+									onRemove={() => setRemoveTargetId(participant.id)}
 								/>
 								{editing && (
 									<ParticipantEditor
@@ -475,6 +539,44 @@ export function CastPanel({
 					})}
 				</ul>
 			)}
+
+			{removeTarget !== null && removeConfirmation !== null && (
+				<Dialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setRemoveTargetId(null);
+					}}
+				>
+					<DialogContent>
+						<DialogHeader>
+							<DialogTitle>{removeConfirmation.title}</DialogTitle>
+							<DialogDescription>{removeConfirmation.impact}</DialogDescription>
+						</DialogHeader>
+						<DialogFooter>
+							<button
+								className="secondary-button"
+								type="button"
+								disabled={pending}
+								onClick={() => setRemoveTargetId(null)}
+							>
+								Cancel
+							</button>
+							<button
+								className="primary-button"
+								type="button"
+								disabled={pending || removeConfirmation.confirmLabel === "Close"}
+								onClick={() => {
+									if (removeTarget !== null) {
+										void applyRemove(removeTarget);
+									}
+								}}
+							>
+								{removeConfirmation.confirmLabel}
+							</button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			)}
 		</div>
 	);
 }
@@ -486,28 +588,40 @@ function MemberRow({
 	pending,
 	onToggleEdit,
 	onSaveAsCharacter,
+	onRemove,
 }: {
 	participant: {
 		duplicateLabel: string;
 		sourceCharacterName: string | null;
-		removal: { eligible: boolean; reason: "control-assigned" | null };
+		removal: {
+			eligible: boolean;
+			reason: "control-assigned" | null;
+			deletionMode: "hard-delete" | "tombstone" | null;
+			affectedGenerationCount: number;
+		};
 	};
 	seat: "human" | "model" | null;
 	editing: boolean;
 	pending: boolean;
 	onToggleEdit: () => void;
 	onSaveAsCharacter: () => void;
+	onRemove: () => void;
 }) {
 	const provenance =
 		participant.sourceCharacterName !== null
 			? `Fork of ${participant.sourceCharacterName}`
 			: "Ad-hoc Participant";
+	const removable = seat === null && participant.removal.eligible;
 	const removalNote =
 		seat !== null
 			? participant.removal.reason === "control-assigned"
 				? "Change a Control seat before this Participant can be removed."
 				: "Remove availability is confirmed separately."
-			: "Unseated — eligible for removal.";
+			: participant.removal.deletionMode === "tombstone"
+				? participant.removal.affectedGenerationCount === 1
+					? "Removable — will tombstone; 1 Message loses sibling generation."
+					: `Removable — will tombstone; ${participant.removal.affectedGenerationCount} Messages lose sibling generation.`
+				: "Removable — no history refers to it; removal hard-deletes it.";
 
 	return (
 		<div className="cast-member">
@@ -539,6 +653,16 @@ function MemberRow({
 				>
 					Save as Character
 				</button>
+				{removable && (
+					<button
+						className="secondary-button cast-remove-button"
+						type="button"
+						disabled={pending}
+						onClick={onRemove}
+					>
+						Remove
+					</button>
+				)}
 			</div>
 		</div>
 	);

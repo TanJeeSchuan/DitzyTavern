@@ -50,6 +50,13 @@
       "when": 1787457925628,
       "tag": "0006_legal_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787467181041,
+      "tag": "0007_legal_chronomancer",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { eq, max } from "drizzle-orm";
+import { and, eq, isNull, max } from "drizzle-orm";
 import {
 	participantOpeningTable,
 	participantPromptTable,
@@ -35,10 +35,18 @@ export function addParticipant(
 		);
 	}
 
+	// Append at the stable Cast tail. Only active Participants contribute to
+	// the next position: tombstones carry no position and are excluded, so
+	// the active roster stays contiguous.
 	const latestPosition = db
 		.select({ value: max(participantTable.position) })
 		.from(participantTable)
-		.where(eq(participantTable.chat_id, input.conversationId))
+		.where(
+			and(
+				eq(participantTable.chat_id, input.conversationId),
+				isNull(participantTable.deleted_at),
+			),
+		)
 		.get()?.value;
 
 	const inserted = db

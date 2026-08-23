@@ -150,6 +150,7 @@ describe("Native New Chat workflow", () => {
 		expect(snapshot.messages[0]?.author).toEqual({
 			participantId: model?.id ?? null,
 			capturedName: "Twin Source",
+			inCast: true,
 		});
 	});
 

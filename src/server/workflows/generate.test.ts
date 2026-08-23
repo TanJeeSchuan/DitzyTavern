@@ -136,6 +136,7 @@ describe("Current Generate workflow", () => {
 		expect(message?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(message?.historicalContext).toEqual({
 			humanParticipantId: humanId,
@@ -303,6 +304,7 @@ describe("Current Generate workflow", () => {
 		expect(message?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(message?.historicalContext).toEqual({
 			humanParticipantId: humanId,
@@ -355,6 +357,7 @@ describe("Current Generate workflow", () => {
 		expect(message?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(message?.historicalContext).toEqual({
 			humanParticipantId: humanId,

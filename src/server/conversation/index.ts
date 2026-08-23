@@ -12,6 +12,7 @@ export {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
+	ParticipantNotRemovableError,
 	SiblingVariantUnavailableError,
 	ParticipantNotFoundError,
 	StaleConversationRevisionError,
@@ -48,6 +49,7 @@ export type {
 	MessageSwipeEligibility,
 	ParticipantDefinition,
 	ParticipantDefinitionPrompt,
+	ParticipantDeletionMode,
 	ParticipantRemovalBlockReason,
 	ParticipantRemovalEligibility,
 } from "./types";

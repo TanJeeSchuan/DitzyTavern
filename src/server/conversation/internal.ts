@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	conversationControlTable,
@@ -102,6 +102,7 @@ export const requireParticipant = (
 			and(
 				eq(participantTable.id, participantId),
 				eq(participantTable.chat_id, conversationId),
+				isNull(participantTable.deleted_at),
 			),
 		)
 		.get();
@@ -114,6 +115,31 @@ export const requireParticipant = (
 
 	return participant;
 };
+
+// Whether any Message of the Conversation still refers to the Participant
+// through its immutable Author Stamp or its captured historical Control
+// pair. These are the retained references that demand a tombstone; without
+// any, the Participant can be hard-deleted.
+export const hasRetainedParticipantReference = (
+	db: ConversationDatabase,
+	conversationId: number,
+	participantId: number,
+) =>
+	(db
+		.select({ id: messageTable.id })
+		.from(messageTable)
+		.where(
+			and(
+				eq(messageTable.chat_id, conversationId),
+				or(
+					eq(messageTable.author_participant_id, participantId),
+					eq(messageTable.context_human_participant_id, participantId),
+					eq(messageTable.context_model_participant_id, participantId),
+				),
+			),
+		)
+		.limit(1)
+		.get() !== undefined);
 
 export const requireMessage = (
 	db: ConversationDatabase,

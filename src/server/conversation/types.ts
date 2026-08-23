@@ -39,19 +39,35 @@ export interface CastParticipantSnapshot {
 	// Derived display label disambiguating duplicate names with ordinals;
 	// clients never recompute name identity from internal identifiers.
 	duplicateLabel: string;
-	// Derived removal eligibility: seated Participants are protected, so
-	// only unseated Participants can be removed (removal itself is a
-	// separate confirmed action).
+	// Derived removal eligibility and impact: seated Participants are
+	// protected, so only unseated Participants can be removed (removal itself
+	// is a separate confirmed action). For eligible Participants the derived
+	// deletion mode and affected-generation count power the confirmation
+	// presentation before any command is sent.
 	removal: ParticipantRemovalEligibility;
 }
 
 // Derived, never stored. A seated Participant is ineligible for removal
-// until Control changes; unseated Participants are eligible.
+// until Control changes; unseated Participants are eligible. The impact is
+// part of the same derived answer: deletion mode decides the confirmation
+// wording (hard delete versus tombstone) and affected-generation count
+// states how many Messages lose future sibling Variant generation.
 export type ParticipantRemovalBlockReason = "control-assigned";
+
+// Derived, never stored: whether removal hard-deletes the Participant or
+// reduces it to a nonrestorable tombstone because a Message still refers to
+// it. Null only for ineligible (seated) Participants.
+export type ParticipantDeletionMode = "hard-delete" | "tombstone";
 
 export interface ParticipantRemovalEligibility {
 	eligible: boolean;
 	reason: ParticipantRemovalBlockReason | null;
+	// Null while the Participant is seated (ineligible); derived otherwise.
+	deletionMode: ParticipantDeletionMode | null;
+	// Messages currently able to generate a new sibling Variant that would
+	// lose that ability when this Participant is removed. Zero for seated
+	// Participants and for unreferenced eligible ones.
+	affectedGenerationCount: number;
 }
 
 // Derived, never stored. A Conversation is playable only when two distinct
@@ -106,6 +122,12 @@ export type MessageSwipeEligibility =
 export interface AuthorStampSnapshot {
 	participantId: number | null;
 	capturedName: string | null;
+	// Derived at snapshot time, never stored: whether the authoring
+	// Participant is still an active Cast member. Historical Messages keep
+	// displaying the captured name with a no-longer-in-Cast state after the
+	// Participant is removed. False for preservation records with no
+	// resolved author as well as for removed Participants.
+	inCast: boolean;
 }
 
 // The human/model pair active when native generation began. Imported
@@ -207,7 +229,14 @@ export type ConversationAction =
 	// Assigns one Control seat to a Cast Participant. Selecting the opposite
 	// seat's occupant swaps both seats atomically; selecting an unseated
 	// Participant replaces only the chosen seat. Seats are never cleared.
-	| { type: "assign-control"; seat: "human" | "model"; participantId: number };
+	| { type: "assign-control"; seat: "human" | "model"; participantId: number }
+	// Removes an unseated Participant after confirmation. Seated Participants
+	// are protected with the typed not-removable outcome. Removing an
+	// unreferenced Participant hard-deletes it; a Participant still referred
+	// to by Messages (Author Stamp or historical Control pair) is reduced to
+	// a nonrestorable tombstone and garbage-collected once its final
+	// reference disappears.
+	| { type: "remove-participant"; participantId: number };
 
 export interface ConversationCommand {
 	conversationId: number;

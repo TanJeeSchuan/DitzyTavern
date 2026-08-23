@@ -139,6 +139,7 @@ describe("Conversation creation", () => {
 		expect(greeting?.author).toEqual({
 			participantId: snapshot.cast[1]?.id ?? null,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(greeting?.historicalContext).toEqual({
 			humanParticipantId: snapshot.cast[0]?.id,
@@ -173,6 +174,7 @@ describe("Conversation creation", () => {
 		expect(greeting?.author).toEqual({
 			participantId: snapshot.cast[1]?.id ?? null,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 
 		// The stored openings remain raw and unexpanded.

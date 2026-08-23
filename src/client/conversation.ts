@@ -29,7 +29,16 @@ export interface CastParticipant {
 	sourceCharacterId: number | null;
 	sourceCharacterName: string | null;
 	duplicateLabel: string;
-	removal: { eligible: boolean; reason: "control-assigned" | null };
+	// Derived removal eligibility and impact: the deletion mode names hard
+	// delete versus tombstone, and the affected-generation count states how
+	// many Messages lose future sibling Variant generation. Clients present
+	// these values; they never reconstruct the rules.
+	removal: {
+		eligible: boolean;
+		reason: "control-assigned" | null;
+		deletionMode: "hard-delete" | "tombstone" | null;
+		affectedGenerationCount: number;
+	};
 }
 
 export interface ConversationControl {
@@ -53,6 +62,10 @@ export type MessageSwipeBlockReason =
 export interface ConversationAuthorStamp {
 	participantId: number | null;
 	capturedName: string | null;
+	// Derived historical display state: whether the authoring Participant is
+	// still an active Cast member. History keeps showing the captured name
+	// with a no-longer-in-Cast marker after removal.
+	inCast: boolean;
 }
 
 export interface ConversationHistoricalContext {
@@ -146,7 +159,11 @@ export type ConversationAction =
 			participantId: number;
 			openings: string[];
 	  }
-	| { type: "assign-control"; seat: "human" | "model"; participantId: number };
+	| { type: "assign-control"; seat: "human" | "model"; participantId: number }
+	// Removes an unseated Participant after confirmation. Seated Participants
+	// are protected with the typed not-removable outcome; the impact is
+	// shown from the snapshot before this command is sent.
+	| { type: "remove-participant"; participantId: number };
 
 // Note: the client-side add-participant action intentionally carries no
 // sourceCharacterId. Character-to-Cast forks always go through
@@ -158,6 +175,9 @@ export type CommandOutcome =
 	| { status: "conflict"; currentConversation: ConversationSnapshot }
 	| { status: "not-found" }
 	| { status: "not-playable"; reason: string }
+	// A seated Participant cannot be removed; the typed reason comes from the
+	// server so clients never reconstruct the seat rule.
+	| { status: "not-removable"; reason: string }
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
@@ -209,6 +229,9 @@ export async function applyConversationCommand(
 		}
 		if (payload.outcome === "not-playable") {
 			return { status: "not-playable", reason: payload.reason };
+		}
+		if (payload.outcome === "not-removable") {
+			return { status: "not-removable", reason: payload.reason };
 		}
 		if (payload.outcome === "invalid") {
 			return { status: "invalid", reason: payload.reason };

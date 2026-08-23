@@ -242,6 +242,7 @@ describe("Historical sibling Variant generation", () => {
 		expect(message?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(message?.variants.map((variant) => variant.content)).toEqual([
 			"The lamp turns above you.",
@@ -307,6 +308,7 @@ describe("Historical sibling Variant generation", () => {
 		expect(message?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(committed.messages).toHaveLength(1);
 		expect(committed.control).toEqual(controlBefore);

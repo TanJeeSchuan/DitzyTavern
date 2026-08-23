@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { eq, max, sql } from "drizzle-orm";
+import { and, eq, isNull, max, sql } from "drizzle-orm";
 import {
 	chatTable,
 	messageVariantTable,
@@ -77,7 +77,12 @@ export function commitConversationSiblingVariant(
 				participantPromptTable,
 				eq(participantPromptTable.participant_id, participantTable.id),
 			)
-			.where(eq(participantTable.chat_id, input.conversationId))
+			.where(
+				and(
+					eq(participantTable.chat_id, input.conversationId),
+					isNull(participantTable.deleted_at),
+				),
+			)
 			.all()
 			.map((participant) => participant.id);
 

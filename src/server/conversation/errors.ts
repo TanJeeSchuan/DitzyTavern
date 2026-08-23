@@ -1,4 +1,4 @@
-import type { MessageSwipeBlockReason } from "./types";
+import type { MessageSwipeBlockReason, ParticipantRemovalBlockReason } from "./types";
 
 export class ConversationNotFoundError extends Error {
 	constructor(conversationId: number) {
@@ -72,6 +72,26 @@ export class SiblingVariantUnavailableError extends Error {
 		);
 		this.name = "SiblingVariantUnavailableError";
 		this.reason = reason;
+	}
+}
+
+// Typed outcome for removing a seated Participant: removal eligibility is
+// derived on the snapshot, and the command enforces the same rule. The
+// reason tells clients why the Participant cannot be removed (Control must
+// be reassigned first) without inventing rules transport-side.
+export class ParticipantNotRemovableError extends Error {
+	readonly reason: ParticipantRemovalBlockReason;
+	readonly conversationId: number;
+	readonly participantId: number;
+
+	constructor(conversationId: number, participantId: number) {
+		super(
+			`Participant ${participantId} of Conversation ${conversationId} cannot be removed: it holds a Control seat. Assign the seat to another Cast Participant first.`,
+		);
+		this.name = "ParticipantNotRemovableError";
+		this.reason = "control-assigned";
+		this.conversationId = conversationId;
+		this.participantId = participantId;
 	}
 }
 

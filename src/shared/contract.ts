@@ -14,6 +14,7 @@ import {
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
 	ParticipantNotFoundError,
+	ParticipantNotRemovableError,
 	type ConversationSnapshot,
 	createConversationModule,
 	StaleConversationRevisionError,
@@ -226,6 +227,16 @@ const castParticipant = t.Object({
 	removal: t.Object({
 		eligible: t.Boolean(),
 		reason: t.Union([t.Literal("control-assigned"), t.Null()]),
+		// Derived removal impact presented by the confirmation flow: the
+		// deletion mode names hard delete versus tombstone, and the
+		// affected-generation count states how many Messages lose future
+		// sibling Variant generation.
+		deletionMode: t.Union([
+			t.Literal("hard-delete"),
+			t.Literal("tombstone"),
+			t.Null(),
+		]),
+		affectedGenerationCount: t.Integer(),
 	}),
 });
 
@@ -271,10 +282,14 @@ const conversationMessage = t.Object({
 	id: t.Integer(),
 	position: t.Integer(),
 	timestamp: t.String(),
+	// Derived historical display state: whether the authoring Participant is
+	// still an active Cast member. The captured name keeps displaying with a
+	// no-longer-in-Cast marker after removal.
 	author: t.Nullable(
 		t.Object({
 			participantId: t.Nullable(t.Integer()),
 			capturedName: t.Nullable(t.String()),
+			inCast: t.Boolean(),
 		}),
 	),
 	historicalContext: t.Nullable(
@@ -485,6 +500,15 @@ const assignControlAction = t.Object({
 	participantId: t.Integer(),
 });
 
+// Removes an unseated Participant after confirmation. Seated Participants
+// are protected with the typed not-removable outcome; the derived
+// deletion-mode and affected-generation count come from the snapshot, never
+// reconstructed by the client.
+const removeParticipantAction = t.Object({
+	type: t.Literal("remove-participant"),
+	participantId: t.Integer(),
+});
+
 const conversationCommandAction = t.Union([
 	createMessageAction,
 	createVariantAction,
@@ -499,6 +523,7 @@ const conversationCommandAction = t.Union([
 	replaceParticipantPromptAction,
 	replaceParticipantOpeningsAction,
 	assignControlAction,
+	removeParticipantAction,
 ]);
 
 // The revision is part of the Conversation command; the conversation id
@@ -515,6 +540,10 @@ const invalidOutcome = t.Object({
 });
 const notPlayableOutcome = t.Object({
 	outcome: t.Literal("not-playable"),
+	reason: t.String(),
+});
+const notRemovableOutcome = t.Object({
+	outcome: t.Literal("not-removable"),
 	reason: t.String(),
 });
 const conversationConflict = t.Object({
@@ -674,6 +703,12 @@ export const createConversationRoutes = (database: Database | undefined) =>
 							reason: error.message,
 						});
 					}
+					if (error instanceof ParticipantNotRemovableError) {
+						return status(409, {
+							outcome: "not-removable" as const,
+							reason: error.reason,
+						});
+					}
 					if (error instanceof InvalidConversationCommandError) {
 						return status(422, {
 							outcome: "invalid" as const,
@@ -691,7 +726,7 @@ export const createConversationRoutes = (database: Database | undefined) =>
 						outcome: t.Literal("applied"),
 						conversation: conversationSnapshot,
 					}),
-					409: t.Union([conversationConflict, notPlayableOutcome]),
+					409: t.Union([conversationConflict, notPlayableOutcome, notRemovableOutcome]),
 					404: notFoundOutcome,
 					422: invalidOutcome,
 				},

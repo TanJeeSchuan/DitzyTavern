@@ -99,7 +99,11 @@ describe("Conversation module", () => {
 			},
 		});
 		const message = created.messages.at(-1);
-		expect(message?.author).toEqual({ participantId: modelId, capturedName: "Maren" });
+		expect(message?.author).toEqual({
+			participantId: modelId,
+			capturedName: "Maren",
+			inCast: true,
+		});
 
 		const second = conversation.execute({
 			conversationId,
@@ -414,6 +418,7 @@ describe("Conversation module", () => {
 			expect(message?.author).toEqual({
 				participantId: modelId,
 				capturedName: "Maren",
+				inCast: true,
 			});
 			expect(message?.historicalContext).toEqual({
 				humanParticipantId: humanId,

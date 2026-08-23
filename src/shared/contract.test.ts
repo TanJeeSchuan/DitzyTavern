@@ -377,6 +377,8 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(snapshot.cast[0]?.removal).toEqual({
 			eligible: false,
 			reason: "control-assigned",
+			deletionMode: null,
+			affectedGenerationCount: 0,
 		});
 
 		const missing = await app.handle(
@@ -469,6 +471,83 @@ describe("Conversation Cast/Control transport adapters", () => {
 		});
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
+	});
+
+	test("maps removal of a seated Participant to the typed not-removable outcome", async () => {
+		const { id, humanId } = setupConversation();
+		const response = await command(id, 0, {
+			type: "remove-participant",
+			participantId: humanId,
+		});
+		expect(response.status).toBe(409);
+		const body = await response.json();
+		expect(body.outcome).toBe("not-removable");
+		expect(body.reason).toBe("control-assigned");
+
+		// The rejected removal committed nothing.
+		const snapshot = await app.handle(
+			new Request(`http://localhost/api/conversations/${id}`),
+		);
+		expect((await snapshot.json()).revision).toBe(0);
+	});
+
+	test("remove-participant applies with the derived impact and display state on the wire", async () => {
+		const { id, modelId } = setupConversation();
+
+		const withThird = await (
+			await command(id, 0, {
+				type: "add-participant",
+				definition: adHocDefinition("Juno Ashfeld"),
+			})
+		).json();
+		const junoId = withThird.conversation.cast.at(-1)?.id;
+		const replaced = await (
+			await command(id, 1, {
+				type: "assign-control",
+				seat: "model",
+				participantId: junoId,
+			})
+		).json();
+
+		// The wire snapshot exposes the derived removal impact: the displaced
+		// model Participant is tombstoned (the greeting still refers to it)
+		// and that greeting currently loses its ability to regenerate.
+		const displaced = replaced.conversation.cast.find(
+			(participant: { id: number }) => participant.id === modelId,
+		);
+		expect(displaced?.removal).toEqual({
+			eligible: true,
+			reason: null,
+			deletionMode: "tombstone",
+			affectedGenerationCount: 1,
+		});
+
+		const removed = await (
+			await command(id, 2, {
+				type: "remove-participant",
+				participantId: modelId,
+			})
+		).json();
+		expect(removed.outcome).toBe("applied");
+		expect(
+			removed.conversation.cast.map((participant: { name: string }) =>
+				participant.name,
+			),
+		).toEqual(["Writer", "Juno Ashfeld"]);
+
+		// Historical display state: the captured author name stays visible
+		// with the no-longer-in-Cast flag, and targeted Swipe is unavailable
+		// with the derived reason.
+		const greeting = removed.conversation.messages[0];
+		expect(greeting?.author).toEqual({
+			participantId: modelId,
+			capturedName: "Maren Voss",
+			inCast: false,
+		});
+		expect(greeting?.swipe).toEqual({
+			eligible: false,
+			reason: "historical-participant-unavailable",
+		});
 	});
 
 	test("maps play-gated actions in incomplete Conversations to not-playable", async () => {

@@ -125,6 +125,14 @@ export const characterOpeningTable = sqliteTable(
 // immutable provenance pointing at the Character it forked, if any. The
 // source reference is a plain structural reference without revision tracking
 // or synchronization; deleting the source row is blocked while referenced.
+//
+// Removed Participants keep this base row only when a Message still refers
+// to them (Author Stamp or historical Control pair): the base is reduced to
+// a nonrestorable tombstone holding stable identity, final name,
+// Conversation identity, and Character provenance, with the Definition
+// children stripped and the row excluded from the Cast. Such tombstones are
+// garbage-collected by the Conversation domain once their final retained
+// reference disappears.
 export const participantTable = sqliteTable(
 	"participant",
 	{
@@ -133,18 +141,23 @@ export const participantTable = sqliteTable(
 			.notNull()
 			.references(() => chatTable.id, { onDelete: "cascade" }),
 		// The Participant's own normalized nonblank name, independent of the
-		// source Character and of every other Cast member.
+		// source Character and of every other Cast member. For a tombstone
+		// this is the final name captured at removal.
 		name: text().notNull(),
 		// Explicit, stable Cast position. Contiguity is maintained by the
-		// Conversation domain; uniqueness is enforced structurally.
+		// Conversation domain; uniqueness is enforced structurally on active
+		// Participants. Tombstones are not in the Cast and carry no position
+		// (the remaining row is never exposed as a Cast member).
 		position: int().notNull(),
 		source_character_id: int().references(() => characterTable.id),
+		// Null while the Participant is active in the Cast; set when reduced
+		// to a tombstone that only satisfies structural Message references.
+		deleted_at: text(),
 	},
 	(table) => [
-		uniqueIndex("participant_chat_position_unique").on(
-			table.chat_id,
-			table.position,
-		),
+		uniqueIndex("participant_chat_position_unique")
+			.on(table.chat_id, table.position)
+			.where(sql`${table.deleted_at} IS NULL`),
 	],
 );
 

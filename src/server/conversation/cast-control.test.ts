@@ -98,7 +98,12 @@ describe("Cast and Control management", () => {
 			humanParticipantId: snapshot.cast[0]?.id ?? 0,
 			modelParticipantId: snapshot.cast[1]?.id ?? 0,
 		});
-		expect(updated.cast[2]?.removal).toEqual({ eligible: true, reason: null });
+		expect(updated.cast[2]?.removal).toEqual({
+			eligible: true,
+			reason: null,
+			deletionMode: "hard-delete",
+			affectedGenerationCount: 0,
+		});
 	});
 
 	test("appends repeated Character forks as separate Participants with immutable provenance", () => {
@@ -199,6 +204,7 @@ describe("Cast and Control management", () => {
 		expect(greeting?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
+			inCast: true,
 		});
 		expect(greeting?.variants[0]?.content).toBe("The lamp turns.");
 		expect(cleared.revision).toBe(snapshot.revision + 4);
@@ -335,7 +341,15 @@ describe("Cast and Control management", () => {
 		const displaced = replaced.cast.find(
 			(participant) => participant.id === humanId,
 		);
-		expect(displaced?.removal).toEqual({ eligible: true, reason: null });
+		expect(displaced?.removal).toEqual({
+			eligible: true,
+			reason: null,
+			// The greeting's captured historical pair still references the
+			// displaced Participant, so removal tombstones it and that
+			// greeting loses its ability to generate a new sibling Variant.
+			deletionMode: "tombstone",
+			affectedGenerationCount: 1,
+		});
 		expect(displaced?.position).toBe(1);
 		expect(replaced.playable).toBe(true);
 	});
@@ -386,7 +400,12 @@ describe("Cast and Control management", () => {
 			"Juno Ashfeld",
 			"Bram Okafor",
 		]);
-		expect(swapped.cast[2]?.removal).toEqual({ eligible: true, reason: null });
+		expect(swapped.cast[2]?.removal).toEqual({
+			eligible: true,
+			reason: null,
+			deletionMode: "hard-delete",
+			affectedGenerationCount: 0,
+		});
 	});
 
 	test("derives duplicate labels, Control validity, and removal eligibility for clients", () => {

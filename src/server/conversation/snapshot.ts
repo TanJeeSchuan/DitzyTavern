@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
 	characterTable,
@@ -98,19 +98,60 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-// Derives removal eligibility per Participant: seated Participants are
-// protected, so only unseated Participants may be removed.
+// Derives per-Participant removal eligibility and impact. Seated
+// Participants are protected (a Control seat must change first). For every
+// unseated Participant the deletion mode states whether removal would
+// hard-delete or tombstone, and the affected-generation count states how
+// many Messages currently able to generate a new sibling Variant would lose
+// that ability. Messages are the only retained references, so the same
+// messages array drives both the reference check and the impact count.
 const deriveRemovalEligibility = (
-	participantId: number,
-	control: { humanParticipantId: number | null; modelParticipantId: number | null },
-): ParticipantRemovalEligibility => {
-	const seated =
-		participantId === control.humanParticipantId ||
-		participantId === control.modelParticipantId;
-	return {
-		eligible: !seated,
-		reason: seated ? "control-assigned" : null,
-	};
+	cast: readonly Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[],
+	messages: readonly ConversationMessageSnapshot[],
+	control: {
+		humanParticipantId: number | null;
+		modelParticipantId: number | null;
+	},
+): Map<number, ParticipantRemovalEligibility> => {
+	const byParticipant = new Map<number, ParticipantRemovalEligibility>();
+	for (const participant of cast) {
+		const seated =
+			participant.id === control.humanParticipantId ||
+			participant.id === control.modelParticipantId;
+		if (seated) {
+			byParticipant.set(participant.id, {
+				eligible: false,
+				reason: "control-assigned",
+				deletionMode: null,
+				affectedGenerationCount: 0,
+			});
+			continue;
+		}
+
+		let referenced = false;
+		let affectedGenerationCount = 0;
+		for (const message of messages) {
+			const context = message.historicalContext;
+			const referencesContext =
+				context !== null &&
+				(context.humanParticipantId === participant.id ||
+					context.modelParticipantId === participant.id);
+			const referencesAuthor =
+				message.author?.participantId === participant.id;
+			if (referencesContext || referencesAuthor) referenced = true;
+			if (referencesContext && message.swipe.eligible) {
+				affectedGenerationCount += 1;
+			}
+		}
+
+		byParticipant.set(participant.id, {
+			eligible: true,
+			reason: null,
+			deletionMode: referenced ? "tombstone" : "hard-delete",
+			affectedGenerationCount,
+		});
+	}
+	return byParticipant;
 };
 
 export function readConversationSnapshot(
@@ -124,6 +165,9 @@ export function readConversationSnapshot(
 		.get();
 	if (conversation === undefined) return undefined;
 
+	// Active Cast members only. Tombstoned Participants keep a minimal base
+	// row solely to satisfy structural Message references; they are never
+	// part of the Cast and carry no position.
 	const castRows = db
 		.select({
 			id: participantTable.id,
@@ -140,10 +184,16 @@ export function readConversationSnapshot(
 		.from(participantTable)
 		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
 		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
-		.where(eq(participantTable.chat_id, conversationId))
+		.where(
+			and(
+				eq(participantTable.chat_id, conversationId),
+				isNull(participantTable.deleted_at),
+			),
+		)
 		.orderBy(asc(participantTable.position))
 		.all();
 	const castIds = castRows.map((participant) => participant.id);
+	const castIdsSet = new Set(castIds);
 
 	const openingRows =
 		castIds.length === 0
@@ -285,6 +335,11 @@ export function readConversationSnapshot(
 				? {
 						participantId: message.author_participant_id,
 						capturedName: message.author_name,
+						// Derived historical display state: the captured name keeps
+						// displaying with a no-longer-in-Cast marker after removal.
+						inCast:
+							message.author_participant_id !== null &&
+							castIdsSet.has(message.author_participant_id),
 					}
 				: null;
 		const historicalContext: HistoricalControlSnapshot | null =
@@ -319,6 +374,11 @@ export function readConversationSnapshot(
 		.all()
 		.map(toDataEntry);
 
+	// Removal eligibility follows Messages: the deletion mode and
+	// affected-generation count derive from the same references the command
+	// enforces, so clients never reconstruct the rule.
+	const removalByParticipant = deriveRemovalEligibility(cast, messages, control);
+
 	return {
 		id: conversation.id,
 		name: conversation.name,
@@ -326,7 +386,12 @@ export function readConversationSnapshot(
 		cast: cast.map((participant) => ({
 			...participant,
 			duplicateLabel: labelsById.get(participant.id) ?? participant.name,
-			removal: deriveRemovalEligibility(participant.id, control),
+			removal: removalByParticipant.get(participant.id) ?? {
+				eligible: true,
+				reason: null,
+				deletionMode: "hard-delete",
+				affectedGenerationCount: 0,
+			},
 		})),
 		control,
 		controlValidity,

@@ -15,6 +15,7 @@ import {
 	replaceParticipantPrompt,
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
+import { removeParticipant } from "./commands/remove-participant";
 import { selectVariant } from "./commands/select-variant";
 import {
 	ConversationNotPlayableError,
@@ -96,6 +97,9 @@ export function executeConversationCommand(
 				break;
 			case "assign-control":
 				assignControl(db, input);
+				break;
+			case "remove-participant":
+				removeParticipant(db, input);
 				break;
 			case "put-data":
 				putData(db, input);
