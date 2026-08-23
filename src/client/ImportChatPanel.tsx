@@ -17,7 +17,7 @@ import {
 	type ChatImportFlowAction,
 	type ChatImportFlowState,
 } from "./import-chat-flow";
-import { chatImportTransport } from "./import-chat";
+import { chatImportTransport, discardStagedImport } from "./import-chat";
 
 // The nested Import Chat flow inside the Chats primary panel. The flow is
 // deliberately review-only: choosing one local export uploads its bytes
@@ -67,9 +67,28 @@ export function ImportChatPanel({
 
 	// The discard orchestration is the only place temporary staging data is
 	// removed: Back from the preview, confirmed Cancel, and nothing else.
-	const discardStaged = (token: string | null) => {
-		if (token === null) return;
-		void chatImportTransport.discard(token);
+	const handleBack = () => {
+		if (flow.phase === "preview") {
+			discardStagedImport(flow.handle?.token ?? null);
+			onDispatch({ type: "back-to-choose" });
+			return;
+		}
+		onBackToList();
+	};
+
+	const handleCancel = () => {
+		if (cancelNeedsWarning(flow)) {
+			onDispatch({ type: "cancel-requested" });
+			return;
+		}
+		// Nothing is staged yet; closing removes no data.
+		onClose();
+	};
+
+	const handleConfirmCancel = () => {
+		onDispatch({ type: "confirm-cancel" });
+		discardStagedImport(flow.handle?.token ?? null);
+		onClose();
 	};
 
 	const runStage = async (file: File) => {
@@ -92,8 +111,9 @@ export function ImportChatPanel({
 	};
 
 	const refreshPreview = async () => {
-		if (flow.token === null || flow.sha256 === null) return;
-		const outcome = await chatImportTransport.preview(flow.token, flow.sha256);
+		const handle = flow.handle;
+		if (handle === null) return;
+		const outcome = await chatImportTransport.preview(handle.token, handle.sha256);
 		if (cancelledRef.current) return;
 		if (outcome.status === "available") {
 			onDispatch({ type: "preview-succeeded", preview: outcome.preview });
@@ -116,30 +136,6 @@ export function ImportChatPanel({
 		if (file === undefined || !shouldBeginUpload(flow)) return;
 		onDispatch({ type: "file-chosen" });
 		void runStage(file);
-	};
-
-	const handleBack = () => {
-		if (flow.phase === "preview") {
-			discardStaged(flow.token);
-			onDispatch({ type: "back-to-choose" });
-			return;
-		}
-		onBackToList();
-	};
-
-	const handleCancel = () => {
-		if (cancelNeedsWarning(flow)) {
-			onDispatch({ type: "cancel-requested" });
-			return;
-		}
-		// Nothing is staged yet; closing removes no data.
-		onClose();
-	};
-
-	const handleConfirmCancel = () => {
-		onDispatch({ type: "confirm-cancel" });
-		discardStaged(flow.token);
-		onClose();
 	};
 
 	return (
@@ -333,20 +329,20 @@ function PreviewStep({
 				<dl className="detail-list import-meta-list">
 					<div>
 						<dt>Original filename</dt>
-						<dd>{flow.filename}</dd>
+						<dd>{flow.handle?.originalFilename}</dd>
 					</div>
 					<div>
 						<dt>SHA-256</dt>
-						<dd className="import-sha">{flow.sha256}</dd>
+						<dd className="import-sha">{flow.handle?.sha256}</dd>
 					</div>
 					<div>
 						<dt>Size</dt>
-						<dd>{sourceSize(flow.byteLength)}</dd>
+						<dd>{sourceSize(flow.handle?.byteLength ?? null)}</dd>
 					</div>
-					{flow.integrity !== null && (
+					{flow.handle?.integrity !== null && flow.handle?.integrity !== undefined && (
 						<div>
 							<dt>Declared integrity</dt>
-							<dd className="import-sha">{flow.integrity}</dd>
+							<dd className="import-sha">{flow.handle?.integrity}</dd>
 						</div>
 					)}
 					<div>

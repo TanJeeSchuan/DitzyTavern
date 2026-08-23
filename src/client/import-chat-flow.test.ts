@@ -81,10 +81,14 @@ describe("reduceChatImportFlow", () => {
 		const state = toPreview();
 
 		expect(state.phase).toBe("preview");
-		expect(state.token).toBe("tok-1");
-		expect(state.sha256).toBe("abc123");
+		expect(state.handle).toEqual({
+			token: "tok-1",
+			sha256: "abc123",
+			originalFilename: "lantern-house.jsonl",
+			byteLength: 42,
+			integrity: null,
+		});
 		expect(state.title).toBe("lantern-house");
-		expect(state.filename).toBe("lantern-house.jsonl");
 		expect(state.counts).toEqual({ messages: 2, variants: 2 });
 
 		// One draft per exact captured author string; blank groups surface
@@ -132,8 +136,8 @@ describe("reduceChatImportFlow", () => {
 		});
 		expect(state.phase).toBe("preview");
 		expect(state.problem).toBe("The preview could not be refreshed.");
-		expect(state.token).toBe("tok-1");
-		expect(state.sha256).toBe("abc123");
+		expect(state.handle?.token).toBe("tok-1");
+		expect(state.handle?.sha256).toBe("abc123");
 		expect(state.title).toBe("Lantern House");
 		expect(state.groups[0]?.participantName).toBe("The Writer");
 		expect(state.groups[0]?.confirmed).toBe(true);
@@ -162,7 +166,7 @@ describe("reduceChatImportFlow", () => {
 		);
 		expect(state.phase).toBe("choose");
 		expect(state.problem).toBe("Line 2 is not valid JSON.");
-		expect(state.token).toBeNull();
+		expect(state.handle).toBeNull();
 		expect(shouldBeginUpload(state)).toBe(true);
 	});
 
@@ -192,7 +196,7 @@ describe("reduceChatImportFlow", () => {
 		expect(state.cancelPending).toBe(false);
 		// The token remains available to the view so it can discard the
 		// staged handle before closing.
-		expect(state.token).toBe("tok-1");
+		expect(state.handle?.token).toBe("tok-1");
 	});
 
 	test("back from the staged preview returns to choosing without the staged handle", () => {
@@ -200,10 +204,8 @@ describe("reduceChatImportFlow", () => {
 			type: "back-to-choose",
 		});
 		expect(state.phase).toBe("choose");
-		expect(state.token).toBeNull();
-		expect(state.sha256).toBeNull();
+		expect(state.handle).toBeNull();
 		expect(state.groups).toEqual([]);
-		expect(state.filename).toBeNull();
 		expect(shouldBeginUpload(state)).toBe(true);
 	});
 });

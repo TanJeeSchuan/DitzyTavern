@@ -1,5 +1,4 @@
 import {
-	ArrowLeft,
 	BookOpen,
 	Check,
 	ChevronDown,
@@ -12,33 +11,25 @@ import {
 	Monitor,
 	Moon,
 	MoreHorizontal,
-	PanelLeftClose,
 	Plus,
-	Search,
 	Send,
 	Settings,
 	Sun,
-	Upload,
 	Users,
 } from "lucide-react";
 import {
 	type FormEvent,
 	useCallback,
 	useEffect,
-	useReducer,
 	useRef,
 	useState,
 } from "react";
 import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
 import { CastPanel } from "./CastPanel";
 import { ComposerControlSelectors } from "./ComposerControls";
-import { ImportChatPanel } from "./ImportChatPanel";
+import { ImportChatHost } from "./ImportChatHost";
 import { NewChatPanel } from "./NewChatPanel";
-import { chatImportTransport } from "./import-chat";
-import {
-	createChatImportFlowState,
-	reduceChatImportFlow,
-} from "./import-chat-flow";
+import { PanelHeader } from "./PanelHeader";
 import {
 	loadConversation,
 	type ConversationSnapshot,
@@ -481,162 +472,50 @@ function PrimaryPanelView({
 	onLibraryFocusConsumed: () => void;
 	onOpenLibraryCharacter: (characterId: number) => void;
 }) {
-	// The Import Chat flow lives inside the Chats primary panel as a nested
-	// step. The state stays here so closing and reopening the panel does not
-	// discard the staged preview: only explicit Back-to-selection or a
-	// confirmed Cancel removes uncommitted staging data.
-	const [chatsNested, setChatsNested] = useState<"list" | "import">("list");
-	const [importFlow, dispatchImportFlow] = useReducer(
-		reduceChatImportFlow,
-		undefined,
-		createChatImportFlowState,
-	);
-
-	const openImport = () => {
-		dispatchImportFlow({ type: "begin" });
-		setChatsNested("import");
-	};
-	const closeImport = () => {
-		setChatsNested("list");
-		dispatchImportFlow({ type: "reset" });
-	};
-	const discardStaged = (token: string | null) => {
-		if (token === null) return;
-		void chatImportTransport.discard(token);
-	};
-
 	return (
 		<aside className="primary-panel" data-open={Boolean(panel)} aria-hidden={!panel}>
-			{panel && (
+			{/* The Chats host stays mounted across panel toggles so the staged
+			    import flow survives; every other panel renders its own header. */}
+			<ImportChatHost
+				open={panel === "chats"}
+				chats={workspace.chats}
+				activeId={activeChat.id}
+				onSelect={onSelectChat}
+				onNewChat={onNewChat}
+				onClose={onClose}
+			/>
+			{panel !== null && panel !== "chats" && (
 				<>
-					{panel === "chats" && chatsNested === "import" ? (
-						<ImportChatPanel
-							flow={importFlow}
-							onDispatch={dispatchImportFlow}
-							onBackToList={() => {
-								// Back from the choosing step closes the nested flow;
-								// any staged handle is discarded with it.
-								discardStaged(importFlow.token);
-								closeImport();
-							}}
-							onClose={() => {
-								discardStaged(importFlow.token);
-								closeImport();
-							}}
+					<PanelHeader
+						title={
+							panel === "cast"
+								? "Cast"
+								: panel === "library"
+									? "Character Library"
+									: "Settings"
+						}
+						onClose={onClose}
+					/>
+					{panel === "cast" && (
+						<CastPanel
+							conversationId={Number(activeChat.id)}
+							conversation={conversation}
+							onConversationChange={onConversationChange}
+							onOpenLibraryCharacter={onOpenLibraryCharacter}
 						/>
-					) : (
-						<>
-							<PanelHeader
-								title={
-									panel === "chats"
-										? "Chats"
-										: panel === "cast"
-											? "Cast"
-											: panel === "library"
-												? "Character Library"
-												: "Settings"
-								}
-								onClose={onClose}
-							/>
-							{panel === "chats" && (
-								<ChatsPanel
-									chats={workspace.chats}
-									activeId={activeChat.id}
-									onSelect={onSelectChat}
-									onNewChat={onNewChat}
-									onImportChat={openImport}
-								/>
-							)}
-							{panel === "cast" && (
-								<CastPanel
-									conversationId={Number(activeChat.id)}
-									conversation={conversation}
-									onConversationChange={onConversationChange}
-									onOpenLibraryCharacter={onOpenLibraryCharacter}
-								/>
-							)}
-							{panel === "library" && (
-								<CharacterLibraryPanel
-									focusCharacterId={libraryFocusCharacterId}
-									onFocusConsumed={onLibraryFocusConsumed}
-								/>
-							)}
-							{panel === "settings" && (
-								<SettingsPanel
-									theme={theme}
-									onThemeChange={onThemeChange}
-								/>
-							)}
-						</>
+					)}
+					{panel === "library" && (
+						<CharacterLibraryPanel
+							focusCharacterId={libraryFocusCharacterId}
+							onFocusConsumed={onLibraryFocusConsumed}
+						/>
+					)}
+					{panel === "settings" && (
+						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
 				</>
 			)}
 		</aside>
-	);
-}
-
-function PanelHeader({ title, onClose }: { title: string; onClose: () => void }) {
-	return (
-		<header className="panel-header">
-			<button className="mobile-back" type="button" onClick={onClose} aria-label="Back to Chat">
-				<ArrowLeft aria-hidden="true" />
-			</button>
-			<h2>{title}</h2>
-			<button className="icon-button desktop-close" type="button" onClick={onClose} aria-label={`Close ${title}`}>
-				<PanelLeftClose aria-hidden="true" />
-			</button>
-		</header>
-	);
-}
-
-function ChatsPanel({
-	chats,
-	activeId,
-	onSelect,
-	onNewChat,
-	onImportChat,
-}: {
-	chats: ChatSummary[];
-	activeId: string;
-	onSelect: (chatId: string) => void;
-	onNewChat: () => void;
-	onImportChat: () => void;
-}) {
-	const [query, setQuery] = useState("");
-	const filteredChats = chats.filter((chat) =>
-		chat.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-	);
-
-	return (
-		<div className="panel-body">
-			<div className="chats-actions">
-				<button className="secondary-button" type="button" onClick={onImportChat}>
-					<Upload aria-hidden="true" /> Import Chat
-				</button>
-				<button className="secondary-button" type="button" onClick={onNewChat}>
-					<Plus aria-hidden="true" /> New Chat
-				</button>
-			</div>
-			<label className="search-field">
-				<Search aria-hidden="true" />
-				<span className="sr-only">Search Chats</span>
-				<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Chats" />
-			</label>
-			<div className="chat-list">
-				{filteredChats.map((chat) => (
-					<button
-						className="chat-list-item"
-						data-active={chat.id === activeId}
-						type="button"
-						key={chat.id}
-						onClick={() => onSelect(chat.id)}
-					>
-						<span>{chat.title}</span>
-						<small>{chat.id === activeId ? "Open now" : chat.updatedAt}</small>
-					</button>
-				))}
-			</div>
-		</div>
 	);
 }
 

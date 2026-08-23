@@ -34,6 +34,17 @@ export interface ImportGroupDraft {
 	confirmed: boolean;
 }
 
+// The staged handle and its binding, set once when the upload succeeds.
+// Every preview refresh and discard works from this handle alone; it is
+// never reconstructed from a browser path.
+export interface StagedChatHandle {
+	token: string;
+	sha256: string;
+	originalFilename: string;
+	byteLength: number;
+	integrity: string | null;
+}
+
 export interface ChatImportFlowState {
 	phase: ChatImportPhase;
 	// True while the Cancel warning is shown before discarding the flow.
@@ -41,13 +52,7 @@ export interface ChatImportFlowState {
 	// Contextual problem text; recoverable errors keep the staged preview
 	// and every choice made during this flow.
 	problem: string | null;
-	// The staged handle and its binding. Both are required for any preview
-	// refresh; neither is ever reconstructed from a browser path.
-	token: string | null;
-	sha256: string | null;
-	filename: string | null;
-	byteLength: number | null;
-	integrity: string | null;
+	handle: StagedChatHandle | null;
 	title: string;
 	counts: { messages: number; variants: number } | null;
 	warnings: string[];
@@ -85,11 +90,7 @@ export const createChatImportFlowState = (): ChatImportFlowState => ({
 	phase: "choose",
 	cancelPending: false,
 	problem: null,
-	token: null,
-	sha256: null,
-	filename: null,
-	byteLength: null,
-	integrity: null,
+	handle: null,
 	title: "",
 	counts: null,
 	warnings: [],
@@ -129,6 +130,12 @@ const mergePreviewGroups = (
 	});
 };
 
+// Single preview-phase guard shared by every case that only applies while
+// the staged preview is open; the guard helper keeps the repeated switch
+// checks in one place.
+const inPreview = (state: ChatImportFlowState): boolean =>
+	state.phase === "preview";
+
 export function reduceChatImportFlow(
 	state: ChatImportFlowState,
 	action: ChatImportFlowAction,
@@ -153,11 +160,13 @@ export function reduceChatImportFlow(
 				phase: "preview",
 				problem: null,
 				cancelPending: false,
-				token,
-				sha256: preview.sha256,
-				filename: preview.originalFilename,
-				byteLength: preview.byteLength,
-				integrity: preview.integrity,
+				handle: {
+					token,
+					sha256: preview.sha256,
+					originalFilename: preview.originalFilename,
+					byteLength: preview.byteLength,
+					integrity: preview.integrity,
+				},
 				title: preview.title,
 				counts: { ...preview.counts },
 				warnings: [...preview.warnings],
@@ -178,7 +187,7 @@ export function reduceChatImportFlow(
 				problem: action.reason,
 			};
 		case "preview-succeeded":
-			if (state.phase !== "preview") return state;
+			if (!inPreview(state)) return state;
 			return {
 				...state,
 				problem: null,
@@ -193,16 +202,14 @@ export function reduceChatImportFlow(
 				groups: mergePreviewGroups(state.groups, action.preview.groups),
 			};
 		case "preview-failed":
-			if (state.phase !== "preview") return state;
+			if (!inPreview(state)) return state;
 			// Recoverable: the staged token and hash remain valid, so the
 			// preview and every choice stay; only the problem is shown.
 			return { ...state, problem: action.reason };
 		case "title-changed":
-			return state.phase === "preview"
-				? { ...state, title: action.title }
-				: state;
+			return inPreview(state) ? { ...state, title: action.title } : state;
 		case "group-name-changed":
-			if (state.phase !== "preview") return state;
+			if (!inPreview(state)) return state;
 			return {
 				...state,
 				groups: state.groups.map((group) =>
@@ -212,7 +219,7 @@ export function reduceChatImportFlow(
 				),
 			};
 		case "suggestion-confirmed":
-			if (state.phase !== "preview") return state;
+			if (!inPreview(state)) return state;
 			return {
 				...state,
 				groups: state.groups.map((group) =>

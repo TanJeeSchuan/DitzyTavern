@@ -302,6 +302,18 @@ export const createChatImportTransport = (
 	};
 };
 
+// Cancels a staged flow when a handle exists. Null handles and lost discard
+// requests are successful no-ops (a lost discard leaves only an uncommitted
+// temporary staging file behind). Every Back/Cancel path in the UI routes
+// through this single helper.
+export const discardStagedImport = (
+	token: string | null,
+	transport: ChatImportTransport = chatImportTransport,
+): void => {
+	if (token === null) return;
+	void transport.discard(token);
+};
+
 // The default boundary used by the Import Chat UI.
 export const chatImportTransport: ChatImportTransport =
 	createChatImportTransport();
