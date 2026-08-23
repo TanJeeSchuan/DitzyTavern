@@ -85,7 +85,7 @@ export function CastPanel({
 	// Announces a completed promotion and the navigation action to the new
 	// Character Library entry; cleared when the next save attempt starts so
 	// the drawer never shows a stale confirmation next to a fresh failure.
-	const [saved, setSaved] = useState<{
+	const [saveConfirmation, setSaveConfirmation] = useState<{
 		participantLabel: string;
 		character: SavedCharacterReference;
 	} | null>(null);
@@ -222,7 +222,7 @@ export function CastPanel({
 		duplicateLabel: string;
 	}) => {
 		if (conversation === null) return;
-		setSaved(null);
+		setSaveConfirmation(null);
 		await runCommand(async () => {
 			const outcome = await saveParticipantAsCharacter({
 				conversationId,
@@ -234,7 +234,7 @@ export function CastPanel({
 				participant.duplicateLabel,
 			);
 			if (presentation.savedCharacter !== null) {
-				setSaved({
+				setSaveConfirmation({
 					participantLabel: participant.duplicateLabel,
 					character: presentation.savedCharacter,
 				});
@@ -418,17 +418,17 @@ export function CastPanel({
 				</p>
 			)}
 
-			{saved !== null && (
+			{saveConfirmation !== null && (
 				<div className="save-character-confirmation" role="status">
 					<p>
-						Saved {saved.participantLabel} as a new Character,{" "}
-						<strong>{saved.character.name}</strong>. The Participant stays
+						Saved {saveConfirmation.participantLabel} as a new Character,{" "}
+						<strong>{saveConfirmation.character.name}</strong>. The Participant stays
 						local to this Chat; the Character and Participant are independent.
 					</p>
 					<button
 						className="secondary-button"
 						type="button"
-						onClick={() => onOpenLibraryCharacter(saved.character.id)}
+						onClick={() => onOpenLibraryCharacter(saveConfirmation.character.id)}
 					>
 						View in Library
 					</button>
