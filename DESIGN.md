@@ -6,6 +6,8 @@ This document is the visual and interaction design source of truth for the first
 
 The initial scope excludes group-chat orchestration, a dedicated co-writer response role, automatic identification of individual speakers inside generated prose, and logo design.
 
+Amendments to the initial direction (replacing earlier single-identity composer guidance): the composer exposes **two editable Cast-only Control selectors** — `Writing as <human>` and `Responding as <model>` — reflecting the current human and model Control assignments. Selecting the opposite seat's occupant is described as an atomic swap. Portraits (character artwork) are **deferred**: identity is rendered with names, initials, and badges only in this scope. Active/inactive Cast membership and group-chat turn-taking remain out of scope; the Cast is an ordered roster of active Participants with append-only positioning.
+
 ## Project and page intent
 
 DitzyTavern is a cooperative AI writing and roleplay workspace. Its primary use is not full in-character roleplay. The user usually plays the human-controlled Participant, often a persona named Writer, giving guidance that the model incorporates into story prose featuring the active cast.
@@ -234,11 +236,12 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 ### Floating composer
 
-- Use one identity-led control at the start of the composer.
-- The default selection is the human-controlled Participant, often named Writer.
-- Characters from the Library appear in the same identity control rather than in a separate mode toggle.
-- A guidance persona frames the submission as direction for the next generated Message.
-- Character identity frames the submission as in-character writing.
+- Use two editable, Cast-only Control selectors at the start of the composer: **Writing as** (the human seat) and **Responding as** (the model seat), each reflecting the current assignment.
+- Selecting the opposite seat's occupant is visibly described as a swap and performs one atomic exchange of the two assignments, so a two-Participant Cast can never become locked.
+- Selecting an unseated Participant replaces only the chosen seat; the displaced Participant stays in the Cast and becomes removable.
+- Neither seat can be cleared; the selectors offer only Cast Participants, named with computed duplicate labels.
+- A guidance persona (often named Writer) simply means the human seat holds an ordinary Participant; it carries no special behavior.
+- Character identity frames the submission as in-character writing, chosen through the same two seat selectors rather than a separate mode toggle.
 - The composer floats above the lower edge of the central story surface as an opaque tonal layer.
 - It recedes while the user reads older Messages and returns when writing intent resumes.
 - It must not obscure the latest Message or create unstable content jumps.

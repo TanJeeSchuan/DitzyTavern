@@ -33,6 +33,38 @@ export interface CastParticipantSnapshot {
 	openings: readonly string[];
 	// Immutable provenance: the Character this Participant forked, if any.
 	sourceCharacterId: number | null;
+	// Derived display name of the provenance Character, from the Library
+	// row alone (never re-derived from Definitions or synchronization).
+	sourceCharacterName: string | null;
+	// Derived display label disambiguating duplicate names with ordinals;
+	// clients never recompute name identity from internal identifiers.
+	duplicateLabel: string;
+	// Derived removal eligibility: seated Participants are protected, so
+	// only unseated Participants can be removed (removal itself is a
+	// separate confirmed action).
+	removal: ParticipantRemovalEligibility;
+}
+
+// Derived, never stored. A seated Participant is ineligible for removal
+// until Control changes; unseated Participants are eligible.
+export type ParticipantRemovalBlockReason = "control-assigned";
+
+export interface ParticipantRemovalEligibility {
+	eligible: boolean;
+	reason: ParticipantRemovalBlockReason | null;
+}
+
+// Derived, never stored. A Conversation is playable only when two distinct
+// Cast Participants occupy the human and model seats; Control validity is
+// the same rule stated explicitly so clients do not reproduce it.
+export type ControlValidityReason =
+	| "missing-seat"
+	| "seats-not-distinct"
+	| "seat-not-in-cast";
+
+export interface ConversationControlValidity {
+	valid: boolean;
+	reason: ControlValidityReason | null;
 }
 
 export interface ConversationControlSnapshot {
@@ -92,6 +124,8 @@ export interface ConversationSnapshot {
 	revision: number;
 	cast: CastParticipantSnapshot[];
 	control: ConversationControlSnapshot;
+	// Derived, never stored: both seats set, distinct, and in the Cast.
+	controlValidity: ConversationControlValidity;
 	playable: boolean;
 	capabilities: ConversationCapabilities;
 	messages: ConversationMessageSnapshot[];
@@ -128,7 +162,33 @@ export type ConversationAction =
 			scope: ConversationDataScope;
 			namespace: string;
 			key: string;
-	  };
+	  }
+	// Cast management: appends a new Participant with a complete local
+	// Definition (ad-hoc, or an already-resolved Character fork carrying
+	// immutable provenance). Appended at the next stable Cast position and
+	// never inserts history.
+	| {
+			type: "add-participant";
+			definition: ParticipantDefinition;
+			sourceCharacterId?: number | undefined;
+	  }
+	// Local Definition edits with separate semantic Apply actions. Never
+	// touch the source Character, existing Messages, or their stamps.
+	| { type: "rename-participant"; participantId: number; name: string }
+	| {
+			type: "replace-participant-prompt";
+			participantId: number;
+			prompt: ParticipantDefinitionPrompt;
+	  }
+	| {
+			type: "replace-participant-openings";
+			participantId: number;
+			openings: readonly string[];
+	  }
+	// Assigns one Control seat to a Cast Participant. Selecting the opposite
+	// seat's occupant swaps both seats atomically; selecting an unseated
+	// Participant replaces only the chosen seat. Seats are never cleared.
+	| { type: "assign-control"; seat: "human" | "model"; participantId: number };
 
 export interface ConversationCommand {
 	conversationId: number;

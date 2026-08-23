@@ -1,5 +1,7 @@
 import { asc, eq, inArray } from "drizzle-orm";
+import { duplicateLabel } from "../../shared/cast";
 import {
+	characterTable,
 	chatDataTable,
 	chatTable,
 	messageDataTable,
@@ -17,11 +19,14 @@ import type {
 	CastParticipantSnapshot,
 	ConversationCapabilities,
 	ConversationControlSnapshot,
+	ConversationControlValidity,
 	ConversationDataEntry,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
+	ControlValidityReason,
 	HistoricalControlSnapshot,
+	ParticipantRemovalEligibility,
 } from "./types";
 
 const toDataEntry = (row: { namespace: string; key: string; value: string }) => ({
@@ -46,6 +51,42 @@ export function deriveCapabilities(playable: boolean): ConversationCapabilities 
 	};
 }
 
+// Control validity is the single derived playability rule: both seats set,
+// distinct, and referencing active Cast Participants. Playable and the
+// capability gate both follow from it, so clients never reproduce the rule.
+export function deriveControlValidity(
+	control: { humanParticipantId: number | null; modelParticipantId: number | null },
+	castIds: readonly number[],
+): ConversationControlValidity {
+	let reason: ControlValidityReason | null = null;
+	if (control.humanParticipantId === null || control.modelParticipantId === null) {
+		reason = "missing-seat";
+	} else if (control.humanParticipantId === control.modelParticipantId) {
+		reason = "seats-not-distinct";
+	} else if (
+		!castIds.includes(control.humanParticipantId) ||
+		!castIds.includes(control.modelParticipantId)
+	) {
+		reason = "seat-not-in-cast";
+	}
+	return { valid: reason === null, reason };
+}
+
+// Derives removal eligibility per Participant: seated Participants are
+// protected, so only unseated Participants may be removed.
+const deriveRemovalEligibility = (
+	participantId: number,
+	control: { humanParticipantId: number | null; modelParticipantId: number | null },
+): ParticipantRemovalEligibility => {
+	const seated =
+		participantId === control.humanParticipantId ||
+		participantId === control.modelParticipantId;
+	return {
+		eligible: !seated,
+		reason: seated ? "control-assigned" : null,
+	};
+};
+
 export function readConversationSnapshot(
 	db: ConversationDatabase,
 	conversationId: number,
@@ -63,6 +104,7 @@ export function readConversationSnapshot(
 			position: participantTable.position,
 			name: participantTable.name,
 			sourceCharacterId: participantTable.source_character_id,
+			sourceCharacterName: characterTable.name,
 			systemInstruction: participantPromptTable.system_instruction,
 			identity: participantPromptTable.identity,
 			scenario: participantPromptTable.scenario,
@@ -71,6 +113,7 @@ export function readConversationSnapshot(
 		})
 		.from(participantTable)
 		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
+		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
 		.where(eq(participantTable.chat_id, conversationId))
 		.orderBy(asc(participantTable.position))
 		.all();
@@ -96,20 +139,25 @@ export function readConversationSnapshot(
 		openingsByParticipant.set(opening.participant_id, openings);
 	}
 
-	const cast: CastParticipantSnapshot[] = castRows.map((participant) => ({
-		id: participant.id,
-		position: participant.position,
-		name: participant.name,
-		prompt: {
-			systemInstruction: participant.systemInstruction,
-			identity: participant.identity,
-			scenario: participant.scenario,
-			exampleDialogue: participant.exampleDialogue,
-			postHistoryInstruction: participant.postHistoryInstruction,
-		},
-		openings: openingsByParticipant.get(participant.id) ?? [],
-		sourceCharacterId: participant.sourceCharacterId ?? null,
-	}));
+	// Intermediate Cast shape lacks the derived per-Participant fields; they
+	// are attached after Control is read so labels and removal eligibility
+	// derive from the final ordered roster.
+	const cast: Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[] =
+		castRows.map((participant) => ({
+			id: participant.id,
+			position: participant.position,
+			name: participant.name,
+			prompt: {
+				systemInstruction: participant.systemInstruction,
+				identity: participant.identity,
+				scenario: participant.scenario,
+				exampleDialogue: participant.exampleDialogue,
+				postHistoryInstruction: participant.postHistoryInstruction,
+			},
+			openings: openingsByParticipant.get(participant.id) ?? [],
+			sourceCharacterId: participant.sourceCharacterId ?? null,
+			sourceCharacterName: participant.sourceCharacterName ?? null,
+		}));
 
 	const controlState = readControlAssignment(db, conversationId);
 	const control: ConversationControlSnapshot = {
@@ -117,8 +165,18 @@ export function readConversationSnapshot(
 		modelParticipantId: controlState.modelParticipantId,
 	};
 
-	const playable =
-		control.humanParticipantId !== null && control.modelParticipantId !== null;
+	const controlValidity = deriveControlValidity(control, cast.map((p) => p.id));
+	const playable = controlValidity.valid;
+
+	// Duplicate display labels derive from Cast order: the first Participant
+	// sharing a name keeps the plain label, later ones receive ordinals.
+	const nameOccurrences = new Map<string, number>();
+	const labelsById = new Map<number, string>();
+	for (const participant of cast) {
+		const occurrence = (nameOccurrences.get(participant.name) ?? 0) + 1;
+		nameOccurrences.set(participant.name, occurrence);
+		labelsById.set(participant.id, duplicateLabel(participant.name, occurrence));
+	}
 
 	const messageRows = db
 		.select()
@@ -234,8 +292,13 @@ export function readConversationSnapshot(
 		id: conversation.id,
 		name: conversation.name,
 		revision: conversation.revision,
-		cast,
+		cast: cast.map((participant) => ({
+			...participant,
+			duplicateLabel: labelsById.get(participant.id) ?? participant.name,
+			removal: deriveRemovalEligibility(participant.id, control),
+		})),
 		control,
+		controlValidity,
 		playable,
 		capabilities: deriveCapabilities(playable),
 		messages,

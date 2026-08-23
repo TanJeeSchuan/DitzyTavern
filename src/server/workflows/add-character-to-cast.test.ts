@@ -1,0 +1,266 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import {
+	chatTable,
+	participantTable,
+} from "../database/schema";
+import { openDatabase } from "../database/database";
+import {
+	createCharacterLibraryModule,
+	CharacterNotFoundError,
+	StaleCharacterRevisionError,
+} from "../character-library";
+import type { CharacterDefinition } from "../character-library";
+import {
+	ConversationNotFoundError,
+	createConversationModule,
+	StaleConversationRevisionError,
+} from "../conversation";
+import { addCharacterToCast, createNativeConversation } from ".";
+
+const prompt = () => ({
+	systemInstruction: "Keep the scene grounded.",
+	identity: "Lighthouse archivist on the northern coast.",
+	scenario: "A storm season begins.",
+	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
+	postHistoryInstruction: "",
+});
+
+const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
+	name: "Maren Voss",
+	prompt: prompt(),
+	openings: ["The lamp turns above you.", "Rain writes on every window."],
+	...overrides,
+});
+
+describe("Add Character to Cast workflow", () => {
+	let database: Database;
+
+	beforeEach(() => {
+		database = openDatabase({ path: ":memory:" });
+	});
+	afterEach(() => {
+		database.close();
+	});
+
+	const countRows = (table: typeof chatTable | typeof participantTable) =>
+		drizzle(database).select().from(table).all().length;
+
+	const playableConversation = () =>
+		createNativeConversation(database, {
+			name: "Host Chat",
+			humanSeat: {
+				type: "adhoc",
+				definition: { name: "Writer", prompt: prompt(), openings: [] },
+			},
+			modelSeat: {
+				type: "adhoc",
+				definition: { name: "Juno Ashfeld", prompt: prompt(), openings: [] },
+			},
+		});
+
+	test("forks a Character into the Cast with provenance and the authoritative Definition", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		const conversation = playableConversation();
+
+		const updated = addCharacterToCast(database, {
+			conversationId: conversation.id,
+			expectedConversationRevision: conversation.revision,
+			characterId: source.id,
+			expectedCharacterRevision: source.revision,
+		});
+
+		const added = updated.cast.at(-1);
+		expect(added?.name).toBe(source.name);
+		expect(added?.prompt).toEqual(source.prompt);
+		expect(added?.openings).toEqual(source.openings);
+		expect(added?.sourceCharacterId).toBe(source.id);
+		expect(added?.position).toBe(3);
+		expect(updated.revision).toBe(conversation.revision + 1);
+		// Adding a Character never inserts history or changes Control.
+		expect(updated.messages).toHaveLength(conversation.messages.length);
+		expect(updated.control).toEqual(conversation.control);
+	});
+
+	test("allows the same Character to be forked repeatedly into one Cast", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition({ name: "Twins" }),
+		});
+		let conversation = playableConversation();
+
+		for (const expectedRevision of [source.revision, source.revision]) {
+			conversation = addCharacterToCast(database, {
+				conversationId: conversation.id,
+				expectedConversationRevision: conversation.revision,
+				characterId: source.id,
+				expectedCharacterRevision: expectedRevision,
+			});
+		}
+
+		const forks = conversation.cast.filter(
+			(participant) => participant.sourceCharacterId === source.id,
+		);
+		expect(forks).toHaveLength(2);
+		expect(forks[0]?.id).not.toBe(forks[1]?.id);
+	});
+
+	test("a stale source Character revision fails with the typed conflict and commits nothing", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		const advanced = library.execute({
+			type: "rename",
+			characterId: source.id,
+			expectedRevision: source.revision,
+			name: "Renamed Voss",
+		});
+		const conversation = playableConversation();
+
+		let conflict: StaleCharacterRevisionError | undefined;
+		try {
+			addCharacterToCast(database, {
+				conversationId: conversation.id,
+				expectedConversationRevision: conversation.revision,
+				characterId: source.id,
+				expectedCharacterRevision: source.revision,
+			});
+		} catch (error) {
+			if (error instanceof StaleCharacterRevisionError) conflict = error;
+		}
+
+		expect(conflict).toBeDefined();
+		expect(conflict?.expectedRevision).toBe(source.revision);
+		expect(conflict?.actualRevision).toBe(advanced.revision);
+		expect(conflict?.currentCharacter.name).toBe("Renamed Voss");
+		// Atomic: no Participant rows were appended.
+		expect(countRows(participantTable)).toBe(2);
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+		).toBe(conversation.revision);
+	});
+
+	test("a stale destination Conversation revision fails atomically", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		let conversation = playableConversation();
+		conversation = createConversationModule(database).execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "add-participant",
+				definition: { name: "Concurrent", prompt: prompt(), openings: [] },
+			},
+		});
+
+		let conflict: StaleConversationRevisionError | undefined;
+		try {
+			addCharacterToCast(database, {
+				conversationId: conversation.id,
+				expectedConversationRevision: conversation.revision - 1,
+				characterId: source.id,
+				expectedCharacterRevision: source.revision,
+			});
+		} catch (error) {
+			if (error instanceof StaleConversationRevisionError) conflict = error;
+		}
+
+		expect(conflict).toBeDefined();
+		expect(conflict?.expectedRevision).toBe(conversation.revision - 1);
+		expect(conflict?.actualRevision).toBe(conversation.revision);
+		// No fork was appended and the revision did not advance again.
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id)?.cast,
+		).toHaveLength(3);
+	});
+
+	test("a missing destination Conversation fails as not found without partial writes", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		const conversation = playableConversation();
+
+		expect(() =>
+			addCharacterToCast(database, {
+				conversationId: 424242,
+				expectedConversationRevision: 0,
+				characterId: source.id,
+				expectedCharacterRevision: source.revision,
+			}),
+		).toThrow(ConversationNotFoundError);
+		// The existing Conversation and its Cast are untouched.
+		expect(countRows(chatTable)).toBe(1);
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+		).toBe(conversation.revision);
+		expect(countRows(participantTable)).toBe(2);
+	});
+
+	test("a missing fork source fails as not found without partial writes", () => {
+		const conversation = playableConversation();
+		expect(() =>
+			addCharacterToCast(database, {
+				conversationId: conversation.id,
+				expectedConversationRevision: conversation.revision,
+				characterId: 123456,
+				expectedCharacterRevision: 0,
+			}),
+		).toThrow(CharacterNotFoundError);
+		expect(countRows(participantTable)).toBe(2);
+	});
+
+	test("later independent edits to Character and Participant never resync", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		const conversation = playableConversation();
+		const updated = addCharacterToCast(database, {
+			conversationId: conversation.id,
+			expectedConversationRevision: conversation.revision,
+			characterId: source.id,
+			expectedCharacterRevision: source.revision,
+		});
+		const forkId = updated.cast.at(-1)?.id ?? 0;
+
+		library.execute({
+			type: "replace-openings",
+			characterId: source.id,
+			expectedRevision: source.revision,
+			openings: ["Rewritten source opening"],
+		});
+		const edited = createConversationModule(database).execute({
+			conversationId: conversation.id,
+			expectedRevision: updated.revision,
+			action: {
+				type: "rename-participant",
+				participantId: forkId,
+				name: "Local Maren",
+			},
+		});
+
+		const rereadSource = library.get(source.id);
+		expect(rereadSource?.openings).toEqual(["Rewritten source opening"]);
+		expect(rereadSource?.name).toBe("Maren Voss");
+		expect(edited.cast.at(-1)?.name).toBe("Local Maren");
+		expect(edited.cast.at(-1)?.openings).toEqual([
+			"The lamp turns above you.",
+			"Rain writes on every window.",
+		]);
+		expect(edited.cast.at(-1)?.sourceCharacterId).toBe(source.id);
+	});
+});

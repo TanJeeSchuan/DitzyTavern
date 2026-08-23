@@ -7,6 +7,7 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
+import type { ParticipantDefinition } from "./types";
 import {
 	InvalidConversationCommandError,
 } from "./errors";
@@ -48,6 +49,46 @@ export const readControlAssignment = (
 export const isPlayable = (control: ControlAssignmentState): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
+
+// Names follow the shared Definition rules: surrounding whitespace is
+// removed while case and Unicode are preserved; a nonblank result is
+// required for every Participant.
+export const normalizeParticipantName = (name: string) => name.trim();
+
+export const requireParticipantName = (name: string): string => {
+	const normalized = normalizeParticipantName(name);
+	if (normalized === "") {
+		throw new InvalidConversationCommandError(
+			"A Participant name is required.",
+		);
+	}
+	return normalized;
+};
+
+// Openings are stored exactly as authored; only fully blank entries are
+// rejected, matching Character Library rules.
+export const requireParticipantOpenings = (
+	openings: readonly string[],
+): readonly string[] => {
+	openings.forEach((opening, index) => {
+		if (opening.trim() === "") {
+			throw new InvalidConversationCommandError(
+				`Opening at position ${index + 1} is blank; openings must contain text.`,
+			);
+		}
+	});
+	return openings;
+};
+
+// Validates a complete Participant Definition for Cast management
+// commands, mirroring creation-time rules.
+export const requireParticipantDefinition = (
+	definition: ParticipantDefinition,
+): ParticipantDefinition => ({
+	name: requireParticipantName(definition.name),
+	prompt: definition.prompt,
+	openings: requireParticipantOpenings(definition.openings),
+});
 
 export const requireParticipant = (
 	db: ConversationDatabase,

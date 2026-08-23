@@ -28,7 +28,13 @@ import {
 	useState,
 } from "react";
 import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
+import { CastPanel } from "./CastPanel";
+import { ComposerControlSelectors } from "./ComposerControls";
 import { NewChatPanel } from "./NewChatPanel";
+import {
+	loadConversation,
+	type ConversationSnapshot,
+} from "./conversation";
 import {
 	type ChatSummary,
 	type GeneratedMessage,
@@ -151,6 +157,9 @@ function ActiveWritingWorkspace({
 	const [messages, setMessages] = useState(initialWorkspace.messages);
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
 	const [primaryPanel, setPrimaryPanel] = useState<PrimaryPanel>(null);
+	const [conversation, setConversation] = useState<ConversationSnapshot | null>(
+		null,
+	);
 	const [detailMessageId, setDetailMessageId] = useState<string | null>(null);
 	const [theme, setTheme] = useState<ThemePreference>("system");
 	const [draft, setDraft] = useState("");
@@ -193,6 +202,20 @@ function ActiveWritingWorkspace({
 		observer.observe(latest);
 		return () => observer.disconnect();
 	}, [messages.length, isGenerating]);
+
+	// Load the authoritative Conversation snapshot for the active Chat so
+	// the Cast drawer and the composer Control selectors reflect real
+	// Cast and Control state, never client copies of domain rules.
+	useEffect(() => {
+		setConversation(null);
+		const conversationId = Number(activeChatId);
+		if (!Number.isInteger(conversationId) || conversationId <= 0) {
+			return;
+		}
+		loadConversation(conversationId)
+			.then(setConversation)
+			.catch(() => setConversation(null));
+	}, [activeChatId]);
 
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
 		setDetailMessageId(null);
@@ -265,6 +288,8 @@ function ActiveWritingWorkspace({
 				onSelectChat={selectChat}
 				onNewChat={onNewChat}
 				onClose={() => setPrimaryPanel(null)}
+				conversation={conversation}
+				onConversationChange={setConversation}
 			/>
 
 			<main className="story-stage" aria-label="Active Chat">
@@ -300,6 +325,14 @@ function ActiveWritingWorkspace({
 					onDraftChange={setDraft}
 					onFocusChange={setIsComposerFocused}
 					onSubmit={submitMessage}
+					controlSelectors={
+						conversation !== null ? (
+							<ComposerControlSelectors
+								conversation={conversation}
+								onConversationChange={setConversation}
+							/>
+						) : null
+					}
 				/>
 			</main>
 
@@ -395,6 +428,8 @@ function PrimaryPanelView({
 	onSelectChat,
 	onNewChat,
 	onClose,
+	conversation,
+	onConversationChange,
 }: {
 	panel: PrimaryPanel;
 	workspace: Workspace;
@@ -404,6 +439,8 @@ function PrimaryPanelView({
 	onSelectChat: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
+	conversation: ConversationSnapshot | null;
+	onConversationChange: (conversation: ConversationSnapshot | null) => void;
 }) {
 	return (
 		<aside className="primary-panel" data-open={Boolean(panel)} aria-hidden={!panel}>
@@ -429,7 +466,13 @@ function PrimaryPanelView({
 							onNewChat={onNewChat}
 						/>
 					)}
-					{panel === "cast" && <CastPanel />}
+					{panel === "cast" && (
+						<CastPanel
+							conversationId={Number(activeChat.id)}
+							conversation={conversation}
+							onConversationChange={onConversationChange}
+						/>
+					)}
 					{panel === "library" && <CharacterLibraryPanel />}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
@@ -496,25 +539,6 @@ function ChatsPanel({
 					</button>
 				))}
 			</div>
-		</div>
-	);
-}
-
-function CastPanel() {
-	return (
-		<div className="panel-body cast-panel-body">
-			<p className="panel-intro">
-				Every Chat stores its own Cast of Participants with explicit Control
-				assignments.
-			</p>
-			<div className="cast-placeholder">
-				<Users aria-hidden="true" />
-				<p>The Cast drawer arrives with Participant management.</p>
-			</div>
-			<p className="panel-note">
-				Until then, use New Chat to configure the two initial Participants of a
-				playable Conversation.
-			</p>
 		</div>
 	);
 }
@@ -763,6 +787,7 @@ function Composer({
 	isGenerating,
 	canWrite,
 	isReceded,
+	controlSelectors,
 	onDraftChange,
 	onFocusChange,
 	onSubmit,
@@ -771,6 +796,7 @@ function Composer({
 	isGenerating: boolean;
 	canWrite: boolean;
 	isReceded: boolean;
+	controlSelectors?: React.ReactNode;
 	onDraftChange: (value: string) => void;
 	onFocusChange: (focused: boolean) => void;
 	onSubmit: (event: FormEvent) => void;
@@ -788,6 +814,9 @@ function Composer({
 				}
 			}}
 		>
+			{controlSelectors !== undefined && (
+				<div className="composer-controls-row">{controlSelectors}</div>
+			)}
 			<label htmlFor="writer-message" className="sr-only">
 				Message draft
 			</label>
