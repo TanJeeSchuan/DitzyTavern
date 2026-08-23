@@ -27,6 +27,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
 import {
 	type ChatSummary,
 	type GeneratedMessage,
@@ -42,7 +43,7 @@ type WorkspaceState =
 	| { status: "ready"; workspace: Workspace }
 	| { status: "error" };
 
-type PrimaryPanel = "chats" | "cast" | "settings" | null;
+type PrimaryPanel = "chats" | "cast" | "library" | "settings" | null;
 
 export function App() {
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
@@ -302,9 +303,13 @@ function NavigationRail({
 				>
 					<Users aria-hidden="true" />
 				</RailButton>
-				<RailButton label="Library" disabled>
-					<BookOpen aria-hidden="true" />
-				</RailButton>
+			<RailButton
+				label="Library"
+				active={activePanel === "library"}
+				onClick={() => onOpenPanel("library")}
+			>
+				<BookOpen aria-hidden="true" />
+			</RailButton>
 			</div>
 			<RailButton
 				label="Settings"
@@ -369,7 +374,15 @@ function PrimaryPanelView({
 			{panel && (
 				<>
 					<PanelHeader
-						title={panel === "chats" ? "Chats" : panel === "cast" ? "Cast" : "Settings"}
+						title={
+							panel === "chats"
+								? "Chats"
+								: panel === "cast"
+									? "Cast"
+									: panel === "library"
+										? "Character Library"
+										: "Settings"
+						}
 						onClose={onClose}
 					/>
 					{panel === "chats" && (
@@ -382,6 +395,7 @@ function PrimaryPanelView({
 					{panel === "cast" && (
 						<CastPanel identities={activeCast} />
 					)}
+					{panel === "library" && <CharacterLibraryPanel />}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
@@ -454,7 +468,7 @@ function CastPanel({ identities }: { identities: Identity[] }) {
 						<Portrait identity={identity} size="large" />
 						<div>
 							<strong>{identity.name}</strong>
-							<span>Character profile</span>
+							<span>Reusable Character</span>
 						</div>
 						<button type="button" className="icon-button" aria-label={`View ${identity.name}`} disabled>
 							<ChevronRight aria-hidden="true" />

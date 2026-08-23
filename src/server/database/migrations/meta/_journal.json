@@ -29,6 +29,13 @@
       "when": 1787298660993,
       "tag": "0003_strange_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787454164904,
+      "tag": "0004_stormy_moonstone",
+      "breakpoints": true
     }
   ]
 }

@@ -60,11 +60,50 @@ export const messageVariantTable = sqliteTable(
 	],
 );
 
+// Character lifecycle base record. Definition content lives in the
+// character_prompt and character_opening child tables, so a future
+// tombstone can strip the Definition while retaining the referenced row.
 export const characterTable = sqliteTable("character", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
-	// prompt fields for character
+	revision: int().notNull().default(0),
+	pinned: int({ mode: "boolean" }).notNull().default(false),
+	// Null while the Character is active; set when reduced to a tombstone.
+	deleted_at: text(),
 });
+
+// One active Prompt row per Character with every typed Prompt field.
+// Fields are required but may be empty; text is stored exactly as authored.
+export const characterPromptTable = sqliteTable("character_prompt", {
+	character_id: int()
+		.primaryKey()
+		.references(() => characterTable.id, { onDelete: "cascade" }),
+	system_instruction: text().notNull(),
+	identity: text().notNull(),
+	scenario: text().notNull(),
+	example_dialogue: text().notNull(),
+	post_history_instruction: text().notNull(),
+});
+
+// Ordered, exact, nonblank Opening rows. Empty lists and duplicate
+// contents are allowed; the (character, position) pair is unique.
+export const characterOpeningTable = sqliteTable(
+	"character_opening",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		character_id: int()
+			.notNull()
+			.references(() => characterTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		content: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("character_opening_character_position_unique").on(
+			table.character_id,
+			table.position,
+		),
+	],
+);
 
 export const chatDataTable = sqliteTable(
 	"chat_data",

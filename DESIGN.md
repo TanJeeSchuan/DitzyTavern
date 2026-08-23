@@ -236,7 +236,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 - Use one identity-led control at the start of the composer.
 - The default identity is Writer.
-- Character profiles appear in the same identity control rather than in a separate mode toggle.
+- Characters from the Library appear in the same identity control rather than in a separate mode toggle.
 - Writer identity frames the submission as guidance for the next generated Message.
 - Character identity frames the submission as in-character writing.
 - The composer floats above the lower edge of the central story surface as an opaque tonal layer.
