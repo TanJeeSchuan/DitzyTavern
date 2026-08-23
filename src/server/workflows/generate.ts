@@ -19,6 +19,9 @@ import {
 	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
+	deriveMessageSwipeEligibility,
+	InvalidConversationCommandError,
+	SiblingVariantUnavailableError,
 	type ConversationSnapshot,
 } from "../conversation";
 import {
@@ -174,5 +177,129 @@ export async function generateReply(
 		capturedAuthorName: modelParticipant.name,
 		humanParticipantId: humanParticipant.id,
 		modelParticipantId: modelParticipant.id,
+	});
+}
+
+export interface GenerateSiblingVariantInput {
+	conversationId: number;
+	// The target Message whose captured historical Control pair governs this
+	// sibling generation. Current Control is deliberately ignored: Swiping an
+	// older Message reproduces the participants who were playing when it was
+	// generated, and never reassigns the seats.
+	messageId: number;
+	// The model transport seam: given the compiled Prompt Plan, produce the
+	// reply text used as the new sibling Variant's content.
+	generate: (plan: PromptPlan) => string | Promise<string>;
+	// Optional explicit write time; defaults to the current wall clock.
+	timestamp?: string | undefined;
+}
+
+const deriveSiblingDerivation = (
+	snapshot: ConversationSnapshot,
+	messageId: number,
+) => {
+	const targetIndex = snapshot.messages.findIndex(
+		(message) => message.id === messageId,
+	);
+	const target = targetIndex === -1 ? undefined : snapshot.messages[targetIndex];
+	if (target === undefined) {
+		throw new InvalidConversationCommandError(
+			`Message ${messageId} does not belong to Conversation ${snapshot.id}.`,
+		);
+	}
+
+	// Same derived rule as the snapshot exposes: playable Conversation,
+	// captured historical pair, and both historical Participants still in
+	// the Cast with usable Definitions.
+	const eligibility = deriveMessageSwipeEligibility(
+		snapshot.playable,
+		target.historicalContext,
+		snapshot.cast.map((participant) => participant.id),
+	);
+	if (!eligibility.eligible) {
+		if (eligibility.reason === "conversation-not-playable") {
+			throw new ConversationNotPlayableError(snapshot.id);
+		}
+		// An ineligible Message always carries one of the historical reasons;
+		// the null case is unreachable and treated as missing context rather
+		// than inventing a different denial.
+		throw new SiblingVariantUnavailableError(
+			eligibility.reason ?? "missing-historical-context",
+		);
+	}
+
+	const context = target.historicalContext;
+	if (context === null) {
+		// Unreachable after the eligibility check; keeps the pair trusted.
+		throw new SiblingVariantUnavailableError("missing-historical-context");
+	}
+	const human = snapshot.cast.find(
+		(participant) => participant.id === context.humanParticipantId,
+	);
+	const model = snapshot.cast.find(
+		(participant) => participant.id === context.modelParticipantId,
+	);
+	if (human === undefined || model === undefined) {
+		throw new SiblingVariantUnavailableError(
+			"historical-participant-unavailable",
+		);
+	}
+
+	// Selected history strictly preceding the target Message. Excluding the
+	// target by construction also excludes all of its existing sibling
+	// Variants: an alternative never prompts on another alternative.
+	const history: readonly PromptHistoryEntry[] = snapshot.messages
+		.slice(0, targetIndex)
+		.flatMap((message) => {
+			const selected = message.variants.find((variant) => variant.selected);
+			if (selected === undefined) return [];
+			return [
+				{
+					speakerName: message.author?.capturedName ?? null,
+					content: selected.content,
+				},
+			];
+		});
+
+	// The historical pair's current Definitions and names, so a rename or
+	// Prompt edit before this generation starts contributes; the Message
+	// itself keeps displaying its captured author name.
+	const plan = compilePrompt({
+		human: toCompilerDefinition(human),
+		model: toCompilerDefinition(model),
+		history,
+	});
+
+	return { plan };
+};
+
+// Targeted Swipe: generates a new sibling Variant for an existing native
+// Message using the historical Control pair captured when that Message was
+// generated or its openings were configured. The historical pair's current
+// Definitions and names compile the plan; current generation settings and
+// the selected history preceding the target Message complete it. The commit
+// appends the sibling without changing current Control or the Author Stamp.
+export async function generateSiblingVariant(
+	database: Database,
+	input: GenerateSiblingVariantInput,
+): Promise<ConversationSnapshot> {
+	const conversation = createConversationModule(database);
+
+	// Generation-start capture: one authoritative snapshot derives the plan
+	// from the target Message's historical pair; concurrent edits land and
+	// affect only later sibling generations.
+	const snapshot = conversation.getSnapshot(input.conversationId);
+	if (snapshot === undefined) {
+		throw new ConversationNotFoundError(input.conversationId);
+	}
+	const { plan } = deriveSiblingDerivation(snapshot, input.messageId);
+
+	const content = await input.generate(plan);
+
+	return conversation.commitSiblingVariant({
+		conversationId: input.conversationId,
+		messageId: input.messageId,
+		timestamp: input.timestamp ?? new Date().toISOString(),
+		content,
 	});
 }

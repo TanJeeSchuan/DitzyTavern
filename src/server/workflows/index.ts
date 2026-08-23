@@ -13,6 +13,8 @@ export {
 	generateReply,
 	type GenerateReplyInput,
 	type GenerationPromptInspection,
+	generateSiblingVariant,
+	type GenerateSiblingVariantInput,
 	inspectGenerationPrompt,
 	type ParticipantPreview,
 } from "./generate";

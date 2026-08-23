@@ -278,6 +278,18 @@ const conversationMessage = t.Object({
 			modelParticipantId: t.Integer(),
 		}),
 	),
+	// Derived per-Message targeted Swipe eligibility: new sibling Variant
+	// generation requires a playable Conversation, a captured historical
+	// Control pair, and usable Definitions for both historical Participants.
+	swipe: t.Object({
+		eligible: t.Boolean(),
+		reason: t.Union([
+			t.Literal("conversation-not-playable"),
+			t.Literal("missing-historical-context"),
+			t.Literal("historical-participant-unavailable"),
+			t.Null(),
+		]),
+	}),
 	variants: t.Array(conversationVariant),
 	data: t.Array(
 		t.Object({

@@ -26,6 +26,7 @@ import type {
 	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
+	MessageSwipeEligibility,
 	ParticipantRemovalEligibility,
 } from "./types";
 
@@ -70,6 +71,32 @@ export function deriveControlValidity(
 		reason = "seat-not-in-cast";
 	}
 	return { valid: reason === null, reason };
+}
+
+// Derives per-Message targeted Swipe eligibility. The eligibility rule is
+// the single derived answer for "can this Message generate a new sibling
+// Variant": the Conversation must be playable, the Message must carry a
+// captured historical Control pair, and both historical Participants must
+// still be active Cast members with usable Definitions. Clients never
+// reproduce the rule per Message.
+export function deriveMessageSwipeEligibility(
+	playable: boolean,
+	historicalContext: HistoricalControlSnapshot | null,
+	castIds: readonly number[],
+): MessageSwipeEligibility {
+	if (!playable) {
+		return { eligible: false, reason: "conversation-not-playable" };
+	}
+	if (historicalContext === null) {
+		return { eligible: false, reason: "missing-historical-context" };
+	}
+	if (
+		!castIds.includes(historicalContext.humanParticipantId) ||
+		!castIds.includes(historicalContext.modelParticipantId)
+	) {
+		return { eligible: false, reason: "historical-participant-unavailable" };
+	}
+	return { eligible: true, reason: null };
 }
 
 // Derives removal eligibility per Participant: seated Participants are
@@ -275,6 +302,11 @@ export function readConversationSnapshot(
 			timestamp: message.timestamp,
 			author,
 			historicalContext,
+			swipe: deriveMessageSwipeEligibility(
+				playable,
+				historicalContext,
+				castIds,
+			),
 			variants: variantsByMessage.get(message.id) ?? [],
 			data: messageDataByMessage.get(message.id) ?? [],
 		};

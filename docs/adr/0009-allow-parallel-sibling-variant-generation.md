@@ -1,6 +1,6 @@
 # Allow parallel sibling Variant generation
 
-A Conversation may run multiple Generations concurrently only when every Generation targets a sibling Variant of the same latest model-generated Message and uses the same frozen history position. This enables rapid alternative sampling without allowing separate Conversation turns to race.
+A Conversation may run multiple Generations concurrently only when every Generation targets a sibling Variant of the same Message with a captured historical Control pair and uses the same frozen history position for that target. This enables rapid alternative sampling without allowing separate Conversation turns to race.
 
 Each sibling Generation compiles and captures its own Prompt Plan and effective Generation Settings when it starts. The user may edit Participant Prompts, model, sampling parameters, or extra request body fields while siblings run; subsequently started Variants observe those changes while already active Generations continue unchanged. Siblings therefore share a response position and prior Conversation history, not necessarily an identical prompt or model configuration.
 

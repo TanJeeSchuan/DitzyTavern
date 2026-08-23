@@ -41,6 +41,44 @@ export interface ConversationControlValidity {
 	reason: "missing-seat" | "seats-not-distinct" | "seat-not-in-cast" | null;
 }
 
+// Derived per-Message targeted Swipe eligibility, mirroring the server's
+// derived capability so message cards can present unavailable reasons
+// without reproducing the historical-Control rule.
+export type MessageSwipeBlockReason =
+	| "conversation-not-playable"
+	| "missing-historical-context"
+	| "historical-participant-unavailable";
+
+export interface ConversationAuthorStamp {
+	participantId: number | null;
+	capturedName: string | null;
+}
+
+export interface ConversationHistoricalContext {
+	humanParticipantId: number;
+	modelParticipantId: number;
+}
+
+export interface ConversationVariant {
+	id: number;
+	position: number;
+	content: string;
+	timestamp: string;
+	selected: boolean;
+	data: readonly { namespace: string; key: string; value: string }[];
+}
+
+export interface ConversationMessage {
+	id: number;
+	position: number;
+	timestamp: string;
+	author: ConversationAuthorStamp | null;
+	historicalContext: ConversationHistoricalContext | null;
+	swipe: { eligible: boolean; reason: MessageSwipeBlockReason | null };
+	variants: ConversationVariant[];
+	data: readonly { namespace: string; key: string; value: string }[];
+}
+
 export interface ConversationSnapshot {
 	id: number;
 	name: string;
@@ -54,7 +92,7 @@ export interface ConversationSnapshot {
 		generate: { available: boolean; reason: "conversation-not-playable" | null };
 		swipe: { available: boolean; reason: "conversation-not-playable" | null };
 	};
-	messages: readonly unknown[];
+	messages: ConversationMessage[];
 	data: readonly { namespace: string; key: string; value: string }[];
 }
 

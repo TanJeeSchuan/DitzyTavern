@@ -87,6 +87,22 @@ export interface CapabilityAvailability {
 
 export type CapabilityBlockReason = "conversation-not-playable";
 
+// Derived, never stored. Whether a new sibling Variant may be generated for
+// one Message. Conversation playability gates every play action; without a
+// captured historical Control pair — or when a required historical
+// Participant no longer has a usable Definition — sibling generation is
+// denied with the typed reason while existing Variants remain selectable and
+// editable.
+export type MessageSwipeBlockReason =
+	| "conversation-not-playable"
+	| "missing-historical-context"
+	| "historical-participant-unavailable";
+
+export interface MessageSwipeEligibility {
+	eligible: boolean;
+	reason: MessageSwipeBlockReason | null;
+}
+
 export interface AuthorStampSnapshot {
 	participantId: number | null;
 	capturedName: string | null;
@@ -114,6 +130,9 @@ export interface ConversationMessageSnapshot {
 	timestamp: string;
 	author: AuthorStampSnapshot | null;
 	historicalContext: HistoricalControlSnapshot | null;
+	// Derived, never stored: whether a new sibling Variant (targeted Swipe)
+	// may be generated for this Message from its captured historical pair.
+	swipe: MessageSwipeEligibility;
 	variants: ConversationVariantSnapshot[];
 	data: ConversationDataEntry[];
 }
@@ -203,6 +222,23 @@ export interface ConversationModule {
 	// Server-side commit of a finished current Generate; see
 	// CommitGenerationInput. Not a client-submitted command.
 	commitGeneration(input: CommitGenerationInput): ConversationSnapshot;
+	// Server-side commit of a finished targeted Swipe (sibling Variant
+	// generation); see CommitSiblingVariantInput. Like commitGeneration, it
+	// captures at generation start and commits unguarded by the revision so
+	// legitimate concurrent edits land without rewriting the in-flight plan.
+	commitSiblingVariant(input: CommitSiblingVariantInput): ConversationSnapshot;
+}
+
+// Server-side commit of a finished targeted Swipe. The sibling workflow
+// captured the Prompt Plan from the target Message's historical pair at
+// generation start; this operation appends the returned content as a new
+// selected sibling Variant without touching current Control or the Message's
+// immutable Author Stamp.
+export interface CommitSiblingVariantInput {
+	conversationId: number;
+	messageId: number;
+	timestamp: string;
+	content: string;
 }
 
 // The generation workflow captures these values at generation start; the

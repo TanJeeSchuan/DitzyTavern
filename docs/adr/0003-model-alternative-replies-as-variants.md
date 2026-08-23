@@ -6,7 +6,9 @@ Every stored Message owns at least one Variant, and exactly one Variant is selec
 
 For a model-generated Message, only the selected Variant participates in prompt assembly, and switching selection is a revisioned Conversation mutation that preserves all later Messages.
 
-The server may generate a new Variant only for the latest model-generated Message and only while that Message's stamped Participant occupies the active model Control seat. Existing Variants remain selectable and editable regardless of current Control, but another Participant can never generate a Variant under the Message's authorship.
+Targeted Swipe generation is governed by the target Message's captured historical Control pair, never by current Control. Every native generated Message and every configured opening Message stores the human and model Participant identifiers in effect when generation started; a later sibling Variant is generated from that pair's current Definitions and names, the current generation settings, and the selected history strictly preceding the target, without changing current Control or the Message's Author Stamp. Existing Variants remain selectable and editable regardless of current Control, but another Participant can never generate a Variant under the Message's authorship.
+
+A sibling may target any native Message with a trustworthy captured historical pair — including the initial opening Message after its configured openings. If either historical Participant no longer has a usable Definition, existing Variants remain available while new sibling generation is denied with a typed reason. Imported Messages that never acquired trustworthy generation context follow the same unavailable behavior.
 
 Swiping may start several sibling Generations in parallel for the latest model-generated Message. Every sibling uses the same preceding Conversation history position but independently captures the current Prompt Plan and Generation Settings when it starts. Sending a new Message remains blocked until all sibling Generations finish or are stopped.
 
