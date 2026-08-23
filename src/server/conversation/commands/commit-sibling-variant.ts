@@ -8,14 +8,21 @@ import {
 } from "../../database/schema";
 import {
 	ConversationNotFoundError,
+	ConversationNotPlayableError,
 	SiblingVariantUnavailableError,
 } from "../errors";
 import {
 	connectConversationDatabase,
+	isPlayable,
+	readControlAssignment,
 	requireMessage,
 } from "../internal";
-import { readConversationSnapshot } from "../snapshot";
-import type { CommitSiblingVariantInput, ConversationSnapshot } from "../types";
+import { deriveMessageSwipeEligibility, readConversationSnapshot } from "../snapshot";
+import type {
+	CommitSiblingVariantInput,
+	ConversationSnapshot,
+	HistoricalControlSnapshot,
+} from "../types";
 
 // Commits a finished targeted Swipe (sibling Variant generation). The
 // workflow captured the Prompt Plan from the target Message's historical
@@ -25,10 +32,10 @@ import type { CommitSiblingVariantInput, ConversationSnapshot } from "../types";
 //
 // Like commitGeneration this server-side commit is not guarded by an
 // expected revision: legitimate concurrent edits are allowed to land while
-// the transport streams, and affect only later generations. The target
-// Message's historical context is immutable, but the commit re-verifies that
-// both historical Participants still have usable Definitions so a removal
-// that lands mid-flight cannot commit a sibling under a ghost pair.
+// the transport streams, and affect only later generations. The commit
+// re-derives the target's swipe eligibility from live state anyway: a
+// removal or Control change that lands mid-flight must not commit a sibling
+// under a ghost pair or in a Conversation that is no longer playable.
 export function commitConversationSiblingVariant(
 	database: Database,
 	input: CommitSiblingVariantInput,
@@ -50,17 +57,19 @@ export function commitConversationSiblingVariant(
 			input.conversationId,
 			input.messageId,
 		);
-		if (
-			message.context_human_participant_id === null ||
-			message.context_model_participant_id === null
-		) {
-			throw new SiblingVariantUnavailableError("missing-historical-context");
-		}
+		const historicalContext: HistoricalControlSnapshot | null =
+			message.context_human_participant_id !== null &&
+			message.context_model_participant_id !== null
+				? {
+						humanParticipantId: message.context_human_participant_id,
+						modelParticipantId: message.context_model_participant_id,
+					}
+				: null;
 
-		// The historical pair must still be usable Cast members, matching the
-		// snapshot's Cast derivation exactly: a Participant with a stripped
-		// Definition (tombstoned) is excluded even though its base row may
-		// still satisfy structural foreign keys.
+		// Usable Cast membership matches the snapshot's Cast derivation
+		// exactly: a Participant with a stripped Definition (tombstoned) is
+		// excluded even though its base row may still satisfy structural
+		// foreign keys.
 		const castIds = db
 			.select({ id: participantTable.id })
 			.from(participantTable)
@@ -71,13 +80,20 @@ export function commitConversationSiblingVariant(
 			.where(eq(participantTable.chat_id, input.conversationId))
 			.all()
 			.map((participant) => participant.id);
-		if (
-			!castIds.includes(message.context_human_participant_id) ||
-			!castIds.includes(message.context_model_participant_id)
-		) {
-			throw new SiblingVariantUnavailableError(
-				"historical-participant-unavailable",
-			);
+
+		// The same derived rule the snapshot exposes, re-verified inside the
+		// commit: playable seats, captured historical pair, and both
+		// historical Participants still usable.
+		const eligibility = deriveMessageSwipeEligibility(
+			isPlayable(readControlAssignment(db, input.conversationId)),
+			historicalContext,
+			castIds,
+		);
+		if (!eligibility.eligible) {
+			if (eligibility.reason === "conversation-not-playable") {
+				throw new ConversationNotPlayableError(input.conversationId);
+			}
+			throw new SiblingVariantUnavailableError(eligibility.reason);
 		}
 
 		const latestPosition = db

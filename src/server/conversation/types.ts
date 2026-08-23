@@ -92,16 +92,16 @@ export type CapabilityBlockReason = "conversation-not-playable";
 // captured historical Control pair — or when a required historical
 // Participant no longer has a usable Definition — sibling generation is
 // denied with the typed reason while existing Variants remain selectable and
-// editable.
+// editable. Discriminated on `eligible` so code never fabricates a reason
+// for an ineligible Message (or a reason for an eligible one).
 export type MessageSwipeBlockReason =
 	| "conversation-not-playable"
 	| "missing-historical-context"
 	| "historical-participant-unavailable";
 
-export interface MessageSwipeEligibility {
-	eligible: boolean;
-	reason: MessageSwipeBlockReason | null;
-}
+export type MessageSwipeEligibility =
+	| { eligible: true; reason: null }
+	| { eligible: false; reason: MessageSwipeBlockReason };
 
 export interface AuthorStampSnapshot {
 	participantId: number | null;

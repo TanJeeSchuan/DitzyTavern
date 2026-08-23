@@ -64,6 +64,26 @@ interface GenerationDerivation {
 	modelParticipant: ParticipantPreview;
 }
 
+// Selected-history entries for prompt compilation, derived from each
+// Message's selected Variant and its immutable Author Stamp name.
+// `endExclusiveIndex` limits the entries to Messages strictly preceding a
+// targeted sibling Variant; omitted, the entire ordered snapshot counts, as
+// a current Generate at the tail uses.
+const selectedHistoryFrom = (
+	snapshot: ConversationSnapshot,
+	endExclusiveIndex?: number,
+): readonly PromptHistoryEntry[] =>
+	snapshot.messages.slice(0, endExclusiveIndex).flatMap((message) => {
+		const selected = message.variants.find((variant) => variant.selected);
+		if (selected === undefined) return [];
+		return [
+			{
+				speakerName: message.author?.capturedName ?? null,
+				content: selected.content,
+			},
+		];
+	});
+
 const deriveGeneration = (
 	snapshot: ConversationSnapshot,
 ): GenerationDerivation | null => {
@@ -77,23 +97,10 @@ const deriveGeneration = (
 		return null;
 	}
 
-	const history: readonly PromptHistoryEntry[] = snapshot.messages.flatMap(
-		(message) => {
-			const selected = message.variants.find((variant) => variant.selected);
-			if (selected === undefined) return [];
-			return [
-				{
-					speakerName: message.author?.capturedName ?? null,
-					content: selected.content,
-				},
-			];
-		},
-	);
-
 	const plan = compilePrompt({
 		human: toCompilerDefinition(human),
 		model: toCompilerDefinition(model),
-		history,
+		history: selectedHistoryFrom(snapshot),
 	});
 
 	return {
@@ -220,12 +227,9 @@ const deriveSiblingDerivation = (
 		if (eligibility.reason === "conversation-not-playable") {
 			throw new ConversationNotPlayableError(snapshot.id);
 		}
-		// An ineligible Message always carries one of the historical reasons;
-		// the null case is unreachable and treated as missing context rather
-		// than inventing a different denial.
-		throw new SiblingVariantUnavailableError(
-			eligibility.reason ?? "missing-historical-context",
-		);
+		// The discriminated eligibility narrows the remaining reasons to the
+		// two historical denials; no fallback reason is ever fabricated.
+		throw new SiblingVariantUnavailableError(eligibility.reason);
 	}
 
 	const context = target.historicalContext;
@@ -248,18 +252,7 @@ const deriveSiblingDerivation = (
 	// Selected history strictly preceding the target Message. Excluding the
 	// target by construction also excludes all of its existing sibling
 	// Variants: an alternative never prompts on another alternative.
-	const history: readonly PromptHistoryEntry[] = snapshot.messages
-		.slice(0, targetIndex)
-		.flatMap((message) => {
-			const selected = message.variants.find((variant) => variant.selected);
-			if (selected === undefined) return [];
-			return [
-				{
-					speakerName: message.author?.capturedName ?? null,
-					content: selected.content,
-				},
-			];
-		});
+	const history = selectedHistoryFrom(snapshot, targetIndex);
 
 	// The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message

@@ -74,6 +74,8 @@ export interface ConversationMessage {
 	timestamp: string;
 	author: ConversationAuthorStamp | null;
 	historicalContext: ConversationHistoricalContext | null;
+	// Mirrors the transport schema: the wire contract is the loose shape;
+	// the server domain narrows this to a discriminated eligibility.
 	swipe: { eligible: boolean; reason: MessageSwipeBlockReason | null };
 	variants: ConversationVariant[];
 	data: readonly { namespace: string; key: string; value: string }[];

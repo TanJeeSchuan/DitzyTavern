@@ -98,7 +98,6 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-
 // Derives removal eligibility per Participant: seated Participants are
 // protected, so only unseated Participants may be removed.
 const deriveRemovalEligibility = (

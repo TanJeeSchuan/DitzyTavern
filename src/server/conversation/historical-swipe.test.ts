@@ -7,6 +7,7 @@ import { openDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
+	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type ConversationModule,
@@ -379,6 +380,36 @@ describe("commitSiblingVariant", () => {
 		expect(() =>
 			module.commitSiblingVariant(siblingInput(snapshot.id, 424242)),
 		).toThrow(InvalidConversationCommandError);
+	});
+
+	test("denies a direct sibling commit in an incomplete Conversation with the typed playability result", () => {
+		const module = createConversationModule(database);
+		const incomplete = module.create({
+			name: "Incomplete Import",
+			messages: [
+				{
+					timestamp: "2026-08-20T10:00:00Z",
+					variants: [
+						{
+							content: "Preserved",
+							timestamp: "2026-08-20T10:00:00Z",
+							selected: true,
+						},
+					],
+				},
+			],
+		});
+		const message = incomplete.messages[0];
+		if (message === undefined) throw new Error("Message missing.");
+
+		// Even the raw server-side commit re-derives eligibility; an
+		// incomplete Conversation cannot gain a sibling by bypassing the
+		// workflow's pre-transport gate.
+		expect(() =>
+			module.commitSiblingVariant(siblingInput(incomplete.id, message.id)),
+		).toThrow(ConversationNotPlayableError);
+		expect(module.getSnapshot(incomplete.id)?.revision).toBe(0);
+		expect(module.getSnapshot(incomplete.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
 	test("denies a sibling for a Message without captured historical context", () => {
