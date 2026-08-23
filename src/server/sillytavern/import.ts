@@ -2,6 +2,13 @@
 // explicit UTF-8, maps it through the SillyTavern adapter, detects prior
 // imports of the same source, and creates the Chat through the generic
 // Conversation creation seam in a single transaction.
+//
+// This orchestration is the application workflow entry point for imports: it
+// composes only public seams (the adapter and the deep Conversation module),
+// never writing domain tables directly. The adapter resolves source authors
+// into native Participants, stamps every Message, and assigns deterministic
+// Control; zero- and one-Participant sources commit as incomplete
+// Conversations whose playability derives once the missing seat is filled.
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";

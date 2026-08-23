@@ -10,8 +10,10 @@ import { openDatabase } from "../database/database";
 import {
 	chatDataTable,
 	chatTable,
+	conversationControlTable,
 	messageTable,
 	messageVariantTable,
+	participantTable,
 } from "../database/schema";
 import {
 	ARCHIVE_KEY,
@@ -19,12 +21,21 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
 	importSillyTavernChat,
 } from "./index";
 import { SillyTavernImportError } from "./errors";
 import type { SillyTavernImportReport } from "./adapter";
-import { createConversationModule } from "../conversation";
+import {
+	ConversationNotPlayableError,
+	SiblingVariantUnavailableError,
+	createConversationModule,
+} from "../conversation";
+import {
+	generateReply,
+	generateSiblingVariant,
+} from "../workflows";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,
@@ -69,7 +80,7 @@ describe("SillyTavern chat import", () => {
 	const countRows = (table: typeof chatTable | typeof messageTable | typeof messageVariantTable | typeof chatDataTable) =>
 		drizzle(database).select().from(table).all().length;
 
-	test("imports a payload-only JSONL file end to end through the creation seam", () => {
+	test("imports a payload-only JSONL file end to end as a Participant Conversation", () => {
 		const path = writeSource([header, first, second, blankName]);
 		const result = importSillyTavernChat(database, path);
 		const conversation = result.conversation;
@@ -77,7 +88,51 @@ describe("SillyTavern chat import", () => {
 		// The Chat takes its temporary name from the filename stem.
 		expect(conversation.name).toBe("lantern-house");
 		expect(conversation.revision).toBe(0);
-		expect(conversation.cast).toEqual([]);		expect(conversation.playable).toBe(false);
+		// Every exact resolved source-author group becomes a named
+		// Participant in first-appearance order with an empty typed Prompt
+		// and no openings: Writer, Rulership, and the shared blank-resolved
+		// "Blank Author" group.
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			"Writer",
+			"Rulership",
+			RESOLVED_BLANK_AUTHOR_NAME,
+		]);
+		expect(conversation.cast.map((participant) => participant.position)).toEqual([
+			1, 2, 3,
+		]);
+		for (const participant of conversation.cast) {
+			expect(participant.prompt).toEqual({
+				systemInstruction: "",
+				identity: "",
+				scenario: "",
+				exampleDialogue: "",
+				postHistoryInstruction: "",
+			});
+			expect(participant.openings).toEqual([]);
+			expect(participant.sourceCharacterId).toBeNull();
+		}
+
+		// Deterministic Control by first resolved appearance: Writer human,
+		// Rulership model, the blank-resolved Participant unseated.
+		const [writer, rulership, blankAuthor] = conversation.cast;
+		expect(writer).toBeDefined();
+		expect(rulership).toBeDefined();
+		expect(blankAuthor).toBeDefined();
+		expect(conversation.control).toEqual({
+			humanParticipantId: writer?.id ?? null,
+			modelParticipantId: rulership?.id ?? null,
+		});
+		expect(conversation.controlValidity).toEqual({
+			valid: true,
+			reason: null,
+		});
+		expect(conversation.playable).toBe(true);
+		expect(conversation.capabilities).toEqual({
+			compose: { available: true, reason: null },
+			generate: { available: true, reason: null },
+			swipe: { available: true, reason: null },
+		});
+
 		expect(conversation.messages).toHaveLength(3);
 		expect(conversation.messages.map((message) => message.position)).toEqual([
 			1, 2, 3,
@@ -85,6 +140,20 @@ describe("SillyTavern chat import", () => {
 		expect(
 			conversation.messages[2]?.variants[0]?.content,
 		).toBe("🔥 Wait, truly?");
+
+		// Every imported Message receives a native immutable Author Stamp
+		// for its resolved Participant while the exact raw source author
+		// value — including the blank string — stays untouched in the
+		// message-level preserved data.
+		expect(
+			conversation.messages.map((message) => message.author?.participantId),
+		).toEqual([writer?.id, rulership?.id, blankAuthor?.id]);
+		expect(
+			conversation.messages.map((message) => message.author?.capturedName),
+		).toEqual(["Writer", "Rulership", RESOLVED_BLANK_AUTHOR_NAME]);
+		expect(
+			conversation.messages.every((message) => message.author?.inCast === true),
+		).toBe(true);
 		expect(conversation.messages[0]?.data).toEqual([
 			{
 				namespace: IMPORT_NAMESPACE,
@@ -92,6 +161,27 @@ describe("SillyTavern chat import", () => {
 				value: "Writer",
 			},
 		]);
+		expect(conversation.messages[2]?.data).toEqual([
+			{
+				namespace: IMPORT_NAMESPACE,
+				key: IMPORT_KEYS.authorName,
+				value: "",
+			},
+		]);
+
+		// No historical Control context is ever fabricated for imported
+		// Messages: deterministic current Control does not reinterpret
+		// history, so targeted Swipe reports the missing-context denial.
+		expect(
+			conversation.messages.every((message) => message.historicalContext === null),
+		).toBe(true);
+		expect(
+			conversation.messages.every(
+				(message) =>
+					message.swipe.eligible === false &&
+					message.swipe.reason === "missing-historical-context",
+			),
+		).toBe(true);
 
 		// Chat and activity times are derived from the mapped timestamps.
 		const chatRow = drizzle(database)
@@ -159,6 +249,457 @@ describe("SillyTavern chat import", () => {
 		expect(
 			createConversationModule(database).getSnapshot(conversation.id),
 		).toEqual(conversation);
+	});
+
+	test("commits a zero-Participant source atomically as an incomplete archive", () => {
+		const path = writeSource([header]);
+		const result = importSillyTavernChat(database, path);
+		const conversation = result.conversation;
+
+		expect(conversation.cast).toEqual([]);
+		expect(conversation.messages).toEqual([]);
+		expect(conversation.control).toEqual({
+			humanParticipantId: null,
+			modelParticipantId: null,
+		});
+		expect(conversation.controlValidity).toEqual({
+			valid: false,
+			reason: "missing-seat",
+		});
+		expect(conversation.playable).toBe(false);
+		expect(conversation.capabilities).toEqual({
+			compose: { available: false, reason: "conversation-not-playable" },
+			generate: { available: false, reason: "conversation-not-playable" },
+			swipe: { available: false, reason: "conversation-not-playable" },
+		});
+		// No Control rows are invented for an empty archive.
+		expect(
+			drizzle(database).select().from(conversationControlTable).all().length,
+		).toBe(0);
+		expect(
+			drizzle(database).select().from(participantTable).all().length,
+		).toBe(0);
+
+		// The canonical archive and counts still preserve the source.
+		const archive = findEntry(
+			conversation.data,
+			ARCHIVE_NAMESPACE,
+			ARCHIVE_KEY,
+		);
+		expect(JSON.parse(archive?.value ?? "")).toEqual({
+			header,
+			messages: [],
+		});
+		expect(result.report.counts).toEqual({ messages: 0, variants: 0 });
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id),
+		).toEqual(conversation);
+	});
+
+	test("reserves only the human seat for a one-Participant source and commits it incomplete", () => {
+		const path = writeSource([header, first]);
+		const result = importSillyTavernChat(database, path);
+		const conversation = result.conversation;
+
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			"Writer",
+		]);
+		const writer = conversation.cast[0];
+		expect(writer).toBeDefined();
+		expect(conversation.control).toEqual({
+			humanParticipantId: writer?.id ?? null,
+			modelParticipantId: null,
+		});
+		expect(conversation.playable).toBe(false);
+		expect(conversation.capabilities).toEqual({
+			compose: { available: false, reason: "conversation-not-playable" },
+			generate: { available: false, reason: "conversation-not-playable" },
+			swipe: { available: false, reason: "conversation-not-playable" },
+		});
+		expect(
+			drizzle(database).select().from(conversationControlTable).all().length,
+		).toBe(1);
+
+		// The preserved history is still readable with its resolved author
+		// stamp; no historical pair is fabricated.
+		expect(conversation.messages).toHaveLength(1);
+		expect(conversation.messages[0]?.author).toEqual({
+			participantId: writer?.id ?? null,
+			capturedName: "Writer",
+			inCast: true,
+		});
+		expect(conversation.messages[0]?.historicalContext).toBeNull();
+		expect(conversation.messages[0]?.variants).toHaveLength(1);
+		expect(conversation.messages[0]?.swipe).toEqual({
+			eligible: false,
+			reason: "conversation-not-playable",
+		});
+
+		// The report promises the preserved single Message.
+		expect(result.report.counts).toEqual({ messages: 1, variants: 1 });
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id),
+		).toEqual(conversation);
+	});
+
+	test("assigns Control by first resolved appearance and ignores role hints", () => {
+		// Rulership (is_user false) appears first and becomes the human
+		// seat; Writer (is_user true) appears second and becomes the model
+		// seat — legacy role hints never drive identity or Control.
+		const path = writeSource([header, second, first]);
+		const { conversation } = importSillyTavernChat(database, path);
+
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			"Rulership",
+			"Writer",
+		]);
+		const [rulership, writer] = conversation.cast;
+		expect(rulership).toBeDefined();
+		expect(writer).toBeDefined();
+		expect(conversation.control).toEqual({
+			humanParticipantId: rulership?.id ?? null,
+			modelParticipantId: writer?.id ?? null,
+		});
+		expect(conversation.playable).toBe(true);
+	});
+
+	test("keeps later resolved Participants unseated with plain removal eligibility", () => {
+		const records = [
+			{ name: "Alpha", is_user: true, send_date: "2026-08-08T12:00:00.000Z", mes: "a" },
+			{ name: "Beta", is_user: false, send_date: "2026-08-08T12:01:00.000Z", mes: "b" },
+			{ name: "Gamma", is_user: true, send_date: "2026-08-08T12:02:00.000Z", mes: "c" },
+			{ name: "Delta", is_user: false, send_date: "2026-08-08T12:03:00.000Z", mes: "d" },
+		];
+		const { conversation } = importSillyTavernChat(
+			database,
+			writeSource([header, ...records]),
+		);
+
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			"Alpha", "Beta", "Gamma", "Delta",
+		]);
+		const [alpha, beta, gamma, delta] = conversation.cast;
+		expect(alpha).toBeDefined();
+		expect(beta).toBeDefined();
+		expect(gamma).toBeDefined();
+		expect(delta).toBeDefined();
+		// First human, second model, later Participants unseated.
+		expect(conversation.control).toEqual({
+			humanParticipantId: alpha?.id ?? null,
+			modelParticipantId: beta?.id ?? null,
+		});
+		expect(conversation.playable).toBe(true);
+		// The unseated Participants are removable (their own Messages demand
+		// a tombstone) while the seated pair is protected.
+		expect(gamma?.removal).toEqual({
+			eligible: true,
+			reason: null,
+			deletionMode: "tombstone",
+			affectedGenerationCount: 0,
+		});
+		expect(delta?.removal.eligible).toBe(true);
+		expect(alpha?.removal.eligible).toBe(false);
+		expect(beta?.removal.eligible).toBe(false);
+	});
+
+	test("collapses duplicate and surrounding-whitespace author names while preserving case", () => {
+		const trailingSpace = {
+			...first,
+			send_date: "2026-08-08T12:54:00.000Z",
+			mes: "same author, spaces around the captured name",
+		};
+		// The source fixture has name " Writer " here: trimming resolves it
+		// to the same group as "Writer" while the exact raw value stays in
+		// the preserved data.
+		trailingSpace.name = " Writer ";
+		const lowerCase = {
+			name: "writer",
+			is_user: false,
+			send_date: "2026-08-08T12:55:00.000Z",
+			mes: "case-preserved separate group",
+		};
+		const { conversation } = importSillyTavernChat(
+			database,
+			writeSource([header, first, trailingSpace, lowerCase]),
+		);
+
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			"Writer",
+			"writer",
+		]);
+		const [writer, lowercaseWriter] = conversation.cast;
+		expect(writer).toBeDefined();
+		expect(lowercaseWriter).toBeDefined();
+		expect(conversation.control).toEqual({
+			humanParticipantId: writer?.id ?? null,
+			modelParticipantId: lowercaseWriter?.id ?? null,
+		});
+		// Both "Writer" and " Writer " share one Participant and one stamp;
+		// the lowercase writer is a distinct identity. Each Message keeps its
+		// exact raw source value untouched in the preserved data.
+		expect(
+			conversation.messages.map((message) => message.author?.participantId),
+		).toEqual([writer?.id, writer?.id, lowercaseWriter?.id]);
+		expect(
+			conversation.messages.map((message) => message.data[0]?.value),
+		).toEqual(["Writer", " Writer ", "writer"]);
+	});
+
+	test("collapses all blank source author names into one shared Participant", () => {
+		const anotherBlank = {
+			name: "",
+			is_user: false,
+			send_date: "2026-08-08T13:11:00.000Z",
+			mes: "also missing an author name",
+		};
+		const { conversation, report } = importSillyTavernChat(
+			database,
+			writeSource([header, blankName, anotherBlank]),
+		);
+
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			RESOLVED_BLANK_AUTHOR_NAME,
+		]);
+		const blankAuthor = conversation.cast[0];
+		expect(blankAuthor).toBeDefined();
+		// Blank values resolve to one shared Participant; the native name is
+		// nonblank while each Message keeps its raw empty value.
+		expect(
+			conversation.messages.every(
+				(message) => message.author?.participantId === blankAuthor?.id,
+			),
+		).toBe(true);
+		expect(
+			conversation.messages.map((message) => message.data[0]?.value),
+		).toEqual(["", ""]);
+		expect(conversation.messages[0]?.author?.capturedName).toBe(
+			RESOLVED_BLANK_AUTHOR_NAME,
+		);
+		expect(report.warnings).toHaveLength(2);
+		expect(report.warnings[0]).toContain("position 1");
+		expect(report.warnings[1]).toContain("position 2");
+	});
+
+	test("blocks Compose, Generate, and Swipe in an incomplete import with the same typed reason", async () => {
+		const { conversation } = importSillyTavernChat(
+			database,
+			writeSource([header, first]),
+		);
+		const module = createConversationModule(database);
+		const messageId = conversation.messages[0]?.id ?? 0;
+
+		// Every play action carries the same derived capability reason.
+		expect(conversation.capabilities).toEqual({
+			compose: { available: false, reason: "conversation-not-playable" },
+			generate: { available: false, reason: "conversation-not-playable" },
+			swipe: { available: false, reason: "conversation-not-playable" },
+		});
+
+		// Compose (create-message) and Swipe (create-variant) commands throw
+		// the same typed not-playable domain outcome.
+		expect(() =>
+			module.execute({
+				conversationId: conversation.id,
+				expectedRevision: conversation.revision,
+				action: {
+					type: "create-message",
+					timestamp: "2026-08-08T14:00:00.000Z",
+					variantContents: ["draft"],
+					authorParticipantId: conversation.cast[0]?.id ?? 0,
+				},
+			}),
+		).toThrow(ConversationNotPlayableError);
+		expect(() =>
+			module.execute({
+				conversationId: conversation.id,
+				expectedRevision: conversation.revision,
+				action: { type: "create-variant", messageId, content: "alt" },
+			}),
+		).toThrow(ConversationNotPlayableError);
+
+		// The workflow seams deny Generate and targeted Swipe before any
+		// transport is contacted, with the identical typed outcome.
+		await expect(
+			generateReply(database, {
+				conversationId: conversation.id,
+				generate: async () => "never called",
+			}),
+		).rejects.toThrow(ConversationNotPlayableError);
+		await expect(
+			generateSiblingVariant(database, {
+				conversationId: conversation.id,
+				messageId,
+				generate: async () => "never called",
+			}),
+		).rejects.toThrow(ConversationNotPlayableError);
+
+		// Adding the missing Participant derives playability automatically;
+		// no status toggle exists or is needed.
+		const completed = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "add-participant",
+				definition: {
+					name: "Rulership",
+					prompt: {
+						systemInstruction: "",
+						identity: "",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+					openings: [],
+				},
+			},
+		});
+		expect(completed.playable).toBe(true);
+		expect(completed.control).toEqual({
+			humanParticipantId: conversation.cast[0]?.id ?? null,
+			modelParticipantId: completed.cast[1]?.id ?? null,
+		});
+	});
+
+	test("keeps imported Variants selectable and editable but denies new sibling generation", async () => {
+		const { conversation } = importSillyTavernChat(
+			database,
+			writeSource([header, swiped, second]),
+		);
+		const module = createConversationModule(database);
+		expect(conversation.playable).toBe(true);
+
+		const swipeMessage = conversation.messages[0];
+		expect(swipeMessage).toBeDefined();
+		const targetId = swipeMessage?.id ?? 0;
+		// Imported Messages never gain fabricated historical Control context.
+		expect(swipeMessage?.historicalContext).toBeNull();
+		expect(swipeMessage?.swipe).toEqual({
+			eligible: false,
+			reason: "missing-historical-context",
+		});
+
+		// New sibling generation is denied with the typed reason even though
+		// the Conversation is fully playable; the transport generate seam is
+		// never contacted.
+		let contacted = false;
+		await expect(
+			generateSiblingVariant(database, {
+				conversationId: conversation.id,
+				messageId: targetId,
+				generate: () => {
+					contacted = true;
+					return "Never reached";
+				},
+			}),
+		).rejects.toThrow(SiblingVariantUnavailableError);
+		expect(contacted).toBe(false);
+
+		// Existing Variants remain selectable and editable.
+		const secondVariant = swipeMessage?.variants[1];
+		expect(secondVariant).toBeDefined();
+		const selected = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "select-variant",
+				messageId: targetId,
+				variantId: secondVariant?.id ?? 0,
+			},
+		});
+		expect(
+			selected.messages[0]?.variants.map((variant) => variant.selected),
+		).toEqual([false, true, false, false]);
+		const edited = module.execute({
+			conversationId: selected.id,
+			expectedRevision: selected.revision,
+			action: {
+				type: "edit-variant",
+				messageId: targetId,
+				variantId: secondVariant?.id ?? 0,
+				content: "Edited preserved alternative",
+			},
+		});
+		expect(edited.messages[0]?.variants[1]?.content).toBe(
+			"Edited preserved alternative",
+		);
+		// The Author Stamp survives content edits and selection changes.
+		expect(edited.messages[0]?.author?.participantId).toBe(
+			swipeMessage?.author?.participantId ?? null,
+		);
+	});
+
+	test("native generation after completion captures ordinary authorship and historical Control", async () => {
+		const { conversation } = importSillyTavernChat(
+			database,
+			writeSource([header, first]),
+		);
+		const module = createConversationModule(database);
+		const completed = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "add-participant",
+				definition: {
+					name: "Rulership",
+					prompt: {
+						systemInstruction: "",
+						identity: "",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+					openings: [],
+				},
+			},
+		});
+		expect(completed.playable).toBe(true);
+
+		// A native Generate after completion is an ordinary native Message:
+		// immutable Author Stamp plus captured historical Control pair.
+		const human = completed.cast[0];
+		const model = completed.cast[1];
+		expect(human).toBeDefined();
+		expect(model).toBeDefined();
+		const generated = await generateReply(database, {
+			conversationId: completed.id,
+			timestamp: "2026-08-08T14:30:00.000Z",
+			generate: async () => "The lamp answers at last.",
+		});
+		const nativeMessage = generated.messages[1];
+		expect(nativeMessage).toBeDefined();
+		expect(nativeMessage?.author).toEqual({
+			participantId: model?.id ?? null,
+			capturedName: "Rulership",
+			inCast: true,
+		});
+		expect(nativeMessage?.historicalContext).toEqual({
+			humanParticipantId: human?.id ?? 0,
+			modelParticipantId: model?.id ?? 0,
+		});
+
+		// The native Message supports the same capabilities as any other
+		// native Message: targeted Swipe generation works and leaves current
+		// Control and the Author Stamp untouched.
+		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
+		const sibling = await generateSiblingVariant(database, {
+			conversationId: generated.id,
+			messageId: nativeMessage?.id ?? 0,
+			timestamp: "2026-08-08T14:31:00.000Z",
+			generate: async () => "The lamp answers differently.",
+		});
+		expect(sibling.messages[1]?.variants).toHaveLength(2);
+		expect(sibling.messages[1]?.variants[1]?.content).toBe(
+			"The lamp answers differently.",
+		);
+		expect(sibling.messages[1]?.variants[1]?.selected).toBe(true);
+		expect(sibling.messages[1]?.author).toEqual(nativeMessage?.author);
+		expect(sibling.control).toEqual(completed.control);
+		// Imported history still lacks fabricated context after completion.
+		expect(sibling.messages[0]?.historicalContext).toBeNull();
+		expect(sibling.messages[0]?.swipe).toEqual({
+			eligible: false,
+			reason: "missing-historical-context",
+		});
 	});
 
 	test("allows re-importing the same source as an independent Chat with a warning", () => {

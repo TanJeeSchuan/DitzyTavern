@@ -6,6 +6,8 @@ The first product boundary is a local, single-user, text-first application for p
 
 A durable Conversation is created atomically with at least two distinct Roster Participants and both Control seats assigned. Version one has no persisted setup draft or partially configured Conversation; every other configuration may be changed after creation while preserving that invariant.
 
+Preservation-oriented imports are the narrow exception to the two-seat invariant: a SillyTavern import that resolves zero or one Participant commits atomically as an incomplete Conversation so custody of the source history is never sacrificed to playability. Such a Chat stays readable, editable, exportable, configurable, and deletable, while Compose, Generate, and Swipe are withheld with one typed not-playable reason until a second distinct Participant fills the empty seat; completion derives playability automatically from native state and leaves no imported-only mode behind.
+
 A quality-of-life feature may shorten, clarify, or recover an existing step in the active-pair roleplay flow. Additional Roster Participants and free seat reassignment are part of that flow, but simultaneous multi-model turns, a context engine, another provider family, an automation system, and media pipelines remain outside it.
 
 Version one excludes World Info and lorebook scanning. Its only prompt-context sources are the two actively controlled Participants' applicable prompt channels, Example Dialogue, and selected Conversation history; lore integration is deferred to the future named-block prompt system.

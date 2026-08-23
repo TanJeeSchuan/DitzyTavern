@@ -4,25 +4,49 @@
 // Conversation creation input. This module is the only place SillyTavern
 // vocabulary may appear; the Conversation module never sees it.
 //
-// Ticket 03 scope: the first nonempty record is the chat header and every
-// later record becomes one native Message. A record carrying Swipes produces
-// one native Variant per Swipe in source order, selecting exactly `swipe_id`,
-// and derives its content, timestamps, and promoted generation provenance
-// exclusively from `swipes` and the corresponding `swipe_info` entry — the
-// duplicated top-level assistant payload is never promoted. A payload-only
-// record becomes one selected Variant derived from its row payload with
-// applicable row-level provenance attached. The complete parsed source stays
-// value-lossless in the canonical archive.
+// Ticket 09 scope: every later record becomes one native Message, and exact
+// resolved source-author groups become named Participants. Resolution trims
+// the captured author name (case and Unicode preserved); a blank or
+// whitespace-only name resolves to one shared Participant with a deterministic
+// nonblank native name while the exact raw source value — including the empty
+// string — stays untouched in the preserved import data (the message-level
+// `author.name` entry and the canonical archive). `is_user`, header roles, a
+// captured `Writer` name, and other legacy role hints never influence
+// Participant identity or Control. Every imported Message receives a native
+// immutable Author Stamp for its resolved Participant; no historical Control
+// pair is ever fabricated. Current Control is assigned deterministically by
+// first resolved Participant appearance: the first becomes human, the second
+// model, and later Participants stay unseated; an import resolving exactly one
+// Participant reserves only the human seat (incomplete), and zero Participants
+// commit with no Control at all.
+//
+// A record carrying Swipes produces one native Variant per Swipe in source
+// order, selecting exactly `swipe_id`, and derives its content, timestamps,
+// and promoted generation provenance exclusively from `swipes` and the
+// corresponding `swipe_info` entry — the duplicated top-level assistant
+// payload is never promoted. A payload-only record becomes one selected
+// Variant derived from its row payload with applicable row-level provenance
+// attached. The complete parsed source stays value-lossless in the canonical
+// archive.
 
 import type {
+	ConversationControlSeed,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
+	ConversationParticipantSeed,
+	ParticipantDefinitionPrompt,
 } from "../conversation/types";
 import { SillyTavernImportError } from "./errors";
 
 export const IMPORTER_VERSION = "0.2.0";
+
+// Deterministic nonblank native Participant name resolved for blank or
+// whitespace-only raw source authors. Only the imported Participant carries
+// this name; the raw blank source value stays unmodified in the archive and
+// the message-level `author.name` entry.
+export const RESOLVED_BLANK_AUTHOR_NAME = "Blank Author";
 export const IMPORT_NAMESPACE = "import.sillytavern";
 export const ARCHIVE_NAMESPACE = "archive";
 export const ARCHIVE_KEY = "source";
@@ -350,22 +374,90 @@ const provenance = (
 
 const chronological = (a: string, b: string) => Date.parse(a) - Date.parse(b);
 
+// Imported Participants start with an empty typed Prompt and no openings:
+// the history itself is the preserved record, and no identity content is
+// fabricated. Names follow the shared Definition rules (leading and trailing
+// whitespace removed, case and Unicode preserved).
+const emptyImportedPrompt = (): ParticipantDefinitionPrompt => ({
+	systemInstruction: "",
+	identity: "",
+	scenario: "",
+	exampleDialogue: "",
+	postHistoryInstruction: "",
+});
+
+// The exact resolved source-author group key: the trimmed captured author
+// name, or null for the single blank/whitespace-only group. Grouping by the
+// resolved value — never by `is_user`, header roles, or the literal `Writer`
+// name — gives one Participant per exact resolved source-author group in
+// first-appearance order.
+const authorGroupKey = (rawName: string): string | null => {
+	const trimmed = rawName.trim();
+	return trimmed === "" ? null : trimmed;
+};
+
+// Deterministic import Control from the resolved groups: the first resolved
+// Participant becomes human, the second model, and later Participants stay
+// unseated. A one-Participant import reserves only the human seat so that
+// adding the missing Participant later preserves it and fills the model seat;
+// zero Participants commit with no Control (both seats stay incomplete).
+const deterministicControl = (
+	groupCount: number,
+): ConversationControlSeed | undefined => {
+	if (groupCount === 0) return undefined;
+	if (groupCount === 1) return { human: 0 };
+	return { human: 0, model: 1 };
+};
+
 interface BuildMessagesResult {
 	messages: ConversationCreationMessage[];
+	participants: ConversationParticipantSeed[];
+	control: ConversationControlSeed | undefined;
 	warnings: string[];
 }
 
 const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
-	const messages: ConversationCreationMessage[] = [];
+	const decoded: { position: number; authorName: string; message: DecodedMessage }[] = [];
 	const warnings: string[] = [];
 	messageRecords.forEach((record, index) => {
 		const position = index + 1;
-		const decoded = decodeMessage(record, position);
-		if (decoded.authorName === "") {
+		const message = decodeMessage(record, position);
+		if (message.authorName === "") {
 			warnings.push(
 				`Message at position ${position} has a blank captured author name.`,
 			);
 		}
+		decoded.push({ position, authorName: message.authorName, message });
+	});
+
+	// Resolve author groups by first resolved appearance. Exact duplicates
+	// collapse into one Participant; raw values that trim to the same name
+	// (and all blanks) share a group while remaining distinct from other
+	// groups whose names merely look alike after any other transformation.
+	const groupIndexOf = new Map<string | null, number>();
+	const groups: (string | null)[] = [];
+	for (const entry of decoded) {
+		const key = authorGroupKey(entry.authorName);
+		if (!groupIndexOf.has(key)) {
+			groupIndexOf.set(key, groups.length);
+			groups.push(key);
+		}
+	}
+
+	const participants: ConversationParticipantSeed[] = groups.map((group) => ({
+		definition: {
+			name: group ?? RESOLVED_BLANK_AUTHOR_NAME,
+			prompt: emptyImportedPrompt(),
+			openings: [],
+		},
+	}));
+
+	const messages: ConversationCreationMessage[] = decoded.map((entry) => {
+		// SAFETY: every decoded Message has a captured author name, so its
+		// group (and thus the Participant index) always exists.
+		const authorParticipantIndex = groupIndexOf.get(
+			authorGroupKey(entry.authorName),
+		) as number;
 		// The Message time is the earliest timestamp among its own Variants,
 		// so changing Variant selection can never change Message chronology.
 		// No user, assistant, or system role is derived.
@@ -373,16 +465,26 @@ const buildMessages = (messageRecords: JsonValue[]): BuildMessagesResult => {
 		// payload-only record receives one, and a record with an empty swipes
 		// array aborts through the swipe_id range check), so the sorted
 		// minimum is never undefined.
-		const messageTime = decoded.variants
+		const messageTime = entry.message.variants
 			.map((variant) => variant.timestamp)
 			.sort(chronological)[0] as string;
-		messages.push({
+		return {
 			timestamp: messageTime,
-			data: [authorEntry(decoded.authorName)],
-			variants: decoded.variants,
-		});
+			authorParticipantIndex,
+			// The exact raw source author value — including blank strings —
+			// stays untouched here, while the native Author Stamp uses the
+			// resolved Participant name.
+			data: [authorEntry(entry.authorName)],
+			variants: entry.message.variants,
+		};
 	});
-	return { messages, warnings };
+
+	return {
+		messages,
+		participants,
+		control: deterministicControl(participants.length),
+		warnings,
+	};
 };
 
 export function parseSillyTavernChatJsonl(
@@ -396,7 +498,9 @@ export function parseSillyTavernChatJsonl(
 	}
 	const header = decodeHeader(headerRecord);
 	const integrity = sourceIntegrity(header);
-	const { messages, warnings } = buildMessages(messageRecords);
+	const { messages, participants, control, warnings } = buildMessages(
+		messageRecords,
+	);
 	const variantCount = messages.reduce(
 		(total, message) => total + message.variants.length,
 		0,
@@ -466,7 +570,13 @@ export function parseSillyTavernChatJsonl(
 	};
 
 	return {
-		input: { name: meta.name, messages, data },
+		input: {
+			name: meta.name,
+			participants,
+			control,
+			messages,
+			data,
+		},
 		report,
 	};
 }

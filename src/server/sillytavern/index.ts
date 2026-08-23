@@ -4,6 +4,7 @@ export {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
+	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
 	importReportEntries,
 	parseSillyTavernChatJsonl,
