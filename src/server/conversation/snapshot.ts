@@ -117,8 +117,18 @@ export function readConversationSnapshot(
 		modelParticipantId: controlState.modelParticipantId,
 	};
 
+	// Playability is derived, never stored: the Conversation is playable only
+	// when two distinct Cast Participants occupy the human and model seats.
+	const humanSeated =
+		control.humanParticipantId !== null &&
+		cast.some((participant) => participant.id === control.humanParticipantId);
+	const modelSeated =
+		control.modelParticipantId !== null &&
+		cast.some((participant) => participant.id === control.modelParticipantId);
 	const playable =
-		control.humanParticipantId !== null && control.modelParticipantId !== null;
+		humanSeated &&
+		modelSeated &&
+		control.humanParticipantId !== control.modelParticipantId;
 
 	const messageRows = db
 		.select()

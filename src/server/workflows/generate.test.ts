@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { participantTable } from "../database/schema";
+import { participantPromptTable, participantTable } from "../database/schema";
 import { openDatabase } from "../database/database";
 import {
 	createConversationModule,
@@ -325,6 +325,49 @@ describe("Current Generate workflow", () => {
 				(block) => block.kind === "identity" && block.role === "model",
 			)?.content,
 		).toBe("I am Maren Renamed, speaking to Writer.");
+	});
+
+	test("a mid-flight Definition edit does not rewrite the in-flight generation and the next one compiles the edited Prompt", async () => {
+		let release!: (content: string) => void;
+		const pending = new Promise<string>((resolve) => {
+			release = resolve;
+		});
+
+		const generation = generateReply(database, {
+			conversationId,
+			timestamp: "2026-08-20T14:00:00Z",
+			generate: async () => pending,
+		});
+
+		// The model Prompt is edited while the transport streams (the
+		// Participant edit command arrives with ticket 04; the authoritative
+		// edit is applied directly to the store here).
+		drizzle(database)
+			.update(participantPromptTable)
+			.set({ identity: "I am the edited Maren." })
+			.where(eq(participantPromptTable.participant_id, modelId))
+			.run();
+
+		release("Answered after the prompt edit.");
+		const committed = await generation;
+
+		const message = committed.messages.at(-1);
+		expect(message?.author).toEqual({
+			participantId: modelId,
+			capturedName: "Maren Voss",
+		});
+		expect(message?.historicalContext).toEqual({
+			humanParticipantId: humanId,
+			modelParticipantId: modelId,
+		});
+
+		// The next generation compiles from the updated authoritative Prompt.
+		const inspection = inspectGenerationPrompt(database, conversationId);
+		expect(
+			inspection.plan?.blocks.find(
+				(block) => block.kind === "identity" && block.role === "model",
+			)?.content,
+		).toBe("I am the edited Maren.");
 	});
 
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {
