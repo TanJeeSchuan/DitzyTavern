@@ -2,6 +2,8 @@
 
 There is `playwright-cli` installed
 
+For UI work, remember to refer to DESIGN.MD
+
 ## Ticket implementation
 - Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
 
