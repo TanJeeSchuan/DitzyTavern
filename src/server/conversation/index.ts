@@ -11,6 +11,7 @@ export {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
+	ParticipantNotFoundError,
 	StaleConversationRevisionError,
 } from "./errors";
 export type {

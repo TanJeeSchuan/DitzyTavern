@@ -567,3 +567,132 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(missingConversation.status).toBe(404);
 	});
 });
+
+// Transport tests for the Save-as-Character workflow cover the request and
+// response contract plus typed error mapping and revision propagation. The
+// workflow behavior itself lives behind its own interface tests.
+describe("Save Participant as Character transport adapter", () => {
+	let database: Database;
+	let app: ReturnType<typeof createConversationRoutes>;
+
+	const saveParticipant = (
+		conversationId: number,
+		participantId: number,
+		expectedConversationRevision: number,
+	) =>
+		app.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/cast/participants/${participantId}/characters`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ expectedConversationRevision }),
+				},
+			),
+		);
+
+	const adHocDefinition = (name: string, openings: string[] = []) => ({
+		name,
+		prompt: {
+			systemInstruction: "System text.",
+			identity: "Identity text.",
+			scenario: "",
+			exampleDialogue: "",
+			postHistoryInstruction: "",
+		},
+		openings,
+	});
+
+	const setupConversation = () => {
+		const created = createNativeConversation(database, {
+			name: "Transport Chat",
+			humanSeat: {
+				type: "adhoc",
+				definition: adHocDefinition("Writer"),
+			},
+			modelSeat: {
+				type: "adhoc",
+				definition: adHocDefinition("Maren Voss", ["Hello"]),
+			},
+		});
+		return {
+			id: created.id,
+			modelId: created.cast[1]?.id ?? 0,
+			revision: created.revision,
+		};
+	};
+
+	beforeEach(() => {
+		database = openDatabase({ path: ":memory:" });
+		app = createConversationRoutes(database);
+	});
+
+	afterEach(() => {
+		database.close();
+	});
+
+	test("promotes a Participant with the applied outcome and the new Character payload", async () => {
+		const { id, modelId } = setupConversation();
+
+		const response = await saveParticipant(id, modelId, 0);
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.outcome).toBe("applied");
+		expect(body.character.name).toBe("Maren Voss");
+		expect(body.character.revision).toBe(0);
+		expect(body.character.openings).toEqual(["Hello"]);
+		expect(body.character.prompt.identity).toBe("Identity text.");
+
+		// The promoted Character is immediately visible through the library
+		// list endpoint of the same transport surface.
+		const listApp = createCharacterLibraryRoutes(database);
+		const listed = await listApp.handle(new Request("http://localhost/api/characters"));
+		const { characters } = await listed.json();
+		expect(characters).toHaveLength(1);
+		expect(characters[0]?.name).toBe("Maren Voss");
+	});
+
+	test("maps a stale Conversation revision to the typed conflict with the current snapshot", async () => {
+		const { id, modelId } = setupConversation();
+		// Advance the Conversation after the client's read revision (0).
+		await app.handle(
+			new Request(`http://localhost/api/conversations/${id}/commands`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: 0,
+					action: {
+						type: "add-participant",
+						definition: adHocDefinition("Added Later"),
+					},
+				}),
+			}),
+		);
+
+		const stale = await saveParticipant(id, modelId, 0);
+		expect(stale.status).toBe(409);
+		const body = await stale.json();
+		expect(body.outcome).toBe("conflict");
+		expect(body.expectedRevision).toBe(0);
+		expect(body.actualRevision).toBe(1);
+		expect(body.currentConversation.revision).toBe(1);
+		expect(body.currentConversation.cast).toHaveLength(3);
+
+		// The stale save created no Character.
+		const listApp = createCharacterLibraryRoutes(database);
+		const listed = await listApp.handle(new Request("http://localhost/api/characters"));
+		expect((await listed.json()).characters).toHaveLength(0);
+	});
+
+	test("maps missing Conversation and missing Participant to typed not-found outcomes", async () => {
+		const { id, modelId } = setupConversation();
+
+		const missingConversation = await saveParticipant(424242, modelId, 0);
+		expect(missingConversation.status).toBe(404);
+		expect(await missingConversation.json()).toEqual({ outcome: "not-found" });
+
+		const missingParticipant = await saveParticipant(id, 987654, 0);
+		expect(missingParticipant.status).toBe(404);
+		expect(await missingParticipant.json()).toEqual({ outcome: "not-found" });
+	});
+});

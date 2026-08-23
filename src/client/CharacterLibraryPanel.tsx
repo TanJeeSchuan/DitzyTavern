@@ -14,6 +14,14 @@ import {
 // actions, pinning, computed duplicate ordinals, and conflict recovery.
 // Internal identifiers stay behind the transport adapters and are never shown.
 
+interface CharacterLibraryPanelProps {
+	// When set (e.g. after a Participant was saved as a Character from the
+	// Cast drawer), the panel opens that Character on mount or change and
+	// then reports the focus as consumed.
+	focusCharacterId?: number | null;
+	onFocusConsumed?: () => void;
+}
+
 interface Drafts {
 	name: string;
 	prompt: CharacterPrompt;
@@ -52,7 +60,10 @@ const promptFields: Array<{ key: keyof CharacterPrompt; label: string }> = [
 	{ key: "postHistoryInstruction", label: "Post-History Instruction" },
 ];
 
-export function CharacterLibraryPanel() {
+export function CharacterLibraryPanel({
+	focusCharacterId = null,
+	onFocusConsumed,
+}: CharacterLibraryPanelProps) {
 	const [characters, setCharacters] = useState<CharacterSummary[] | null>(null);
 	const [selectedId, setSelectedId] = useState<number | null>(null);
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
@@ -105,6 +116,19 @@ export function CharacterLibraryPanel() {
 			setNotice("The Library could not be reached.");
 		}
 	}, []);
+
+	// Follows one-time navigation into a specific Character entry (for
+	// example after the Cast drawer saved a Participant as a Character),
+	// then reports the focus as consumed so later library visits start at
+	// the top-level list. The same entry stays open if a saved Character is
+	// refocused while this panel is already showing it.
+	useEffect(() => {
+		if (focusCharacterId === null) {
+			return;
+		}
+		void openCharacter(focusCharacterId);
+		onFocusConsumed?.();
+	}, [focusCharacterId, onFocusConsumed, openCharacter]);
 
 	const runCommand = useCallback(
 		async (action: string, command: CharacterCommand) => {

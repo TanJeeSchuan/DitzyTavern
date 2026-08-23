@@ -19,6 +19,25 @@ export class StaleConversationRevisionError extends Error {
 	}
 }
 
+// Typed not-found outcome for a Participant that does not exist in (or no
+// longer belongs to) a Conversation. Cross-module workflows surface this
+// instead of a generic validation message so clients can recover with a
+// 404 rather than guessing. Matching the Conversation model, the whole
+// Conversation is implied by the participant's chat reference.
+export class ParticipantNotFoundError extends Error {
+	readonly conversationId: number;
+	readonly participantId: number;
+
+	constructor(conversationId: number, participantId: number) {
+		super(
+			`Participant ${participantId} was not found in Conversation ${conversationId}.`,
+		);
+		this.name = "ParticipantNotFoundError";
+		this.conversationId = conversationId;
+		this.participantId = participantId;
+	}
+}
+
 export class InvalidConversationCommandError extends Error {
 	constructor(message: string) {
 		super(message);

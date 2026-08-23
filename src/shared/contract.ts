@@ -13,13 +13,18 @@ import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
+	ParticipantNotFoundError,
 	type ConversationSnapshot,
 	createConversationModule,
 	StaleConversationRevisionError,
 } from "../server/conversation";
 import { getWorkspace } from "../server/database/workspace";
 import { withDatabase } from "../server/database/database";
-import { addCharacterToCast, createNativeConversation } from "../server/workflows";
+import {
+	addCharacterToCast,
+	createNativeConversation,
+	saveParticipantAsCharacter,
+} from "../server/workflows";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -719,6 +724,70 @@ export const createConversationRoutes = (database: Database | undefined) =>
 						conversation: conversationSnapshot,
 					}),
 					409: t.Union([characterConflict, conversationConflict]),
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/cast/participants/:participantId/characters",
+			({ params, body, status }) => {
+				try {
+					const { character } = withDatabase(database, (connection) =>
+						saveParticipantAsCharacter(connection, {
+							conversationId: params.id,
+							expectedConversationRevision:
+								body.expectedConversationRevision,
+							participantId: params.participantId,
+						}),
+					);
+					return {
+						outcome: "applied" as const,
+						character: toCharacterPayload(character),
+					};
+				} catch (error) {
+					if (error instanceof StaleConversationRevisionError) {
+						const current = withDatabase(database, (connection) =>
+							createConversationModule(connection).getSnapshot(params.id),
+						);
+						if (current === undefined) {
+							// The Conversation disappeared between the conflict and
+							// the recovery read; never fabricate authoritative state.
+							return status(404, { outcome: "not-found" as const });
+						}
+						return status(409, {
+							outcome: "conflict" as const,
+							expectedRevision: error.expectedRevision,
+							actualRevision: error.actualRevision,
+							currentConversation: toConversationPayload(current),
+						});
+					}
+					if (
+						error instanceof ConversationNotFoundError ||
+						error instanceof ParticipantNotFoundError
+					) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof InvalidCharacterDefinitionError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ id: t.Numeric(), participantId: t.Numeric() }),
+				body: t.Object({
+					expectedConversationRevision: t.Integer(),
+				}),
+				response: {
+					200: t.Object({
+						outcome: t.Literal("applied"),
+						character: characterSnapshot,
+					}),
+					409: conversationConflict,
 					404: notFoundOutcome,
 					422: invalidOutcome,
 				},
