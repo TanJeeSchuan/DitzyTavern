@@ -1,0 +1,71 @@
+// Provider-neutral Prompt Compiler contract. This module is pure: it never
+// touches SQLite, HTTP, credentials, or provider vocabulary. It consumes
+// resolved Participant Definitions and normalized selected history and
+// produces a deterministic, named-block Prompt Plan plus macro warnings.
+
+// A Definition as the compiler consumes it. Structurally identical to the
+// Conversation-local and library Definitions so callers pass them through
+// without translation, while the compiler stays independent of both seams.
+export interface CompilePromptDefinition {
+	name: string;
+	prompt: CompilePromptSource;
+}
+
+export interface CompilePromptSource {
+	systemInstruction: string;
+	identity: string;
+	scenario: string;
+	exampleDialogue: string;
+	postHistoryInstruction: string;
+}
+
+// One normalized selected-history entry derived from a Message's selected
+// Variant. The speaker name comes from the immutable Author Stamp and is
+// null for preservation records without resolved authorship. History text is
+// already-final output and is never macro-expanded.
+export interface PromptHistoryEntry {
+	speakerName: string | null;
+	content: string;
+}
+
+export interface CompilePromptInput {
+	human: CompilePromptDefinition;
+	model: CompilePromptDefinition;
+	history?: readonly PromptHistoryEntry[];
+}
+
+// Named, ordered, provider-neutral blocks. The plan keeps blocks separate so
+// a future Prompt Manager can reposition them without changing storage;
+// no vendor role names appear here.
+export type PromptBlock =
+	| { kind: "system-instruction"; content: string }
+	| { kind: "identity"; role: "human" | "model"; content: string }
+	| { kind: "scenario"; content: string }
+	| { kind: "example-dialogue"; content: string }
+	| { kind: "history"; speakerName: string | null; content: string }
+	| { kind: "post-history-instruction"; content: string };
+
+// A preserved unknown macro surfaced by prompt inspection. The block label
+// identifies where the macro appeared; the macro is the exact written text.
+export interface PromptWarning {
+	block: string;
+	macro: string;
+}
+
+export interface PromptPlan {
+	blocks: readonly PromptBlock[];
+	warnings: readonly PromptWarning[];
+}
+
+// Owner-relative macro context. `self` is the name of the Participant whose
+// Definition (or opening) is being compiled; `other` is the name of the other
+// controlled Participant.
+export interface MacroContext {
+	self: string;
+	other: string;
+}
+
+export interface ExpansionResult {
+	text: string;
+	warnings: readonly PromptWarning[];
+}

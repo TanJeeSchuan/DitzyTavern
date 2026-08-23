@@ -146,6 +146,43 @@ describe("Conversation creation", () => {
 		});
 	});
 
+	test("compiles greeting openings with owner-relative macros while storing them raw", () => {
+		const conversation = createConversationModule(database);
+		const snapshot = conversation.create(
+			inputWith({
+				participants: [
+					{ definition: adHoc("Writer") },
+					{
+						definition: adHoc("Maren Voss", [
+							"{{self}} greets {{other}}.",
+							"Say \\{{self}} plainly.",
+							"{{SELF}} and {{user}} stay literal.",
+						]),
+					},
+				],
+				control: { human: 0, model: 1 },
+			}),
+		);
+
+		const greeting = snapshot.messages[0];
+		expect(greeting?.variants.map((variant) => variant.content)).toEqual([
+			"Maren Voss greets Writer.",
+			"Say {{self}} plainly.",
+			"{{SELF}} and {{user}} stay literal.",
+		]);
+		expect(greeting?.author).toEqual({
+			participantId: snapshot.cast[1]?.id ?? null,
+			capturedName: "Maren Voss",
+		});
+
+		// The stored openings remain raw and unexpanded.
+		expect(snapshot.cast[1]?.openings).toEqual([
+			"{{self}} greets {{other}}.",
+			"Say \\{{self}} plainly.",
+			"{{SELF}} and {{user}} stay literal.",
+		]);
+	});
+
 	test("creates no greeting Message when the model Participant has no openings", () => {
 		const conversation = createConversationModule(database);
 		const snapshot = conversation.create(

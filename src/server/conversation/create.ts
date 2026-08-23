@@ -1,5 +1,9 @@
 import type { Database } from "bun:sqlite";
 import {
+	compileOpening,
+	type MacroContext,
+} from "../prompt-compiler";
+import {
 	chatDataTable,
 	chatTable,
 	conversationControlTable,
@@ -170,13 +174,23 @@ const deriveGreetingFromInput = (
 	if (input.control === undefined || (input.messages?.length ?? 0) > 0) {
 		return null;
 	}
-	const openings = [...(participants[input.control.model]?.definition.openings ?? [])];
+	const modelSeed = participants[input.control.model];
+	const humanSeed = participants[input.control.human];
+	const openings = [...(modelSeed?.definition.openings ?? [])];
 	if (openings.length === 0) return null;
+
+	// The greeting is the first compiled use of the model seat's openings:
+	// macros resolve relative to the owning model Definition. The stored
+	// openings stay raw; only the presented greeting text is expanded.
+	const context: MacroContext = {
+		self: normalizeParticipantName(modelSeed.definition.name),
+		other: normalizeParticipantName(humanSeed.definition.name),
+	};
 
 	return {
 		timestamp: baseTime,
 		variants: openings.map((content, index) => ({
-			content,
+			content: compileOpening(content, context, index + 1).text,
 			timestamp: baseTime,
 			selected: index === 0,
 		})),

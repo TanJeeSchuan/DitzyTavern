@@ -4,6 +4,7 @@ import { openDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
+	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 } from ".";
@@ -392,5 +393,82 @@ describe("Conversation module", () => {
 		expect(
 			afterSibling.messages.find((candidate) => candidate.id === greeting.id)?.author,
 		).toEqual(originalAuthor);
+	});
+
+	describe("commitGeneration", () => {
+		const capturedInput = (conversationId: number) => ({
+			conversationId,
+			timestamp: "2026-08-20T12:00:00Z",
+			content: "The lantern answers.",
+			authorParticipantId: modelId,
+			capturedAuthorName: "Maren",
+			humanParticipantId: humanId,
+			modelParticipantId: modelId,
+		});
+
+		test("persists the Message with the captured Author Stamp and historical pair", () => {
+			const conversation = createConversationModule(database);
+			const committed = conversation.commitGeneration(capturedInput(conversationId));
+
+			const message = committed.messages.at(-1);
+			expect(message?.author).toEqual({
+				participantId: modelId,
+				capturedName: "Maren",
+			});
+			expect(message?.historicalContext).toEqual({
+				humanParticipantId: humanId,
+				modelParticipantId: modelId,
+			});
+			expect(message?.variants).toEqual([
+				expect.objectContaining({ content: "The lantern answers.", selected: true }),
+			]);
+			expect(committed.revision).toBe(1);
+		});
+
+		test("requires the author to be the model Participant of the captured pair", () => {
+			expect(() =>
+				createConversationModule(database).commitGeneration({
+					...capturedInput(conversationId),
+					authorParticipantId: humanId,
+				}),
+			).toThrow(InvalidConversationCommandError);
+			expect(createConversationModule(database).getSnapshot(conversationId)?.revision).toBe(0);
+		});
+
+		test("requires distinct captured human and model Participants", () => {
+			expect(() =>
+				createConversationModule(database).commitGeneration({
+					...capturedInput(conversationId),
+					humanParticipantId: modelId,
+				}),
+			).toThrow(InvalidConversationCommandError);
+		});
+
+		test("rejects pairs referencing Participants outside the Conversation", () => {
+			const other = createConversationModule(database).create({
+				name: "Other Conversation",
+				participants: [
+					{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
+					{ definition: { name: "B", prompt: emptyPrompt(), openings: [] } },
+				],
+				control: { human: 0, model: 1 },
+			});
+			const outsiderId = other.cast[0]?.id ?? 0;
+
+			expect(() =>
+				createConversationModule(database).commitGeneration({
+					...capturedInput(conversationId),
+					humanParticipantId: outsiderId,
+				}),
+			).toThrow(InvalidConversationCommandError);
+		});
+
+		test("rejects a missing Conversation with the typed not-found result", () => {
+			expect(() =>
+				createConversationModule(database).commitGeneration(
+					capturedInput(424242),
+				),
+			).toThrow(ConversationNotFoundError);
+		});
 	});
 });

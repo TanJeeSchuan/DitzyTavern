@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { commitConversationGeneration } from "./commands/commit-generation";
 import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
 import { connectConversationDatabase } from "./internal";
@@ -17,6 +18,7 @@ export type {
 	CapabilityBlockReason,
 	CastParticipantSnapshot,
 	AuthorStampSnapshot,
+	CommitGenerationInput,
 	ConversationAction,
 	ConversationCapabilities,
 	ConversationCommand,
@@ -46,5 +48,6 @@ export function createConversationModule(database: Database): ConversationModule
 				conversationId,
 			),
 		execute: (command) => executeConversationCommand(database, command),
+		commitGeneration: (input) => commitConversationGeneration(database, input),
 	};
 }

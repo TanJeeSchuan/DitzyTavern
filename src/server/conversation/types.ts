@@ -140,6 +140,23 @@ export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
+	// Server-side commit of a finished current Generate; see
+	// CommitGenerationInput. Not a client-submitted command.
+	commitGeneration(input: CommitGenerationInput): ConversationSnapshot;
+}
+
+// The generation workflow captures these values at generation start; the
+// module validates the pair against the Cast and persists the Message with
+// the immutable Author Stamp and historical Control pair exactly as
+// captured. The author is always the model Participant of the pair.
+export interface CommitGenerationInput {
+	conversationId: number;
+	timestamp: string;
+	content: string;
+	authorParticipantId: number;
+	capturedAuthorName: string;
+	humanParticipantId: number;
+	modelParticipantId: number;
 }
 
 export interface ConversationCreationVariant {
