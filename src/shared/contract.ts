@@ -400,11 +400,15 @@ const deleteDataAction = t.Object({
 	key: t.String(),
 });
 
-// Cast and Control management commands.
+// Cast management command. The raw command appends an ad-hoc or already-
+// resolved local Definition only; Character-to-Cast forks flow through the
+// explicit workflow route, which checks both revisions and copies the
+// authoritative Definition server-side. `sourceCharacterId` is deliberately
+// absent here so a client can never forge or bypass provenance/revision
+// rules at the transport boundary.
 const addParticipantAction = t.Object({
 	type: t.Literal("add-participant"),
 	definition: participantDefinition,
-	sourceCharacterId: t.Optional(t.Integer()),
 });
 
 const renameParticipantAction = t.Object({

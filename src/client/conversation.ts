@@ -93,7 +93,6 @@ export type ConversationAction =
 	| {
 			type: "add-participant";
 			definition: ParticipantDefinition;
-			sourceCharacterId?: number;
 	  }
 	| { type: "rename-participant"; participantId: number; name: string }
 	| {
@@ -107,6 +106,11 @@ export type ConversationAction =
 			openings: string[];
 	  }
 	| { type: "assign-control"; seat: "human" | "model"; participantId: number };
+
+// Note: the client-side add-participant action intentionally carries no
+// sourceCharacterId. Character-to-Cast forks always go through
+// addCharacterToCast (the workflow route), which checks the source
+// Character and destination Conversation revisions server-side.
 
 export type CommandOutcome =
 	| { status: "applied"; conversation: ConversationSnapshot }

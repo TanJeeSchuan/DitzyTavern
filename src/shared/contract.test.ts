@@ -403,6 +403,35 @@ describe("Conversation Cast/Control transport adapters", () => {
 		]);
 	});
 
+	test("the raw command route never accepts client-supplied Character provenance", async () => {
+		// Character-to-Cast forks must flow through the workflow route so
+		// the source Character and destination Conversation revisions are
+		// checked server-side. A forged sourceCharacterId on the raw command
+		// is stripped by the transport schema and never reaches the domain.
+		const { id } = setupConversation();
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: definition({ name: "Fork Source" }),
+		});
+
+		// SAFETY: this payload deliberately carries a field the transport
+		// schema does not declare; the adapter must strip it instead of
+		// honoring forged provenance.
+		const forgedPayload = {
+			type: "add-participant",
+			definition: adHocDefinition("Claimed Fork", ["Fabricated definition"]),
+			sourceCharacterId: source.id,
+		} as ConversationAction;
+		const forged = await command(id, 0, forgedPayload);
+		expect(forged.status).toBe(200);
+		const body = await forged.json();
+		const appended = body.conversation.cast.at(-1);
+		expect(appended?.name).toBe("Claimed Fork");
+		expect(appended?.sourceCharacterId).toBeNull();
+		expect(appended?.sourceCharacterName).toBeNull();
+	});
+
 	test("maps a stale command to the typed conflict with the current snapshot", async () => {
 		const { id } = setupConversation();
 		await command(id, 0, {

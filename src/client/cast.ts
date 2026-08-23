@@ -5,7 +5,11 @@
 // shape the picker and the Control selectors' outcome wording without
 // re-deriving domain rules.
 
-import { duplicateLabel, type ControlAssignment, type ControlSeat } from "../shared/cast";
+import {
+	duplicateLabel,
+	resolveControlChange,
+	type ControlSeat,
+} from "../shared/cast";
 import type { CharacterSummary } from "./character-library";
 import type { ConversationControl } from "./conversation";
 
@@ -71,13 +75,16 @@ export const controlChangeDescription = (
 	for (const participant of conversation.cast) {
 		participants.set(participant.id, participant.duplicateLabel);
 	}
-	const control: ControlAssignment = conversation.control;
+	const control: ConversationControl = conversation.control;
 	const occupant =
 		seat === "human" ? control.humanParticipantId : control.modelParticipantId;
 	const opposite =
 		seat === "human" ? control.modelParticipantId : control.humanParticipantId;
 
-	if (occupant === participantId) {
+	// The kind of change is decided by the shared resolver so the swap and
+	// replace rules never drift between server and client.
+	const kind = resolveControlChange(control, seat, participantId);
+	if (kind === "no-change") {
 		return {
 			kind: "no-change",
 			notice: `${seatLabel(seat)} is already ${participants.get(participantId) ?? "this Participant"}.`,
@@ -86,12 +93,12 @@ export const controlChangeDescription = (
 	if (opposite === participantId) {
 		const otherSeat: ControlSeat = seat === "human" ? "model" : "human";
 		return {
-			kind: "swap",
+			kind,
 			notice: `Swap: ${participants.get(participantId) ?? "this Participant"} and ${participants.get(occupant ?? -1) ?? "the other seat"} exchange the ${seatLabel(seat)} and ${seatLabel(otherSeat)} seats.`,
 		};
 	}
 	return {
-		kind: "replace",
+		kind,
 		notice: `Take over ${seatLabel(seat)} with ${participants.get(participantId) ?? "this Participant"}; the previous occupant becomes removable.`,
 	};
 };
