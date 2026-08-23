@@ -177,7 +177,7 @@ function OpeningsField({
 }) {
 	return (
 		<label className="seat-field">
-			<span>Openings — one per line; the model seat greets with these</span>
+			<span>Openings: one per line; the model seat greets with these</span>
 			<textarea
 				rows={3}
 				value={openings.join("\n")}

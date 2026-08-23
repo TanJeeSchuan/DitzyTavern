@@ -208,12 +208,12 @@ input:focus-visible {
 .workspace {
 	position: relative;
 	display: grid;
-	grid-template-columns: 4.25rem 17rem minmax(36rem, 48rem) 18rem;
+	grid-template-columns: 4.25rem minmax(17rem, 1fr) minmax(36rem, 48rem) minmax(18rem, 1fr);
 	justify-content: center;
 	gap: 0.75rem;
 	min-height: 100dvh;
 	overflow: hidden;
-	padding: 0 0.75rem 0 0;
+	padding: 0;
 	background: var(--background);
 }
 
@@ -383,6 +383,7 @@ input:focus-visible {
 
 .details-panel {
 	grid-column: 4;
+	grid-row: 1;
 	transform: translateX(0.8rem);
 }
 
@@ -645,9 +646,10 @@ input:focus-visible {
 
 .character-list-item {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.6rem;
+	gap: 0.3rem 0.6rem;
 	width: 100%;
 	padding: 0.85rem 0.9rem;
 	border: 1px solid transparent;
@@ -666,19 +668,23 @@ input:focus-visible {
 	font-size: 0.88rem;
 	font-weight: 620;
 	letter-spacing: -0.01em;
-	overflow-wrap: anywhere;
+	min-width: 0;
+	overflow-wrap: break-word;
 }
 
 .character-list-item small {
-	color: var(--accent);
+	color: var(--text-muted);
 	flex-shrink: 0;
+}
+
+.character-list-item small span {
+	color: var(--accent);
 }
 
 .character-list-item svg {
 	width: 0.85rem;
 	height: 0.85rem;
 	stroke-width: 2;
-	fill: currentColor;
 }
 
 .library-back {
@@ -1427,6 +1433,7 @@ input:focus-visible {
 }
 
 .composer > textarea {
+	grid-column: 2;
 	width: 100%;
 	min-height: 3rem;
 	max-height: 10rem;
@@ -1439,6 +1446,10 @@ input:focus-visible {
 	font-family: var(--font-reading);
 	font-size: 0.92rem;
 	line-height: 1.5;
+}
+
+.composer > .send-button {
+	grid-column: 3;
 }
 
 .composer > textarea::placeholder {
@@ -1657,21 +1668,28 @@ input:focus-visible {
 }
 
 @media (min-width: 78.01rem) {
-	.primary-panel,
+/* Keep the Chats panel attached to the rail and viewport bottom. The right
+	   panel remains inset so its secondary-surface hierarchy stays intact. */
 	.details-panel {
+		height: calc(100dvh - 1.1rem);
+	}
+
+	.workspace > .primary-panel {
+		height: 100dvh;
+		margin-left: -0.75rem;
+		margin-right: 1.25rem;
+	}
+
+	.workspace > .details-panel {
+		margin-left: 1.25rem;
+	}
+
+	/* New Chat opened from the no-chat surface renders outside the
+	   workspace; keep it docked to the right edge there too. */
+	body > .details-panel {
 		position: fixed;
 		top: 0;
 		bottom: 0;
-		height: auto;
-		border-radius: 0;
-	}
-
-	.primary-panel {
-		left: 4.25rem;
-		width: 17rem;
-	}
-
-	.details-panel {
 		right: 0;
 		width: 18rem;
 	}
@@ -1690,13 +1708,15 @@ input:focus-visible {
 
 @media (max-width: 90rem) and (min-width: 78.01rem) {
 	.workspace {
-		grid-template-columns: 4.25rem 15rem minmax(35rem, 45rem) 16rem;
+		grid-template-columns:
+			4.25rem
+			minmax(15rem, 1fr)
+			minmax(35rem, 45rem)
+			minmax(16rem, 1fr);
 		gap: 0.55rem;
-		padding: 0 0.55rem 0 0;
+		padding: 0;
 	}
 
-	.navigation-rail,
-	.primary-panel,
 	.details-panel {
 		height: calc(100dvh - 1.1rem);
 	}
@@ -1705,19 +1725,27 @@ input:focus-visible {
 		height: 100dvh;
 	}
 
-	.primary-panel,
-	.details-panel {
-		top: 0;
-		bottom: 0;
+	/* Panels nested in the workspace grid return to grid flow here so the
+	   1fr tracks expand them into the utility bays. The 1.25rem column gap
+	   stays visible as the thin ambient sliver between each panel edge and
+	   the story surface. Details panels rendered outside the workspace
+	   (e.g. New Chat on the no-chat surface) keep their fixed placement. */
+	.workspace > .primary-panel,
+	.workspace > .details-panel {
+		position: static;
+		top: auto;
+		bottom: auto;
 		height: auto;
+		border-radius: 1.35rem;
 	}
 
-	.primary-panel {
-		width: 15rem;
+	.workspace > .primary-panel {
+		width: auto;
+		margin-left: -0.55rem;
 	}
 
-	.details-panel {
-		width: 16rem;
+	.workspace > .details-panel {
+		width: auto;
 	}
 }
 
@@ -2192,6 +2220,19 @@ input:focus-visible {
 	}
 }
 
+/* When the New Chat surface is docked in a narrow desktop bay, collapse
+   the two seat editors to a single column so they stay fully legible
+   inside the panel instead of clipping at the bay width. */
+.details-panel {
+	container-type: inline-size;
+}
+
+@container (max-width: 30rem) {
+	.seats-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
@@ -2230,8 +2271,9 @@ input:focus-visible {
 /* The drawer's member rows use a two-column layout: identity copy on the
    left, Control badge and actions on the right. */
 .cast-member {
-	grid-template-columns: 1fr auto;
+	grid-template-columns: 1fr;
 	align-items: start;
+	gap: 0.65rem;
 }
 
 .cast-member-copy {
@@ -2242,6 +2284,7 @@ input:focus-visible {
 
 .cast-member-right {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.5rem;
 }

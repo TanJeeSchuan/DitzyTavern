@@ -121,13 +121,10 @@ function WritingWorkspace({
 					activeChat: initialWorkspace.activeChat,
 				}}
 				onNewChat={() => setNewChatOpen(true)}
+				newChatOpen={newChatOpen}
+				onNewChatClose={() => setNewChatOpen(false)}
+				onNewChatCreated={() => void handleCreated()}
 			/>
-			{newChatOpen && (
-				<NewChatSurface
-					onCreated={() => void handleCreated()}
-					onClose={() => setNewChatOpen(false)}
-				/>
-			)}
 		</>
 	);
 }
@@ -150,9 +147,15 @@ function NewChatSurface({
 function ActiveWritingWorkspace({
 	initialWorkspace,
 	onNewChat,
+	newChatOpen,
+	onNewChatClose,
+	onNewChatCreated,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
 	onNewChat: () => void;
+	newChatOpen: boolean;
+	onNewChatClose: () => void;
+	onNewChatCreated: () => void;
 }) {
 	const [messages, setMessages] = useState(initialWorkspace.messages);
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
@@ -356,6 +359,13 @@ function ActiveWritingWorkspace({
 				authorName={detailMessage?.authorId}
 				onClose={() => setDetailMessageId(null)}
 			/>
+
+			{newChatOpen && (
+				<NewChatSurface
+					onCreated={onNewChatCreated}
+					onClose={onNewChatClose}
+				/>
+			)}
 		</div>
 	);
 }
