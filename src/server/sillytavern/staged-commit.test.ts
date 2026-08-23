@@ -637,7 +637,10 @@ describe("staged SillyTavern chat import commit", () => {
 		// has written: the all-or-nothing operation must roll the new Profile
 		// back together with the Chat, while the already moved filesystem
 		// artifact may remain unused. The new-Character plan guarantees the
-		// Profile branch runs inside the same transaction as the Chat.
+		// Profile branch runs inside the same transaction as the Chat; Bun's
+		// nested transactions are savepoint-backed, so the inner Character
+		// creation rolls back with the failed Conversation creation.
+		addCharacter({ name: "Maren Voss" });
 		const profilesBefore = createCharacterLibraryModule(database).list().length;
 		database.exec("DROP TABLE participant");
 
@@ -654,10 +657,10 @@ describe("staged SillyTavern chat import commit", () => {
 			}),
 		).toThrow();
 
-		// No Chat, Message, Variant, or artifact metadata row exists, and the
-		// transaction rolled the Profile branch back: no new Profile row was
-		// created. Participant rows cannot be counted because the table itself
-		// is gone.
+		// The transaction rolled the Profile branch back: no new Profile row
+		// exists and the pre-existing library is untouched. No Chat, Message,
+		// Variant, or artifact metadata row exists either. Participant rows
+		// cannot be counted because the table itself is gone.
 		const db = drizzle(database);
 		expect(db.select().from(chatTable).all()).toEqual([]);
 		expect(db.select().from(characterTable).all()).toHaveLength(profilesBefore);
@@ -665,6 +668,22 @@ describe("staged SillyTavern chat import commit", () => {
 		expect(db.select().from(messageTable).all()).toEqual([]);
 		expect(db.select().from(messageVariantTable).all()).toEqual([]);
 		expect(db.select().from(artifactTable).all()).toEqual([]);
+		// The rolled-back Profile is gone: no Character named "Vesper" exists
+		// (queried by table so the dropped participant table cannot interfere).
+		expect(
+			db
+				.select()
+				.from(characterTable)
+				.where(eq(characterTable.name, "Vesper"))
+				.all(),
+		).toEqual([]);
+		expect(
+			db
+				.select()
+				.from(characterTable)
+				.where(eq(characterTable.name, "Maren Voss"))
+				.all(),
+		).toHaveLength(1);
 		// The already moved exact artifact file is the accepted lifecycle
 		// tradeoff: it remains on disk without any metadata row.
 		expect(committedArtifacts()).toHaveLength(1);

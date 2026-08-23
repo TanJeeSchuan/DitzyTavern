@@ -18,7 +18,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
 import { createCharacterLibraryModule, type CharacterSummary } from "../character-library";
@@ -483,6 +483,12 @@ interface ResolvedPlanParticipant {
 // the staged preview, the staged bytes, and every resolution choice stay
 // intact for correction. The resolver never offers Message skipping, so the
 // plan must assign every retained Message to exactly one Participant.
+//
+// Trust boundary: the client owns the confirmation UX (blank captured names
+// must be explicitly confirmed or edited, and every fork Character must be
+// explicitly approved). The authoritative server invariant is that every
+// resulting Participant name is nonblank; the confirmation flags themselves
+// live in the client resolver and are not part of the wire contract.
 const validateResolutionPlan = (
 	record: StagedRecord,
 	messageCount: number,
@@ -647,11 +653,9 @@ const finalizeExactArtifact = (
 ): FinalizedExactArtifact => {
 	try {
 		const relativePath = uniqueManagedRelativePath(record.originalFilename);
-		mkdirSync(dirname(join(artifactDirectory, relativePath)), {
-			recursive: true,
-		});
-		// The staging root lives under the same managed artifact directory,
-		// so this is a same-filesystem rename, not a copy.
+		// The staging root lives under the same managed artifact directory
+		// (created when the module was constructed), so this is a
+		// same-filesystem rename, not a copy.
 		renameSync(record.stagedPath, join(artifactDirectory, relativePath));
 		return {
 			relativePath,
@@ -797,7 +801,9 @@ export function createChatImportModule(
 
 			// One all-or-nothing SQLite operation through public domain
 			// seams: requested new Profiles and the Chat itself commit
-			// together or not at all.
+			// together or not at all. Bun's nested database.transaction calls
+			// are savepoint-backed, so the inner Character creation and the
+			// Conversation creation roll back together when either fails.
 			const commit = database.transaction(() => {
 				const seeds: ConversationParticipantSeed[] = resolved.map((entry) => {
 					if (!entry.createProfile) {

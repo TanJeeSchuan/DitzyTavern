@@ -655,6 +655,7 @@ function ResolvedGroupCard({
 				<OutcomeChoice
 					label="Fork existing Character"
 					hint="Copies the Profile into this Participant"
+					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "fork"}
 					disabled={group.suggestion === null && characters.length === 0}
 					onSelect={() => {
@@ -681,6 +682,7 @@ function ResolvedGroupCard({
 				<OutcomeChoice
 					label="Create a new Character"
 					hint="Adds this Participant to the Character Library"
+					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "new-character"}
 					onSelect={() =>
 						onDispatch({
@@ -693,6 +695,7 @@ function ResolvedGroupCard({
 				<OutcomeChoice
 					label="Keep Chat-only"
 					hint="A complete Participant without a Library Profile"
+					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "chat-only"}
 					onSelect={() =>
 						onDispatch({
@@ -805,7 +808,7 @@ function ResolvedGroupCard({
 									type: "split-new",
 									fromId: group.id,
 									positions: [...group.selectedPositions],
-									newId: `split-${Date.now().toString(36)}`,
+									newId: crypto.randomUUID(),
 								});
 								return;
 							}
@@ -885,19 +888,24 @@ function OutcomeChoice({
 	hint,
 	checked,
 	disabled = false,
+	name,
 	onSelect,
 }: {
 	label: string;
 	hint: string;
 	checked: boolean;
 	disabled?: boolean;
+	// Radio inputs group by name across the whole document, so every
+	// Participant's outcome group needs its own name to keep resolutions
+	// independent.
+	name?: string;
 	onSelect: () => void;
 }) {
 	return (
 		<label className="import-outcome-choice" data-checked={checked}>
 			<input
 				type="radio"
-				name="outcome"
+				name={name}
 				checked={checked}
 				disabled={disabled}
 				onChange={onSelect}
