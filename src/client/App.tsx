@@ -13,6 +13,7 @@ import {
 	Moon,
 	MoreHorizontal,
 	PanelLeftClose,
+	Plus,
 	Search,
 	Send,
 	Settings,
@@ -23,15 +24,14 @@ import {
 	type FormEvent,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { CharacterLibraryPanel } from "./CharacterLibraryPanel";
+import { NewChatPanel } from "./NewChatPanel";
 import {
 	type ChatSummary,
 	type GeneratedMessage,
-	type Identity,
 	type StoryMessage,
 	type ThemePreference,
 	type Workspace,
@@ -70,34 +70,88 @@ export function App() {
 		return <WorkspaceError onRetry={() => void loadWorkspace()} />;
 	}
 
-	return <WritingWorkspace initialWorkspace={state.workspace} />;
+	return (
+		<WritingWorkspace
+			initialWorkspace={state.workspace}
+			onReload={loadWorkspace}
+		/>
+	);
 }
 
-function WritingWorkspace({ initialWorkspace }: { initialWorkspace: Workspace }) {
+function WritingWorkspace({
+	initialWorkspace,
+	onReload,
+}: {
+	initialWorkspace: Workspace;
+	onReload: () => Promise<void>;
+}) {
+	const [newChatOpen, setNewChatOpen] = useState(false);
+
+	const handleCreated = async () => {
+		setNewChatOpen(false);
+		await onReload();
+	};
+
 	if (!initialWorkspace.activeChat) {
-		return <WorkspaceWithoutChats />;
+		return (
+			<>
+				<WorkspaceWithoutChats onNewChat={() => setNewChatOpen(true)} />
+				{newChatOpen && (
+					<NewChatSurface
+						onCreated={() => void handleCreated()}
+						onClose={() => setNewChatOpen(false)}
+					/>
+				)}
+			</>
+		);
 	}
 
 	return (
-		<ActiveWritingWorkspace
-			initialWorkspace={{
-				...initialWorkspace,
-				activeChat: initialWorkspace.activeChat,
-			}}
-		/>
+		<>
+			<ActiveWritingWorkspace
+				key={initialWorkspace.activeChat.id}
+				initialWorkspace={{
+					...initialWorkspace,
+					activeChat: initialWorkspace.activeChat,
+				}}
+				onNewChat={() => setNewChatOpen(true)}
+			/>
+			{newChatOpen && (
+				<NewChatSurface
+					onCreated={() => void handleCreated()}
+					onClose={() => setNewChatOpen(false)}
+				/>
+			)}
+		</>
+	);
+}
+
+function NewChatSurface({
+	onCreated,
+	onClose,
+}: {
+	onCreated: (conversationId: number) => void;
+	onClose: () => void;
+}) {
+	return (
+		<aside className="details-panel" data-open="true">
+			<PanelHeader title="New Chat" onClose={onClose} />
+			<NewChatPanel onCreated={onCreated} />
+		</aside>
 	);
 }
 
 function ActiveWritingWorkspace({
 	initialWorkspace,
+	onNewChat,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
+	onNewChat: () => void;
 }) {
 	const [messages, setMessages] = useState(initialWorkspace.messages);
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
 	const [primaryPanel, setPrimaryPanel] = useState<PrimaryPanel>(null);
 	const [detailMessageId, setDetailMessageId] = useState<string | null>(null);
-	const [identityId, setIdentityId] = useState("writer");
 	const [theme, setTheme] = useState<ThemePreference>("system");
 	const [draft, setDraft] = useState("");
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
@@ -108,18 +162,6 @@ function ActiveWritingWorkspace({
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
-	const activeCast = initialWorkspace.identities.filter((identity) =>
-		activeChat.castIds.includes(identity.id),
-	);
-
-	const identitiesById = useMemo(
-		() =>
-			new Map(
-				initialWorkspace.identities.map((identity) => [identity.id, identity]),
-			),
-		[initialWorkspace.identities],
-	);
-	const currentIdentity = identitiesById.get(identityId) ?? initialWorkspace.identities[0];
 	const detailMessage = messages.find(
 		(message): message is GeneratedMessage =>
 			message.id === detailMessageId && message.type === "generated",
@@ -207,7 +249,7 @@ function ActiveWritingWorkspace({
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
 
 	return (
-		<div className="workspace" data-ambience={currentIdentity.ambience}>
+		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
 			<NavigationRail
 				activePanel={primaryPanel}
@@ -218,31 +260,28 @@ function ActiveWritingWorkspace({
 				panel={primaryPanel}
 				workspace={initialWorkspace}
 				activeChat={activeChat}
-				activeCast={activeCast}
 				theme={theme}
 				onThemeChange={setTheme}
 				onSelectChat={selectChat}
+				onNewChat={onNewChat}
 				onClose={() => setPrimaryPanel(null)}
 			/>
 
 			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={activeChat}
-					cast={activeCast}
 					isGenerating={isGenerating}
 					onOpenCast={() => togglePanel("cast")}
 				/>
 
 				<div className="story-scroll" ref={storyScrollRef}>
 					<div className="story-content">
-						{messages.length === 0 && (
-							<EmptyChat cast={activeCast} />
-						)}
+						{messages.length === 0 && <EmptyChat />}
 						{messages.map((message) => (
 							<StoryMessageView
 								key={message.id}
 								message={message}
-								author={identitiesById.get(message.authorId)}
+								authorName={message.authorId}
 								onMoveSwipe={moveSwipe}
 								onShowDetails={showMessageDetails}
 								onUpdate={updateMessage}
@@ -254,14 +293,11 @@ function ActiveWritingWorkspace({
 				</div>
 
 				<Composer
-					identities={initialWorkspace.identities}
-					currentIdentity={currentIdentity}
 					draft={draft}
 					isGenerating={isGenerating}
 					canWrite={false}
 					isReceded={composerIsReceded}
 					onDraftChange={setDraft}
-					onIdentityChange={setIdentityId}
 					onFocusChange={setIsComposerFocused}
 					onSubmit={submitMessage}
 				/>
@@ -269,7 +305,7 @@ function ActiveWritingWorkspace({
 
 			<MessageDetailsPanel
 				message={detailMessage}
-				author={detailMessage ? identitiesById.get(detailMessage.authorId) : undefined}
+				authorName={detailMessage?.authorId}
 				onClose={() => setDetailMessageId(null)}
 			/>
 		</div>
@@ -354,19 +390,19 @@ function PrimaryPanelView({
 	panel,
 	workspace,
 	activeChat,
-	activeCast,
 	theme,
 	onThemeChange,
 	onSelectChat,
+	onNewChat,
 	onClose,
 }: {
 	panel: PrimaryPanel;
 	workspace: Workspace;
 	activeChat: ChatSummary;
-	activeCast: Identity[];
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
 	onSelectChat: (chatId: string) => void;
+	onNewChat: () => void;
 	onClose: () => void;
 }) {
 	return (
@@ -390,11 +426,10 @@ function PrimaryPanelView({
 							chats={workspace.chats}
 							activeId={activeChat.id}
 							onSelect={onSelectChat}
+							onNewChat={onNewChat}
 						/>
 					)}
-					{panel === "cast" && (
-						<CastPanel identities={activeCast} />
-					)}
+					{panel === "cast" && <CastPanel />}
 					{panel === "library" && <CharacterLibraryPanel />}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
@@ -423,10 +458,12 @@ function ChatsPanel({
 	chats,
 	activeId,
 	onSelect,
+	onNewChat,
 }: {
 	chats: ChatSummary[];
 	activeId: string;
 	onSelect: (chatId: string) => void;
+	onNewChat: () => void;
 }) {
 	const [query, setQuery] = useState("");
 	const filteredChats = chats.filter((chat) =>
@@ -435,6 +472,11 @@ function ChatsPanel({
 
 	return (
 		<div className="panel-body">
+			<div className="chats-actions">
+				<button className="secondary-button" type="button" onClick={onNewChat}>
+					<Plus aria-hidden="true" /> New Chat
+				</button>
+			</div>
 			<label className="search-field">
 				<Search aria-hidden="true" />
 				<span className="sr-only">Search Chats</span>
@@ -458,28 +500,21 @@ function ChatsPanel({
 	);
 }
 
-function CastPanel({ identities }: { identities: Identity[] }) {
+function CastPanel() {
 	return (
 		<div className="panel-body cast-panel-body">
-			<p className="panel-intro">Characters currently present in this Chat.</p>
-			<div className="cast-list">
-				{identities.map((identity) => (
-					<div className="cast-member" key={identity.id}>
-						<Portrait identity={identity} size="large" />
-						<div>
-							<strong>{identity.name}</strong>
-							<span>Reusable Character</span>
-						</div>
-						<button type="button" className="icon-button" aria-label={`View ${identity.name}`} disabled>
-							<ChevronRight aria-hidden="true" />
-						</button>
-					</div>
-				))}
+			<p className="panel-intro">
+				Every Chat stores its own Cast of Participants with explicit Control
+				assignments.
+			</p>
+			<div className="cast-placeholder">
+				<Users aria-hidden="true" />
+				<p>The Cast drawer arrives with Participant management.</p>
 			</div>
-			<button className="secondary-button" type="button" disabled>
-				Edit Cast
-			</button>
-			<p className="panel-note">Cast editing will connect here when participant RPCs are available.</p>
+			<p className="panel-note">
+				Until then, use New Chat to configure the two initial Participants of a
+				playable Conversation.
+			</p>
 		</div>
 	);
 }
@@ -527,12 +562,10 @@ function SettingsPanel({
 
 function StoryHeader({
 	chat,
-	cast,
 	isGenerating,
 	onOpenCast,
 }: {
 	chat: ChatSummary;
-	cast: Identity[];
 	isGenerating: boolean;
 	onOpenCast: () => void;
 }) {
@@ -549,11 +582,6 @@ function StoryHeader({
 				</div>
 			)}
 			<button className="cast-control" type="button" onClick={onOpenCast}>
-				<span className="portrait-stack" aria-hidden="true">
-					{cast.slice(0, 3).map((identity) => (
-						<Portrait key={identity.id} identity={identity} size="small" />
-					))}
-				</span>
 				<span>Cast</span>
 				<ChevronDown aria-hidden="true" />
 			</button>
@@ -561,34 +589,27 @@ function StoryHeader({
 	);
 }
 
-function EmptyChat({ cast }: { cast: Identity[] }) {
+function EmptyChat() {
 	return (
 		<section className="empty-chat">
-			{cast.length > 0 && (
-				<div className="empty-chat-cast" aria-label="Current Cast">
-					{cast.map((identity) => (
-						<div key={identity.id}>
-							<Portrait identity={identity} size="large" />
-							<span>{identity.name}</span>
-						</div>
-					))}
-				</div>
-			)}
 			<h2>This Chat has no stored Messages yet</h2>
-			<p>Chat and Cast are connected. Writing will become available when Message storage is added.</p>
+			<p>
+				Native Chats begin with the model Participant's openings as their first
+				Message. Writing will become available when Message storage is added.
+			</p>
 		</section>
 	);
 }
 
 function StoryMessageView({
 	message,
-	author,
+	authorName,
 	onMoveSwipe,
 	onShowDetails,
 	onUpdate,
 }: {
 	message: StoryMessage;
-	author?: Identity;
+	authorName?: string;
 	onMoveSwipe: (messageId: string, direction: -1 | 1) => void;
 	onShowDetails: (messageId: string) => void;
 	onUpdate: (messageId: string, text: string) => void;
@@ -597,7 +618,7 @@ function StoryMessageView({
 		return (
 			<article className="writer-message">
 				<header>
-					<span>{author?.name ?? "Writer"}</span>
+					<span>{authorName ?? "Unknown author"}</span>
 					<time>{message.createdAt}</time>
 				</header>
 				<p>{message.text}</p>
@@ -608,7 +629,7 @@ function StoryMessageView({
 	return (
 		<GeneratedStoryMessage
 			message={message}
-			author={author}
+			authorName={authorName}
 			onMoveSwipe={onMoveSwipe}
 			onShowDetails={onShowDetails}
 			onUpdate={onUpdate}
@@ -618,13 +639,13 @@ function StoryMessageView({
 
 function GeneratedStoryMessage({
 	message,
-	author,
+	authorName,
 	onMoveSwipe,
 	onShowDetails,
 	onUpdate,
 }: {
 	message: GeneratedMessage;
-	author?: Identity;
+	authorName?: string;
 	onMoveSwipe: (messageId: string, direction: -1 | 1) => void;
 	onShowDetails: (messageId: string) => void;
 	onUpdate: (messageId: string, text: string) => void;
@@ -671,16 +692,16 @@ function GeneratedStoryMessage({
 			}}
 		>
 			<header className="message-header">
-				<Portrait identity={author} size="medium" />
+				<Portrait name={authorName} size="medium" />
 				<div className="message-author">
-					<strong>{author?.name ?? "Unknown author"}</strong>
+					<strong>{authorName ?? "Unknown author"}</strong>
 					<div className="message-meta">
 						<span>{message.generation.profile}</span>
 						<time>{message.createdAt}</time>
 					</div>
 				</div>
 				<div className="advanced-actions">
-					<button className="icon-button" type="button" onClick={() => onShowDetails(message.id)} aria-label={`Details for ${author?.name ?? "Message"}`}>
+					<button className="icon-button" type="button" onClick={() => onShowDetails(message.id)} aria-label={`Details for ${authorName ?? "Message"}`}>
 						<Info aria-hidden="true" />
 					</button>
 					<div className="more-menu-wrap">
@@ -738,30 +759,22 @@ function GeneratedStoryMessage({
 }
 
 function Composer({
-	identities,
-	currentIdentity,
 	draft,
 	isGenerating,
 	canWrite,
 	isReceded,
 	onDraftChange,
-	onIdentityChange,
 	onFocusChange,
 	onSubmit,
 }: {
-	identities: Identity[];
-	currentIdentity: Identity;
 	draft: string;
 	isGenerating: boolean;
 	canWrite: boolean;
 	isReceded: boolean;
 	onDraftChange: (value: string) => void;
-	onIdentityChange: (id: string) => void;
 	onFocusChange: (focused: boolean) => void;
 	onSubmit: (event: FormEvent) => void;
 }) {
-	const [isIdentityOpen, setIsIdentityOpen] = useState(false);
-
 	return (
 		<form
 			className="composer"
@@ -772,56 +785,17 @@ function Composer({
 			onBlur={(event) => {
 				if (!event.currentTarget.contains(event.relatedTarget)) {
 					onFocusChange(false);
-					setIsIdentityOpen(false);
 				}
 			}}
 		>
-			<div className="identity-picker">
-				<button type="button" className="identity-button" onClick={() => setIsIdentityOpen((current) => !current)} aria-expanded={isIdentityOpen} aria-haspopup="menu">
-					<Portrait identity={currentIdentity} size="medium" />
-					<span>
-						<small>Writing as</small>
-						<strong>{currentIdentity.name}</strong>
-					</span>
-					<ChevronDown aria-hidden="true" />
-				</button>
-				{isIdentityOpen && (
-					<div className="identity-menu" role="menu">
-						{identities.map((identity) => (
-							<button
-								type="button"
-								role="menuitem"
-								key={identity.id}
-								onClick={() => {
-									onIdentityChange(identity.id);
-									setIsIdentityOpen(false);
-								}}
-							>
-								<Portrait identity={identity} size="medium" />
-								<span>
-									<strong>{identity.name}</strong>
-									<small>{identity.kind === "writer" ? "Guide the next Message" : "Write in character"}</small>
-								</span>
-								{identity.id === currentIdentity.id && <Check aria-hidden="true" />}
-							</button>
-						))}
-					</div>
-				)}
-			</div>
 			<label htmlFor="writer-message" className="sr-only">
-				{currentIdentity.kind === "writer" ? "Writer Message" : `Message as ${currentIdentity.name}`}
+				Message draft
 			</label>
 			<textarea
 				id="writer-message"
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder={
-					canWrite
-						? currentIdentity.kind === "writer"
-							? "Guide what happens next..."
-							: `Write as ${currentIdentity.name}...`
-						: "Message storage is not available yet"
-				}
+				placeholder="Message storage is not available yet"
 				disabled={!canWrite}
 				rows={1}
 			/>
@@ -834,11 +808,11 @@ function Composer({
 
 function MessageDetailsPanel({
 	message,
-	author,
+	authorName,
 	onClose,
 }: {
 	message?: GeneratedMessage;
-	author?: Identity;
+	authorName?: string;
 	onClose: () => void;
 }) {
 	return (
@@ -848,10 +822,10 @@ function MessageDetailsPanel({
 					<PanelHeader title="Message details" onClose={onClose} />
 					<div className="panel-body details-body">
 						<section className="author-detail">
-							<Portrait identity={author} size="large" />
+							<Portrait name={authorName} size="large" />
 							<div>
 								<span>Author</span>
-								<strong>{author?.name ?? "Unknown author"}</strong>
+								<strong>{authorName ?? "Unknown author"}</strong>
 							</div>
 						</section>
 						<dl className="detail-list">
@@ -872,11 +846,11 @@ function MessageDetailsPanel({
 	);
 }
 
-function Portrait({ identity, size }: { identity?: Identity; size: "small" | "medium" | "large" }) {
-	const initial = identity?.name.trim().charAt(0).toLocaleUpperCase() ?? "?";
+function Portrait({ name, size }: { name?: string; size: "small" | "medium" | "large" }) {
+	const initial = name?.trim().charAt(0).toLocaleUpperCase() ?? "?";
 	return (
 		<span className="portrait" data-size={size} aria-hidden="true">
-			{identity?.portraitUrl ? <img src={identity.portraitUrl} alt="" /> : <span>{initial}</span>}
+			<span>{initial}</span>
 		</span>
 	);
 }
@@ -925,13 +899,16 @@ function WorkspaceError({ onRetry }: { onRetry: () => void }) {
 	);
 }
 
-function WorkspaceWithoutChats() {
+function WorkspaceWithoutChats({ onNewChat }: { onNewChat: () => void }) {
 	return (
 		<main className="workspace-error">
 			<div>
 				<MessageSquare aria-hidden="true" />
 				<h1>No Chats found</h1>
-				<p>Create or seed a Chat to open the writing workspace.</p>
+				<p>Create a native Chat with two Participants to open the writing workspace.</p>
+				<button className="primary-button" type="button" onClick={onNewChat}>
+					<Plus aria-hidden="true" /> New Chat
+				</button>
 			</div>
 		</main>
 	);

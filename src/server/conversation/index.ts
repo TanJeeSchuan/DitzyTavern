@@ -6,14 +6,22 @@ import { readConversationSnapshot } from "./snapshot";
 import type { ConversationModule } from "./types";
 
 export {
+	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
 	StaleConversationRevisionError,
 } from "./errors";
 export type {
+	CapabilityAvailability,
+	CapabilityBlockReason,
+	CastParticipantSnapshot,
+	AuthorStampSnapshot,
 	ConversationAction,
+	ConversationCapabilities,
 	ConversationCommand,
+	ConversationControlSeed,
+	ConversationControlSnapshot,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationCreationVariant,
@@ -21,8 +29,12 @@ export type {
 	ConversationDataScope,
 	ConversationMessageSnapshot,
 	ConversationModule,
+	ConversationParticipantSeed,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
+	HistoricalControlSnapshot,
+	ParticipantDefinition,
+	ParticipantDefinitionPrompt,
 } from "./types";
 
 export function createConversationModule(database: Database): ConversationModule {

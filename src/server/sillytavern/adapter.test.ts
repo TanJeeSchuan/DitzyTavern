@@ -35,7 +35,7 @@ describe("SillyTavern JSONL adapter", () => {
 		);
 
 		expect(input.name).toBe("lantern-house");
-		expect(input.characterIds).toBeUndefined();
+		expect(input.participants).toBeUndefined();
 		expect(input.messages).toEqual([
 			{
 				timestamp: "2026-08-08T12:53:02.008Z",

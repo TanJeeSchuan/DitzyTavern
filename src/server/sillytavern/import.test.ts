@@ -77,7 +77,7 @@ describe("SillyTavern chat import", () => {
 		// The Chat takes its temporary name from the filename stem.
 		expect(conversation.name).toBe("lantern-house");
 		expect(conversation.revision).toBe(0);
-		expect(conversation.characterIds).toEqual([]);
+		expect(conversation.cast).toEqual([]);		expect(conversation.playable).toBe(false);
 		expect(conversation.messages).toHaveLength(3);
 		expect(conversation.messages.map((message) => message.position)).toEqual([
 			1, 2, 3,

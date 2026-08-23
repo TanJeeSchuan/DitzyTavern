@@ -32,3 +32,14 @@ export class InvalidConversationCreationError extends Error {
 		this.name = "InvalidConversationCreationError";
 	}
 }
+
+// Typed outcome for play-gated actions (Compose, Generate, Swipe) in a
+// Conversation whose two Control seats are not both occupied.
+export class ConversationNotPlayableError extends Error {
+	constructor(conversationId: number) {
+		super(
+			`Conversation ${conversationId} is not playable: two distinct Participants must occupy the human and model seats.`,
+		);
+		this.name = "ConversationNotPlayableError";
+	}
+}

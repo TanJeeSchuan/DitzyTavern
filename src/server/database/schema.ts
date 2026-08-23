@@ -3,6 +3,7 @@
 
 import { sql } from "drizzle-orm";
 import {
+	check,
 	int,
 	primaryKey,
 	sqliteTable,
@@ -28,11 +29,25 @@ export const messageTable = sqliteTable(
 			.references(() => chatTable.id, { onDelete: "cascade" }),
 		position: int().notNull(),
 		timestamp: text().notNull(),
+		// Immutable Author Stamp: the authoring Cast Participant and the name
+		// captured when the Message was created. Null only for preservation
+		// records whose authors are not yet resolved into Participants.
+		author_participant_id: int().references(() => participantTable.id),
+		author_name: text(),
+		// Historical Control context: the human/model pair active when native
+		// generation (including initial openings) began. Set together or not
+		// at all; imported history is never retrofitted with a pair.
+		context_human_participant_id: int().references(() => participantTable.id),
+		context_model_participant_id: int().references(() => participantTable.id),
 	},
 	(table) => [
 		uniqueIndex("messages_chat_position_unique").on(
 			table.chat_id,
 			table.position,
+		),
+		check(
+			"messages_context_pair_together",
+			sql`(context_human_participant_id IS NULL) = (context_model_participant_id IS NULL)`,
 		),
 	],
 );
@@ -105,6 +120,94 @@ export const characterOpeningTable = sqliteTable(
 	],
 );
 
+// Conversation-local identity. Each Participant owns an independent copied
+// Definition (participant_prompt and participant_opening children) and keeps
+// immutable provenance pointing at the Character it forked, if any. The
+// source reference is a plain structural reference without revision tracking
+// or synchronization; deleting the source row is blocked while referenced.
+export const participantTable = sqliteTable(
+	"participant",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		chat_id: int()
+			.notNull()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		// The Participant's own normalized nonblank name, independent of the
+		// source Character and of every other Cast member.
+		name: text().notNull(),
+		// Explicit, stable Cast position. Contiguity is maintained by the
+		// Conversation domain; uniqueness is enforced structurally.
+		position: int().notNull(),
+		source_character_id: int().references(() => characterTable.id),
+	},
+	(table) => [
+		uniqueIndex("participant_chat_position_unique").on(
+			table.chat_id,
+			table.position,
+		),
+	],
+);
+
+// One active Prompt row per Participant with every typed Prompt field,
+// stored exactly as authored. Removed with the Participant when its copy is
+// deleted; never shared with the source Character.
+export const participantPromptTable = sqliteTable("participant_prompt", {
+	participant_id: int()
+		.primaryKey()
+		.references(() => participantTable.id, { onDelete: "cascade" }),
+	system_instruction: text().notNull(),
+	identity: text().notNull(),
+	scenario: text().notNull(),
+	example_dialogue: text().notNull(),
+	post_history_instruction: text().notNull(),
+});
+
+// Ordered, exact, nonblank Opening rows owned by the Participant.
+export const participantOpeningTable = sqliteTable(
+	"participant_opening",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		participant_id: int()
+			.notNull()
+			.references(() => participantTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		content: text().notNull(),
+	},
+	(table) => [
+		uniqueIndex("participant_opening_participant_position_unique").on(
+			table.participant_id,
+			table.position,
+		),
+	],
+);
+
+// Control assignment: at most one human and one model seat per Conversation,
+// each held by a distinct Cast Participant of the same Conversation. The
+// primary key bounds each seat to one row, and the unique Participant
+// reference makes the two seats structurally distinct.
+export const conversationControlTable = sqliteTable(
+	"conversation_control",
+	{
+		chat_id: int()
+			.notNull()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		seat: text().notNull(),
+		participant_id: int()
+			.notNull()
+			.references(() => participantTable.id, { onDelete: "cascade" }),
+	},
+	(table) => [
+		primaryKey({ columns: [table.chat_id, table.seat] }),
+		uniqueIndex("conversation_control_participant_unique").on(
+			table.participant_id,
+		),
+		check(
+			"conversation_control_seat_check",
+			sql`${table.seat} IN ('human', 'model')`,
+		),
+	],
+);
+
 export const chatDataTable = sqliteTable(
 	"chat_data",
 	{
@@ -165,16 +268,5 @@ export const messageVariantDataTable = sqliteTable(
 	],
 );
 
-// logical tables
-export const chatCharacterTable = sqliteTable(
-	"chat_character",
-	{
-		chat_id: int()
-			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
-		character_id: int()
-			.notNull()
-			.references(() => characterTable.id, { onDelete: "cascade" }),
-	},
-	(table) => [primaryKey({ columns: [table.chat_id, table.character_id] })],
-);
+// logical tables end here.
+

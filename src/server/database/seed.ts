@@ -1,18 +1,22 @@
 // Test data generator. Run with `bun run db:seed`.
 // Idempotent: does nothing if the tables already contain rows.
 //
-// Characters are created through the public Character Library seam so the
-// seeded Definitions follow exactly the same rules as user-created ones.
+// Characters are created through the public Character Library seam and
+// Conversations through the public native New Chat workflow, so seeded
+// Definitions, Casts, Control assignments, and greeting history follow
+// exactly the same rules as user-created data.
 
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { createCharacterLibraryModule } from "../character-library";
-import type { CharacterDefinition } from "../character-library";
-import { openDatabase } from "./database";
 import {
-	characterTable,
-	chatCharacterTable,
-	chatTable,
-} from "./schema";
+	type CharacterDefinition,
+	createCharacterLibraryModule,
+} from "../character-library";
+import {
+	createNativeConversation,
+	type NewChatSeat,
+} from "../workflows";
+import { openDatabase } from "./database";
+import { characterTable } from "./schema";
 
 export interface SeedCharacter extends CharacterDefinition {
 	pinned: boolean;
@@ -68,7 +72,8 @@ export const characters: SeedCharacter[] = [
 			systemInstruction: "",
 			identity: "Silas Mercer runs the last ferry that still crosses at night.",
 			scenario: "The bridge upstream closed, and traffic found his boat again.",
-			exampleDialogue: "<START>\n{{user}}: Is the river safe?\n{{char}}: The river is honest. The passengers rarely are.",
+			exampleDialogue:
+				"<START>\n{{user}}: Is the river safe?\n{{char}}: The river is honest. The passengers rarely are.",
 			postHistoryInstruction: "",
 		},
 		openings: ["The ferry bumps the pier twice before the rope catches."],
@@ -99,30 +104,76 @@ export const characters: SeedCharacter[] = [
 	},
 ];
 
-export const chats = [
+export interface AdHocPersona {
+	name: string;
+	prompt: CharacterDefinition["prompt"];
+	openings: string[];
+}
+
+// Ad-hoc human personas. "Writer" is an ordinary possible Participant name;
+// it carries no special behavior. The satisfies check keeps the concrete
+// keys known to consumers (teardown and the seed itself) while validating
+// the AdHocPersona contract.
+export const adHocPersonas = {
+	writer: {
+		name: "Writer",
+		prompt: {
+			systemInstruction: "",
+			identity:
+				"The Writer guides the story from outside it and speaks only when needed.",
+			scenario: "",
+			exampleDialogue: "",
+			postHistoryInstruction: "",
+		},
+		openings: [],
+	},
+	nightDesk: {
+		name: "Night Desk",
+		prompt: {
+			systemInstruction: "",
+			identity:
+				"The Night Desk keeps the observatory logs and asks careful questions.",
+			scenario: "",
+			exampleDialogue: "",
+			postHistoryInstruction: "",
+		},
+		openings: [],
+	},
+} satisfies Record<string, AdHocPersona>;
+
+export interface SeedConversation {
+	name: string;
+	// Both Chat times derive from this base because native greetings carry no
+	// historical timestamps of their own.
+	createdAt: string;
+	humanSeat: NewChatSeat | { persona: keyof typeof adHocPersonas };
+	modelCharacterName: string;
+}
+
+export const conversations: SeedConversation[] = [
 	{
 		name: "The Lantern House",
-		creation_time: "2026-07-02T10:15:00.000Z",
-		last_message_time: "2026-08-17T21:04:00.000Z",
-		characterNames: ["Maren Voss", "Juno Ashfeld", "Theodora Kline"],
+		createdAt: "2026-07-02T10:15:00.000Z",
+		humanSeat: { persona: "writer" },
+		modelCharacterName: "Maren Voss",
 	},
 	{
 		name: "Salt and Ember",
-		creation_time: "2026-07-19T18:30:00.000Z",
-		last_message_time: "2026-08-18T09:12:00.000Z",
-		characterNames: ["Silas Mercer", "Isolde Fairfax"],
+		createdAt: "2026-07-19T18:30:00.000Z",
+		humanSeat: { persona: "nightDesk" },
+		modelCharacterName: "Silas Mercer",
 	},
 	{
 		name: "The Cartographer's Daughter",
-		creation_time: "2026-08-01T12:00:00.000Z",
-		last_message_time: "2026-08-15T23:47:00.000Z",
-		characterNames: ["Juno Ashfeld", "Isolde Fairfax", "Bram Okafor"],
+		createdAt: "2026-08-01T12:00:00.000Z",
+		humanSeat: { persona: "writer" },
+		modelCharacterName: "Isolde Fairfax",
 	},
 	{
 		name: "Night Shift at the Observatory",
-		creation_time: "2026-08-10T20:20:00.000Z",
-		last_message_time: "2026-08-18T14:55:00.000Z",
-		characterNames: ["Maren Voss", "Bram Okafor"],
+		createdAt: "2026-08-10T20:20:00.000Z",
+		humanSeat: { persona: "nightDesk" },
+		modelCharacterName: "Theodora Kline",
 	},
 ];
 
@@ -162,32 +213,45 @@ export function seed(databasePath?: string) {
 			characterIdByName.set(character.name, created.id);
 		}
 
-		const insertedChats = db
-			.insert(chatTable)
-			.values(chats.map(({ characterNames: _characterNames, ...chat }) => chat))
-			.returning({ id: chatTable.id, name: chatTable.name })
-			.all();
-		const chatIdByName = new Map(insertedChats.map((chat) => [chat.name, chat.id]));
-
-		const memberships = chats.flatMap((chat) => {
-			const chatId = chatIdByName.get(chat.name);
-			if (!chatId) {
-				throw new Error(`Missing inserted Chat: ${chat.name}`);
+		// A fork seat always checks the authoritative revision server-side;
+		// the expected revision here mirrors what a client would have read.
+		const forkSeat = (characterName: string): NewChatSeat => {
+			const characterId = characterIdByName.get(characterName);
+			if (characterId === undefined) {
+				throw new Error(`Missing seeded Character: ${characterName}`);
 			}
-
-			return chat.characterNames.map((characterName) => {
-				const characterId = characterIdByName.get(characterName);
-				if (!characterId) {
-					throw new Error(`Missing inserted Character: ${characterName}`);
-				}
-
-				return { chat_id: chatId, character_id: characterId };
-			});
+			const snapshot = library.get(characterId);
+			if (snapshot === undefined) {
+				throw new Error(`Seeded Character not readable: ${characterName}`);
+			}
+			return {
+				type: "character",
+				characterId,
+				expectedRevision: snapshot.revision,
+			};
+		};
+		const personaSeat = (
+			persona: keyof typeof adHocPersonas,
+		): NewChatSeat => ({
+			type: "adhoc",
+			definition: adHocPersonas[persona],
 		});
-		db.insert(chatCharacterTable).values(memberships).all();
+
+		for (const conversation of conversations) {
+			const humanSeat =
+				"persona" in conversation.humanSeat
+					? personaSeat(conversation.humanSeat.persona)
+					: conversation.humanSeat;
+			createNativeConversation(database, {
+				name: conversation.name,
+				humanSeat,
+				modelSeat: forkSeat(conversation.modelCharacterName),
+				createdAt: conversation.createdAt,
+			});
+		}
 
 		log(
-			`inserted ${characters.length} characters, ${chats.length} chats, ${memberships.length} chat_character rows`,
+			`inserted ${characters.length} characters and ${conversations.length} playable Conversations`,
 		);
 	} finally {
 		database.close();

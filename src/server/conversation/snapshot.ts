@@ -1,19 +1,27 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import {
-	chatCharacterTable,
 	chatDataTable,
 	chatTable,
 	messageDataTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
+	participantOpeningTable,
+	participantPromptTable,
+	participantTable,
 } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import { type ConversationDatabase, readControlAssignment } from "./internal";
 import type {
+	AuthorStampSnapshot,
+	CapabilityAvailability,
+	CastParticipantSnapshot,
+	ConversationCapabilities,
+	ConversationControlSnapshot,
 	ConversationDataEntry,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
+	HistoricalControlSnapshot,
 } from "./types";
 
 const toDataEntry = (row: { namespace: string; key: string; value: string }) => ({
@@ -21,6 +29,22 @@ const toDataEntry = (row: { namespace: string; key: string; value: string }) => 
 	key: row.key,
 	value: row.value,
 });
+
+// Play-gated capabilities share one derived reason: without two distinct
+// seated Participants none of Compose, Generate, or Swipe may run. The
+// literal is checked against the capability contract by deriveCapabilities.
+const playCapability = (playable: boolean): CapabilityAvailability => ({
+	available: playable,
+	reason: playable ? null : "conversation-not-playable",
+});
+
+export function deriveCapabilities(playable: boolean): ConversationCapabilities {
+	return {
+		compose: playCapability(playable),
+		generate: playCapability(playable),
+		swipe: playCapability(playable),
+	};
+}
 
 export function readConversationSnapshot(
 	db: ConversationDatabase,
@@ -32,6 +56,69 @@ export function readConversationSnapshot(
 		.where(eq(chatTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
+
+	const castRows = db
+		.select({
+			id: participantTable.id,
+			position: participantTable.position,
+			name: participantTable.name,
+			sourceCharacterId: participantTable.source_character_id,
+			systemInstruction: participantPromptTable.system_instruction,
+			identity: participantPromptTable.identity,
+			scenario: participantPromptTable.scenario,
+			exampleDialogue: participantPromptTable.example_dialogue,
+			postHistoryInstruction: participantPromptTable.post_history_instruction,
+		})
+		.from(participantTable)
+		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
+		.where(eq(participantTable.chat_id, conversationId))
+		.orderBy(asc(participantTable.position))
+		.all();
+	const castIds = castRows.map((participant) => participant.id);
+
+	const openingRows =
+		castIds.length === 0
+			? []
+			: db
+					.select()
+					.from(participantOpeningTable)
+					.where(inArray(participantOpeningTable.participant_id, castIds))
+					.orderBy(
+						asc(participantOpeningTable.participant_id),
+						asc(participantOpeningTable.position),
+					)
+					.all();
+
+	const openingsByParticipant = new Map<number, string[]>();
+	for (const opening of openingRows) {
+		const openings = openingsByParticipant.get(opening.participant_id) ?? [];
+		openings.push(opening.content);
+		openingsByParticipant.set(opening.participant_id, openings);
+	}
+
+	const cast: CastParticipantSnapshot[] = castRows.map((participant) => ({
+		id: participant.id,
+		position: participant.position,
+		name: participant.name,
+		prompt: {
+			systemInstruction: participant.systemInstruction,
+			identity: participant.identity,
+			scenario: participant.scenario,
+			exampleDialogue: participant.exampleDialogue,
+			postHistoryInstruction: participant.postHistoryInstruction,
+		},
+		openings: openingsByParticipant.get(participant.id) ?? [],
+		sourceCharacterId: participant.sourceCharacterId ?? null,
+	}));
+
+	const controlState = readControlAssignment(db, conversationId);
+	const control: ConversationControlSnapshot = {
+		humanParticipantId: controlState.humanParticipantId,
+		modelParticipantId: controlState.modelParticipantId,
+	};
+
+	const playable =
+		control.humanParticipantId !== null && control.modelParticipantId !== null;
 
 	const messageRows = db
 		.select()
@@ -108,13 +195,33 @@ export function readConversationSnapshot(
 		messageDataByMessage.set(row.message_id, entries);
 	}
 
-	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => ({
-		id: message.id,
-		position: message.position,
-		timestamp: message.timestamp,
-		variants: variantsByMessage.get(message.id) ?? [],
-		data: messageDataByMessage.get(message.id) ?? [],
-	}));
+	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
+		const author: AuthorStampSnapshot | null =
+			message.author_participant_id !== null || message.author_name !== null
+				? {
+						participantId: message.author_participant_id,
+						capturedName: message.author_name,
+					}
+				: null;
+		const historicalContext: HistoricalControlSnapshot | null =
+			message.context_human_participant_id !== null &&
+			message.context_model_participant_id !== null
+				? {
+						humanParticipantId: message.context_human_participant_id,
+						modelParticipantId: message.context_model_participant_id,
+					}
+				: null;
+		return {
+			id: message.id,
+			position: message.position,
+			timestamp: message.timestamp,
+			author,
+			historicalContext,
+			variants: variantsByMessage.get(message.id) ?? [],
+			data: messageDataByMessage.get(message.id) ?? [],
+		};
+	});
+
 	const data = db
 		.select()
 		.from(chatDataTable)
@@ -122,19 +229,15 @@ export function readConversationSnapshot(
 		.orderBy(asc(chatDataTable.namespace), asc(chatDataTable.key))
 		.all()
 		.map(toDataEntry);
-	const characterIds = db
-		.select({ id: chatCharacterTable.character_id })
-		.from(chatCharacterTable)
-		.where(eq(chatCharacterTable.chat_id, conversationId))
-		.orderBy(asc(chatCharacterTable.character_id))
-		.all()
-		.map((row) => row.id);
 
 	return {
 		id: conversation.id,
 		name: conversation.name,
 		revision: conversation.revision,
-		characterIds,
+		cast,
+		control,
+		playable,
+		capabilities: deriveCapabilities(playable),
 		messages,
 		data,
 	};

@@ -2,28 +2,23 @@
 // Removes only rows matching the seed script's values, so user-created
 // data is left untouched. Safe to run repeatedly.
 //
-// Seeded Characters are identified by their full seed Definition (name,
-// exact Prompt fields, and ordered Opening contents), never by table-wide
-// deletes. Dependent rows are removed before their parents.
+// Seeded Conversations are identified by their exact seed name and derived
+// Chat times, never by table-wide deletes; Participant, Prompt, Opening,
+// Control, and Message rows go with them through cascade deletes. Seeded
+// Characters are matched on their complete seed Definition (name, exact
+// Prompt fields, and ordered Opening contents) after every referencing
+// Conversation is gone.
 
-import {
-	and,
-	asc,
-	eq,
-	inArray,
-	isNull,
-	or,
-} from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "./database";
 import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	chatCharacterTable,
 	chatTable,
 } from "./schema";
-import { characters, chats } from "./seed";
+import { characters, conversations } from "./seed";
 
 export function teardown(databasePath?: string) {
 	const database = openDatabase({ path: databasePath });
@@ -31,57 +26,32 @@ export function teardown(databasePath?: string) {
 	const log = (message: string) => console.log(`[teardown] ${message}`);
 
 	try {
-		const seedChats = chats.map(
-			({ characterNames: _characterNames, ...chat }) => chat,
+		// Seeded native Conversations carry both Chat times equal to the seed
+		// base time: the greeting is their only history and carries no other
+		// timestamps.
+		const seedChatMatches = conversations.map((conversation) =>
+			and(
+				eq(chatTable.name, conversation.name),
+				eq(chatTable.creation_time, conversation.createdAt),
+				eq(chatTable.last_message_time, conversation.createdAt),
+			),
 		);
-
-		const seededChatIds = db
-			.select({ id: chatTable.id })
-			.from(chatTable)
-			.where(
-				or(
-					...seedChats.map((chat) =>
-						and(
-							eq(chatTable.name, chat.name),
-							eq(chatTable.creation_time, chat.creation_time),
-							eq(chatTable.last_message_time, chat.last_message_time),
-						),
-					),
-				),
-			)
-			.all()
-			.map((row) => row.id);
+		const seededChatIds =
+			seedChatMatches.length > 0
+				? db
+						.select({ id: chatTable.id })
+						.from(chatTable)
+						.where(or(...seedChatMatches))
+						.all()
+						.map((row) => row.id)
+				: [];
 
 		if (seededChatIds.length > 0) {
-			const membershipCount = db
-				.select({
-					chat_id: chatCharacterTable.chat_id,
-					character_id: chatCharacterTable.character_id,
-				})
-				.from(chatCharacterTable)
-				.where(inArray(chatCharacterTable.chat_id, seededChatIds))
-				.all().length;
-
-			db.delete(chatCharacterTable)
-				.where(inArray(chatCharacterTable.chat_id, seededChatIds))
+			db.delete(chatTable)
+				.where(inArray(chatTable.id, seededChatIds))
 				.run();
-			log(`removed ${membershipCount} chat_character rows`);
 		}
-
-		db.delete(chatTable)
-			.where(
-				or(
-					...seedChats.map((chat) =>
-						and(
-							eq(chatTable.name, chat.name),
-							eq(chatTable.creation_time, chat.creation_time),
-							eq(chatTable.last_message_time, chat.last_message_time),
-						),
-					),
-				),
-			)
-			.run();
-		log(`removed ${seededChatIds.length} chat rows`);
+		log(`removed ${seededChatIds.length} conversation rows with their Casts and history`);
 
 		// Match seeded Characters on their complete seed Definition.
 		let removedCharacters = 0;

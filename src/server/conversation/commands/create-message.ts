@@ -2,12 +2,14 @@ import { eq, max } from "drizzle-orm";
 import { messageTable, messageVariantTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
+import { requireParticipant } from "../internal";
 
 export interface CreateMessageInput {
 	conversationId: number;
 	timestamp: string;
 	variantContents: readonly string[];
 	selectedVariantIndex?: number;
+	authorParticipantId: number;
 }
 
 export function createMessage(db: ConversationDatabase, input: CreateMessageInput) {
@@ -27,6 +29,14 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 		);
 	}
 
+	// The Author Stamp captures the Participant identity plus its current
+	// name at Message creation; clients never submit the name.
+	const author = requireParticipant(
+		db,
+		input.conversationId,
+		input.authorParticipantId,
+	);
+
 	const latestPosition = db
 		.select({ value: max(messageTable.position) })
 		.from(messageTable)
@@ -38,6 +48,8 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 			chat_id: input.conversationId,
 			position: (latestPosition ?? 0) + 1,
 			timestamp: input.timestamp,
+			author_participant_id: author.id,
+			author_name: author.name,
 		})
 		.returning()
 		.get();

@@ -10,10 +10,15 @@ import { editVariant } from "./commands/edit-variant";
 import { putData } from "./commands/put-data";
 import { selectVariant } from "./commands/select-variant";
 import {
+	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
 } from "./errors";
-import { connectConversationDatabase } from "./internal";
+import {
+	connectConversationDatabase,
+	isPlayable,
+	readControlAssignment,
+} from "./internal";
 import { readConversationSnapshot } from "./snapshot";
 import type { ConversationCommand, ConversationSnapshot } from "./types";
 
@@ -36,6 +41,18 @@ export function executeConversationCommand(
 				command.expectedRevision,
 				conversation.revision,
 			);
+		}
+
+		// Compose and Swipe/Generate are play actions: they require both
+		// distinct Control seats. Reads, edits, configuration, and deletion
+		// remain available to incomplete Conversations.
+		if (
+			command.action.type === "create-message" ||
+			command.action.type === "create-variant"
+		) {
+			if (!isPlayable(readControlAssignment(db, command.conversationId))) {
+				throw new ConversationNotPlayableError(command.conversationId);
+			}
 		}
 
 		const input = { conversationId: command.conversationId, ...command.action };
