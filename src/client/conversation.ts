@@ -1,4 +1,5 @@
 import { api } from "./lib/eden";
+import type { CharacterSnapshot } from "./character-library";
 
 // Typed client for the deep Conversation transport adapters: snapshot
 // reads, revisioned command execution, and the explicit Character-to-Cast
@@ -253,4 +254,48 @@ export async function addCharacterToCast(input: {
 		return { status: "network" };
 	}
 	return { status: "applied", conversation: data.conversation };
+}
+
+export type SaveParticipantAsCharacterOutcome =
+	| { status: "applied"; character: CharacterSnapshot }
+	| { status: "conflict"; currentConversation: ConversationSnapshot }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+// Promotes a Conversation-local Participant into a new reusable Character
+// through the explicit workflow route. The server checks the expected
+// Conversation revision and copies the authoritative server-side
+// Participant Definition; the client never submits a Definition copy, so a
+// stale one cannot become the new Character's source.
+export async function saveParticipantAsCharacter(input: {
+	conversationId: number;
+	expectedConversationRevision: number;
+	participantId: number;
+}): Promise<SaveParticipantAsCharacterOutcome> {
+	const { data, error } = await api.api
+		.conversations({ id: input.conversationId })
+		.cast.participants({ participantId: input.participantId })
+		.characters.post({
+			expectedConversationRevision: input.expectedConversationRevision,
+		});
+	if (error) {
+		// SAFETY: the transport contract declares the typed error union; the
+		// discriminated `outcome` field narrows it before any payload access.
+		const payload = error.value;
+		if (payload.outcome === "conflict") {
+			return {
+				status: "conflict",
+				currentConversation: payload.currentConversation,
+			};
+		}
+		if (payload.outcome === "not-found") {
+			return { status: "not-found" };
+		}
+		if (payload.outcome === "invalid") {
+			return { status: "invalid", reason: payload.reason };
+		}
+		return { status: "network" };
+	}
+	return { status: "applied", character: data.character };
 }

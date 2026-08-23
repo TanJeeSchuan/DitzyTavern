@@ -13,6 +13,7 @@ export {
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
 	SiblingVariantUnavailableError,
+	ParticipantNotFoundError,
 	StaleConversationRevisionError,
 } from "./errors";
 // Derived targeted-Swipe rule shared by the snapshot and the sibling

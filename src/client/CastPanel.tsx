@@ -1,11 +1,16 @@
 import { Pin, Plus, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { libraryPickerEntries } from "./cast";
+import {
+	presentSaveParticipantOutcome,
+	type SavedCharacterReference,
+} from "./cast-save";
 import { listCharacters, type CharacterSummary } from "./character-library";
 import {
 	addCharacterToCast,
 	applyConversationCommand,
 	loadConversation,
+	saveParticipantAsCharacter,
 	type ConversationSnapshot,
 	type ParticipantPrompt,
 } from "./conversation";
@@ -16,12 +21,18 @@ import {
 // pinned-first alphabetic Character picker (with ordinals, Prompt previews,
 // and used-counts) or from an ad-hoc complete Definition. Removing
 // Participants is a separate confirmed flow; eligibility is derived by the
-// server snapshot and displayed here.
+// server snapshot and displayed here. Any active Participant with a
+// complete Definition can be promoted into a new reusable Character without
+// leaving the Chat.
 
 interface CastPanelProps {
 	conversationId: number;
 	conversation: ConversationSnapshot | null;
 	onConversationChange: (conversation: ConversationSnapshot | null) => void;
+	// Navigates to a specific Character Library entry, offered after a
+	// Participant has been saved as a new Character. The user stays in the
+	// Chat until they choose to follow it.
+	onOpenLibraryCharacter: (characterId: number) => void;
 }
 
 const emptyPrompt = (): ParticipantPrompt => ({
@@ -61,6 +72,7 @@ export function CastPanel({
 	conversationId,
 	conversation,
 	onConversationChange,
+	onOpenLibraryCharacter,
 }: CastPanelProps) {
 	const [characters, setCharacters] = useState<CharacterSummary[] | null>(null);
 	const [adding, setAdding] = useState<"library" | "adhoc" | null>(null);
@@ -70,6 +82,13 @@ export function CastPanel({
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
 	const [adHocDraft, setAdHocDraft] = useState<AdHocDraft>(emptyAdHocDraft);
+	// Announces a completed promotion and the navigation action to the new
+	// Character Library entry; cleared when the next save attempt starts so
+	// the drawer never shows a stale confirmation next to a fresh failure.
+	const [saveConfirmation, setSaveConfirmation] = useState<{
+		participantLabel: string;
+		character: SavedCharacterReference;
+	} | null>(null);
 
 	const loadCharacters = useCallback(async () => {
 		try {
@@ -189,6 +208,44 @@ export function CastPanel({
 				default:
 					return { ok: false, message: "The Conversation could not be reached." };
 			}
+		});
+	};
+
+	// Saves one active Participant as a new reusable Character. The command
+	// carries only the expected Conversation revision and the Participant
+	// reference: the authoritative server-side Definition is copied by the
+	// workflow, so a stale client copy can never leak into the Library. The
+	// Participant, its provenance, and every local draft stay untouched;
+	// on success the drawer offers navigation to the new Library entry.
+	const applySaveParticipant = async (participant: {
+		id: number;
+		duplicateLabel: string;
+	}) => {
+		if (conversation === null) return;
+		setSaveConfirmation(null);
+		await runCommand(async () => {
+			const outcome = await saveParticipantAsCharacter({
+				conversationId,
+				expectedConversationRevision: conversation.revision,
+				participantId: participant.id,
+			});
+			const presentation = presentSaveParticipantOutcome(
+				outcome,
+				participant.duplicateLabel,
+			);
+			if (presentation.savedCharacter !== null) {
+				setSaveConfirmation({
+					participantLabel: participant.duplicateLabel,
+					character: presentation.savedCharacter,
+				});
+			}
+			if (presentation.reloadConversation) {
+				await refreshConversation();
+			}
+			if (presentation.notice !== null) {
+				return { ok: false, message: presentation.notice };
+			}
+			return { ok: true };
 		});
 	};
 
@@ -361,6 +418,23 @@ export function CastPanel({
 				</p>
 			)}
 
+			{saveConfirmation !== null && (
+				<div className="save-character-confirmation" role="status">
+					<p>
+						Saved {saveConfirmation.participantLabel} as a new Character,{" "}
+						<strong>{saveConfirmation.character.name}</strong>. The Participant stays
+						local to this Chat; the Character and Participant are independent.
+					</p>
+					<button
+						className="secondary-button"
+						type="button"
+						onClick={() => onOpenLibraryCharacter(saveConfirmation.character.id)}
+					>
+						View in Library
+					</button>
+				</div>
+			)}
+
 			{conversation.cast.length === 0 ? (
 				<p className="panel-note">This Conversation has no Cast members yet.</p>
 			) : (
@@ -382,6 +456,9 @@ export function CastPanel({
 									pending={pending}
 									onToggleEdit={() =>
 										setEditingParticipantId(editing ? null : participant.id)
+									}
+									onSaveAsCharacter={() =>
+										void applySaveParticipant(participant)
 									}
 								/>
 								{editing && (
@@ -408,6 +485,7 @@ function MemberRow({
 	editing,
 	pending,
 	onToggleEdit,
+	onSaveAsCharacter,
 }: {
 	participant: {
 		duplicateLabel: string;
@@ -418,6 +496,7 @@ function MemberRow({
 	editing: boolean;
 	pending: boolean;
 	onToggleEdit: () => void;
+	onSaveAsCharacter: () => void;
 }) {
 	const provenance =
 		participant.sourceCharacterName !== null
@@ -451,6 +530,14 @@ function MemberRow({
 					aria-expanded={editing}
 				>
 					{editing ? "Close" : "Edit"}
+				</button>
+				<button
+					className="secondary-button cast-save-button"
+					type="button"
+					disabled={pending}
+					onClick={onSaveAsCharacter}
+				>
+					Save as Character
 				</button>
 			</div>
 		</div>

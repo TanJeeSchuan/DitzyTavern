@@ -13,13 +13,18 @@ import {
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
+	ParticipantNotFoundError,
 	type ConversationSnapshot,
 	createConversationModule,
 	StaleConversationRevisionError,
 } from "../server/conversation";
 import { getWorkspace } from "../server/database/workspace";
 import { withDatabase } from "../server/database/database";
-import { addCharacterToCast, createNativeConversation } from "../server/workflows";
+import {
+	addCharacterToCast,
+	createNativeConversation,
+	saveParticipantAsCharacter,
+} from "../server/workflows";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -343,6 +348,39 @@ const toConversationPayload = (conversation: ConversationSnapshot) => ({
 	data: [...conversation.data],
 });
 
+// Builds the typed stale-revision recovery shared by every Conversation
+// route: the authoritative snapshot is re-read and returned inside the 409
+// conflict payload, or a 404 when the Conversation disappeared in the
+// meantime. One helper keeps error mapping from drifting between the
+// command, fork, and save-as-Character workflow routes.
+const staleConversationConflict = (
+	database: Database | undefined,
+	conversationId: number,
+	error: StaleConversationRevisionError,
+):
+	| { outcome: "not-found" }
+	| {
+			outcome: "conflict";
+			expectedRevision: number;
+			actualRevision: number;
+			currentConversation: ReturnType<typeof toConversationPayload>;
+	  } => {
+	const current = withDatabase(database, (connection) =>
+		createConversationModule(connection).getSnapshot(conversationId),
+	);
+	if (current === undefined) {
+		// The Conversation disappeared between the conflict and the recovery
+		// read; never fabricate authoritative state.
+		return { outcome: "not-found" as const };
+	}
+	return {
+		outcome: "conflict" as const,
+		expectedRevision: error.expectedRevision,
+		actualRevision: error.actualRevision,
+		currentConversation: toConversationPayload(current),
+	};
+};
+
 const participantDefinition = t.Object({
 	name: t.String(),
 	prompt: participantPrompt,
@@ -617,20 +655,15 @@ export const createConversationRoutes = (database: Database | undefined) =>
 					};
 				} catch (error) {
 					if (error instanceof StaleConversationRevisionError) {
-						const current = withDatabase(database, (connection) =>
-							createConversationModule(connection).getSnapshot(params.id),
+						const conflict = staleConversationConflict(
+							database,
+							params.id,
+							error,
 						);
-						if (current === undefined) {
-							// The Conversation disappeared between the conflict and
-							// the recovery read; never fabricate authoritative state.
-							return status(404, { outcome: "not-found" as const });
+						if (conflict.outcome === "not-found") {
+							return status(404, conflict);
 						}
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentConversation: toConversationPayload(current),
-						});
+						return status(409, conflict);
 					}
 					if (error instanceof ConversationNotFoundError) {
 						return status(404, { outcome: "not-found" as const });
@@ -690,18 +723,15 @@ export const createConversationRoutes = (database: Database | undefined) =>
 						});
 					}
 					if (error instanceof StaleConversationRevisionError) {
-						const current = withDatabase(database, (connection) =>
-							createConversationModule(connection).getSnapshot(params.id),
+						const conflict = staleConversationConflict(
+							database,
+							params.id,
+							error,
 						);
-						if (current === undefined) {
-							return status(404, { outcome: "not-found" as const });
+						if (conflict.outcome === "not-found") {
+							return status(404, conflict);
 						}
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentConversation: toConversationPayload(current),
-						});
+						return status(409, conflict);
 					}
 					if (
 						error instanceof ConversationNotFoundError ||
@@ -731,6 +761,65 @@ export const createConversationRoutes = (database: Database | undefined) =>
 						conversation: conversationSnapshot,
 					}),
 					409: t.Union([characterConflict, conversationConflict]),
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/cast/participants/:participantId/characters",
+			({ params, body, status }) => {
+				try {
+					const { character } = withDatabase(database, (connection) =>
+						saveParticipantAsCharacter(connection, {
+							conversationId: params.id,
+							expectedConversationRevision:
+								body.expectedConversationRevision,
+							participantId: params.participantId,
+						}),
+					);
+					return {
+						outcome: "applied" as const,
+						character: toCharacterPayload(character),
+					};
+				} catch (error) {
+					if (error instanceof StaleConversationRevisionError) {
+						const conflict = staleConversationConflict(
+							database,
+							params.id,
+							error,
+						);
+						if (conflict.outcome === "not-found") {
+							return status(404, conflict);
+						}
+						return status(409, conflict);
+					}
+					if (
+						error instanceof ConversationNotFoundError ||
+						error instanceof ParticipantNotFoundError
+					) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof InvalidCharacterDefinitionError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ id: t.Numeric(), participantId: t.Numeric() }),
+				body: t.Object({
+					expectedConversationRevision: t.Integer(),
+				}),
+				response: {
+					200: t.Object({
+						outcome: t.Literal("applied"),
+						character: characterSnapshot,
+					}),
+					409: conversationConflict,
 					404: notFoundOutcome,
 					422: invalidOutcome,
 				},

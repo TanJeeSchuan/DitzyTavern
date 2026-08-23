@@ -165,6 +165,12 @@ function ActiveWritingWorkspace({
 	const [draft, setDraft] = useState("");
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [isAtLatest, setIsAtLatest] = useState(true);
+	// Set by the Cast drawer after a Participant is saved as a Character;
+	// the Library panel opens that entry when it mounts. Consumed once so a
+	// later library visit starts at the top-level list again.
+	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<
+		number | null
+	>(null);
 	const storyScrollRef = useRef<HTMLDivElement>(null);
 	const latestRef = useRef<HTMLDivElement>(null);
 	const isGenerating = false;
@@ -290,6 +296,15 @@ function ActiveWritingWorkspace({
 				onClose={() => setPrimaryPanel(null)}
 				conversation={conversation}
 				onConversationChange={setConversation}
+				libraryFocusCharacterId={libraryFocusCharacterId}
+				onLibraryFocusConsumed={() => setLibraryFocusCharacterId(null)}
+				onOpenLibraryCharacter={(characterId) => {
+					// "Save as Character" keeps the user in the Chat: the Cast
+					// drawer announces the new Character and only navigates to
+					// the Library entry when the user follows the offered action.
+					setLibraryFocusCharacterId(characterId);
+					setPrimaryPanel("library");
+				}}
 			/>
 
 			<main className="story-stage" aria-label="Active Chat">
@@ -430,6 +445,9 @@ function PrimaryPanelView({
 	onClose,
 	conversation,
 	onConversationChange,
+	libraryFocusCharacterId,
+	onLibraryFocusConsumed,
+	onOpenLibraryCharacter,
 }: {
 	panel: PrimaryPanel;
 	workspace: Workspace;
@@ -441,6 +459,9 @@ function PrimaryPanelView({
 	onClose: () => void;
 	conversation: ConversationSnapshot | null;
 	onConversationChange: (conversation: ConversationSnapshot | null) => void;
+	libraryFocusCharacterId: number | null;
+	onLibraryFocusConsumed: () => void;
+	onOpenLibraryCharacter: (characterId: number) => void;
 }) {
 	return (
 		<aside className="primary-panel" data-open={Boolean(panel)} aria-hidden={!panel}>
@@ -471,9 +492,15 @@ function PrimaryPanelView({
 							conversationId={Number(activeChat.id)}
 							conversation={conversation}
 							onConversationChange={onConversationChange}
+							onOpenLibraryCharacter={onOpenLibraryCharacter}
 						/>
 					)}
-					{panel === "library" && <CharacterLibraryPanel />}
+					{panel === "library" && (
+						<CharacterLibraryPanel
+							focusCharacterId={libraryFocusCharacterId}
+							onFocusConsumed={onLibraryFocusConsumed}
+						/>
+					)}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
