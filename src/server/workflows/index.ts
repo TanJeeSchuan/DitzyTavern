@@ -1,4 +1,8 @@
 export {
+	addCharacterToCast,
+	type AddCharacterToCastInput,
+} from "./add-character-to-cast";
+export {
 	type AdHocSeat,
 	type CharacterForkSeat,
 	createNativeConversation,

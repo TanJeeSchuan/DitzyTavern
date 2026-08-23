@@ -6,8 +6,12 @@ import {
 	type CharacterDefinition,
 	type CharacterLibraryCommand,
 } from "../server/character-library";
+import { createConversationModule } from "../server/conversation";
+import type { ConversationAction } from "../server/conversation";
+import { createNativeConversation } from "../server/workflows";
 import {
 	createCharacterLibraryRoutes,
+	createConversationRoutes,
 	createNativeConversationRoutes,
 } from "./contract";
 
@@ -272,5 +276,294 @@ describe("Native Conversation transport adapter", () => {
 		const body = await invalid.json();
 		expect(body.outcome).toBe("invalid");
 		expect(body.reason).toContain("blank opening");
+	});
+});
+
+// Transport tests for the Cast/Control surface mirror the Conversation seam:
+// request/response contracts, revision propagation, and typed error mapping.
+// The domain matrix lives behind the seam's own interface tests.
+describe("Conversation Cast/Control transport adapters", () => {
+	let database: Database;
+	let app: ReturnType<typeof createConversationRoutes>;
+
+	interface AddCharacterToCastPayload {
+		expectedConversationRevision: number;
+		characterId: number;
+		expectedCharacterRevision: number;
+	}
+
+	const command = (
+		conversationId: number,
+		expectedRevision: number,
+		action: ConversationAction,
+	) =>
+		app.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/commands`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ expectedRevision, action }),
+				},
+			),
+		);
+
+	const addCharacter = (
+		conversationId: number,
+		body: AddCharacterToCastPayload,
+	) =>
+		app.handle(
+			new Request(
+				`http://localhost/api/conversations/${conversationId}/cast/characters`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(body),
+				},
+			),
+		);
+
+	const adHocDefinition = (name: string, openings: string[] = []) => ({
+		name,
+		prompt: {
+			systemInstruction: "",
+			identity: "",
+			scenario: "",
+			exampleDialogue: "",
+			postHistoryInstruction: "",
+		},
+		openings,
+	});
+
+	const setupConversation = () => {
+		const created = createNativeConversation(database, {
+			name: "Transport Chat",
+			humanSeat: {
+				type: "adhoc",
+				definition: adHocDefinition("Writer"),
+			},
+			modelSeat: {
+				type: "adhoc",
+				definition: adHocDefinition("Maren Voss", ["Hello"]),
+			},
+		});
+		return {
+			id: created.id,
+			humanId: created.cast[0]?.id ?? 0,
+			modelId: created.cast[1]?.id ?? 0,
+		};
+	};
+
+	beforeEach(() => {
+		database = openDatabase({ path: ":memory:" });
+		app = createConversationRoutes(database);
+	});
+
+	afterEach(() => {
+		database.close();
+	});
+
+	test("reads a Conversation snapshot with derived Cast and Control fields", async () => {
+		const { id } = setupConversation();
+		const response = await app.handle(
+			new Request(`http://localhost/api/conversations/${id}`),
+		);
+		expect(response.status).toBe(200);
+		const snapshot = await response.json();
+		expect(snapshot.cast).toHaveLength(2);
+		expect(snapshot.controlValidity).toEqual({ valid: true, reason: null });
+		expect(snapshot.playable).toBe(true);
+		expect(snapshot.cast[0]?.duplicateLabel).toBe("Writer");
+		expect(snapshot.cast[0]?.removal).toEqual({
+			eligible: false,
+			reason: "control-assigned",
+		});
+
+		const missing = await app.handle(
+			new Request("http://localhost/api/conversations/999999"),
+		);
+		expect(missing.status).toBe(404);
+		expect(await missing.json()).toEqual({ outcome: "not-found" });
+	});
+
+	test("applies Cast commands and propagates the Conversation revision", async () => {
+		const { id } = setupConversation();
+		const applied = await command(id, 0, {
+			type: "add-participant",
+			definition: adHocDefinition("Juno Ashfeld"),
+		});
+		expect(applied.status).toBe(200);
+		const body = await applied.json();
+		expect(body.outcome).toBe("applied");
+		expect(body.conversation.revision).toBe(1);
+		expect(body.conversation.cast.map((p: { name: string }) => p.name)).toEqual([
+			"Writer",
+			"Maren Voss",
+			"Juno Ashfeld",
+		]);
+	});
+
+	test("the raw command route never accepts client-supplied Character provenance", async () => {
+		// Character-to-Cast forks must flow through the workflow route so
+		// the source Character and destination Conversation revisions are
+		// checked server-side. A forged sourceCharacterId on the raw command
+		// is stripped by the transport schema and never reaches the domain.
+		const { id } = setupConversation();
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: definition({ name: "Fork Source" }),
+		});
+
+		// SAFETY: this payload deliberately carries a field the transport
+		// schema does not declare; the adapter must strip it instead of
+		// honoring forged provenance.
+		const forgedPayload = {
+			type: "add-participant",
+			definition: adHocDefinition("Claimed Fork", ["Fabricated definition"]),
+			sourceCharacterId: source.id,
+		} as ConversationAction;
+		const forged = await command(id, 0, forgedPayload);
+		expect(forged.status).toBe(200);
+		const body = await forged.json();
+		const appended = body.conversation.cast.at(-1);
+		expect(appended?.name).toBe("Claimed Fork");
+		expect(appended?.sourceCharacterId).toBeNull();
+		expect(appended?.sourceCharacterName).toBeNull();
+	});
+
+	test("maps a stale command to the typed conflict with the current snapshot", async () => {
+		const { id } = setupConversation();
+		await command(id, 0, {
+			type: "add-participant",
+			definition: adHocDefinition("Juno Ashfeld"),
+		});
+
+		const stale = await command(id, 0, {
+			type: "add-participant",
+			definition: adHocDefinition("Stale"),
+		});
+		expect(stale.status).toBe(409);
+		const body = await stale.json();
+		expect(body.outcome).toBe("conflict");
+		expect(body.expectedRevision).toBe(0);
+		expect(body.actualRevision).toBe(1);
+		expect(body.currentConversation.cast).toHaveLength(3);
+	});
+
+	test("maps validation failures and missing Conversations to typed outcomes", async () => {
+		const { id, humanId } = setupConversation();
+		const invalid = await command(id, 0, {
+			type: "rename-participant",
+			participantId: humanId,
+			name: "   ",
+		});
+		expect(invalid.status).toBe(422);
+		const invalidBody = await invalid.json();
+		expect(invalidBody.outcome).toBe("invalid");
+		expect(invalidBody.reason).toContain("name");
+
+		const missing = await command(424242, 0, {
+			type: "add-participant",
+			definition: adHocDefinition("Ghost"),
+		});
+		expect(missing.status).toBe(404);
+		expect(await missing.json()).toEqual({ outcome: "not-found" });
+	});
+
+	test("maps play-gated actions in incomplete Conversations to not-playable", async () => {
+		const created = createConversationModule(database).create({
+			name: "Incomplete Transport",
+			messages: [
+				{
+					timestamp: "2026-08-20T10:00:00Z",
+					variants: [
+						{ content: "Preserved", timestamp: "2026-08-20T10:00:00Z", selected: true },
+					],
+				},
+			],
+		});
+		const response = await command(created.id, created.revision, {
+			type: "create-message",
+			timestamp: "2026-08-20T11:00:00Z",
+			variantContents: ["Composed"],
+			authorParticipantId: 0,
+		});
+		expect(response.status).toBe(409);
+		const body = await response.json();
+		expect(body.outcome).toBe("not-playable");
+	});
+
+	test("forks a Character through the workflow route with an applied outcome", async () => {
+		const { id } = setupConversation();
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: definition({ name: "Maren Voss", openings: ["The lamp turns."] }),
+		});
+
+		const response = await addCharacter(id, {
+			expectedConversationRevision: 0,
+			characterId: source.id,
+			expectedCharacterRevision: source.revision,
+		});
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.outcome).toBe("applied");
+		expect(body.conversation.cast.at(-1)?.sourceCharacterId).toBe(source.id);
+		expect(body.conversation.cast.at(-1)?.name).toBe("Maren Voss");
+	});
+
+	test("maps stale source and stale destination revisions to typed conflicts", async () => {
+		const { id } = setupConversation();
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: definition(),
+		});
+		await library.execute({
+			type: "rename",
+			characterId: source.id,
+			expectedRevision: source.revision,
+			name: "Renamed",
+		});
+
+		const staleSource = await addCharacter(id, {
+			expectedConversationRevision: 0,
+			characterId: source.id,
+			expectedCharacterRevision: source.revision,
+		});
+		expect(staleSource.status).toBe(409);
+		const sourceBody = await staleSource.json();
+		expect(sourceBody.outcome).toBe("conflict");
+		expect(sourceBody.currentCharacter.name).toBe("Renamed");
+
+		const staleDestination = await addCharacter(id, {
+			expectedConversationRevision: 5,
+			characterId: source.id,
+			expectedCharacterRevision: 1,
+		});
+		expect(staleDestination.status).toBe(409);
+		const destinationBody = await staleDestination.json();
+		expect(destinationBody.outcome).toBe("conflict");
+		expect(destinationBody.currentConversation.revision).toBe(0);
+	});
+
+	test("maps missing workflow references to typed not-found outcomes", async () => {
+		const { id } = setupConversation();
+		const missingCharacter = await addCharacter(id, {
+			expectedConversationRevision: 0,
+			characterId: 424242,
+			expectedCharacterRevision: 0,
+		});
+		expect(missingCharacter.status).toBe(404);
+		expect(await missingCharacter.json()).toEqual({ outcome: "not-found" });
+
+		const missingConversation = await addCharacter(424242, {
+			expectedConversationRevision: 0,
+			characterId: 1,
+			expectedCharacterRevision: 0,
+		});
+		expect(missingConversation.status).toBe(404);
 	});
 });

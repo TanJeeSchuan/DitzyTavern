@@ -138,6 +138,30 @@ describe("Character Library", () => {
 		expect(listed.map((character) => character.id)).toEqual([first.id, second.id]);
 	});
 
+	test("derives a useful Prompt preview on every list entry", () => {
+		const blank = library.execute({
+			type: "create",
+			definition: definition({ name: "Blank", prompt: emptyPrompt }),
+		});
+		const populated = library.execute({
+			type: "create",
+			definition: definition({
+				name: "Populated",
+				prompt: {
+					...emptyPrompt,
+					systemInstruction: "Keep responses literary.",
+					identity: "Lighthouse archivist.",
+				},
+			}),
+		});
+
+		const byId = new Map(library.list().map((c) => [c.id, c.preview]));
+		// Blank Prompts preview as the shared fallback text.
+		expect(byId.get(blank.id)).toBe("No prompt text yet.");
+		// The first non-empty field wins (System Instruction precedes Identity).
+		expect(byId.get(populated.id)).toBe("Keep responses literary.");
+	});
+
 	test("sorts pinned Characters first, then alphabetically within each group", () => {
 		const zebra = library.execute({
 			type: "create",

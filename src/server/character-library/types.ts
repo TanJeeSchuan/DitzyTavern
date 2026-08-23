@@ -18,12 +18,16 @@ export interface CharacterDefinition {
 	readonly openings: readonly string[];
 }
 
-// Library list entry without Definition payload.
+// Library list entry without the full Definition payload. The preview is a
+// derived short Prompt excerpt so pickers (such as the Cast drawer's
+// Character picker) can present a useful choice without fetching one detail
+// per Character.
 export interface CharacterSummary {
 	readonly id: number;
 	readonly name: string;
 	readonly revision: number;
 	readonly pinned: boolean;
+	readonly preview: string;
 }
 
 // Full authoritative state of one Character.

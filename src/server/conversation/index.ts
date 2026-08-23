@@ -24,6 +24,7 @@ export type {
 	ConversationCommand,
 	ConversationControlSeed,
 	ConversationControlSnapshot,
+	ConversationControlValidity,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationCreationVariant,
@@ -34,9 +35,12 @@ export type {
 	ConversationParticipantSeed,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
+	ControlValidityReason,
 	HistoricalControlSnapshot,
 	ParticipantDefinition,
 	ParticipantDefinitionPrompt,
+	ParticipantRemovalBlockReason,
+	ParticipantRemovalEligibility,
 } from "./types";
 
 export function createConversationModule(database: Database): ConversationModule {

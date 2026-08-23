@@ -17,6 +17,7 @@ export interface CharacterSummary {
 	name: string;
 	revision: number;
 	pinned: boolean;
+	preview: string;
 }
 
 export interface CharacterSnapshot {

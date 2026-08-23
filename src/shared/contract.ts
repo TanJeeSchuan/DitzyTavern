@@ -9,12 +9,17 @@ import {
 	withCharacterLibrary,
 } from "../server/character-library";
 import {
+	ConversationNotFoundError,
+	ConversationNotPlayableError,
+	InvalidConversationCommandError,
 	InvalidConversationCreationError,
 	type ConversationSnapshot,
+	createConversationModule,
+	StaleConversationRevisionError,
 } from "../server/conversation";
 import { getWorkspace } from "../server/database/workspace";
 import { withDatabase } from "../server/database/database";
-import { createNativeConversation } from "../server/workflows";
+import { addCharacterToCast, createNativeConversation } from "../server/workflows";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -43,6 +48,7 @@ const characterLibrarySummary = t.Object({
 	name: t.String(),
 	revision: t.Integer(),
 	pinned: t.Boolean(),
+	preview: t.String(),
 });
 
 const characterPrompt = t.Object({
@@ -209,11 +215,28 @@ const castParticipant = t.Object({
 	prompt: participantPrompt,
 	openings: t.Array(t.String()),
 	sourceCharacterId: t.Nullable(t.Integer()),
+	sourceCharacterName: t.Nullable(t.String()),
+	// Derived fields so clients never reproduce Cast rules.
+	duplicateLabel: t.String(),
+	removal: t.Object({
+		eligible: t.Boolean(),
+		reason: t.Union([t.Literal("control-assigned"), t.Null()]),
+	}),
 });
 
 const conversationControl = t.Object({
 	humanParticipantId: t.Nullable(t.Integer()),
 	modelParticipantId: t.Nullable(t.Integer()),
+});
+
+const conversationControlValidity = t.Object({
+	valid: t.Boolean(),
+	reason: t.Union([
+		t.Literal("missing-seat"),
+		t.Literal("seats-not-distinct"),
+		t.Literal("seat-not-in-cast"),
+		t.Null(),
+	]),
 });
 
 const capabilityAvailability = t.Object({
@@ -271,6 +294,7 @@ const conversationSnapshot = t.Object({
 	revision: t.Integer(),
 	cast: t.Array(castParticipant),
 	control: conversationControl,
+	controlValidity: conversationControlValidity,
 	playable: t.Boolean(),
 	capabilities: t.Object({
 		compose: capabilityAvailability,
@@ -305,6 +329,155 @@ const toConversationPayload = (conversation: ConversationSnapshot) => ({
 		data: [...message.data],
 	})),
 	data: [...conversation.data],
+});
+
+const participantDefinition = t.Object({
+	name: t.String(),
+	prompt: participantPrompt,
+	openings: t.Array(t.String()),
+});
+
+const dataScope = t.Union([
+	t.Object({ type: t.Literal("conversation") }),
+	t.Object({ type: t.Literal("message"), messageId: t.Integer() }),
+	t.Object({
+		type: t.Literal("variant"),
+		messageId: t.Integer(),
+		variantId: t.Integer(),
+	}),
+]);
+
+const createMessageAction = t.Object({
+	type: t.Literal("create-message"),
+	timestamp: t.String(),
+	variantContents: t.Array(t.String()),
+	selectedVariantIndex: t.Optional(t.Integer()),
+	authorParticipantId: t.Integer(),
+});
+
+const createVariantAction = t.Object({
+	type: t.Literal("create-variant"),
+	messageId: t.Integer(),
+	content: t.String(),
+});
+
+const selectVariantAction = t.Object({
+	type: t.Literal("select-variant"),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+});
+
+const editVariantAction = t.Object({
+	type: t.Literal("edit-variant"),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	content: t.String(),
+});
+
+const deleteVariantAction = t.Object({
+	type: t.Literal("delete-variant"),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+});
+
+const deleteMessageAction = t.Object({
+	type: t.Literal("delete-message"),
+	messageId: t.Integer(),
+});
+
+const putDataAction = t.Object({
+	type: t.Literal("put-data"),
+	scope: dataScope,
+	namespace: t.String(),
+	key: t.String(),
+	value: t.String(),
+});
+
+const deleteDataAction = t.Object({
+	type: t.Literal("delete-data"),
+	scope: dataScope,
+	namespace: t.String(),
+	key: t.String(),
+});
+
+// Cast management command. The raw command appends an ad-hoc or already-
+// resolved local Definition only; Character-to-Cast forks flow through the
+// explicit workflow route, which checks both revisions and copies the
+// authoritative Definition server-side. `sourceCharacterId` is deliberately
+// absent here so a client can never forge or bypass provenance/revision
+// rules at the transport boundary.
+const addParticipantAction = t.Object({
+	type: t.Literal("add-participant"),
+	definition: participantDefinition,
+});
+
+const renameParticipantAction = t.Object({
+	type: t.Literal("rename-participant"),
+	participantId: t.Integer(),
+	name: t.String(),
+});
+
+const replaceParticipantPromptAction = t.Object({
+	type: t.Literal("replace-participant-prompt"),
+	participantId: t.Integer(),
+	prompt: participantPrompt,
+});
+
+const replaceParticipantOpeningsAction = t.Object({
+	type: t.Literal("replace-participant-openings"),
+	participantId: t.Integer(),
+	openings: t.Array(t.String()),
+});
+
+const assignControlAction = t.Object({
+	type: t.Literal("assign-control"),
+	seat: t.Union([t.Literal("human"), t.Literal("model")]),
+	participantId: t.Integer(),
+});
+
+const conversationCommandAction = t.Union([
+	createMessageAction,
+	createVariantAction,
+	selectVariantAction,
+	editVariantAction,
+	deleteVariantAction,
+	deleteMessageAction,
+	putDataAction,
+	deleteDataAction,
+	addParticipantAction,
+	renameParticipantAction,
+	replaceParticipantPromptAction,
+	replaceParticipantOpeningsAction,
+	assignControlAction,
+]);
+
+// The revision is part of the Conversation command; the conversation id
+// lives in the route path.
+const conversationCommandBody = t.Object({
+	expectedRevision: t.Integer(),
+	action: conversationCommandAction,
+});
+
+const notFoundOutcome = t.Object({ outcome: t.Literal("not-found") });
+const invalidOutcome = t.Object({
+	outcome: t.Literal("invalid"),
+	reason: t.String(),
+});
+const notPlayableOutcome = t.Object({
+	outcome: t.Literal("not-playable"),
+	reason: t.String(),
+});
+const conversationConflict = t.Object({
+	outcome: t.Literal("conflict"),
+	expectedRevision: t.Integer(),
+	actualRevision: t.Integer(),
+	currentConversation: conversationSnapshot,
+});
+const characterConflict = t.Object({
+	outcome: t.Literal("conflict"),
+	expectedRevision: t.Integer(),
+	actualRevision: t.Integer(),
+	currentCharacter: characterSnapshot,
 });
 
 const newChatSeatSchema = t.Union([
@@ -389,6 +562,169 @@ export const createNativeConversationRoutes = (database: Database | undefined) =
 		},
 	);
 
+// Thin typed adapters over the deep Conversation seam: snapshot reads,
+// revisioned command execution, and the explicit Character-to-Cast workflow
+// (which itself composes Character Library and Conversation capabilities in
+// one transaction). Routes never coordinate tables or reproduce domain
+// rules; they map typed outcomes to typed transport results.
+export const createConversationRoutes = (database: Database | undefined) =>
+	new Elysia()
+		.get(
+			"/api/conversations/:id",
+			({ params, status }) => {
+				const conversation = withDatabase(database, (connection) =>
+					createConversationModule(connection).getSnapshot(params.id),
+				);
+				if (conversation === undefined) {
+					return status(404, { outcome: "not-found" as const });
+				}
+				return toConversationPayload(conversation);
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				response: {
+					200: conversationSnapshot,
+					404: notFoundOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/commands",
+			({ params, body, status }) => {
+				try {
+					const conversation = withDatabase(database, (connection) =>
+						createConversationModule(connection).execute({
+							conversationId: params.id,
+							expectedRevision: body.expectedRevision,
+							action: body.action,
+						}),
+					);
+					return {
+						outcome: "applied" as const,
+						conversation: toConversationPayload(conversation),
+					};
+				} catch (error) {
+					if (error instanceof StaleConversationRevisionError) {
+						const current = withDatabase(database, (connection) =>
+							createConversationModule(connection).getSnapshot(params.id),
+						);
+						if (current === undefined) {
+							// The Conversation disappeared between the conflict and
+							// the recovery read; never fabricate authoritative state.
+							return status(404, { outcome: "not-found" as const });
+						}
+						return status(409, {
+							outcome: "conflict" as const,
+							expectedRevision: error.expectedRevision,
+							actualRevision: error.actualRevision,
+							currentConversation: toConversationPayload(current),
+						});
+					}
+					if (error instanceof ConversationNotFoundError) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof ConversationNotPlayableError) {
+						return status(409, {
+							outcome: "not-playable" as const,
+							reason: error.message,
+						});
+					}
+					if (error instanceof InvalidConversationCommandError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				body: conversationCommandBody,
+				response: {
+					200: t.Object({
+						outcome: t.Literal("applied"),
+						conversation: conversationSnapshot,
+					}),
+					409: t.Union([conversationConflict, notPlayableOutcome]),
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/cast/characters",
+			({ params, body, status }) => {
+				try {
+					const conversation = withDatabase(database, (connection) =>
+						addCharacterToCast(connection, {
+							conversationId: params.id,
+							expectedConversationRevision: body.expectedConversationRevision,
+							characterId: body.characterId,
+							expectedCharacterRevision: body.expectedCharacterRevision,
+						}),
+					);
+					return {
+						outcome: "applied" as const,
+						conversation: toConversationPayload(conversation),
+					};
+				} catch (error) {
+					if (error instanceof StaleCharacterRevisionError) {
+						return status(409, {
+							outcome: "conflict" as const,
+							expectedRevision: error.expectedRevision,
+							actualRevision: error.actualRevision,
+							currentCharacter: toCharacterPayload(error.currentCharacter),
+						});
+					}
+					if (error instanceof StaleConversationRevisionError) {
+						const current = withDatabase(database, (connection) =>
+							createConversationModule(connection).getSnapshot(params.id),
+						);
+						if (current === undefined) {
+							return status(404, { outcome: "not-found" as const });
+						}
+						return status(409, {
+							outcome: "conflict" as const,
+							expectedRevision: error.expectedRevision,
+							actualRevision: error.actualRevision,
+							currentConversation: toConversationPayload(current),
+						});
+					}
+					if (
+						error instanceof ConversationNotFoundError ||
+						error instanceof CharacterNotFoundError
+					) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof InvalidConversationCommandError) {
+						return status(422, {
+							outcome: "invalid" as const,
+							reason: error.message,
+						});
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				body: t.Object({
+					expectedConversationRevision: t.Integer(),
+					characterId: t.Integer(),
+					expectedCharacterRevision: t.Integer(),
+				}),
+				response: {
+					200: t.Object({
+						outcome: t.Literal("applied"),
+						conversation: conversationSnapshot,
+					}),
+					409: t.Union([characterConflict, conversationConflict]),
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		);
+
 export const contract = new Elysia()
 	.get("/api/health", () => ({ ok: true }), {
 		response: t.Object({ ok: t.Boolean() }),
@@ -401,6 +737,7 @@ export const contract = new Elysia()
 		}),
 	})
 	.use(createCharacterLibraryRoutes(undefined))
-	.use(createNativeConversationRoutes(undefined));
+	.use(createNativeConversationRoutes(undefined))
+	.use(createConversationRoutes(undefined));
 
 export type Contract = typeof contract;

@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { firstPromptText, promptPreview } from "../../shared/definition";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -78,20 +79,43 @@ export function readCharacterSnapshot(
 }
 
 export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
-	const characters = db
+	const rows = db
 		.select({
 			id: characterTable.id,
 			name: characterTable.name,
 			revision: characterTable.revision,
 			pinned: characterTable.pinned,
 			deletedAt: characterTable.deleted_at,
+			systemInstruction: characterPromptTable.system_instruction,
+			identity: characterPromptTable.identity,
+			scenario: characterPromptTable.scenario,
+			exampleDialogue: characterPromptTable.example_dialogue,
+			postHistoryInstruction: characterPromptTable.post_history_instruction,
 		})
 		.from(characterTable)
+		.leftJoin(
+			characterPromptTable,
+			eq(characterPromptTable.character_id, characterTable.id),
+		)
 		.orderBy(asc(characterTable.id))
 		.all();
 
-	return characters
+	return rows
 		.filter((row) => row.deletedAt === null)
-		.map(({ deletedAt: _deletedAt, ...row }) => row)
+		.map((row) => ({
+			id: row.id,
+			name: row.name,
+			revision: row.revision,
+			pinned: row.pinned,
+			preview: promptPreview(
+				firstPromptText({
+					systemInstruction: row.systemInstruction ?? "",
+					identity: row.identity ?? "",
+					scenario: row.scenario ?? "",
+					exampleDialogue: row.exampleDialogue ?? "",
+					postHistoryInstruction: row.postHistoryInstruction ?? "",
+				}),
+			),
+		}))
 		.sort(compareByLibraryOrder);
 }

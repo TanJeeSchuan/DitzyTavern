@@ -1,12 +1,19 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, sql } from "drizzle-orm";
 import { chatTable } from "../database/schema";
+import { addParticipant } from "./commands/add-participant";
+import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
 import { createVariant } from "./commands/create-variant";
 import { deleteData } from "./commands/delete-data";
 import { deleteMessage } from "./commands/delete-message";
 import { deleteVariant } from "./commands/delete-variant";
 import { editVariant } from "./commands/edit-variant";
+import {
+	renameParticipant,
+	replaceParticipantOpenings,
+	replaceParticipantPrompt,
+} from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
 import { selectVariant } from "./commands/select-variant";
 import {
@@ -74,6 +81,21 @@ export function executeConversationCommand(
 				break;
 			case "delete-message":
 				deleteMessage(db, input);
+				break;
+			case "add-participant":
+				addParticipant(db, input);
+				break;
+			case "rename-participant":
+				renameParticipant(db, input);
+				break;
+			case "replace-participant-prompt":
+				replaceParticipantPrompt(db, input);
+				break;
+			case "replace-participant-openings":
+				replaceParticipantOpenings(db, input);
+				break;
+			case "assign-control":
+				assignControl(db, input);
 				break;
 			case "put-data":
 				putData(db, input);
