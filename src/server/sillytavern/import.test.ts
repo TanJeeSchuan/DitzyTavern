@@ -480,6 +480,45 @@ describe("SillyTavern chat import", () => {
 		expect(report.warnings[1]).toContain("position 2");
 	});
 
+	test("keeps a blank group and a literal Blank Author group as distinct Participants", () => {
+		const literalBlankAuthor = {
+			name: "Blank Author",
+			is_user: false,
+			send_date: "2026-08-08T13:12:00.000Z",
+			mes: "a real captured author named exactly like the resolved fallback",
+		};
+		const { conversation, report } = importSillyTavernChat(
+			database,
+			writeSource([header, blankName, literalBlankAuthor]),
+		);
+
+		// The blank group (key null) and the literal "Blank Author" group
+		// (key "Blank Author") never collapse into one identity: both stay
+		// separate native Participants whose duplicate display names are
+		// disambiguated with computed ordinals, exactly like any duplicate
+		// names — a name is never an identity key.
+		expect(conversation.cast.map((participant) => participant.name)).toEqual([
+			RESOLVED_BLANK_AUTHOR_NAME,
+			RESOLVED_BLANK_AUTHOR_NAME,
+		]);
+		expect(
+			conversation.cast.map((participant) => participant.duplicateLabel),
+		).toEqual([RESOLVED_BLANK_AUTHOR_NAME, `${RESOLVED_BLANK_AUTHOR_NAME} (2)`]);
+		const [blankGroup, literalGroup] = conversation.cast;
+		expect(blankGroup?.id).not.toBe(literalGroup?.id);
+		expect(conversation.messages[0]?.author?.participantId).toBe(blankGroup?.id);
+		expect(conversation.messages[1]?.author?.participantId).toBe(literalGroup?.id);
+		// Each Message keeps its exact raw source author value untouched.
+		expect(
+			conversation.messages.map((message) => message.data[0]?.value),
+		).toEqual(["", "Blank Author"]);
+		expect(conversation.messages[0]?.author?.inCast).toBe(true);
+		expect(conversation.messages[1]?.author?.inCast).toBe(true);
+		expect(report.warnings).toEqual([
+			"Message at position 1 has a blank captured author name.",
+		]);
+	});
+
 	test("blocks Compose, Generate, and Swipe in an incomplete import with the same typed reason", async () => {
 		const { conversation } = importSillyTavernChat(
 			database,
@@ -533,11 +572,58 @@ describe("SillyTavern chat import", () => {
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 
+		// Incomplete imports stay editable and configurable: content edits
+		// and scoped data commands are never play-gated, and they keep
+		// storing against the preserved history.
+		const variantId = conversation.messages[0]?.variants[0]?.id ?? 0;
+		const edited = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "edit-variant",
+				messageId,
+				variantId,
+				content: "Edited preserved text",
+			},
+		});
+		expect(edited.messages[0]?.variants[0]?.content).toBe(
+			"Edited preserved text",
+		);
+		const configured = module.execute({
+			conversationId: edited.id,
+			expectedRevision: edited.revision,
+			action: {
+				type: "put-data",
+				scope: { type: "conversation" },
+				namespace: "test",
+				key: "note",
+				value: "preserved",
+			},
+		});
+		expect(configured.data).toContainEqual({
+			namespace: "test",
+			key: "note",
+			value: "preserved",
+		});
+		const cleared = module.execute({
+			conversationId: configured.id,
+			expectedRevision: configured.revision,
+			action: {
+				type: "delete-data",
+				scope: { type: "conversation" },
+				namespace: "test",
+				key: "note",
+			},
+		});
+		expect(
+			cleared.data.find((entry) => entry.namespace === "test"),
+		).toBeUndefined();
+
 		// Adding the missing Participant derives playability automatically;
 		// no status toggle exists or is needed.
 		const completed = module.execute({
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
+			conversationId: cleared.id,
+			expectedRevision: cleared.revision,
 			action: {
 				type: "add-participant",
 				definition: {
