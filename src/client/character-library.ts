@@ -76,10 +76,13 @@ export async function getCharacter(
 	characterId: number,
 ): Promise<CharacterSnapshot | null> {
 	const { data, error } = await api.api.characters({ id: characterId }).get();
-	if (error || !data) {
-		return null;
+	if (error !== null && error !== undefined) {
+		if (error.status === 404) {
+			return null;
+		}
+		throw new Error(`Unable to load Character ${characterId}`);
 	}
-	return data;
+	return data ?? null;
 }
 
 export async function applyCommand(

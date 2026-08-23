@@ -94,7 +94,7 @@ const setPinnedCommand = t.Object({
 	pinned: t.Boolean(),
 });
 
-export const commandBodySchema = t.Union([
+const commandBodySchema = t.Union([
 	createCommand,
 	renameCommand,
 	replacePromptCommand,

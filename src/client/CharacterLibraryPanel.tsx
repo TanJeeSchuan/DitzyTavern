@@ -90,18 +90,20 @@ export function CharacterLibraryPanel() {
 	}, [characters]);
 
 	const openCharacter = useCallback(async (characterId: number) => {
-		const loaded = await getCharacter(characterId);
-		if (loaded === null) {
-			setSelectedId(null);
-			setSnapshot(null);
-			setNotice("That Character is no longer in the Library.");
-			return;
+		try {
+			const loaded = await getCharacter(characterId);
+			if (loaded === null) {
+				setNotice("That Character is no longer in the Library.");
+				return;
+			}
+			setSelectedId(loaded.id);
+			setSnapshot(loaded);
+			setDrafts(draftsOf(loaded));
+			setConflict(null);
+			setNotice(null);
+		} catch {
+			setNotice("The Library could not be reached.");
 		}
-		setSelectedId(loaded.id);
-		setSnapshot(loaded);
-		setDrafts(draftsOf(loaded));
-		setConflict(null);
-		setNotice(null);
 	}, []);
 
 	const runCommand = useCallback(
