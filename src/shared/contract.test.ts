@@ -142,6 +142,84 @@ describe("Character Library transport adapters", () => {
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
 	});
+
+	test("lists expose provenance reference counts and detail exposes the derived deletion impact", async () => {
+		const created = await (
+			await post({ type: "create", definition: definition() })
+		).json();
+
+		const listed = await app.handle(new Request("http://localhost/api/characters"));
+		const { characters } = await listed.json();
+		expect(characters[0]?.provenanceReferenceCount).toBe(0);
+
+		const detail = await app.handle(
+			new Request(`http://localhost/api/characters/${created.character.id}`),
+		);
+		expect((await detail.json()).deletionImpact).toEqual({
+			provenanceReferenceCount: 0,
+			deletionMode: "hard-delete",
+		});
+	});
+
+	test("deletes an unreferenced Character through the typed deletion result and hides it from every read", async () => {
+		const created = await (
+			await post({ type: "create", definition: definition() })
+		).json();
+
+		const deleted = await post({
+			type: "delete",
+			characterId: created.character.id,
+			expectedRevision: created.character.revision,
+		});
+		expect(deleted.status).toBe(200);
+		expect(await deleted.json()).toEqual({
+			outcome: "applied",
+			result: {
+				characterId: created.character.id,
+				deletionMode: "hard-delete",
+			},
+		});
+
+		const missing = await app.handle(
+			new Request(`http://localhost/api/characters/${created.character.id}`),
+		);
+		expect(missing.status).toBe(404);
+		const listed = await (await app.handle(new Request("http://localhost/api/characters"))).json();
+		expect(listed.characters).toHaveLength(0);
+	});
+
+	test("a stale deletion maps to the typed conflict payload with the authoritative Character", async () => {
+		const created = await (
+			await post({ type: "create", definition: definition() })
+		).json();
+		await post({
+			type: "rename",
+			characterId: created.character.id,
+			expectedRevision: 0,
+			name: "Renamed",
+		});
+
+		const stale = await post({
+			type: "delete",
+			characterId: created.character.id,
+			expectedRevision: 0,
+		});
+		expect(stale.status).toBe(409);
+		const conflict = await stale.json();
+		expect(conflict.outcome).toBe("conflict");
+		expect(conflict.expectedRevision).toBe(0);
+		expect(conflict.actualRevision).toBe(1);
+		expect(conflict.currentCharacter.name).toBe("Renamed");
+
+		// The confirmed deletion of a still-active Character is a separate
+		// command at the current revision and succeeds.
+		const deleted = await post({
+			type: "delete",
+			characterId: created.character.id,
+			expectedRevision: 1,
+		});
+		expect(deleted.status).toBe(200);
+	});
 });
 
 // Transport tests for the native New Chat workflow cover the request and

@@ -55,6 +55,9 @@ const characterLibrarySummary = t.Object({
 	revision: t.Integer(),
 	pinned: t.Boolean(),
 	preview: t.String(),
+	// Global provenance reference count so pickers and lists present
+	// deletion impact without one detail request per row.
+	provenanceReferenceCount: t.Integer(),
 });
 
 const characterPrompt = t.Object({
@@ -65,6 +68,18 @@ const characterPrompt = t.Object({
 	postHistoryInstruction: t.String(),
 });
 
+const characterDeletionMode = t.Union([
+	t.Literal("hard-delete"),
+	t.Literal("tombstone"),
+]);
+
+// Derived deletion impact presented with every authoritative read so the
+// confirmation flow can show the exact consequence before any command.
+const characterDeletionImpact = t.Object({
+	provenanceReferenceCount: t.Integer(),
+	deletionMode: characterDeletionMode,
+});
+
 const characterSnapshot = t.Object({
 	id: t.Integer(),
 	name: t.String(),
@@ -72,6 +87,14 @@ const characterSnapshot = t.Object({
 	pinned: t.Boolean(),
 	prompt: characterPrompt,
 	openings: t.Array(t.String()),
+	deletionImpact: characterDeletionImpact,
+});
+
+// Outcome of a confirmed deletion: the mode is derived from the reference
+// count at command time, never guessed by the client.
+const characterDeletionResult = t.Object({
+	characterId: t.Integer(),
+	deletionMode: characterDeletionMode,
 });
 
 const createCommand = t.Object({
@@ -111,12 +134,22 @@ const setPinnedCommand = t.Object({
 	pinned: t.Boolean(),
 });
 
+// Confirmed deletion. The expected revision guards against deleting a
+// Character whose impact the caller has not seen; the outcome derives the
+// deletion mode from the current reference count.
+const deleteCommand = t.Object({
+	type: t.Literal("delete"),
+	characterId: t.Integer(),
+	expectedRevision: t.Integer(),
+});
+
 const commandBodySchema = t.Union([
 	createCommand,
 	renameCommand,
 	replacePromptCommand,
 	replaceOpeningsCommand,
 	setPinnedCommand,
+	deleteCommand,
 ]);
 
 // Thin typed adapters over the Character Library seam. The database is
@@ -156,12 +189,26 @@ export const createCharacterLibraryRoutes = (database: Database | undefined) =>
 			"/api/characters/commands",
 			({ body, status }) => {
 				try {
-					const character = withCharacterLibrary(database, (library) =>
+					const outcome = withCharacterLibrary(database, (library) =>
 						library.execute(body),
 					);
+					// A confirmed deletion returns the typed result rather than a
+					// snapshot and neither stays readable; every other command
+					// returns the authoritative updated Character. DeletionMode is
+					// exclusive to the result, so the discriminant keeps the two
+					// applied payloads distinct.
+					if ("deletionMode" in outcome) {
+						return {
+							outcome: "applied" as const,
+							result: {
+								characterId: outcome.characterId,
+								deletionMode: outcome.deletionMode,
+							},
+						};
+					}
 					return {
 						outcome: "applied" as const,
-						character: toCharacterPayload(character),
+						character: toCharacterPayload(outcome),
 					};
 				} catch (error) {
 					if (error instanceof StaleCharacterRevisionError) {
@@ -190,10 +237,16 @@ export const createCharacterLibraryRoutes = (database: Database | undefined) =>
 			{
 				body: commandBodySchema,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("applied"),
-						character: characterSnapshot,
-					}),
+					200: t.Union([
+						t.Object({
+							outcome: t.Literal("applied"),
+							character: characterSnapshot,
+						}),
+						t.Object({
+							outcome: t.Literal("applied"),
+							result: characterDeletionResult,
+						}),
+					]),
 					409: t.Object({
 						outcome: t.Literal("conflict"),
 						expectedRevision: t.Integer(),

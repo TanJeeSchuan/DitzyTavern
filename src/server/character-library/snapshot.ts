@@ -4,9 +4,11 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	participantTable,
 } from "../database/schema";
 import type { CharacterDatabase } from "./internal";
 import type {
+	CharacterDeletionImpact,
 	CharacterPrompt,
 	CharacterSnapshot,
 	CharacterSummary,
@@ -35,6 +37,26 @@ const compareByLibraryOrder = (a: CharacterSummary, b: CharacterSummary) => {
 	}
 	return a.id - b.id;
 };
+
+// Derives the deletion impact of one Character from its Participant
+// provenance references (active and tombstoned rows across every
+// Conversation). This is the single reference-count rule shared by reads,
+// the confirmation presentation, and the delete command, so the presented
+// impact can never drift from the persisted behavior.
+export function readDeletionImpact(
+	db: CharacterDatabase,
+	characterId: number,
+): CharacterDeletionImpact {
+	const provenanceReferenceCount = db
+		.select({ id: participantTable.id })
+		.from(participantTable)
+		.where(eq(participantTable.source_character_id, characterId))
+		.all().length;
+	return {
+		provenanceReferenceCount,
+		deletionMode: provenanceReferenceCount === 0 ? "hard-delete" : "tombstone",
+	};
+}
 
 export function readCharacterSnapshot(
 	db: CharacterDatabase,
@@ -75,10 +97,25 @@ export function readCharacterSnapshot(
 		pinned: character.pinned,
 		prompt: prompt ?? emptyPrompt,
 		openings,
+		deletionImpact: readDeletionImpact(db, characterId),
 	};
 }
 
 export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
+	// One global projection of provenance references drives every summary's
+	// used count, so the list never issues a per-Character reference query.
+	const references = new Map<number, number>();
+	for (const row of db
+		.select({ sourceCharacterId: participantTable.source_character_id })
+		.from(participantTable)
+		.all()) {
+		if (row.sourceCharacterId === null) continue;
+		references.set(
+			row.sourceCharacterId,
+			(references.get(row.sourceCharacterId) ?? 0) + 1,
+		);
+	}
+
 	const rows = db
 		.select({
 			id: characterTable.id,
@@ -116,6 +153,7 @@ export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
 					postHistoryInstruction: row.postHistoryInstruction ?? "",
 				}),
 			),
+			provenanceReferenceCount: references.get(row.id) ?? 0,
 		}))
 		.sort(compareByLibraryOrder);
 }

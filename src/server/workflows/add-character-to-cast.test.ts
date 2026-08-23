@@ -222,6 +222,48 @@ describe("Add Character to Cast workflow", () => {
 		expect(countRows(participantTable)).toBe(2);
 	});
 
+	test("a tombstoned Character cannot create new forks", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: sourceDefinition(),
+		});
+		const conversation = playableConversation();
+		// The fork below keeps the source referenced, so deletion reduces it
+		// to a hidden tombstone rather than hard-deleting the row.
+		addCharacterToCast(database, {
+			conversationId: conversation.id,
+			expectedConversationRevision: conversation.revision,
+			characterId: source.id,
+			expectedCharacterRevision: source.revision,
+		});
+		library.execute({
+			type: "delete",
+			characterId: source.id,
+			expectedRevision: source.revision,
+		});
+
+		const snapshot = createConversationModule(database).getSnapshot(
+			conversation.id,
+		);
+		if (snapshot === undefined) {
+			throw new Error("Expected the host Conversation");
+		}
+		expect(() =>
+			addCharacterToCast(database, {
+				conversationId: conversation.id,
+				expectedConversationRevision: snapshot.revision,
+				characterId: source.id,
+				expectedCharacterRevision: source.revision,
+			}),
+		).toThrow(CharacterNotFoundError);
+		// Atomically nothing changed: no additional Participant fork exists.
+		expect(countRows(participantTable)).toBe(3);
+		expect(
+			createConversationModule(database).getSnapshot(conversation.id)?.revision,
+		).toBe(snapshot.revision);
+	});
+
 	test("later independent edits to Character and Participant never resync", () => {
 		const library = createCharacterLibraryModule(database);
 		const source = library.execute({

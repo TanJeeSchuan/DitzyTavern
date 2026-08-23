@@ -12,6 +12,7 @@ const summary = (overrides: Partial<CharacterSummary>): CharacterSummary => ({
 	revision: 0,
 	pinned: false,
 	preview: "Lighthouse archivist.",
+	provenanceReferenceCount: 0,
 	...overrides,
 });
 

@@ -25,6 +25,7 @@ const applied = (
 			postHistoryInstruction: "",
 		},
 		openings: ["Hello."],
+		deletionImpact: { provenanceReferenceCount: 0, deletionMode: "hard-delete" },
 	},
 	...overrides,
 });

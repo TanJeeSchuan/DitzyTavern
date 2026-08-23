@@ -1,4 +1,5 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { collectReleasedCharacterTombstones } from "../../character-library";
 import {
 	participantOpeningTable,
 	participantPromptTable,
@@ -60,10 +61,19 @@ export function removeParticipant(
 
 	if (!referenced) {
 		// Hard deletion: no Message refers to this Participant, so removing
-		// the base row is safe and cascades the Definition children.
+		// the base row is safe and cascades the Definition children. When the
+		// Participant was forked from a Character, this removal may release
+		// the final provenance reference of an already-tombstoned source
+		// Character, which the narrow cleanup mechanism then garbage-collects
+		// in the same transaction.
 		db.delete(participantTable)
 			.where(eq(participantTable.id, participant.id))
 			.run();
+		if (participant.source_character_id !== null) {
+			collectReleasedCharacterTombstones(db, [
+				participant.source_character_id,
+			]);
+		}
 	} else {
 		// Tombstone: keep the minimal base row for structural references;
 		// strip the Definition children and leave the Cast. The tombstone

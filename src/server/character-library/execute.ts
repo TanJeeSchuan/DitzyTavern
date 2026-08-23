@@ -6,6 +6,7 @@ import {
 	characterTable,
 } from "../database/schema";
 import { createCharacter } from "./create";
+import { deleteCharacter } from "./delete-character";
 import {
 	CharacterNotFoundError,
 	StaleCharacterRevisionError,
@@ -17,16 +18,23 @@ import {
 	requireCommandOpenings,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
-import type { CharacterLibraryCommand, CharacterSnapshot } from "./types";
+import type {
+	CharacterDeletionResult,
+	CharacterLibraryCommand,
+	CharacterSnapshot,
+} from "./types";
 
 // Executes one revisioned Character command atomically. Every mutation
 // except creation requires the expected revision and increments it on
 // success. A stale command fails without any change and carries the
-// authoritative current Character in the typed conflict.
+// authoritative current Character in the typed conflict. Deletion returns
+// the typed deletion result instead of a snapshot: an unreferenced
+// Character is hard-deleted, a referenced one becomes a hidden
+// nonrestorable tombstone, and neither remains readable through the seam.
 export function executeCharacterCommand(
 	database: Database,
 	command: CharacterLibraryCommand,
-): CharacterSnapshot {
+): CharacterSnapshot | CharacterDeletionResult {
 	if (command.type === "create") {
 		return createCharacter(database, command.definition);
 	}
@@ -45,6 +53,12 @@ export function executeCharacterCommand(
 				character.revision,
 				current,
 			);
+		}
+
+		if (command.type === "delete") {
+			// Deletion advances no further revision: a hard-deleted Character
+			// has no row left, and a tombstone is hidden and nonrestorable.
+			return deleteCharacter(db, command.characterId);
 		}
 
 		switch (command.type) {

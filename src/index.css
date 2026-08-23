@@ -591,6 +591,37 @@ input:focus-visible {
 	margin-top: 1rem;
 }
 
+/* Destructive actions (Character deletion) share the button shape of
+   primary/secondary actions but use the destructive color instead. */
+.danger-button {
+	min-height: 2.55rem;
+	padding: 0 0.95rem;
+	border: 1px solid var(--destructive);
+	border-radius: 0.75rem;
+	background: var(--destructive);
+	color: white;
+	font-size: 0.82rem;
+	font-weight: 650;
+	white-space: nowrap;
+	transition: transform 150ms ease, background-color 150ms ease,
+		border-color 150ms ease;
+}
+
+.danger-button:hover:not(:disabled) {
+	border-color: color-mix(in oklch, var(--destructive) 70%, #000);
+	background: color-mix(in oklch, var(--destructive) 70%, #000);
+}
+
+.danger-button:disabled {
+	opacity: 0.55;
+}
+
+.confirm-delete-row {
+	display: flex;
+	gap: 0.55rem;
+	align-items: center;
+}
+
 .library-new-button {
 	display: inline-flex;
 	align-items: center;

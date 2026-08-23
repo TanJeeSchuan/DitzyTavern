@@ -9,6 +9,11 @@ import {
 	type CharacterSnapshot,
 	type CharacterSummary,
 } from "./character-library";
+import {
+	deletionConfirmationCopy,
+	deletionResultNotice,
+	usedCountLabel,
+} from "./character-delete";
 
 // Dedicated Character Library surface: list, create, detail, semantic Apply
 // actions, pinning, computed duplicate ordinals, and conflict recovery.
@@ -157,6 +162,19 @@ export function CharacterLibraryPanel({
 						}));
 						setConflict(null);
 						setNotice(null);
+						await loadList();
+						break;
+					}
+					case "deleted": {
+						// The Character (hard-deleted or tombstoned) is no longer
+						// readable; return to the top-level list and report the
+						// confirmed outcome. Existing Chat Participants were
+						// deliberately left untouched by the server command.
+						setSelectedId(null);
+						setSnapshot(null);
+						setDrafts(emptyDrafts);
+						setConflict(null);
+						setNotice(deletionResultNotice(outcome.result));
 						await loadList();
 						break;
 					}
@@ -325,13 +343,17 @@ export function CharacterLibraryPanel({
 								className="character-list-item"
 								type="button"
 								onClick={() => void openCharacter(character.id)}
+								title={character.preview}
 							>
 								<span>{displayLabels[index]}</span>
-								{character.pinned && (
-									<small aria-label="Pinned">
-										<Pin aria-hidden="true" />
-									</small>
-								)}
+								<small aria-label={`Used ${usedCountLabel(character.provenanceReferenceCount)}`}>
+									{character.pinned && (
+										<span aria-label="Pinned" title="Pinned">
+											<Pin aria-hidden="true" />{" "}
+										</span>
+									)}
+									{usedCountLabel(character.provenanceReferenceCount)}
+								</small>
 							</button>
 						</li>
 					))}
@@ -362,6 +384,15 @@ function CharacterEditor({
 	onCommand: (action: string, command: CharacterCommand) => Promise<void>;
 	onResolveConflict: (mode: "keep-draft" | "load-current") => void;
 }) {
+	// Deletion requires an explicit confirmation step that states whether the
+	// confirmed command will hard-delete or reduce the Character to a hidden
+	// tombstone, derived from the reference count presented on the snapshot.
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const deleteCopy = deletionConfirmationCopy(
+		snapshot.name,
+		snapshot.deletionImpact,
+	);
+
 	return (
 		<div className="panel-body">
 			<button className="library-back" type="button" onClick={onBack}>
@@ -500,6 +531,47 @@ function CharacterEditor({
 						Apply Openings
 					</button>
 				</div>
+			</section>
+
+			<section className="editor-section">
+				<h3>Delete</h3>
+				<p className="panel-note">{deleteCopy.impact}</p>
+				{confirmingDelete ? (
+					<div className="confirm-delete-row">
+						<button
+							className="danger-button"
+							type="button"
+							disabled={pendingAction !== null}
+							onClick={() => {
+								setConfirmingDelete(false);
+								void onCommand("delete", {
+									type: "delete",
+									characterId: snapshot.id,
+									expectedRevision: snapshot.revision,
+								});
+							}}
+						>
+							{deleteCopy.confirmLabel}
+						</button>
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={pendingAction !== null}
+							onClick={() => setConfirmingDelete(false)}
+						>
+							Cancel
+						</button>
+					</div>
+				) : (
+					<button
+						className="danger-button"
+						type="button"
+						disabled={pendingAction !== null}
+						onClick={() => setConfirmingDelete(true)}
+					>
+						Delete Character
+					</button>
+				)}
 			</section>
 
 			{notice !== null && (

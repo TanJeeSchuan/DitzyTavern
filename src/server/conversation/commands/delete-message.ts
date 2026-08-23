@@ -1,4 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import { collectReleasedCharacterTombstones } from "../../character-library";
 import { messageTable, participantTable } from "../../database/schema";
 import type { ConversationDatabase } from "../internal";
 import { messageReferencesParticipant } from "../internal";
@@ -21,7 +22,10 @@ const collectReleasedTombstones = (
 	conversationId: number,
 ) => {
 	const tombstones = db
-		.select({ id: participantTable.id })
+		.select({
+			id: participantTable.id,
+			sourceCharacterId: participantTable.source_character_id,
+		})
 		.from(participantTable)
 		.where(
 			and(
@@ -31,6 +35,7 @@ const collectReleasedTombstones = (
 		)
 		.all();
 	if (tombstones.length === 0) return;
+	const releasedSourceCharacterIds: number[] = [];
 
 	// One projection of the surviving Messages drives every tombstone check
 	// through the shared reference predicate, so collection can never drift
@@ -54,8 +59,16 @@ const collectReleasedTombstones = (
 			db.delete(participantTable)
 				.where(eq(participantTable.id, tombstone.id))
 				.run();
+			if (tombstone.sourceCharacterId !== null) {
+				releasedSourceCharacterIds.push(tombstone.sourceCharacterId);
+			}
 		}
 	}
+
+	// Every collected Participant tombstone may have held the final
+	// provenance reference of an already-tombstoned source Character; the
+	// narrow character cleanup removes exactly those in the same transaction.
+	collectReleasedCharacterTombstones(db, releasedSourceCharacterIds);
 };
 
 export function deleteMessage(db: ConversationDatabase, input: DeleteMessageInput) {

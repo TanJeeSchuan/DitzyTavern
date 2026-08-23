@@ -18,6 +18,17 @@ export interface CharacterSummary {
 	revision: number;
 	pinned: boolean;
 	preview: string;
+	// Global provenance reference count (active or tombstoned Participants
+	// forked from this Character), so pickers and lists present deletion
+	// impact without one detail request per row.
+	provenanceReferenceCount: number;
+}
+
+export type CharacterDeletionMode = "hard-delete" | "tombstone";
+
+export interface CharacterDeletionImpact {
+	provenanceReferenceCount: number;
+	deletionMode: CharacterDeletionMode;
 }
 
 export interface CharacterSnapshot {
@@ -27,7 +38,15 @@ export interface CharacterSnapshot {
 	pinned: boolean;
 	prompt: CharacterPrompt;
 	openings: string[];
+	// Derived deletion impact presented with every authoritative read so the
+	// confirmation flow can show the exact consequence before any command.
+	deletionImpact: CharacterDeletionImpact;
 }
+
+export type CharacterDeletionResult = {
+	characterId: number;
+	deletionMode: CharacterDeletionMode;
+};
 
 export type CharacterCommand =
 	| {
@@ -56,10 +75,21 @@ export type CharacterCommand =
 			characterId: number;
 			expectedRevision: number;
 			pinned: boolean;
+	  }
+	// Confirmed deletion. The expected revision guards against deleting a
+	// Character whose impact the caller has not seen; the outcome derives the
+	// deletion mode from the current reference count.
+	| {
+			type: "delete";
+			characterId: number;
+			expectedRevision: number;
 	  };
 
 export type CommandOutcome =
 	| { status: "applied"; character: CharacterSnapshot }
+	// A confirmed deletion returns the derived mode instead of a snapshot:
+	// neither a hard-deleted nor a tombstoned Character remains readable.
+	| { status: "deleted"; result: CharacterDeletionResult }
 	| { status: "conflict"; currentCharacter: CharacterSnapshot }
 	| { status: "not-found" }
 	| { status: "invalid"; reason: string }
@@ -102,6 +132,12 @@ export async function applyCommand(
 			return { status: "invalid", reason: payload.reason };
 		}
 		return { status: "network" };
+	}
+	// Deletion returns the typed result instead of a snapshot; every other
+	// command returns the authoritative updated Character. The payload is a
+	// union discriminated by the result-only `result` field.
+	if ("result" in data) {
+		return { status: "deleted", result: data.result };
 	}
 	return { status: "applied", character: data.character };
 }

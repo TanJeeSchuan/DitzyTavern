@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
+	characterTable,
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
@@ -620,5 +621,183 @@ describe("Participant removal", () => {
 		// The Cast is untouched by tombstone collection and stays compacted.
 		expect(castNames(collected)).toEqual(["Maren Voss", "Juno Ashfeld"]);
 		expect(collected.cast.map((p) => p.position)).toEqual([1, 2]);
+	});
+
+	test("deleting a Character leaves existing Participant forks unchanged with stable provenance", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: {
+				name: "Maren Voss",
+				prompt: emptyPrompt(),
+				openings: ["The lamp turns."],
+			},
+		});
+		const module = createConversationModule(database);
+		const snapshot = module.create({
+			name: "Source Deleted",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{
+					definition: {
+						name: source.name,
+						prompt: source.prompt,
+						openings: [...source.openings],
+					},
+					sourceCharacterId: source.id,
+				},
+			],
+			control: { human: 0, model: 1 },
+		});
+		const modelId = snapshot.cast[1]?.id ?? 0;
+
+		// The fork keeps the source referenced, so deletion tombstones the
+		// Character and never touches the Conversation.
+		const result = library.execute({
+			type: "delete",
+			characterId: source.id,
+			expectedRevision: source.revision,
+		});
+		expect(result).toEqual({
+			characterId: source.id,
+			deletionMode: "tombstone",
+		});
+
+		// The fork keeps its complete local Definition and its immutable
+		// provenance, and the tombstoned source still names the provenance.
+		const reread = createConversationModule(database).getSnapshot(snapshot.id);
+		const fork = reread?.cast.find((p) => p.id === modelId);
+		expect(fork?.name).toBe("Maren Voss");
+		expect(fork?.prompt).toEqual(source.prompt);
+		expect(fork?.openings).toEqual(["The lamp turns."]);
+		expect(fork?.sourceCharacterId).toBe(source.id);
+		expect(fork?.sourceCharacterName).toBe("Maren Voss");
+		expect(reread?.messages).toHaveLength(1);
+		expect(reread?.playable).toBe(true);
+
+		// Provenance was never cleared merely because the source was deleted.
+		const provenance = drizzle(database)
+			.select()
+			.from(participantTable)
+			.where(eq(participantTable.id, modelId))
+			.get();
+		expect(provenance?.source_character_id).toBe(source.id);
+	});
+
+	test("removing the final provenance reference hard-deletes an already-tombstoned Character", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: {
+				name: "Maren Voss",
+				prompt: emptyPrompt(),
+				openings: [],
+			},
+		});
+		const module = createConversationModule(database);
+		const snapshot = module.create({
+			name: "Final Reference",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{ definition: adHoc("Juno Ashfeld") },
+				{
+					definition: {
+						name: source.name,
+						prompt: source.prompt,
+						openings: [],
+					},
+					sourceCharacterId: source.id,
+				},
+			],
+			control: { human: 0, model: 1 },
+		});
+		const forkId = snapshot.cast[2]?.id ?? 0;
+		library.execute({
+			type: "delete",
+			characterId: source.id,
+			expectedRevision: source.revision,
+		});
+
+		// The fork has no openings and never authored a Message, so removing
+		// it hard-deletes the Participant — and the final provenance
+		// reference — which garbage-collects the character tombstone in the
+		// same transaction.
+		const removed = append(module, snapshot, {
+			type: "remove-participant",
+			participantId: forkId,
+		});
+		expect(castNames(removed)).toEqual(["Writer", "Juno Ashfeld"]);
+		expect(
+			drizzle(database)
+				.select()
+				.from(characterTable)
+				.where(eq(characterTable.id, source.id))
+				.get(),
+		).toBeUndefined();
+	});
+
+	test("collecting the final Message reference garbage-collects a tombstoned Character", () => {
+		const library = createCharacterLibraryModule(database);
+		const source = library.execute({
+			type: "create",
+			definition: {
+				name: "Maren Voss",
+				prompt: emptyPrompt(),
+				openings: ["The lamp turns."],
+			},
+		});
+		const module = createConversationModule(database);
+		const snapshot = module.create({
+			name: "Collected Source",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{
+					definition: {
+						name: source.name,
+						prompt: source.prompt,
+						openings: [...source.openings],
+					},
+					sourceCharacterId: source.id,
+				},
+			],
+			control: { human: 0, model: 1 },
+		});
+		library.execute({
+			type: "delete",
+			characterId: source.id,
+			expectedRevision: source.revision,
+		});
+
+		// Unseat and remove the model fork: the greeting references it
+		// (author and historical pair), so removal tombstones the Participant
+		// while retaining the provenance reference.
+		const unseated = unseatModel(module, snapshot);
+		const removed = append(module, unseated, {
+			type: "remove-participant",
+			participantId: snapshot.cast[1]?.id ?? 0,
+		});
+		expect(
+			drizzle(database)
+				.select()
+				.from(characterTable)
+				.where(eq(characterTable.id, source.id))
+				.get(),
+		).toBeDefined();
+
+		// Deleting the final referencing Message collects the Participant
+		// tombstone and, with it, the now-unreferenced Character tombstone.
+		const greetingId = removed.messages[0]?.id ?? 0;
+		const collected = append(module, removed, {
+			type: "delete-message",
+			messageId: greetingId,
+		});
+		expect(collected.messages).toEqual([]);
+		expect(
+			drizzle(database)
+				.select()
+				.from(characterTable)
+				.where(eq(characterTable.id, source.id))
+				.get(),
+		).toBeUndefined();
 	});
 });
