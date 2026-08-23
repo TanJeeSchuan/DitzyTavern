@@ -27,7 +27,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { chromium } from "playwright";
@@ -44,9 +44,10 @@ const flag = (name: string) => process.argv.includes(`--${name}`);
 
 const BASE = arg("base", process.env.BASE_URL ?? "http://127.0.0.1:3000");
 const OUT_DIR = join(ROOT, arg("out", ".scratch/screenshots/deterministic"));
-const VIEWPORT = (arg("viewport", "1440x900") ?? "1440x900")
+const [viewportWidth, viewportHeight] = (arg("viewport", "1440x900") ?? "1440x900")
 	.split("x")
-	.map(Number) as [number, number];
+	.map(Number);
+const VIEWPORT: [number, number] = [viewportWidth, viewportHeight];
 const SCALE = Number(arg("scale", "2") ?? "2");
 const ONLY = (arg("only") ?? "").split(",").filter(Boolean);
 const DEV = flag("dev");
@@ -274,7 +275,12 @@ const main = async () => {
 
 	// 4. Capture each state. Navigation resets to the home URL between states
 	// so panels never leak across captures; steps re-open what each state needs.
-	const manifest: Record<string, unknown> = {
+	type ManifestState = {
+		name: string;
+		file: string;
+		activeChatTitle: string;
+	};
+	const manifest = {
 		baseUrl: BASE,
 		browser: browser.version(),
 		viewport: VIEWPORT,
@@ -283,7 +289,9 @@ const main = async () => {
 		timezoneId: "UTC",
 		colorScheme: "light",
 		reducedMotion: "reduce",
-		states: [] as Array<Record<string, string>>,
+		// SAFETY: states is only appended with ManifestState-shaped records via
+		// manifest.states.push below; no other writer mutates the array.
+		states: [] as ManifestState[],
 	};
 
 	const states = STATES.filter((s) => ONLY.length === 0 || ONLY.includes(s.name));
@@ -303,7 +311,7 @@ const main = async () => {
 			.locator('main[aria-label="Active Chat"] h1')
 			.textContent()
 			.catch(() => null);
-		(manifest.states as Array<Record<string, string>>).push({
+		manifest.states.push({
 			name: state.name,
 			file,
 			activeChatTitle: title ?? "n/a",

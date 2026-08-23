@@ -645,9 +645,10 @@ input:focus-visible {
 
 .character-list-item {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.6rem;
+	gap: 0.3rem 0.6rem;
 	width: 100%;
 	padding: 0.85rem 0.9rem;
 	border: 1px solid transparent;
@@ -666,19 +667,23 @@ input:focus-visible {
 	font-size: 0.88rem;
 	font-weight: 620;
 	letter-spacing: -0.01em;
-	overflow-wrap: anywhere;
+	min-width: 0;
+	overflow-wrap: break-word;
 }
 
 .character-list-item small {
-	color: var(--accent);
+	color: var(--text-muted);
 	flex-shrink: 0;
+}
+
+.character-list-item small span {
+	color: var(--accent);
 }
 
 .character-list-item svg {
 	width: 0.85rem;
 	height: 0.85rem;
 	stroke-width: 2;
-	fill: currentColor;
 }
 
 .library-back {
@@ -1427,6 +1432,7 @@ input:focus-visible {
 }
 
 .composer > textarea {
+	grid-column: 2;
 	width: 100%;
 	min-height: 3rem;
 	max-height: 10rem;
@@ -1439,6 +1445,10 @@ input:focus-visible {
 	font-family: var(--font-reading);
 	font-size: 0.92rem;
 	line-height: 1.5;
+}
+
+.composer > .send-button {
+	grid-column: 3;
 }
 
 .composer > textarea::placeholder {
@@ -1690,9 +1700,13 @@ input:focus-visible {
 
 @media (max-width: 90rem) and (min-width: 78.01rem) {
 	.workspace {
-		grid-template-columns: 4.25rem 15rem minmax(35rem, 45rem) 16rem;
-		gap: 0.55rem;
-		padding: 0 0.55rem 0 0;
+		grid-template-columns:
+			4.25rem
+			minmax(15rem, 1fr)
+			minmax(35rem, 45rem)
+			minmax(16rem, 1fr);
+		gap: 0.55rem 1.25rem;
+		padding: 0 1.25rem 0 0;
 	}
 
 	.navigation-rail,
@@ -1705,19 +1719,24 @@ input:focus-visible {
 		height: 100dvh;
 	}
 
+	/* Panels return to grid flow here so the 1fr tracks expand them into
+	   the utility bays. The 1.25rem column gap stays visible as the thin
+	   ambient sliver between each panel edge and the story surface. */
 	.primary-panel,
 	.details-panel {
-		top: 0;
-		bottom: 0;
+		position: static;
+		top: auto;
+		bottom: auto;
 		height: auto;
+		border-radius: 1.35rem;
 	}
 
 	.primary-panel {
-		width: 15rem;
+		width: auto;
 	}
 
 	.details-panel {
-		width: 16rem;
+		width: auto;
 	}
 }
 
@@ -2230,8 +2249,9 @@ input:focus-visible {
 /* The drawer's member rows use a two-column layout: identity copy on the
    left, Control badge and actions on the right. */
 .cast-member {
-	grid-template-columns: 1fr auto;
+	grid-template-columns: 1fr;
 	align-items: start;
+	gap: 0.65rem;
 }
 
 .cast-member-copy {
@@ -2242,6 +2262,7 @@ input:focus-visible {
 
 .cast-member-right {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.5rem;
 }

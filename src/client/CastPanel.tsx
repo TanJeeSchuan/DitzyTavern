@@ -619,9 +619,9 @@ function MemberRow({
 				: "Remove availability is confirmed separately."
 			: participant.removal.deletionMode === "tombstone"
 				? participant.removal.affectedGenerationCount === 1
-					? "Removable — will tombstone; 1 Message loses sibling generation."
-					: `Removable — will tombstone; ${participant.removal.affectedGenerationCount} Messages lose sibling generation.`
-				: "Removable — no history refers to it; removal hard-deletes it.";
+					? "Removable; 1 Message loses sibling generation."
+					: `Removable; ${participant.removal.affectedGenerationCount} Messages lose sibling generation.`
+				: "Removable: no history refers to it; removal hard-deletes it.";
 
 	return (
 		<div className="cast-member">
