@@ -1,5 +1,5 @@
 # Center the server on a deep Conversation module
 
-The server's primary seam will be a deep Conversation module exposing a small interface for obtaining a snapshot, executing a revisioned command, and subscribing to ordered events. It owns Conversation invariants, Participants, Control, Messages, Variants, parallel Generation coordination, SQLite transactions, and event publication.
+The server's primary seam is a deep Conversation module exposing a small interface for atomic aggregate creation, authoritative snapshot and history reads, revisioned commands, and bounded Generation commits. It owns Conversation invariants, Participants, Control, Messages, Variants, Generation coordination, and their SQLite transactions. Ordered event subscription remains deferred until a real consumer requires it.
 
-Elysia HTTP and SSE routes are thin adapters across this seam rather than alternate locations for application behavior. Direct tests exercise the same Conversation interface as production callers.
+Elysia routes and cross-module workflows call public domain seams rather than becoming alternate locations for Conversation behavior or writing its tables directly. Direct tests exercise the same Conversation interface as production callers.

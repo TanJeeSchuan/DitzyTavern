@@ -2,7 +2,7 @@
 
 A Conversation may run multiple Generations concurrently only when every Generation targets a sibling Variant of the same Message with a captured historical Control pair and uses the same frozen history position for that target. This enables rapid alternative sampling without allowing separate Conversation turns to race.
 
-Each sibling Generation compiles and captures its own Prompt Plan and effective Generation Settings when it starts. The user may edit Participant Prompts, model, sampling parameters, or extra request body fields while siblings run; subsequently started Variants observe those changes while already active Generations continue unchanged. Siblings therefore share a response position and prior Conversation history, not necessarily an identical prompt or model configuration.
+Each sibling Generation compiles and captures its own Prompt Plan and effective Generation Settings when it starts. The user may edit Participant Definitions, model, sampling parameters, or extra request body fields while siblings run; subsequently started Variants observe those changes while already active Generations continue unchanged. Siblings therefore share a response position and prior Conversation history, not necessarily an identical prompt or model configuration.
 
 The server retains each captured Prompt Plan only while its Generation is active so connected clients can inspect the actual in-flight input. A completed Variant persists its effective Generation Settings and compact outcome metadata, but not the full Prompt Plan. This avoids repeatedly copying selected Conversation history into every Variant and causing quadratic storage growth.
 

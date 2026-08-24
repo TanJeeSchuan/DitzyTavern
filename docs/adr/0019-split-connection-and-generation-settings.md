@@ -6,6 +6,6 @@ Connection Settings may also contain an optional exact Models endpoint URL. A us
 
 The Conversation model ID is selected through a dropdown populated by discovered IDs while always offering free-text entry. Discovery is advisory: a custom or previously selected ID remains valid application state even when it is absent from the latest result, and refreshing the list never rewrites Conversation settings.
 
-Participants and Actor Profiles own no model or sampling configuration. Reassigning the model Control seat changes the responding identity and applicable Participant Prompt without silently changing the endpoint, model, token limits, sampling parameters, or Request Overrides. The user may edit Conversation Generation Settings before starting the newly active Participant's Generation.
+Participants and Characters own no model or sampling configuration. Reassigning the model Control seat changes the responding identity and applicable Participant Definition without silently changing the endpoint, model, token limits, sampling parameters, or Request Overrides. The user may edit Conversation Generation Settings before starting the newly active Participant's Generation.
 
 Generation Settings remain editable while sibling Variants are running. Each Generation snapshots its effective settings at start, and the resulting Variant records that snapshot for inspection. Connection credentials are neither copied into Variants nor exposed to clients.

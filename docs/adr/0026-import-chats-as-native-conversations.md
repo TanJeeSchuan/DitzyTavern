@@ -1,0 +1,5 @@
+# Import chats as native Conversations with preserved source evidence
+
+A successful external chat import creates an ordinary native Conversation rather than a lasting imported subtype, badge, or capability mode. A source adapter maps supported history into Participants, Author Stamps, Messages, and Variants, while an immutable Canonical Source Archive preserves parsed values in Conversation-owned structured state. Later native edits never rewrite that archive.
+
+Each import also creates an independent Exact Source Artifact containing the original bytes. SQLite stores its Conversation ownership, managed path, original filename, media type, byte length, and SHA-256 identity; the bytes live outside SQLite and the user's original file is not needed again after commit. Exact artifacts are not deduplicated, garbage-collected, or automatically recovered. A missing or corrupt artifact is treated as cleaned up: provenance inspection and download are unavailable, but ordinary Chat history and capabilities are unaffected. Deliberate duplicate imports therefore remain independent Conversations with independent source copies.
