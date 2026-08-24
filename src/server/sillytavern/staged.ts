@@ -21,12 +21,9 @@ import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
 import { createCharacterLibraryModule } from "../character-library";
-import { createConversationModule } from "../conversation";
-import type {
-	ConversationParticipantSeed,
-	ParticipantDefinition,
-} from "../conversation/types";
+import type { ParticipantDefinition } from "../conversation/types";
 import { withDatabase } from "../database/database";
+import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -483,64 +480,34 @@ export function createChatImportModule(
 				return { ...message, authorParticipantIndex: owner };
 			});
 
-			// One all-or-nothing SQLite operation through public domain
-			// seams: requested new Profiles and the Chat itself commit
-			// together or not at all. Bun's nested database.transaction calls
-			// are savepoint-backed, so the inner Character creation and the
-			// Conversation creation roll back together when either fails.
-			const commit = database.transaction(() => {
-				const seeds: ConversationParticipantSeed[] = resolved.map((entry) => {
-					if (!entry.createProfile) {
-						return {
-							definition: entry.definition,
-							sourceCharacterId:
-								entry.sourceCharacterId ?? undefined,
-						};
-					}
-					// Creating a new Character during resolution creates the
-					// Participant and a separate minimal Actor Profile in the
-					// same database commit. Duplicate Profile names are allowed;
-					// no uniqueness is enforced and no suffix is appended.
-					const created = createCharacterLibraryModule(database).execute({
-						type: "create",
-						definition: {
-							name: entry.definition.name,
-							prompt: entry.definition.prompt,
-							openings: entry.definition.openings,
-						},
-					});
-					return {
-						definition: entry.definition,
-						sourceCharacterId: created.id,
-					};
-				});
-
-				return createConversationModule(database).create({
-					name: input.title.trim(),
-					participants: seeds,
-					// Deterministic import Control on first resolved
-					// Participant appearance: the first becomes human, the
-					// second model, later Participants stay unseated, and a
-					// zero- or one-Participant import commits as the
-					// incomplete-Conversation exception with playability
-					// derived once the missing seat is filled.
-					control: deterministicImportControl(seeds.length),
-					messages,
-					data: [...decoded.data, ...importReportEntries(finalReport)],
-					artifacts: [
-						{
-							namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
-							key: EXACT_SOURCE_ARTIFACT_KEY,
-							relativePath: stored.relativePath,
-							originalFilename: record.originalFilename,
-							mediaType: mediaTypeFromFilename(record.originalFilename),
-							byteLength: stored.byteLength,
-							sha256: stored.sha256,
-						},
-					],
-				});
+			const conversation = createImportedConversation(database, {
+				name: input.title.trim(),
+				participants: resolved.map((entry) => ({
+					definition: entry.definition,
+					sourceCharacterId: entry.sourceCharacterId ?? undefined,
+					createCharacter: entry.createProfile,
+				})),
+				// Deterministic import Control on first resolved
+				// Participant appearance: the first becomes human, the
+				// second model, later Participants stay unseated, and a
+				// zero- or one-Participant import commits as the
+				// incomplete-Conversation exception with playability
+				// derived once the missing seat is filled.
+				control: deterministicImportControl(resolved.length),
+				messages,
+				data: [...decoded.data, ...importReportEntries(finalReport)],
+				artifacts: [
+					{
+						namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
+						key: EXACT_SOURCE_ARTIFACT_KEY,
+						relativePath: stored.relativePath,
+						originalFilename: record.originalFilename,
+						mediaType: mediaTypeFromFilename(record.originalFilename),
+						byteLength: stored.byteLength,
+						sha256: stored.sha256,
+					},
+				],
 			});
-			const conversation = commit.immediate();
 
 			const receipt: ChatImportReceipt = {
 				conversationId: conversation.id,

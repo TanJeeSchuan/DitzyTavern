@@ -4,16 +4,16 @@
 // the selected source in managed artifact storage, and creates the Chat
 // through the generic Conversation creation seam in a single transaction.
 //
-// This orchestration is the application workflow entry point for imports: it
-// composes only public seams (the adapter, the generic artifact store, and
-// the deep Conversation module), never writing domain tables directly. The
-// exact source bytes are copied into a unique managed relative path before
-// the database creation operation begins; failure to store them aborts
-// before any Chat, Participant, Message, Variant, Roster, Author Stamp, or
-// artifact metadata row exists. The adapter resolves source authors into
-// native Participants, stamps every Message, and assigns deterministic
-// Control; zero- and one-Participant sources commit as incomplete
-// Conversations whose playability derives once the missing seat is filled.
+// This source-specific importer prepares decoded Conversation data and the
+// exact artifact, then delegates database creation to the shared Chat Import
+// workflow. It never writes domain tables directly. The exact source bytes
+// are copied into a unique managed relative path before the database
+// operation begins; failure to store them aborts before any Chat,
+// Participant, Message, Variant, Roster, Author Stamp, or artifact metadata
+// row exists. The adapter resolves source authors into native Participants,
+// stamps every Message, and assigns deterministic Control; zero- and
+// one-Participant sources commit as incomplete Conversations whose
+// playability derives once the missing seat is filled.
 
 import { readFileSync } from "node:fs";
 import { basename, parse } from "node:path";
@@ -24,8 +24,8 @@ import {
 	storeExactArtifactCopy,
 } from "../artifact";
 import type { ArtifactMetadata } from "../artifact";
-import { createConversationModule } from "../conversation";
 import type { ConversationSnapshot } from "../conversation/types";
+import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -109,8 +109,9 @@ export function importSillyTavernChat(
 		);
 	}
 
-	const conversation = createConversationModule(database).create({
+	const conversation = createImportedConversation(database, {
 		...parsed.input,
+		participants: parsed.input.participants ?? [],
 		data: [...(parsed.input.data ?? []), ...importReportEntries(parsed.report)],
 		artifacts: [
 			{
