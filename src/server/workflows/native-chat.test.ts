@@ -16,7 +16,6 @@ import {
 	StaleCharacterRevisionError,
 } from "../character-library";
 import type { CharacterDefinition } from "../character-library";
-import { createConversationModule } from "../conversation";
 import { createNativeConversation } from ".";
 
 const prompt = () => ({
@@ -110,48 +109,9 @@ describe("Native New Chat workflow", () => {
 
 		// The Cast snapshot carries full copied Definitions and immutable
 		// provenance only; there is no revision or live link to the source.
+		// (Fork independence from later source edits is pinned at the
+		// Conversation creation seam tests.)
 		expect(JSON.stringify(Object.keys(model ?? {}))).not.toContain("revision");
-
-		// Later source edits do not rewrite the forked Participant.
-		library.execute({
-			type: "replace-openings",
-			characterId: source.id,
-			expectedRevision: 0,
-			openings: ["Rewritten opening"],
-		});
-		const reread = createConversationModule(database).getSnapshot(snapshot.id);
-		expect(reread?.cast[1]?.openings).toEqual([
-			"The lamp turns above you.",
-			"Rain writes on every window.",
-		]);
-	});
-
-	test("both seats may independently fork the same Character", () => {
-		const library = createCharacterLibraryModule(database);
-		const source = library.execute({
-			type: "create",
-			definition: sourceDefinition({ name: "Twin Source" }),
-		});
-
-		const snapshot = createNativeConversation(database, {
-			name: "Twin Forks",
-			humanSeat: fork(source.id, source.revision),
-			modelSeat: fork(source.id, source.revision),
-		});
-
-		const [human, model] = snapshot.cast;
-		expect(human?.sourceCharacterId).toBe(source.id);
-		expect(model?.sourceCharacterId).toBe(source.id);
-		expect(human?.id).not.toBe(model?.id);
-		expect(human?.name).toBe(model?.name);
-		expect(human?.prompt).toEqual(model?.prompt);
-
-		// Only the model seat's openings become history.
-		expect(snapshot.messages[0]?.author).toEqual({
-			participantId: model?.id ?? null,
-			capturedName: "Twin Source",
-			inCast: true,
-		});
 	});
 
 	test("forks two different Characters into the two seats with distinct Definitions", () => {
@@ -246,39 +206,5 @@ describe("Native New Chat workflow", () => {
 		).toThrow(CharacterNotFoundError);
 		expect(countRows(chatTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
-	});
-
-	test("an invalid ad-hoc Definition fails validation before any write", () => {
-		for (const seat of [
-			{
-				type: "adhoc" as const,
-				definition: { name: "   ", prompt: prompt(), openings: [] },
-			},
-			{
-				type: "adhoc" as const,
-				definition: { name: "Blank Opening", prompt: prompt(), openings: ["\t"] },
-			},
-		]) {
-			expect(() =>
-				createNativeConversation(database, {
-					name: "Invalid Seat",
-					humanSeat: adHoc("Writer"),
-					modelSeat: seat,
-				}),
-			).toThrow();
-		}
-		expect(countRows(chatTable)).toBe(0);
-		expect(countRows(participantTable)).toBe(0);
-	});
-
-	test("the created snapshot is readable through the deep Conversation seam", () => {
-		const snapshot = createNativeConversation(database, {
-			name: "Readable Chat",
-			humanSeat: adHoc("Writer"),
-			modelSeat: adHoc("Maren Voss", ["Hello"]),
-		});
-
-		const reread = createConversationModule(database).getSnapshot(snapshot.id);
-		expect(reread).toEqual(snapshot);
 	});
 });

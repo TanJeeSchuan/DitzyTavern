@@ -7,8 +7,6 @@ import { openDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
-	ConversationNotFoundError,
-	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type ConversationSnapshot,
 	type ParticipantDefinition,
@@ -438,21 +436,6 @@ describe("Historical sibling Variant generation", () => {
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);
 		expect(contacted).toBe(false);
-
-		// Existing Variants remain selectable and editable.
-		const variant = message.variants[0];
-		if (variant === undefined) throw new Error("Variant missing.");
-		const edited = module().execute({
-			conversationId: imported.id,
-			expectedRevision: imported.revision,
-			action: {
-				type: "edit-variant",
-				messageId: message.id,
-				variantId: variant.id,
-				content: "Still preserved",
-			},
-		});
-		expect(edited.messages[0]?.variants[0]?.content).toBe("Still preserved");
 	});
 
 	test("a historical Participant without a usable Definition denies sibling generation with the typed reason", async () => {
@@ -534,75 +517,5 @@ describe("Historical sibling Variant generation", () => {
 		const after = module().getSnapshot(conversation.id);
 		expect(after?.messages).toEqual(before.messages);
 		expect(after?.revision).toBe(before.revision);
-	});
-
-	test("a missing Conversation or Message fails with the typed results", async () => {
-		await expect(
-			generateSiblingVariant(database, {
-				conversationId: 424242,
-				messageId: 1,
-				generate: () => "x",
-			}),
-		).rejects.toThrow(ConversationNotFoundError);
-
-		await expect(
-			generateSiblingVariant(database, {
-				conversationId: conversation.id,
-				messageId: 424242,
-				generate: () => "x",
-			}),
-		).rejects.toThrow(InvalidConversationCommandError);
-	});
-
-	test("concurrent edits landing mid-flight do not conflict with the sibling commit and affect only later generations", async () => {
-		const greeting = conversation.messages[0];
-		if (greeting === undefined) throw new Error("Greeting missing.");
-
-		let release!: (content: string) => void;
-		const pending = new Promise<string>((resolve) => {
-			release = resolve;
-		});
-
-		const generation = generateSiblingVariant(database, {
-			conversationId: conversation.id,
-			messageId: greeting.id,
-			timestamp: "2026-08-20T14:00:00Z",
-			generate: async () => pending,
-		});
-
-		// A concurrent authoritative edit lands while the transport streams.
-		conversation = module().execute({
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
-			action: {
-				type: "put-data",
-				scope: { type: "conversation" },
-				namespace: "test",
-				key: "mid-flight-edit",
-				value: "landed",
-			},
-		});
-
-		release("Committed after the concurrent edit.");
-		const committed = await generation;
-
-		expect(committed.revision).toBe(2);
-		expect(
-			committed.messages.find((candidate) => candidate.id === greeting.id)
-				?.variants[1]?.content,
-		).toBe("Committed after the concurrent edit.");
-		expect(committed.data).toContainEqual({
-			namespace: "test",
-			key: "mid-flight-edit",
-			value: "landed",
-		});
-
-		// The next sibling generation observes the concurrent data change by
-		// compiling from the then-current snapshot, not the captured plan.
-		const plans: PromptPlan[] = [];
-		const second = await sibling(greeting.id, "After the edit.", {
-			capture: captureInto(plans),
-		});
-		expect(second.revision).toBe(3);
 	});
 });

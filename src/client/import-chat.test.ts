@@ -1,21 +1,30 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createChatImportRoutes } from "../shared/contract";
 import { createCharacterLibraryModule } from "../server/character-library";
-import { headerFixture as header, jsonl, writerFixture as writer } from "../server/sillytavern/fixtures";
+import {
+	headerFixture as header,
+	jsonl,
+	rulershipFixture,
+	writerFixture as writer,
+} from "../server/sillytavern/fixtures";
 import { clearStagedImportRegistry } from "../server/sillytavern/staged";
 import { openDatabase } from "../server/database/database";
-import { createChatImportTransport, type ChatImportTransport } from "./import-chat";
+import {
+	createChatImportTransport,
+	type ChatImportCommitInput,
+	type ChatImportTransport,
+} from "./import-chat";
 
-// Narrow adapter tests for the client boundary: the replaceable import
-// client fetches against the same typed routes the browser would, backed by
-// app.handle instead of a full server. The domain matrix stays behind the
-// module seam tests; here the contracts (upload once, token/hash binding,
-// error mapping, discard) are exercised through the one client boundary.
+// Narrow client-boundary tests for the transport's own concerns only:
+// uploading exactly once, parsing wire responses into typed outcomes, and
+// best-effort cancellation. The wire contract (statuses, reasons, receipts)
+// is pinned by shared/chat-import-routes.test.ts and the domain matrix by
+// the SillyTavern module seam tests, so no ground-truth payloads are
+// re-asserted here.
 
 const base = "http://localhost";
 
@@ -57,8 +66,9 @@ describe("Chat import client boundary", () => {
 		new Blob([new Uint8Array(bytes(records))]);
 
 	test("uploads the selected file once and refreshes the preview from token and hash", async () => {
-		// A matching Character gives the preview a name-only suggestion that
-		// arrives pre-filled but visibly unconfirmed.
+		// A matching Character arrives as a pre-filled but unconfirmed
+		// suggestion; asserting it proves the parser carries the nested
+		// group shape through, not just the scalar preview fields.
 		createCharacterLibraryModule(database).execute({
 			type: "create",
 			definition: {
@@ -80,54 +90,41 @@ describe("Chat import client boundary", () => {
 		expect(stageOutcome.status).toBe("staged");
 		if (stageOutcome.status !== "staged") return;
 		expect(stageRequestCount).toBe(1);
-
-		const preview = stageOutcome.preview;
-		expect(preview.title).toBe("lantern-house");
-		expect(preview.sha256).toBe(
-			createHash("sha256").update(bytes([header, writer])).digest("hex"),
-		);
-		expect(preview.groups[0]?.key).toBe("Writer");
-		expect(preview.groups[0]?.suggestion?.confirmed).toBe(false);
+		expect(stageOutcome.preview.groups[0]?.suggestion?.confirmed).toBe(false);
 
 		// A recoverable refresh reuses the token and hash; the file is never
 		// re-uploaded.
 		const refreshed = await transport.preview(
 			stageOutcome.token,
-			preview.sha256,
+			stageOutcome.preview.sha256,
 		);
 		expect(refreshed.status).toBe("available");
 		if (refreshed.status !== "available") return;
-		expect(refreshed.preview).toEqual(preview);
+		expect(refreshed.preview).toEqual(stageOutcome.preview);
 		expect(stageRequestCount).toBe(1);
 	});
 
-	test("maps contextual validation failures and token or hash problems to typed outcomes", async () => {
+	test("maps stage and preview rejections to typed outcomes and cancels idempotently", async () => {
 		const broken = await transport.stage(
 			// SAFETY: the copy into a fresh Uint8Array carries the exact bytes
 			// while satisfying Blob's ArrayBuffer typing at the test boundary.
-			new Blob([new Uint8Array(Buffer.from(`${JSON.stringify(header)}\n{"broken`, "utf8"))]),
+			new Blob([
+				new Uint8Array(Buffer.from(`${JSON.stringify(header)}\n{"broken`, "utf8")),
+			]),
 			"broken.jsonl",
 		);
-		expect(broken).toEqual({
-			status: "invalid",
-			reason: "Line 2 is not valid JSON.",
-		});
+		expect(broken.status).toBe("invalid");
 
-		const staged = await transport.stage(file([header, writer]), "ok.jsonl");
+		const staged = await transport.stage(file([header, writer]), "a.jsonl");
 		expect(staged.status).toBe("staged");
 		if (staged.status !== "staged") return;
+		expect(stageRequestCount).toBe(2);
 
 		const wrongHash = await transport.preview(staged.token, "0000");
 		expect(wrongHash.status).toBe("invalid");
 
 		const unknown = await transport.preview("never-staged", staged.preview.sha256);
 		expect(unknown.status).toBe("expired");
-	});
-
-	test("discard cancels the flow (idempotently) and the preview then expires", async () => {
-		const staged = await transport.stage(file([header, writer]), "a.jsonl");
-		expect(staged.status).toBe("staged");
-		if (staged.status !== "staged") return;
 
 		await transport.discard(staged.token);
 		await transport.discard(staged.token);
@@ -139,105 +136,61 @@ describe("Chat import client boundary", () => {
 		expect(afterDiscard.status).toBe("expired");
 	});
 
-	test("commits the resolved plan and reports the committed Chat with its receipt", async () => {
-		const staged = await transport.stage(file([header, writer]), "lantern-house.jsonl");
+	test("commits the resolved plan, retries a lost response, and maps commit failures to typed outcomes", async () => {
+		const staged = await transport.stage(
+			file([header, writer, rulershipFixture]),
+			"two.jsonl",
+		);
 		expect(staged.status).toBe("staged");
 		if (staged.status !== "staged") return;
 
-		const outcome = await transport.commit(staged.token, staged.preview.sha256, {
-			title: "Lantern House",
+		const commitPlan = (messagePositions: number[]): ChatImportCommitInput => ({
+			title: "Two",
 			duplicateConfirmed: true,
 			participants: [
 				{
 					name: "Writer",
 					outcome: { type: "chat-only" },
-					messagePositions: [1],
+					messagePositions,
 				},
 			],
 		});
-		expect(outcome.status).toBe("committed");
-		if (outcome.status !== "committed") return;
-		expect(outcome.conversationId).toBe(outcome.receipt.conversationId);
-		expect(outcome.receipt.title).toBe("Lantern House");
-		expect(outcome.receipt.sha256).toBe(staged.preview.sha256);
-		expect(outcome.receipt.participants).toEqual([
-			{ name: "Writer", outcome: "chat-only", sourceCharacterId: null },
-		]);
 
-		// A lost response retries the same token and payload; the boundary
-		// returns the same committed Chat instead of a second one.
-		const retry = await transport.commit(staged.token, staged.preview.sha256, {
-			title: "Lantern House",
-			duplicateConfirmed: true,
-			participants: [
-				{
-					name: "Writer",
-					outcome: { type: "chat-only" },
-					messagePositions: [1],
-				},
-			],
-		});
-		expect(retry.status).toBe("committed");
-		if (retry.status !== "committed") return;
-		expect(retry.conversationId).toBe(outcome.conversationId);
-		expect(retry.receipt).toEqual(outcome.receipt);
-	});
-
-	test("maps commit failures to typed outcomes: invalid plans, hash mismatches, and expiry", async () => {
-		const staged = await transport.stage(file([header, writer, {
-			name: "Rulership",
-			send_date: "2026-08-08T13:04:55.256Z",
-			mes: "Second message",
-		}]), "two.jsonl");
-		expect(staged.status).toBe("staged");
-		if (staged.status !== "staged") return;
-
-		// A plan skipping a Message is a contextual invalid outcome and the
-		// staged flow stays available for correction.
+		// A plan skipping a Message is a recoverable invalid outcome.
 		const invalidPlan = await transport.commit(
 			staged.token,
 			staged.preview.sha256,
-			{
-				title: "Skips",
-				duplicateConfirmed: true,
-				participants: [
-					{
-						name: "Writer",
-						outcome: { type: "chat-only" },
-						messagePositions: [1],
-					},
-				],
-			},
+			commitPlan([1]),
 		);
 		expect(invalidPlan.status).toBe("invalid");
-		expect(invalidPlan.status === "invalid" ? invalidPlan.reason : "").toMatch(
-			/assigned/,
-		);
 
-		// The corrected plan commits; a stale hash afterwards is invalid and
-		// an unknown handle is expired.
-		const corrected = await transport.commit(
+		// The corrected plan commits, and a lost response retried with the
+		// same token and payload returns the same committed Chat instead of
+		// a second one.
+		const committed = await transport.commit(
 			staged.token,
 			staged.preview.sha256,
-			{
-				title: "Two",
-				duplicateConfirmed: true,
-				participants: [
-					{
-						name: "Writer",
-						outcome: { type: "chat-only" },
-						messagePositions: [1, 2],
-					},
-				],
-			},
+			commitPlan([1, 2]),
 		);
-		expect(corrected.status).toBe("committed");
+		expect(committed.status).toBe("committed");
+		if (committed.status !== "committed") return;
+		expect(committed.conversationId).toBe(committed.receipt.conversationId);
 
-		const unknown = await transport.commit("never-staged", "abc", {
-			title: "X",
-			duplicateConfirmed: true,
-			participants: [],
-		});
+		const retry = await transport.commit(
+			staged.token,
+			staged.preview.sha256,
+			commitPlan([1, 2]),
+		);
+		expect(retry.status).toBe("committed");
+		if (retry.status !== "committed") return;
+		expect(retry.conversationId).toBe(committed.conversationId);
+		expect(retry.receipt).toEqual(committed.receipt);
+
+		const unknown = await transport.commit(
+			"never-staged",
+			staged.preview.sha256,
+			commitPlan([1, 2]),
+		);
 		expect(unknown.status).toBe("expired");
 	});
 

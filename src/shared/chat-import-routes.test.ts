@@ -416,9 +416,10 @@ describe("Chat import transport adapters", () => {
 		// validated by the bindings in the test setup above.
 		const conversationId = committed.conversation.id as number;
 
-		// Paginated history: one page with both Messages, stable Author
-		// Stamps, and the lightweight fields only. The history read model
-		// mounts with the Conversation routes surface.
+		// Paginated history: pages are cut from the newest Message backward,
+		// each served page chronological, with stable Author Stamps and the
+		// lightweight fields only. The history read model mounts with the
+		// Conversation routes surface.
 		const conversationApp = createConversationRoutes(database);
 		const history = await conversationApp.handle(
 			new Request(
@@ -432,11 +433,11 @@ describe("Chat import transport adapters", () => {
 			pageSize: 1,
 			totalMessages: 2,
 			totalPages: 2,
-			hasPrevious: false,
-			hasNext: true,
+			hasOlder: true,
+			hasNewer: false,
 		});
 		expect(historyBody.messages).toHaveLength(1);
-		expect(historyBody.messages[0].author.capturedName).toBe("Writer");
+		expect(historyBody.messages[0].author.capturedName).toBe("Rulership");
 
 		const pageTwoBody = await (await conversationApp.handle(
 			new Request(
@@ -444,7 +445,7 @@ describe("Chat import transport adapters", () => {
 			),
 		)).json();
 		expect(pageTwoBody.messages).toHaveLength(1);
-		expect(pageTwoBody.messages[0].author.capturedName).toBe("Rulership");
+		expect(pageTwoBody.messages[0].author.capturedName).toBe("Writer");
 
 		// Import Details: the persisted receipt, source identity, duplicate
 		// evidence excluding self, and exact-artifact availability.

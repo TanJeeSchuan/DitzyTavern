@@ -73,6 +73,8 @@ describe("Conversation paginated history", () => {
 	test("serves stable chronological pages with lightweight fields only", () => {
 		const chat = createHistoryChat(6);
 
+		// Page 1 is the latest window of history; each served page is still
+		// chronological by creation order.
 		const first = conversation.readHistory(chat.id, { page: 1, pageSize: 4 });
 		expect(first).toBeDefined();
 		expect(first?.page).toEqual({
@@ -80,41 +82,40 @@ describe("Conversation paginated history", () => {
 			pageSize: 4,
 			totalMessages: 6,
 			totalPages: 2,
-			hasPrevious: false,
-			hasNext: true,
+			hasOlder: true,
+			hasNewer: false,
 		});
-		// Stable chronology: creation order by position, never reordered by
-		// timestamp variants or later edits.
-		expect(first?.messages.map((message) => message.position)).toEqual([1, 2, 3, 4]);
+		expect(first?.messages.map((message) => message.position)).toEqual([3, 4, 5, 6]);
 		expect(first?.messages.map((message) => message.timestamp)).toEqual([
-			"2026-01-01T00:00:00.000Z",
-			"2026-01-01T00:01:00.000Z",
 			"2026-01-01T00:02:00.000Z",
 			"2026-01-01T00:03:00.000Z",
+			"2026-01-01T00:04:00.000Z",
+			"2026-01-01T00:05:00.000Z",
 		]);
 
 		const second = conversation.readHistory(chat.id, { page: 2, pageSize: 4 });
-		expect(second?.page.hasPrevious).toBe(true);
-		expect(second?.page.hasNext).toBe(false);
-		expect(second?.messages.map((message) => message.position)).toEqual([5, 6]);
+		expect(second?.page.hasOlder).toBe(false);
+		expect(second?.page.hasNewer).toBe(true);
+		expect(second?.messages.map((message) => message.position)).toEqual([1, 2]);
 
 		// Pages never overlap and together cover the whole sequence.
 		const allPositions = [
 			...(first?.messages ?? []),
 			...(second?.messages ?? []),
 		].map((message) => message.position);
-		expect(allPositions).toEqual([1, 2, 3, 4, 5, 6]);
+		expect(allPositions).toEqual([3, 4, 5, 6, 1, 2]);
 	});
 
 	test("bounds an oversized page request to the final page and clamps the page size", () => {
 		const chat = createHistoryChat(5);
 
-		// A page far beyond the end serves the final page, so accumulating
-		// clients converge instead of seeing empty pages mid-sequence.
+		// A page far beyond the end serves the final, oldest page, so
+		// accumulating clients converge instead of seeing empty pages
+		// mid-sequence.
 		const beyond = conversation.readHistory(chat.id, { page: 99, pageSize: 2 });
 		expect(beyond?.page.index).toBe(3);
 		expect(beyond?.page.totalPages).toBe(3);
-		expect(beyond?.messages.map((message) => message.position)).toEqual([5]);
+		expect(beyond?.messages.map((message) => message.position)).toEqual([1]);
 
 		// Page size bounds to the module maximum and defaults when missing.
 		const capped = conversation.readHistory(chat.id, { pageSize: 10_000 });

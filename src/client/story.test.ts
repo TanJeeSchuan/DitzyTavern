@@ -26,8 +26,8 @@ const page = (
 		pageSize: 2,
 		totalMessages: 4,
 		totalPages: 2,
-		hasPrevious: false,
-		hasNext: true,
+		hasOlder: true,
+		hasNewer: false,
 	},
 	messages: [],
 	...overrides,
@@ -52,16 +52,18 @@ describe("story reading state", () => {
 			type: "chat-opened",
 			conversationId: 7,
 		});
+		// The first page is the latest window of history.
 		const first = reduceStory(opened, {
 			type: "first-page",
 			page: page({
-				messages: [message({ id: 10, position: 1 }), message({ id: 11, position: 2 })],
+				messages: [message({ id: 12, position: 3 }), message({ id: 13, position: 4 })],
 			}),
 		});
 		expect(first.status).toBe("ready");
-		expect(first.messages.map((entry) => entry.id)).toEqual([10, 11]);
-		expect(first.page?.hasNext).toBe(true);
+		expect(first.messages.map((entry) => entry.id)).toEqual([12, 13]);
+		expect(first.page?.hasOlder).toBe(true);
 
+		// An older page arrives and prepends above the accumulated window.
 		const second = reduceStory(first, {
 			type: "next-page-arrived",
 			page: page({
@@ -70,14 +72,14 @@ describe("story reading state", () => {
 					pageSize: 2,
 					totalMessages: 4,
 					totalPages: 2,
-					hasPrevious: true,
-					hasNext: false,
+					hasOlder: false,
+					hasNewer: true,
 				},
-				messages: [message({ id: 12, position: 3 }), message({ id: 13, position: 4 })],
+				messages: [message({ id: 10, position: 1 }), message({ id: 11, position: 2 })],
 			}),
 		});
 		expect(second.messages.map((entry) => entry.id)).toEqual([10, 11, 12, 13]);
-		expect(second.page?.hasNext).toBe(false);
+		expect(second.page?.hasOlder).toBe(false);
 	});
 
 	test("a repeated page appends no duplicates", () => {
@@ -96,8 +98,8 @@ describe("story reading state", () => {
 					pageSize: 2,
 					totalMessages: 4,
 					totalPages: 2,
-					hasPrevious: false,
-					hasNext: true,
+					hasOlder: true,
+					hasNewer: false,
 				},
 				messages: [message({ id: 10 })],
 			}),
