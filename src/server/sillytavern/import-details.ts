@@ -12,15 +12,13 @@
 // and every Conversation command stay available.
 
 import type { Database } from "bun:sqlite";
-import { and, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	createArtifactModule,
 	type ArtifactDownloadResult,
 	type ArtifactInspection,
 } from "../artifact";
+import { createConversationModule } from "../conversation";
 import { withDatabase } from "../database/database";
-import { chatDataTable, chatTable } from "../database/schema";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -82,25 +80,7 @@ export function createChatImportDetailsModule(
 	database: Database,
 	artifactDirectory: string,
 ): ChatImportDetailsModule {	const artifacts = createArtifactModule(database, { directory: artifactDirectory });
-	const db = drizzle(database);
-
-	const readImportValue = (
-		conversationId: number,
-		key: string,
-	): string | null => {
-		const row = db
-			.select({ value: chatDataTable.value })
-			.from(chatDataTable)
-			.where(
-				and(
-					eq(chatDataTable.chat_id, conversationId),
-					eq(chatDataTable.namespace, IMPORT_NAMESPACE),
-					eq(chatDataTable.key, key),
-				),
-			)
-			.get();
-		return row?.value ?? null;
-	};
+	const conversations = createConversationModule(database);
 
 	const parseReport = (value: string | null): SillyTavernImportReport | null => {
 		if (value === null) return null;
@@ -157,19 +137,19 @@ export function createChatImportDetailsModule(
 
 	return {
 		importDetails(conversationId) {
-			const conversation = db
-				.select()
-				.from(chatTable)
-				.where(eq(chatTable.id, conversationId))
-				.get();
-			if (conversation === undefined) return undefined;
-			const report = parseReport(
-				readImportValue(conversationId, IMPORT_KEYS.reportJson),
-			);
+			const read = conversations.readConversationData(conversationId, {
+				namespace: IMPORT_NAMESPACE,
+				keys: [IMPORT_KEYS.reportJson, IMPORT_KEYS.warnings],
+			});
+			// Either the Chat is missing (read returns undefined) or the Chat
+			// exists but carries no import provenance (report parse is null);
+			// both mean "no Import Details".
+			if (read === undefined) return undefined;
+			const report = parseReport(importEntryValue(read.entries, IMPORT_KEYS.reportJson));
 			if (report === null) return undefined;
 
 			const warnings = parseReportWarnings(
-				readImportValue(conversationId, IMPORT_KEYS.warnings),
+				importEntryValue(read.entries, IMPORT_KEYS.warnings),
 			);
 			const artifact = artifacts.getArtifact(
 				conversationId,
@@ -198,7 +178,7 @@ export function createChatImportDetailsModule(
 
 			return {
 				conversationId,
-				title: conversation.name,
+				title: read.name,
 				receipt: {
 					originalFilename: report.source.filename,
 					sha256: report.source.sha256,
@@ -246,6 +226,17 @@ export function withChatImportDetails<T>(
 		run(createChatImportDetailsModule(connection, artifactDirectory)),
 	);
 }
+// One Conversation-scoped import entry by key from the read seam's entries.
+// The seam may legitimately return other import keys for the Chat, so the
+// lookup narrows by key and never assumes order or completeness.
+const importEntryValue = (
+	entries: readonly { key: string; value: string }[],
+	key: string,
+): string | null => {
+	const entry = entries.find((candidate) => candidate.key === key);
+	return entry?.value ?? null;
+};
+
 // Parsed JSON output can only be the JSON scalars, arrays, and plain
 // objects; constructor identity is therefore a sound discriminator here.
 type JsonValue =

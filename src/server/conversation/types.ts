@@ -8,6 +8,25 @@ export interface ConversationDataEntry {
 	value: string;
 }
 
+// Narrowing for the on-demand Conversation data read. The filter is
+// vocabulary-free: namespace and key strings pass through uninterpreted, so
+// the owning domain (the import adapter, etc.) keeps deciding their meaning.
+export interface ConversationDataReadFilter {
+	// Restrict to one namespace; omitted reads every namespace.
+	namespace?: string | undefined;
+	// Restrict to an explicit key set; omitted or empty reads every key.
+	keys?: readonly string[] | undefined;
+}
+
+// The narrow Conversation-scoped data read: the Conversation's name plus
+// the (namespace, key) entries matching the filter. The full snapshot is
+// the heavy read; this is the deliberate on-demand read for detail
+// operations like Import Details provenance.
+export interface ConversationDataRead {
+	name: string;
+	entries: ConversationDataEntry[];
+}
+
 // Generic filesystem artifact ownership seed. The metadata row commits
 // atomically with the Conversation through the creation seam; the exact
 // bytes live outside SQLite under the caller-provided unique managed
@@ -335,6 +354,16 @@ export interface ConversationModule {
 		conversationId: number,
 		request?: ChatHistoryPageRequest,
 	): ChatHistoryPage | undefined;
+	// Narrow on-demand read of Conversation-scoped structured data. Returns
+	// the Conversation's name and its (namespace, key) entries, optionally
+	// filtered by namespace and/or keys. Undefined for a missing
+	// Conversation; a present Conversation with no matching entries returns
+	// an empty entries array. Vocabulary-free: namespace and key strings pass
+	// through uninterpreted, so the owning domain keeps the meaning.
+	readConversationData(
+		conversationId: number,
+		filter?: ConversationDataReadFilter,
+	): ConversationDataRead | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
 	// Server-side commit of a finished current Generate; see
 	// CommitGenerationInput. Not a client-submitted command.

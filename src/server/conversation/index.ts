@@ -6,6 +6,7 @@ import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
 import { connectConversationDatabase } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
+import { readConversationData } from "./read-data";
 import type { ConversationModule } from "./types";
 
 export {
@@ -48,6 +49,8 @@ export type {
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
+	ConversationDataRead,
+	ConversationDataReadFilter,
 	ConversationDataScope,
 	ConversationMessageSnapshot,
 	ConversationModule,
@@ -75,6 +78,12 @@ export function createConversationModule(database: Database): ConversationModule
 			),
 		readHistory: (conversationId, request) =>
 			readChatHistory(connectConversationDatabase(database), conversationId, request),
+		readConversationData: (conversationId, filter) =>
+			readConversationData(
+				connectConversationDatabase(database),
+				conversationId,
+				filter,
+			),
 		execute: (command) => executeConversationCommand(database, command),
 		commitGeneration: (input) => commitConversationGeneration(database, input),
 		commitSiblingVariant: (input) =>
