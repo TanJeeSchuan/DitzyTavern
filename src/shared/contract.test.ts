@@ -441,7 +441,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		database.close();
 	});
 
-	test("reads a Conversation snapshot with derived Cast and Control fields", async () => {
+	test("reads a Conversation summary with derived Cast and Control fields", async () => {
 		const { id } = setupConversation();
 		const response = await app.handle(
 			new Request(`http://localhost/api/conversations/${id}`),
@@ -458,6 +458,10 @@ describe("Conversation Cast/Control transport adapters", () => {
 			deletionMode: null,
 			affectedGenerationCount: 0,
 		});
+		// The wire carries the slim summary only: Messages and per-
+		// Conversation data are never re-serialized for the Cast surface.
+		expect(snapshot.messages).toBeUndefined();
+		expect(snapshot.data).toBeUndefined();
 
 		const missing = await app.handle(
 			new Request("http://localhost/api/conversations/999999"),
@@ -512,7 +516,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(appended?.sourceCharacterName).toBeNull();
 	});
 
-	test("maps a stale command to the typed conflict with the current snapshot", async () => {
+	test("maps a stale command to the typed conflict with the current summary", async () => {
 		const { id } = setupConversation();
 		await command(id, 0, {
 			type: "add-participant",
@@ -569,7 +573,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect((await snapshot.json()).revision).toBe(0);
 	});
 
-	test("remove-participant applies with the derived impact and display state on the wire", async () => {
+	test("remove-participant applies with the derived impact on the wire", async () => {
 		const { id, modelId } = setupConversation();
 
 		const withThird = await (
@@ -587,7 +591,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 			})
 		).json();
 
-		// The wire snapshot exposes the derived removal impact: the displaced
+		// The wire summary exposes the derived removal impact: the displaced
 		// model Participant is tombstoned (the greeting still refers to it)
 		// and that greeting currently loses its ability to regenerate.
 		const displaced = replaced.conversation.cast.find(
@@ -613,18 +617,19 @@ describe("Conversation Cast/Control transport adapters", () => {
 			),
 		).toEqual(["Writer", "Juno Ashfeld"]);
 
-		// Historical display state: the captured author name stays visible
-		// with the no-longer-in-Cast flag, and targeted Swipe is unavailable
-		// with the derived reason.
-		const greeting = removed.conversation.messages[0];
+		// Historical display state lives on the paginated history seam, never
+		// on command responses: the captured author name stays visible with
+		// the no-longer-in-Cast flag after removal.
+		const history = await app.handle(
+			new Request(`http://localhost/api/conversations/${id}/history`),
+		);
+		expect(history.status).toBe(200);
+		const historyBody = await history.json();
+		const greeting = historyBody.messages[0];
 		expect(greeting?.author).toEqual({
 			participantId: modelId,
 			capturedName: "Maren Voss",
 			inCast: false,
-		});
-		expect(greeting?.swipe).toEqual({
-			eligible: false,
-			reason: "historical-participant-unavailable",
 		});
 	});
 
@@ -809,7 +814,7 @@ describe("Save Participant as Character transport adapter", () => {
 		expect(characters[0]?.name).toBe("Maren Voss");
 	});
 
-	test("maps a stale Conversation revision to the typed conflict with the current snapshot", async () => {
+	test("maps a stale Conversation revision to the typed conflict with the current summary", async () => {
 		const { id, modelId } = setupConversation();
 		// Advance the Conversation after the client's read revision (0).
 		await app.handle(

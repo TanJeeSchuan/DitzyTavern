@@ -1,0 +1,195 @@
+import { ArrowLeft, RefreshCw, TriangleAlert, Undo2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+	resolutionReady,
+	type ChatImportFlowAction,
+	type ChatImportFlowState,
+} from "../import-chat-flow";
+import { ResolvedGroupCard } from "./ResolvedGroupCard";
+import { sourceSize } from "./presentation";
+
+// ---- Participant resolution ----
+
+export function ResolutionStep({
+	flow,
+	characters,
+	onDispatch,
+	onRefresh,
+	onBack,
+	onCancel,
+	onContinue,
+}: {
+	flow: ChatImportFlowState;
+	characters: { id: number; name: string }[];
+	onDispatch: (action: ChatImportFlowAction) => void;
+	onRefresh: () => void;
+	onBack: () => void;
+	onCancel: () => void;
+	onContinue: () => void;
+}) {
+	const exactCount = flow.duplicates.exact.length;
+	const relatedCount = flow.duplicates.related.length;
+	// Presentation-only merge selection; the reducer only sees the confirmed
+	// merge action with its explicit target and sources.
+	const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
+	const ready = resolutionReady(flow);
+
+	// Defensive cleanup: selections referencing removed segments never leak.
+	const mergeTargets = useMemo(
+		() =>
+			flow.groups.filter((group) => mergeSelection.includes(group.id)),
+		[flow.groups, mergeSelection],
+	);
+
+	return (
+		<div className="import-preview">
+			<div className="import-preview-actions">
+				<button className="secondary-button" type="button" onClick={onRefresh}>
+					<RefreshCw aria-hidden="true" /> Refresh preview
+				</button>
+			</div>
+
+			{exactCount > 0 && (
+				<p className="import-duplicate-banner" role="alert">
+					<TriangleAlert aria-hidden="true" />
+					<span>
+						This exact source was already imported as{" "}
+						{flow.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.
+						An exact duplicate needs explicit confirmation at the final
+						review before an independent copy is committed.
+					</span>
+				</p>
+			)}
+			{exactCount === 0 && relatedCount > 0 && (
+				<p className="import-related-banner">
+					<span>
+						A related source with the same declared integrity was imported
+						as{" "}
+						{flow.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.
+						This is not a byte-identical copy.
+					</span>
+				</p>
+			)}
+
+			<label className="seat-field">
+				<span>Chat title</span>
+				<input
+					value={flow.title}
+					placeholder="Title this Chat"
+					onChange={(event) =>
+						onDispatch({ type: "title-changed", title: event.target.value })
+					}
+				/>
+			</label>
+
+			<section className="import-source">
+				<h3>Source</h3>
+				<dl className="detail-list import-meta-list">
+					<div>
+						<dt>Original filename</dt>
+						<dd>{flow.handle?.originalFilename}</dd>
+					</div>
+					<div>
+						<dt>SHA-256</dt>
+						<dd className="import-sha">{flow.handle?.sha256}</dd>
+					</div>
+					<div>
+						<dt>Size</dt>
+						<dd>{sourceSize(flow.handle?.byteLength ?? null)}</dd>
+					</div>
+					{flow.handle?.integrity !== null && flow.handle?.integrity !== undefined && (
+						<div>
+							<dt>Declared integrity</dt>
+							<dd className="import-sha">{flow.handle?.integrity}</dd>
+						</div>
+					)}
+					<div>
+						<dt>Messages</dt>
+						<dd>{flow.counts?.messages ?? 0}</dd>
+					</div>
+					<div>
+						<dt>Variants</dt>
+						<dd>{flow.counts?.variants ?? 0}</dd>
+					</div>
+				</dl>
+			</section>
+
+			{flow.warnings.length > 0 && (
+				<section className="import-warnings">
+					<h3>Warnings</h3>
+					<ul>
+						{flow.warnings.map((warning) => (
+							<li key={warning}>{warning}</li>
+						))}
+					</ul>
+				</section>
+			)}
+
+			<section className="import-groups">
+				<h3>Resolve Participants</h3>
+				<p className="panel-intro">
+					One participant begins per exact captured author string. Merge
+					spelling variants or aliases into one Participant, split selected
+					Messages into another Participant, and undo either change before
+					commit. Every Message stays assigned; nothing is skipped.
+				</p>
+				{flow.groups.map((group) => (
+					<ResolvedGroupCard
+						key={group.id}
+						group={group}
+						groups={flow.groups}
+						characters={characters}
+						mergeSelected={mergeSelection.includes(group.id)}
+						onMergeToggle={(selected) =>
+							setMergeSelection((current) =>
+								selected
+									? [...current, group.id]
+									: current.filter((id) => id !== group.id),
+							)
+						}
+						onDispatch={onDispatch}
+						mergeTargets={mergeTargets}
+						onMerged={() => setMergeSelection([])}
+					/>
+				))}
+			</section>
+
+			{flow.problem !== null && (
+				<p className="import-problem" role="alert">
+					{flow.problem}
+				</p>
+			)}
+
+			<div className="import-preview-footer">
+				<button className="secondary-button" type="button" onClick={onBack}>
+					<ArrowLeft aria-hidden="true" /> Choose another file
+				</button>
+				<button className="secondary-button" type="button" onClick={onCancel}>
+					Cancel
+				</button>
+				<button
+					className="secondary-button"
+					type="button"
+					disabled={flow.history.length === 0}
+					onClick={() => onDispatch({ type: "undo-resolution" })}
+				>
+					<Undo2 aria-hidden="true" /> Undo
+				</button>
+				<button
+					className="primary-button"
+					type="button"
+					disabled={!ready}
+					onClick={onContinue}
+				>
+					Continue to review
+				</button>
+				<p className="panel-note">
+					{ready
+						? "Every Participant is resolved; continue to the final review."
+						: "Resolve every Participant: name each one, approve or change every Character choice, confirm blank captured names, and assign at least one Message per Participant."}
+				</p>
+			</div>
+		</div>
+	);
+}
+

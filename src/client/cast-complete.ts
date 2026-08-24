@@ -8,7 +8,7 @@
 // only words the persistent setup surface and the automatic completion from
 // adding the missing Participant. No domain rule is reconstructed here.
 
-import type { ConversationSnapshot } from "./conversation";
+import type { ConversationSummary } from "./conversation";
 
 export type MissingControlSeat = "human" | "model";
 
@@ -48,7 +48,7 @@ const completionForMissing = (missingSeats: readonly MissingControlSeat[]): stri
 // when the Conversation is playable: completion derives from native state,
 // so a completed import needs no setup surface at all.
 export const incompleteSetupCopy = (
-	conversation: ConversationSnapshot,
+	conversation: ConversationSummary,
 ): IncompleteSetupCopy | null => {
 	// Incomplete is the derived missing-seat state only; a Conversation is
 	// playable as soon as both distinct Control seats are occupied.

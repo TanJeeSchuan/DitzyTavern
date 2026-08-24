@@ -1,19 +1,30 @@
-import { ArrowLeft, Check, Pin, Plus } from "lucide-react";
+import { Pin, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	applyCommand,
 	getCharacter,
 	listCharacters,
 	type CharacterCommand,
-	type CharacterPrompt,
 	type CharacterSnapshot,
 	type CharacterSummary,
 } from "./character-library";
 import {
-	deletionConfirmationCopy,
 	deletionResultNotice,
 	usedCountLabel,
 } from "./character-delete";
+import { CharacterEditor } from "./character-library/CharacterEditor";
+import {
+	NameField,
+	OpeningsField,
+	PromptFields,
+} from "./character-library/DefinitionFields";
+import {
+	draftsOf,
+	emptyDrafts,
+	openingsFromText,
+	openingsToText,
+	type Drafts,
+} from "./character-library/definition";
 
 // Dedicated Character Library surface: list, create, detail, semantic Apply
 // actions, pinning, computed duplicate ordinals, and conflict recovery.
@@ -26,44 +37,6 @@ interface CharacterLibraryPanelProps {
 	focusCharacterId?: number | null;
 	onFocusConsumed?: () => void;
 }
-
-interface Drafts {
-	name: string;
-	prompt: CharacterPrompt;
-	openingsText: string;
-}
-
-const emptyPrompt: CharacterPrompt = {
-	systemInstruction: "",
-	identity: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
-
-const emptyDrafts: Drafts = {
-	name: "",
-	prompt: emptyPrompt,
-	openingsText: "",
-};
-
-const openingsToText = (openings: readonly string[]) => openings.join("\n");
-
-const openingsFromText = (text: string) => text.split("\n");
-
-const draftsOf = (character: CharacterSnapshot): Drafts => ({
-	name: character.name,
-	prompt: character.prompt,
-	openingsText: openingsToText(character.openings),
-});
-
-const promptFields: Array<{ key: keyof CharacterPrompt; label: string }> = [
-	{ key: "systemInstruction", label: "System Instruction" },
-	{ key: "identity", label: "Identity" },
-	{ key: "scenario", label: "Scenario" },
-	{ key: "exampleDialogue", label: "Example Dialogue" },
-	{ key: "postHistoryInstruction", label: "Post-History Instruction" },
-];
 
 export function CharacterLibraryPanel({
 	focusCharacterId = null,
@@ -359,316 +332,6 @@ export function CharacterLibraryPanel({
 					))}
 				</ul>
 			)}
-		</div>
-	);
-}
-
-function CharacterEditor({
-	snapshot,
-	drafts,
-	conflict,
-	notice,
-	pendingAction,
-	onDraftChange,
-	onBack,
-	onCommand,
-	onResolveConflict,
-}: {
-	snapshot: CharacterSnapshot;
-	drafts: Drafts;
-	conflict: CharacterSnapshot | null;
-	notice: string | null;
-	pendingAction: string | null;
-	onDraftChange: (drafts: Drafts) => void;
-	onBack: () => void;
-	onCommand: (action: string, command: CharacterCommand) => Promise<void>;
-	onResolveConflict: (mode: "keep-draft" | "load-current") => void;
-}) {
-	// Deletion requires an explicit confirmation step that states whether the
-	// confirmed command will hard-delete or reduce the Character to a hidden
-	// tombstone, derived from the reference count presented on the snapshot.
-	const [confirmingDelete, setConfirmingDelete] = useState(false);
-	const deleteCopy = deletionConfirmationCopy(
-		snapshot.name,
-		snapshot.deletionImpact,
-	);
-
-	return (
-		<div className="panel-body">
-			<button className="library-back" type="button" onClick={onBack}>
-				<ArrowLeft aria-hidden="true" />
-				All Characters
-			</button>
-
-			{conflict !== null && (
-				<div className="conflict-banner" role="alert">
-					<p>
-						This Character changed elsewhere after you opened it. Your edits
-						were not saved and are still here.
-					</p>
-					<div>
-						<button
-							className="primary-button"
-							type="button"
-							onClick={() => onResolveConflict("keep-draft")}
-						>
-							Keep my edits
-						</button>
-						<button
-							className="secondary-button"
-							type="button"
-							onClick={() => onResolveConflict("load-current")}
-						>
-							Load saved version
-						</button>
-					</div>
-				</div>
-			)}
-
-			<section className="editor-section">
-				<h3>Name</h3>
-				<div className="apply-row">
-					<input
-						className="field-input"
-						value={drafts.name}
-						onChange={(event) =>
-							onDraftChange({ ...drafts, name: event.target.value })
-						}
-						aria-label="Character name"
-					/>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={pendingAction !== null || drafts.name.trim() === ""}
-						onClick={() =>
-							void onCommand("rename", {
-								type: "rename",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								name: drafts.name,
-							})
-						}
-					>
-						Apply Name
-					</button>
-				</div>
-			</section>
-
-			<section className="editor-section">
-				<h3>Presence</h3>
-				<button
-					className="secondary-button"
-					type="button"
-					disabled={pendingAction !== null}
-					onClick={() =>
-						void onCommand("pin", {
-							type: "set-pinned",
-							characterId: snapshot.id,
-							expectedRevision: snapshot.revision,
-							pinned: !snapshot.pinned,
-						})
-					}
-				>
-					{snapshot.pinned ? (
-						<>
-							<Check aria-hidden="true" /> Pinned
-						</>
-					) : (
-						<>
-							<Pin aria-hidden="true" /> Pin this Character
-						</>
-					)}
-				</button>
-			</section>
-
-			<section className="editor-section">
-				<h3>Prompt</h3>
-				<div className="definition-form">
-					<PromptFields
-						prompt={drafts.prompt}
-						onChange={(prompt) => onDraftChange({ ...drafts, prompt })}
-					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pendingAction !== null}
-						onClick={() =>
-							void onCommand("prompt", {
-								type: "replace-prompt",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								prompt: drafts.prompt,
-							})
-						}
-					>
-						Apply Prompt
-					</button>
-				</div>
-			</section>
-
-			<section className="editor-section">
-				<h3>Openings</h3>
-				<div className="definition-form">
-					<OpeningsField
-						value={drafts.openingsText}
-						onChange={(openingsText) =>
-							onDraftChange({ ...drafts, openingsText })
-						}
-					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pendingAction !== null}
-						onClick={() =>
-							void onCommand("openings", {
-								type: "replace-openings",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								openings: openingsFromText(drafts.openingsText),
-							})
-						}
-					>
-						Apply Openings
-					</button>
-				</div>
-			</section>
-
-			<section className="editor-section">
-				<h3>Delete</h3>
-				<p className="panel-note">{deleteCopy.impact}</p>
-				{confirmingDelete ? (
-					<div className="confirm-delete-row">
-						<button
-							className="danger-button"
-							type="button"
-							disabled={pendingAction !== null}
-							onClick={() => {
-								setConfirmingDelete(false);
-								void onCommand("delete", {
-									type: "delete",
-									characterId: snapshot.id,
-									expectedRevision: snapshot.revision,
-								});
-							}}
-						>
-							{deleteCopy.confirmLabel}
-						</button>
-						<button
-							className="secondary-button"
-							type="button"
-							disabled={pendingAction !== null}
-							onClick={() => setConfirmingDelete(false)}
-						>
-							Cancel
-						</button>
-					</div>
-				) : (
-					<button
-						className="danger-button"
-						type="button"
-						disabled={pendingAction !== null}
-						onClick={() => setConfirmingDelete(true)}
-					>
-						Delete Character
-					</button>
-				)}
-			</section>
-
-			{notice !== null && (
-				<p className="panel-note" role="status">
-					{notice}
-				</p>
-			)}
-		</div>
-	);
-}
-
-function NameField({
-	id,
-	value,
-	onChange,
-}: {
-	id: string;
-	value: string;
-	onChange: (value: string) => void;
-}) {
-	return (
-		<div className="field">
-			<label htmlFor={id}>Name</label>
-			<input
-				id={id}
-				className="field-input"
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
-				placeholder="A reusable name, such as Maren Voss"
-			/>
-		</div>
-	);
-}
-
-function PromptFields({
-	prompt,
-	onChange,
-}: {
-	prompt: CharacterPrompt;
-	onChange: (prompt: CharacterPrompt) => void;
-}) {
-	return (
-		<>
-			{promptFields.map((field) => (
-				<PromptField
-					key={field.key}
-					id={`prompt-${field.key}`}
-					label={field.label}
-					value={prompt[field.key]}
-					onChange={(value) => onChange({ ...prompt, [field.key]: value })}
-				/>
-			))}
-		</>
-	);
-}
-
-function PromptField({
-	id,
-	label,
-	value,
-	onChange,
-}: {
-	id: string;
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-}) {
-	return (
-		<div className="field">
-			<label htmlFor={id}>{label}</label>
-			<textarea
-				id={id}
-				rows={2}
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
-			/>
-		</div>
-	);
-}
-
-function OpeningsField({
-	value,
-	onChange,
-}: {
-	value: string;
-	onChange: (value: string) => void;
-}) {
-	return (
-		<div className="field">
-			<label htmlFor="character-openings">Openings</label>
-			<textarea
-				id="character-openings"
-				rows={4}
-				value={value}
-				onChange={(event) => onChange(event.target.value)}
-			/>
-			<small>One Opening per line, shown in order.</small>
 		</div>
 	);
 }

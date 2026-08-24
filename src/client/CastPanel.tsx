@@ -1,4 +1,4 @@
-import { Pin, Plus, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	Dialog,
@@ -20,8 +20,7 @@ import {
 	applyConversationCommand,
 	loadConversation,
 	saveParticipantAsCharacter,
-	type ConversationSnapshot,
-	type ParticipantPrompt,
+	type ConversationSummary,
 } from "./conversation";
 
 // Conversation-local Cast drawer: ordered Participants with computed
@@ -36,46 +35,21 @@ import {
 
 interface CastPanelProps {
 	conversationId: number;
-	conversation: ConversationSnapshot | null;
-	onConversationChange: (conversation: ConversationSnapshot | null) => void;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary | null) => void;
 	// Navigates to a specific Character Library entry, offered after a
 	// Participant has been saved as a new Character. The user stays in the
 	// Chat until they choose to follow it.
 	onOpenLibraryCharacter: (characterId: number) => void;
 }
-
-const emptyPrompt = (): ParticipantPrompt => ({
-	systemInstruction: "",
-	identity: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
-
-interface AdHocDraft {
-	name: string;
-	prompt: ParticipantPrompt;
-	openingsText: string;
-}
-
-const emptyAdHocDraft: AdHocDraft = {
-	name: "",
-	prompt: emptyPrompt(),
-	openingsText: "",
-};
-
-const openingsToText = (openings: readonly string[]) => openings.join("\n");
-
-const openingsFromText = (text: string) =>
-	text.split("\n").map((line) => line.trimEnd());
-
-const promptFields: Array<{ key: keyof ParticipantPrompt; label: string }> = [
-	{ key: "systemInstruction", label: "System Instruction" },
-	{ key: "identity", label: "Identity" },
-	{ key: "scenario", label: "Scenario" },
-	{ key: "exampleDialogue", label: "Example Dialogue" },
-	{ key: "postHistoryInstruction", label: "Post-History Instruction" },
-];
+import {
+	emptyAdHocDraft,
+	openingsFromText,
+	type AdHocDraft,
+} from "./cast/definition";
+import { AddParticipant } from "./cast/AddParticipant";
+import { MemberRow } from "./cast/MemberRow";
+import { ParticipantEditor } from "./cast/ParticipantEditor";
 
 export function CastPanel({
 	conversationId,
@@ -333,146 +307,22 @@ export function CastPanel({
 			</button>
 
 			{adding !== null && (
-				<section className="add-participant">
-					<div className="seat-mode" role="tablist" aria-label="Participant source">
-						<button
-							type="button"
-							data-active={adding === "library"}
-							onClick={() => {
-								setAdding("library");
-								setNotice(null);
-							}}
-							disabled={characters !== null && characters.length === 0}
-						>
-							From the Library
-						</button>
-						<button
-							type="button"
-							data-active={adding === "adhoc"}
-							onClick={() => {
-								setAdding("adhoc");
-								setNotice(null);
-							}}
-						>
-							Ad-hoc Definition
-						</button>
-					</div>
-
-					{adding === "library" && (
-						<>
-							<p className="panel-note">
-								Pinned Characters come first. Adding a Character forks its
-								current Definition; the same Character can be forked again.
-							</p>
-							{characters !== null && characters.length === 0 ? (
-								<p className="panel-note">
-									The Library is empty. Create a Character first.
-								</p>
-							) : (
-								<ul className="character-picker-list">
-									{pickerEntries.map((entry) => (
-										<li key={entry.character.id}>
-											<div className="character-picker-copy">
-												<strong>{entry.label}</strong>
-												{entry.character.pinned && (
-													<Pin aria-hidden="true" className="pinned-mark" />
-												)}
-												<span className="prompt-preview">{entry.preview}</span>
-												<small>
-													{entry.usedCount === 0
-														? "Not used in this Cast"
-														: entry.usedCount === 1
-															? "Used once in this Cast"
-															: `Used ${entry.usedCount} times in this Cast`}
-												</small>
-											</div>
-											<button
-												className="secondary-button"
-												type="button"
-												disabled={pending}
-												onClick={() =>
-													void applyAddCharacter(
-														entry.character.id,
-														entry.character.revision,
-													)
-												}
-											>
-												<Plus aria-hidden="true" /> Add
-											</button>
-										</li>
-									))}
-								</ul>
-							)}
-						</>
-					)}
-
-					{adding === "adhoc" && (
-						<form
-							className="definition-form"
-							onSubmit={(event) => {
-								event.preventDefault();
-								void applyAddAdHoc();
-							}}
-						>
-							<div className="field">
-								<label htmlFor="cast-adhoc-name">Name</label>
-								<input
-									id="cast-adhoc-name"
-									className="field-input"
-									value={adHocDraft.name}
-									onChange={(event) =>
-										setAdHocDraft((current) => ({
-											...current,
-											name: event.target.value,
-										}))
-									}
-									placeholder="A Conversation-local name"
-								/>
-							</div>
-							{promptFields.map((field) => (
-								<div className="field" key={field.key}>
-									<label htmlFor={`cast-adhoc-${field.key}`}>{field.label}</label>
-									<textarea
-										id={`cast-adhoc-${field.key}`}
-										rows={2}
-										value={adHocDraft.prompt[field.key]}
-										onChange={(event) =>
-											setAdHocDraft((current) => ({
-												...current,
-												prompt: {
-													...current.prompt,
-													[field.key]: event.target.value,
-												},
-											}))
-										}
-									/>
-								</div>
-							))}
-							<div className="field">
-								<label htmlFor="cast-adhoc-openings">Openings</label>
-								<textarea
-									id="cast-adhoc-openings"
-									rows={3}
-									value={adHocDraft.openingsText}
-									onChange={(event) =>
-										setAdHocDraft((current) => ({
-											...current,
-											openingsText: event.target.value,
-										}))
-									}
-								/>
-								<small>One Opening per line. Openings never insert history.</small>
-							</div>
-							<button
-								className="primary-button"
-								type="submit"
-								disabled={pending || adHocDraft.name.trim() === ""}
-							>
-								Add Participant
-							</button>
-						</form>
-					)}
-				</section>
+				<AddParticipant
+					mode={adding}
+					charactersEmpty={characters !== null && characters.length === 0}
+					pickerEntries={pickerEntries}
+					pending={pending}
+					draft={adHocDraft}
+					onModeChange={(mode) => {
+						setAdding(mode);
+						setNotice(null);
+					}}
+					onDraftChange={setAdHocDraft}
+					onAddCharacter={(characterId, revision) =>
+						void applyAddCharacter(characterId, revision)
+					}
+					onAddAdHoc={() => void applyAddAdHoc()}
+				/>
 			)}
 
 			{notice !== null && (
@@ -577,290 +427,6 @@ export function CastPanel({
 					</DialogContent>
 				</Dialog>
 			)}
-		</div>
-	);
-}
-
-function MemberRow({
-	participant,
-	seat,
-	editing,
-	pending,
-	onToggleEdit,
-	onSaveAsCharacter,
-	onRemove,
-}: {
-	participant: {
-		duplicateLabel: string;
-		sourceCharacterName: string | null;
-		removal: {
-			eligible: boolean;
-			reason: "control-assigned" | null;
-			deletionMode: "hard-delete" | "tombstone" | null;
-			affectedGenerationCount: number;
-		};
-	};
-	seat: "human" | "model" | null;
-	editing: boolean;
-	pending: boolean;
-	onToggleEdit: () => void;
-	onSaveAsCharacter: () => void;
-	onRemove: () => void;
-}) {
-	const provenance =
-		participant.sourceCharacterName !== null
-			? `Fork of ${participant.sourceCharacterName}`
-			: "Ad-hoc Participant";
-	const removable = seat === null && participant.removal.eligible;
-	const removalNote =
-		seat !== null
-			? participant.removal.reason === "control-assigned"
-				? "Change a Control seat before this Participant can be removed."
-				: "Remove availability is confirmed separately."
-			: participant.removal.deletionMode === "tombstone"
-				? participant.removal.affectedGenerationCount === 1
-					? "Removable; 1 Message loses sibling generation."
-					: `Removable; ${participant.removal.affectedGenerationCount} Messages lose sibling generation.`
-				: "Removable: no history refers to it; removal hard-deletes it.";
-
-	return (
-		<div className="cast-member">
-			<div className="cast-member-copy">
-				<strong>{participant.duplicateLabel}</strong>
-				<span>{provenance}</span>
-				<span>{removalNote}</span>
-			</div>
-			<div className="cast-member-right">
-				{seat !== null && (
-					<span className="control-badge" data-seat={seat}>
-						{seat === "human" ? "Human" : "Model"}
-					</span>
-				)}
-				<button
-					className="secondary-button cast-edit-button"
-					type="button"
-					disabled={pending}
-					onClick={onToggleEdit}
-					aria-expanded={editing}
-				>
-					{editing ? "Close" : "Edit"}
-				</button>
-				<button
-					className="secondary-button cast-save-button"
-					type="button"
-					disabled={pending}
-					onClick={onSaveAsCharacter}
-				>
-					Save as Character
-				</button>
-				{removable && (
-					<button
-						className="secondary-button cast-remove-button"
-						type="button"
-						disabled={pending}
-						onClick={onRemove}
-					>
-						Remove
-					</button>
-				)}
-			</div>
-		</div>
-	);
-}
-
-function ParticipantEditor({
-	conversationId,
-	conversation,
-	participantId,
-	onConversationChange,
-	onNotice,
-}: {
-	conversationId: number;
-	conversation: ConversationSnapshot;
-	participantId: number;
-	onConversationChange: (conversation: ConversationSnapshot) => void;
-	onNotice: (notice: string | null) => void;
-}) {
-	const participant = conversation.cast.find(
-		(candidate) => candidate.id === participantId,
-	);
-	const [drafts, setDrafts] = useState(() => ({
-		name: participant?.name ?? "",
-		prompt: participant?.prompt ?? emptyPrompt(),
-		openingsText: participant ? openingsToText(participant.openings) : "",
-	}));
-	const [pending, setPending] = useState(false);
-
-	if (participant === undefined) {
-		return <p className="panel-note">This Participant is no longer in the Cast.</p>;
-	}
-
-	const apply = async (
-		action: Parameters<typeof applyConversationCommand>[2],
-		section: "name" | "prompt" | "openings",
-	) => {
-		setPending(true);
-		try {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				action,
-			);
-			switch (outcome.status) {
-				case "applied": {
-					const applied = outcome.conversation;
-					onConversationChange(applied);
-					setDrafts((current) => ({
-						name:
-							section === "name"
-								? applied.cast.find((p) => p.id === participant.id)?.name ??
-									current.name
-								: current.name,
-						prompt:
-							section === "prompt"
-								? (applied.cast.find((p) => p.id === participant.id)?.prompt ??
-									current.prompt)
-								: current.prompt,
-						openingsText:
-							section === "openings"
-								? openingsToText(
-										applied.cast.find((p) => p.id === participant.id)?.openings ?? [],
-									)
-								: current.openingsText,
-					}));
-					onNotice(null);
-					break;
-				}
-				case "conflict": {
-					onConversationChange(outcome.currentConversation);
-					onNotice("The Conversation changed elsewhere; the current state was loaded.");
-					break;
-				}
-				case "invalid":
-					onNotice(outcome.reason);
-					break;
-				default:
-					onNotice("The Conversation could not be reached.");
-			}
-		} finally {
-			setPending(false);
-		}
-	};
-
-	return (
-		<div className="participant-editor">
-			<section className="editor-section">
-				<h3>Name</h3>
-				<div className="apply-row">
-					<input
-						className="field-input"
-						value={drafts.name}
-						onChange={(event) =>
-							setDrafts((current) => ({ ...current, name: event.target.value }))
-						}
-						aria-label="Participant name"
-					/>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={pending || drafts.name.trim() === ""}
-						onClick={() =>
-							void apply(
-								{
-									type: "rename-participant",
-									participantId: participant.id,
-									name: drafts.name,
-								},
-								"name",
-							)
-						}
-					>
-						Apply Name
-					</button>
-				</div>
-			</section>
-
-			<section className="editor-section">
-				<h3>Prompt</h3>
-				<div className="definition-form">
-					{promptFields.map((field) => (
-						<div className="field" key={field.key}>
-							<label htmlFor={`participant-prompt-${participant.id}-${field.key}`}>
-								{field.label}
-							</label>
-							<textarea
-								id={`participant-prompt-${participant.id}-${field.key}`}
-								rows={2}
-								value={drafts.prompt[field.key]}
-								onChange={(event) =>
-									setDrafts((current) => ({
-										...current,
-										prompt: {
-											...current.prompt,
-											[field.key]: event.target.value,
-										},
-									}))
-								}
-							/>
-						</div>
-					))}
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pending}
-						onClick={() =>
-							void apply(
-								{
-									type: "replace-participant-prompt",
-									participantId: participant.id,
-									prompt: drafts.prompt,
-								},
-								"prompt",
-							)
-						}
-					>
-						Apply Prompt
-					</button>
-				</div>
-			</section>
-
-			<section className="editor-section">
-				<h3>Openings</h3>
-				<div className="definition-form">
-					<div className="field">
-						<label htmlFor={`participant-openings-${participant.id}`}>Openings</label>
-						<textarea
-							id={`participant-openings-${participant.id}`}
-							rows={3}
-							value={drafts.openingsText}
-							onChange={(event) =>
-								setDrafts((current) => ({
-									...current,
-									openingsText: event.target.value,
-								}))
-							}
-						/>
-						<small>One Opening per line. Editing never rewrites history.</small>
-					</div>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pending}
-						onClick={() =>
-							void apply(
-								{
-									type: "replace-participant-openings",
-									participantId: participant.id,
-									openings: openingsFromText(drafts.openingsText),
-								},
-								"openings",
-							)
-						}
-					>
-						Apply Openings
-					</button>
-				</div>
-			</section>
 		</div>
 	);
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { controlChangeDescription } from "./cast";
 import {
 	applyConversationCommand,
-	type ConversationSnapshot,
+	type ConversationSummary,
 } from "./conversation";
 
 // Cast-only Control selectors on the composer toolbar: `Writing as` for the
@@ -12,8 +12,8 @@ import {
 // only Cast Participants can be referenced.
 
 interface ComposerControlSelectorsProps {
-	conversation: ConversationSnapshot;
-	onConversationChange: (conversation: ConversationSnapshot) => void;
+	conversation: ConversationSummary;
+	onConversationChange: (conversation: ConversationSummary) => void;
 }
 
 export function ComposerControlSelectors({

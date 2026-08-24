@@ -45,8 +45,6 @@ const conflict = (): SaveParticipantAsCharacterOutcome => ({
 			generate: { available: false, reason: "conversation-not-playable" },
 			swipe: { available: false, reason: "conversation-not-playable" },
 		},
-		messages: [],
-		data: [],
 	},
 });
 

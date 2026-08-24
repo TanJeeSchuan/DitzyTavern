@@ -51,51 +51,12 @@ export interface ConversationControlValidity {
 	reason: "missing-seat" | "seats-not-distinct" | "seat-not-in-cast" | null;
 }
 
-// Derived per-Message targeted Swipe eligibility, mirroring the server's
-// derived capability so message cards can present unavailable reasons
-// without reproducing the historical-Control rule.
-export type MessageSwipeBlockReason =
-	| "conversation-not-playable"
-	| "missing-historical-context"
-	| "historical-participant-unavailable";
-
-export interface ConversationAuthorStamp {
-	participantId: number | null;
-	capturedName: string | null;
-	// Derived historical display state: whether the authoring Participant is
-	// still an active Cast member. History keeps showing the captured name
-	// with a no-longer-in-Cast marker after removal.
-	inCast: boolean;
-}
-
-export interface ConversationHistoricalContext {
-	humanParticipantId: number;
-	modelParticipantId: number;
-}
-
-export interface ConversationVariant {
-	id: number;
-	position: number;
-	content: string;
-	timestamp: string;
-	selected: boolean;
-	data: readonly { namespace: string; key: string; value: string }[];
-}
-
-export interface ConversationMessage {
-	id: number;
-	position: number;
-	timestamp: string;
-	author: ConversationAuthorStamp | null;
-	historicalContext: ConversationHistoricalContext | null;
-	// Mirrors the transport schema: the wire contract is the loose shape;
-	// the server domain narrows this to a discriminated eligibility.
-	swipe: { eligible: boolean; reason: MessageSwipeBlockReason | null };
-	variants: ConversationVariant[];
-	data: readonly { namespace: string; key: string; value: string }[];
-}
-
-export interface ConversationSnapshot {
+// Slim conversational view: the transport never ships Messages or
+// per-Conversation data. The story reads through the paginated history
+// seam, and heavy provenance loads only through the Import Details
+// operations; this view carries the header, Cast, Control, and derived
+// playability state the Cast drawer, composer, and setup surface need.
+export interface ConversationSummary {
 	id: number;
 	name: string;
 	revision: number;
@@ -108,8 +69,6 @@ export interface ConversationSnapshot {
 		generate: { available: boolean; reason: "conversation-not-playable" | null };
 		swipe: { available: boolean; reason: "conversation-not-playable" | null };
 	};
-	messages: ConversationMessage[];
-	data: readonly { namespace: string; key: string; value: string }[];
 }
 
 export type ConversationAction =
@@ -171,8 +130,8 @@ export type ConversationAction =
 // Character and destination Conversation revisions server-side.
 
 export type CommandOutcome =
-	| { status: "applied"; conversation: ConversationSnapshot }
-	| { status: "conflict"; currentConversation: ConversationSnapshot }
+	| { status: "applied"; conversation: ConversationSummary }
+	| { status: "conflict"; currentConversation: ConversationSummary }
 	| { status: "not-found" }
 	| { status: "not-playable"; reason: string }
 	// A seated Participant cannot be removed; the typed reason comes from the
@@ -182,10 +141,10 @@ export type CommandOutcome =
 	| { status: "network" };
 
 export type AddCharacterOutcome =
-	| { status: "applied"; conversation: ConversationSnapshot }
+	| { status: "applied"; conversation: ConversationSummary }
 	| {
 			status: "conflict";
-			currentConversation?: ConversationSnapshot;
+			currentConversation?: ConversationSummary;
 			currentCharacterName?: string;
 	  }
 	| { status: "not-found" }
@@ -194,7 +153,7 @@ export type AddCharacterOutcome =
 
 export async function loadConversation(
 	conversationId: number,
-): Promise<ConversationSnapshot | null> {
+): Promise<ConversationSummary | null> {
 	const { data, error } = await api.api.conversations({ id: conversationId }).get();
 	if (error !== null && error !== undefined) {
 		if (error.status === 404) {
@@ -281,7 +240,7 @@ export async function addCharacterToCast(input: {
 
 export type SaveParticipantAsCharacterOutcome =
 	| { status: "applied"; character: CharacterSnapshot }
-	| { status: "conflict"; currentConversation: ConversationSnapshot }
+	| { status: "conflict"; currentConversation: ConversationSummary }
 	| { status: "not-found" }
 	| { status: "invalid"; reason: string }
 	| { status: "network" };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { incompleteSetupCopy } from "./cast-complete";
-import type { ConversationSnapshot } from "./conversation";
+import type { ConversationSummary } from "./conversation";
 
 // The presentation is fed a server-derived snapshot; these fixtures shape
 // only the fields the copy reads (playable, controlValidity, control,
@@ -11,7 +11,7 @@ const snapshot = (overrides: {
 	humanParticipantId?: number | null;
 	modelParticipantId?: number | null;
 	composeAvailable?: boolean;
-}): ConversationSnapshot => {
+}): ConversationSummary => {
 	const humanParticipantId =
 		overrides.humanParticipantId !== undefined
 			? overrides.humanParticipantId
@@ -38,8 +38,6 @@ const snapshot = (overrides: {
 			generate: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
 			swipe: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
 		},
-		messages: [],
-		data: [],
 	};
 };
 
