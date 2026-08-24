@@ -29,12 +29,12 @@ import {
 } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
-	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	clearStagedImportRegistry,
 	createChatImportModule,
 	type ChatImportCommitInput,
 	type ChatImportModule,
 } from "./staged";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
 	StagedChatImportDuplicateConfirmationError,
 	StagedChatImportExpiredError,

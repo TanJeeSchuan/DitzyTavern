@@ -9,7 +9,10 @@ import type {
 } from "../adapter";
 import { chatNameFromFilename } from "../import";
 import { findPriorImportsBySource } from "../prior-imports";
-import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./types";
+import {
+	groupImportedAuthors,
+	UNKNOWN_IMPORTED_AUTHOR_NAME,
+} from "../import-projection";
 import type {
 	ChatImportDuplicateMatch,
 	ChatImportGroup,
@@ -82,45 +85,23 @@ const strongestSuggestion = (
 		: { characterId: best.characterId, name: best.name, match: best.tier, confirmed: false };
 };
 
-const isBlankAuthor = (key: string): boolean => key.trim() === "";
-
 const buildGroups = (
 	authors: readonly SillyTavernExactAuthor[],
 	characters: readonly CharacterSummary[],
-): ChatImportGroup[] => {
-	const groups: {
-		key: string;
-		positions: number[];
-		variantCounts: number[];
-	}[] = [];
-	const indexByKey = new Map<string, number>();
-	for (const author of authors) {
-		let index = indexByKey.get(author.name);
-		if (index === undefined) {
-			index = groups.length;
-			indexByKey.set(author.name, index);
-			groups.push({ key: author.name, positions: [], variantCounts: [] });
-		}
-		const group = groups[index];
-		if (group === undefined) continue;
-		group.positions.push(author.position);
-		group.variantCounts.push(author.variantCount);
-	}
-	return groups.map((group) => ({
-		key: group.key,
-		isBlank: isBlankAuthor(group.key),
+): ChatImportGroup[] =>
+	groupImportedAuthors(authors).map((group) => ({
+		// The single blank group keyed as the empty string; every other
+		// group keeps its trimmed captured author string.
+		key: group.key ?? "",
+		isBlank: group.key === null,
 		messagePositions: group.positions,
 		messageVariantCounts: group.variantCounts,
 		messageCount: group.positions.length,
 		variantCount: group.variantCounts.reduce((total, count) => total + count, 0),
-		participantNameDefault: isBlankAuthor(group.key)
-			? UNKNOWN_IMPORTED_AUTHOR_NAME
-			: group.key,
-		suggestion: isBlankAuthor(group.key)
-			? null
-			: strongestSuggestion(group.key, characters),
+		participantNameDefault: group.key ?? UNKNOWN_IMPORTED_AUTHOR_NAME,
+		suggestion:
+			group.key === null ? null : strongestSuggestion(group.key, characters),
 	}));
-};
 
 const toDuplicateMatch = (match: { id: number; name: string }): ChatImportDuplicateMatch => ({
 	id: match.id,

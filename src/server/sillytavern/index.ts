@@ -6,13 +6,9 @@ export {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
-	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
 	decodeSillyTavernImportSource,
 	decodeSillyTavernSourceBytes,
-	deterministicImportControl,
-	emptyImportedPrompt,
-	importReportEntries,
 	inspectSillyTavernChatJsonl,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
@@ -25,6 +21,24 @@ export type {
 	SillyTavernImportReport,
 	SillyTavernImportSource,
 } from "./adapter";
+export {
+	UNKNOWN_IMPORTED_AUTHOR_NAME,
+	defaultImportResolution,
+	deterministicImportControl,
+	emptyImportedDefinition,
+	emptyImportedPrompt,
+	groupImportedAuthors,
+	importReportEntries,
+	projectImport,
+} from "./import-projection";
+export type {
+	ImportAuthorGroup,
+	ImportProjectionDuplicateEvidence,
+	ImportProjectionDuplicateMatch,
+	ImportProjectionParticipant,
+	ImportProjectionResolution,
+	ProjectedImport,
+} from "./import-projection";
 export {
 	SillyTavernImportError,
 	StagedChatImportDuplicateConfirmationError,
@@ -47,7 +61,6 @@ export type {
 	ChatImportDetailsModule,
 } from "./import-details";
 export {
-	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	clearStagedImportRegistry,
 	createChatImportModule,
 	withChatImport,

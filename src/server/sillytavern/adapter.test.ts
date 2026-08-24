@@ -5,10 +5,10 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
-	RESOLVED_BLANK_AUTHOR_NAME,
 	VARIANT_KEYS,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import type { SillyTavernImportMeta } from "./adapter";
 import { SillyTavernImportError } from "./errors";
 import {
@@ -55,7 +55,7 @@ describe("SillyTavern JSONL adapter", () => {
 		expect(input.participants).toEqual([
 			importedSeed("Writer"),
 			importedSeed("Rulership"),
-			importedSeed(RESOLVED_BLANK_AUTHOR_NAME),
+			importedSeed(UNKNOWN_IMPORTED_AUTHOR_NAME),
 		]);
 		// Deterministic seating by first resolved appearance: Writer human,
 		// Rulership model, the blank-resolved Participant unseated. Role
@@ -159,7 +159,10 @@ describe("SillyTavern JSONL adapter", () => {
 		});
 
 		const importEntries = input.data?.filter(
-			(entry) => entry.namespace === IMPORT_NAMESPACE,
+			(entry) =>
+				entry.namespace === IMPORT_NAMESPACE &&
+				entry.key !== IMPORT_KEYS.warnings &&
+				entry.key !== IMPORT_KEYS.reportJson,
 		);
 		expect(importEntries).toEqual([
 			{
@@ -193,7 +196,7 @@ describe("SillyTavern JSONL adapter", () => {
 				value: "2",
 			},
 		]);
-		expect(report).toEqual({
+			expect(report).toEqual({
 			importerVersion: IMPORTER_VERSION,
 			source: {
 				filename: "lantern-house.jsonl",
@@ -203,17 +206,31 @@ describe("SillyTavern JSONL adapter", () => {
 			counts: { messages: 2, variants: 2 },
 			warnings: [],
 		});
+		// The Import Projection appends the composed warnings and the JSON
+		// report as the final import entries.
+		expect(input.data?.at(-2)).toEqual({
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.warnings,
+			value: "[]",
+		});
+		expect(JSON.parse(input.data?.at(-1)?.value ?? "")).toEqual(report);
 	});
 
-	test("leaves warnings and report entries to the orchestration step", () => {
-		const { input } = parseSillyTavernChatJsonl(jsonl([header, first]), meta);
+	test("composes warnings and report entries through the projection", () => {
+		const { input, report } = parseSillyTavernChatJsonl(jsonl([header, first]), meta);
 		expect(
-			input.data?.some(
-				(entry) =>
-					entry.key === IMPORT_KEYS.warnings ||
-					entry.key === IMPORT_KEYS.reportJson,
+			input.data?.some((entry) => entry.key === IMPORT_KEYS.warnings),
+		).toBe(true);
+		expect(
+			input.data?.some((entry) => entry.key === IMPORT_KEYS.reportJson),
+		).toBe(true);
+		expect(
+			JSON.parse(
+				input.data
+					?.find((entry) => entry.key === IMPORT_KEYS.reportJson)
+					?.value ?? "",
 			),
-		).toBe(false);
+		).toEqual(report);
 	});
 
 	test("keeps unknown and source-only fields value-lossless in the archive only", () => {

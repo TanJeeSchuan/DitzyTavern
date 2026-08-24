@@ -25,7 +25,7 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
-	RESOLVED_BLANK_AUTHOR_NAME,
+	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	VARIANT_KEYS,
 	importSillyTavernChat,
 } from "./index";
@@ -120,11 +120,11 @@ describe("SillyTavern chat import", () => {
 		// Every exact resolved source-author group becomes a named
 		// Participant in first-appearance order with an empty typed Prompt
 		// and no openings: Writer, Rulership, and the shared blank-resolved
-		// "Blank Author" group.
+		// group using the imported-author placeholder.
 		expect(conversation.cast.map((participant) => participant.name)).toEqual([
 			"Writer",
 			"Rulership",
-			RESOLVED_BLANK_AUTHOR_NAME,
+			UNKNOWN_IMPORTED_AUTHOR_NAME,
 		]);
 		expect(conversation.cast.map((participant) => participant.position)).toEqual([
 			1, 2, 3,
@@ -179,7 +179,7 @@ describe("SillyTavern chat import", () => {
 		).toEqual([writer?.id, rulership?.id, blankAuthor?.id]);
 		expect(
 			conversation.messages.map((message) => message.author?.capturedName),
-		).toEqual(["Writer", "Rulership", RESOLVED_BLANK_AUTHOR_NAME]);
+		).toEqual(["Writer", "Rulership", UNKNOWN_IMPORTED_AUTHOR_NAME]);
 		expect(
 			conversation.messages.every((message) => message.author?.inCast === true),
 		).toBe(true);
@@ -484,7 +484,7 @@ describe("SillyTavern chat import", () => {
 		);
 
 		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			RESOLVED_BLANK_AUTHOR_NAME,
+			UNKNOWN_IMPORTED_AUTHOR_NAME,
 		]);
 		const blankAuthor = conversation.cast[0];
 		expect(blankAuthor).toBeDefined();
@@ -499,7 +499,7 @@ describe("SillyTavern chat import", () => {
 			conversation.messages.map((message) => message.data[0]?.value),
 		).toEqual(["", ""]);
 		expect(conversation.messages[0]?.author?.capturedName).toBe(
-			RESOLVED_BLANK_AUTHOR_NAME,
+			UNKNOWN_IMPORTED_AUTHOR_NAME,
 		);
 		expect(report.warnings).toHaveLength(2);
 		expect(report.warnings[0]).toContain("position 1");
@@ -511,24 +511,23 @@ describe("SillyTavern chat import", () => {
 			name: "Blank Author",
 			is_user: false,
 			send_date: "2026-08-08T13:12:00.000Z",
-			mes: "a real captured author named exactly like the resolved fallback",
+			mes: "a real captured author named like the resolved fallback",
 		};
 		const { conversation, report } = importChat(
 			writeSource([header, blankName, literalBlankAuthor]),
 		);
 
-		// The blank group (key null) and the literal "Blank Author" group
-		// (key "Blank Author") never collapse into one identity: both stay
-		// separate native Participants whose duplicate display names are
-		// disambiguated with computed ordinals, exactly like any duplicate
-		// names — a name is never an identity key.
+		// The blank group (resolved key null) and the literal "Blank Author"
+		// group (key "Blank Author") never collapse into one identity: both
+		// stay separate native Participants with distinct names — a name is
+		// never an identity key, and the placeholder is just another name.
 		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			RESOLVED_BLANK_AUTHOR_NAME,
-			RESOLVED_BLANK_AUTHOR_NAME,
+			UNKNOWN_IMPORTED_AUTHOR_NAME,
+			"Blank Author",
 		]);
 		expect(
 			conversation.cast.map((participant) => participant.duplicateLabel),
-		).toEqual([RESOLVED_BLANK_AUTHOR_NAME, `${RESOLVED_BLANK_AUTHOR_NAME} (2)`]);
+		).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Blank Author"]);
 		const [blankGroup, literalGroup] = conversation.cast;
 		expect(blankGroup?.id).not.toBe(literalGroup?.id);
 		expect(conversation.messages[0]?.author?.participantId).toBe(blankGroup?.id);

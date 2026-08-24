@@ -13,11 +13,11 @@ import { openDatabase } from "../database/database";
 import { artifactTable, chatTable, participantTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
-	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	clearStagedImportRegistry,
 	createChatImportModule,
 	type ChatImportModule,
 } from "./staged";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
 	StagedChatImportExpiredError,
 	StagedChatImportTokenMismatchError,
@@ -128,7 +128,7 @@ describe("staged SillyTavern chat import", () => {
 		expect(drizzle(database).select().from(artifactTable).all()).toEqual([]);
 	});
 
-	test("builds one initial group per exact captured author string without trimming, case-folding, or merging", async () => {
+	test("builds one initial group per trimmed captured author string, merging whitespace variants and blank names", async () => {
 		const spaceOnly = { name: " ", send_date: "2026-08-08T13:11:00.000Z", mes: "blank space name" };
 		const records = [
 			header,
@@ -140,35 +140,34 @@ describe("staged SillyTavern chat import", () => {
 		];
 		const { preview } = await stageText(records);
 
-		// Exact capture strings stay separate: the padded and lowercase
-		// variants never collapse into "Writer", and each blank captured
-		// name is its own explicit group.
+		// Resolved (trimmed) captured names collapse: the padded variant
+		// merges into "Writer"; case stays distinct so "writer" remains its
+		// own group; and every blank captured name merges into one shared
+		// blank group with the empty-string key.
 		expect(preview.groups.map((group) => group.key)).toEqual([
 			"Writer",
-			" Writer ",
 			"writer",
 			"",
-			" ",
 		]);
 		expect(preview.groups.map((group) => group.isBlank)).toEqual([
-			false, false, false, true, true,
+			false, false, true,
 		]);
 		// Blank groups carry the editable Participant-name default; others
-		// keep the exact captured string as their proposed name.
+		// keep the trimmed captured string as their proposed name.
 		expect(
 			preview.groups.map((group) => group.participantNameDefault),
 		).toEqual([
 			"Writer",
-			" Writer ",
 			"writer",
 			UNKNOWN_IMPORTED_AUTHOR_NAME,
-			UNKNOWN_IMPORTED_AUTHOR_NAME,
 		]);
-		expect(preview.groups.map((group) => group.messageCount)).toEqual([1, 1, 1, 1, 1]);
+		expect(preview.groups.map((group) => group.messageCount)).toEqual([2, 1, 2]);
 		expect(preview.groups.map((group) => group.messagePositions)).toEqual([
-			[1], [2], [3], [4], [5],
+			[1, 2], [3], [4, 5],
 		]);
-		expect(preview.groups.every((group) => group.variantCount === 1)).toBe(true);
+		expect(
+			preview.groups.map((group) => group.variantCount),
+		).toEqual([2, 1, 2]);
 	});
 
 	test("ranks Character suggestions exact, then case-insensitive, then fuzzy", async () => {

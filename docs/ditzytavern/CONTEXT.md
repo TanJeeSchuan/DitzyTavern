@@ -116,6 +116,18 @@ _Avoid_: Imported Conversation, durable import draft
 An opaque temporary reference to one Staged Import.
 _Avoid_: Chat identifier, artifact identifier
 
+**Import Projection**:
+The pure derivation that maps decoded import source into native Conversation creation data: resolved author ownership, stamped Messages, derived Control, and composed archive/report entries. Both import paths run one projection with different resolution inputs.
+_Avoid_: Import mapping, import resolver
+
+**Default Import Policy**:
+The developer import's implicit author-resolution rules — trimmed-name grouping, the imported-author placeholder name, and deterministic Control — expressed as the Import Projection's resolution input.
+_Avoid_: Developer grouping, legacy resolution
+
+**Resolved Participant Plan**:
+The user-confirmed author-resolution decision for one Staged Import: each resulting Participant's name, outcome, and owned Message positions. It is the staged path's resolution input to the Import Projection.
+_Avoid_: Import plan, confirmed policy
+
 **Exact Source Artifact**:
 The preserved original import bytes and their verification metadata, distinct from the normal Conversation history and canonical parsed archive.
 _Avoid_: Reconstructed export, Conversation history

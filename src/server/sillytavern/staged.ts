@@ -29,12 +29,14 @@ import {
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
 	decodeSillyTavernImportSource,
 	decodeSillyTavernSourceBytes,
-	deterministicImportControl,
-	emptyImportedPrompt,
-	importReportEntries,
 	inspectSillyTavernChatJsonl,
 	type SillyTavernChatInspection,
 } from "./adapter";
+import {
+	emptyImportedDefinition,
+	projectImport,
+	type ImportProjectionResolution,
+} from "./import-projection";
 import {
 	StagedChatImportDuplicateConfirmationError,
 	StagedChatImportExpiredError,
@@ -51,7 +53,6 @@ import type {
 	ChatImportCommitResult,
 	ChatImportModule,
 	ChatImportModuleOptions,
-	ChatImportPreview,
 	ChatImportReceipt,
 	ChatImportResolvedParticipantPlan,
 	StagedRecord,
@@ -241,12 +242,6 @@ const validateResolutionPlan = (
 	}
 };
 
-const emptyImportedDefinition = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: emptyImportedPrompt(),
-	openings: [],
-});
-
 // Resolves the plan into complete Participant Definitions before the exact
 // artifact is finalized. Fork names come from the selected Profile's current
 // name, never from the client-supplied plan name; creation and chat-only
@@ -286,18 +281,6 @@ const resolvePlanParticipants = (
 		};
 	});
 };
-
-// One copy warning per matching prior Chat, mirroring the developer import
-// path so the persisted report and receipt stay consistent across both
-// import surfaces. Exact and related matches both describe an independent
-// copy; only exact matches demanded confirmation.
-const duplicateCopyWarnings = (
-	duplicates: ChatImportPreview["duplicates"],
-): string[] =>
-	[...duplicates.exact, ...duplicates.related].map(
-		(match) =>
-			`Source was already imported as chat ${match.id} ("${match.name}"); this import creates an independent copy.`,
-	);
 
 // Maps each 1-based record position to the seed index of the Participant
 // that owns it. Plan validation guarantees a complete, non-overlapping
@@ -464,38 +447,29 @@ export function createChatImportModule(
 			// operation; a failure here creates no database state.
 			const stored = finalizeExactArtifact(artifactDirectory, record);
 
-			const finalWarnings = [
-				...decoded.report.warnings,
-				...duplicateCopyWarnings(record.preview.duplicates),
-			];
-			const finalReport = {
-				...decoded.report,
-				warnings: finalWarnings,
-			};
-			const owners = assignMessageOwners(input.participants);
-			const messages = decoded.messages.map((message, index) => {
-				// SAFETY: plan validation assigned every retained position to
-				// exactly one Participant, so every owner exists.
-				const owner = owners.get(index + 1) as number;
-				return { ...message, authorParticipantIndex: owner };
-			});
-
-			const conversation = createImportedConversation(database, {
-				name: input.title.trim(),
+			// The confirmed Resolved Participant Plan through the shared
+			// Import Projection: ownership mapping, Definitions with
+			// provenance, derived Control, stamped Messages, and the final
+			// report and data entries all come from one seam.
+			const resolution: ImportProjectionResolution = {
 				participants: resolved.map((entry) => ({
 					definition: entry.definition,
 					sourceCharacterId: entry.sourceCharacterId ?? undefined,
 					createCharacter: entry.createProfile,
 				})),
-				// Deterministic import Control on first resolved
-				// Participant appearance: the first becomes human, the
-				// second model, later Participants stay unseated, and a
-				// zero- or one-Participant import commits as the
-				// incomplete-Conversation exception with playability
-				// derived once the missing seat is filled.
-				control: deterministicImportControl(resolved.length),
-				messages,
-				data: [...decoded.data, ...importReportEntries(finalReport)],
+				messageOwners: assignMessageOwners(input.participants),
+			};
+			const projected = projectImport(decoded, resolution, {
+				exact: record.preview.duplicates.exact,
+				related: record.preview.duplicates.related,
+			});
+
+			const conversation = createImportedConversation(database, {
+				name: input.title.trim(),
+				participants: projected.input.participants,
+				control: projected.input.control,
+				messages: projected.input.messages,
+				data: projected.input.data,
 				artifacts: [
 					{
 						namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -525,7 +499,7 @@ export function createChatImportModule(
 					sourceCharacterId:
 						conversation.cast[index]?.sourceCharacterId ?? null,
 				})),
-				warnings: finalWarnings,
+				warnings: projected.report.warnings,
 				duplicates: {
 					exact: record.preview.duplicates.exact.map((match) => ({ ...match })),
 					related: record.preview.duplicates.related.map((match) => ({

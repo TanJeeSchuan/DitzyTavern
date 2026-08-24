@@ -5,12 +5,6 @@ import type {
 } from "../../conversation/types";
 
 export const IMPORTER_VERSION = "0.2.0";
-
-// Deterministic nonblank native Participant name resolved for blank or
-// whitespace-only raw source authors. Only the imported Participant carries
-// this name; the raw blank source value stays unmodified in the archive and
-// the message-level `author.name` entry.
-export const RESOLVED_BLANK_AUTHOR_NAME = "Blank Author";
 export const IMPORT_NAMESPACE = "import.sillytavern";
 export const ARCHIVE_NAMESPACE = "archive";
 export const ARCHIVE_KEY = "source";
@@ -90,8 +84,9 @@ export interface SillyTavernExactAuthor {
 
 // Inspection result for staged previews: the same complete source
 // validation as the import path plus the per-record exact author values.
-// Preview grouping keys on these verbatim values so case and whitespace
-// variants (and each blank captured name) stay initially separate.
+// Preview grouping keys on the resolved (trimmed) values through the shared
+// Import Projection primitive; the verbatim values themselves stay available
+// in preserved source data.
 export interface SillyTavernChatInspection {
 	report: SillyTavernImportReport;
 	authors: SillyTavernExactAuthor[];
@@ -106,9 +101,9 @@ export interface SillyTavernDecodedImportSource {
 	// The verbatim captured author value per retained record (never trimmed
 	// or normalized), parallel to `messages` by record position.
 	authors: SillyTavernExactAuthor[];
-	// Canonical archive plus source-identity entries. The orchestration
+	// Canonical archive plus source-identity entries. The Import Projection
 	// appends the final warnings and report entries after duplicate
-	// detection, exactly like the developer import path.
+	// evidence is known.
 	data: ConversationDataEntry[];
 	report: SillyTavernImportReport;
 }

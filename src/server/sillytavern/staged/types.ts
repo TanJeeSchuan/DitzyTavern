@@ -1,10 +1,5 @@
 import type { ConversationSnapshot } from "../../conversation/types";
 
-// Editable Participant-name default for blank captured author groups. The
-// exact blank source value stays untouched in preserved source data; this
-// name is the flow's proposed native Participant-name default.
-export const UNKNOWN_IMPORTED_AUTHOR_NAME = "Unknown imported author";
-
 export type SuggestionMatchKind = "exact" | "case-insensitive" | "fuzzy";
 
 // The strongest name-only Character candidate for one author group. It is
@@ -17,11 +12,15 @@ export interface ChatImportSuggestion {
 	confirmed: boolean;
 }
 
-// One initial author group keyed on the exact captured author string. Case
-// and whitespace variants (and each blank captured name) stay separate
-// initially; nothing is trimmed, case-folded, aliased, merged, or split.
+// One initial author group keyed on the resolved (trimmed) captured author
+// string through the Import Projection's grouping primitive. Whitespace
+// variants and every blank captured name collapse into one group; case and
+// Unicode stay distinct, and nothing is case-folded, aliased, merged, or
+// split beyond that. The user may still merge or split whole Messages in
+// the Resolved Participant Plan.
 export interface ChatImportGroup {
-	// The verbatim captured author string; the empty string for blank names.
+	// The trimmed captured author string; the empty string for the single
+	// blank group.
 	key: string;
 	isBlank: boolean;
 	// 1-based record positions whose Messages belong to this group.
@@ -32,7 +31,7 @@ export interface ChatImportGroup {
 	messageCount: number;
 	variantCount: number;
 	// Proposed native Participant name, editable by the user. Blank groups
-	// default to UNKNOWN_IMPORTED_AUTHOR_NAME; others keep the exact key.
+	// default to UNKNOWN_IMPORTED_AUTHOR_NAME; others keep the trimmed key.
 	participantNameDefault: string;
 	// Strongest name-only Character suggestion, unconfirmed; null when the
 	// group (or the library) has nothing to suggest.

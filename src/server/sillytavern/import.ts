@@ -1,7 +1,7 @@
 // SillyTavern chat import orchestration: reads one JSONL export file as
-// explicit UTF-8, maps it through the SillyTavern adapter, detects prior
-// imports of the same source, preserves an independent exact-byte copy of
-// the selected source in managed artifact storage, and creates the Chat
+// explicit UTF-8, decodes it through the SillyTavern adapter, classifies
+// prior imports of the same source, preserves an independent exact-byte copy
+// of the selected source in managed artifact storage, and creates the Chat
 // through the generic Conversation creation seam in a single transaction.
 //
 // This source-specific importer prepares decoded Conversation data and the
@@ -10,11 +10,12 @@
 // are copied into a unique managed relative path before the database
 // operation begins; failure to store them aborts before any Chat,
 // Participant, Message, Variant, Roster, Author Stamp, or artifact metadata
-// row exists. The adapter resolves source authors into native Participants,
-// stamps every Message, and assigns deterministic Control; zero- and
-// one-Participant sources commit as incomplete Conversations whose
-// playability derives once the missing seat is filled.
-
+// row exists. The adapter decodes and the shared Import Projection maps the
+// decoded source onto native Participants under the Default Import Policy
+// (trimmed author grouping, empty imported Definitions), stamps every
+// Message, and derives deterministic Control; zero- and one-Participant
+// sources commit as incomplete Conversations whose playability derives once
+// the missing seat is filled.
 import { readFileSync } from "node:fs";
 import { basename, parse } from "node:path";
 import type { Database } from "bun:sqlite";
@@ -29,12 +30,14 @@ import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
+	decodeSillyTavernImportSource,
 	decodeSillyTavernSourceBytes,
-	importReportEntries,
-	parseSillyTavernChatJsonl,
 	type SillyTavernImportReport,
-	type SillyTavernImportSource,
 } from "./adapter";
+import {
+	defaultImportResolution,
+	projectImport,
+} from "./import-projection";
 import { SillyTavernImportError } from "./errors";
 import { findPriorImportsBySource } from "./prior-imports";
 
@@ -60,16 +63,6 @@ const readSourceBytes = (sourcePath: string): Buffer => {
 
 const decodeUtf8 = decodeSillyTavernSourceBytes;
 
-// The developer import path treats every prior match the same: one warning
-// per prior Chat and every id listed as a duplicate. The classification
-// helper feeds this merged view; the staged preview reads the same helper
-// to separate exact duplicates from related sources.
-const findPriorImports = (
-	database: Database,
-	source: SillyTavernImportSource,
-): { id: number; name: string }[] =>
-	findPriorImportsBySource(database, source).map(({ id, name }) => ({ id, name }));
-
 export function importSillyTavernChat(
 	database: Database,
 	sourcePath: string,
@@ -84,14 +77,28 @@ export function importSillyTavernChat(
 	const sha256 = sha256Hex(bytes);
 	const sourceText = decodeUtf8(bytes);
 
-	const parsed = parseSillyTavernChatJsonl(sourceText, { name, filename, sha256 });
-	const priorImports = findPriorImports(database, parsed.report.source);
-	const duplicateChatIds = priorImports.map((chat) => chat.id);
-	for (const prior of priorImports) {
-		parsed.report.warnings.push(
-			`Source was already imported as chat ${prior.id} ("${prior.name}"); this import creates an independent copy.`,
-		);
-	}
+	const decoded = decodeSillyTavernImportSource(sourceText, { name, filename, sha256 });
+	// Classified prior-import evidence feeds the projection's duplicate
+	// warning composition: one warning per prior Chat, exact copies and
+	// related sources alike, with only exact copies gated by the staged
+	// confirmation later on that path.
+	const priorMatches = findPriorImportsBySource(database, decoded.report.source);
+	const duplicates = {
+		exact: priorMatches
+			.filter((match) => match.kind === "exact")
+			.map(({ id, name }) => ({ id, name })),
+		related: priorMatches
+			.filter((match) => match.kind === "related")
+			.map(({ id, name }) => ({ id, name })),
+	};
+	const duplicateChatIds = [...duplicates.exact, ...duplicates.related].map(
+		(match) => match.id,
+	);
+	const projected = projectImport(
+		decoded,
+		defaultImportResolution(decoded),
+		duplicates,
+	);
 
 	// The exact validated bytes are copied into a unique managed relative
 	// path before the database creation operation begins. Failure here
@@ -110,9 +117,11 @@ export function importSillyTavernChat(
 	}
 
 	const conversation = createImportedConversation(database, {
-		...parsed.input,
-		participants: parsed.input.participants ?? [],
-		data: [...(parsed.input.data ?? []), ...importReportEntries(parsed.report)],
+		name,
+		participants: projected.input.participants,
+		control: projected.input.control,
+		messages: projected.input.messages,
+		data: projected.input.data,
 		artifacts: [
 			{
 				namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -139,7 +148,7 @@ export function importSillyTavernChat(
 
 	return {
 		conversation,
-		report: parsed.report,
+		report: projected.report,
 		duplicateChatIds,
 		artifact,
 	};
