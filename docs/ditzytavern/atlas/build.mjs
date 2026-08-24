@@ -9,7 +9,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const outDir = META.outDir ? join(here, META.outDir) : join(here, '..');
 
 // ---------- shared helpers ----------
-const Q = (c) => (typeof c === 'string' ? { q: c } : c);
 const md = (s) =>
   String(s)
     .replace(/<code>(.*?)<\/code>/g, '`$1`')
@@ -23,9 +22,14 @@ const md = (s) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .trim();
-const groupTitle = Object.fromEntries(GROUPS.map((g) => [g.id, g.title]));
 const cnt = { open: 0, res: 0 };
-NODES.forEach((n) => (n.cond || []).map(Q).forEach((c) => (c.r || c.to ? cnt.res++ : cnt.open++)));
+for (const n of NODES) {
+  // Parse each condition at the data boundary: a bare string is shorthand for
+  // { q: <string> }, so downstream sees one canonical { q, r?, to? } shape and
+  // never branches on a runtime representation.
+  n.cond = (n.cond || []).map((c) => (c.q === undefined ? { q: c } : c));
+  n.cond.forEach((c) => (c.r || c.to ? cnt.res++ : cnt.open++));
+}
 
 // ---------- SYSTEM.md ----------
 function buildSystemMd() {
@@ -57,7 +61,7 @@ function buildSystemMd() {
         n.steps.forEach((s, i) => out.push(`${i + 1}. **${s[0]}** — ${s[1]}`));
         out.push('');
       }
-      const cs = (n.cond || []).map(Q);
+      const cs = n.cond || [];
       if (cs.length) {
         out.push('**Questions.**', '');
         cs.forEach((c, i) => {
