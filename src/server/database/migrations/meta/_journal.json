@@ -29,6 +29,41 @@
       "when": 1787298660993,
       "tag": "0003_strange_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787454164904,
+      "tag": "0004_stormy_moonstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787457909252,
+      "tag": "0005_puzzling_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787457925628,
+      "tag": "0006_legal_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787467181041,
+      "tag": "0007_legal_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787502493500,
+      "tag": "0008_naive_daredevil",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,174 @@
+/* ── Cast drawer ─────────────────────────────────────────────────────── */
+
+/* The drawer's member rows use a two-column layout: identity copy on the
+   left, Control badge and actions on the right. */
+.cast-member {
+	grid-template-columns: 1fr;
+	align-items: start;
+	gap: 0.65rem;
+}
+
+.cast-member-copy {
+	display: grid;
+	gap: 0.15rem;
+	align-content: start;
+}
+
+.cast-member-right {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.control-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.18rem 0.5rem;
+	border-radius: 999px;
+	font-size: 0.66rem;
+	font-weight: 680;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.control-badge[data-seat="human"] {
+	background: color-mix(in oklch, var(--accent) 16%, var(--surface-muted));
+	color: var(--foreground);
+	border: 1px solid color-mix(in oklch, var(--accent) 34%, transparent);
+}
+
+.control-badge[data-seat="model"] {
+	background: color-mix(in oklch, var(--focus) 14%, var(--surface-muted));
+	color: var(--foreground);
+	border: 1px solid color-mix(in oklch, var(--focus) 30%, transparent);
+}
+
+.cast-edit-button {
+	min-height: 2.1rem;
+	padding: 0 0.7rem;
+}
+
+.add-participant {
+	display: grid;
+	gap: 0.75rem;
+	padding: 0.8rem;
+	margin: 0.6rem 0 1rem;
+	border: 1px solid var(--border);
+	border-radius: 1rem;
+	background: var(--surface-muted);
+}
+
+.character-picker-list {
+	display: grid;
+	gap: 0.45rem;
+}
+
+.character-picker-list > li {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: center;
+	gap: 0.7rem;
+	padding: 0.6rem;
+	border-radius: 0.85rem;
+	background: var(--surface-raised);
+}
+
+.character-picker-copy {
+	display: grid;
+	gap: 0.12rem;
+	min-width: 0;
+}
+
+.character-picker-copy strong {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.84rem;
+	font-weight: 650;
+}
+
+.character-picker-copy .pinned-mark {
+	width: 0.8rem;
+	height: 0.8rem;
+	color: var(--accent);
+}
+
+.prompt-preview {
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.character-picker-copy small {
+	color: var(--text-muted);
+	font-size: 0.66rem;
+}
+
+.participant-editor {
+	display: grid;
+	gap: 0.8rem;
+	padding: 0.75rem 0.75rem 1rem;
+	margin-top: 0.35rem;
+	border: 1px solid var(--border);
+	border-radius: 1rem;
+	background: var(--surface-raised);
+}
+
+/* ── Composer Control selectors ─────────────────────────────────────── */
+
+.composer-controls-row {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem 1rem;
+	padding-bottom: 0.3rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.composer-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem 1rem;
+}
+
+.control-select {
+	display: grid;
+	gap: 0.15rem;
+}
+
+.control-select label {
+	color: var(--text-muted);
+	font-size: 0.64rem;
+	font-weight: 650;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.control-select select {
+	min-width: 9rem;
+	max-width: 13rem;
+	padding: 0.35rem 1.6rem 0.35rem 0.6rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 0.6rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-size: 0.78rem;
+}
+
+.composer-control-note {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.4;
+}
+
+.composer-control-note.is-error {
+	color: var(--accent);
+}
+

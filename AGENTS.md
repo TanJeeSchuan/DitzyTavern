@@ -1,5 +1,12 @@
 # AGENTS.md
 
+There is `playwright-cli` installed
+
+For UI work, remember to refer to DESIGN.MD
+
+## Ticket implementation
+- Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
+
 ## Database persistance
 - Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
 

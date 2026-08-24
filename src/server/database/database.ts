@@ -36,17 +36,30 @@ export function openDatabase(options: OpenDatabaseOptions = {}): Database {
 	}
 }
 
+// Runs a query against the default connection when no database is injected,
+// closing only the connection this call opened. An async query keeps its
+// connection open until the returned promise settles, so staged uploads can
+// stream and preview against the same migration-backed connection; an
+// injected database is never closed here.
 export function withDatabase<T>(
 	database: Database | undefined,
 	query: (connection: Database) => T,
 ): T {
 	const connection = database ?? openDatabase();
-
+	let result: T;
 	try {
-		return query(connection);
-	} finally {
-		if (!database) {
-			connection.close();
-		}
+		result = query(connection);
+	} catch (error) {
+		if (!database) connection.close();
+		throw error;
 	}
+	if (!database && result instanceof Promise) {
+		// SAFETY: the promise settles with the exact type the query declared;
+		// the finally hook only defers the connection close until settlement.
+		return result.finally(() => connection.close()) as T;
+	}
+	if (!database) {
+		connection.close();
+	}
+	return result;
 }

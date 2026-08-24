@@ -1,13 +1,25 @@
 import { Elysia, t } from "elysia";
-import { getCharacter } from "../server/database/character";
+import { defaultArtifactDirectory } from "../server/artifact";
 import { getWorkspace } from "../server/database/workspace";
+import { createCharacterLibraryRoutes } from "./contract/character-library";
+import {
+	createConversationRoutes,
+} from "./contract/conversation";
+import { createNativeConversationRoutes } from "./contract/native-conversation";
+import { createChatImportRoutes } from "./contract/chat-import";
+
+export { createCharacterLibraryRoutes } from "./contract/character-library";
+export {
+	createConversationRoutes,
+} from "./contract/conversation";
+export { createNativeConversationRoutes } from "./contract/native-conversation";
+export { createChatImportRoutes } from "./contract/chat-import";
 
 const chatSummary = t.Object({
 	id: t.Integer(),
 	name: t.String(),
 	creationTime: t.String(),
 	lastMessageTime: t.String(),
-	characterIds: t.Array(t.Integer()),
 });
 
 const characterSummary = t.Object({
@@ -26,27 +38,9 @@ export const contract = new Elysia()
 			characters: t.Array(characterSummary),
 		}),
 	})
-	.get(
-		"/api/characters/:id",
-		async ({ params, status }) => {
-			const character = await getCharacter(params.id);
-
-			if (!character) {
-				return status(404, "Character not found");
-			}
-
-			return character;
-		},
-		{
-			params: t.Object({ id: t.Numeric() }),
-			response: {
-				200: t.Object({
-					id: t.Integer(),
-					name: t.String(),
-				}),
-				404: t.String(),
-			},
-		},
-	);
+	.use(createCharacterLibraryRoutes(undefined))
+	.use(createNativeConversationRoutes(undefined))
+	.use(createConversationRoutes(undefined))
+	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()));
 
 export type Contract = typeof contract;

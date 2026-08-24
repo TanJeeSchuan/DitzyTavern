@@ -6,13 +6,15 @@ This document is the visual and interaction design source of truth for the first
 
 The initial scope excludes group-chat orchestration, a dedicated co-writer response role, automatic identification of individual speakers inside generated prose, and logo design.
 
+Amendments to the initial direction (replacing earlier single-identity composer guidance): the composer exposes **two editable Cast-only Control selectors** — `Writing as <human>` and `Responding as <model>` — reflecting the current human and model Control assignments. Selecting the opposite seat's occupant is described as an atomic swap. Portraits (character artwork) are **deferred**: identity is rendered with names, initials, and badges only in this scope. Active/inactive Cast membership and group-chat turn-taking remain out of scope; the Cast is an ordered roster of active Participants with append-only positioning.
+
 ## Project and page intent
 
-DitzyTavern is a cooperative AI writing and roleplay workspace. Its primary use is not full in-character roleplay. The user usually acts as the Writer, giving guidance that the model incorporates into story prose featuring the active cast.
+DitzyTavern is a cooperative AI writing and roleplay workspace. Its primary use is not full in-character roleplay. The user usually plays the human-controlled Participant, often a persona named Writer, giving guidance that the model incorporates into story prose featuring the active cast.
 
 The active Chat is the primary surface. The interface should help the user read an evolving story, guide the next generated Message, inspect how a Message was produced, edit it, and move between alternative Swipes without turning the experience into either a plain document editor or a dense control console.
 
-Full roleplay remains possible by changing the composer identity from Writer to a character. This secondary use must remain clear and accessible without defining the default visual grammar.
+Full roleplay remains possible by choosing a character for the human Control seat instead of the default guidance persona. This secondary use must remain clear and accessible without defining the default visual grammar.
 
 ## Audience
 
@@ -65,7 +67,7 @@ Warmth must not become cute, rustic, faux-medieval, or whimsical.
 ## Visual principles
 
 1. **The story is the primary artifact.** Prose receives the clearest reading surface and the least decorative chrome.
-2. **Writer guidance is visible causality.** Writer Messages remain readable in the timeline and are visually distinct from generated prose.
+2. **Human guidance is visible causality.** Human-authored guidance Messages remain readable in the timeline and are visually distinct from generated prose.
 3. **Power follows a hierarchy.** Common actions remain visible. Advanced controls appear through hover, keyboard focus, touch selection, or an explicit details action.
 4. **Identity is contextual.** Character artwork and authorship become prominent where they help the user understand who is involved or what produced a Message.
 5. **Atmosphere surrounds the work.** Ambient color belongs to the outer application shell, never beneath prose or controls.
@@ -75,11 +77,11 @@ Warmth must not become cute, rustic, faux-medieval, or whimsical.
 ## Product vocabulary
 
 - **Chat:** the conversation and story container.
-- **Message:** any stored Writer or generated turn.
-- **Writer Message:** the user's guidance for what should happen next.
+- **Message:** any stored turn in a Chat, authored by a Cast Participant.
+- **Guidance Message:** the human-controlled Participant's direction for what should happen next.
 - **Prompt:** the assembled technical model input available through inspection.
 - **Swipe:** an alternative version of a generated Message.
-- **Writer:** the default user identity in the composer.
+- **Writer:** an ordinary possible name for the human-controlled Participant; it carries no special domain behavior.
 
 Interface copy should be plain and precise. Avoid literary euphemisms, faux-tavern terminology, and playful substitutes for standard actions.
 
@@ -88,7 +90,7 @@ Interface copy should be plain and precise. Avoid literary euphemisms, faux-tave
 Use a deliberate two-voice sans-serif hierarchy:
 
 - Application controls, navigation, metadata, and technical details use a crisp, compact sans with high small-size clarity.
-- Story prose and Writer Messages use a softly rounded humanist sans that feels companionable during long reading sessions.
+- Story prose and human guidance Messages use a softly rounded humanist sans that feels companionable during long reading sessions.
 
 The prose face must be restrained rather than bubbly. It should not resemble children's software or casual social messaging. The distinction between the two voices should be clear but harmonious.
 
@@ -111,7 +113,7 @@ Character-derived color is allowed only in the decorative ambient field. It must
 
 The ambient field responds to the current composer identity:
 
-- Writer uses the neutral brand ambience with a restrained coral influence.
+- A Participant named Writer uses the neutral brand ambience with a restrained coral influence.
 - A selected character may gently influence the ambient field using colors derived from that character's artwork.
 - Identity changes should produce a soft transition, not an abrupt recoloring of the application.
 
@@ -203,14 +205,14 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### New Chat empty state
 
 - Begin with a quiet row of active-cast squircle portraits and names.
-- Establish the social context before requesting the first Writer Message.
+- Establish the social context before requesting the first guidance Message.
 - Keep setup language short and functional.
 - Avoid generic starter-prompt cards in the initial direction.
 
-### Writer Messages
+### Human guidance Messages
 
 - Remain fully visible as compact, softly tinted instruction blocks.
-- Use the Writer label and the rounded reading face.
+- Use the captured Participant name and the rounded reading face.
 - Stay visually subordinate to generated prose without becoming low-contrast.
 - Current scope uses readable inline blocks.
 - Margin annotations and a separate direction-history panel remain future explorations.
@@ -234,11 +236,13 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 ### Floating composer
 
-- Use one identity-led control at the start of the composer.
-- The default identity is Writer.
-- Character profiles appear in the same identity control rather than in a separate mode toggle.
-- Writer identity frames the submission as guidance for the next generated Message.
-- Character identity frames the submission as in-character writing.
+- Use two editable, Cast-only Control selectors at the start of the composer: **Writing as** (the human seat) and **Responding as** (the model seat), each reflecting the current assignment.
+- Selecting the opposite seat's occupant is visibly described as a swap and performs one atomic exchange of the two assignments, so a two-Participant Cast can never become locked.
+- Selecting an unseated Participant replaces only the chosen seat; the displaced Participant stays in the Cast and becomes removable.
+- Neither seat can be cleared; the selectors offer only Cast Participants, named with computed duplicate labels.
+- Incomplete imported Chats are the narrow exception to always-seated Control: an import that resolved fewer than two Participants keeps its history visible while a persistent setup panel names the empty seat(s) and withholds play actions. Adding the missing Participant fills only the empty seat and derives playability automatically; there is no separate imported mode.
+- A guidance persona (often named Writer) simply means the human seat holds an ordinary Participant; it carries no special behavior.
+- Character identity frames the submission as in-character writing, chosen through the same two seat selectors rather than a separate mode toggle.
 - The composer floats above the lower edge of the central story surface as an opaque tonal layer.
 - It recedes while the user reads older Messages and returns when writing intent resumes.
 - It must not obscure the latest Message or create unstable content jumps.
@@ -281,7 +285,7 @@ Do not use Sticky-Stack Sections, Horizontal Scroll Hijack, kinetic marquees, pa
 - Reserve desktop utility bays so opening panels does not reflow the Chat.
 - Replace side-by-side tools with full-screen nested layers when the viewport cannot support the complete frame.
 - Convert the left rail to a top rail on narrow desktop and mobile.
-- Keep Writer identity, Message submission, Swipe navigation, Edit, and author details fully operable on touch.
+- Keep identity selection, Message submission, Swipe navigation, Edit, and author details fully operable on touch.
 - Do not rely on hover for information or actions. Every hover state needs focus and touch equivalents.
 - Preserve scroll position when opening and closing panels or changing Swipes.
 - Keep targets comfortably usable by touch without turning all controls into oversized pills.
@@ -321,7 +325,7 @@ This design must not become:
 - A layout with circular social-chat avatars.
 - A theme where character-responsive ambience recolors semantic UI.
 - A motion-heavy experience with ambient loops, scroll tricks, or typewriter theater.
-- An interface that uses Prompt ambiguously for both a Writer Message and assembled model input.
+- An interface that uses Prompt ambiguously for both a guidance Message and assembled model input.
 
 Visible copy must not use em dashes, decorative section numbering, version stamps, poetic micro-labels, decorative status dots, or unnecessary tavern vocabulary.
 
@@ -330,7 +334,7 @@ Visible copy must not use em dashes, decorative section numbering, version stamp
 These items are intentionally nonblocking for the first design pass:
 
 1. **Logo and brand mark:** the slim rail needs a compact identity treatment, but the logo form is deferred.
-2. **Writer Message alternatives:** margin directions and a separate direction-history surface may be explored after the inline block pattern is validated.
+2. **Guidance Message alternatives:** margin directions and a separate direction-history surface may be explored after the inline block pattern is validated.
 3. **Group chat:** multi-character response orchestration and criteria for deciding who responds are deferred and should not affect the initial layout.
 4. **Dedicated co-writer actor:** a model role that responds explicitly as a co-writer is work in progress and outside this design scope.
 5. **Character-level prose attribution:** automatic markers inside generated prose would require structured generation metadata or a second interpretation pass and are out of scope.
@@ -340,7 +344,7 @@ These items are intentionally nonblocking for the first design pass:
 - Treat this document as the authority for visual hierarchy and behavior. Do not replace the open-prose story surface with conventional bubbles for implementation convenience.
 - Preserve the established domain vocabulary exactly unless a later product decision updates it.
 - Prototype the fixed central story width together with both desktop utility bays before refining individual controls.
-- Validate the composer identity control with Writer and character selections before designing secondary composer actions.
+- Validate the composer identity control with the human seat's persona and character selections before designing secondary composer actions.
 - Test long generated Messages, multiple Swipes, streaming, editing, errors, and provenance disclosure. A short successful Message is not a sufficient design test.
 - Validate all idle, hover, focus, touch-selected, open, loading, streaming, and error states.
 - Test daylight and evening themes with multiple character artworks. Character-derived ambience must remain restrained and must not contaminate semantic colors.

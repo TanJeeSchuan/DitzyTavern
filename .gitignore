@@ -5,3 +5,10 @@ data
 .dsh-thread-statuses.json
 .scratch/
 test_data/
+
+# Local tooling config (pi-subagents agents, opencode config)
+.opencode/
+.pi/
+
+# Playwright CLI scratch artifacts
+.playwright-cli/

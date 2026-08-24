@@ -1,0 +1,283 @@
+import { CheckCircle2, Download, FileArchive, Info, TriangleAlert } from "lucide-react";
+import { useEffect, useReducer, useState } from "react";
+import {
+	artifactAvailabilityLabel,
+	createChatInformationState,
+	reduceChatInformation,
+	sourceDownloadAvailable,
+	type ChatInformationState,
+} from "./chat-info";
+import {
+	chatHistoryTransport,
+	downloadImportedSourceInBrowser,
+	type ChatSourceDownloadOutcome,
+} from "./chat-history";
+import { PanelHeader } from "./PanelHeader";
+
+// Chat information: the ordinary Chat-level detail surface, opened from the
+// story header. Import Details appears inside it only when the Chat carries
+// import provenance; there is no persistent Imported badge, header marker,
+// or separate category. Heavy provenance loads only through this deliberate
+// open; exact bytes load only when the user downloads them.
+//
+// The panel inherits the secondary right-side panel treatment (full-screen
+// nested layer on narrow widths), matching the DESIGN.md panel hierarchy.
+
+interface ChatInformationPanelProps {
+	conversationId: number;
+	chatTitle: string;
+	onClose: () => void;
+}
+
+const formatSize = (byteLength: number | null): string => {
+	if (byteLength === null) return "n/a";
+	if (byteLength < 1024) return `${byteLength} B`;
+	const kilobytes = byteLength / 1024;
+	if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
+	return `${(kilobytes / 1024).toFixed(1)} MB`;
+};
+
+export function ChatInformationPanel({
+	conversationId,
+	chatTitle,
+	onClose,
+}: ChatInformationPanelProps) {
+	const [state, dispatch] = useReducer(
+		reduceChatInformation,
+		undefined,
+		createChatInformationState,
+	);
+	const [downloadOutcome, setDownloadOutcome] = useState<
+		{ status: "idle" } | { status: "downloading" } | ChatSourceDownloadOutcome
+	>({ status: "idle" });
+
+	useEffect(() => {
+		let cancelled = false;
+		dispatch({ type: "chat-opened" });
+		void chatHistoryTransport
+			.loadImportDetails(conversationId)
+			.then((outcome) => {
+				if (cancelled) return;
+				if (outcome.status === "available") {
+					dispatch({ type: "details-loaded", details: outcome.details });
+					return;
+				}
+				if (outcome.status === "not-found") {
+					dispatch({ type: "no-import-details" });
+					return;
+				}
+				dispatch({ type: "details-failed" });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [conversationId]);
+
+	const runDownload = async () => {
+		const download = sourceDownloadAvailable(state);
+		if (!download.available) return;
+		setDownloadOutcome({ status: "downloading" });
+		const outcome = await chatHistoryTransport.downloadExactSource(conversationId);
+		if (outcome.status === "available") {
+			downloadImportedSourceInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
+		}
+		setDownloadOutcome(outcome);
+	};
+
+	const availability = artifactAvailabilityLabel(state);
+	const download = sourceDownloadAvailable(state);
+
+	return (
+		<aside className="details-panel" data-open="true">
+			<PanelHeader title="Chat information" onClose={onClose} />
+			<div className="panel-body chat-info-body">
+				<dl className="detail-list">
+					<div>
+						<dt>Chat</dt>
+						<dd>{chatTitle}</dd>
+					</div>
+					<div>
+						<dt>Chat ID</dt>
+						<dd>{conversationId}</dd>
+					</div>
+				</dl>
+
+				{state.status === "loading" && (
+					<p className="panel-note" role="status">
+						Loading Chat information…
+					</p>
+				)}
+
+				{state.status === "no-import-details" && (
+					<>
+						<p className="panel-note">
+							This Chat was created here; no import provenance is
+							attached to it.
+						</p>
+					</>
+				)}
+
+				{state.status === "error" && (
+					<p className="import-problem" role="alert">
+						Chat information could not be loaded. Try again by reopening
+						this panel.
+					</p>
+				)}
+
+				{state.status === "available" && (
+					<ImportDetailsSection
+						state={state}
+						availability={availability}
+						download={download}
+						downloadOutcome={downloadOutcome}
+						onDownload={() => void runDownload()}
+					/>
+				)}
+			</div>
+		</aside>
+	);
+}
+
+function ImportDetailsSection({
+	state,
+	availability,
+	download,
+	downloadOutcome,
+	onDownload,
+}: {
+	state: Extract<ChatInformationState, { status: "available" }>;
+	availability: ReturnType<typeof artifactAvailabilityLabel>;
+	download: ReturnType<typeof sourceDownloadAvailable>;
+	downloadOutcome: { status: "idle" } | { status: "downloading" } | ChatSourceDownloadOutcome;
+	onDownload: () => void;
+}) {
+	const { details } = state;
+	const duplicates = [...details.duplicates.exact, ...details.duplicates.related];
+
+	return (
+		<section className="import-details-section">
+			<header className="import-details-heading">
+				<FileArchive aria-hidden="true" />
+				<h3>Import Details</h3>
+			</header>
+
+			<dl className="detail-list import-meta-list">
+				<div>
+					<dt>Original filename</dt>
+					<dd>{details.receipt.originalFilename}</dd>
+				</div>
+				<div>
+					<dt>SHA-256</dt>
+					<dd className="import-sha">{details.receipt.sha256}</dd>
+				</div>
+				<div>
+					<dt>Size</dt>
+					<dd>{formatSize(details.receipt.byteLength)}</dd>
+				</div>
+				{details.receipt.integrity !== null && (
+					<div>
+						<dt>Declared integrity</dt>
+						<dd className="import-sha">{details.receipt.integrity}</dd>
+					</div>
+				)}
+				<div>
+					<dt>Messages</dt>
+					<dd>{details.receipt.counts.messages}</dd>
+				</div>
+				<div>
+					<dt>Variants</dt>
+					<dd>{details.receipt.counts.variants}</dd>
+				</div>
+				<div>
+					<dt>Importer version</dt>
+					<dd>{details.receipt.importerVersion}</dd>
+				</div>
+			</dl>
+
+			{duplicates.length > 0 && (
+				<div className="import-details-duplicates">
+					<TriangleAlert aria-hidden="true" />
+					<span>
+						{details.duplicates.exact.length > 0
+							? `This exact source was also imported as ${details.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.`
+							: ""}
+						{details.duplicates.exact.length > 0 && details.duplicates.related.length > 0 ? " " : ""}
+						{details.duplicates.related.length > 0
+							? `A related source with the same declared integrity was imported as ${details.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.`
+							: ""}
+						{" "}This import is an independent copy.
+					</span>
+				</div>
+			)}
+
+			{details.receipt.warnings.length > 0 && (
+				<div className="import-warnings">
+					<h3>Warnings</h3>
+					<ul>
+						{details.receipt.warnings.map((warning) => (
+							<li key={warning}>{warning}</li>
+						))}
+					</ul>
+				</div>
+			)}
+
+			<div className="import-details-artifact">
+				<h3>Preserved source</h3>
+				{availability !== null && availability.status === "available" && (
+					<div className="import-details-available">
+						<CheckCircle2 aria-hidden="true" />
+						<span>The exact source bytes are preserved and verified.</span>
+					</div>
+				)}
+				{availability !== null && availability.status === "cleaned-up" && (
+					<div className="import-details-cleaned" role="alert">
+						<TriangleAlert aria-hidden="true" />
+						<span>
+							The preserved source artifact has been cleaned up or is
+							unavailable
+							{availability.reason === "missing"
+								? " (missing)"
+								: " (verification failed)"}
+							. This Chat keeps reading and editing normally; only the
+							exact download is disabled.
+						</span>
+					</div>
+				)}
+				<button
+					className="secondary-button"
+					type="button"
+					disabled={
+						!download.available ||
+						downloadOutcome.status === "downloading"
+					}
+					onClick={onDownload}
+				>
+					<Download aria-hidden="true" />
+					{downloadOutcome.status === "downloading"
+						? "Preparing download…"
+						: "Download preserved source"}
+				</button>
+				{downloadOutcome.status === "cleaned-up" && (
+					<p className="import-problem" role="alert">
+						The preserved source artifact was cleaned up
+						{downloadOutcome.reason === "missing"
+							? "."
+							: " and could not be verified."}
+					</p>
+				)}
+				{downloadOutcome.status === "network" && (
+					<p className="import-problem" role="alert">
+						The download could not be prepared. Check the connection and
+						try again.
+					</p>
+				)}
+			</div>
+
+			<p className="panel-note">
+				<Info aria-hidden="true" />
+				Import Details are available here only; no imported badge or
+				category is shown elsewhere in the app.
+			</p>
+		</section>
+	);
+}

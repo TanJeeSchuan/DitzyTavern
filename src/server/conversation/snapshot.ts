@@ -1,19 +1,33 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { duplicateLabel } from "../../shared/cast";
 import {
-	chatCharacterTable,
+	characterTable,
 	chatDataTable,
 	chatTable,
 	messageDataTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
+	participantOpeningTable,
+	participantPromptTable,
+	participantTable,
 } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import { type ConversationDatabase, messageReferencesParticipant, readControlAssignment } from "./internal";
 import type {
+	AuthorStampSnapshot,
+	CapabilityAvailability,
+	CastParticipantSnapshot,
+	ConversationCapabilities,
+	ConversationControlSnapshot,
+	ConversationControlValidity,
 	ConversationDataEntry,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
+	ControlValidityReason,
+	HistoricalControlSnapshot,
+	MessageSwipeEligibility,
+	ParticipantRemovalEligibility,
 } from "./types";
 
 const toDataEntry = (row: { namespace: string; key: string; value: string }) => ({
@@ -21,6 +35,135 @@ const toDataEntry = (row: { namespace: string; key: string; value: string }) => 
 	key: row.key,
 	value: row.value,
 });
+
+// Play-gated capabilities share one derived reason: without two distinct
+// seated Participants none of Compose, Generate, or Swipe may run. The
+// literal is checked against the capability contract by deriveCapabilities.
+const playCapability = (playable: boolean): CapabilityAvailability => ({
+	available: playable,
+	reason: playable ? null : "conversation-not-playable",
+});
+
+export function deriveCapabilities(playable: boolean): ConversationCapabilities {
+	return {
+		compose: playCapability(playable),
+		generate: playCapability(playable),
+		swipe: playCapability(playable),
+	};
+}
+
+// Control validity is the single derived playability rule: both seats set,
+// distinct, and referencing active Cast Participants. Playable and the
+// capability gate both follow from it, so clients never reproduce the rule.
+export function deriveControlValidity(
+	control: { humanParticipantId: number | null; modelParticipantId: number | null },
+	castIds: readonly number[],
+): ConversationControlValidity {
+	let reason: ControlValidityReason | null = null;
+	if (control.humanParticipantId === null || control.modelParticipantId === null) {
+		reason = "missing-seat";
+	} else if (control.humanParticipantId === control.modelParticipantId) {
+		reason = "seats-not-distinct";
+	} else if (
+		!castIds.includes(control.humanParticipantId) ||
+		!castIds.includes(control.modelParticipantId)
+	) {
+		reason = "seat-not-in-cast";
+	}
+	return { valid: reason === null, reason };
+}
+
+// Derives per-Message targeted Swipe eligibility. The eligibility rule is
+// the single derived answer for "can this Message generate a new sibling
+// Variant": the Conversation must be playable, the Message must carry a
+// captured historical Control pair, and both historical Participants must
+// still be active Cast members with usable Definitions. Clients never
+// reproduce the rule per Message.
+export function deriveMessageSwipeEligibility(
+	playable: boolean,
+	historicalContext: HistoricalControlSnapshot | null,
+	castIds: readonly number[],
+): MessageSwipeEligibility {
+	if (!playable) {
+		return { eligible: false, reason: "conversation-not-playable" };
+	}
+	if (historicalContext === null) {
+		return { eligible: false, reason: "missing-historical-context" };
+	}
+	if (
+		!castIds.includes(historicalContext.humanParticipantId) ||
+		!castIds.includes(historicalContext.modelParticipantId)
+	) {
+		return { eligible: false, reason: "historical-participant-unavailable" };
+	}
+	return { eligible: true, reason: null };
+}
+// Derives per-Participant removal eligibility and impact. Seated
+// Participants are protected (a Control seat must change first). For every
+// unseated Participant the deletion mode states whether removal would
+// hard-delete or tombstone, and the affected-generation count states how
+// many Messages currently able to generate a new sibling Variant would lose
+// that ability. Messages are the only retained references, so the same
+// messages array drives both the reference check and the impact count.
+const deriveRemovalEligibility = (
+	cast: readonly Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[],
+	messages: readonly ConversationMessageSnapshot[],
+	control: {
+		humanParticipantId: number | null;
+		modelParticipantId: number | null;
+	},
+): Map<number, ParticipantRemovalEligibility> => {
+	const byParticipant = new Map<number, ParticipantRemovalEligibility>();
+	for (const participant of cast) {
+		const seated =
+			participant.id === control.humanParticipantId ||
+			participant.id === control.modelParticipantId;
+		if (seated) {
+			byParticipant.set(participant.id, {
+				eligible: false,
+				reason: "control-assigned",
+				deletionMode: null,
+				affectedGenerationCount: 0,
+			});
+			continue;
+		}
+
+		let referenced = false;
+		let affectedGenerationCount = 0;
+		for (const message of messages) {
+			const row = {
+				authorParticipantId: message.author?.participantId ?? null,
+				contextHumanParticipantId:
+					message.historicalContext?.humanParticipantId ?? null,
+				contextModelParticipantId:
+					message.historicalContext?.modelParticipantId ?? null,
+			};
+			// Same retained-reference rule the command enforces, so the derived
+			// impact can never drift from the persisted behavior.
+			if (messageReferencesParticipant(row, participant.id)) {
+				referenced = true;
+			}
+			// Author-only references are retained (tombstone required) but never
+			// count as regeneration loss: only Messages whose captured historical
+			// pair includes this Participant and that currently could generate a
+			// new sibling Variant lose that ability when it is removed.
+			const referencesContext =
+				row.contextHumanParticipantId === participant.id ||
+				row.contextModelParticipantId === participant.id;
+			if (referencesContext && message.swipe.eligible) {
+				affectedGenerationCount += 1;
+			}
+		}
+
+		byParticipant.set(participant.id, {
+			eligible: true,
+			reason: null,
+			deletionMode: referenced ? "tombstone" : "hard-delete",
+			affectedGenerationCount,
+		});
+	}
+	return byParticipant;
+};
 
 export function readConversationSnapshot(
 	db: ConversationDatabase,
@@ -32,6 +175,95 @@ export function readConversationSnapshot(
 		.where(eq(chatTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
+
+	// Active Cast members only. Tombstoned Participants keep a minimal base
+	// row solely to satisfy structural Message references; they are never
+	// part of the Cast and carry no position.
+	const castRows = db
+		.select({
+			id: participantTable.id,
+			position: participantTable.position,
+			name: participantTable.name,
+			sourceCharacterId: participantTable.source_character_id,
+			sourceCharacterName: characterTable.name,
+			systemInstruction: participantPromptTable.system_instruction,
+			identity: participantPromptTable.identity,
+			scenario: participantPromptTable.scenario,
+			exampleDialogue: participantPromptTable.example_dialogue,
+			postHistoryInstruction: participantPromptTable.post_history_instruction,
+		})
+		.from(participantTable)
+		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
+		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
+		.where(
+			and(
+				eq(participantTable.chat_id, conversationId),
+				isNull(participantTable.deleted_at),
+			),
+		)
+		.orderBy(asc(participantTable.position))
+		.all();
+	const castIds = castRows.map((participant) => participant.id);
+	const castIdsSet = new Set(castIds);
+
+	const openingRows =
+		castIds.length === 0
+			? []
+			: db
+					.select()
+					.from(participantOpeningTable)
+					.where(inArray(participantOpeningTable.participant_id, castIds))
+					.orderBy(
+						asc(participantOpeningTable.participant_id),
+						asc(participantOpeningTable.position),
+					)
+					.all();
+
+	const openingsByParticipant = new Map<number, string[]>();
+	for (const opening of openingRows) {
+		const openings = openingsByParticipant.get(opening.participant_id) ?? [];
+		openings.push(opening.content);
+		openingsByParticipant.set(opening.participant_id, openings);
+	}
+
+	// Intermediate Cast shape lacks the derived per-Participant fields; they
+	// are attached after Control is read so labels and removal eligibility
+	// derive from the final ordered roster.
+	const cast: Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[] =
+		castRows.map((participant) => ({
+			id: participant.id,
+			position: participant.position,
+			name: participant.name,
+			prompt: {
+				systemInstruction: participant.systemInstruction,
+				identity: participant.identity,
+				scenario: participant.scenario,
+				exampleDialogue: participant.exampleDialogue,
+				postHistoryInstruction: participant.postHistoryInstruction,
+			},
+			openings: openingsByParticipant.get(participant.id) ?? [],
+			sourceCharacterId: participant.sourceCharacterId ?? null,
+			sourceCharacterName: participant.sourceCharacterName ?? null,
+		}));
+
+	const controlState = readControlAssignment(db, conversationId);
+	const control: ConversationControlSnapshot = {
+		humanParticipantId: controlState.humanParticipantId,
+		modelParticipantId: controlState.modelParticipantId,
+	};
+
+	const controlValidity = deriveControlValidity(control, cast.map((p) => p.id));
+	const playable = controlValidity.valid;
+
+	// Duplicate display labels derive from Cast order: the first Participant
+	// sharing a name keeps the plain label, later ones receive ordinals.
+	const nameOccurrences = new Map<string, number>();
+	const labelsById = new Map<number, string>();
+	for (const participant of cast) {
+		const occurrence = (nameOccurrences.get(participant.name) ?? 0) + 1;
+		nameOccurrences.set(participant.name, occurrence);
+		labelsById.set(participant.id, duplicateLabel(participant.name, occurrence));
+	}
 
 	const messageRows = db
 		.select()
@@ -108,13 +340,43 @@ export function readConversationSnapshot(
 		messageDataByMessage.set(row.message_id, entries);
 	}
 
-	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => ({
-		id: message.id,
-		position: message.position,
-		timestamp: message.timestamp,
-		variants: variantsByMessage.get(message.id) ?? [],
-		data: messageDataByMessage.get(message.id) ?? [],
-	}));
+	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
+		const author: AuthorStampSnapshot | null =
+			message.author_participant_id !== null || message.author_name !== null
+				? {
+						participantId: message.author_participant_id,
+						capturedName: message.author_name,
+						// Derived historical display state: the captured name keeps
+						// displaying with a no-longer-in-Cast marker after removal.
+						inCast:
+							message.author_participant_id !== null &&
+							castIdsSet.has(message.author_participant_id),
+					}
+				: null;
+		const historicalContext: HistoricalControlSnapshot | null =
+			message.context_human_participant_id !== null &&
+			message.context_model_participant_id !== null
+				? {
+						humanParticipantId: message.context_human_participant_id,
+						modelParticipantId: message.context_model_participant_id,
+					}
+				: null;
+		return {
+			id: message.id,
+			position: message.position,
+			timestamp: message.timestamp,
+			author,
+			historicalContext,
+			swipe: deriveMessageSwipeEligibility(
+				playable,
+				historicalContext,
+				castIds,
+			),
+			variants: variantsByMessage.get(message.id) ?? [],
+			data: messageDataByMessage.get(message.id) ?? [],
+		};
+	});
+
 	const data = db
 		.select()
 		.from(chatDataTable)
@@ -122,19 +384,30 @@ export function readConversationSnapshot(
 		.orderBy(asc(chatDataTable.namespace), asc(chatDataTable.key))
 		.all()
 		.map(toDataEntry);
-	const characterIds = db
-		.select({ id: chatCharacterTable.character_id })
-		.from(chatCharacterTable)
-		.where(eq(chatCharacterTable.chat_id, conversationId))
-		.orderBy(asc(chatCharacterTable.character_id))
-		.all()
-		.map((row) => row.id);
+
+	// Removal eligibility follows Messages: the deletion mode and
+	// affected-generation count derive from the same references the command
+	// enforces, so clients never reconstruct the rule.
+	const removalByParticipant = deriveRemovalEligibility(cast, messages, control);
 
 	return {
 		id: conversation.id,
 		name: conversation.name,
 		revision: conversation.revision,
-		characterIds,
+		cast: cast.map((participant) => ({
+			...participant,
+			duplicateLabel: labelsById.get(participant.id) ?? participant.name,
+			removal: removalByParticipant.get(participant.id) ?? {
+				eligible: true,
+				reason: null,
+				deletionMode: "hard-delete",
+				affectedGenerationCount: 0,
+			},
+		})),
+		control,
+		controlValidity,
+		playable,
+		capabilities: deriveCapabilities(playable),
 		messages,
 		data,
 	};

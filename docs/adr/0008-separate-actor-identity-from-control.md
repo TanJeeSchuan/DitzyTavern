@@ -1,15 +1,17 @@
 # Separate Participant identity from Control
 
-Character and persona are not separate Conversation roles. Both become Participant: the same Conversation-local identity and prompt model, with human or model Control assigned independently.
+A reusable Character, a Conversation-local Participant, and a Control seat are separate concepts. Any Participant, including one named Writer, may occupy either Control seat; the name or source of a Participant creates no special role.
 
-Version-one Conversations retain a Roster of every Conversation-local Participant used there and assign two distinct Roster Participants to active Control seats: one human and one model. Reassigning either seat retains the displaced Participant, including its edited Participant Prompt, so it can be selected again. This is a crude group-chat foundation without simultaneous multi-model turns or multi-user collaboration.
+Version-one Conversations retain an ordered Cast of active Conversation-local Participants and assign two distinct Cast Participants to Control seats: one human and one model. Reassigning either seat retains the displaced Participant, including its edited Definition, so it can be selected again. This is a foundation for later group-chat behavior without introducing active/inactive membership, simultaneous multi-model turns, or multi-user collaboration.
 
-Both seats are required invariants. Conversation creation atomically adds at least two distinct Participants and assigns both seats; commands may reassign them but may never leave either seat empty or assign the same Participant to both.
+Both seats are required invariants for native Conversation creation and play. Native creation atomically adds at least two distinct Participants and assigns both seats; commands may reassign them but may never clear a seat or assign the same Participant to both.
 
-Stored Messages retain Participant authorship through an Author Stamp rather than provider roles. Provider-role mapping for history is derived from the active Control assignment when a Prompt Plan is compiled rather than stored as Message authorship. Messages authored by the currently model-controlled Participant map to `assistant`; Messages by every other active or inactive Roster Participant map to `user`. Each compiled historical message is textually prefixed with its immutable Author Stamp name so inactive speakers remain distinguishable.
+Imported Chats make one narrow exception: a preservation-oriented import that resolves zero or one source-author group persists as an incomplete Conversation with no Control or a single reserved human seat rather than fabricating identities or failing preservation. Adding the missing Participant fills only the empty seat, preserving any existing assignment, and derives playability automatically; afterwards the Conversation follows the same Control, removal, generation, and Swipe rules as native Conversations.
+
+Stored Messages retain Participant authorship through an Author Stamp rather than provider roles. Selected history enters the provider-neutral Prompt Plan with the immutable captured speaker name; any later provider-role translation is a Model Client concern and cannot reinterpret the stored authorship or current Cast membership.
 
 Changing either active seat is a revisioned Conversation command and is rejected while a Generation is active. The user must let every Generation finish or stop it before changing which Participant they play or which Participant responds.
 
 Swapping Control does not start a Generation. Speaking remains an explicit send or generate action after the assignment changes.
 
-Adding or assigning a Participant mid-chat also does not insert that Participant's configured opening messages. Opening Variants are a Conversation-creation behavior only, so changing configuration never unexpectedly authors history.
+Adding or assigning a Participant mid-chat also does not insert that Participant's configured Openings. Opening Variants are a Conversation-creation behavior only, so changing configuration never unexpectedly authors history.

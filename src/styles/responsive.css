@@ -1,0 +1,601 @@
+@media (min-width: 78.01rem) {
+/* Keep the Chats panel attached to the rail and viewport bottom. The right
+	   panel remains inset so its secondary-surface hierarchy stays intact. */
+	.details-panel {
+		height: calc(100dvh - 1.1rem);
+	}
+
+	.workspace > .primary-panel {
+		height: 100dvh;
+		margin-left: -0.75rem;
+		margin-right: 1.25rem;
+	}
+
+	.workspace > .details-panel {
+		margin-left: 1.25rem;
+	}
+
+	/* New Chat opened from the no-chat surface renders outside the
+	   workspace; keep it docked to the right edge there too. */
+	body > .details-panel {
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		right: 0;
+		width: 18rem;
+	}
+
+	.composer[data-receded="true"] {
+		opacity: 0.24;
+		transform: translateY(72%);
+	}
+
+	.composer[data-receded="true"]:hover,
+	.composer[data-receded="true"]:focus-within {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (max-width: 90rem) and (min-width: 78.01rem) {
+	.workspace {
+		grid-template-columns:
+			4.25rem
+			minmax(15rem, 1fr)
+			minmax(35rem, 45rem)
+			minmax(16rem, 1fr);
+		gap: 0.55rem;
+		padding: 0;
+	}
+
+	.details-panel {
+		height: calc(100dvh - 1.1rem);
+	}
+
+	.story-stage {
+		height: 100dvh;
+	}
+
+	/* Panels nested in the workspace grid return to grid flow here so the
+	   1fr tracks expand them into the utility bays. The 1.25rem column gap
+	   stays visible as the thin ambient sliver between each panel edge and
+	   the story surface. Details panels rendered outside the workspace
+	   (e.g. New Chat on the no-chat surface) keep their fixed placement. */
+	.workspace > .primary-panel,
+	.workspace > .details-panel {
+		position: static;
+		top: auto;
+		bottom: auto;
+		height: auto;
+		border-radius: 1.35rem;
+	}
+
+	.workspace > .primary-panel {
+		width: auto;
+		margin-left: -0.55rem;
+	}
+
+	.workspace > .details-panel {
+		width: auto;
+	}
+}
+
+@media (max-width: 78rem) {
+	.workspace {
+		display: block;
+		min-height: 100dvh;
+		padding: 4.25rem 0 0;
+		overflow: visible;
+	}
+
+	.navigation-rail {
+		position: fixed;
+		inset: 0 0 auto;
+		z-index: 40;
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		width: 100%;
+		height: 4.25rem;
+		padding: 0.6rem 0.8rem;
+		border: 0;
+		border-bottom: 1px solid var(--border);
+		border-radius: 0;
+		background: var(--surface);
+		box-shadow: 0 0.6rem 2rem var(--shadow-soft);
+	}
+
+	.navigation-rail > .rail-button:last-child {
+		margin-top: 0;
+	}
+
+	.brand-mark {
+		width: 2.45rem;
+		height: 2.45rem;
+		border-radius: 0.8rem;
+	}
+
+	.rail-actions {
+		display: flex;
+		width: auto;
+		justify-content: center;
+		gap: 0.35rem;
+		margin-top: 0;
+		padding-top: 0;
+		border-top: 0;
+	}
+
+	.rail-button {
+		width: 2.65rem;
+		height: 2.65rem;
+	}
+
+	.rail-label {
+		display: none;
+	}
+
+	.story-stage {
+		width: 100%;
+		height: calc(100dvh - 4.25rem);
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.primary-panel,
+	.details-panel {
+		position: fixed;
+		inset: 4.25rem 0 0;
+		z-index: 35;
+		width: 100%;
+		height: calc(100dvh - 4.25rem);
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		opacity: 1;
+		transform: translateX(-100%);
+		transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.details-panel {
+		transform: translateX(100%);
+	}
+
+	.primary-panel[data-open="true"],
+	.details-panel[data-open="true"] {
+		transform: translateX(0);
+	}
+
+	.mobile-back {
+		display: inline-grid;
+		width: 2.35rem;
+		height: 2.35rem;
+		place-items: center;
+		border: 0;
+		border-radius: 0.7rem;
+		background: transparent;
+	}
+
+	.mobile-back:hover,
+	.mobile-back:focus-visible {
+		background: var(--surface-muted);
+	}
+
+	.mobile-back svg {
+		width: 1rem;
+		height: 1rem;
+		stroke-width: 1.8;
+	}
+
+	.panel-header {
+		grid-template-columns: auto 1fr auto;
+		justify-content: initial;
+		gap: 0.65rem;
+	}
+
+	.desktop-close {
+		visibility: hidden;
+	}
+
+	.panel-body {
+		width: min(100%, 42rem);
+		margin: 0 auto;
+		padding: 1.25rem;
+	}
+
+	.chat-list-item:disabled,
+	.cast-member button:disabled,
+	.cast-panel-body > .secondary-button:disabled {
+		opacity: 0.68;
+	}
+}
+
+@media (max-width: 40rem) {
+	.navigation-rail {
+		grid-template-columns: auto 1fr auto;
+	}
+
+	.rail-actions .rail-button:nth-child(3) {
+		display: none;
+	}
+
+	.story-header {
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		padding: 0 0.75rem 0 1rem;
+	}
+
+	.generation-state {
+		display: none;
+	}
+
+	.cast-control {
+		padding-right: 0.5rem;
+	}
+
+	.cast-control > span:not(.portrait-stack) {
+		display: none;
+	}
+
+	.story-content {
+		padding: 2.2rem 1.15rem 12.5rem;
+	}
+
+	.chapter-opening {
+		gap: 0.7rem;
+		margin-bottom: 2.4rem;
+	}
+
+	.chapter-opening p {
+		font-size: 0.69rem;
+	}
+
+	.writer-message {
+		margin-bottom: 2.3rem;
+	}
+
+	.generated-message {
+		margin-bottom: 3rem;
+	}
+
+	.message-author {
+		display: grid;
+		gap: 0.1rem;
+	}
+
+	.message-meta {
+		opacity: 1;
+		transform: none;
+	}
+
+	.advanced-actions {
+		opacity: 1;
+	}
+
+	.prose {
+		font-size: 1rem;
+		line-height: 1.72;
+	}
+
+	.message-actions {
+		grid-template-columns: 1fr auto;
+	}
+
+	.copy-confirmation {
+		display: none;
+	}
+
+	.composer {
+		left: 0.7rem;
+		right: 0.7rem;
+		bottom: 0.7rem;
+		grid-template-columns: auto 1fr auto;
+		gap: 0.4rem;
+		padding: 0.5rem;
+		border-radius: 1rem;
+	}
+
+	.identity-button {
+		grid-template-columns: auto auto;
+		min-height: 2.75rem;
+		padding: 0.25rem;
+	}
+
+	.identity-button > span:not(.portrait),
+	.identity-button > svg {
+		display: none;
+	}
+
+	.composer > textarea {
+		min-height: 2.75rem;
+		padding-top: 0.65rem;
+		font-size: 0.88rem;
+	}
+
+	.send-button {
+		width: 2.75rem;
+		height: 2.75rem;
+	}
+
+	.identity-menu {
+		left: -0.3rem;
+		width: min(16.5rem, calc(100vw - 1.4rem));
+	}
+
+	.workspace-loading {
+		display: block;
+		padding: 0;
+	}
+
+	.loading-rail {
+		display: none;
+	}
+
+	.loading-stage {
+		width: 100%;
+		height: 100dvh;
+		border: 0;
+		border-radius: 0;
+	}
+}
+
+/* ---- New Chat setup ---- */
+
+.chats-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	justify-content: flex-end;
+	margin-bottom: 0.85rem;
+}
+
+.new-chat-panel {
+	display: grid;
+	align-content: start;
+	gap: 1.1rem;
+}
+
+.conversation-name-field input,
+.seat-field input,
+.seat-field textarea {
+	width: 100%;
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-size: 0.86rem;
+	line-height: 1.5;
+}
+
+.conversation-name-field input,
+.seat-field input {
+	height: 2.5rem;
+	padding: 0 0.75rem;
+}
+
+.seat-field textarea {
+	min-height: 3.4rem;
+	padding: 0.6rem 0.75rem;
+	resize: vertical;
+}
+
+.conversation-name-field input:focus,
+.seat-field input:focus,
+.seat-field textarea:focus {
+	outline: 0;
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}
+
+.seat-field {
+	display: grid;
+	gap: 0.4rem;
+}
+
+.seat-field > span {
+	color: var(--text-muted);
+	font-size: 0.74rem;
+	font-weight: 620;
+	letter-spacing: 0.01em;
+}
+
+.seat-field select {
+	width: 100%;
+	height: 2.5rem;
+	padding: 0 0.65rem;
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-size: 0.86rem;
+}
+
+.seats-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.9rem;
+}
+
+.seat-editor {
+	display: grid;
+	align-content: start;
+	gap: 0.8rem;
+	padding: 0.9rem;
+	border: 1px solid var(--border);
+	border-radius: 1rem;
+	background: var(--surface);
+}
+
+.seat-editor-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.seat-editor-header .seat-role {
+	color: var(--accent-foreground);
+	font-size: 0.72rem;
+	font-weight: 720;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.seat-editor-header strong {
+	font-size: 0.88rem;
+	font-weight: 670;
+	letter-spacing: -0.015em;
+}
+
+.seat-mode {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.35rem;
+	padding: 0.25rem;
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+}
+
+.seat-mode button {
+	height: 2rem;
+	border: 0;
+	border-radius: 0.6rem;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 0.76rem;
+	font-weight: 620;
+	cursor: pointer;
+}
+
+.seat-mode button[data-active="true"] {
+	background: var(--surface-raised);
+	box-shadow: 0 1px 2px var(--shadow-soft);
+	color: var(--foreground);
+}
+
+.seat-mode button:disabled {
+	cursor: not-allowed;
+	opacity: 0.55;
+}
+
+.seat-adhoc {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.seat-details {
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+}
+
+.seat-details summary {
+	padding: 0.6rem 0.75rem;
+	color: var(--text-muted);
+	font-size: 0.76rem;
+	font-weight: 620;
+	cursor: pointer;
+}
+
+.seat-details[open] summary {
+	border-bottom: 1px solid var(--border);
+}
+
+.seat-details .seat-field {
+	padding: 0.75rem;
+}
+
+.new-chat-problem {
+	margin: 0;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid color-mix(in oklch, var(--destructive) 42%, var(--border));
+	border-radius: 0.8rem;
+	background: color-mix(in oklch, var(--destructive) 8%, var(--surface));
+	color: var(--foreground);
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+
+.new-chat-panel .primary-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45rem;
+	width: 100%;
+}
+
+/* ---- Cast placeholder ---- */
+
+.cast-placeholder {
+	display: grid;
+	justify-items: center;
+	gap: 0.6rem;
+	padding: 1.4rem 0.9rem;
+	border: 1px dashed var(--border-strong);
+	border-radius: 0.9rem;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.cast-placeholder svg {
+	width: 1.4rem;
+	height: 1.4rem;
+	stroke-width: 1.6;
+}
+
+.cast-placeholder p {
+	margin: 0;
+	font-size: 0.8rem;
+	line-height: 1.5;
+}
+
+@media (max-width: 44rem) {
+	.seats-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* When the New Chat surface is docked in a narrow desktop bay, collapse
+   the two seat editors to a single column so they stay fully legible
+   inside the panel instead of clipping at the bay width. */
+.details-panel {
+	container-type: inline-size;
+}
+
+@container (max-width: 30rem) {
+	.seats-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		scroll-behavior: auto !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+@keyframes skeleton-breathe {
+	0%,
+	100% {
+		opacity: 0.58;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+@keyframes generation-pulse {
+	0%,
+	100% {
+		opacity: 0.45;
+		transform: scale(0.82);
+	}
+	50% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
