@@ -19,6 +19,7 @@ import {
 	type FormEvent,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useReducer,
 	useRef,
 	useState,
@@ -214,6 +215,11 @@ function ActiveWritingWorkspace({
 	>(null);
 	const storyScrollRef = useRef<HTMLDivElement>(null);
 	const latestRef = useRef<HTMLDivElement>(null);
+	// Scroll anchoring for bottom-pinned reading: tracks the last rendered
+	// Message id and scroll height so a freshly opened Chat lands on its
+	// newest Messages while prepended older pages keep the viewport still.
+	const anchoredLastMessageIdRef = useRef<number | null>(null);
+	const anchoredScrollHeightRef = useRef(0);
 	const isGenerating = false;
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
@@ -285,6 +291,35 @@ function ActiveWritingWorkspace({
 		};
 	}, [activeChatId]);
 
+	// Bottom-pinned reading: a fresh latest window (Chat opened, or the
+	// authoritative reload after an edit) pins the view to its newest
+	// Messages instantly, before paint. Prepending an older page keeps the
+	// last Message id unchanged, so the viewport shifts by exactly the
+	// height the prepended content added instead of jumping.
+	useLayoutEffect(() => {
+		const root = storyScrollRef.current;
+		if (!root) return;
+		const messages = story.messages;
+		if (messages.length === 0) {
+			anchoredLastMessageIdRef.current = null;
+			anchoredScrollHeightRef.current = root.scrollHeight;
+			return;
+		}
+		const lastId = messages[messages.length - 1].id;
+		const prevLastId = anchoredLastMessageIdRef.current;
+		const prevHeight = anchoredScrollHeightRef.current;
+		anchoredLastMessageIdRef.current = lastId;
+		anchoredScrollHeightRef.current = root.scrollHeight;
+
+		if (prevLastId === null || prevLastId !== lastId) {
+			root.scrollTop = root.scrollHeight;
+			return;
+		}
+		if (root.scrollHeight > prevHeight) {
+			root.scrollTop += root.scrollHeight - prevHeight;
+		}
+	}, [story.messages, story.conversationId]);
+
 	// A just-imported Chat is selected as soon as the refreshed workspace
 	// list contains it; the selection effect is idempotent and never fires
 	// for a target that is not yet present.
@@ -311,12 +346,13 @@ function ActiveWritingWorkspace({
 		setPrimaryPanel(null);
 	};
 
-	// Requests the next stable chronological page and appends it to the
-	// accumulated story; the button stays disabled while a load is in flight.
+	// Requests the next older page of history and prepends it to the
+	// accumulated story; the button stays disabled while a load is in
+	// flight. Scroll anchoring keeps the viewport still during prepend.
 	const loadMoreHistory = async () => {
 		const conversationId = story.conversationId;
 		const next = (story.page?.index ?? 0) + 1;
-		if (conversationId === null || story.page?.hasNext !== true) return;
+		if (conversationId === null || story.page?.hasOlder !== true) return;
 		dispatchStory({ type: "load-more-started" });
 		const outcome = await chatHistoryTransport.loadHistory(conversationId, {
 			page: next,
@@ -452,6 +488,20 @@ function ActiveWritingWorkspace({
 
 				<div className="story-scroll" ref={storyScrollRef}>
 					<div className="story-content">
+						{story.page?.hasOlder === true && (
+							<div className="history-load-more">
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={story.status === "loading-more"}
+									onClick={() => void loadMoreHistory()}
+								>
+									{story.status === "loading-more"
+										? "Loading more Messages…"
+										: "Load more Messages"}
+								</button>
+							</div>
+						)}
 						{story.messages.length === 0 && story.status !== "loading-first" && (
 							<EmptyChat />
 						)}
@@ -467,20 +517,6 @@ function ActiveWritingWorkspace({
 							}
 						/>
 						))}
-						{story.page?.hasNext === true && (
-							<div className="history-load-more">
-								<button
-									className="secondary-button"
-									type="button"
-									disabled={story.status === "loading-more"}
-									onClick={() => void loadMoreHistory()}
-								>
-									{story.status === "loading-more"
-										? "Loading more Messages…"
-										: "Load more Messages"}
-								</button>
-							</div>
-						)}
 						{story.status === "loading-first" && (
 							<HistoryLoading />
 						)}

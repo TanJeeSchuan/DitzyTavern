@@ -45,14 +45,15 @@ export interface ChatHistoryPage {
 		pageSize: number;
 		totalMessages: number;
 		totalPages: number;
-		hasPrevious: boolean;
-		hasNext: boolean;
+		hasOlder: boolean;
+		hasNewer: boolean;
 	};
 	messages: ChatHistoryMessage[];
 }
 
 export interface ChatHistoryPageRequest {
-	// 1-based page within the stable position-ordered chronology.
+	// 1-based page within the stable position-ordered chronology, counted
+	// backward from the newest Message (page 1 = latest window).
 	page?: number;
 	pageSize?: number;
 }
@@ -174,8 +175,8 @@ const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
 		!isNumber(page.pageSize) ||
 		!isNumber(page.totalMessages) ||
 		!isNumber(page.totalPages) ||
-		!isBoolean(page.hasPrevious) ||
-		!isBoolean(page.hasNext)
+		!isBoolean(page.hasOlder) ||
+		!isBoolean(page.hasNewer)
 	) {
 		return null;
 	}
@@ -248,8 +249,8 @@ const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
 			pageSize: page.pageSize,
 			totalMessages: page.totalMessages,
 			totalPages: page.totalPages,
-			hasPrevious: page.hasPrevious,
-			hasNext: page.hasNext,
+			hasOlder: page.hasOlder,
+			hasNewer: page.hasNewer,
 		},
 		messages,
 	};

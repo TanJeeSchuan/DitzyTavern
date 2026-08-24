@@ -41,8 +41,8 @@ export interface StoryPaging {
 	pageSize: number;
 	totalMessages: number;
 	totalPages: number;
-	hasPrevious: boolean;
-	hasNext: boolean;
+	hasOlder: boolean;
+	hasNewer: boolean;
 }
 
 export interface StoryState {
@@ -51,7 +51,8 @@ export interface StoryState {
 	// Authoritative Conversation revision as of the last read page; the
 	// revisioned command seam needs it when the full snapshot is not loaded.
 	revision: number | null;
-	// Accumulated stable chronological pages, deduplicated by Message id.
+	// Accumulated stable chronological Messages, deduplicated by Message id.
+	// The first page is the latest window; older pages prepend above it.
 	messages: StoryMessage[];
 	page: StoryPaging | null;
 	status: "idle" | "loading-first" | "loading-more" | "ready" | "error";
@@ -61,12 +62,13 @@ export type StoryAction =
 	// A different Chat is being opened (or the current one re-requested);
 	// the reader resets and loads the first page fresh.
 	| { type: "chat-opened"; conversationId: number }
-	// The first page arrived; it replaces any accumulated messages.
+	// The first page arrives: the latest window of history. It replaces any
+	// accumulated messages.
 	| { type: "first-page"; page: ChatHistoryPage }
-	// A later page arrives; its Messages append to the accumulated sequence
-	// with no overlap.
+	// An older page arrives; its Messages prepend to the accumulated
+	// sequence with no overlap.
 	| { type: "next-page-arrived"; page: ChatHistoryPage }
-	// The view requested the next page; further requests are ignored until
+	// The view requested an older page; further requests are ignored until
 	// it arrives or fails.
 	| { type: "load-more-started" }
 	| { type: "history-failed" }
@@ -106,13 +108,13 @@ const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMess
 	swipes: message.variants.map(toStoryVariant),
 });
 
-const appendUnique = (
+const prependUnique = (
 	existing: readonly StoryMessage[],
 	incoming: readonly StoryMessage[],
 ): StoryMessage[] => {
 	const known = new Set(existing.map((message) => message.id));
 	const fresh = incoming.filter((message) => !known.has(message.id));
-	return [...existing, ...fresh];
+	return [...fresh, ...existing];
 };
 
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
@@ -138,12 +140,12 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			return {
 				...state,
 				revision: action.page.revision,
-				messages: appendUnique(state.messages, action.page.messages.map(toStoryMessage)),
+				messages: prependUnique(state.messages, action.page.messages.map(toStoryMessage)),
 				page: { ...action.page.page },
 				status: "ready",
 			};
 		case "load-more-started":
-			return state.status === "ready" && state.page?.hasNext === true
+			return state.status === "ready" && state.page?.hasOlder === true
 				? { ...state, status: "loading-more" }
 				: state;
 		case "history-failed":

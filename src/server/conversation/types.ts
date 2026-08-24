@@ -228,22 +228,24 @@ export interface ChatHistoryPage {
 	revision: number;
 	// Active Cast identity only (stable id, position, current name).
 	cast: { id: number; position: number; name: string }[];
-	// Stable chronological paging state: pages index the position-ordered
-	// Message sequence, never unstable or derived orderings.
+	// Stable chronological paging state: page 1 is the latest window of the
+	// position-ordered Message sequence; later pages reach further back into
+	// older history, never unstable or derived orderings.
 	page: {
 		// 1-based page number actually served, bounded to the available range.
 		index: number;
 		pageSize: number;
 		totalMessages: number;
 		totalPages: number;
-		hasPrevious: boolean;
-		hasNext: boolean;
+		hasOlder: boolean;
+		hasNewer: boolean;
 	};
 	messages: ChatHistoryMessage[];
 }
 
 export interface ChatHistoryPageRequest {
-	// 1-based page within the stable position-ordered chronology.
+	// 1-based page within the stable position-ordered chronology, counted
+	// backward from the newest Message (page 1 = latest window).
 	page?: number;
 	// Page size; bounded by the module default and maximum.
 	pageSize?: number;

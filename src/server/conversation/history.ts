@@ -11,7 +11,7 @@
 // and ordinary swipe navigation after commit is the existing revisioned
 // Variant-selection command, never a second source representation.
 
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { chatTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import type {
@@ -31,10 +31,13 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
 
-// Reads one page of the stable Message sequence. The requested page is
-// bounded into the available range (a page beyond the end serves the final
-// page), matching how an accumulation client treats repeated reads. A
-// missing Conversation is undefined; there is no partial page.
+// Reads one page of the stable Message sequence, counted backward from the
+// newest Message: page 1 serves the latest window and later pages reach
+// further into older history. Each served page is still chronological. The
+// requested page is bounded into the available range (a page beyond the end
+// serves the final, oldest page), matching how an accumulation client treats
+// repeated reads. A missing Conversation is undefined; there is no partial
+// page.
 export function readChatHistory(
 	db: ConversationDatabase,
 	conversationId: number,
@@ -63,15 +66,18 @@ export function readChatHistory(
 	const offset = (pageIndex - 1) * pageSize;
 
 	// Stable chronology: creation order (position ascending) never reorders
-	// when Variant selection changes or Messages are later edited.
+	// when Variant selection changes or Messages are later edited. Pages are
+	// cut from the tail (newest first) and reversed so every served page is
+	// chronological while page 1 remains the latest window.
 	const messageRows = db
 		.select()
 		.from(messageTable)
 		.where(eq(messageTable.chat_id, conversationId))
-		.orderBy(asc(messageTable.position))
+		.orderBy(desc(messageTable.position))
 		.limit(pageSize)
 		.offset(offset)
-		.all();
+		.all()
+		.reverse();
 	const messageIds = messageRows.map((message) => message.id);
 
 	// Variant order is preserved with the selected state; empty and
@@ -152,8 +158,8 @@ export function readChatHistory(
 			pageSize,
 			totalMessages,
 			totalPages,
-			hasPrevious: pageIndex > 1,
-			hasNext: pageIndex < totalPages,
+			hasOlder: pageIndex < totalPages,
+			hasNewer: pageIndex > 1,
 		},
 		messages,
 	};

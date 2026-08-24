@@ -468,8 +468,8 @@ const chatHistoryPage = t.Object({
 		pageSize: t.Integer(),
 		totalMessages: t.Integer(),
 		totalPages: t.Integer(),
-		hasPrevious: t.Boolean(),
-		hasNext: t.Boolean(),
+		hasOlder: t.Boolean(),
+		hasNewer: t.Boolean(),
 	}),
 	messages: t.Array(chatHistoryMessage),
 });
