@@ -410,8 +410,13 @@ function validateProfile(input: ConnectionProfileDraft): ConnectionProfileDraft 
 	}
 	const requestUrl = validateUrl(input.requestUrl, "request URL", true);
 	const modelsUrl = validateUrl(input.modelsUrl, "Models URL", true);
-	if (!Number.isInteger(input.timeoutMs) || input.timeoutMs <= 0) {
-		throw new InvalidConnectionProfileError("Timeout must be a positive whole number of milliseconds.");
+	if (
+		input.timeoutMs !== null &&
+		(!Number.isInteger(input.timeoutMs) || input.timeoutMs < 0)
+	) {
+		throw new InvalidConnectionProfileError(
+			"Timeout must be zero, null, or a positive whole number of milliseconds.",
+		);
 	}
 	const pinnedModels = normalizePinnedModels(input.pinnedModels);
 	let backendOptions: BackendOptions;

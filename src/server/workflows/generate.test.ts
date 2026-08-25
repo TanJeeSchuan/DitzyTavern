@@ -287,6 +287,122 @@ describe("Current Generate workflow", () => {
 		expect(after?.revision).toBe(snapshot.revision);
 	});
 
+	test("preserves visible partial work as interrupted when a stream fails", async () => {
+		const committed = await generateReply(database, {
+			conversationId,
+			timestamp: "2026-08-20T13:10:00Z",
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "The first half survives." },
+				{ type: "failed", kind: "transport", message: "The provider stream failed safely." },
+			]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.content).toBe("The first half survives.");
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "outcome",
+			value: "interrupted",
+		});
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "error",
+			value: "The provider stream failed safely.",
+		});
+	});
+
+	test("removes a failed zero-output attempt and keeps the prior selection", async () => {
+		const before = createConversationModule(database).getSnapshot(conversationId);
+		if (before === undefined) throw new Error("Snapshot missing.");
+
+		await expect(
+			generateReply(database, {
+				conversationId,
+				modelClient: createFakeModelClient(() => [
+					{ type: "failed", kind: "inactivity", message: "The stream became inactive." },
+				]),
+			}),
+		).rejects.toThrow("The stream became inactive.");
+
+		const after = createConversationModule(database).getSnapshot(conversationId);
+		expect(after?.messages).toEqual(before.messages);
+		expect(after?.revision).toBe(before.revision);
+	});
+
+	test("treats cancellation as targeted and preserves already received output", async () => {
+		const committed = await generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Before cancellation." },
+				{ type: "failed", kind: "cancelled", message: "Generation was cancelled." },
+			]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.content).toBe("Before cancellation.");
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "outcome",
+			value: "interrupted",
+		});
+		expect(variant?.data.some((entry) => entry.key === "error")).toBe(false);
+	});
+
+	test("persists reasoning separately, including reasoning-only output", async () => {
+		const committed = await generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(() => [
+				{ type: "reasoning", text: "Private thought, " },
+				{ type: "reasoning", text: "kept separately." },
+				{ type: "finished", finishReason: "stop" },
+			]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.content).toBe("");
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "reasoning",
+			value: "Private thought, kept separately.",
+		});
+	});
+
+	test("ignores unrecognized reasoning shapes while visible content continues", async () => {
+		const committed = await generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Visible output." },
+				{ type: "finished", finishReason: "stop" },
+			]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.content).toBe("Visible output.");
+		expect(variant?.data.some((entry) => entry.key === "reasoning")).toBe(false);
+	});
+
+	test("records a length-limited terminal outcome without continuing automatically", async () => {
+		const committed = await generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Truncated answer." },
+				{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+			]),
+		});
+
+		const variant = committed.messages.at(-1)?.variants[0];
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "outcome",
+			value: "length-limited",
+		});
+		expect(variant?.data).toContainEqual({
+			namespace: "generation",
+			key: "finish",
+			value: JSON.stringify({ reason: "length", raw: "max_tokens" }),
+		});
+	});
+
 	test("a mid-flight rename does not rewrite the in-flight generation and the next one uses the new state", async () => {
 		let release!: (content: string) => void;
 		const pending = new Promise<string>((resolve) => {

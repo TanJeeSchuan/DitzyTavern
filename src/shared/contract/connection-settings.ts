@@ -50,7 +50,7 @@ const profileDraft = t.Object({
 		t.Literal("max_completion_tokens"),
 		t.Literal("omit"),
 	]),
-	timeoutMs: t.Integer(),
+	timeoutMs: t.Nullable(t.Integer()),
 	pinnedModels: t.Array(t.String()),
 	backendOptions: t.Record(t.String(), backendOptionValue),
 });
@@ -64,7 +64,7 @@ const profile = t.Object({
 	modelBackend: t.String(),
 	adapter: t.String(),
 	outputTokenRepresentation: t.String(),
-	timeoutMs: t.Integer(),
+	timeoutMs: t.Nullable(t.Integer()),
 	pinnedModels: t.Array(t.String()),
 	backendOptions: t.Record(t.String(), t.Unknown()),
 	credentialConfigured: t.Boolean(),

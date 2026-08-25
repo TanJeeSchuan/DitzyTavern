@@ -1,16 +1,24 @@
 // Deep Model Client seam. Provider-neutral generation input and normalized
 // events are public; concrete transports remain private to this module.
 
-export { collectModelClientContent, ModelClientProtocolError } from "./client";
+export {
+	collectModelClientContent,
+	collectModelClientGeneration,
+	ModelClientGenerationError,
+	ModelClientProtocolError,
+} from "./client";
+export type { CollectedModelClientGeneration } from "./client";
 export { createFakeModelClient } from "./fake";
 export type { FakeModelClientReply } from "./fake";
 export type {
 	ModelClient,
 	ModelClientEvent,
 	ModelClientFinishReason,
+	ModelClientFailureKind,
 	ModelClientGenerationInput,
 	ModelClientGenerationSettings,
 	ModelClientConnectionSnapshot,
+	ModelClientUsage,
 } from "./types";
 export {
 	createDeepSeekModelClient,

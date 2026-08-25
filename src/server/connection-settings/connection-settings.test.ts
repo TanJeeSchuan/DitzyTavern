@@ -74,6 +74,16 @@ describe("Connection Settings", () => {
 		});
 	});
 
+	test("allows the stream inactivity timeout to be disabled", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({
+			expectedRevision: 0,
+			profile: { ...deepSeekDraft(), timeoutMs: null },
+		});
+
+		expect(created.profiles[0]?.timeoutMs).toBeNull();
+	});
+
 	test("returns preset drafts by value so profile edits cannot mutate bundled defaults", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const listed = settings.listPresets();

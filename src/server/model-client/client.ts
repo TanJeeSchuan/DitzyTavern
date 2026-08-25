@@ -1,6 +1,9 @@
 import type {
 	ModelClient,
+	ModelClientEvent,
+	ModelClientFailureKind,
 	ModelClientGenerationInput,
+	ModelClientUsage,
 } from "./types";
 
 export class ModelClientProtocolError extends Error {
@@ -8,6 +11,126 @@ export class ModelClientProtocolError extends Error {
 		super(message);
 		this.name = "ModelClientProtocolError";
 	}
+}
+
+export class ModelClientGenerationError extends Error {
+	readonly kind: ModelClientFailureKind;
+	readonly partial: Partial<CollectedModelClientGeneration>;
+
+	constructor(
+		kind: ModelClientFailureKind,
+		message: string,
+		partial: Partial<CollectedModelClientGeneration> = {},
+	) {
+		super(sanitizeGenerationMessage(message));
+		this.name = "ModelClientGenerationError";
+		this.kind = kind;
+		this.partial = partial;
+	}
+}
+
+function sanitizeGenerationMessage(message: string): string {
+	return Array.from(message, (character) => {
+		const code = character.codePointAt(0) ?? 32;
+		return code < 32 || code === 127 ? " " : character;
+	}).join("").slice(0, 16_384);
+}
+
+export interface CollectedModelClientGeneration {
+	readonly content: string;
+	readonly reasoning: string;
+	readonly usage: ModelClientUsage | null;
+	readonly finishReason: "stop" | "length" | "other";
+	readonly rawFinishReason: string | null;
+}
+
+type MutableCollectedModelClientGeneration = {
+	-readonly [Key in keyof CollectedModelClientGeneration]: CollectedModelClientGeneration[Key];
+};
+
+export async function collectModelClientGeneration(
+	client: ModelClient,
+	input: ModelClientGenerationInput,
+): Promise<CollectedModelClientGeneration> {
+	let content = "";
+	let reasoning = "";
+	let usage: ModelClientUsage | null = null;
+	let finished: Extract<ModelClientEvent, { type: "finished" }> | null = null;
+
+	try {
+		for await (const event of client.generate(input)) {
+			if (finished !== null) {
+				throw new ModelClientProtocolError(
+					"A Model Client emitted an event after its finished outcome.",
+				);
+			}
+
+			switch (event.type) {
+				case "content":
+					content += event.text;
+					break;
+				case "reasoning":
+					reasoning += event.text;
+					break;
+				case "usage":
+					usage = event.usage;
+					break;
+				case "keepalive":
+					break;
+				case "finished":
+					finished = event;
+					break;
+				case "failed":
+					throw new ModelClientGenerationError(event.kind, event.message);
+				default:
+					assertNeverModelClientEvent(event);
+			}
+		}
+	} catch (error) {
+		const partial: Partial<MutableCollectedModelClientGeneration> = { content, reasoning, usage };
+		if (finished !== null) {
+			partial.finishReason = finished.finishReason;
+			partial.rawFinishReason = finished.rawFinishReason ?? null;
+		}
+		if (error instanceof ModelClientGenerationError) {
+			throw new ModelClientGenerationError(error.kind, error.message, partial);
+		}
+		if (error instanceof Error && isModelClientFailure(error)) {
+			throw new ModelClientGenerationError(error.kind, error.message, partial);
+		}
+		throw error;
+	}
+
+	if (finished === null) {
+		throw new ModelClientProtocolError(
+			"A Model Client stream ended without a finished outcome.",
+		);
+	}
+
+	return {
+		content,
+		reasoning,
+		usage,
+		finishReason: finished.finishReason,
+		rawFinishReason: finished.rawFinishReason ?? null,
+	};
+}
+
+function isModelClientFailure(
+	error: Error,
+): error is Error & { kind: ModelClientFailureKind } {
+	// SAFETY: Model Client transport errors extend Error and carry one of the
+	// closed failure kinds before this predicate is called.
+	const candidate = error as Error & { kind?: ModelClientFailureKind };
+	const kind = candidate.kind;
+	return (
+		kind !== undefined &&
+		(kind === "cancelled" ||
+			kind === "inactivity" ||
+			kind === "transport" ||
+			kind === "provider" ||
+			kind === "protocol")
+	);
 }
 
 // Collects the ordinary full Message result while keeping the transport
@@ -18,35 +141,7 @@ export async function collectModelClientContent(
 	client: ModelClient,
 	input: ModelClientGenerationInput,
 ): Promise<string> {
-	let content = "";
-	let finished = false;
-
-	for await (const event of client.generate(input)) {
-		if (finished) {
-			throw new ModelClientProtocolError(
-				"A Model Client emitted an event after its finished outcome.",
-			);
-		}
-
-		switch (event.type) {
-			case "content":
-				content += event.text;
-				break;
-			case "finished":
-				finished = true;
-				break;
-			default:
-				assertNeverModelClientEvent(event);
-		}
-	}
-
-	if (!finished) {
-		throw new ModelClientProtocolError(
-			"A Model Client stream ended without a finished outcome.",
-		);
-	}
-
-	return content;
+	return (await collectModelClientGeneration(client, input)).content;
 }
 
 const assertNeverModelClientEvent = (event: never): never => {

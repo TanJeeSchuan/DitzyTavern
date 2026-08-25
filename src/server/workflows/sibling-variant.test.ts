@@ -524,4 +524,29 @@ describe("Historical sibling Variant generation", () => {
 		expect(after?.messages).toEqual(before.messages);
 		expect(after?.revision).toBe(before.revision);
 	});
+
+	test("a sibling transport failure preserves visible partial output as interrupted", async () => {
+		const greeting = conversation.messages[0];
+		if (greeting === undefined) throw new Error("Greeting missing.");
+
+		conversation = await generateSiblingVariant(database, {
+			conversationId: conversation.id,
+			messageId: greeting.id,
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Partial sibling." },
+				{ type: "failed", kind: "transport", message: "Connection dropped." },
+			]),
+		});
+
+		const message = conversation.messages.find((candidate) => candidate.id === greeting.id);
+		expect(message?.variants.map((variant) => variant.content)).toEqual([
+			"The lamp turns above you.",
+			"Partial sibling.",
+		]);
+		expect(message?.variants[1]?.selected).toBe(true);
+		expect(message?.variants[1]?.data).toEqual(expect.arrayContaining([
+			{ namespace: "generation", key: "outcome", value: "interrupted" },
+			{ namespace: "generation", key: "error", value: "Connection dropped." },
+		]));
+	});
 });

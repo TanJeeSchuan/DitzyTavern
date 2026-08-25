@@ -22,8 +22,8 @@ import {
 	deriveMessageSwipeEligibility,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
-	type ConversationSnapshot,
 	type ConversationDataEntry,
+	type ConversationSnapshot,
 } from "../conversation";
 import {
 	compilePrompt,
@@ -32,7 +32,8 @@ import {
 } from "../prompt-compiler";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
-	collectModelClientContent,
+	collectModelClientGeneration,
+	ModelClientGenerationError,
 	type ModelClientConnectionSnapshot,
 	type ModelClientGenerationSettings,
 	type ModelClient,
@@ -71,6 +72,9 @@ export interface GenerateReplyInput {
 	// seam used by domain tests.
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
+	// The signal belongs to this one Generation. A cancelled attempt never
+	// changes the active Profile or another Conversation.
+	signal?: AbortSignal;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -262,24 +266,60 @@ export async function generateReply(
 		input.connectionSettings,
 	);
 
-	const content = await collectModelClientContent(input.modelClient, {
-		promptPlan: plan,
-		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
-		connection: capture.connection,
-	});
+	let result: Awaited<ReturnType<typeof collectModelClientGeneration>>;
+	try {
+		result = await collectModelClientGeneration(input.modelClient, {
+			promptPlan: plan,
+			modelId: capture.settings.modelId,
+			generationSettings: toModelClientGenerationSettings(capture.settings),
+			connection: capture.connection,
+			signal: input.signal,
+		});
+	} catch (error) {
+		if (!(error instanceof ModelClientGenerationError)) throw error;
+		const partial = error.partial;
+		const content = partial.content ?? "";
+		const reasoning = partial.reasoning ?? "";
+		if (content.length === 0 && reasoning.length === 0) throw error;
+		return conversation.commitGeneration({
+			conversationId: input.conversationId,
+			timestamp: input.timestamp ?? new Date().toISOString(),
+			content,
+			authorParticipantId: modelParticipant.id,
+			capturedAuthorName: modelParticipant.name,
+			humanParticipantId: humanParticipant.id,
+			modelParticipantId: modelParticipant.id,
+			provenance: capture.provenance,
+			data: generationOutcomeData({
+				status: "interrupted",
+				reasoning,
+				usage: partial.usage ?? null,
+				finishReason: null,
+				rawFinishReason: null,
+				error: error.kind === "cancelled" ? null : error.message,
+			}),
+		});
+	}
 
 	// Commit with the generation-start captures even if the Conversation
 	// moved on while the transport was working.
 	return conversation.commitGeneration({
 		conversationId: input.conversationId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
-		content,
+		content: result.content,
 		authorParticipantId: modelParticipant.id,
 		capturedAuthorName: modelParticipant.name,
 		humanParticipantId: humanParticipant.id,
 		modelParticipantId: modelParticipant.id,
 		provenance: capture.provenance,
+		data: generationOutcomeData({
+			status: result.finishReason === "length" ? "length-limited" : "complete",
+			reasoning: result.reasoning,
+			usage: result.usage,
+			finishReason: result.finishReason,
+			rawFinishReason: result.rawFinishReason,
+			error: null,
+		}),
 	});
 }
 
@@ -295,6 +335,7 @@ export interface GenerateSiblingVariantInput {
 	modelClient: ModelClient;
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
+	signal?: AbortSignal;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -391,20 +432,113 @@ export async function generateSiblingVariant(
 		input.connectionSettings,
 	);
 
-	const content = await collectModelClientContent(input.modelClient, {
-		promptPlan: plan,
-		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
-		connection: capture.connection,
-	});
+	let result: Awaited<ReturnType<typeof collectModelClientGeneration>>;
+	try {
+		result = await collectModelClientGeneration(input.modelClient, {
+			promptPlan: plan,
+			modelId: capture.settings.modelId,
+			generationSettings: toModelClientGenerationSettings(capture.settings),
+			connection: capture.connection,
+			signal: input.signal,
+		});
+	} catch (error) {
+		if (!(error instanceof ModelClientGenerationError)) throw error;
+		const partial = error.partial;
+		const content = partial.content ?? "";
+		const reasoning = partial.reasoning ?? "";
+		if (content.length === 0 && reasoning.length === 0) throw error;
+		return conversation.commitSiblingVariant({
+			conversationId: input.conversationId,
+			messageId: input.messageId,
+			timestamp: input.timestamp ?? new Date().toISOString(),
+			content,
+			provenance: capture.provenance,
+			data: generationOutcomeData({
+				status: "interrupted",
+				reasoning,
+				usage: partial.usage ?? null,
+				finishReason: null,
+				rawFinishReason: null,
+				error: error.kind === "cancelled" ? null : error.message,
+			}),
+		});
+	}
 
 	return conversation.commitSiblingVariant({
 		conversationId: input.conversationId,
 		messageId: input.messageId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
-		content,
+		content: result.content,
 		provenance: capture.provenance,
+		data: generationOutcomeData({
+			status: result.finishReason === "length" ? "length-limited" : "complete",
+			reasoning: result.reasoning,
+			usage: result.usage,
+			finishReason: result.finishReason,
+			rawFinishReason: result.rawFinishReason,
+			error: null,
+		}),
 	});
+}
+
+type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
+
+function generationOutcomeData(input: {
+	status: GenerationOutcomeStatus;
+	reasoning: string;
+	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+	finishReason: "stop" | "length" | "other" | null;
+	rawFinishReason: string | null;
+	error: string | null;
+}): ConversationDataEntry[] {
+	const data: ConversationDataEntry[] = [];
+	if (input.status !== "complete") {
+		data.push({ namespace: "generation", key: "outcome", value: input.status });
+	}
+	if (input.reasoning.length > 0) {
+		data.push({ namespace: "generation", key: "reasoning", value: input.reasoning });
+	}
+	if (input.usage !== null) {
+		data.push({
+			namespace: "generation",
+			key: "usage",
+			value: JSON.stringify(normalizeUsage(input.usage)),
+		});
+	}
+	if (input.finishReason === "length" || input.rawFinishReason !== null) {
+		data.push({
+			namespace: "generation",
+			key: "finish",
+			value: JSON.stringify({
+				reason: input.finishReason,
+				raw: input.rawFinishReason?.slice(0, 128) ?? null,
+			}),
+		});
+	}
+	if (input.error !== null) {
+		data.push({
+			namespace: "generation",
+			key: "error",
+			value: input.error.slice(0, 16_384),
+		});
+	}
+	return data;
+}
+
+function normalizeUsage(input: {
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+}) {
+	const usage: Record<string, number> = {};
+	addUsage(usage, "inputTokens", input.inputTokens);
+	addUsage(usage, "outputTokens", input.outputTokens);
+	addUsage(usage, "totalTokens", input.totalTokens);
+	return usage;
+}
+
+function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
+	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
 }
 
 interface GenerationCapture {

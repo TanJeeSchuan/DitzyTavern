@@ -27,7 +27,9 @@ export interface ConnectionProfileDraft {
 	readonly modelBackend: ModelBackend;
 	readonly adapter: ConnectionAdapter;
 	readonly outputTokenRepresentation: OutputTokenRepresentation;
-	readonly timeoutMs: number;
+	// Null or zero disables inactivity expiry. A positive value is the maximum
+	// quiet interval, not a total Generation duration.
+	readonly timeoutMs: number | null;
 	readonly pinnedModels: readonly string[];
 	readonly backendOptions: BackendOptions;
 }

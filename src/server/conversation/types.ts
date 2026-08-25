@@ -425,6 +425,7 @@ export interface CommitSiblingVariantInput {
 	timestamp: string;
 	content: string;
 	provenance?: ConversationDataEntry | undefined;
+	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 // The generation workflow captures these values at generation start; the
@@ -440,6 +441,7 @@ export interface CommitGenerationInput {
 	humanParticipantId: number;
 	modelParticipantId: number;
 	provenance?: ConversationDataEntry | undefined;
+	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 export interface ConversationCreationVariant {

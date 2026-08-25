@@ -91,14 +91,18 @@ export function commitConversationGeneration(
 				"The generated Variant could not be persisted.",
 			);
 		}
-		if (input.provenance !== undefined) {
+		const data = [
+			...(input.provenance === undefined ? [] : [input.provenance]),
+			...(input.data ?? []),
+		];
+		if (data.length > 0) {
 			db.insert(messageVariantDataTable)
-				.values({
+				.values(data.map((entry) => ({
 					message_variant_id: variant.id,
-					namespace: input.provenance.namespace,
-					key: input.provenance.key,
-					value: input.provenance.value,
-				})
+					namespace: entry.namespace,
+					key: entry.key,
+					value: entry.value,
+				})))
 				.run();
 		}
 

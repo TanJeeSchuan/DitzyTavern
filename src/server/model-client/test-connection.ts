@@ -86,10 +86,11 @@ export async function testDeepSeekConnection(
 		? input.credential
 		: input.secrets?.credential ?? null;
 	const headers = { ...input.secrets?.headers };
+	const profileTimeoutMs = input.profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS;
 	const timeoutMs = Math.max(
-		1,
-		Math.min(input.profile.timeoutMs, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),
-	);
+			1,
+			Math.min(profileTimeoutMs, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),
+		);
 	const controller = new AbortController();
 	let timedOut = false;
 	const timeout = setTimeout(() => {

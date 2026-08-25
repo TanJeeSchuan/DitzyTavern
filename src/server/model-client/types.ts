@@ -14,6 +14,9 @@ export interface ModelClientGenerationInput {
 	modelId?: string;
 	generationSettings?: ModelClientGenerationSettings;
 	connection?: ModelClientConnectionSnapshot | null;
+	// A caller-owned signal targets only this Generation. The transport must
+	// never reuse it for another request or turn cancellation into retry.
+	signal?: AbortSignal;
 }
 
 export interface ModelClientGenerationSettings {
@@ -37,9 +40,30 @@ export interface ModelClientConnectionSnapshot {
 
 export type ModelClientFinishReason = "stop" | "length" | "other";
 
+export interface ModelClientUsage {
+	readonly inputTokens?: number;
+	readonly outputTokens?: number;
+	readonly totalTokens?: number;
+}
+
+export type ModelClientFailureKind =
+	| "cancelled"
+	| "inactivity"
+	| "transport"
+	| "provider"
+	| "protocol";
+
 export type ModelClientEvent =
 	| { type: "content"; text: string }
-	| { type: "finished"; finishReason: ModelClientFinishReason };
+	| { type: "reasoning"; text: string }
+	| { type: "usage"; usage: ModelClientUsage }
+	| { type: "keepalive" }
+	| {
+			type: "finished";
+			finishReason: ModelClientFinishReason;
+			rawFinishReason?: string;
+	  }
+	| { type: "failed"; kind: ModelClientFailureKind; message: string };
 
 export interface ModelClient {
 	generate(input: ModelClientGenerationInput): AsyncIterable<ModelClientEvent>;

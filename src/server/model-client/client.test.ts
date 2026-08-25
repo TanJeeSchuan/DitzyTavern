@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+	collectModelClientGeneration,
 	collectModelClientContent,
 	createFakeModelClient,
+	ModelClientGenerationError,
 	ModelClientProtocolError,
 } from ".";
 import type { PromptPlan } from "../prompt-compiler";
@@ -40,5 +42,39 @@ describe("Model Client seam", () => {
 		await expect(
 			collectModelClientContent(client, { promptPlan: plan }),
 		).rejects.toThrow(ModelClientProtocolError);
+	});
+
+	test("collects visible content, separate reasoning, usage, and length metadata", async () => {
+		const client = createFakeModelClient(() => [
+			{ type: "reasoning", text: "First think. " },
+			{ type: "content", text: "Visible " },
+			{ type: "usage", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } },
+			{ type: "content", text: "answer." },
+			{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+		]);
+
+		await expect(collectModelClientGeneration(client, { promptPlan: plan })).resolves.toEqual({
+			content: "Visible answer.",
+			reasoning: "First think. ",
+			usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
+			finishReason: "length",
+			rawFinishReason: "max_tokens",
+		});
+	});
+
+	test("turns normalized failed outcomes into typed generation errors", async () => {
+		const client = createFakeModelClient(() => [
+			{ type: "failed", kind: "inactivity", message: "The stream became inactive." },
+		]);
+
+		try {
+			await collectModelClientGeneration(client, { promptPlan: plan });
+			throw new Error("Expected a typed generation error.");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ModelClientGenerationError);
+			if (!(error instanceof ModelClientGenerationError)) return;
+			expect(error.kind).toBe("inactivity");
+			expect(error.message).toBe("The stream became inactive.");
+		}
 	});
 });

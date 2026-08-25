@@ -354,14 +354,17 @@ export const connectionProfileTable = sqliteTable(
 		model_backend: text().notNull(),
 		adapter: text().notNull(),
 		output_token_representation: text().notNull().default("automatic"),
-		timeout_ms: int().notNull().default(120000),
+		timeout_ms: int().default(120000),
 		backend_options_json: text().notNull().default("{}"),
 	},
 	(table) => [
 		uniqueIndex("connection_profile_display_name_ci").on(
 			sql`lower(${table.display_name})`,
 		),
-		check("connection_profile_timeout_positive", sql`${table.timeout_ms} > 0`),
+		check(
+			"connection_profile_timeout_nonnegative",
+			sql`${table.timeout_ms} IS NULL OR ${table.timeout_ms} >= 0`,
+		),
 	],
 );
 

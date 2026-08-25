@@ -23,6 +23,7 @@ import {
 } from "../../server/connection-settings";
 import {
 	createDeepSeekModelClient,
+	ModelClientGenerationError,
 	ModelClientTransportError,
 	type ModelFetch,
 } from "../../server/model-client";
@@ -132,7 +133,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generate",
-			async ({ params, status }) => {
+			async ({ params, status, request }) => {
 				try {
 					return await withDatabase(database, async (connection) => {
 						const conversation = createConversationModule(connection);
@@ -177,6 +178,7 @@ export const createConversationRoutes = (
 								backend: "ai-sdk",
 								adapter: profile.adapter,
 							},
+							signal: request.signal,
 						});
 						return toGenerationPayload(generated);
 					});
@@ -187,6 +189,12 @@ export const createConversationRoutes = (
 					if (error instanceof ConversationNotPlayableError) {
 						return status(409, {
 							outcome: "not-playable" as const,
+							reason: error.message,
+						});
+					}
+					if (error instanceof ModelClientGenerationError) {
+						return status(502, {
+							outcome: "failed" as const,
 							reason: error.message,
 						});
 					}
