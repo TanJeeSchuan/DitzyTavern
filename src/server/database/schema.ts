@@ -407,5 +407,23 @@ export const connectionProfilePinnedModelTable = sqliteTable(
 	],
 );
 
+// Advisory model IDs returned by the explicitly configured Models URL. The
+// cache is separate from Connection Settings revision and is replaced only
+// after a successful refresh. The composite key intentionally remains
+// case-sensitive: provider identifiers preserve their exact spelling, while
+// display sorting is performed by the Connection Settings domain.
+export const connectionProfileDiscoveryModelTable = sqliteTable(
+	"connection_profile_discovery_model",
+	{
+		profile_id: int()
+			.notNull()
+			.references(() => connectionProfileTable.id, { onDelete: "cascade" }),
+		model_id: text().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.profile_id, table.model_id] }),
+	],
+);
+
 // logical tables end here.
 

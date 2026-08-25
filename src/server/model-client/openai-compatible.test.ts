@@ -13,6 +13,7 @@ const profile: ConnectionProfile = {
 	outputTokenRepresentation: "max_completion_tokens",
 	timeoutMs: 120_000,
 	pinnedModels: [],
+	discoveryCatalog: [],
 	backendOptions: {},
 	credentialConfigured: false,
 	headers: [],

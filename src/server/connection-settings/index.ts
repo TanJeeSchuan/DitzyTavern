@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
+	connectionProfileDiscoveryModelTable,
 	connectionProfilePinnedModelTable,
 	connectionProfileTable,
 	connectionSecretTable,
@@ -36,6 +37,7 @@ import type {
 	CreateConnectionProfileInput,
 	BackendOptions,
 	DeleteConnectionProfileInput,
+	SetPinnedModelsInput,
 	ResetConnectionCredentialInput,
 	SetConnectionCredentialInput,
 } from "./types";
@@ -152,12 +154,18 @@ export function createConnectionSettingsModule(
 			}
 			ensureProfileNameAvailable(db, profile.displayName, input.profileId);
 			const currentSecret = readSecret(db, input.profileId, getKey());
+			const modelsUrlChanged = current.models_url !== profile.modelsUrl;
 
 			db.update(connectionProfileTable)
 				.set(toProfileRow(profile))
 				.where(eq(connectionProfileTable.id, input.profileId))
 				.run();
 			writePinnedModels(db, input.profileId, profile.pinnedModels);
+			if (modelsUrlChanged) {
+				db.delete(connectionProfileDiscoveryModelTable)
+					.where(eq(connectionProfileDiscoveryModelTable.profile_id, input.profileId))
+					.run();
+			}
 			writeSecretState(db, input.profileId, {
 				credential: currentSecret?.credential ?? null,
 				headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
@@ -252,6 +260,38 @@ export function createConnectionSettingsModule(
 		return update.immediate();
 	};
 
+	const setPinnedModels = (input: SetPinnedModelsInput) => {
+		const pinnedModels = normalizePinnedModels(input.pinnedModels);
+		const update = database.transaction(() => {
+			const db = connect(database);
+			const settings = ensureSettingsRow(db);
+			requireRevision(database, settings.revision, input.expectedRevision, getKey());
+			requireProfile(db, input.profileId);
+			writePinnedModels(db, input.profileId, pinnedModels);
+			advanceRevision(db, settings.revision);
+			return read();
+		});
+		return update.immediate();
+	};
+
+	const replaceDiscoveryCatalog = (profileId: number, models: readonly string[]) => {
+		const catalog = normalizeDiscoveryCatalog(models);
+		const replace = database.transaction(() => {
+			const db = connect(database);
+			const profile = requireProfile(db, profileId);
+			db.delete(connectionProfileDiscoveryModelTable)
+				.where(eq(connectionProfileDiscoveryModelTable.profile_id, profileId))
+				.run();
+			if (catalog.length > 0) {
+				db.insert(connectionProfileDiscoveryModelTable)
+					.values(catalog.map((modelId) => ({ profile_id: profileId, model_id: modelId })))
+					.run();
+			}
+			return readProfile(db, profile, getKey());
+		});
+		return replace.immediate();
+	};
+
 	const resetCredential = (input: ResetConnectionCredentialInput) => {
 		if (!input.confirmed) throw new ConnectionCredentialConfirmationError();
 		const reset = database.transaction(() => {
@@ -287,6 +327,8 @@ export function createConnectionSettingsModule(
 		applyProfile,
 		activateProfile,
 		deleteProfile,
+		setPinnedModels,
+		replaceDiscoveryCatalog,
 		setCredential,
 		resetCredential,
 	};
@@ -339,6 +381,12 @@ function readProfile(
 		.orderBy(asc(connectionProfilePinnedModelTable.position))
 		.all()
 		.map((pin) => pin.modelId);
+	const discoveryCatalog = db
+		.select({ modelId: connectionProfileDiscoveryModelTable.model_id })
+		.from(connectionProfileDiscoveryModelTable)
+		.where(eq(connectionProfileDiscoveryModelTable.profile_id, row.id))
+		.all()
+		.map((model) => model.modelId);
 	let credentialConfigured = false;
 	const headers: Array<{ name: string; configured: boolean }> = [];
 	const payload = readSecret(db, row.id, masterKey);
@@ -370,6 +418,7 @@ function readProfile(
 		outputTokenRepresentation: row.output_token_representation as ConnectionProfile["outputTokenRepresentation"],
 		timeoutMs: row.timeout_ms,
 		pinnedModels: pins,
+		discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
 		backendOptions,
 		credentialConfigured,
 		headers,
@@ -539,6 +588,25 @@ function normalizePinnedModels(models: readonly string[]): string[] {
 		if (!result.includes(normalized)) result.push(normalized);
 	}
 	return result;
+}
+
+export function normalizeDiscoveryCatalog(models: readonly string[]): string[] {
+	const unique = new Set<string>();
+	for (const model of models) {
+		const normalized = model.trim();
+		if (normalized.length > 0) unique.add(normalized);
+	}
+	return [...unique].sort(compareModelIds);
+}
+
+function compareModelIds(left: string, right: string): number {
+	const leftFolded = left.toLocaleLowerCase();
+	const rightFolded = right.toLocaleLowerCase();
+	if (leftFolded < rightFolded) return -1;
+	if (leftFolded > rightFolded) return 1;
+	if (left < right) return -1;
+	if (left > right) return 1;
+	return 0;
 }
 
 function toProfileRow(profile: ConnectionProfileDraft) {

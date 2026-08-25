@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
 	loadConnectionPresets,
 	loadConnectionSettings,
+	refreshDiscoveryCatalog,
 	saveConnectionCommand,
 	testConnectionDraft,
 	type ConnectionProfile,
@@ -101,6 +102,7 @@ export function ConnectionSettingsPanel() {
 	const [testModelId, setTestModelId] = useState("");
 	const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
 	const [testPending, setTestPending] = useState(false);
+	const [discoveryPending, setDiscoveryPending] = useState(false);
 	const [replacementProfileId, setReplacementProfileId] = useState<number | null>(null);
 	const [conflict, setConflict] = useState<ConnectionSettingsConflict | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -215,6 +217,46 @@ export function ConnectionSettingsPanel() {
 			setError("Test Connection could not be completed.");
 		} finally {
 			setTestPending(false);
+		}
+	};
+
+	const refreshModels = async () => {
+		if (selectedProfileId === null) {
+			setError("Apply this Profile before refreshing its Models URL.");
+			return;
+		}
+		if (draft.modelsUrl.trim().length === 0) {
+			setError("Refresh requires an exact Models URL.");
+			return;
+		}
+		if (selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()) {
+			setError("Apply the Models URL change before refreshing the catalog.");
+			return;
+		}
+		setDiscoveryPending(true);
+		setNotice(null);
+		setError(null);
+		try {
+			const result = await refreshDiscoveryCatalog(selectedProfileId);
+			if (result.outcome === "success") {
+				setSettings((current) => current === null ? current : {
+					...current,
+					profiles: current.profiles.map((profile) =>
+						profile.id === result.profile.id ? result.profile : profile,
+					),
+				});
+				setNotice(`Model catalog refreshed. ${result.profile.discoveryCatalog.length} model IDs are available for autocomplete.`);
+			} else if (result.outcome === "failure") {
+				setError(result.message);
+			} else if (result.outcome === "invalid") {
+				setError(result.reason);
+			} else {
+				setError("The selected Profile no longer exists.");
+			}
+		} catch {
+			setError("Model catalog refresh could not be completed.");
+		} finally {
+			setDiscoveryPending(false);
 		}
 	};
 
@@ -484,10 +526,25 @@ export function ConnectionSettingsPanel() {
 						<input className="field-input" value={draft.requestUrl} onChange={(event) => setDraft({ ...draft, requestUrl: event.target.value })} placeholder="https://example.com/" />
 						<small>Resolved destination: {resolvedRequestUrl}</small>
 					</label>
-					<label className="field">
-						<span>Models URL <em>(optional)</em></span>
-						<input className="field-input" value={draft.modelsUrl} onChange={(event) => setDraft({ ...draft, modelsUrl: event.target.value })} placeholder="https://example.com/models" />
-					</label>
+					<div className="connection-models-url">
+						<label className="field">
+							<span>Models URL <em>(optional, exact endpoint)</em></span>
+							<input className="field-input" value={draft.modelsUrl} onChange={(event) => setDraft({ ...draft, modelsUrl: event.target.value })} placeholder="https://example.com/models" />
+						</label>
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={selectedProfileId === null || selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim() || draft.modelsUrl.trim().length === 0 || discoveryPending}
+							onClick={() => void refreshModels()}
+						>
+							{discoveryPending ? "Refreshing..." : "Refresh Models"}
+						</button>
+						<small>
+							{selectedProfile === undefined
+								? "Apply the Profile before refreshing."
+								: `${selectedProfile.discoveryCatalog.length} discovered model IDs cached for autocomplete.`}
+						</small>
+					</div>
 					<label className="field">
 						<span>Test model ID</span>
 						<input className="field-input" value={testModelId} onChange={(event) => setTestModelId(event.target.value)} placeholder="deepseek-chat" />

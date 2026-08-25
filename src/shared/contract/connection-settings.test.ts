@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { openDatabase } from "../../server/database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import type { ConnectionProfileDraft } from "../../server/connection-settings";
+import type { ModelFetch } from "../../server/model-client";
 
 const key = new Uint8Array(32).fill(11);
 
@@ -80,6 +81,15 @@ describe("Connection Settings transport adapter", () => {
 			}),
 		);
 
+	const discover = (profileId: number, fetch: ModelFetch) =>
+		createConnectionSettingsRoutes(database, { masterKey: key, fetch }).handle(
+			new Request("http://localhost/api/connection-settings/discovery", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ profileId }),
+			}),
+		);
+
 	test("reports the zero-Profile unconfigured outcome and exposes Presets", async () => {
 		const settings = await get("/api/connection-settings");
 		expect(settings.status).toBe(200);
@@ -132,6 +142,79 @@ describe("Connection Settings transport adapter", () => {
 
 		const settings = await get("/api/connection-settings");
 		expect((await settings.json()).revision).toBe(0);
+	});
+
+	test("refreshes and persists a normalized catalog without changing revision or pins", async () => {
+		const created = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+			credential: "discovery-secret",
+		});
+		const createdBody = await created.json();
+		const profileId = createdBody.settings.profiles[0].id;
+		const revision = createdBody.settings.revision;
+		const response = await discover(profileId, async (_input, init) => {
+			expect(init?.method).toBe("GET");
+			expect(init?.redirect).toBe("error");
+			expect(new Headers(init?.headers).get("authorization")).toBe("Bearer discovery-secret");
+			return new Response(JSON.stringify({ data: [{ id: " zeta " }, { id: "Alpha" }, { id: "alpha" }, { id: "" }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			});
+		});
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.outcome).toBe("success");
+		expect(body.settingsRevision).toBe(revision);
+		expect(body.profile.discoveryCatalog).toEqual(["Alpha", "alpha", "zeta"]);
+		expect(body.profile.pinnedModels).toEqual(deepSeekProfile.pinnedModels);
+
+		const reread = await get("/api/connection-settings");
+		const settings = await reread.json();
+		expect(settings.revision).toBe(revision);
+		expect(settings.profiles[0].discoveryCatalog).toEqual(["Alpha", "alpha", "zeta"]);
+	});
+
+	test("preserves a failed catalog and clears it only when Models URL changes", async () => {
+		const created = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+		});
+		const createdBody = await created.json();
+		const profileId = createdBody.settings.profiles[0].id;
+		const successful = await discover(profileId, async () =>
+			new Response(JSON.stringify({ data: [{ id: "kept-model" }] }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			}),
+		);
+		expect(successful.status).toBe(200);
+		const afterSuccess = await successful.json();
+
+		const failed = await discover(profileId, async () =>
+			new Response(JSON.stringify({ message: "temporary outage" }), {
+				status: 503,
+				headers: { "content-type": "application/json" },
+			}),
+		);
+		expect(failed.status).toBe(200);
+		expect(await failed.json()).toMatchObject({ outcome: "failure", kind: "endpoint" });
+		const afterFailure = await get("/api/connection-settings");
+		expect((await afterFailure.json()).profiles[0].discoveryCatalog).toEqual(["kept-model"]);
+
+		const applied = await post({
+			type: "apply-profile",
+			expectedRevision: afterSuccess.settingsRevision,
+			profileId,
+			profile: { ...deepSeekProfile, modelsUrl: "http://127.0.0.1:43127/other-models" },
+		});
+		expect(applied.status).toBe(200);
+		const afterApply = await applied.json();
+		expect(afterApply.settings.profiles[0].discoveryCatalog).toEqual([]);
+		expect(afterApply.settings.profiles[0].pinnedModels).toEqual(deepSeekProfile.pinnedModels);
 	});
 
 	test("activates and deletes Profiles through revisioned commands", async () => {

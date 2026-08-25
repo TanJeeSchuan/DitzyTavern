@@ -17,6 +17,7 @@ const profile: ConnectionProfile = {
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120_000,
 	pinnedModels: [],
+	discoveryCatalog: [],
 	backendOptions: {},
 	credentialConfigured: true,
 	headers: [],

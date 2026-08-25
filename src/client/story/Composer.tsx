@@ -43,11 +43,11 @@ export function Composer({
 				id="writer-message"
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder="Message storage is not available yet"
+				placeholder="Optional guidance for the next Generation"
 				disabled={!canWrite}
 				rows={1}
 			/>
-			<button className="send-button" type="submit" disabled={!canWrite || !draft.trim() || isGenerating} aria-label="Send Message">
+			<button className="send-button" type="submit" disabled={!canWrite || isGenerating} aria-label="Generate Variant">
 				<Send aria-hidden="true" />
 			</button>
 		</form>

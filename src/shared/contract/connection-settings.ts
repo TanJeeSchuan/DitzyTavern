@@ -12,6 +12,7 @@ import {
 import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
 import type { ConnectionSettingsSnapshot } from "../../server/connection-settings";
 import {
+	discoverModels,
 	testConnection,
 	type ModelFetch,
 	type TestConnectionResult,
@@ -73,6 +74,7 @@ const profile = t.Object({
 	outputTokenRepresentation: t.String(),
 	timeoutMs: t.Nullable(t.Integer()),
 	pinnedModels: t.Array(t.String()),
+	discoveryCatalog: t.Array(t.String()),
 	backendOptions: t.Record(t.String(), t.Unknown()),
 	credentialConfigured: t.Boolean(),
 	headers: t.Array(redactedHeader),
@@ -129,6 +131,12 @@ const commandBody = t.Union([
 		profileId: t.Integer(),
 		replacementProfileId: t.Optional(t.Nullable(t.Integer())),
 	}),
+	t.Object({
+		type: t.Literal("set-pinned-models"),
+		expectedRevision: t.Integer(),
+		profileId: t.Integer(),
+		pinnedModels: t.Array(t.String()),
+	}),
 ]);
 
 const testConnectionBody = t.Object({
@@ -154,6 +162,27 @@ const testConnectionResult = t.Union([
 			t.Literal("malformed-response"),
 			t.Literal("adapter-unavailable"),
 		]),
+		message: t.String(),
+	}),
+]);
+
+const discoveryFailureKind = t.Union([
+	t.Literal("authentication"),
+	t.Literal("endpoint"),
+	t.Literal("timeout"),
+	t.Literal("redirect"),
+	t.Literal("malformed-response"),
+]);
+
+const discoveryResult = t.Union([
+	t.Object({
+		outcome: t.Literal("success"),
+		profile,
+		settingsRevision: t.Integer(),
+	}),
+	t.Object({
+		outcome: t.Literal("failure"),
+		kind: discoveryFailureKind,
 		message: t.String(),
 	}),
 ]);
@@ -194,6 +223,50 @@ export const createConnectionSettingsRoutes = (
 				),
 			}),
 			{ response: t.Object({ presets: t.Array(preset) }) },
+		)
+		.post(
+			"/api/connection-settings/discovery",
+			async ({ body, status }) => {
+				const prepared = withDatabase(database, (connection) => {
+					const snapshot = withConnectionSettings(connection, (domain) => domain.get(), options);
+					const profile = snapshot.profiles.find((entry) => entry.id === body.profileId);
+					if (profile === undefined) return null;
+					return {
+						profile,
+						secrets: withConnectionSettings(connection, (domain) => domain.getProfileSecrets(profile.id), options),
+					};
+				});
+				if (prepared === null) return status(404, { outcome: "not-found" as const });
+				if (prepared.profile.modelsUrl.trim().length === 0) {
+					return status(422, {
+						outcome: "invalid" as const,
+						reason: "Refresh requires an exact Models URL.",
+					});
+				}
+				const discovered = await discoverModels(
+					{ profile: prepared.profile, secrets: prepared.secrets },
+					{ fetch: options.fetch },
+				);
+				if (discovered.outcome === "failure") return discovered;
+				const replaced = withDatabase(database, (connection) =>
+					withConnectionSettings(connection, (domain) =>
+						domain.replaceDiscoveryCatalog(body.profileId, discovered.catalog), options),
+				);
+				return {
+					outcome: "success" as const,
+					profile: toProfilePayload(replaced),
+					settingsRevision: withDatabase(database, (connection) =>
+						withConnectionSettings(connection, (domain) => domain.get().revision, options)),
+				};
+			},
+			{
+				body: t.Object({ profileId: t.Integer() }),
+				response: {
+					200: discoveryResult,
+					404: t.Object({ outcome: t.Literal("not-found") }),
+					422: t.Object({ outcome: t.Literal("invalid"), reason: t.String() }),
+				},
+			},
 		)
 		.post(
 			"/api/connection-settings/test-connection",
@@ -264,6 +337,8 @@ export const createConnectionSettingsRoutes = (
 									return domain.activateProfile(body);
 								case "delete-profile":
 									return domain.deleteProfile(body);
+								case "set-pinned-models":
+									return domain.setPinnedModels(body);
 							}
 						}, options),
 					);
@@ -331,9 +406,29 @@ function toSettingsPayload(snapshot: ConnectionSettingsSnapshot) {
 			outputTokenRepresentation: entry.outputTokenRepresentation,
 			timeoutMs: entry.timeoutMs,
 			pinnedModels: [...entry.pinnedModels],
+			discoveryCatalog: [...entry.discoveryCatalog],
 			backendOptions: { ...entry.backendOptions },
 			credentialConfigured: entry.credentialConfigured,
 			headers: [...entry.headers],
 		})),
+	};
+}
+
+function toProfilePayload(entry: ConnectionSettingsSnapshot["profiles"][number]) {
+	return {
+		id: entry.id,
+		displayName: entry.displayName,
+		apiFormat: entry.apiFormat,
+		requestUrl: entry.requestUrl,
+		modelsUrl: entry.modelsUrl,
+		modelBackend: entry.modelBackend,
+		adapter: entry.adapter,
+		outputTokenRepresentation: entry.outputTokenRepresentation,
+		timeoutMs: entry.timeoutMs,
+		pinnedModels: [...entry.pinnedModels],
+		discoveryCatalog: [...entry.discoveryCatalog],
+		backendOptions: { ...entry.backendOptions },
+		credentialConfigured: entry.credentialConfigured,
+		headers: [...entry.headers],
 	};
 }

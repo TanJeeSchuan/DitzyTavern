@@ -706,6 +706,20 @@
 	margin-top: 1.25rem;
 }
 
+.connection-models-url {
+	display: grid;
+	gap: 0.45rem;
+}
+
+.connection-models-url > button {
+	justify-self: start;
+}
+
+.connection-models-url > small {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+}
+
 .connection-preset-list {
 	grid-template-columns: 1fr;
 	margin-top: 0.6rem;
@@ -848,6 +862,12 @@
 
 .connection-active-note {
 	color: var(--foreground);
+}
+
+.generation-error {
+	margin: 0.6rem 0 0;
+	color: var(--destructive);
+	font-size: 0.78rem;
 }
 
 .empty-settings-layer {

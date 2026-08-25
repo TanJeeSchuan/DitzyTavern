@@ -11,6 +11,7 @@ import { ComposerControlSelectors } from "../ComposerControls";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
+	generateConversationReply,
 	loadConversation,
 	type ConversationSummary,
 } from "../conversation";
@@ -78,7 +79,8 @@ export function ActiveWritingWorkspace({
 	// newest Messages while prepended older pages keep the viewport still.
 	const anchoredLastMessageIdRef = useRef<number | null>(null);
 	const anchoredScrollHeightRef = useRef(0);
-	const isGenerating = false;
+	const [isGenerating, setIsGenerating] = useState(false);
+	const [generationError, setGenerationError] = useState<string | null>(null);
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
@@ -298,6 +300,25 @@ export function ActiveWritingWorkspace({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
+		if (isGenerating || conversation === null || !conversation.playable) return;
+		setIsGenerating(true);
+		setGenerationError(null);
+		void generateConversationReply(conversation.id)
+			.then(async (outcome) => {
+				if (outcome.outcome === "applied") {
+					setConversation(outcome.conversation);
+					const fresh = await chatHistoryTransport.loadHistory(conversation.id, { page: 1 });
+					if (fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
+					return;
+				}
+				if (outcome.outcome === "not-found") {
+					setGenerationError("The Conversation no longer exists.");
+					return;
+				}
+				setGenerationError(outcome.reason);
+			})
+			.catch(() => setGenerationError("Generation could not be completed."))
+			.finally(() => setIsGenerating(false));
 	};
 
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
@@ -392,7 +413,7 @@ export function ActiveWritingWorkspace({
 				<Composer
 					draft={draft}
 					isGenerating={isGenerating}
-					canWrite={false}
+					canWrite={conversation?.playable === true && !isGenerating}
 					isReceded={composerIsReceded}
 					onDraftChange={setDraft}
 					onFocusChange={setIsComposerFocused}
@@ -406,6 +427,7 @@ export function ActiveWritingWorkspace({
 						) : null
 					}
 				/>
+				{generationError !== null && <p className="generation-error" role="alert">{generationError}</p>}
 			</main>
 
 			{chatInfoOpen && (

@@ -31,6 +31,7 @@ export type ConnectionProfileDraft = {
 
 export type ConnectionProfile = ConnectionProfileDraft & {
 	id: number;
+	discoveryCatalog: string[];
 	credentialConfigured: boolean;
 	headers: Array<{ name: string; configured: boolean }>;
 };
@@ -58,6 +59,16 @@ export type ConnectionSettingsResult =
 		}
 	| { outcome: "invalid"; reason: string }
 	| { outcome: "not-found" };
+
+export type DiscoveryResult =
+	| { outcome: "success"; profile: ConnectionProfile; settingsRevision: number }
+	| {
+			outcome: "failure";
+			kind: "authentication" | "endpoint" | "timeout" | "redirect" | "malformed-response";
+			message: string;
+		}
+	| { outcome: "not-found" }
+	| { outcome: "invalid"; reason: string };
 
 export type TestConnectionFailureKind =
 	| "authentication"
@@ -113,10 +124,16 @@ export type ConnectionSettingsCommand =
 		credential: string;
 		}
 	| {
-		type: "reset-credential";
-		expectedRevision: number;
-		profileId: number;
-		confirmed: boolean;
+			type: "reset-credential";
+			expectedRevision: number;
+			profileId: number;
+			confirmed: boolean;
+		}
+	| {
+			type: "set-pinned-models";
+			expectedRevision: number;
+			profileId: number;
+			pinnedModels: string[];
 		};
 
 const json = async <T>(response: Response): Promise<T> => {
@@ -160,4 +177,13 @@ export async function testConnectionDraft(input: TestConnectionDraftInput): Prom
 		body: JSON.stringify(input),
 	});
 	return json<TestConnectionResult>(response);
+}
+
+export async function refreshDiscoveryCatalog(profileId: number): Promise<DiscoveryResult> {
+	const response = await fetch("/api/connection-settings/discovery", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ profileId }),
+	});
+	return json<DiscoveryResult>(response);
 }

@@ -4,6 +4,7 @@ import {
 	applyConversationCommand,
 	type ConversationSummary,
 } from "./conversation";
+import { ModelSelector } from "./ModelSelector";
 
 // Cast-only Control selectors on the composer toolbar: `Writing as` for the
 // human seat and `Responding as` for the model seat. Selecting the opposite
@@ -102,6 +103,10 @@ export function ComposerControlSelectors({
 					))}
 				</select>
 			</div>
+			<ModelSelector
+				conversation={conversation}
+				onConversationChange={onConversationChange}
+			/>
 			<div className="control-select">
 				<label htmlFor="composer-model">Responding as</label>
 				<select

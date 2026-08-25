@@ -66,6 +66,21 @@ export interface ConversationGenerationSettings {
 	};
 }
 
+export type GenerationResult =
+	| {
+			outcome: "applied";
+			conversation: ConversationSummary;
+			variant: {
+				messageId: number;
+				variantId: number;
+				content: string;
+				timestamp: string;
+				data: Array<{ namespace: string; key: string; value: string }>;
+			};
+		}
+	| { outcome: "not-found" }
+	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid"; reason: string };
+
 export type GenerationRequestValue =
 	| string
 	| number
@@ -311,4 +326,28 @@ export async function saveParticipantAsCharacter(input: {
 		return { status: "network" };
 	}
 	return { status: "applied", character: data.character };
+}
+
+export async function loadConversationGenerationSettings(
+	conversationId: number,
+): Promise<ConversationGenerationSettings> {
+	const response = await fetch(`/api/conversations/${conversationId}/generation-settings`);
+	if (!response.ok) throw new Error("Unable to load Conversation Generation Settings.");
+	// SAFETY: the route's response contract is the Conversation Generation
+	// Settings shape; this client function is the sole decoder for it.
+	return (await response.json()) as ConversationGenerationSettings;
+}
+
+export async function generateConversationReply(
+	conversationId: number,
+): Promise<GenerationResult> {
+	const response = await fetch(`/api/conversations/${conversationId}/generate`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+	});
+	// SAFETY: the route's discriminated response contract is narrowed by the
+	// outcome field before callers consume its payload.
+	const body = (await response.json()) as GenerationResult;
+	return body;
 }

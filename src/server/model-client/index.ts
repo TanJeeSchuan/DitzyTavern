@@ -38,6 +38,16 @@ export {
 	TEST_CONNECTION_PROMPT,
 	TEST_CONNECTION_TIMEOUT_MS,
 } from "./test-connection";
+export {
+	discoverModels,
+	normalizeDiscoveryCatalog,
+} from "./discovery";
+export type {
+	DiscoveryFailureKind,
+	DiscoveryInput,
+	DiscoveryOptions,
+	DiscoveryResult,
+} from "./discovery";
 export type {
 	ModelFetch,
 	TestConnectionFailureKind,

@@ -46,6 +46,7 @@ export type ConnectionHeaderOperation =
 
 export interface ConnectionProfile extends ConnectionProfileDraft {
 	readonly id: number;
+	readonly discoveryCatalog: readonly string[];
 	readonly credentialConfigured: boolean;
 	readonly headers: readonly RedactedHeader[];
 }
@@ -105,6 +106,12 @@ export interface DeleteConnectionProfileInput {
 	readonly replacementProfileId?: number | null;
 }
 
+export interface SetPinnedModelsInput {
+	readonly expectedRevision: number;
+	readonly profileId: number;
+	readonly pinnedModels: readonly string[];
+}
+
 export interface ConnectionSettingsModule {
 	get(): ConnectionSettingsSnapshot;
 	getProfileSecrets(profileId: number): ConnectionProfileSecretSnapshot | null;
@@ -113,6 +120,8 @@ export interface ConnectionSettingsModule {
 	applyProfile(input: ApplyConnectionProfileInput): ConnectionSettingsSnapshot;
 	activateProfile(input: ActivateConnectionProfileInput): ConnectionSettingsSnapshot;
 	deleteProfile(input: DeleteConnectionProfileInput): ConnectionSettingsSnapshot;
+	setPinnedModels(input: SetPinnedModelsInput): ConnectionSettingsSnapshot;
+	replaceDiscoveryCatalog(profileId: number, models: readonly string[]): ConnectionProfile;
 	setCredential(input: SetConnectionCredentialInput): ConnectionSettingsSnapshot;
 	resetCredential(input: ResetConnectionCredentialInput): ConnectionSettingsSnapshot;
 }

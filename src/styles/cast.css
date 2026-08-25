@@ -161,6 +161,117 @@
 	font-size: 0.78rem;
 }
 
+.model-selector {
+	position: relative;
+	display: grid;
+	gap: 0.15rem;
+	min-width: 12rem;
+}
+
+.model-selector > label {
+	color: var(--text-muted);
+	font-size: 0.64rem;
+	font-weight: 650;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.model-selector-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.65rem;
+	min-width: 12rem;
+	max-width: 18rem;
+	padding: 0.35rem 0.6rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 0.6rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-size: 0.78rem;
+	text-align: left;
+}
+
+.model-selector-trigger svg {
+	width: 0.85rem;
+	height: 0.85rem;
+	flex: 0 0 auto;
+}
+
+.model-selector-menu {
+	position: absolute;
+	z-index: 20;
+	top: calc(100% + 0.35rem);
+	left: 0;
+	width: min(22rem, 80vw);
+	padding: 0.45rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 0.75rem;
+	background: var(--surface-raised);
+	box-shadow: 0 0.8rem 2rem var(--shadow-soft);
+}
+
+.model-selector-options {
+	display: grid;
+	max-height: 14rem;
+	overflow-y: auto;
+	margin-top: 0.4rem;
+}
+
+.model-selector-option {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	align-items: center;
+	gap: 0.3rem;
+	border-radius: 0.45rem;
+}
+
+.model-selector-option:hover,
+.model-selector-option:focus-within {
+	background: var(--accent-softer);
+}
+
+.model-selector-option > button:first-child {
+	min-width: 0;
+	padding: 0.45rem 0.5rem;
+	color: var(--foreground);
+	font-size: 0.76rem;
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-pin-button {
+	display: grid;
+	place-items: center;
+	width: 2rem;
+	height: 2rem;
+	color: var(--text-muted);
+}
+
+.model-pin-button:hover,
+.model-pin-button:focus-visible {
+	color: var(--accent);
+}
+
+.model-pin-button svg {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.model-selector-empty,
+.model-selector-note {
+	margin: 0.4rem;
+	color: var(--text-muted);
+	font-size: 0.7rem;
+	line-height: 1.4;
+}
+
+.model-selector-note.is-error {
+	color: var(--destructive);
+}
+
 .composer-control-note {
 	margin: 0;
 	color: var(--text-muted);
