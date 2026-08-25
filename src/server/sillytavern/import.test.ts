@@ -36,6 +36,7 @@ import {
 	SiblingVariantUnavailableError,
 	createConversationModule,
 } from "../conversation";
+import { createFakeModelClient } from "../model-client";
 import {
 	generateReply,
 	generateSiblingVariant,
@@ -584,14 +585,14 @@ describe("SillyTavern chat import", () => {
 		await expect(
 			generateReply(database, {
 				conversationId: conversation.id,
-				generate: async () => "never called",
+				modelClient: createFakeModelClient(() => "never called"),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 		await expect(
 			generateSiblingVariant(database, {
 				conversationId: conversation.id,
 				messageId,
-				generate: async () => "never called",
+				modelClient: createFakeModelClient(() => "never called"),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 
@@ -694,10 +695,10 @@ describe("SillyTavern chat import", () => {
 			generateSiblingVariant(database, {
 				conversationId: conversation.id,
 				messageId: targetId,
-				generate: () => {
+				modelClient: createFakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
-				},
+				}),
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);
 		expect(contacted).toBe(false);
@@ -770,7 +771,7 @@ describe("SillyTavern chat import", () => {
 		const generated = await generateReply(database, {
 			conversationId: completed.id,
 			timestamp: "2026-08-08T14:30:00.000Z",
-			generate: async () => "The lamp answers at last.",
+			modelClient: createFakeModelClient(() => "The lamp answers at last."),
 		});
 		const nativeMessage = generated.messages[1];
 		expect(nativeMessage).toBeDefined();
@@ -792,7 +793,7 @@ describe("SillyTavern chat import", () => {
 			conversationId: generated.id,
 			messageId: nativeMessage?.id ?? 0,
 			timestamp: "2026-08-08T14:31:00.000Z",
-			generate: async () => "The lamp answers differently.",
+			modelClient: createFakeModelClient(() => "The lamp answers differently."),
 		});
 		expect(sibling.messages[1]?.variants).toHaveLength(2);
 		expect(sibling.messages[1]?.variants[1]?.content).toBe(

@@ -22,6 +22,7 @@ import {
 	type ParticipantDefinition,
 } from ".";
 import { generateSiblingVariant } from "../workflows/generate";
+import { createFakeModelClient } from "../model-client";
 
 const emptyPrompt = () => ({
 	systemInstruction: "",
@@ -493,7 +494,7 @@ describe("Participant removal", () => {
 			generateSiblingVariant(database, {
 				conversationId: removed.id,
 				messageId: greetingId,
-				generate: async () => "Never produced",
+				modelClient: createFakeModelClient(() => "Never produced"),
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);
 

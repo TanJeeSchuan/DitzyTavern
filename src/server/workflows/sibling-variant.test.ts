@@ -12,6 +12,7 @@ import {
 	type ParticipantDefinition,
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
+import { createFakeModelClient } from "../model-client";
 import { generateReply, generateSiblingVariant } from ".";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
@@ -40,6 +41,11 @@ const adHoc = (
 	prompt: prompt(promptOverrides),
 	openings,
 });
+
+const fakeModelClient = (
+    response: (plan: PromptPlan) => string | Promise<string>,
+) =>
+	createFakeModelClient(({ promptPlan }) => response(promptPlan));
 
 describe("Historical sibling Variant generation", () => {
 	let database: Database;
@@ -81,10 +87,10 @@ describe("Historical sibling Variant generation", () => {
 				timestamp:
 					timestamp ??
 					new Date(Date.UTC(2026, 7, 20, 13, index, 0)).toISOString(),
-				generate: (plan) => {
+				modelClient: fakeModelClient((plan) => {
 					plans.push(plan);
 					return content;
-				},
+				}),
 			});
 		}
 		return plans;
@@ -117,10 +123,10 @@ describe("Historical sibling Variant generation", () => {
 			conversationId: conversation.id,
 			messageId,
 			timestamp: options.timestamp ?? "2026-08-20T14:00:00Z",
-			generate: (plan) => {
+			modelClient: fakeModelClient((plan) => {
 				options.capture(plan);
 				return content;
-			},
+			}),
 		});
 		return conversation;
 	};
@@ -429,10 +435,10 @@ describe("Historical sibling Variant generation", () => {
 			generateSiblingVariant(database, {
 				conversationId: imported.id,
 				messageId: message.id,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
-				},
+				}),
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);
 		expect(contacted).toBe(false);
@@ -456,10 +462,10 @@ describe("Historical sibling Variant generation", () => {
 			generateSiblingVariant(database, {
 				conversationId: conversation.id,
 				messageId: greeting.id,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
-				},
+				}),
 			}),
 		).rejects.toThrow(SiblingVariantUnavailableError);
 		expect(contacted).toBe(false);
@@ -489,10 +495,10 @@ describe("Historical sibling Variant generation", () => {
 			generateSiblingVariant(database, {
 				conversationId: incomplete.id,
 				messageId: message.id,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
-				},
+				}),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 		expect(contacted).toBe(false);
@@ -508,9 +514,9 @@ describe("Historical sibling Variant generation", () => {
 			generateSiblingVariant(database, {
 				conversationId: conversation.id,
 				messageId: greeting.id,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					throw new Error("Transport down.");
-				},
+				}),
 			}),
 		).rejects.toThrow("Transport down.");
 

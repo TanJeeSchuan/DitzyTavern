@@ -11,6 +11,7 @@ import {
 } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
+import { createFakeModelClient } from "../model-client";
 import { generateReply, inspectGenerationPrompt } from ".";
 
 const prompt = (
@@ -33,6 +34,11 @@ const adHoc = (
 	prompt: prompt(promptOverrides),
 	openings,
 });
+
+const fakeModelClient = (
+    response: (plan: PromptPlan) => string | Promise<string>,
+) =>
+	createFakeModelClient(({ promptPlan }) => response(promptPlan));
 
 describe("Current Generate workflow", () => {
 	let database: Database;
@@ -123,10 +129,10 @@ describe("Current Generate workflow", () => {
 		const committed = await generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T13:00:00Z",
-			generate: (plan) => {
+			modelClient: fakeModelClient((plan) => {
 				receivedPlan = plan;
 				return "The light understands you.";
-			},
+			}),
 		});
 
 		// The transport received exactly the plan inspection would compile.
@@ -157,18 +163,18 @@ describe("Current Generate workflow", () => {
 		await generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T13:00:00Z",
-			generate: (plan) => {
+			modelClient: fakeModelClient((plan) => {
 				plans.push(plan);
 				return "First reply.";
-			},
+			}),
 		});
 		await generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T13:05:00Z",
-			generate: (plan) => {
+			modelClient: fakeModelClient((plan) => {
 				plans.push(plan);
 				return "Second reply.";
-			},
+			}),
 		});
 
 		const history = plans[1]?.blocks.filter((block) => block.kind === "history");
@@ -195,7 +201,7 @@ describe("Current Generate workflow", () => {
 		const committed = await generateReply(database, {
 			conversationId: swapped.id,
 			timestamp: "2026-08-20T13:00:00Z",
-			generate: () => "The swapped model answers.",
+			modelClient: fakeModelClient(() => "The swapped model answers."),
 		});
 		const message = committed.messages.at(-1);
 		expect(message?.author?.participantId).toBe(swapped.cast[0]?.id);
@@ -226,10 +232,10 @@ describe("Current Generate workflow", () => {
 		await expect(
 			generateReply(database, {
 				conversationId: incomplete.id,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					contacted = true;
 					return "Never reached";
-				},
+				}),
 			}),
 		).rejects.toThrow(ConversationNotPlayableError);
 		expect(contacted).toBe(false);
@@ -253,7 +259,7 @@ describe("Current Generate workflow", () => {
 		await expect(
 			generateReply(database, {
 				conversationId: 424242,
-				generate: () => "x",
+				modelClient: fakeModelClient(() => "x"),
 			}),
 		).rejects.toThrow(ConversationNotFoundError);
 	});
@@ -265,9 +271,9 @@ describe("Current Generate workflow", () => {
 		await expect(
 			generateReply(database, {
 				conversationId,
-				generate: () => {
+				modelClient: fakeModelClient(() => {
 					throw new Error("Transport down.");
-				},
+				}),
 			}),
 		).rejects.toThrow("Transport down.");
 
@@ -285,7 +291,7 @@ describe("Current Generate workflow", () => {
 		const generation = generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			generate: async () => pending,
+			modelClient: fakeModelClient(async () => pending),
 		});
 
 		// While the transport streams, the model Participant is renamed. The
@@ -316,10 +322,10 @@ describe("Current Generate workflow", () => {
 			void generateReply(database, {
 				conversationId,
 				timestamp: "2026-08-20T14:05:00Z",
-				generate: (receivedPlan) => {
+				modelClient: fakeModelClient((receivedPlan) => {
 					resolve(receivedPlan);
 					return "Answered with the renamed identity.";
-				},
+				}),
 			});
 		});
 		expect(
@@ -338,7 +344,7 @@ describe("Current Generate workflow", () => {
 		const generation = generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			generate: async () => pending,
+			modelClient: fakeModelClient(async () => pending),
 		});
 
 		// The model Prompt is edited while the transport streams (the
@@ -383,7 +389,7 @@ describe("Current Generate workflow", () => {
 		const generation = generateReply(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			generate: async () => pending,
+			modelClient: fakeModelClient(async () => pending),
 		});
 
 		// A concurrent client command lands while the transport streams.

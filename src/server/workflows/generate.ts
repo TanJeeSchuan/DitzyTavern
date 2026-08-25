@@ -30,6 +30,10 @@ import {
 	type PromptPlan,
 } from "../prompt-compiler";
 import type { CastParticipantSnapshot } from "../conversation/types";
+import {
+	collectModelClientContent,
+	type ModelClient,
+} from "../model-client";
 
 export interface ParticipantPreview {
 	id: number;
@@ -49,11 +53,10 @@ export interface GenerationPromptInspection {
 
 export interface GenerateReplyInput {
 	conversationId: number;
-	// The model transport seam: given the compiled Prompt Plan, produce the
-	// reply text. Callers inject a deterministic fake in tests and the real
-	// transport adapter in production; the workflow never calls a provider
-	// directly.
-	generate: (plan: PromptPlan) => string | Promise<string>;
+	// The provider-neutral Model Client receives the compiled Prompt Plan and
+	// returns normalized asynchronous events. The workflow never calls a
+	// provider or interprets a provider request shape directly.
+	modelClient: ModelClient;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -172,7 +175,9 @@ export async function generateReply(
 	}
 	const { plan, humanParticipant, modelParticipant } = derivation;
 
-	const content = await input.generate(plan);
+	const content = await collectModelClientContent(input.modelClient, {
+		promptPlan: plan,
+	});
 
 	// Commit with the generation-start captures even if the Conversation
 	// moved on while the transport was working.
@@ -194,9 +199,9 @@ export interface GenerateSiblingVariantInput {
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
-	// The model transport seam: given the compiled Prompt Plan, produce the
-	// reply text used as the new sibling Variant's content.
-	generate: (plan: PromptPlan) => string | Promise<string>;
+	// The provider-neutral Model Client receives the compiled Prompt Plan and
+	// returns normalized asynchronous events for the sibling Variant.
+	modelClient: ModelClient;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -287,7 +292,9 @@ export async function generateSiblingVariant(
 	}
 	const { plan } = deriveSiblingDerivation(snapshot, input.messageId);
 
-	const content = await input.generate(plan);
+	const content = await collectModelClientContent(input.modelClient, {
+		promptPlan: plan,
+	});
 
 	return conversation.commitSiblingVariant({
 		conversationId: input.conversationId,
