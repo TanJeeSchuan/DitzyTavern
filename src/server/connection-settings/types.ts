@@ -31,7 +31,8 @@ export interface ConnectionProfileDraft {
 	// quiet interval, not a total Generation duration.
 	readonly timeoutMs: number | null;
 	readonly pinnedModels: readonly string[];
-	readonly backendOptions: BackendOptions;
+	/** Legacy storage compatibility only. Version one accepts no options. */
+	readonly backendOptions?: BackendOptions;
 }
 
 export interface RedactedHeader {

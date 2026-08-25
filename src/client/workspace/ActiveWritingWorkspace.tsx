@@ -11,7 +11,7 @@ import { ComposerControlSelectors } from "../ComposerControls";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
-	generateConversationReply,
+	streamConversationReply,
 	loadConversation,
 	type ConversationSummary,
 } from "../conversation";
@@ -26,6 +26,7 @@ import { StoryMessageView } from "../story/StoryMessageView";
 import {
 	EmptyChat,
 	GenerationPlaceholder,
+	StreamingGeneration,
 	HistoryLoading,
 } from "../story/StoryStatus";
 import type {
@@ -80,6 +81,8 @@ export function ActiveWritingWorkspace({
 	const anchoredLastMessageIdRef = useRef<number | null>(null);
 	const anchoredScrollHeightRef = useRef(0);
 	const [isGenerating, setIsGenerating] = useState(false);
+	const [streamingOutput, setStreamingOutput] = useState({ content: "", reasoning: "" });
+	const generationAbortRef = useRef<AbortController | null>(null);
 	const [generationError, setGenerationError] = useState<string | null>(null);
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
@@ -298,12 +301,23 @@ export function ActiveWritingWorkspace({
 		if (fresh !== null) setConversation(fresh);
 	};
 
+	const cancelGeneration = () => generationAbortRef.current?.abort();
+
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (isGenerating || conversation === null || !conversation.playable) return;
 		setIsGenerating(true);
+		setStreamingOutput({ content: "", reasoning: "" });
 		setGenerationError(null);
-		void generateConversationReply(conversation.id)
+		const controller = new AbortController();
+		generationAbortRef.current = controller;
+		void streamConversationReply(conversation.id, {
+			signal: controller.signal,
+			onDelta: (event) => {
+				if (event.type === "content") setStreamingOutput((current) => ({ ...current, content: current.content + event.text }));
+				if (event.type === "reasoning") setStreamingOutput((current) => ({ ...current, reasoning: current.reasoning + event.text }));
+			},
+		})
 			.then(async (outcome) => {
 				if (outcome.outcome === "applied") {
 					setConversation(outcome.conversation);
@@ -317,8 +331,22 @@ export function ActiveWritingWorkspace({
 				}
 				setGenerationError(outcome.reason);
 			})
-			.catch(() => setGenerationError("Generation could not be completed."))
-			.finally(() => setIsGenerating(false));
+			.catch(async () => {
+				if (controller.signal.aborted) {
+					// The server preserves any received partial output as an interrupted
+					// Variant before the cancelled request unwinds. Refresh the visible
+					// history so cancellation does not discard that writing in the UI.
+					const fresh = await chatHistoryTransport.loadHistory(conversation.id, { page: 1 });
+					if (fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
+					return;
+				}
+				setGenerationError("Generation could not be completed.");
+			})
+			.finally(() => {
+				generationAbortRef.current = null;
+				setIsGenerating(false);
+				setStreamingOutput({ content: "", reasoning: "" });
+			});
 	};
 
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
@@ -405,7 +433,9 @@ export function ActiveWritingWorkspace({
 								again.
 							</p>
 						)}
-						{isGenerating && <GenerationPlaceholder />}
+						{isGenerating && (streamingOutput.content.length > 0 || streamingOutput.reasoning.length > 0
+							? <StreamingGeneration content={streamingOutput.content} reasoning={streamingOutput.reasoning} />
+							: <GenerationPlaceholder />)}
 						<div className="latest-anchor" ref={latestRef} aria-hidden="true" />
 					</div>
 				</div>
@@ -417,7 +447,8 @@ export function ActiveWritingWorkspace({
 					isReceded={composerIsReceded}
 					onDraftChange={setDraft}
 					onFocusChange={setIsComposerFocused}
-					onSubmit={submitMessage}
+				onSubmit={submitMessage}
+				onCancel={cancelGeneration}
 					controlSelectors={
 						conversation !== null ? (
 							<ComposerControlSelectors

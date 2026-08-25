@@ -1,5 +1,5 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText } from "ai";
 import type {
@@ -60,6 +60,20 @@ export function createOpenRouterModelClient(
 	options: OpenAICompatibleModelClientOptions,
 ): ModelClient {
 	return createConfiguredModelClient(options, "openrouter");
+}
+
+// The adapter dispatch lives inside the deep Model Client. Routes and
+// workflows select one provider-neutral factory and never import concrete
+// transport constructors.
+export function createModelClient(
+	options: OpenAICompatibleModelClientOptions,
+): ModelClient {
+	if (options.profile.adapter === "deepseek") return createDeepSeekModelClient(options);
+	if (options.profile.adapter === "openrouter") return createOpenRouterModelClient(options);
+	if (options.profile.adapter === "openai-compatible") return createOpenAICompatibleModelClient(options);
+	throw new ModelClientTransportError(
+		`The AI SDK Adapter "${String(options.profile.adapter)}" is unavailable.`,
+	);
 }
 
 function createConfiguredModelClient(
@@ -147,6 +161,7 @@ async function* generateOpenAICompatibleStream(options: {
 		// are within the Conversation Request Override JSON domain.
 		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
 		const overrides = settings.requestOverrides["chat-completions"] ?? {};
+		validateChatCompletionsOverrides(overrides);
 		const requestBody = mergeChatCompletionsOverrides(
 			providerBody,
 			overrides,
@@ -168,7 +183,7 @@ async function* generateOpenAICompatibleStream(options: {
 	};
 
 	try {
-		const provider = options.adapter === "deepseek"
+		const model = options.adapter === "deepseek"
 			? createDeepSeek({
 			// An empty explicit value prevents the SDK from reading a process-wide
 			// DEEPSEEK_API_KEY that does not belong to this Profile.
@@ -178,7 +193,7 @@ async function* generateOpenAICompatibleStream(options: {
 			// SAFETY: the AI SDK invokes only the standard fetch call signature;
 			// Bun's optional preconnect helper is not part of this seam.
 			fetch: fetchAtResolvedDestination as typeof fetch,
-			})
+			}).chat(modelId)
 			: options.adapter === "openrouter"
 				? createOpenRouter({
 					// An empty explicit value prevents the SDK from reading a process-wide
@@ -192,8 +207,9 @@ async function* generateOpenAICompatibleStream(options: {
 					// SAFETY: the AI SDK invokes only the standard fetch call signature;
 					// Bun's optional preconnect helper is not part of this seam.
 					fetch: fetchAtResolvedDestination as typeof fetch,
-				})
-				: createOpenAI({
+				}).chat(modelId)
+				: createOpenAICompatible({
+				name: "ditzytavern-openai-compatible",
 				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
 				apiKey: options.credential,
 				baseURL: new URL(options.requestUrl).origin,
@@ -201,12 +217,13 @@ async function* generateOpenAICompatibleStream(options: {
 				// SAFETY: the AI SDK invokes this standard fetch-compatible function
 				// with the same RequestInfo/RequestInit/Response contract.
 				fetch: fetchAtResolvedDestination as typeof fetch,
-			});
+			}).languageModel(modelId, { url: () => options.requestUrl });
 		const streamOptions = {
-			model: provider.chat(modelId),
+			model,
 			messages: toMessages(options.input),
 			maxRetries: 0,
 			abortSignal: controller.signal,
+			allowSystemInMessages: true,
 			temperature: settings.temperature ?? undefined,
 			topP: settings.topP ?? undefined,
 			frequencyPenalty: settings.frequencyPenalty ?? undefined,
@@ -479,14 +496,41 @@ function readResponseHeader(
 }
 
 function toMessages(input: ModelClientGenerationInput) {
-	const blocks = input.promptPlan.blocks.map((block) => {
-		if (block.kind === "history" && block.speakerName !== null) {
-			return `${block.speakerName}: ${block.content}`;
+	type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+	const messages: ChatMessage[] = [];
+	let historyIndex = 0;
+	for (const block of input.promptPlan.blocks) {
+		if (block.kind === "history") {
+			const role = input.historyRoles?.[historyIndex++] ?? "user";
+			if (block.content.length > 0) {
+				messages.push({
+					role: role === "model" ? "assistant" : "user",
+					content: block.speakerName === null
+						? block.content
+						: `${block.speakerName}: ${block.content}`,
+				});
+			}
+			continue;
 		}
-		return block.content;
-	});
-	const content = blocks.filter((block) => block.length > 0).join("\n\n");
-	return [{ role: "user" as const, content }];
+		if (block.content.length === 0) continue;
+		switch (block.kind) {
+			case "system-instruction":
+			case "scenario":
+			case "post-history-instruction":
+				messages.push({ role: "system", content: block.content });
+				break;
+			case "identity":
+				messages.push({
+					role: block.role === "model" ? "assistant" : "user",
+					content: block.content,
+				});
+				break;
+			case "example-dialogue":
+				messages.push({ role: "user", content: block.content });
+				break;
+		}
+	}
+	return messages;
 }
 
 const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set([
@@ -496,6 +540,29 @@ const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set([
 	"n",
 ]);
 const OUTPUT_LIMIT_FIELDS = new Set(["max_tokens", "max_completion_tokens"]);
+const UNSUPPORTED_CHAT_COMPLETIONS_FIELDS = new Set([
+	"tools",
+	"tool_choice",
+	"functions",
+	"function_call",
+	"audio",
+	"modalities",
+	"images",
+	"image",
+	"files",
+	"input_audio",
+]);
+
+function validateChatCompletionsOverrides(overrides: GenerationRequestOverrides): void {
+	for (const key of Object.keys(overrides)) {
+		if (UNSUPPORTED_CHAT_COMPLETIONS_FIELDS.has(key)) {
+			throw new ModelClientTransportError(
+				`Request Override "${key}" is unsupported by Chat Completions v1.`,
+				"protocol",
+			);
+		}
+	}
+}
 
 function mergeChatCompletionsOverrides(
 	providerBody: GenerationRequestOverrides,
@@ -599,6 +666,7 @@ function monitorResponseActivity(
 							delta?.content !== undefined ||
 							delta?.reasoning !== undefined ||
 							delta?.reasoning_content !== undefined ||
+							delta?.reasoning_details !== undefined ||
 							parsed.usage !== undefined ||
 							choice?.finish_reason !== null && choice?.finish_reason !== undefined
 						) {
@@ -629,10 +697,11 @@ function monitorResponseActivity(
 
 interface ProviderSseFrame {
 	choices?: Array<{
-		delta?: {
+			delta?: {
 			content?: string;
 			reasoning?: string;
 			reasoning_content?: string;
+			reasoning_details?: unknown;
 		};
 		finish_reason?: string | null;
 	}>;

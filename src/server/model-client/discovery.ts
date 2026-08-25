@@ -162,7 +162,26 @@ async function providerFailureMessage(
 	for (const secret of [credential ?? "", ...Object.values(customHeaders)]) {
 		if (secret.length > 0) safe = safe.split(secret).join("[redacted]");
 	}
-	return `The Models endpoint returned HTTP ${response.status}: ${safe.slice(0, 16_384)}`;
+	const bounded = boundDiscoveryMessage(safe);
+	return `The Models endpoint returned HTTP ${response.status}: ${bounded.value}${bounded.truncated ? " (truncated)" : ""}`;
+}
+
+interface BoundedDiscoveryMessage {
+	readonly value: string;
+	readonly truncated: boolean;
+}
+
+function boundDiscoveryMessage(value: string): BoundedDiscoveryMessage {
+	const characters = Array.from(value);
+	let bytes = 0;
+	let result = "";
+	for (const character of characters) {
+		const size = new TextEncoder().encode(character).byteLength;
+		if (bytes + size > 16 * 1024) return { value: result, truncated: true };
+		bytes += size;
+		result += character;
+	}
+	return { value: result, truncated: false };
 }
 
 function extractMessage(value: string): string | undefined {

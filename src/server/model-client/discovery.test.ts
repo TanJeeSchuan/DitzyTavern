@@ -79,4 +79,22 @@ describe("Model discovery", () => {
 			message: "The Models endpoint returned HTTP 503: provider unavailable",
 		});
 	});
+
+	test("marks bounded discovery error messages when the provider body is oversized", async () => {
+		const result = await discoverModels(
+			{ profile, secrets: null },
+			{
+				fetch: async () => new Response("x".repeat(20 * 1024), {
+					status: 503,
+					headers: { "content-type": "text/plain" },
+				}),
+			},
+		);
+
+		expect(result.outcome).toBe("failure");
+		if (result.outcome === "failure") {
+			expect(result.message.endsWith(" (truncated)")).toBe(true);
+			expect(new TextEncoder().encode(result.message).byteLength).toBeLessThan(16 * 1024 + 100);
+		}
+	});
 });

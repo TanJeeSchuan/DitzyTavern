@@ -51,6 +51,7 @@ type MutableCollectedModelClientGeneration = {
 export async function collectModelClientGeneration(
 	client: ModelClient,
 	input: ModelClientGenerationInput,
+	options: { readonly onEvent?: (event: ModelClientEvent) => void | Promise<void> } = {},
 ): Promise<CollectedModelClientGeneration> {
 	let content = "";
 	let reasoning = "";
@@ -64,6 +65,7 @@ export async function collectModelClientGeneration(
 					"A Model Client emitted an event after its finished outcome.",
 				);
 			}
+			await options.onEvent?.(event);
 
 			switch (event.type) {
 				case "content":

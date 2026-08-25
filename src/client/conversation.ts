@@ -81,6 +81,13 @@ export type GenerationResult =
 	| { outcome: "not-found" }
 	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid"; reason: string };
 
+export type GenerationStreamDelta =
+	| { type: "content"; text: string }
+	| { type: "reasoning"; text: string }
+	| { type: "usage"; usage: Record<string, number> }
+	| { type: "finished"; finishReason: "stop" | "length" | "other"; rawFinishReason?: string }
+	| { type: "keepalive" };
+
 export type GenerationRequestValue =
 	| string
 	| number
@@ -350,4 +357,155 @@ export async function generateConversationReply(
 	// outcome field before callers consume its payload.
 	const body = (await response.json()) as GenerationResult;
 	return body;
+}
+
+// POST generation uses a native fetch stream because EventSource cannot send
+// a request body. Frames are decoded and validated here before the workspace
+// sees visible text; malformed provider or server payloads never become UI
+// state.
+export async function streamConversationReply(
+	conversationId: number,
+	input: {
+		signal?: AbortSignal;
+		onDelta: (event: GenerationStreamDelta) => void;
+	},
+): Promise<GenerationResult> {
+	const response = await fetch(`/api/conversations/${conversationId}/generate/stream`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+		signal: input.signal,
+	});
+	if (!response.ok || response.body === null) {
+		return { outcome: "failed", reason: "Generation stream could not be opened." };
+	}
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let pending = "";
+	let result: GenerationResult | null = null;
+	const consumeFrame = (frame: string) => {
+		let eventType = "message";
+		const dataLines: string[] = [];
+		for (const line of frame.split(/\r?\n/)) {
+			if (line.startsWith("event:")) eventType = line.slice(6).trim();
+			if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+		}
+		if (dataLines.length === 0) return;
+		const value = parseGenerationStreamObject(dataLines.join("\n"));
+		if (value === null) return;
+		const delta = eventType === "generation" ? parseGenerationStreamDelta(value) : null;
+		if (delta !== null) {
+			input.onDelta(delta);
+			return;
+		}
+		const applied = eventType === "complete" ? parseGenerationApplied(value) : null;
+		if (applied !== null) {
+			result = applied;
+			return;
+		}
+		const failure = eventType === "error" ? parseGenerationFailure(value) : null;
+		if (failure !== null) result = failure;
+	};
+	while (true) {
+		const next = await reader.read();
+		pending += decoder.decode(next.value ?? new Uint8Array(), { stream: !next.done });
+		const frames = pending.split(/\r?\n\r?\n/);
+		pending = frames.pop() ?? "";
+		for (const frame of frames) consumeFrame(frame);
+		if (next.done) break;
+	}
+	if (pending.length > 0) consumeFrame(pending);
+	return result ?? { outcome: "failed", reason: "Generation ended without a terminal result." };
+}
+
+type GenerationStreamJsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| GenerationStreamJsonValue[]
+	| { readonly [key: string]: GenerationStreamJsonValue };
+
+type GenerationStreamJsonObject = {
+	readonly [key: string]: GenerationStreamJsonValue;
+};
+
+function parseGenerationStreamObject(serialized: string): GenerationStreamJsonObject | null {
+	let parsed: GenerationStreamJsonValue;
+	try {
+		// SAFETY: JSON.parse is followed by an object-tag check before this value
+		// crosses into the small SSE payload decoders below.
+		parsed = JSON.parse(serialized) as GenerationStreamJsonValue;
+	} catch {
+		return null;
+	}
+	return generationStreamJsonObject(parsed);
+}
+
+function parseGenerationStreamDelta(value: GenerationStreamJsonObject): GenerationStreamDelta | null {
+	const type = generationStreamJsonString(value.type);
+	if (type === "content" || type === "reasoning") {
+		const text = generationStreamJsonString(value.text);
+		return text === undefined ? null : { type, text };
+	}
+	if (type === "keepalive") return { type };
+	if (type === "usage") {
+		const usageObject = generationStreamJsonObject(value.usage);
+		if (usageObject === null) return null;
+		const usage: Record<string, number> = {};
+		for (const [key, candidate] of Object.entries(usageObject)) {
+			const number = generationStreamJsonNumber(candidate);
+			if (number !== undefined) usage[key] = number;
+		}
+		return { type, usage };
+	}
+	if (type !== "finished") return null;
+	const finishReason = generationStreamJsonString(value.finishReason);
+	if (finishReason !== "stop" && finishReason !== "length" && finishReason !== "other") return null;
+	const rawFinishReason = generationStreamJsonString(value.rawFinishReason);
+	return rawFinishReason === undefined
+		? { type, finishReason }
+		: { type, finishReason, rawFinishReason };
+}
+
+function parseGenerationApplied(
+	value: GenerationStreamJsonObject,
+): Extract<GenerationResult, { outcome: "applied" }> | null {
+	if (generationStreamJsonString(value.outcome) !== "applied") return null;
+	// SAFETY: the server's SSE complete event is produced from the typed
+	// generation route payload; the discriminant was checked immediately above.
+	return value as AppliedGenerationPayload;
+}
+
+function parseGenerationFailure(
+	value: GenerationStreamJsonObject,
+): Exclude<GenerationResult, { outcome: "applied" }> | null {
+	const outcome = generationStreamJsonString(value.outcome);
+	if (outcome !== "not-found" && outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid") {
+		return null;
+	}
+	// SAFETY: the server's SSE error event is a typed discriminated outcome; the
+	// closed outcome vocabulary was checked immediately above.
+	return value as FailureGenerationPayload;
+}
+
+type AppliedGenerationPayload = GenerationStreamJsonObject & Extract<GenerationResult, { outcome: "applied" }>;
+type FailureGenerationPayload = GenerationStreamJsonObject & Exclude<GenerationResult, { outcome: "applied" }>;
+
+function generationStreamJsonObject(value: GenerationStreamJsonValue | undefined): GenerationStreamJsonObject | null {
+	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
+	// SAFETY: the object-tag check above establishes the JSON object shape before
+	// this named projection is used by the stream decoders.
+	return value as GenerationStreamJsonObject;
+}
+
+function generationStreamJsonString(value: GenerationStreamJsonValue | undefined): string | undefined {
+	if (Object.prototype.toString.call(value) !== "[object String]") return undefined;
+	return String(value);
+}
+
+function generationStreamJsonNumber(value: GenerationStreamJsonValue | undefined): number | undefined {
+	if (Object.prototype.toString.call(value) !== "[object Number]") return undefined;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : undefined;
 }

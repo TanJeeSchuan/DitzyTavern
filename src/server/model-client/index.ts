@@ -21,6 +21,7 @@ export type {
 	ModelClientUsage,
 } from "./types";
 export {
+	createModelClient,
 	createDeepSeekModelClient,
 	createOpenRouterModelClient,
 	createOpenAICompatibleModelClient,

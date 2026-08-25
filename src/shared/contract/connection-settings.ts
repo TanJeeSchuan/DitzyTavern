@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { Elysia, t } from "elysia";
+import { Elysia, t, type Static } from "elysia";
 import {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNotFoundError,
@@ -10,7 +10,10 @@ import {
 	validateConnectionProfileDraft,
 } from "../../server/connection-settings";
 import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
-import type { ConnectionSettingsSnapshot } from "../../server/connection-settings";
+import type {
+	ConnectionPreset as DomainConnectionPreset,
+	ConnectionSettingsSnapshot,
+} from "../../server/connection-settings";
 import {
 	discoverModels,
 	testConnection,
@@ -60,22 +63,27 @@ const profileDraft = t.Object({
 	]),
 	timeoutMs: t.Nullable(t.Integer()),
 	pinnedModels: t.Array(t.String()),
-	backendOptions: t.Record(t.String(), backendOptionValue),
-});
+	// Legacy request payloads may still carry this field so the domain can reject
+	// non-empty values explicitly; it is omitted from every exported client type.
+	backendOptions: t.Optional(t.Record(t.String(), backendOptionValue)),
+}, { additionalProperties: false });
 
 const profile = t.Object({
 	id: t.Integer(),
 	displayName: t.String(),
-	apiFormat: t.String(),
+	apiFormat: t.Union([
+		t.Literal("chat-completions"),
+		t.Literal("responses"),
+		t.Literal("anthropic-messages"),
+	]),
 	requestUrl: t.String(),
 	modelsUrl: t.String(),
-	modelBackend: t.String(),
-	adapter: t.String(),
-	outputTokenRepresentation: t.String(),
+	modelBackend: t.Union([t.Literal("automatic"), t.Literal("ai-sdk")]),
+	adapter: t.Union([t.Literal("openai-compatible"), t.Literal("deepseek"), t.Literal("openrouter")]),
+	outputTokenRepresentation: t.Union([t.Literal("automatic"), t.Literal("max_tokens"), t.Literal("max_completion_tokens"), t.Literal("omit")]),
 	timeoutMs: t.Nullable(t.Integer()),
 	pinnedModels: t.Array(t.String()),
 	discoveryCatalog: t.Array(t.String()),
-	backendOptions: t.Record(t.String(), t.Unknown()),
 	credentialConfigured: t.Boolean(),
 	headers: t.Array(redactedHeader),
 });
@@ -143,7 +151,6 @@ const testConnectionBody = t.Object({
 	profileId: t.Optional(t.Integer()),
 	profile: profileDraft,
 	modelId: t.String(),
-	credential: t.Optional(t.Nullable(t.String())),
 	headers: t.Optional(t.Array(headerOperation)),
 });
 
@@ -214,11 +221,7 @@ export const createConnectionSettingsRoutes = (
 					withConnectionSettings(connection, (domain) =>
 						domain.listPresets().map((entry) => ({
 							...entry,
-							profile: {
-								...entry.profile,
-								pinnedModels: [...entry.profile.pinnedModels],
-								backendOptions: { ...entry.profile.backendOptions },
-							},
+						profile: toPresetProfilePayload(entry.profile),
 						})), options),
 				),
 			}),
@@ -289,8 +292,7 @@ export const createConnectionSettingsRoutes = (
 							profile: prepared.profile,
 							modelId: body.modelId,
 							secrets: prepared.secrets,
-							credential: body.credential,
-						},
+					},
 						{
 							fetch: options.fetch,
 							timeoutMs: options.testConnectionTimeoutMs,
@@ -391,6 +393,77 @@ export const createConnectionSettingsRoutes = (
 
 export { profileDraft as connectionProfileDraftSchema };
 
+export type ConnectionProfileDraftPayload = Omit<Static<typeof profileDraft>, "backendOptions">;
+export type ConnectionProfilePayload = Static<typeof profile>;
+export type ConnectionSettingsPayload = Static<typeof settings>;
+export type ConnectionPresetPayload = Static<typeof preset>;
+export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;
+export type ConnectionTestResultPayload = Static<typeof testConnectionResult>;
+export type ConnectionDiscoveryResultPayload = Static<typeof discoveryResult>;
+
+export type ConnectionSettingsCommandPayload =
+	| {
+			type: "create-profile";
+			expectedRevision: number;
+			profile: ConnectionProfileDraftPayload;
+			credential?: string | null;
+			headers?: ConnectionHeaderOperationPayload[];
+	  }
+	| {
+			type: "apply-profile";
+			expectedRevision: number;
+			profileId: number;
+			profile: ConnectionProfileDraftPayload;
+			headers?: ConnectionHeaderOperationPayload[];
+	  }
+	| {
+			type: "set-credential";
+			expectedRevision: number;
+			profileId: number;
+			credential: string;
+	  }
+	| {
+			type: "reset-credential";
+			expectedRevision: number;
+			profileId: number;
+			confirmed: boolean;
+	  }
+	| {
+			type: "activate-profile";
+			expectedRevision: number;
+			profileId: number;
+	  }
+	| {
+			type: "delete-profile";
+			expectedRevision: number;
+			profileId: number;
+			replacementProfileId?: number | null;
+	  }
+	| {
+			type: "set-pinned-models";
+			expectedRevision: number;
+			profileId: number;
+			pinnedModels: string[];
+	  };
+
+export type ConnectionTestDraftPayload = {
+	profileId?: number;
+	profile: ConnectionProfileDraftPayload;
+	modelId: string;
+	headers?: ConnectionHeaderOperationPayload[];
+};
+
+export type ConnectionSettingsCommandResultPayload =
+	| { outcome: "applied"; settings: ConnectionSettingsPayload }
+	| {
+			outcome: "conflict";
+			expectedRevision: number;
+			actualRevision: number;
+			currentSettings: ConnectionSettingsPayload;
+	  }
+	| { outcome: "invalid"; reason: string }
+	| { outcome: "not-found" };
+
 function toSettingsPayload(snapshot: ConnectionSettingsSnapshot) {
 	return {
 		revision: snapshot.revision,
@@ -407,7 +480,6 @@ function toSettingsPayload(snapshot: ConnectionSettingsSnapshot) {
 			timeoutMs: entry.timeoutMs,
 			pinnedModels: [...entry.pinnedModels],
 			discoveryCatalog: [...entry.discoveryCatalog],
-			backendOptions: { ...entry.backendOptions },
 			credentialConfigured: entry.credentialConfigured,
 			headers: [...entry.headers],
 		})),
@@ -427,8 +499,21 @@ function toProfilePayload(entry: ConnectionSettingsSnapshot["profiles"][number])
 		timeoutMs: entry.timeoutMs,
 		pinnedModels: [...entry.pinnedModels],
 		discoveryCatalog: [...entry.discoveryCatalog],
-		backendOptions: { ...entry.backendOptions },
 		credentialConfigured: entry.credentialConfigured,
 		headers: [...entry.headers],
+	};
+}
+
+function toPresetProfilePayload(profile: DomainConnectionPreset["profile"]) {
+	return {
+		displayName: profile.displayName,
+		apiFormat: profile.apiFormat,
+		requestUrl: profile.requestUrl,
+		modelsUrl: profile.modelsUrl,
+		modelBackend: profile.modelBackend,
+		adapter: profile.adapter,
+		outputTokenRepresentation: profile.outputTokenRepresentation,
+		timeoutMs: profile.timeoutMs,
+		pinnedModels: [...profile.pinnedModels],
 	};
 }

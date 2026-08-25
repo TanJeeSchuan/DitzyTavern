@@ -32,13 +32,11 @@ const emptyDraft: ConnectionProfileDraft = {
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120000,
 	pinnedModels: [],
-	backendOptions: {},
 };
 
 const copyDraft = (profile: ConnectionProfileDraft): ConnectionProfileDraft => ({
 	...profile,
 	pinnedModels: [...profile.pinnedModels],
-	backendOptions: { ...profile.backendOptions },
 });
 
 type HeaderEditorValue = {
@@ -207,7 +205,6 @@ export function ConnectionSettingsPanel() {
 				modelId: testModelId,
 			};
 			if (selectedProfileId !== null) request.profileId = selectedProfileId;
-			if (credentialDraft.length > 0) request.credential = credentialDraft;
 			request.headers = headerOperationsFor(headerEditorData);
 			const result = await testConnectionDraft(request);
 			setTestResult(result);
@@ -462,7 +459,7 @@ export function ConnectionSettingsPanel() {
 								<span>{profile.displayName}</span>
 								<small>
 									{profile.id === settings.activeProfileId ? "Active" : "Available"}
-									{profile.credentialConfigured ? " · Credential configured" : " · No credential"}
+									{profile.credentialConfigured ? "; credential configured" : "; no credential"}
 								</small>
 							</button>
 						))}
@@ -554,9 +551,12 @@ export function ConnectionSettingsPanel() {
 						<span>Dedicated credential</span>
 						<div className="credential-input-row">
 							<KeyRound aria-hidden="true" />
-							<input className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured · enter to replace" : "Optional for now"} />
+						<input className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Optional for now"} />
 						</div>
-						<small>Stored encrypted. The value is write-only.</small>
+						<small>
+							Stored encrypted and write-only. Test Connection uses the stored
+							credential; Set Credential before testing a replacement.
+						</small>
 					</label>
 					<div className="connection-header-editor">
 						<h4>Custom headers</h4>
@@ -580,6 +580,8 @@ export function ConnectionSettingsPanel() {
 						<label className="field"><span>API Format</span><select className="field-input" value={draft.apiFormat} onChange={(event) => { /* SAFETY: the select offers only the Chat Completions option. */ setDraft({ ...draft, apiFormat: event.target.value as ConnectionProfileDraft["apiFormat"] }); }}><option value="chat-completions">Chat Completions</option></select></label>
 						<label className="field"><span>Model Backend</span><select className="field-input" value={draft.modelBackend} onChange={(event) => { /* SAFETY: options are the closed v1 Model Backend vocabulary. */ setDraft({ ...draft, modelBackend: event.target.value as ConnectionProfileDraft["modelBackend"] }); }}><option value="automatic">Automatic</option><option value="ai-sdk">AI SDK</option></select></label>
 						<label className="field"><span>AI SDK Adapter</span><select className="field-input" value={draft.adapter} onChange={(event) => { /* SAFETY: options are the three bundled adapter identifiers. */ setDraft({ ...draft, adapter: event.target.value as ConnectionProfileDraft["adapter"] }); }}><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option><option value="openai-compatible">OpenAI Compatible</option></select></label>
+						<label className="field"><span>Output-token representation</span><select className="field-input" value={draft.outputTokenRepresentation} onChange={(event) => { const value = event.target.value; setDraft({ ...draft, outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" }); }}><option value="automatic">Automatic</option><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens</option><option value="omit">Omit remote limit</option></select></label>
+						<label className="field"><span>Stream inactivity timeout</span><input className="field-input" type="number" min="0" step="1000" value={draft.timeoutMs ?? ""} onChange={(event) => setDraft({ ...draft, timeoutMs: event.target.value.length === 0 ? null : Number(event.target.value) })} placeholder="120000" /><small>Milliseconds. Use zero or blank to disable.</small></label>
 					</div>
 					{draft.pinnedModels.length > 0 && <small className="pinned-models-note">Pinned defaults: {draft.pinnedModels.join(", ")}</small>}
 					<div className="connection-action-row">

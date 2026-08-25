@@ -9,6 +9,10 @@ import type { GenerationRequestOverrides } from "../conversation/types";
 
 export interface ModelClientGenerationInput {
 	promptPlan: PromptPlan;
+	// The compiler keeps the plan provider-neutral. These role hints preserve
+	// historical authorship without making the transport depend on domain
+	// Participant objects or provider message types.
+	historyRoles?: readonly ("human" | "model" | null)[];
 	// Conversation-owned values are captured once by the Generation workflow
 	// and travel with the opaque Prompt Plan into the transport seam.
 	modelId?: string;

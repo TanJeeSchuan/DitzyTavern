@@ -17,7 +17,6 @@ const deepSeekProfile = {
 	outputTokenRepresentation: "automatic" as const,
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
-	backendOptions: {},
 };
 
 type ConnectionCommandPayload =
@@ -140,6 +139,19 @@ describe("Connection Settings transport adapter", () => {
 		expect(body.outcome).toBe("invalid");
 		expect(body.reason).toContain("display name");
 
+		const settings = await get("/api/connection-settings");
+		expect((await settings.json()).revision).toBe(0);
+	});
+
+	test("rejects arbitrary Backend Options instead of persisting or echoing them", async () => {
+		const response = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: { ...deepSeekProfile, backendOptions: { experimental: true } },
+		});
+
+		expect(response.status).toBe(422);
+		expect((await response.json()).outcome).toBe("invalid");
 		const settings = await get("/api/connection-settings");
 		expect((await settings.json()).revision).toBe(0);
 	});
@@ -334,15 +346,13 @@ describe("Connection Settings transport adapter", () => {
 			profileId: number;
 			profile: typeof deepSeekProfile;
 			modelId: string;
-			credential?: string;
 		};
-		const test = (credential?: string) => {
+		const test = () => {
 			const body: TestDraftRequestBody = {
 				profileId,
 				profile: { ...deepSeekProfile, requestUrl: "http://127.0.0.1:43127/v1/?tenant=test" },
 				modelId: "deepseek-chat",
 			};
-			if (credential !== undefined) body.credential = credential;
 			return testApp.handle(new Request("http://localhost/api/connection-settings/test-connection", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -357,11 +367,19 @@ describe("Connection Settings transport adapter", () => {
 		expect(requests[0]?.authorization).toBe("Bearer existing-secret");
 		expect(requests[0]?.body.model).toBe("deepseek-chat");
 
-		const replacement = await test("replacement-secret");
+		const update = await post({
+			type: "set-credential",
+			expectedRevision: beforeBody.revision,
+			profileId,
+			credential: "replacement-secret",
+		});
+		expect(update.status).toBe(200);
+		const replacement = await test();
 		expect(replacement.status).toBe(200);
 		expect(requests[1]?.authorization).toBe("Bearer replacement-secret");
 		const after = await get("/api/connection-settings");
-		expect(await after.json()).toEqual(beforeBody);
+		const afterBody = await after.json();
+		expect(afterBody.profiles[0]?.credential).toBeUndefined();
 	});
 
 	test("tests a generic exact endpoint with redacted custom-header replacement drafts", async () => {

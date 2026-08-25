@@ -1,5 +1,5 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
@@ -31,7 +31,6 @@ export interface TestConnectionInput {
 	readonly profile: ConnectionProfileDraft;
 	readonly modelId: string;
 	readonly secrets?: ConnectionProfileSecretSnapshot | null;
-	readonly credential?: string | null;
 }
 
 export interface TestConnectionOptions {
@@ -89,11 +88,11 @@ export async function testConnection(
 		);
 	}
 
-	const credential = input.credential !== undefined
-		? input.credential
-		: input.secrets?.credential ?? null;
+	const credential = input.secrets?.credential ?? null;
 	const headers = { ...input.secrets?.headers };
-	const profileTimeoutMs = input.profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS;
+	const profileTimeoutMs = input.profile.timeoutMs !== null && input.profile.timeoutMs > 0
+		? input.profile.timeoutMs
+		: TEST_CONNECTION_TIMEOUT_MS;
 	const timeoutMs = Math.max(
 			1,
 			Math.min(profileTimeoutMs, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),
@@ -123,7 +122,7 @@ export async function testConnection(
 			// SAFETY: the AI SDK invokes only the standard fetch call signature;
 			// Bun's optional preconnect helper is not part of the provider contract.
 			fetch: fetchAtResolvedDestination as typeof fetch,
-			})
+			}).chat(modelId)
 			: input.profile.adapter === "openrouter"
 				? createOpenRouter({
 					// An empty explicit value prevents the SDK from reading a process-wide
@@ -137,8 +136,9 @@ export async function testConnection(
 					// SAFETY: the AI SDK invokes only the standard fetch call signature;
 					// Bun's optional preconnect helper is not part of the provider contract.
 					fetch: fetchAtResolvedDestination as typeof fetch,
-				})
-				: createOpenAI({
+				}).chat(modelId)
+				: createOpenAICompatible({
+				name: "ditzytavern-openai-compatible",
 				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
 				apiKey: credential ?? "",
 				baseURL: new URL(requestUrl).origin,
@@ -146,9 +146,9 @@ export async function testConnection(
 				// SAFETY: the AI SDK invokes this standard fetch-compatible function
 				// with the same RequestInfo/RequestInit/Response contract.
 				fetch: fetchAtResolvedDestination as typeof fetch,
-			});
+			}).languageModel(modelId, { url: () => requestUrl });
 		const result = await generateText({
-			model: provider.chat(modelId),
+			model: provider,
 			prompt: TEST_CONNECTION_PROMPT,
 			maxOutputTokens: options.maxOutputTokens ?? TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 			maxRetries: 0,
@@ -174,12 +174,9 @@ export async function testConnection(
 	}
 }
 
-export function testDeepSeekConnection(
-	input: TestConnectionInput,
-	options: TestConnectionOptions = {},
-): Promise<TestConnectionResult> {
-	return testConnection(input, options);
-}
+// Compatibility alias for existing callers. New code uses the adapter-neutral
+// name because Test Connection is not DeepSeek-specific.
+export const testDeepSeekConnection = testConnection;
 
 interface ErrorContext {
 	timedOut: boolean;

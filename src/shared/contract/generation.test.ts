@@ -168,6 +168,43 @@ describe("Generation transport contract", () => {
 		expect(contacted).toBe(false);
 	});
 
+	test("streams normalized generation events and completion over the live SSE route", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Live Generation Contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "live-secret-never-returned",
+		});
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => streamResponse(),
+		});
+
+		const response = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: "{}",
+			}),
+		);
+		const body = await response.text();
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toContain("text/event-stream");
+		expect(body).toContain("event: generation");
+		expect(body).toContain('"type":"content"');
+		expect(body).toContain('"text":"Contract "');
+		expect(body).toContain("event: complete");
+		expect(body).not.toContain("live-secret-never-returned");
+	});
+
 	test("generates through a generic exact endpoint with custom authentication", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Generic Generation Contract",

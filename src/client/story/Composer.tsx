@@ -1,4 +1,4 @@
-import { Send } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 export function Composer({
@@ -10,6 +10,7 @@ export function Composer({
 	onDraftChange,
 	onFocusChange,
 	onSubmit,
+	onCancel,
 }: {
 	draft: string;
 	isGenerating: boolean;
@@ -19,6 +20,7 @@ export function Composer({
 	onDraftChange: (value: string) => void;
 	onFocusChange: (focused: boolean) => void;
 	onSubmit: (event: FormEvent) => void;
+	onCancel?: () => void;
 }) {
 	return (
 		<form
@@ -47,9 +49,15 @@ export function Composer({
 				disabled={!canWrite}
 				rows={1}
 			/>
-			<button className="send-button" type="submit" disabled={!canWrite || isGenerating} aria-label="Generate Variant">
-				<Send aria-hidden="true" />
-			</button>
+			{isGenerating ? (
+				<button className="send-button" type="button" onClick={onCancel} aria-label="Cancel Generation">
+					<Square aria-hidden="true" />
+				</button>
+			) : (
+				<button className="send-button" type="submit" disabled={!canWrite} aria-label="Generate Variant">
+					<Send aria-hidden="true" />
+				</button>
+			)}
 		</form>
 	);
 }

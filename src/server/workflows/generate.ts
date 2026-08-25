@@ -75,12 +75,14 @@ export interface GenerateReplyInput {
 	// The signal belongs to this one Generation. A cancelled attempt never
 	// changes the active Profile or another Conversation.
 	signal?: AbortSignal;
+	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
 
 interface GenerationDerivation {
 	plan: PromptPlan;
+	historyRoles: readonly ("human" | "model" | null)[];
 	humanParticipant: ParticipantPreview;
 	modelParticipant: ParticipantPreview;
 }
@@ -105,6 +107,19 @@ const selectedHistoryFrom = (
 		];
 	});
 
+const selectedHistoryRolesFrom = (
+	snapshot: ConversationSnapshot,
+	humanParticipantId: number,
+	modelParticipantId: number,
+	endExclusiveIndex?: number,
+): readonly ("human" | "model" | null)[] =>
+	snapshot.messages.slice(0, endExclusiveIndex).flatMap((message) => {
+		if (message.variants.find((variant) => variant.selected) === undefined) return [];
+		if (message.author?.participantId === humanParticipantId) return ["human"];
+		if (message.author?.participantId === modelParticipantId) return ["model"];
+		return [null];
+	});
+
 const deriveGeneration = (
 	snapshot: ConversationSnapshot,
 ): GenerationDerivation | null => {
@@ -126,6 +141,7 @@ const deriveGeneration = (
 
 	return {
 		plan,
+		historyRoles: selectedHistoryRolesFrom(snapshot, human.id, model.id),
 		humanParticipant: { id: human.id, name: human.name },
 		modelParticipant: { id: model.id, name: model.name },
 	};
@@ -258,7 +274,7 @@ export async function generateReply(
 		// Typed domain result before the transport is ever contacted.
 		throw new ConversationNotPlayableError(input.conversationId);
 	}
-	const { plan, humanParticipant, modelParticipant } = derivation;
+	const { plan, historyRoles, humanParticipant, modelParticipant } = derivation;
 	const capture = captureGenerationSettings(
 		database,
 		input.conversationId,
@@ -270,11 +286,12 @@ export async function generateReply(
 	try {
 		result = await collectModelClientGeneration(input.modelClient, {
 			promptPlan: plan,
+			historyRoles,
 			modelId: capture.settings.modelId,
 			generationSettings: toModelClientGenerationSettings(capture.settings),
 			connection: capture.connection,
 			signal: input.signal,
-		});
+		}, { onEvent: input.onEvent });
 	} catch (error) {
 		if (!(error instanceof ModelClientGenerationError)) throw error;
 		const partial = error.partial;
@@ -336,6 +353,7 @@ export interface GenerateSiblingVariantInput {
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	signal?: AbortSignal;
+	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -402,7 +420,15 @@ const deriveSiblingDerivation = (
 		history,
 	});
 
-	return { plan };
+	return {
+		plan,
+		historyRoles: selectedHistoryRolesFrom(
+			snapshot,
+			human.id,
+			model.id,
+			targetIndex,
+		),
+	};
 };
 
 // Targeted Swipe: generates a new sibling Variant for an existing native
@@ -424,7 +450,7 @@ export async function generateSiblingVariant(
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	const { plan } = deriveSiblingDerivation(snapshot, input.messageId);
+	const { plan, historyRoles } = deriveSiblingDerivation(snapshot, input.messageId);
 	const capture = captureGenerationSettings(
 		database,
 		input.conversationId,
@@ -436,11 +462,12 @@ export async function generateSiblingVariant(
 	try {
 		result = await collectModelClientGeneration(input.modelClient, {
 			promptPlan: plan,
+			historyRoles,
 			modelId: capture.settings.modelId,
 			generationSettings: toModelClientGenerationSettings(capture.settings),
 			connection: capture.connection,
 			signal: input.signal,
-		});
+		}, { onEvent: input.onEvent });
 	} catch (error) {
 		if (!(error instanceof ModelClientGenerationError)) throw error;
 		const partial = error.partial;

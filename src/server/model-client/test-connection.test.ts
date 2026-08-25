@@ -85,7 +85,7 @@ describe("Model Test Connection", () => {
 				requestUrl: "http://127.0.0.1:43127/api/v1/",
 			},
 			modelId: "deepseek/deepseek-v4-flash",
-			credential: "openrouter-secret-never-returned",
+			secrets: { credential: "openrouter-secret-never-returned", headers: {} },
 		}, {
 			fetch: async (input, init) => {
 				request = {
@@ -114,7 +114,7 @@ describe("Model Test Connection", () => {
 		const result = await testDeepSeekConnection({
 			profile,
 			modelId: "custom-model-id",
-			credential: "stored-secret",
+			secrets: { credential: "stored-secret", headers: {} },
 		}, {
 			fetch: async (input, init) => {
 				request = { url: String(input), init: init ?? {} };
@@ -145,7 +145,7 @@ describe("Model Test Connection", () => {
 		const result = await testDeepSeekConnection({
 			profile,
 			modelId: "deepseek-chat",
-			credential: "secret-never-display",
+			secrets: { credential: "secret-never-display", headers: {} },
 		}, {
 			fetch: async () => {
 				calls += 1;
@@ -166,7 +166,7 @@ describe("Model Test Connection", () => {
 		const redirected = await testDeepSeekConnection({
 			profile,
 			modelId: "deepseek-chat",
-			credential: "secret",
+			secrets: { credential: "secret", headers: {} },
 		}, {
 			fetch: async () => {
 				calls += 1;
@@ -190,7 +190,7 @@ describe("Model Test Connection", () => {
 		const result = await testDeepSeekConnection({
 			profile,
 			modelId: "deepseek-chat",
-			credential: "secret",
+			secrets: { credential: "secret", headers: {} },
 		}, {
 			fetch: async () => new Response("not-json", {
 				status: 200,
@@ -206,7 +206,7 @@ describe("Model Test Connection", () => {
 		const textual = await testDeepSeekConnection({
 			profile,
 			modelId: "deepseek-chat",
-			credential: "secret",
+			secrets: { credential: "secret", headers: {} },
 		}, {
 			fetch: async () => new Response(longBody, {
 				status: 500,
@@ -219,7 +219,7 @@ describe("Model Test Connection", () => {
 		const binary = await testDeepSeekConnection({
 			profile,
 			modelId: "deepseek-chat",
-			credential: "secret",
+			secrets: { credential: "secret", headers: {} },
 		}, {
 			fetch: async () => new Response(new Uint8Array([1, 2, 3, 4]), {
 				status: 500,
@@ -249,5 +249,20 @@ describe("Model Test Connection", () => {
 			}),
 		});
 		expect(timedOut).toMatchObject({ outcome: "failure", kind: "timeout" });
+	});
+
+	test("treats a zero Profile timeout as disabled instead of a one-millisecond Test Connection", async () => {
+		const result = await testConnection({
+			profile: { ...profile, timeoutMs: 0 },
+			modelId: "deepseek-chat",
+		}, {
+			timeoutMs: 100,
+			fetch: async () => {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				return successfulResponse();
+			},
+		});
+
+		expect(result.outcome).toBe("success");
 	});
 });

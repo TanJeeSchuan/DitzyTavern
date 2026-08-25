@@ -38,3 +38,31 @@ export function GenerationPlaceholder() {
 	);
 }
 
+export function StreamingGeneration({
+	content,
+	reasoning,
+}: {
+	content: string;
+	reasoning: string;
+}) {
+	return (
+		<article className="story-message streaming-generation" aria-live="polite">
+			<header className="message-header">
+				<strong>Generating Message</strong>
+				<span className="generation-state">Streaming</span>
+			</header>
+			{reasoning.length > 0 && (
+				<details className="streaming-reasoning">
+					<summary>Reasoning</summary>
+					<div className="prose">{reasoning}</div>
+				</details>
+			)}
+			<div className="prose">
+				{content.length > 0
+					? content.split("\n\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)
+					: <span className="streaming-placeholder">Waiting for visible text</span>}
+			</div>
+		</article>
+	);
+}
+

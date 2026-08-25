@@ -489,15 +489,11 @@ function validateProfile(input: ConnectionProfileDraft): ConnectionProfileDraft 
 		);
 	}
 	const pinnedModels = normalizePinnedModels(input.pinnedModels);
-	let backendOptions: BackendOptions;
-	try {
-		const serialized = JSON.stringify(input.backendOptions);
-		if (serialized === undefined) throw new Error();
-		// SAFETY: the profile draft is parsed and validated by the HTTP schema;
-		// direct callers receive the same concrete BackendOptions type.
-		backendOptions = JSON.parse(serialized) as BackendOptions;
-	} catch {
-		throw new InvalidConnectionProfileError("Backend Options must be a JSON object.");
+	const backendOptions = input.backendOptions ?? {};
+	if (Object.keys(backendOptions).length > 0) {
+		throw new InvalidConnectionProfileError(
+			"Arbitrary Backend Options are not supported in version one.",
+		);
 	}
 	return {
 		displayName,
@@ -619,7 +615,7 @@ function toProfileRow(profile: ConnectionProfileDraft) {
 		adapter: profile.adapter,
 		output_token_representation: profile.outputTokenRepresentation,
 		timeout_ms: profile.timeoutMs,
-		backend_options_json: JSON.stringify(profile.backendOptions),
+		backend_options_json: JSON.stringify(profile.backendOptions ?? {}),
 	};
 }
 
@@ -789,7 +785,9 @@ function parseBackendOptions(value: string): BackendOptions {
 	try {
 		// SAFETY: this value is written only by toProfileRow after the domain
 		// validates the profile draft's BackendOptions shape.
-		return JSON.parse(value) as BackendOptions;
+		const parsed = JSON.parse(value) as BackendOptions;
+		if (Object.keys(parsed).length > 0) throw new Error("non-empty");
+		return {};
 	} catch {
 		throw new InvalidConnectionProfileError("Stored Backend Options are invalid JSON.");
 	}

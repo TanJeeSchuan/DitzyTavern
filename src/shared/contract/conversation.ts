@@ -22,9 +22,7 @@ import {
 	type ConnectionSettingsModuleOptions,
 } from "../../server/connection-settings";
 import {
-	createDeepSeekModelClient,
-	createOpenRouterModelClient,
-	createOpenAICompatibleModelClient,
+	createModelClient,
 	ModelClientGenerationError,
 	ModelClientTransportError,
 	type ModelFetch,
@@ -63,6 +61,15 @@ import {
 export interface ConversationRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
+
+type GenerationSsePayload =
+	| import("../../server/model-client").ModelClientEvent
+	| ReturnType<typeof toGenerationPayload>
+	| { readonly outcome: "not-found" }
+	| { readonly outcome: "unconfigured"; readonly reason: string }
+	| { readonly outcome: "failed"; readonly reason: string }
+	| { readonly outcome: "not-playable"; readonly reason: string }
+	| { readonly outcome: "invalid"; readonly reason: string };
 
 export const createConversationRoutes = (
 	database: Database | undefined,
@@ -162,18 +169,7 @@ export const createConversationRoutes = (
 								reason: "The active Connection Profile is unavailable.",
 							});
 						}
-						const createClient = profile.adapter === "openai-compatible"
-							? createOpenAICompatibleModelClient
-							: profile.adapter === "openrouter"
-								? createOpenRouterModelClient
-								: profile.adapter === "deepseek"
-									? createDeepSeekModelClient
-									: () => {
-										throw new ModelClientTransportError(
-											`The saved AI SDK Adapter "${String(profile.adapter)}" is unavailable.`,
-										);
-									};
-						const client = createClient({
+						const client = createModelClient({
 							profile,
 							secrets: connectionSettingsModuleSecrets(
 								connection,
@@ -240,6 +236,88 @@ export const createConversationRoutes = (
 					422: invalidOutcome,
 					502: t.Object({ outcome: t.Literal("failed"), reason: t.String() }),
 				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/generate/stream",
+			({ params, request }) => {
+				const encoder = new TextEncoder();
+				const frame = (type: string, data: GenerationSsePayload) =>
+					`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+				const stream = new ReadableStream<Uint8Array>({
+					start(controller) {
+						const emit = (type: string, data: GenerationSsePayload) => {
+							try {
+								controller.enqueue(encoder.encode(frame(type, data)));
+							} catch {
+								// A disconnected browser already aborts the request; no
+								// second write or retry is attempted.
+							}
+						};
+						void withDatabase(database, async (connection) => {
+							try {
+								const conversation = createConversationModule(connection);
+								const current = conversation.getSnapshot(params.id);
+								if (current === undefined) {
+									emit("error", { outcome: "not-found" });
+									return;
+								}
+								const connectionSettings = createConnectionSettingsModule(connection, options).get();
+								if (connectionSettings.activeProfileId === null) {
+									emit("error", { outcome: "unconfigured", reason: "An active Connection Profile is required for Generation." });
+									return;
+								}
+								const profile = connectionSettings.profiles.find((entry) => entry.id === connectionSettings.activeProfileId);
+								if (profile === undefined) {
+									emit("error", { outcome: "unconfigured", reason: "The active Connection Profile is unavailable." });
+									return;
+								}
+								const client = createModelClient({
+									profile,
+									secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
+									fetch: options.fetch,
+								});
+								const generated = await generateReply(connection, {
+									conversationId: params.id,
+									modelClient: client,
+									connection: {
+										profileId: profile.id,
+										settingsRevision: connectionSettings.revision,
+										backend: "ai-sdk",
+										adapter: profile.adapter,
+									},
+									signal: request.signal,
+									onEvent: (event) => emit("generation", event),
+								});
+								emit("complete", toGenerationPayload(generated));
+							} catch (error) {
+								if (error instanceof ModelClientGenerationError || error instanceof ModelClientTransportError) {
+									emit("error", { outcome: "failed", reason: error.message });
+								} else if (error instanceof ConversationNotPlayableError) {
+									emit("error", { outcome: "not-playable", reason: error.message });
+								} else if (error instanceof Error) {
+									emit("error", { outcome: "invalid", reason: error.message });
+								} else {
+									emit("error", { outcome: "failed", reason: "Generation could not be completed." });
+								}
+							} finally {
+								try { controller.close(); } catch { /* disconnected client */ }
+							}
+						});
+					},
+				});
+				return new Response(stream, {
+					headers: {
+						"content-type": "text/event-stream; charset=utf-8",
+						"cache-control": "no-cache, no-transform",
+						connection: "keep-alive",
+					},
+				});
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				body: t.Object({}),
+				response: t.Any(),
 			},
 		)
 		.post(
