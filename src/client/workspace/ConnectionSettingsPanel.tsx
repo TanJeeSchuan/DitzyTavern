@@ -4,16 +4,20 @@ import {
 	loadConnectionPresets,
 	loadConnectionSettings,
 	saveConnectionCommand,
+	testConnectionDraft,
 	type ConnectionProfile,
 	type ConnectionProfileDraft,
 	type ConnectionPreset,
 	type ConnectionSettings,
 	type ConnectionSettingsResult,
+	type TestConnectionDraftInput,
+	type TestConnectionResult,
 } from "../connection-settings";
 import {
 	preserveConnectionDraftOnConflict,
 	type ConnectionSettingsConflict,
 } from "../connection-settings-state";
+import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
 
 const emptyDraft: ConnectionProfileDraft = {
 	displayName: "",
@@ -40,6 +44,9 @@ export function ConnectionSettingsPanel() {
 	const [draft, setDraft] = useState<ConnectionProfileDraft>(emptyDraft);
 	const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 	const [credentialDraft, setCredentialDraft] = useState("");
+	const [testModelId, setTestModelId] = useState("");
+	const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
+	const [testPending, setTestPending] = useState(false);
 	const [replacementProfileId, setReplacementProfileId] = useState<number | null>(null);
 	const [conflict, setConflict] = useState<ConnectionSettingsConflict | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -59,6 +66,7 @@ export function ConnectionSettingsPanel() {
 		if (active) {
 					setSelectedProfileId(active.id);
 					setDraft(copyDraft(active));
+					setTestModelId(active.pinnedModels[0] ?? "");
 					setReplacementProfileId(loadedSettings.profiles.find((profile) => profile.id !== active.id)?.id ?? null);
 				}
 			})
@@ -77,9 +85,12 @@ export function ConnectionSettingsPanel() {
 		(profile) => profile.id === selectedProfileId,
 	);
 	const resolvedRequestUrl = useMemo(() => {
-		const value = draft.requestUrl.trim();
-		if (value.length === 0) return "Not configured";
-		return value.endsWith("/") ? `${value}chat/completions` : value;
+		if (draft.requestUrl.trim().length === 0) return "Not configured";
+		try {
+			return resolveChatCompletionsRequestUrl(draft.requestUrl);
+		} catch (error) {
+			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
+		}
 	}, [draft.requestUrl]);
 
 	const preserveConflict = (result: ConnectionSettingsResult): boolean => {
@@ -102,6 +113,8 @@ export function ConnectionSettingsPanel() {
 		setSelectedProfileId(null);
 		setDraft(copyDraft(preset.profile));
 		setCredentialDraft("");
+		setTestModelId(preset.profile.pinnedModels[0] ?? "");
+		setTestResult(null);
 		setReplacementProfileId(null);
 		setConflict(null);
 		setNotice(`${preset.label} defaults copied into a new editable Profile draft.`);
@@ -112,10 +125,39 @@ export function ConnectionSettingsPanel() {
 		setSelectedProfileId(profile.id);
 		setDraft(copyDraft(profile));
 		setCredentialDraft("");
+		setTestModelId(profile.pinnedModels[0] ?? "");
+		setTestResult(null);
 		setReplacementProfileId(settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null);
 		setConflict(null);
 		setNotice(null);
 		setError(null);
+	};
+
+	const testDraft = async () => {
+		if (testModelId.trim().length === 0) {
+			setError("Enter a model ID before testing this Connection Profile.");
+			return;
+		}
+		setTestPending(true);
+		setTestResult(null);
+		setNotice(null);
+		setError(null);
+		try {
+			const request: TestConnectionDraftInput = {
+				profile: draft,
+				modelId: testModelId,
+			};
+			if (selectedProfileId !== null) request.profileId = selectedProfileId;
+			if (credentialDraft.length > 0) request.credential = credentialDraft;
+			const result = await testConnectionDraft(request);
+			setTestResult(result);
+			if (result.outcome === "success") setNotice(result.message);
+			else setError(result.outcome === "failure" ? result.message : result.reason);
+		} catch {
+			setError("Test Connection could not be completed.");
+		} finally {
+			setTestPending(false);
+		}
 	};
 
 	const applyDraft = async () => {
@@ -149,6 +191,7 @@ export function ConnectionSettingsPanel() {
 		}
 		setSettings(result.settings);
 		setConflict(null);
+		setTestResult(null);
 		const saved = result.settings.profiles.find(
 			(profile) =>
 				(selectedProfileId !== null && profile.id === selectedProfileId) ||
@@ -281,7 +324,7 @@ export function ConnectionSettingsPanel() {
 	}
 
 	return (
-		<div className="panel-body settings-panel-body connection-settings-panel">
+		<div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={testResult?.outcome}>
 			<section>
 				<h3>Connection Profiles</h3>
 				<p>
@@ -376,6 +419,11 @@ export function ConnectionSettingsPanel() {
 						<input className="field-input" value={draft.modelsUrl} onChange={(event) => setDraft({ ...draft, modelsUrl: event.target.value })} placeholder="https://example.com/models" />
 					</label>
 					<label className="field">
+						<span>Test model ID</span>
+						<input className="field-input" value={testModelId} onChange={(event) => setTestModelId(event.target.value)} placeholder="deepseek-chat" />
+						<small>Test Connection sends one short request using this model ID.</small>
+					</label>
+					<label className="field">
 						<span>Dedicated credential</span>
 						<div className="credential-input-row">
 							<KeyRound aria-hidden="true" />
@@ -391,9 +439,11 @@ export function ConnectionSettingsPanel() {
 					{draft.pinnedModels.length > 0 && <small className="pinned-models-note">Pinned defaults: {draft.pinnedModels.join(", ")}</small>}
 					<div className="connection-action-row">
 						<button className="primary-button" type="button" onClick={() => void applyDraft()}><Save aria-hidden="true" /> Apply Profile</button>
+						<button className="secondary-button" type="button" disabled={testPending} onClick={() => void testDraft()}><Zap aria-hidden="true" /> {testPending ? "Testing..." : "Test Connection"}</button>
 						{selectedProfile && credentialDraft.length > 0 && <button className="secondary-button" type="button" onClick={() => void setCredential()}><KeyRound aria-hidden="true" /> Set Credential</button>}
 						{selectedProfile?.credentialConfigured && <button className="secondary-button" type="button" onClick={() => void resetCredential()}><RotateCcw aria-hidden="true" /> Reset Credential</button>}
 					</div>
+					<small className="connection-test-warning">Test Connection contacts the provider and may incur a charge. It does not save this draft.</small>
 				</div>
 			</section>
 

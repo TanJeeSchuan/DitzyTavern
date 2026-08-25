@@ -214,4 +214,70 @@ describe("Connection Settings transport adapter", () => {
 			currentSettings: { activeProfileId: secondId },
 		});
 	});
+
+	test("tests the unsaved draft with kept or replacement credentials without durable side effects", async () => {
+		const createdResponse = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+			credential: "existing-secret",
+		});
+		const createdBody = await createdResponse.json();
+		const profileId = createdBody.settings.profiles[0].id;
+		const before = await get("/api/connection-settings");
+		const beforeBody = await before.json();
+		type CapturedRequestBody = { model: string; max_tokens: number; messages: Array<{ role: string; content: string }> };
+		const requests: Array<{ url: string; authorization: string | null; body: CapturedRequestBody }> = [];
+		const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+			const headers = new Headers(init?.headers);
+			requests.push({
+				url: String(input),
+				authorization: headers.get("authorization"),
+				// SAFETY: the fake fetch receives the AI SDK Chat Completions body
+				// and the test only reads the three invariant fields below.
+				body: JSON.parse(String(init?.body)) as CapturedRequestBody,
+			});
+			return new Response(JSON.stringify({
+				id: "test",
+				object: "chat.completion",
+				created: 1,
+				model: "deepseek-chat",
+				choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+				usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+		const testApp = createConnectionSettingsRoutes(database, { masterKey: key, fetch: fakeFetch });
+		type TestDraftRequestBody = {
+			profileId: number;
+			profile: typeof deepSeekProfile;
+			modelId: string;
+			credential?: string;
+		};
+		const test = (credential?: string) => {
+			const body: TestDraftRequestBody = {
+				profileId,
+				profile: { ...deepSeekProfile, requestUrl: "http://127.0.0.1:43127/v1/?tenant=test" },
+				modelId: "deepseek-chat",
+			};
+			if (credential !== undefined) body.credential = credential;
+			return testApp.handle(new Request("http://localhost/api/connection-settings/test-connection", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		}));
+		};
+
+		const kept = await test();
+		expect(kept.status).toBe(200);
+		expect((await kept.json()).outcome).toBe("success");
+		expect(requests[0]?.url).toBe("http://127.0.0.1:43127/v1/chat/completions?tenant=test");
+		expect(requests[0]?.authorization).toBe("Bearer existing-secret");
+		expect(requests[0]?.body.model).toBe("deepseek-chat");
+
+		const replacement = await test("replacement-secret");
+		expect(replacement.status).toBe(200);
+		expect(requests[1]?.authorization).toBe("Bearer replacement-secret");
+		const after = await get("/api/connection-settings");
+		expect(await after.json()).toEqual(beforeBody);
+	});
 });

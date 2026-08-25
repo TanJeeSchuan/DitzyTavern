@@ -29,6 +29,7 @@ import type {
 	ActivateConnectionProfileInput,
 	ConnectionProfile,
 	ConnectionProfileDraft,
+	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
 	CreateConnectionProfileInput,
@@ -82,6 +83,17 @@ export function createConnectionSettingsModule(
 			revision: settings.revision,
 			activeProfileId,
 			profiles,
+		};
+	};
+
+	const getProfileSecrets = (profileId: number): ConnectionProfileSecretSnapshot | null => {
+		const db = connect(database);
+		const profile = requireProfile(db, profileId);
+		const secret = readSecret(db, profile.id, getKey());
+		if (secret === null) return null;
+		return {
+			credential: secret.credential,
+			headers: { ...secret.headers },
 		};
 	};
 
@@ -245,6 +257,7 @@ export function createConnectionSettingsModule(
 
 	return {
 		get: read,
+		getProfileSecrets,
 		listPresets: () => listConnectionPresets().map((preset) => ({
 			...preset,
 			profile: cloneProfileDraft(preset.profile),
@@ -305,23 +318,10 @@ function readProfile(
 		.orderBy(asc(connectionProfilePinnedModelTable.position))
 		.all()
 		.map((pin) => pin.modelId);
-	const secret = db
-		.select()
-		.from(connectionSecretTable)
-		.where(eq(connectionSecretTable.profile_id, row.id))
-		.get();
 	let credentialConfigured = false;
 	const headers: Array<{ name: string; configured: boolean }> = [];
-	if (secret !== undefined) {
-		const payload = decryptConnectionSecretSync(masterKey, row.id, {
-			// SAFETY: the encryption module accepts the versioned value and
-			// rejects any unsupported value before decrypting it.
-			formatVersion: secret.format_version as 1,
-			keyId: secret.key_id,
-			nonce: secret.nonce,
-			ciphertext: secret.ciphertext,
-			tag: secret.tag,
-		});
+	const payload = readSecret(db, row.id, masterKey);
+	if (payload !== null) {
 		credentialConfigured = payload.credential !== null;
 		for (const name of Object.keys(payload.headers).sort((a, b) =>
 			a.localeCompare(b, undefined, { sensitivity: "base" }),
@@ -352,6 +352,32 @@ function readProfile(
 		backendOptions,
 		credentialConfigured,
 		headers,
+	};
+}
+
+function readSecret(
+	db: ReturnType<typeof awaitableDrizzle>,
+	profileId: number,
+	masterKey: Uint8Array,
+): ConnectionProfileSecretSnapshot | null {
+	const secret = db
+		.select()
+		.from(connectionSecretTable)
+		.where(eq(connectionSecretTable.profile_id, profileId))
+		.get();
+	if (secret === undefined) return null;
+	const payload = decryptConnectionSecretSync(masterKey, profileId, {
+		// SAFETY: the encryption module accepts the versioned value and
+		// rejects any unsupported value before decrypting it.
+		formatVersion: secret.format_version as 1,
+		keyId: secret.key_id,
+		nonce: secret.nonce,
+		ciphertext: secret.ciphertext,
+		tag: secret.tag,
+	});
+	return {
+		credential: payload.credential,
+		headers: { ...payload.headers },
 	};
 }
 
@@ -410,6 +436,12 @@ function validateProfile(input: ConnectionProfileDraft): ConnectionProfileDraft 
 		pinnedModels,
 		backendOptions,
 	};
+}
+
+export function validateConnectionProfileDraft(
+	profile: ConnectionProfileDraft,
+): ConnectionProfileDraft {
+	return validateProfile(profile);
 }
 
 function normalizeDisplayName(value: string): string {
@@ -612,6 +644,7 @@ export type {
 	ConnectionPreset,
 	ConnectionProfile,
 	ConnectionProfileDraft,
+	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
 	CreateConnectionProfileInput,

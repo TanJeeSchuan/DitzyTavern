@@ -55,6 +55,26 @@ export type ConnectionSettingsResult =
 	| { outcome: "invalid"; reason: string }
 	| { outcome: "not-found" };
 
+export type TestConnectionFailureKind =
+	| "authentication"
+	| "endpoint"
+	| "timeout"
+	| "redirect"
+	| "malformed-response"
+	| "adapter-unavailable";
+
+export type TestConnectionResult =
+	| { outcome: "success"; message: string }
+	| { outcome: "failure"; kind: TestConnectionFailureKind; message: string }
+	| { outcome: "invalid"; reason: string };
+
+export type TestConnectionDraftInput = {
+	profileId?: number;
+	profile: ConnectionProfileDraft;
+	modelId: string;
+	credential?: string | null;
+};
+
 export type ConnectionSettingsCommand =
 	| {
 			type: "create-profile";
@@ -124,4 +144,13 @@ export async function saveConnectionCommand(
 		body: JSON.stringify(command),
 	});
 	return json<ConnectionSettingsResult>(response);
+}
+
+export async function testConnectionDraft(input: TestConnectionDraftInput): Promise<TestConnectionResult> {
+	const response = await fetch("/api/connection-settings/test-connection", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(input),
+	});
+	return json<TestConnectionResult>(response);
 }

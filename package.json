@@ -17,9 +17,11 @@
 		"smoke:import": "node scripts/import-chat-smoke.ts"
 	},
 	"dependencies": {
+		"@ai-sdk/deepseek": "^3.0.32",
 		"@elysiajs/eden": "^1.4.9",
 		"@elysiajs/static": "^1.4.10",
 		"@fontsource-variable/geist": "^5.3.0",
+		"ai": "^7.0.79",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"drizzle-orm": "^0.45.2",

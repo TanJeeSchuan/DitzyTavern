@@ -43,6 +43,11 @@ export interface ConnectionProfile extends ConnectionProfileDraft {
 	readonly headers: readonly RedactedHeader[];
 }
 
+export interface ConnectionProfileSecretSnapshot {
+	readonly credential: string | null;
+	readonly headers: Readonly<Record<string, string>>;
+}
+
 export interface ConnectionSettingsSnapshot {
 	readonly revision: number;
 	readonly activeProfileId: number | null;
@@ -93,6 +98,7 @@ export interface DeleteConnectionProfileInput {
 
 export interface ConnectionSettingsModule {
 	get(): ConnectionSettingsSnapshot;
+	getProfileSecrets(profileId: number): ConnectionProfileSecretSnapshot | null;
 	listPresets(): readonly ConnectionPreset[];
 	createProfile(input: CreateConnectionProfileInput): ConnectionSettingsSnapshot;
 	applyProfile(input: ApplyConnectionProfileInput): ConnectionSettingsSnapshot;

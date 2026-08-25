@@ -10,3 +10,17 @@ export type {
 	ModelClientFinishReason,
 	ModelClientGenerationInput,
 } from "./types";
+export {
+	resolveTestConnectionBackend,
+	testDeepSeekConnection,
+	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
+	TEST_CONNECTION_PROMPT,
+	TEST_CONNECTION_TIMEOUT_MS,
+} from "./test-connection";
+export type {
+	ModelFetch,
+	TestConnectionFailureKind,
+	TestConnectionInput,
+	TestConnectionOptions,
+	TestConnectionResult,
+} from "./test-connection";

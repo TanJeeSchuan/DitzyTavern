@@ -6,9 +6,15 @@ import {
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 	withConnectionSettings,
+	validateConnectionProfileDraft,
 } from "../../server/connection-settings";
 import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
 import type { ConnectionSettingsSnapshot } from "../../server/connection-settings";
+import {
+	testDeepSeekConnection,
+	type ModelFetch,
+	type TestConnectionResult,
+} from "../../server/model-client";
 import { withDatabase } from "../../server/database/database";
 
 const redactedHeader = t.Object({
@@ -116,7 +122,36 @@ const commandBody = t.Union([
 	}),
 ]);
 
-export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {}
+const testConnectionBody = t.Object({
+	profileId: t.Optional(t.Integer()),
+	profile: profileDraft,
+	modelId: t.String(),
+	credential: t.Optional(t.Nullable(t.String())),
+});
+
+const testConnectionResult = t.Union([
+	t.Object({
+		outcome: t.Literal("success"),
+		message: t.String(),
+	}),
+	t.Object({
+		outcome: t.Literal("failure"),
+		kind: t.Union([
+			t.Literal("authentication"),
+			t.Literal("endpoint"),
+			t.Literal("timeout"),
+			t.Literal("redirect"),
+			t.Literal("malformed-response"),
+			t.Literal("adapter-unavailable"),
+		]),
+		message: t.String(),
+	}),
+]);
+
+export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {
+	readonly fetch?: ModelFetch;
+	readonly testConnectionTimeoutMs?: number;
+}
 
 export const createConnectionSettingsRoutes = (
 	database: Database | undefined,
@@ -149,6 +184,53 @@ export const createConnectionSettingsRoutes = (
 				),
 			}),
 			{ response: t.Object({ presets: t.Array(preset) }) },
+		)
+		.post(
+			"/api/connection-settings/test-connection",
+			async ({ body, status }) => {
+				try {
+					const prepared = withDatabase(database, (connection) =>
+						withConnectionSettings(connection, (domain) => {
+							const profile = validateConnectionProfileDraft(body.profile);
+							const secrets = body.profileId === undefined
+								? null
+								: domain.getProfileSecrets(body.profileId);
+							return { profile, secrets };
+						}, options),
+					);
+					const result = await testDeepSeekConnection(
+						{
+							profile: prepared.profile,
+							modelId: body.modelId,
+							secrets: prepared.secrets,
+							credential: body.credential,
+						},
+						{
+							fetch: options.fetch,
+							timeoutMs: options.testConnectionTimeoutMs,
+						},
+					);
+					return result satisfies TestConnectionResult;
+				} catch (error) {
+					if (error instanceof Error) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					return status(422, {
+						outcome: "invalid" as const,
+						reason: "The Connection Profile draft could not be tested.",
+					});
+				}
+			},
+			{
+				body: testConnectionBody,
+				response: {
+					200: testConnectionResult,
+					422: t.Object({
+						outcome: t.Literal("invalid"),
+						reason: t.String(),
+					}),
+				},
+			},
 		)
 		.post(
 			"/api/connection-settings/commands",
