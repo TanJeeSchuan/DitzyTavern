@@ -1,4 +1,4 @@
-import { Check, KeyRound, RotateCcw, Save, ShieldCheck } from "lucide-react";
+import { Check, KeyRound, RotateCcw, Save, ShieldCheck, Trash2, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
 	loadConnectionPresets,
@@ -8,7 +8,12 @@ import {
 	type ConnectionProfileDraft,
 	type ConnectionPreset,
 	type ConnectionSettings,
+	type ConnectionSettingsResult,
 } from "../connection-settings";
+import {
+	preserveConnectionDraftOnConflict,
+	type ConnectionSettingsConflict,
+} from "../connection-settings-state";
 
 const emptyDraft: ConnectionProfileDraft = {
 	displayName: "",
@@ -35,6 +40,8 @@ export function ConnectionSettingsPanel() {
 	const [draft, setDraft] = useState<ConnectionProfileDraft>(emptyDraft);
 	const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 	const [credentialDraft, setCredentialDraft] = useState("");
+	const [replacementProfileId, setReplacementProfileId] = useState<number | null>(null);
+	const [conflict, setConflict] = useState<ConnectionSettingsConflict | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -49,9 +56,10 @@ export function ConnectionSettingsPanel() {
 				const active = loadedSettings.profiles.find(
 					(profile) => profile.id === loadedSettings.activeProfileId,
 				);
-				if (active) {
+		if (active) {
 					setSelectedProfileId(active.id);
 					setDraft(copyDraft(active));
+					setReplacementProfileId(loadedSettings.profiles.find((profile) => profile.id !== active.id)?.id ?? null);
 				}
 			})
 			.catch(() => {
@@ -74,10 +82,28 @@ export function ConnectionSettingsPanel() {
 		return value.endsWith("/") ? `${value}chat/completions` : value;
 	}, [draft.requestUrl]);
 
+	const preserveConflict = (result: ConnectionSettingsResult): boolean => {
+		if (!settings || result.outcome !== "conflict") return false;
+		const preserved = preserveConnectionDraftOnConflict({
+			settings,
+			selectedProfileId,
+			draft,
+			credentialDraft,
+			conflict: null,
+		}, result);
+		setSettings(preserved.settings);
+		setDraft(preserved.draft);
+		setCredentialDraft(preserved.credentialDraft);
+		setConflict(preserved.conflict);
+		return true;
+	};
+
 	const choosePreset = (preset: ConnectionPreset) => {
 		setSelectedProfileId(null);
 		setDraft(copyDraft(preset.profile));
 		setCredentialDraft("");
+		setReplacementProfileId(null);
+		setConflict(null);
 		setNotice(`${preset.label} defaults copied into a new editable Profile draft.`);
 		setError(null);
 	};
@@ -86,6 +112,8 @@ export function ConnectionSettingsPanel() {
 		setSelectedProfileId(profile.id);
 		setDraft(copyDraft(profile));
 		setCredentialDraft("");
+		setReplacementProfileId(settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null);
+		setConflict(null);
 		setNotice(null);
 		setError(null);
 	};
@@ -109,6 +137,7 @@ export function ConnectionSettingsPanel() {
 			};
 		const result = await saveConnectionCommand(command);
 		if (result.outcome !== "applied") {
+			preserveConflict(result);
 			setError(
 				result.outcome === "conflict"
 					? "These settings changed elsewhere. Your unsaved draft is preserved."
@@ -119,6 +148,7 @@ export function ConnectionSettingsPanel() {
 			return;
 		}
 		setSettings(result.settings);
+		setConflict(null);
 		const saved = result.settings.profiles.find(
 			(profile) =>
 				(selectedProfileId !== null && profile.id === selectedProfileId) ||
@@ -130,6 +160,77 @@ export function ConnectionSettingsPanel() {
 		}
 		setCredentialDraft("");
 		setNotice("Connection Profile applied offline. No provider request was made.");
+	};
+
+	const activateSelectedProfile = async () => {
+		if (!settings || selectedProfileId === null || selectedProfileId === settings.activeProfileId) return;
+		setNotice(null);
+		setError(null);
+		const result = await saveConnectionCommand({
+			type: "activate-profile",
+			expectedRevision: settings.revision,
+			profileId: selectedProfileId,
+		});
+		if (result.outcome !== "applied") {
+			preserveConflict(result);
+			setError(result.outcome === "conflict"
+				? "These settings changed elsewhere. Your unsaved draft is preserved."
+				: result.outcome === "not-found"
+					? "The selected Profile no longer exists."
+					: result.reason);
+			return;
+		}
+		setSettings(result.settings);
+		setConflict(null);
+		setNotice("Profile activated for new Generations.");
+	};
+
+	const deleteSelectedProfile = async () => {
+		if (!settings || selectedProfileId === null) return;
+		const selected = settings.profiles.find((profile) => profile.id === selectedProfileId);
+		if (!selected) return;
+		const deletingActive = selected.id === settings.activeProfileId;
+		const replacement = deletingActive && settings.profiles.length > 1
+			? replacementProfileId
+			: null;
+		if (deletingActive && settings.profiles.length > 1 && replacement === null) {
+			setError("Choose a replacement Profile before deleting the active Profile.");
+			return;
+		}
+		if (!window.confirm(`Delete the Profile "${selected.displayName}"? This cannot be undone.`)) return;
+		setNotice(null);
+		setError(null);
+		const result = await saveConnectionCommand({
+			type: "delete-profile",
+			expectedRevision: settings.revision,
+			profileId: selected.id,
+			replacementProfileId: replacement,
+		});
+		if (result.outcome !== "applied") {
+			preserveConflict(result);
+			setError(result.outcome === "conflict"
+				? "These settings changed elsewhere. Your unsaved draft is preserved."
+				: result.outcome === "invalid"
+					? result.reason
+					: "The selected Profile no longer exists.");
+			return;
+		}
+		setSettings(result.settings);
+		setConflict(null);
+		const nextProfile = result.settings.profiles.find(
+			(profile) => profile.id === (replacement ?? result.settings.activeProfileId),
+		);
+		if (nextProfile) {
+			setSelectedProfileId(nextProfile.id);
+			setDraft(copyDraft(nextProfile));
+			setReplacementProfileId(result.settings.profiles.find((profile) => profile.id !== nextProfile.id)?.id ?? null);
+		} else {
+			setSelectedProfileId(null);
+			setDraft(copyDraft(emptyDraft));
+			setReplacementProfileId(null);
+		}
+		setCredentialDraft("");
+		setNotice("Connection Profile deleted.");
 	};
 
 	const setCredential = async () => {
@@ -147,6 +248,7 @@ export function ConnectionSettingsPanel() {
 			return;
 		}
 		setSettings(result.settings);
+		setConflict(null);
 		setCredentialDraft("");
 		setNotice("Credential updated. The stored value is never returned to this page.");
 	};
@@ -167,6 +269,7 @@ export function ConnectionSettingsPanel() {
 			return;
 		}
 		setSettings(result.settings);
+		setConflict(null);
 		setNotice("Credential reset.");
 	};
 
@@ -208,6 +311,33 @@ export function ConnectionSettingsPanel() {
 								</small>
 							</button>
 						))}
+					</div>
+				)}
+				{selectedProfile && (
+					<div className="connection-profile-lifecycle">
+						{selectedProfile.id !== settings.activeProfileId && (
+							<button className="secondary-button" type="button" onClick={() => void activateSelectedProfile()}>
+								<Zap aria-hidden="true" /> Activate Profile
+							</button>
+						)}
+						{selectedProfile.id === settings.activeProfileId && settings.profiles.length > 1 && (
+							<label className="field">
+								<span>Replacement if deleted</span>
+								<select
+									className="field-input"
+									value={replacementProfileId ?? ""}
+									onChange={(event) => setReplacementProfileId(event.target.value.length > 0 ? Number(event.target.value) : null)}
+								>
+									<option value="">Choose a Profile</option>
+									{settings.profiles.filter((profile) => profile.id !== selectedProfile.id).map((profile) => (
+										<option key={profile.id} value={profile.id}>{profile.displayName}</option>
+									))}
+								</select>
+							</label>
+						)}
+						<button className="secondary-button" type="button" onClick={() => void deleteSelectedProfile()}>
+							<Trash2 aria-hidden="true" /> Delete Profile
+						</button>
 					</div>
 				)}
 			</section>
@@ -267,7 +397,7 @@ export function ConnectionSettingsPanel() {
 				</div>
 			</section>
 
-			{(notice || error) && <p className={error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={error ? "alert" : "status"}>{error ?? notice}</p>}
+			{(notice || error || conflict) && <p className={error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={error ? "alert" : "status"}>{error ?? notice}{conflict && <small> Authoritative revision {conflict.actualRevision} is loaded. Review the draft before retrying.</small>}</p>}
 			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers stay outside Conversation state and are never returned to the client.</span></div>
 			{selectedProfile && <p className="connection-active-note">{selectedProfile.id === settings.activeProfileId ? <><Check aria-hidden="true" /> This Profile is active for new Generations.</> : "This Profile is saved but not active yet."}</p>}
 		</div>

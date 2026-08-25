@@ -14,7 +14,7 @@ import {
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from ".";
-import type { ConnectionProfileDraft } from "./types";
+import type { BackendOptions, ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
 
@@ -72,6 +72,24 @@ describe("Connection Settings", () => {
 			pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
 			backendOptions: {},
 		});
+	});
+
+	test("returns preset drafts by value so profile edits cannot mutate bundled defaults", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const listed = settings.listPresets();
+		const listedProfile = listed.find((preset) => preset.id === "deepseek")?.profile;
+		expect(listedProfile).toBeDefined();
+		if (!listedProfile) return;
+		// SAFETY: listPresets returns a mutable client-facing clone of this
+		// profile; this test intentionally simulates an editor mutating it.
+		(listedProfile.pinnedModels as string[]).push("temporary-edit");
+		// SAFETY: BackendOptions is the closed JSON value vocabulary accepted by
+		// the Connection Profile draft and this test adds a valid temporary key.
+		(listedProfile.backendOptions as BackendOptions & Record<string, boolean>).temporary = true;
+
+		const reread = settings.listPresets().find((preset) => preset.id === "deepseek")?.profile;
+		expect(reread?.pinnedModels).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
+		expect(reread?.backendOptions).toEqual({});
 	});
 
 	test("creates the first Profile and credential atomically, redacting the credential", () => {
@@ -187,5 +205,106 @@ describe("Connection Settings", () => {
 			expect(conflict.actualRevision).toBe(1);
 			expect(conflict.currentSettings.profiles[0]?.credentialConfigured).toBe(false);
 		}
+	});
+
+	test("keeps the first active Profile active while creating and applying another Profile", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const first = settings.createProfile({
+			expectedRevision: 0,
+			profile: deepSeekDraft(),
+		});
+		const second = settings.createProfile({
+			expectedRevision: first.revision,
+			profile: { ...deepSeekDraft(), displayName: "Local", requestUrl: "http://127.0.0.1:8080/v1/" },
+		});
+
+		expect(second.revision).toBe(2);
+		expect(second.activeProfileId).toBe(first.activeProfileId);
+		expect(second.profiles.map((profile) => profile.displayName)).toEqual([
+			"Deep Seek",
+			"Local",
+		]);
+	});
+
+	test("activates another Profile with one atomic revision advance", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const second = settings.createProfile({
+			expectedRevision: first.revision,
+			profile: { ...deepSeekDraft(), displayName: "Local" },
+		});
+		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
+
+		const activated = settings.activateProfile({
+			expectedRevision: second.revision,
+			profileId: secondId,
+		});
+
+		expect(activated.revision).toBe(3);
+		expect(activated.activeProfileId).toBe(secondId);
+		expect(activated.profiles).toHaveLength(2);
+	});
+
+	test("requires a replacement before deleting the active Profile when another exists", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const second = settings.createProfile({
+			expectedRevision: first.revision,
+			profile: { ...deepSeekDraft(), displayName: "Local" },
+		});
+		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
+
+		expect(() => settings.deleteProfile({
+			expectedRevision: second.revision,
+			profileId: first.activeProfileId ?? 0,
+		})).toThrow("requires a replacement");
+		expect(settings.get().revision).toBe(second.revision);
+
+		const deleted = settings.deleteProfile({
+			expectedRevision: second.revision,
+			profileId: first.activeProfileId ?? 0,
+			replacementProfileId: secondId,
+		});
+		expect(deleted.revision).toBe(second.revision + 1);
+		expect(deleted.activeProfileId).toBe(secondId);
+		expect(deleted.profiles).toHaveLength(1);
+	});
+
+	test("deleting the final Profile returns to the unconfigured state", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+
+		const deleted = settings.deleteProfile({
+			expectedRevision: created.revision,
+			profileId: created.activeProfileId ?? 0,
+		});
+
+		expect(deleted).toEqual({ revision: 2, activeProfileId: null, profiles: [] });
+	});
+
+	test("rejects case-insensitive duplicate names without changing the aggregate", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+
+		expect(() => settings.createProfile({
+			expectedRevision: created.revision,
+			profile: { ...deepSeekDraft(), displayName: " deep seek " },
+		})).toThrow("already exists");
+		expect(settings.get().revision).toBe(created.revision);
+		expect(settings.get().profiles).toHaveLength(1);
+	});
+
+	test("returns authoritative state when activation is stale", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const second = settings.createProfile({
+			expectedRevision: first.revision,
+			profile: { ...deepSeekDraft(), displayName: "Local" },
+		});
+		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
+
+		settings.activateProfile({ expectedRevision: second.revision, profileId: secondId });
+		expect(() => settings.activateProfile({ expectedRevision: second.revision, profileId: first.activeProfileId ?? 0 }))
+			.toThrow(StaleConnectionSettingsRevisionError);
 	});
 });

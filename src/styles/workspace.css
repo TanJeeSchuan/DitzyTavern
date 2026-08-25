@@ -677,6 +677,30 @@
 	font-size: 0.72rem;
 }
 
+.connection-profile-lifecycle {
+	display: flex;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 0.65rem;
+}
+
+.connection-profile-lifecycle .field {
+	min-width: 13rem;
+	flex: 1 1 13rem;
+}
+
+.connection-profile-lifecycle button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.connection-profile-lifecycle button svg {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
 .connection-presets,
 .connection-editor-section {
 	margin-top: 1.25rem;

@@ -14,6 +14,20 @@ export class ConnectionProfileNotFoundError extends Error {
 	}
 }
 
+export class ConnectionProfileNameConflictError extends InvalidConnectionProfileError {
+	constructor(displayName: string) {
+		super(`A Connection Profile named "${displayName}" already exists.`);
+		this.name = "ConnectionProfileNameConflictError";
+	}
+}
+
+export class ConnectionProfileReplacementRequiredError extends InvalidConnectionProfileError {
+	constructor() {
+		super("Deleting the active Connection Profile requires a replacement unless it is the final Profile.");
+		this.name = "ConnectionProfileReplacementRequiredError";
+	}
+}
+
 export class ConnectionCredentialConfirmationError extends Error {
 	constructor() {
 		super("Resetting a Connection Credential requires explicit confirmation.");

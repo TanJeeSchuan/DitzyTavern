@@ -55,6 +55,43 @@ export type ConnectionSettingsResult =
 	| { outcome: "invalid"; reason: string }
 	| { outcome: "not-found" };
 
+export type ConnectionSettingsCommand =
+	| {
+			type: "create-profile";
+			expectedRevision: number;
+			profile: ConnectionProfileDraft;
+			credential?: string | null;
+		}
+	| {
+			type: "apply-profile";
+		expectedRevision: number;
+		profileId: number;
+		profile: ConnectionProfileDraft;
+		}
+	| {
+		type: "activate-profile";
+		expectedRevision: number;
+		profileId: number;
+		}
+	| {
+		type: "delete-profile";
+		expectedRevision: number;
+		profileId: number;
+		replacementProfileId?: number | null;
+		}
+	| {
+		type: "set-credential";
+		expectedRevision: number;
+		profileId: number;
+		credential: string;
+		}
+	| {
+		type: "reset-credential";
+		expectedRevision: number;
+		profileId: number;
+		confirmed: boolean;
+		};
+
 const json = async <T>(response: Response): Promise<T> => {
 	const body: unknown = await response.json();
 	if (!response.ok) {
@@ -79,31 +116,7 @@ export async function loadConnectionPresets(): Promise<ConnectionPreset[]> {
 }
 
 export async function saveConnectionCommand(
-	command:
-		| {
-				type: "create-profile";
-				expectedRevision: number;
-				profile: ConnectionProfileDraft;
-				credential?: string | null;
-			}
-		| {
-				type: "apply-profile";
-				expectedRevision: number;
-				profileId: number;
-				profile: ConnectionProfileDraft;
-			}
-		| {
-				type: "set-credential";
-				expectedRevision: number;
-				profileId: number;
-				credential: string;
-			}
-		| {
-				type: "reset-credential";
-				expectedRevision: number;
-				profileId: number;
-				confirmed: boolean;
-			},
+	command: ConnectionSettingsCommand,
 ): Promise<ConnectionSettingsResult> {
 	const response = await fetch("/api/connection-settings/commands", {
 		method: "POST",

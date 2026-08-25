@@ -103,6 +103,17 @@ const commandBody = t.Union([
 		profileId: t.Integer(),
 		confirmed: t.Boolean(),
 	}),
+	t.Object({
+		type: t.Literal("activate-profile"),
+		expectedRevision: t.Integer(),
+		profileId: t.Integer(),
+	}),
+	t.Object({
+		type: t.Literal("delete-profile"),
+		expectedRevision: t.Integer(),
+		profileId: t.Integer(),
+		replacementProfileId: t.Optional(t.Nullable(t.Integer())),
+	}),
 ]);
 
 export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {}
@@ -154,6 +165,10 @@ export const createConnectionSettingsRoutes = (
 									return domain.setCredential(body);
 								case "reset-credential":
 									return domain.resetCredential(body);
+								case "activate-profile":
+									return domain.activateProfile(body);
+								case "delete-profile":
+									return domain.deleteProfile(body);
 							}
 						}, options),
 					);

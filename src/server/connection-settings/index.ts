@@ -14,7 +14,9 @@ import {
 } from "../connection-secrets";
 import {
 	ConnectionCredentialConfirmationError,
+	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
+	ConnectionProfileReplacementRequiredError,
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from "./errors";
@@ -24,12 +26,14 @@ import {
 } from "./presets";
 import type {
 	ApplyConnectionProfileInput,
+	ActivateConnectionProfileInput,
 	ConnectionProfile,
 	ConnectionProfileDraft,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
 	CreateConnectionProfileInput,
 	BackendOptions,
+	DeleteConnectionProfileInput,
 	ResetConnectionCredentialInput,
 	SetConnectionCredentialInput,
 } from "./types";
@@ -88,6 +92,7 @@ export function createConnectionSettingsModule(
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
 			requireRevision(database, settings.revision, input.expectedRevision, getKey());
+			ensureProfileNameAvailable(db, profile.displayName);
 
 			const inserted = db
 				.insert(connectionProfileTable)
@@ -129,6 +134,7 @@ export function createConnectionSettingsModule(
 			if (current === undefined) {
 				throw new ConnectionProfileNotFoundError(input.profileId);
 			}
+			ensureProfileNameAvailable(db, profile.displayName, input.profileId);
 
 			db.update(connectionProfileTable)
 				.set(toProfileRow(profile))
@@ -142,6 +148,67 @@ export function createConnectionSettingsModule(
 			return read();
 		});
 		return apply.immediate();
+	};
+
+	const activateProfile = (input: ActivateConnectionProfileInput) => {
+		const activate = database.transaction(() => {
+			const db = connect(database);
+			const settings = ensureSettingsRow(db);
+			requireRevision(database, settings.revision, input.expectedRevision, getKey());
+			requireProfile(db, input.profileId);
+
+			if (settings.active_profile_id === input.profileId) return read();
+
+			db.update(connectionSettingsTable)
+				.set({
+					revision: settings.revision + 1,
+					active_profile_id: input.profileId,
+				})
+				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
+				.run();
+			return read();
+		});
+		return activate.immediate();
+	};
+
+	const deleteProfile = (input: DeleteConnectionProfileInput) => {
+		const remove = database.transaction(() => {
+			const db = connect(database);
+			const settings = ensureSettingsRow(db);
+			requireRevision(database, settings.revision, input.expectedRevision, getKey());
+			requireProfile(db, input.profileId);
+
+			const profiles = db
+				.select({ id: connectionProfileTable.id })
+				.from(connectionProfileTable)
+				.orderBy(asc(connectionProfileTable.id))
+				.all();
+			const deletingActive = settings.active_profile_id === input.profileId;
+			let nextActiveProfileId = settings.active_profile_id;
+			if (deletingActive && profiles.length > 1) {
+				const replacementProfileId = input.replacementProfileId ?? null;
+				if (replacementProfileId === null || replacementProfileId === input.profileId) {
+					throw new ConnectionProfileReplacementRequiredError();
+				}
+				requireProfile(db, replacementProfileId);
+				nextActiveProfileId = replacementProfileId;
+			} else if (deletingActive) {
+				nextActiveProfileId = null;
+			}
+
+			db.update(connectionSettingsTable)
+				.set({
+					revision: settings.revision + 1,
+					active_profile_id: nextActiveProfileId,
+				})
+				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
+				.run();
+			db.delete(connectionProfileTable)
+				.where(eq(connectionProfileTable.id, input.profileId))
+				.run();
+			return read();
+		});
+		return remove.immediate();
 	};
 
 	const setCredential = (input: SetConnectionCredentialInput) => {
@@ -184,6 +251,8 @@ export function createConnectionSettingsModule(
 		})),
 		createProfile,
 		applyProfile,
+		activateProfile,
+		deleteProfile,
 		setCredential,
 		resetCredential,
 	};
@@ -351,6 +420,22 @@ function normalizeDisplayName(value: string): string {
 	return normalized;
 }
 
+function ensureProfileNameAvailable(
+	db: ReturnType<typeof awaitableDrizzle>,
+	displayName: string,
+	excludedProfileId?: number,
+): void {
+	const normalized = displayName.toLowerCase();
+	const conflict = db
+		.select({ id: connectionProfileTable.id, displayName: connectionProfileTable.display_name })
+		.from(connectionProfileTable)
+		.all()
+		.some((profile) =>
+			profile.id !== excludedProfileId && profile.displayName.toLowerCase() === normalized,
+		);
+	if (conflict) throw new ConnectionProfileNameConflictError(displayName);
+}
+
 function validateUrl(value: string, label: string, allowBlank: boolean): string {
 	const normalized = value.trim();
 	if (normalized.length === 0) {
@@ -512,13 +597,16 @@ function parseBackendOptions(value: string): BackendOptions {
 
 export {
 	ConnectionCredentialConfirmationError,
+	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
+	ConnectionProfileReplacementRequiredError,
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 	listConnectionPresets,
 	};
 export type {
 	ApplyConnectionProfileInput,
+	ActivateConnectionProfileInput,
 	ConnectionAdapter,
 	ConnectionApiFormat,
 	ConnectionPreset,
@@ -527,6 +615,7 @@ export type {
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
 	CreateConnectionProfileInput,
+	DeleteConnectionProfileInput,
 	ModelBackend,
 	OutputTokenRepresentation,
 	ResetConnectionCredentialInput,

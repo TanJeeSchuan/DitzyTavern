@@ -43,6 +43,17 @@ type ConnectionCommandPayload =
 		expectedRevision: number;
 		profileId: number;
 		confirmed: boolean;
+	}
+	| {
+		type: "activate-profile";
+		expectedRevision: number;
+		profileId: number;
+	}
+	| {
+		type: "delete-profile";
+		expectedRevision: number;
+		profileId: number;
+		replacementProfileId?: number | null;
 	};
 
 describe("Connection Settings transport adapter", () => {
@@ -121,5 +132,86 @@ describe("Connection Settings transport adapter", () => {
 
 		const settings = await get("/api/connection-settings");
 		expect((await settings.json()).revision).toBe(0);
+	});
+
+	test("activates and deletes Profiles through revisioned commands", async () => {
+		const firstResponse = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+		});
+		const firstBody = await firstResponse.json();
+		const secondResponse = await post({
+			type: "create-profile",
+			expectedRevision: firstBody.settings.revision,
+			profile: { ...deepSeekProfile, displayName: "Local" },
+		});
+		const secondBody = await secondResponse.json();
+		const firstId = firstBody.settings.profiles[0].id;
+		const secondId = secondBody.settings.profiles[1].id;
+
+		const activated = await post({
+			type: "activate-profile",
+			expectedRevision: secondBody.settings.revision,
+			profileId: secondId,
+		});
+		expect(activated.status).toBe(200);
+		expect((await activated.json()).settings.activeProfileId).toBe(secondId);
+
+		const missingReplacement = await post({
+			type: "delete-profile",
+			expectedRevision: secondBody.settings.revision + 1,
+			profileId: secondId,
+		});
+		expect(missingReplacement.status).toBe(422);
+		expect((await missingReplacement.json()).reason).toContain("requires a replacement");
+
+		const deleted = await post({
+			type: "delete-profile",
+			expectedRevision: secondBody.settings.revision + 1,
+			profileId: secondId,
+			replacementProfileId: firstId,
+		});
+		expect(deleted.status).toBe(200);
+		expect((await deleted.json()).settings).toMatchObject({
+			activeProfileId: firstId,
+			profiles: [{ id: firstId }],
+		});
+	});
+
+	test("returns a typed authoritative conflict for stale activation", async () => {
+		const firstResponse = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+		});
+		const firstBody = await firstResponse.json();
+		const secondResponse = await post({
+			type: "create-profile",
+			expectedRevision: firstBody.settings.revision,
+			profile: { ...deepSeekProfile, displayName: "Local" },
+		});
+		const secondBody = await secondResponse.json();
+		const secondId = secondBody.settings.profiles[1].id;
+
+		const activated = await post({
+			type: "activate-profile",
+			expectedRevision: secondBody.settings.revision,
+			profileId: secondId,
+		});
+		expect(activated.status).toBe(200);
+
+		const stale = await post({
+			type: "activate-profile",
+			expectedRevision: secondBody.settings.revision,
+			profileId: secondBody.settings.profiles[0].id,
+		});
+		expect(stale.status).toBe(409);
+		expect(await stale.json()).toMatchObject({
+			outcome: "conflict",
+			expectedRevision: secondBody.settings.revision,
+			actualRevision: secondBody.settings.revision + 1,
+			currentSettings: { activeProfileId: secondId },
+		});
 	});
 });
