@@ -1,5 +1,6 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
@@ -67,7 +68,11 @@ export async function testConnection(
 			error instanceof Error ? error.message : "The selected Model Backend is unavailable.",
 		);
 	}
-	if (input.profile.adapter !== "deepseek" && input.profile.adapter !== "openai-compatible") {
+	if (
+		input.profile.adapter !== "deepseek" &&
+		input.profile.adapter !== "openrouter" &&
+		input.profile.adapter !== "openai-compatible"
+	) {
 		return failure(
 			"adapter-unavailable",
 			`The AI SDK Adapter "${input.profile.adapter}" is unavailable for Test Connection.`,
@@ -119,7 +124,21 @@ export async function testConnection(
 			// Bun's optional preconnect helper is not part of the provider contract.
 			fetch: fetchAtResolvedDestination as typeof fetch,
 			})
-			: createOpenAI({
+			: input.profile.adapter === "openrouter"
+				? createOpenRouter({
+					// An empty explicit value prevents the SDK from reading a process-wide
+					// OPENROUTER_API_KEY that does not belong to this Profile.
+					apiKey: credential ?? "",
+					baseURL: new URL(requestUrl).origin,
+					headers,
+					// Strict mode requests OpenRouter usage accounting without adding
+					// optional application attribution headers.
+					compatibility: "strict",
+					// SAFETY: the AI SDK invokes only the standard fetch call signature;
+					// Bun's optional preconnect helper is not part of the provider contract.
+					fetch: fetchAtResolvedDestination as typeof fetch,
+				})
+				: createOpenAI({
 				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
 				apiKey: credential ?? "",
 				baseURL: new URL(requestUrl).origin,

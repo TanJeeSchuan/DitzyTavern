@@ -1,5 +1,6 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText } from "ai";
 import type {
 	ConnectionProfile,
@@ -46,18 +47,24 @@ const MAX_PROVIDER_ERROR_BYTES = 16 * 1024;
 export function createDeepSeekModelClient(
 	options: DeepSeekModelClientOptions,
 ): ModelClient {
-	return createConfiguredOpenAICompatibleModelClient(options, "deepseek");
+	return createConfiguredModelClient(options, "deepseek");
 }
 
 export function createOpenAICompatibleModelClient(
 	options: OpenAICompatibleModelClientOptions,
 ): ModelClient {
-	return createConfiguredOpenAICompatibleModelClient(options, "openai-compatible");
+	return createConfiguredModelClient(options, "openai-compatible");
 }
 
-function createConfiguredOpenAICompatibleModelClient(
+export function createOpenRouterModelClient(
 	options: OpenAICompatibleModelClientOptions,
-	adapter: "deepseek" | "openai-compatible",
+): ModelClient {
+	return createConfiguredModelClient(options, "openrouter");
+}
+
+function createConfiguredModelClient(
+	options: OpenAICompatibleModelClientOptions,
+	adapter: "deepseek" | "openrouter" | "openai-compatible",
 ): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {
 		throw new ModelClientTransportError("The selected API Format is unavailable.");
@@ -88,7 +95,7 @@ function createConfiguredOpenAICompatibleModelClient(
 async function* generateOpenAICompatibleStream(options: {
 	input: ModelClientGenerationInput;
 	profile: ConnectionProfile;
-	adapter: "deepseek" | "openai-compatible";
+	adapter: "deepseek" | "openrouter" | "openai-compatible";
 	credential: string;
 	customHeaders: Readonly<Record<string, string>>;
 	requestUrl: string;
@@ -172,7 +179,21 @@ async function* generateOpenAICompatibleStream(options: {
 			// Bun's optional preconnect helper is not part of this seam.
 			fetch: fetchAtResolvedDestination as typeof fetch,
 			})
-			: createOpenAI({
+			: options.adapter === "openrouter"
+				? createOpenRouter({
+					// An empty explicit value prevents the SDK from reading a process-wide
+					// OPENROUTER_API_KEY that does not belong to this Profile.
+					apiKey: options.credential,
+					baseURL: new URL(options.requestUrl).origin,
+					headers: options.customHeaders,
+					// Strict mode enables OpenRouter's Chat Completions usage accounting
+					// while leaving optional app attribution headers unset.
+					compatibility: "strict",
+					// SAFETY: the AI SDK invokes only the standard fetch call signature;
+					// Bun's optional preconnect helper is not part of this seam.
+					fetch: fetchAtResolvedDestination as typeof fetch,
+				})
+				: createOpenAI({
 				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
 				apiKey: options.credential,
 				baseURL: new URL(options.requestUrl).origin,

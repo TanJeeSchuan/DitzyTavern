@@ -22,6 +22,7 @@ export type {
 } from "./types";
 export {
 	createDeepSeekModelClient,
+	createOpenRouterModelClient,
 	createOpenAICompatibleModelClient,
 	ModelClientTransportError,
 } from "./deepseek";

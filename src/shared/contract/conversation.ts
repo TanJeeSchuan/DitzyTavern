@@ -23,6 +23,7 @@ import {
 } from "../../server/connection-settings";
 import {
 	createDeepSeekModelClient,
+	createOpenRouterModelClient,
 	createOpenAICompatibleModelClient,
 	ModelClientGenerationError,
 	ModelClientTransportError,
@@ -163,7 +164,15 @@ export const createConversationRoutes = (
 						}
 						const createClient = profile.adapter === "openai-compatible"
 							? createOpenAICompatibleModelClient
-							: createDeepSeekModelClient;
+							: profile.adapter === "openrouter"
+								? createOpenRouterModelClient
+								: profile.adapter === "deepseek"
+									? createDeepSeekModelClient
+									: () => {
+										throw new ModelClientTransportError(
+											`The saved AI SDK Adapter "${String(profile.adapter)}" is unavailable.`,
+										);
+									};
 						const client = createClient({
 							profile,
 							secrets: connectionSettingsModuleSecrets(

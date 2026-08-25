@@ -74,6 +74,30 @@ describe("Connection Settings", () => {
 		});
 	});
 
+	test("bundles the exact OpenRouter preset without invented attribution", () => {
+		const preset = createConnectionSettingsModule(database, { masterKey: key })
+			.listPresets()
+			.find((entry) => entry.id === "openrouter");
+		expect(preset?.profile).toEqual({
+			displayName: "OpenRouter",
+			apiFormat: "chat-completions",
+			requestUrl: "https://openrouter.ai/api/v1/",
+			modelsUrl: "https://openrouter.ai/api/v1/models",
+			modelBackend: "automatic",
+			adapter: "openrouter",
+			outputTokenRepresentation: "automatic",
+			timeoutMs: 120000,
+			pinnedModels: [
+				"deepseek/deepseek-v4-flash",
+				"google/gemma-4-31b-it",
+				"z-ai/glm-5.3",
+			],
+			backendOptions: {},
+		});
+		expect(JSON.stringify(preset?.profile)).not.toContain("Referer");
+		expect(JSON.stringify(preset?.profile)).not.toContain("Title");
+	});
+
 	test("allows the stream inactivity timeout to be disabled", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({

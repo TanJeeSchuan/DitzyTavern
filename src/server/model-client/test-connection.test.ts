@@ -76,6 +76,39 @@ describe("Model Test Connection", () => {
 		expect(JSON.stringify(result)).not.toContain("secret never returned");
 	});
 
+	test("tests OpenRouter through its dedicated adapter without optional attribution headers", async () => {
+		let request: { url: string; headers: Headers; body: { model: string; max_tokens: number } } | undefined;
+		const result = await testConnection({
+			profile: {
+				...profile,
+				adapter: "openrouter",
+				requestUrl: "http://127.0.0.1:43127/api/v1/",
+			},
+			modelId: "deepseek/deepseek-v4-flash",
+			credential: "openrouter-secret-never-returned",
+		}, {
+			fetch: async (input, init) => {
+				request = {
+					url: String(input),
+					headers: new Headers(init?.headers),
+					// SAFETY: the controlled fake receives the adapter's JSON body and
+					// this test reads only its test request fields.
+					body: JSON.parse(String(init?.body)) as { model: string; max_tokens: number },
+				};
+				return successfulResponse();
+			},
+		});
+
+		expect(result.outcome).toBe("success");
+		expect(request?.url).toBe("http://127.0.0.1:43127/api/v1/chat/completions");
+		expect(request?.headers.get("authorization")).toBe("Bearer openrouter-secret-never-returned");
+		expect(request?.headers.get("http-referer")).toBeNull();
+		expect(request?.headers.get("x-openrouter-title")).toBeNull();
+		expect(request?.body.model).toBe("deepseek/deepseek-v4-flash");
+		expect(request?.body.max_tokens).toBe(TEST_CONNECTION_MAX_OUTPUT_TOKENS);
+		expect(JSON.stringify(result)).not.toContain("openrouter-secret-never-returned");
+	});
+
 	test("resolves Automatic to AI SDK before making one exact authenticated request", async () => {
 		let request: { url: string; init: RequestInit } | undefined;
 		const result = await testDeepSeekConnection({
@@ -144,7 +177,9 @@ describe("Model Test Connection", () => {
 		expect(calls).toBe(1);
 
 		const unavailable = await testDeepSeekConnection({
-			profile: { ...profile, adapter: "openrouter" },
+			// SAFETY: this intentionally simulates a newer persisted adapter identifier
+			// that is outside the current closed adapter vocabulary.
+			profile: { ...profile, adapter: "future-adapter" as ConnectionProfileDraft["adapter"] },
 			modelId: "deepseek-chat",
 		});
 		expect(unavailable).toMatchObject({ outcome: "failure", kind: "adapter-unavailable" });
