@@ -29,6 +29,7 @@ import type {
 	ActivateConnectionProfileInput,
 	ConnectionProfile,
 	ConnectionProfileDraft,
+	ConnectionHeaderOperation,
 	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
@@ -100,6 +101,7 @@ export function createConnectionSettingsModule(
 	const createProfile = (input: CreateConnectionProfileInput) => {
 		const profile = validateProfile(input.profile);
 		const credential = normalizeCredential(input.credential);
+		const headerOperations = validateHeaderOperations(input.headers ?? []);
 		const create = database.transaction(() => {
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
@@ -116,9 +118,10 @@ export function createConnectionSettingsModule(
 			}
 
 			writePinnedModels(db, inserted.id, profile.pinnedModels);
-			if (credential !== null) {
-				writeSecret(db, inserted.id, credential, getKey());
-			}
+			writeSecretState(db, inserted.id, {
+				credential,
+				headers: applyHeaderOperations({}, headerOperations),
+			}, getKey());
 
 			db.update(connectionSettingsTable)
 				.set({
@@ -134,6 +137,7 @@ export function createConnectionSettingsModule(
 
 	const applyProfile = (input: ApplyConnectionProfileInput) => {
 		const profile = validateProfile(input.profile);
+		const headerOperations = validateHeaderOperations(input.headers ?? []);
 		const apply = database.transaction(() => {
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
@@ -147,12 +151,17 @@ export function createConnectionSettingsModule(
 				throw new ConnectionProfileNotFoundError(input.profileId);
 			}
 			ensureProfileNameAvailable(db, profile.displayName, input.profileId);
+			const currentSecret = readSecret(db, input.profileId, getKey());
 
 			db.update(connectionProfileTable)
 				.set(toProfileRow(profile))
 				.where(eq(connectionProfileTable.id, input.profileId))
 				.run();
 			writePinnedModels(db, input.profileId, profile.pinnedModels);
+			writeSecretState(db, input.profileId, {
+				credential: currentSecret?.credential ?? null,
+				headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
+			}, getKey());
 			db.update(connectionSettingsTable)
 				.set({ revision: settings.revision + 1 })
 				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
@@ -232,7 +241,11 @@ export function createConnectionSettingsModule(
 			const settings = ensureSettingsRow(db);
 			requireRevision(database, settings.revision, input.expectedRevision, getKey());
 			requireProfile(db, input.profileId);
-			writeSecret(db, input.profileId, input.credential, getKey());
+			const currentSecret = readSecret(db, input.profileId, getKey());
+			writeSecretState(db, input.profileId, {
+				credential: input.credential,
+				headers: currentSecret?.headers ?? {},
+			}, getKey());
 			advanceRevision(db, settings.revision);
 			return read();
 		});
@@ -246,9 +259,17 @@ export function createConnectionSettingsModule(
 			const settings = ensureSettingsRow(db);
 			requireRevision(database, settings.revision, input.expectedRevision, getKey());
 			requireProfile(db, input.profileId);
-			db.delete(connectionSecretTable)
-				.where(eq(connectionSecretTable.profile_id, input.profileId))
-				.run();
+			const currentSecret = readSecret(db, input.profileId, getKey());
+			if (currentSecret !== null && Object.keys(currentSecret.headers).length > 0) {
+				writeSecretState(db, input.profileId, {
+					credential: null,
+					headers: currentSecret.headers,
+				}, getKey());
+			} else {
+				db.delete(connectionSecretTable)
+					.where(eq(connectionSecretTable.profile_id, input.profileId))
+					.run();
+			}
 			advanceRevision(db, settings.revision);
 			return read();
 		});
@@ -449,6 +470,16 @@ export function validateConnectionProfileDraft(
 	return validateProfile(profile);
 }
 
+export function applyConnectionHeaderOperations(
+	current: ConnectionProfileSecretSnapshot | null,
+	operations: readonly ConnectionHeaderOperation[],
+): ConnectionProfileSecretSnapshot | null {
+	const validated = validateHeaderOperations(operations);
+	const headers = applyHeaderOperations(current?.headers ?? {}, validated);
+	if ((current?.credential ?? null) === null && Object.keys(headers).length === 0) return null;
+	return { credential: current?.credential ?? null, headers };
+}
+
 function normalizeDisplayName(value: string): string {
 	const normalized = value.trim().replace(/\s+/g, " ");
 	if (normalized.length === 0) {
@@ -544,15 +575,21 @@ function writePinnedModels(
 		.run();
 }
 
-function writeSecret(
+function writeSecretState(
 	db: ReturnType<typeof awaitableDrizzle>,
 	profileId: number,
-	credential: string,
+	payload: ConnectionProfileSecretSnapshot,
 	masterKey: Uint8Array,
 ): void {
+	if (payload.credential === null && Object.keys(payload.headers).length === 0) {
+		db.delete(connectionSecretTable)
+			.where(eq(connectionSecretTable.profile_id, profileId))
+			.run();
+		return;
+	}
 	const encrypted = encryptConnectionSecretSync(masterKey, profileId, {
-		credential,
-		headers: {},
+		credential: payload.credential,
+		headers: { ...payload.headers },
 	});
 	db.insert(connectionSecretTable)
 		.values({
@@ -574,6 +611,64 @@ function writeSecret(
 			},
 		})
 		.run();
+}
+
+const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const TRANSPORT_OWNED_HEADERS = new Set([
+	"accept-encoding",
+	"connection",
+	"content-encoding",
+	"content-length",
+	"content-type",
+	"host",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"te",
+	"trailer",
+	"transfer-encoding",
+	"upgrade",
+]);
+
+function validateHeaderOperations(
+	operations: readonly ConnectionHeaderOperation[],
+): readonly ConnectionHeaderOperation[] {
+	const seen = new Set<string>();
+	return operations.map((operation) => {
+		const normalized = operation.name.toLowerCase();
+		if (!HTTP_TOKEN.test(operation.name) || TRANSPORT_OWNED_HEADERS.has(normalized)) {
+			throw new InvalidConnectionProfileError(
+				`Custom header name "${operation.name}" is not a valid user-controlled HTTP header.`,
+			);
+		}
+		if (seen.has(normalized)) {
+			throw new InvalidConnectionProfileError(
+				`Custom header names must be unique case-insensitively: "${operation.name}".`,
+			);
+		}
+		seen.add(normalized);
+		return operation;
+	});
+}
+
+function applyHeaderOperations(
+	current: Readonly<Record<string, string>>,
+	operations: readonly ConnectionHeaderOperation[],
+): ConnectionProfileSecretSnapshot["headers"] {
+	const next = { ...current } satisfies ConnectionProfileSecretSnapshot["headers"];
+	for (const operation of operations) {
+		const existingName = Object.keys(next).find(
+			(name) => name.toLowerCase() === operation.name.toLowerCase(),
+		);
+		if (operation.operation === "keep") continue;
+		if (operation.operation === "remove") {
+			if (existingName !== undefined) delete next[existingName];
+			continue;
+		}
+		if (existingName !== undefined) delete next[existingName];
+		next[operation.name] = operation.value;
+	}
+	return next;
 }
 
 function advanceRevision(
@@ -649,6 +744,7 @@ export type {
 	ConnectionPreset,
 	ConnectionProfile,
 	ConnectionProfileDraft,
+	ConnectionHeaderOperation,
 	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,

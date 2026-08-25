@@ -1,7 +1,9 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
+import { authenticatedHeaders } from "./authenticated-headers";
 
 export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
 export const TEST_CONNECTION_TIMEOUT_MS = 10_000;
@@ -46,7 +48,7 @@ export function resolveTestConnectionBackend(
 	throw new Error(`The Model Backend "${modelBackend}" is unavailable.`);
 }
 
-export async function testDeepSeekConnection(
+export async function testConnection(
 	input: TestConnectionInput,
 	options: TestConnectionOptions = {},
 ): Promise<TestConnectionResult> {
@@ -65,7 +67,7 @@ export async function testDeepSeekConnection(
 			error instanceof Error ? error.message : "The selected Model Backend is unavailable.",
 		);
 	}
-	if (input.profile.adapter !== "deepseek") {
+	if (input.profile.adapter !== "deepseek" && input.profile.adapter !== "openai-compatible") {
 		return failure(
 			"adapter-unavailable",
 			`The AI SDK Adapter "${input.profile.adapter}" is unavailable for Test Connection.`,
@@ -101,11 +103,13 @@ export async function testDeepSeekConnection(
 	const fetchAtResolvedDestination: ModelFetch = async (_input, init) =>
 		actualFetch(requestUrl, {
 			...init,
+			headers: authenticatedHeaders(init?.headers, credential, headers),
 			redirect: "error",
 		});
 
 	try {
-		const provider = createDeepSeek({
+		const provider = input.profile.adapter === "deepseek"
+			? createDeepSeek({
 			// An empty explicit value prevents the SDK from reading a process-wide
 			// DEEPSEEK_API_KEY that does not belong to this Profile.
 			apiKey: credential ?? "",
@@ -114,7 +118,16 @@ export async function testDeepSeekConnection(
 			// SAFETY: the AI SDK invokes only the standard fetch call signature;
 			// Bun's optional preconnect helper is not part of the provider contract.
 			fetch: fetchAtResolvedDestination as typeof fetch,
-		});
+			})
+			: createOpenAI({
+				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
+				apiKey: credential ?? "",
+				baseURL: new URL(requestUrl).origin,
+				headers,
+				// SAFETY: the AI SDK invokes this standard fetch-compatible function
+				// with the same RequestInfo/RequestInit/Response contract.
+				fetch: fetchAtResolvedDestination as typeof fetch,
+			});
 		const result = await generateText({
 			model: provider.chat(modelId),
 			prompt: TEST_CONNECTION_PROMPT,
@@ -140,6 +153,13 @@ export async function testDeepSeekConnection(
 	} finally {
 		clearTimeout(timeout);
 	}
+}
+
+export function testDeepSeekConnection(
+	input: TestConnectionInput,
+	options: TestConnectionOptions = {},
+): Promise<TestConnectionResult> {
+	return testConnection(input, options);
 }
 
 interface ErrorContext {

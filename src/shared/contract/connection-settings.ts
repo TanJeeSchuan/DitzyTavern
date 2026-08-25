@@ -4,6 +4,7 @@ import {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNotFoundError,
 	InvalidConnectionProfileError,
+	applyConnectionHeaderOperations,
 	StaleConnectionSettingsRevisionError,
 	withConnectionSettings,
 	validateConnectionProfileDraft,
@@ -11,7 +12,7 @@ import {
 import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
 import type { ConnectionSettingsSnapshot } from "../../server/connection-settings";
 import {
-	testDeepSeekConnection,
+	testConnection,
 	type ModelFetch,
 	type TestConnectionResult,
 } from "../../server/model-client";
@@ -21,6 +22,12 @@ const redactedHeader = t.Object({
 	name: t.String(),
 	configured: t.Boolean(),
 });
+
+const headerOperation = t.Union([
+	t.Object({ name: t.String(), operation: t.Literal("keep") }),
+	t.Object({ name: t.String(), operation: t.Literal("replace"), value: t.String() }),
+	t.Object({ name: t.String(), operation: t.Literal("remove") }),
+]);
 
 const backendOptionValue = t.Union([
 	t.String(),
@@ -90,12 +97,14 @@ const commandBody = t.Union([
 		expectedRevision: t.Integer(),
 		profile: profileDraft,
 		credential: t.Optional(t.Nullable(t.String())),
+		headers: t.Optional(t.Array(headerOperation)),
 	}),
 	t.Object({
 		type: t.Literal("apply-profile"),
 		expectedRevision: t.Integer(),
 		profileId: t.Integer(),
 		profile: profileDraft,
+		headers: t.Optional(t.Array(headerOperation)),
 	}),
 	t.Object({
 		type: t.Literal("set-credential"),
@@ -127,6 +136,7 @@ const testConnectionBody = t.Object({
 	profile: profileDraft,
 	modelId: t.String(),
 	credential: t.Optional(t.Nullable(t.String())),
+	headers: t.Optional(t.Array(headerOperation)),
 });
 
 const testConnectionResult = t.Union([
@@ -195,10 +205,13 @@ export const createConnectionSettingsRoutes = (
 							const secrets = body.profileId === undefined
 								? null
 								: domain.getProfileSecrets(body.profileId);
-							return { profile, secrets };
+							return {
+								profile,
+								secrets: applyConnectionHeaderOperations(secrets, body.headers ?? []),
+							};
 						}, options),
 					);
-					const result = await testDeepSeekConnection(
+					const result = await testConnection(
 						{
 							profile: prepared.profile,
 							modelId: body.modelId,

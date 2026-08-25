@@ -1,4 +1,5 @@
 import { Check, KeyRound, RotateCcw, Save, ShieldCheck, Trash2, Zap } from "lucide-react";
+import { JsonEditor, type JsonData } from "json-edit-react";
 import { useEffect, useMemo, useState } from "react";
 import {
 	loadConnectionPresets,
@@ -7,6 +8,7 @@ import {
 	testConnectionDraft,
 	type ConnectionProfile,
 	type ConnectionProfileDraft,
+	type ConnectionHeaderOperation,
 	type ConnectionPreset,
 	type ConnectionSettings,
 	type ConnectionSettingsResult,
@@ -38,12 +40,64 @@ const copyDraft = (profile: ConnectionProfileDraft): ConnectionProfileDraft => (
 	backendOptions: { ...profile.backendOptions },
 });
 
+type HeaderEditorValue = {
+	configured: boolean;
+	operation: "keep" | "replace" | "remove";
+	replacement: string;
+};
+type HeaderEditorData = Record<string, HeaderEditorValue>;
+interface HeaderEditorInput {
+	configured?: unknown;
+	operation?: unknown;
+	replacement?: unknown;
+}
+
+const headerEditorDataFor = (headers: ConnectionProfile["headers"]): HeaderEditorData =>
+	// SAFETY: the projection is built from the server's redacted header shape;
+	// it contains no stored header values.
+	Object.fromEntries(headers.map((header) => [header.name, {
+		configured: header.configured,
+		operation: "keep" as const,
+		replacement: "",
+	}])) as HeaderEditorData;
+
+function parseHeaderEditorData(value: JsonData) {
+	if (Object.prototype.toString.call(value) !== "[object Object]") return {};
+	// SAFETY: the object-tag check above establishes the JSON editor root as
+	// an object before passing it to Object.entries.
+	const entries = Object.entries(value as object).flatMap(([name, candidate]) => {
+		if (Object.prototype.toString.call(candidate) !== "[object Object]") return [];
+		// SAFETY: the object-tag check above establishes the JSON editor's object
+		// node shape before reading the three known projection fields.
+		const record = candidate as HeaderEditorInput;
+		const operation = record.operation;
+		const replacement = record.replacement;
+		return [[name, {
+			configured: record.configured === true,
+			operation: operation === "replace" || operation === "remove" ? operation : "keep",
+			replacement: Object.prototype.toString.call(replacement) === "[object String]"
+				? String(replacement)
+				: "",
+		} satisfies HeaderEditorValue] as const];
+	});
+	return Object.fromEntries(entries);
+}
+
+function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
+	return Object.entries(data).map(([name, value]) => {
+		if (value.operation === "replace") return { name, operation: "replace", value: value.replacement };
+		if (value.operation === "remove") return { name, operation: "remove" };
+		return { name, operation: "keep" };
+	});
+}
+
 export function ConnectionSettingsPanel() {
 	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
 	const [presets, setPresets] = useState<ConnectionPreset[]>([]);
 	const [draft, setDraft] = useState<ConnectionProfileDraft>(emptyDraft);
 	const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
 	const [credentialDraft, setCredentialDraft] = useState("");
+	const [headerEditorData, setHeaderEditorData] = useState<HeaderEditorData>({});
 	const [testModelId, setTestModelId] = useState("");
 	const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
 	const [testPending, setTestPending] = useState(false);
@@ -66,6 +120,7 @@ export function ConnectionSettingsPanel() {
 		if (active) {
 					setSelectedProfileId(active.id);
 					setDraft(copyDraft(active));
+					setHeaderEditorData(headerEditorDataFor(active.headers));
 					setTestModelId(active.pinnedModels[0] ?? "");
 					setReplacementProfileId(loadedSettings.profiles.find((profile) => profile.id !== active.id)?.id ?? null);
 				}
@@ -113,6 +168,7 @@ export function ConnectionSettingsPanel() {
 		setSelectedProfileId(null);
 		setDraft(copyDraft(preset.profile));
 		setCredentialDraft("");
+		setHeaderEditorData({});
 		setTestModelId(preset.profile.pinnedModels[0] ?? "");
 		setTestResult(null);
 		setReplacementProfileId(null);
@@ -125,6 +181,7 @@ export function ConnectionSettingsPanel() {
 		setSelectedProfileId(profile.id);
 		setDraft(copyDraft(profile));
 		setCredentialDraft("");
+		setHeaderEditorData(headerEditorDataFor(profile.headers));
 		setTestModelId(profile.pinnedModels[0] ?? "");
 		setTestResult(null);
 		setReplacementProfileId(settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null);
@@ -149,6 +206,7 @@ export function ConnectionSettingsPanel() {
 			};
 			if (selectedProfileId !== null) request.profileId = selectedProfileId;
 			if (credentialDraft.length > 0) request.credential = credentialDraft;
+			request.headers = headerOperationsFor(headerEditorData);
 			const result = await testConnectionDraft(request);
 			setTestResult(result);
 			if (result.outcome === "success") setNotice(result.message);
@@ -164,18 +222,27 @@ export function ConnectionSettingsPanel() {
 		if (!settings) return;
 		setNotice(null);
 		setError(null);
+		let headerOperations: ConnectionHeaderOperation[];
+		try {
+			headerOperations = headerOperationsFor(headerEditorData);
+		} catch {
+			setError("Custom header drafts are invalid.");
+			return;
+		}
 		const command = selectedProfileId === null
 			? {
 				type: "create-profile" as const,
 				expectedRevision: settings.revision,
 				profile: draft,
 				credential: credentialDraft.length > 0 ? credentialDraft : null,
+				headers: headerOperations,
 			}
 			: {
 				type: "apply-profile" as const,
 				expectedRevision: settings.revision,
 				profileId: selectedProfileId,
 				profile: draft,
+				headers: headerOperations,
 			};
 		const result = await saveConnectionCommand(command);
 		if (result.outcome !== "applied") {
@@ -200,6 +267,7 @@ export function ConnectionSettingsPanel() {
 		if (saved) {
 			setSelectedProfileId(saved.id);
 			setDraft(copyDraft(saved));
+			setHeaderEditorData(headerEditorDataFor(saved.headers));
 		}
 		setCredentialDraft("");
 		setNotice("Connection Profile applied offline. No provider request was made.");
@@ -266,10 +334,12 @@ export function ConnectionSettingsPanel() {
 		if (nextProfile) {
 			setSelectedProfileId(nextProfile.id);
 			setDraft(copyDraft(nextProfile));
+			setHeaderEditorData(headerEditorDataFor(nextProfile.headers));
 			setReplacementProfileId(result.settings.profiles.find((profile) => profile.id !== nextProfile.id)?.id ?? null);
 		} else {
 			setSelectedProfileId(null);
 			setDraft(copyDraft(emptyDraft));
+			setHeaderEditorData({});
 			setReplacementProfileId(null);
 		}
 		setCredentialDraft("");
@@ -431,6 +501,24 @@ export function ConnectionSettingsPanel() {
 						</div>
 						<small>Stored encrypted. The value is write-only.</small>
 					</label>
+					<div className="connection-header-editor">
+						<h4>Custom headers</h4>
+						<p>
+							Stored values are never returned. Keep preserves a configured value,
+							Replace writes the draft value, and Remove deletes it.
+						</p>
+						<JsonEditor
+							data={headerEditorData}
+							setData={(value) => setHeaderEditorData(parseHeaderEditorData(value))}
+							rootName="Headers"
+							showStringQuotes={false}
+							restrictDrag
+						/>
+						<small>
+							Use HTTP token names as keys. Header names are case-insensitive;
+							transport-owned names are rejected on Apply.
+						</small>
+					</div>
 					<div className="connection-advanced-grid">
 						<label className="field"><span>API Format</span><select className="field-input" value={draft.apiFormat} onChange={(event) => { /* SAFETY: the select offers only the Chat Completions option. */ setDraft({ ...draft, apiFormat: event.target.value as ConnectionProfileDraft["apiFormat"] }); }}><option value="chat-completions">Chat Completions</option></select></label>
 						<label className="field"><span>Model Backend</span><select className="field-input" value={draft.modelBackend} onChange={(event) => { /* SAFETY: options are the closed v1 Model Backend vocabulary. */ setDraft({ ...draft, modelBackend: event.target.value as ConnectionProfileDraft["modelBackend"] }); }}><option value="automatic">Automatic</option><option value="ai-sdk">AI SDK</option></select></label>

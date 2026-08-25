@@ -167,4 +167,51 @@ describe("Generation transport contract", () => {
 		expect(await response.json()).toMatchObject({ outcome: "unconfigured" });
 		expect(contacted).toBe(false);
 	});
+
+	test("generates through a generic exact endpoint with custom authentication", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Generic Generation Contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const connection = createConnectionSettingsModule(database, { masterKey: key });
+		connection.createProfile({
+			expectedRevision: 0,
+			profile: {
+				...profile,
+				displayName: "Generic Local",
+				adapter: "openai-compatible",
+				requestUrl: "http://127.0.0.1:43127/generate",
+			},
+			headers: [
+				{ name: "Authorization", operation: "replace", value: "Custom auth never returned" },
+				{ name: "X-Route", operation: "replace", value: "route secret never returned" },
+			],
+		});
+		let request: { url: string; headers: Headers } | undefined;
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async (input, init) => {
+				request = { url: String(input), headers: new Headers(init?.headers) };
+				return streamResponse();
+			},
+		});
+		const generated = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: "{}",
+			}),
+		);
+		expect(generated.status).toBe(200);
+		const generatedBody = await generated.json();
+		expect(generatedBody.variant.content).toBe("Contract reply.");
+		expect(JSON.stringify(generatedBody)).not.toContain("never returned");
+		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
+		expect(request?.headers.get("authorization")).toBe("Custom auth never returned");
+		expect(request?.headers.get("x-route")).toBe("route secret never returned");
+	});
 });

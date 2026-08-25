@@ -39,6 +39,11 @@ export interface RedactedHeader {
 	readonly configured: boolean;
 }
 
+export type ConnectionHeaderOperation =
+	| { readonly name: string; readonly operation: "keep" }
+	| { readonly name: string; readonly operation: "replace"; readonly value: string }
+	| { readonly name: string; readonly operation: "remove" };
+
 export interface ConnectionProfile extends ConnectionProfileDraft {
 	readonly id: number;
 	readonly credentialConfigured: boolean;
@@ -67,12 +72,14 @@ export interface CreateConnectionProfileInput {
 	readonly expectedRevision: number;
 	readonly profile: ConnectionProfileDraft;
 	readonly credential?: string | null;
+	readonly headers?: readonly ConnectionHeaderOperation[];
 }
 
 export interface ApplyConnectionProfileInput {
 	readonly expectedRevision: number;
 	readonly profileId: number;
 	readonly profile: ConnectionProfileDraft;
+	readonly headers?: readonly ConnectionHeaderOperation[];
 }
 
 export interface SetConnectionCredentialInput {

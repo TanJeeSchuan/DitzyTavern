@@ -22,11 +22,16 @@ export type {
 } from "./types";
 export {
 	createDeepSeekModelClient,
+	createOpenAICompatibleModelClient,
 	ModelClientTransportError,
 } from "./deepseek";
-export type { DeepSeekModelClientOptions } from "./deepseek";
+export type {
+	DeepSeekModelClientOptions,
+	OpenAICompatibleModelClientOptions,
+} from "./deepseek";
 export {
 	resolveTestConnectionBackend,
+	testConnection,
 	testDeepSeekConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,

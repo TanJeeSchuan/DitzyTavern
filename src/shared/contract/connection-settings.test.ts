@@ -280,4 +280,35 @@ describe("Connection Settings transport adapter", () => {
 		const after = await get("/api/connection-settings");
 		expect(await after.json()).toEqual(beforeBody);
 	});
+
+	test("tests a generic exact endpoint with redacted custom-header replacement drafts", async () => {
+		const fakeFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const headers = new Headers(init?.headers);
+			expect(headers.get("authorization")).toBe("Custom auth never returned");
+			expect(headers.get("x-route")).toBe("route secret never returned");
+			return new Response(JSON.stringify({
+				choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+		const testApp = createConnectionSettingsRoutes(database, { masterKey: key, fetch: fakeFetch });
+		const response = await testApp.handle(new Request("http://localhost/api/connection-settings/test-connection", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				profile: {
+					...deepSeekProfile,
+					displayName: "Local",
+					adapter: "openai-compatible",
+					requestUrl: "http://127.0.0.1:43127/generate",
+				},
+				modelId: "local-model",
+				headers: [
+					{ name: "Authorization", operation: "replace", value: "Custom auth never returned" },
+					{ name: "X-Route", operation: "replace", value: "route secret never returned" },
+				],
+			}),
+		}));
+		expect(response.status).toBe(200);
+		expect(JSON.stringify(await response.json())).not.toContain("never returned");
+	});
 });

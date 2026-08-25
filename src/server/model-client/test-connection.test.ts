@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ConnectionProfileDraft } from "../connection-settings/types";
 import {
 	resolveTestConnectionBackend,
+	testConnection,
 	testDeepSeekConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,
@@ -40,7 +41,41 @@ const successfulResponse = () => new Response(JSON.stringify({
 const failureMessage = (result: TestConnectionResult): string =>
 	result.outcome === "failure" ? result.message : "";
 
-describe("DeepSeek Test Connection", () => {
+describe("Model Test Connection", () => {
+	test("tests a generic exact endpoint with custom authentication without persisting or exposing secrets", async () => {
+		let request: { url: string; headers: Headers; body: { model: string; max_tokens: number } } | undefined;
+		const result = await testConnection({
+			profile: { ...profile, adapter: "openai-compatible", requestUrl: "http://127.0.0.1:43127/generate" },
+			modelId: "local-model",
+			secrets: {
+				credential: null,
+				headers: {
+					Authorization: "Custom secret never returned",
+					"X-Route": "route secret never returned",
+				},
+			},
+		}, {
+			fetch: async (input, init) => {
+				request = {
+					url: String(input),
+					headers: new Headers(init?.headers),
+					// SAFETY: the controlled fake receives the adapter's JSON body and
+					// this test reads only the declared test-request fields.
+					body: JSON.parse(String(init?.body)) as { model: string; max_tokens: number },
+				};
+				return successfulResponse();
+			},
+		});
+		expect(result.outcome).toBe("success");
+		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
+		expect(request?.headers.get("authorization")).toBe("Custom secret never returned");
+		expect(request?.headers.get("x-route")).toBe("route secret never returned");
+		expect(request?.body.model).toBe("local-model");
+		expect(request?.body.max_tokens).toBe(TEST_CONNECTION_MAX_OUTPUT_TOKENS);
+		// The transient result is deliberately free of all credentials and headers.
+		expect(JSON.stringify(result)).not.toContain("secret never returned");
+	});
+
 	test("resolves Automatic to AI SDK before making one exact authenticated request", async () => {
 		let request: { url: string; init: RequestInit } | undefined;
 		const result = await testDeepSeekConnection({

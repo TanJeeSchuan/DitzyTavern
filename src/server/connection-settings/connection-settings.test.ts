@@ -148,6 +148,64 @@ describe("Connection Settings", () => {
 		expect(changed.revision).toBe(2);
 	});
 
+	test("applies redacted custom-header keep, replace, and remove operations atomically", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({
+			expectedRevision: 0,
+			profile: { ...deepSeekDraft(), adapter: "openai-compatible" },
+			headers: [{ name: "X-Route", operation: "replace", value: "route-secret" }],
+		});
+		const profileId = created.profiles[0]?.id ?? 0;
+		expect(created.profiles[0]?.headers).toEqual([{ name: "X-Route", configured: true }]);
+		expect(JSON.stringify(created)).not.toContain("route-secret");
+		expect(settings.getProfileSecrets(profileId)).toEqual({
+			credential: null,
+			headers: { "X-Route": "route-secret" },
+		});
+
+		const replaced = settings.applyProfile({
+			expectedRevision: created.revision,
+			profileId,
+			profile: { ...deepSeekDraft(), adapter: "openai-compatible" },
+			headers: [
+				{ name: "x-route", operation: "keep" },
+				{ name: "X-Auth", operation: "replace", value: "header-secret" },
+			],
+		});
+		expect(replaced.profiles[0]?.headers).toEqual([
+			{ name: "X-Auth", configured: true },
+			{ name: "X-Route", configured: true },
+		]);
+		expect(JSON.stringify(replaced)).not.toContain("header-secret");
+
+		const removed = settings.applyProfile({
+			expectedRevision: replaced.revision,
+			profileId,
+			profile: { ...deepSeekDraft(), adapter: "openai-compatible" },
+			headers: [{ name: "X-Route", operation: "remove" }],
+		});
+		expect(removed.profiles[0]?.headers).toEqual([{ name: "X-Auth", configured: true }]);
+	});
+
+	test("rejects duplicate, malformed, and transport-owned custom header names", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		for (const name of ["X One", "Host", "content-length", "Transfer-Encoding"]) {
+			expect(() => settings.createProfile({
+				expectedRevision: 0,
+				profile: { ...deepSeekDraft(), adapter: "openai-compatible" },
+				headers: [{ name, operation: "replace", value: "secret" }],
+		})).toThrow(InvalidConnectionProfileError);
+		}
+		expect(() => settings.createProfile({
+			expectedRevision: 0,
+			profile: { ...deepSeekDraft(), adapter: "openai-compatible" },
+			headers: [
+				{ name: "X-Route", operation: "replace", value: "one" },
+				{ name: "x-route", operation: "replace", value: "two" },
+			],
+		})).toThrow("unique case-insensitively");
+	});
+
 	test("uses distinct credential update and confirmed reset actions", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({

@@ -774,6 +774,35 @@
 	color: var(--text-muted);
 }
 
+.connection-header-editor {
+	margin-top: 0.2rem;
+	padding: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+}
+
+.connection-header-editor h4 {
+	margin: 0;
+	font-size: 0.8rem;
+}
+
+.connection-header-editor p,
+.connection-header-editor small {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.45;
+}
+
+.connection-header-editor p {
+	margin: 0.3rem 0 0.65rem;
+}
+
+.connection-header-editor > div {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
 .connection-action-row {
 	display: flex;
 	flex-wrap: wrap;

@@ -4,6 +4,10 @@ export type ConnectionApiFormat =
 	| "anthropic-messages";
 export type ModelBackend = "automatic" | "ai-sdk";
 export type ConnectionAdapter = "openai-compatible" | "deepseek" | "openrouter";
+export type ConnectionHeaderOperation =
+	| { name: string; operation: "keep" }
+	| { name: string; operation: "replace"; value: string }
+	| { name: string; operation: "remove" };
 export type OutputTokenRepresentation =
 	| "automatic"
 	| "max_tokens"
@@ -73,6 +77,7 @@ export type TestConnectionDraftInput = {
 	profile: ConnectionProfileDraft;
 	modelId: string;
 	credential?: string | null;
+	headers?: ConnectionHeaderOperation[];
 };
 
 export type ConnectionSettingsCommand =
@@ -81,12 +86,14 @@ export type ConnectionSettingsCommand =
 			expectedRevision: number;
 			profile: ConnectionProfileDraft;
 			credential?: string | null;
+			headers?: ConnectionHeaderOperation[];
 		}
 	| {
 			type: "apply-profile";
 		expectedRevision: number;
 		profileId: number;
-		profile: ConnectionProfileDraft;
+			profile: ConnectionProfileDraft;
+			headers?: ConnectionHeaderOperation[];
 		}
 	| {
 		type: "activate-profile";

@@ -1,10 +1,11 @@
 import { createDeepSeek } from "@ai-sdk/deepseek";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import type {
 	ConnectionProfile,
 	ConnectionProfileSecretSnapshot,
 } from "../connection-settings/types";
-import type { GenerationRequestValue } from "../conversation/types";
+import type { GenerationRequestOverrides } from "../conversation/types";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
 import type {
 	ModelClient,
@@ -12,6 +13,7 @@ import type {
 	ModelClientGenerationInput,
 	ModelClientUsage,
 } from "./types";
+import { authenticatedHeaders } from "./authenticated-headers";
 import type { ModelFetch } from "./test-connection";
 
 export interface DeepSeekModelClientOptions {
@@ -19,6 +21,8 @@ export interface DeepSeekModelClientOptions {
 	readonly secrets: ConnectionProfileSecretSnapshot | null;
 	readonly fetch?: ModelFetch;
 }
+
+export type OpenAICompatibleModelClientOptions = DeepSeekModelClientOptions;
 
 export class ModelClientTransportError extends Error {
 	readonly kind: "cancelled" | "inactivity" | "transport" | "provider" | "protocol";
@@ -42,10 +46,23 @@ const MAX_PROVIDER_ERROR_BYTES = 16 * 1024;
 export function createDeepSeekModelClient(
 	options: DeepSeekModelClientOptions,
 ): ModelClient {
+	return createConfiguredOpenAICompatibleModelClient(options, "deepseek");
+}
+
+export function createOpenAICompatibleModelClient(
+	options: OpenAICompatibleModelClientOptions,
+): ModelClient {
+	return createConfiguredOpenAICompatibleModelClient(options, "openai-compatible");
+}
+
+function createConfiguredOpenAICompatibleModelClient(
+	options: OpenAICompatibleModelClientOptions,
+	adapter: "deepseek" | "openai-compatible",
+): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {
 		throw new ModelClientTransportError("The selected API Format is unavailable.");
 	}
-	if (options.profile.adapter !== "deepseek") {
+	if (options.profile.adapter !== adapter) {
 		throw new ModelClientTransportError(
 			`The AI SDK Adapter "${options.profile.adapter}" is unavailable.`,
 		);
@@ -56,9 +73,10 @@ export function createDeepSeekModelClient(
 	const actualFetch = options.fetch ?? fetch;
 
 	return {
-		generate: (input) => generateDeepSeekStream({
+		generate: (input) => generateOpenAICompatibleStream({
 			input,
 			profile: options.profile,
+			adapter,
 			credential,
 			customHeaders,
 			requestUrl,
@@ -67,9 +85,10 @@ export function createDeepSeekModelClient(
 	};
 }
 
-async function* generateDeepSeekStream(options: {
+async function* generateOpenAICompatibleStream(options: {
 	input: ModelClientGenerationInput;
 	profile: ConnectionProfile;
+	adapter: "deepseek" | "openai-compatible";
 	credential: string;
 	customHeaders: Readonly<Record<string, string>>;
 	requestUrl: string;
@@ -107,22 +126,34 @@ async function* generateDeepSeekStream(options: {
 		if (init?.body === undefined) {
 			const response = await options.actualFetch(options.requestUrl, {
 				...init,
+					headers: authenticatedHeaders(
+						init?.headers,
+						options.credential.length > 0 ? options.credential : null,
+						options.customHeaders,
+					),
 				redirect: "error",
 			});
 			await rejectProviderResponse(response, options.credential, options.customHeaders);
 			return monitorResponseActivity(response, resetInactivity, controller.signal);
 		}
-		// SAFETY: the AI SDK Chat Completions adapter serializes its request body
-		// as JSON; the parsed value is constrained to the JSON value domain before
-		// the Conversation-owned active-format overrides are merged.
-		const providerBody = JSON.parse(String(init.body)) as Record<
-			string,
-			GenerationRequestValue
-		>;
-		const overrides = settings.requestOverrides["chat-completions"];
+		// SAFETY: the AI SDK serializes this request as a JSON object whose values
+		// are within the Conversation Request Override JSON domain.
+		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
+		const overrides = settings.requestOverrides["chat-completions"] ?? {};
+		const requestBody = mergeChatCompletionsOverrides(
+			providerBody,
+			overrides,
+			options.profile.outputTokenRepresentation,
+			settings.responseBudget,
+		);
 		const response = await options.actualFetch(options.requestUrl, {
 			...init,
-			body: JSON.stringify({ ...overrides, ...providerBody }),
+			headers: authenticatedHeaders(
+					init.headers,
+					options.credential.length > 0 ? options.credential : null,
+					options.customHeaders,
+				),
+			body: JSON.stringify(requestBody),
 			redirect: "error",
 		});
 		await rejectProviderResponse(response, options.credential, options.customHeaders);
@@ -130,18 +161,26 @@ async function* generateDeepSeekStream(options: {
 	};
 
 	try {
-		const provider = createDeepSeek({
+		const provider = options.adapter === "deepseek"
+			? createDeepSeek({
 			// An empty explicit value prevents the SDK from reading a process-wide
 			// DEEPSEEK_API_KEY that does not belong to this Profile.
 			apiKey: options.credential,
 			baseURL: new URL(options.requestUrl).origin,
 			headers: options.customHeaders,
-			// SAFETY: the AI SDK uses the standard fetch signature; this adapter
-			// deliberately pins it to the start-time resolved request URL.
 			// SAFETY: the AI SDK invokes only the standard fetch call signature;
 			// Bun's optional preconnect helper is not part of this seam.
 			fetch: fetchAtResolvedDestination as typeof fetch,
-		});
+			})
+			: createOpenAI({
+				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
+				apiKey: options.credential,
+				baseURL: new URL(options.requestUrl).origin,
+				headers: options.customHeaders,
+				// SAFETY: the AI SDK invokes this standard fetch-compatible function
+				// with the same RequestInfo/RequestInit/Response contract.
+				fetch: fetchAtResolvedDestination as typeof fetch,
+			});
 		const streamOptions = {
 			model: provider.chat(modelId),
 			messages: toMessages(options.input),
@@ -151,9 +190,7 @@ async function* generateDeepSeekStream(options: {
 			topP: settings.topP ?? undefined,
 			frequencyPenalty: settings.frequencyPenalty ?? undefined,
 			presencePenalty: settings.presencePenalty ?? undefined,
-			maxOutputTokens: options.profile.outputTokenRepresentation === "omit"
-				? undefined
-				: settings.responseBudget,
+			maxOutputTokens: settings.responseBudget,
 		};
 		const result = streamText(streamOptions);
 		let finishReason: string | null = null;
@@ -429,6 +466,35 @@ function toMessages(input: ModelClientGenerationInput) {
 	});
 	const content = blocks.filter((block) => block.length > 0).join("\n\n");
 	return [{ role: "user" as const, content }];
+}
+
+const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set([
+	"messages",
+	"model",
+	"stream",
+	"n",
+]);
+const OUTPUT_LIMIT_FIELDS = new Set(["max_tokens", "max_completion_tokens"]);
+
+function mergeChatCompletionsOverrides(
+	providerBody: GenerationRequestOverrides,
+	overrides: GenerationRequestOverrides,
+	outputTokenRepresentation: ConnectionProfile["outputTokenRepresentation"],
+	responseBudget: number,
+): GenerationRequestOverrides {
+	const merged = { ...providerBody };
+	for (const [key, value] of Object.entries(overrides)) {
+		if (STRUCTURAL_CHAT_COMPLETIONS_FIELDS.has(key) || OUTPUT_LIMIT_FIELDS.has(key)) continue;
+		merged[key] = value;
+	}
+	delete merged.max_tokens;
+	delete merged.max_completion_tokens;
+	if (outputTokenRepresentation === "automatic" || outputTokenRepresentation === "max_tokens") {
+		merged.max_tokens = responseBudget;
+	} else if (outputTokenRepresentation === "max_completion_tokens") {
+		merged.max_completion_tokens = responseBudget;
+	}
+	return merged;
 }
 
 function normalizeFinishReason(value: string | null | undefined): "stop" | "length" | "other" {

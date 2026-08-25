@@ -23,6 +23,7 @@ import {
 } from "../../server/connection-settings";
 import {
 	createDeepSeekModelClient,
+	createOpenAICompatibleModelClient,
 	ModelClientGenerationError,
 	ModelClientTransportError,
 	type ModelFetch,
@@ -160,7 +161,10 @@ export const createConversationRoutes = (
 								reason: "The active Connection Profile is unavailable.",
 							});
 						}
-						const client = createDeepSeekModelClient({
+						const createClient = profile.adapter === "openai-compatible"
+							? createOpenAICompatibleModelClient
+							: createDeepSeekModelClient;
+						const client = createClient({
 							profile,
 							secrets: connectionSettingsModuleSecrets(
 								connection,
