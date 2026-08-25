@@ -7,6 +7,7 @@ import {
 } from "./contract/conversation";
 import { createNativeConversationRoutes } from "./contract/native-conversation";
 import { createChatImportRoutes } from "./contract/chat-import";
+import { createConnectionSettingsRoutes } from "./contract/connection-settings";
 
 export { createCharacterLibraryRoutes } from "./contract/character-library";
 export {
@@ -14,6 +15,7 @@ export {
 } from "./contract/conversation";
 export { createNativeConversationRoutes } from "./contract/native-conversation";
 export { createChatImportRoutes } from "./contract/chat-import";
+export { createConnectionSettingsRoutes } from "./contract/connection-settings";
 
 const chatSummary = t.Object({
 	id: t.Integer(),
@@ -41,6 +43,7 @@ export const contract = new Elysia()
 	.use(createCharacterLibraryRoutes(undefined))
 	.use(createNativeConversationRoutes(undefined))
 	.use(createConversationRoutes(undefined))
-	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()));
+	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()))
+	.use(createConnectionSettingsRoutes(undefined));
 
 export type Contract = typeof contract;

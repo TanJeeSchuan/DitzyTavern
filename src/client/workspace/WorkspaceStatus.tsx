@@ -30,7 +30,13 @@ export function WorkspaceError({ onRetry }: { onRetry: () => void }) {
 	);
 }
 
-export function WorkspaceWithoutChats({ onNewChat }: { onNewChat: () => void }) {
+export function WorkspaceWithoutChats({
+	onNewChat,
+	onOpenSettings,
+}: {
+	onNewChat: () => void;
+	onOpenSettings: () => void;
+}) {
 	return (
 		<main className="workspace-error">
 			<div>
@@ -39,6 +45,9 @@ export function WorkspaceWithoutChats({ onNewChat }: { onNewChat: () => void }) 
 				<p>Create a native Chat with two Participants to open the writing workspace.</p>
 				<button className="primary-button" type="button" onClick={onNewChat}>
 					<Plus aria-hidden="true" /> New Chat
+				</button>
+				<button className="secondary-button" type="button" onClick={onOpenSettings}>
+					Connection Settings
 				</button>
 			</div>
 		</main>

@@ -38,7 +38,9 @@ export {
 } from "./bootstrap";
 export {
 	decryptConnectionSecret,
+	decryptConnectionSecretSync,
 	encryptConnectionSecret,
+	encryptConnectionSecretSync,
 	ConnectionSecretDecryptionError,
 	ConnectionSecretEncryptionError,
 	CONNECTION_SECRET_FORMAT_VERSION,

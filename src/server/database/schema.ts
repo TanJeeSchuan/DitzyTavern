@@ -317,5 +317,70 @@ export const artifactTable = sqliteTable(
 	],
 );
 
+// Application-global model connection configuration. These tables are
+// deliberately separate from Chat/Conversation state: changing the active
+// Profile changes only future Generations and never rewrites Conversation
+// data.
+export const connectionProfileTable = sqliteTable(
+	"connection_profile",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		display_name: text().notNull(),
+		api_format: text().notNull(),
+		request_url: text().notNull(),
+		models_url: text().notNull().default(""),
+		model_backend: text().notNull(),
+		adapter: text().notNull(),
+		output_token_representation: text().notNull().default("automatic"),
+		timeout_ms: int().notNull().default(120000),
+		backend_options_json: text().notNull().default("{}"),
+	},
+	(table) => [
+		uniqueIndex("connection_profile_display_name_ci").on(
+			sql`lower(${table.display_name})`,
+		),
+		check("connection_profile_timeout_positive", sql`${table.timeout_ms} > 0`),
+	],
+);
+
+export const connectionSettingsTable = sqliteTable("connection_settings", {
+	id: int().primaryKey(),
+	revision: int().notNull().default(0),
+	active_profile_id: int().references(() => connectionProfileTable.id, {
+		onDelete: "set null",
+	}),
+});
+
+// One encrypted payload per Profile. The dedicated credential and custom
+// header values are never represented in any client-facing row or snapshot.
+export const connectionSecretTable = sqliteTable("connection_secret", {
+	profile_id: int()
+		.primaryKey()
+		.references(() => connectionProfileTable.id, { onDelete: "cascade" }),
+	format_version: int().notNull(),
+	key_id: text().notNull(),
+	nonce: text().notNull(),
+	ciphertext: text().notNull(),
+	tag: text().notNull(),
+});
+
+export const connectionProfilePinnedModelTable = sqliteTable(
+	"connection_profile_pinned_model",
+	{
+		profile_id: int()
+			.notNull()
+			.references(() => connectionProfileTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		model_id: text().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.profile_id, table.position] }),
+		uniqueIndex("connection_profile_pinned_model_id_unique").on(
+			table.profile_id,
+			table.model_id,
+		),
+	],
+);
+
 // logical tables end here.
 

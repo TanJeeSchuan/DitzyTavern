@@ -4,6 +4,7 @@ import {
 	workspaceClient,
 } from "./workspace";
 import { ActiveWritingWorkspace } from "./workspace/ActiveWritingWorkspace";
+import { ConnectionSettingsPanel } from "./workspace/ConnectionSettingsPanel";
 import { NewChatSurface } from "./workspace/NewChatSurface";
 import {
 	WorkspaceError,
@@ -83,6 +84,7 @@ function WritingWorkspace({
 	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [newChatOpen, setNewChatOpen] = useState(false);
+	const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
 
 	const handleCreated = async () => {
 		setNewChatOpen(false);
@@ -92,7 +94,28 @@ function WritingWorkspace({
 	if (!initialWorkspace.activeChat) {
 		return (
 			<>
-				<WorkspaceWithoutChats onNewChat={() => setNewChatOpen(true)} />
+				<WorkspaceWithoutChats
+					onNewChat={() => setNewChatOpen(true)}
+					onOpenSettings={() => setConnectionSettingsOpen(true)}
+				/>
+				{connectionSettingsOpen && (
+					<div className="empty-settings-layer">
+						<section className="empty-settings-panel" aria-label="Connection Settings">
+							<header>
+								<h2>Connection Settings</h2>
+								<button
+									className="icon-button"
+									type="button"
+									aria-label="Close Connection Settings"
+									onClick={() => setConnectionSettingsOpen(false)}
+								>
+									×
+								</button>
+							</header>
+							<ConnectionSettingsPanel />
+						</section>
+					</div>
+				)}
 				{newChatOpen && (
 					<NewChatSurface
 						onCreated={() => void handleCreated()}

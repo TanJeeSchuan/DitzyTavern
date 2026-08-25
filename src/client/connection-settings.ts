@@ -1,0 +1,114 @@
+export type ConnectionApiFormat =
+	| "chat-completions"
+	| "responses"
+	| "anthropic-messages";
+export type ModelBackend = "automatic" | "ai-sdk";
+export type ConnectionAdapter = "openai-compatible" | "deepseek" | "openrouter";
+export type OutputTokenRepresentation =
+	| "automatic"
+	| "max_tokens"
+	| "max_completion_tokens"
+	| "omit";
+export type BackendOptionValue = string | number | boolean | null;
+export type BackendOptions = Record<string, BackendOptionValue>;
+
+export type ConnectionProfileDraft = {
+	displayName: string;
+	apiFormat: ConnectionApiFormat;
+	requestUrl: string;
+	modelsUrl: string;
+	modelBackend: ModelBackend;
+	adapter: ConnectionAdapter;
+	outputTokenRepresentation: OutputTokenRepresentation;
+	timeoutMs: number;
+	pinnedModels: string[];
+	backendOptions: BackendOptions;
+};
+
+export type ConnectionProfile = ConnectionProfileDraft & {
+	id: number;
+	credentialConfigured: boolean;
+	headers: Array<{ name: string; configured: boolean }>;
+};
+
+export type ConnectionSettings = {
+	revision: number;
+	activeProfileId: number | null;
+	profiles: ConnectionProfile[];
+};
+
+export type ConnectionPreset = {
+	id: string;
+	label: string;
+	description: string;
+	profile: ConnectionProfileDraft;
+};
+
+export type ConnectionSettingsResult =
+	| { outcome: "applied"; settings: ConnectionSettings }
+	| {
+			outcome: "conflict";
+			expectedRevision: number;
+			actualRevision: number;
+			currentSettings: ConnectionSettings;
+		}
+	| { outcome: "invalid"; reason: string }
+	| { outcome: "not-found" };
+
+const json = async <T>(response: Response): Promise<T> => {
+	const body: unknown = await response.json();
+	if (!response.ok) {
+		// SAFETY: callers select T from the known HTTP route response contract.
+		return body as T;
+	}
+	// SAFETY: the server validates each response against the Elysia contract.
+	return body as T;
+};
+
+export async function loadConnectionSettings(): Promise<ConnectionSettings> {
+	const response = await fetch("/api/connection-settings");
+	if (!response.ok) throw new Error("Unable to load Connection Settings.");
+	return json<ConnectionSettings>(response);
+}
+
+export async function loadConnectionPresets(): Promise<ConnectionPreset[]> {
+	const response = await fetch("/api/connection-settings/presets");
+	if (!response.ok) throw new Error("Unable to load Connection Presets.");
+	const body = await json<{ presets: ConnectionPreset[] }>(response);
+	return body.presets;
+}
+
+export async function saveConnectionCommand(
+	command:
+		| {
+				type: "create-profile";
+				expectedRevision: number;
+				profile: ConnectionProfileDraft;
+				credential?: string | null;
+			}
+		| {
+				type: "apply-profile";
+				expectedRevision: number;
+				profileId: number;
+				profile: ConnectionProfileDraft;
+			}
+		| {
+				type: "set-credential";
+				expectedRevision: number;
+				profileId: number;
+				credential: string;
+			}
+		| {
+				type: "reset-credential";
+				expectedRevision: number;
+				profileId: number;
+				confirmed: boolean;
+			},
+): Promise<ConnectionSettingsResult> {
+	const response = await fetch("/api/connection-settings/commands", {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(command),
+	});
+	return json<ConnectionSettingsResult>(response);
+}

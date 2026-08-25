@@ -53,10 +53,23 @@ export async function encryptConnectionSecret(
 	payload: ConnectionSecretPayload,
 	options: EncryptConnectionSecretOptions = {},
 ): Promise<EncryptedConnectionSecret> {
+	return encryptConnectionSecretSync(masterKey, profileId, payload, options);
+}
+
+// The database configuration aggregate uses this synchronous form so that a
+// Profile row and its initial encrypted payload can be committed by one
+// SQLite transaction. The async public function above remains available to
+// callers that prefer the original promise-shaped seam.
+export function encryptConnectionSecretSync(
+	masterKey: Uint8Array,
+	profileId: string | number,
+	payload: ConnectionSecretPayload,
+	options: EncryptConnectionSecretOptions = {},
+): EncryptedConnectionSecret {
 	assertMasterKey(masterKey);
 	assertPayload(payload);
 
-	const keyId = await deriveKeyId(masterKey);
+	const keyId = deriveKeyId(masterKey);
 	const nonce = options.randomBytes?.(CONNECTION_SECRET_NONCE_BYTES) ??
 		secureRandomBytes(CONNECTION_SECRET_NONCE_BYTES);
 	if (!(nonce instanceof Uint8Array) || nonce.length !== CONNECTION_SECRET_NONCE_BYTES) {
@@ -96,11 +109,19 @@ export async function decryptConnectionSecret(
 	profileId: string | number,
 	encrypted: EncryptedConnectionSecret,
 ): Promise<ConnectionSecretPayload> {
+	return decryptConnectionSecretSync(masterKey, profileId, encrypted);
+}
+
+export function decryptConnectionSecretSync(
+	masterKey: Uint8Array,
+	profileId: string | number,
+	encrypted: EncryptedConnectionSecret,
+): ConnectionSecretPayload {
 	try {
 		assertMasterKey(masterKey);
 		assertEncryptedSecret(encrypted);
 
-		const keyId = await deriveKeyId(masterKey);
+		const keyId = deriveKeyId(masterKey);
 		if (encrypted.keyId !== keyId) throw new ConnectionSecretDecryptionError();
 
 		const nonce = decodeBase64(encrypted.nonce);
@@ -171,7 +192,7 @@ const secureRandomBytes = (length: number): Uint8Array => {
 	return new Uint8Array(cryptoRandomBytes(length));
 };
 
-const deriveKeyId = async (masterKey: Uint8Array): Promise<string> => {
+const deriveKeyId = (masterKey: Uint8Array): string => {
 	return createHash("sha256").update(masterKey).digest("hex");
 };
 

@@ -636,3 +636,206 @@
 	color: var(--accent);
 }
 
+.connection-settings-panel {
+	margin: 1.4rem -1rem -1rem;
+	padding-top: 1.1rem;
+	border-top: 1px solid var(--border);
+}
+
+.connection-profile-list,
+.connection-preset-list {
+	display: grid;
+	gap: 0.45rem;
+}
+
+.connection-profile-choice {
+	display: grid;
+	gap: 0.2rem;
+	width: 100%;
+	padding: 0.75rem 0.8rem;
+	border: 1px solid transparent;
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+	text-align: left;
+}
+
+.connection-profile-choice:hover,
+.connection-profile-choice[data-active="true"] {
+	border-color: color-mix(in oklch, var(--accent) 38%, var(--border));
+	background: var(--accent-softer);
+}
+
+.connection-profile-choice span {
+	font-size: 0.84rem;
+	font-weight: 650;
+}
+
+.connection-profile-choice small,
+.connection-editor-heading span,
+.pinned-models-note {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+}
+
+.connection-presets,
+.connection-editor-section {
+	margin-top: 1.25rem;
+}
+
+.connection-preset-list {
+	grid-template-columns: 1fr;
+	margin-top: 0.6rem;
+}
+
+.connection-preset-list .secondary-button {
+	text-align: left;
+}
+
+.connection-empty-state {
+	display: grid;
+	gap: 0.25rem;
+	margin-top: 0.75rem;
+	padding: 0.8rem;
+	border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--border));
+	border-radius: 0.85rem;
+	background: var(--accent-softer);
+}
+
+.connection-empty-state strong {
+	font-size: 0.8rem;
+}
+
+.connection-empty-state span {
+	color: var(--text-muted);
+	font-size: 0.74rem;
+	line-height: 1.45;
+}
+
+.connection-editor-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-bottom: 0.75rem;
+}
+
+.connection-editor-heading h3 {
+	margin-bottom: 0.25rem;
+}
+
+.connection-editor-heading > svg,
+.connection-security-note svg,
+.connection-active-note svg {
+	width: 1rem;
+	height: 1rem;
+	flex: 0 0 auto;
+	color: var(--accent);
+}
+
+.connection-advanced-grid {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.credential-input-row {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.credential-input-row > svg {
+	width: 0.95rem;
+	height: 0.95rem;
+	color: var(--text-muted);
+}
+
+.connection-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 0.2rem;
+}
+
+.connection-action-row button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.connection-action-row button svg {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.connection-feedback {
+	margin: 0.9rem 0 0;
+	padding: 0.7rem 0.8rem;
+	border-radius: 0.75rem;
+	background: var(--accent-softer);
+	font-size: 0.75rem;
+	line-height: 1.45;
+}
+
+.connection-feedback-error {
+	background: color-mix(in oklch, var(--destructive) 12%, var(--surface));
+	color: var(--destructive);
+}
+
+.connection-security-note,
+.connection-active-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.45rem;
+	margin: 0.9rem 0 0;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.45;
+}
+
+.connection-active-note {
+	color: var(--foreground);
+}
+
+.empty-settings-layer {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: grid;
+	place-items: center;
+	padding: 1rem;
+	background: color-mix(in oklch, var(--background) 72%, transparent);
+}
+
+.empty-settings-panel {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	width: min(42rem, 100%);
+	max-height: min(92dvh, 48rem);
+	border: 1px solid var(--border);
+	border-radius: 1.35rem;
+	background: var(--surface);
+	box-shadow: 0 1rem 3rem var(--shadow-soft);
+	overflow: hidden;
+}
+
+.empty-settings-panel > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 4.5rem;
+	padding: 0 1rem 0 1.25rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.empty-settings-panel > header h2 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 670;
+}
+
+.empty-settings-panel > .connection-settings-panel {
+	margin: 0;
+	border-top: 0;
+}
+

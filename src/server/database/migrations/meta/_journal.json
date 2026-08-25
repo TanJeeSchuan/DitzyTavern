@@ -64,6 +64,13 @@
       "when": 1787502493500,
       "tag": "0008_naive_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787672776676,
+      "tag": "0009_freezing_centennial",
+      "breakpoints": true
     }
   ]
 }
