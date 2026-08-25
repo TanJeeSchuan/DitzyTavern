@@ -9,7 +9,14 @@ export type {
 	ModelClientEvent,
 	ModelClientFinishReason,
 	ModelClientGenerationInput,
+	ModelClientGenerationSettings,
+	ModelClientConnectionSnapshot,
 } from "./types";
+export {
+	createDeepSeekModelClient,
+	ModelClientTransportError,
+} from "./deepseek";
+export type { DeepSeekModelClientOptions } from "./deepseek";
 export {
 	resolveTestConnectionBackend,
 	testDeepSeekConnection,

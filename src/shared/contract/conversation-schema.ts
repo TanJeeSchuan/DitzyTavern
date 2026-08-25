@@ -89,6 +89,33 @@ export const conversationSummary = t.Object({
 	capabilities: conversationCapabilities,
 });
 
+export const conversationGenerationSettings = t.Object({
+	modelId: t.String(),
+	temperature: t.Nullable(t.Number()),
+	topP: t.Nullable(t.Number()),
+	frequencyPenalty: t.Nullable(t.Number()),
+	presencePenalty: t.Nullable(t.Number()),
+	contextLimit: t.Integer(),
+	responseBudget: t.Integer(),
+	requestOverrides: t.Object({
+		"chat-completions": t.Record(t.String(), t.Unknown()),
+		responses: t.Record(t.String(), t.Unknown()),
+		"anthropic-messages": t.Record(t.String(), t.Unknown()),
+	}),
+});
+
+export const generationVariant = t.Object({
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	content: t.String(),
+	timestamp: t.String(),
+	data: t.Array(t.Object({
+		namespace: t.String(),
+		key: t.String(),
+		value: t.String(),
+	})),
+});
+
 // Adapts the seam's immutable snapshot into the summary transport shape: the
 // Conversation seam returns readonly arrays, while the typed response
 // contract declares mutable ones. Mirrors toCharacterPayload in the
@@ -256,6 +283,26 @@ const deleteDataAction = t.Object({
 	key: t.String(),
 });
 
+const generationSettings = t.Object({
+	modelId: t.String(),
+	temperature: t.Nullable(t.Number()),
+	topP: t.Nullable(t.Number()),
+	frequencyPenalty: t.Nullable(t.Number()),
+	presencePenalty: t.Nullable(t.Number()),
+	contextLimit: t.Integer(),
+	responseBudget: t.Integer(),
+	requestOverrides: t.Object({
+		"chat-completions": t.Record(t.String(), t.Unknown()),
+		responses: t.Record(t.String(), t.Unknown()),
+		"anthropic-messages": t.Record(t.String(), t.Unknown()),
+	}),
+});
+
+const updateGenerationSettingsAction = t.Object({
+	type: t.Literal("update-generation-settings"),
+	settings: generationSettings,
+});
+
 // Cast management command. The raw command appends an ad-hoc or already-
 // resolved local Definition only; Character-to-Cast forks flow through the
 // explicit workflow route, which checks both revisions and copies the
@@ -309,6 +356,7 @@ const conversationCommandAction = t.Union([
 	deleteMessageAction,
 	putDataAction,
 	deleteDataAction,
+	updateGenerationSettingsAction,
 	addParticipantAction,
 	renameParticipantAction,
 	replaceParticipantPromptAction,

@@ -8,6 +8,38 @@ export interface ConversationDataEntry {
 	value: string;
 }
 
+// Conversation-local generation controls. Request Overrides retain separate
+// namespaces for each API Format so switching a global Connection Profile
+// never transmits settings authored for another wire format.
+export interface ConversationGenerationSettings {
+	modelId: string;
+	temperature: number | null;
+	topP: number | null;
+	frequencyPenalty: number | null;
+	presencePenalty: number | null;
+	contextLimit: number;
+	responseBudget: number;
+	requestOverrides: Readonly<{
+		"chat-completions": GenerationRequestOverrides;
+		responses: GenerationRequestOverrides;
+		"anthropic-messages": GenerationRequestOverrides;
+	}>;
+}
+
+export type GenerationRequestValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly GenerationRequestValue[]
+	| Readonly<{ [key: string]: GenerationRequestValue }>;
+
+export type GenerationRequestOverrides = Readonly<
+	Record<string, GenerationRequestValue>
+>;
+
+export type ConversationGenerationSettingsInput = ConversationGenerationSettings;
+
 // Narrowing for the on-demand Conversation data read. The filter is
 // vocabulary-free: namespace and key strings pass through uninterpreted, so
 // the owning domain (the import adapter, etc.) keeps deciding their meaning.
@@ -301,6 +333,10 @@ export type ConversationAction =
 			namespace: string;
 			key: string;
 	  }
+	| {
+			type: "update-generation-settings";
+			settings: ConversationGenerationSettingsInput;
+	  }
 	// Cast management: appends a new Participant with a complete local
 	// Definition (ad-hoc, or an already-resolved Character fork carrying
 	// immutable provenance). Appended at the next stable Cast position and
@@ -344,6 +380,9 @@ export interface ConversationCommand {
 export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
+	getGenerationSettings(
+		conversationId: number,
+	): ConversationGenerationSettings | undefined;
 	// Reads one stable chronological page of the normal Chat history read
 	// model. Pages carry the lightweight Participant identity, immutable
 	// Author Stamp names, Message chronology, Variant order, and selected
@@ -385,6 +424,7 @@ export interface CommitSiblingVariantInput {
 	messageId: number;
 	timestamp: string;
 	content: string;
+	provenance?: ConversationDataEntry | undefined;
 }
 
 // The generation workflow captures these values at generation start; the
@@ -399,6 +439,7 @@ export interface CommitGenerationInput {
 	capturedAuthorName: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
+	provenance?: ConversationDataEntry | undefined;
 }
 
 export interface ConversationCreationVariant {

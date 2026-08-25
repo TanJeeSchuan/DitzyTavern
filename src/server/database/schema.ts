@@ -6,6 +6,7 @@ import {
 	check,
 	int,
 	primaryKey,
+	real,
 	sqliteTable,
 	text,
 	uniqueIndex,
@@ -315,6 +316,27 @@ export const artifactTable = sqliteTable(
 			table.key,
 		),
 	],
+);
+
+// Conversation-owned generation controls. These values are deliberately
+// separate from the application-global Connection Profile: activating or
+// editing a Profile changes the transport used by later Generations, never
+// the model selection or sampling choices of an existing Conversation.
+export const conversationGenerationSettingsTable = sqliteTable(
+	"conversation_generation_settings",
+	{
+		chat_id: int()
+			.primaryKey()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		model_id: text().notNull().default("deepseek-chat"),
+		temperature: real(),
+		top_p: real(),
+		frequency_penalty: real(),
+		presence_penalty: real(),
+		context_limit: int().notNull().default(32768),
+		response_budget: int().notNull().default(1024),
+		request_overrides_json: text().notNull().default("{}"),
+	},
 );
 
 // Application-global model connection configuration. These tables are

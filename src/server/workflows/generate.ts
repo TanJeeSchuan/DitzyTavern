@@ -23,6 +23,7 @@ import {
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type ConversationSnapshot,
+	type ConversationDataEntry,
 } from "../conversation";
 import {
 	compilePrompt,
@@ -32,8 +33,15 @@ import {
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
 	collectModelClientContent,
+	type ModelClientConnectionSnapshot,
+	type ModelClientGenerationSettings,
 	type ModelClient,
 } from "../model-client";
+import {
+	createConnectionSettingsModule,
+	type ConnectionSettingsModuleOptions,
+} from "../connection-settings";
+import type { ConversationGenerationSettings } from "../conversation";
 
 export interface ParticipantPreview {
 	id: number;
@@ -57,6 +65,12 @@ export interface GenerateReplyInput {
 	// returns normalized asynchronous events. The workflow never calls a
 	// provider or interprets a provider request shape directly.
 	modelClient: ModelClient;
+	// HTTP adapters provide the same start-time capture used to construct the
+	// client. Direct workflow callers may omit it; the workflow resolves the
+	// current safe Profile identity itself, preserving the original fake-client
+	// seam used by domain tests.
+	connection?: ModelClientConnectionSnapshot | null;
+	connectionSettings?: ConnectionSettingsModuleOptions;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -124,6 +138,73 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	},
 });
 
+function captureGenerationSettings(
+	database: Database,
+	conversationId: number,
+	connection: ModelClientConnectionSnapshot | null | undefined,
+	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
+): GenerationCapture {
+	const conversation = createConversationModule(database);
+	const settings = conversation.getGenerationSettings(conversationId);
+	if (settings === undefined) {
+		throw new ConversationNotFoundError(conversationId);
+	}
+	const capturedConnection = connection === undefined
+		? resolveConnectionSnapshot(database, connectionSettingsOptions)
+		: connection;
+	const provenance = {
+		namespace: "generation",
+		key: "provenance",
+		value: JSON.stringify({
+			connectionProfileId: capturedConnection?.profileId ?? null,
+			connectionSettingsRevision: capturedConnection?.settingsRevision ?? null,
+			modelBackend: capturedConnection?.backend ?? null,
+			adapter: capturedConnection?.adapter ?? null,
+			modelId: settings.modelId,
+			generationSettings: {
+				temperature: settings.temperature,
+				topP: settings.topP,
+				frequencyPenalty: settings.frequencyPenalty,
+				presencePenalty: settings.presencePenalty,
+				contextLimit: settings.contextLimit,
+				responseBudget: settings.responseBudget,
+				requestOverrides: settings.requestOverrides,
+			},
+		}),
+	} satisfies ConversationDataEntry;
+	return { settings, connection: capturedConnection, provenance };
+}
+
+function resolveConnectionSnapshot(
+	database: Database,
+	options: ConnectionSettingsModuleOptions | undefined,
+): ModelClientConnectionSnapshot | null {
+	const settings = createConnectionSettingsModule(database, options).get();
+	if (settings.activeProfileId === null) return null;
+	const profile = settings.profiles.find(
+		(entry) => entry.id === settings.activeProfileId,
+	);
+	if (profile === undefined) return null;
+	return {
+		profileId: profile.id,
+		settingsRevision: settings.revision,
+		backend: "ai-sdk",
+		adapter: profile.adapter,
+	};
+}
+
+const toModelClientGenerationSettings = (
+	settings: ConversationGenerationSettings,
+): ModelClientGenerationSettings => ({
+	temperature: settings.temperature,
+	topP: settings.topP,
+	frequencyPenalty: settings.frequencyPenalty,
+	presencePenalty: settings.presencePenalty,
+	contextLimit: settings.contextLimit,
+	responseBudget: settings.responseBudget,
+	requestOverrides: settings.requestOverrides,
+});
+
 // Compiles the Prompt Plan the server would send for a current Generate
 // without contacting any transport. Exposes the agreed participant context
 // (the Control pair and their plan) using provider-neutral vocabulary only.
@@ -174,9 +255,18 @@ export async function generateReply(
 		throw new ConversationNotPlayableError(input.conversationId);
 	}
 	const { plan, humanParticipant, modelParticipant } = derivation;
+	const capture = captureGenerationSettings(
+		database,
+		input.conversationId,
+		input.connection,
+		input.connectionSettings,
+	);
 
 	const content = await collectModelClientContent(input.modelClient, {
 		promptPlan: plan,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
 	});
 
 	// Commit with the generation-start captures even if the Conversation
@@ -189,6 +279,7 @@ export async function generateReply(
 		capturedAuthorName: modelParticipant.name,
 		humanParticipantId: humanParticipant.id,
 		modelParticipantId: modelParticipant.id,
+		provenance: capture.provenance,
 	});
 }
 
@@ -202,6 +293,8 @@ export interface GenerateSiblingVariantInput {
 	// The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
+	connection?: ModelClientConnectionSnapshot | null;
+	connectionSettings?: ConnectionSettingsModuleOptions;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -291,9 +384,18 @@ export async function generateSiblingVariant(
 		throw new ConversationNotFoundError(input.conversationId);
 	}
 	const { plan } = deriveSiblingDerivation(snapshot, input.messageId);
+	const capture = captureGenerationSettings(
+		database,
+		input.conversationId,
+		input.connection,
+		input.connectionSettings,
+	);
 
 	const content = await collectModelClientContent(input.modelClient, {
 		promptPlan: plan,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
 	});
 
 	return conversation.commitSiblingVariant({
@@ -301,5 +403,12 @@ export async function generateSiblingVariant(
 		messageId: input.messageId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
 		content,
+		provenance: capture.provenance,
 	});
+}
+
+interface GenerationCapture {
+	settings: ConversationGenerationSettings;
+	connection: ModelClientConnectionSnapshot | null;
+	provenance: ConversationDataEntry;
 }

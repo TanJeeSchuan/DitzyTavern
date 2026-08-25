@@ -1,6 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { eq, max, sql } from "drizzle-orm";
-import { chatTable, messageTable, messageVariantTable } from "../../database/schema";
+import {
+	chatTable,
+	messageTable,
+	messageVariantDataTable,
+	messageVariantTable,
+} from "../../database/schema";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -71,7 +76,7 @@ export function commitConversationGeneration(
 			.returning()
 			.get();
 
-		db.insert(messageVariantTable)
+		const variant = db.insert(messageVariantTable)
 			.values({
 				message_id: message.id,
 				position: 1,
@@ -79,7 +84,23 @@ export function commitConversationGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			})
-			.run();
+			.returning({ id: messageVariantTable.id })
+			.get();
+		if (variant === undefined) {
+			throw new InvalidConversationCommandError(
+				"The generated Variant could not be persisted.",
+			);
+		}
+		if (input.provenance !== undefined) {
+			db.insert(messageVariantDataTable)
+				.values({
+					message_variant_id: variant.id,
+					namespace: input.provenance.namespace,
+					key: input.provenance.key,
+					value: input.provenance.value,
+				})
+				.run();
+		}
 
 		db.update(chatTable)
 			.set({ revision: sql`${chatTable.revision} + 1` })

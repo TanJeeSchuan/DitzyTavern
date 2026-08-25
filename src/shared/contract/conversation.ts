@@ -13,10 +13,23 @@ import {
 	ParticipantNotRemovableError,
 	createConversationModule,
 	StaleConversationRevisionError,
+	type ConversationAction,
+	type ConversationGenerationSettings,
+	type ConversationSnapshot,
 } from "../../server/conversation";
+import {
+	createConnectionSettingsModule,
+	type ConnectionSettingsModuleOptions,
+} from "../../server/connection-settings";
+import {
+	createDeepSeekModelClient,
+	ModelClientTransportError,
+	type ModelFetch,
+} from "../../server/model-client";
 import { withDatabase } from "../../server/database/database";
 import {
 	addCharacterToCast,
+	generateReply,
 	saveParticipantAsCharacter,
 } from "../../server/workflows";
 import {
@@ -28,7 +41,9 @@ import {
 	chatHistoryPage,
 	conversationCommandBody,
 	conversationConflict,
+	conversationGenerationSettings,
 	conversationSummary,
+	generationVariant,
 	invalidOutcome,
 	notFoundOutcome,
 	notPlayableOutcome,
@@ -42,7 +57,14 @@ import {
 // (which itself composes Character Library and Conversation capabilities in
 // one transaction). Routes never coordinate tables or reproduce domain
 // rules; they map typed outcomes to typed transport results.
-export const createConversationRoutes = (database: Database | undefined) =>
+export interface ConversationRouteOptions extends ConnectionSettingsModuleOptions {
+	readonly fetch?: ModelFetch;
+}
+
+export const createConversationRoutes = (
+	database: Database | undefined,
+	options: ConversationRouteOptions = {},
+) =>
 	new Elysia()
 		.get(
 			"/api/conversations/:id",
@@ -89,15 +111,129 @@ export const createConversationRoutes = (database: Database | undefined) =>
 				},
 			},
 		)
+		.get(
+			"/api/conversations/:id/generation-settings",
+			({ params, status }) => {
+				const settings = withDatabase(database, (connection) =>
+					createConversationModule(connection).getGenerationSettings(params.id),
+				);
+				if (settings === undefined) {
+					return status(404, { outcome: "not-found" as const });
+				}
+				return toGenerationSettingsPayload(settings);
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				response: {
+					200: conversationGenerationSettings,
+					404: notFoundOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/generate",
+			async ({ params, status }) => {
+				try {
+					return await withDatabase(database, async (connection) => {
+						const conversation = createConversationModule(connection);
+						const current = conversation.getSnapshot(params.id);
+						if (current === undefined) {
+							return status(404, { outcome: "not-found" as const });
+						}
+						const connectionSettings = createConnectionSettingsModule(
+							connection,
+							options,
+						).get();
+						if (connectionSettings.activeProfileId === null) {
+							return status(409, {
+								outcome: "unconfigured" as const,
+								reason: "An active Connection Profile is required for Generation.",
+							});
+						}
+						const profile = connectionSettings.profiles.find(
+							(entry) => entry.id === connectionSettings.activeProfileId,
+						);
+						if (profile === undefined) {
+							return status(409, {
+								outcome: "unconfigured" as const,
+								reason: "The active Connection Profile is unavailable.",
+							});
+						}
+						const client = createDeepSeekModelClient({
+							profile,
+							secrets: connectionSettingsModuleSecrets(
+								connection,
+								profile.id,
+								options,
+							),
+							fetch: options.fetch,
+						});
+						const generated = await generateReply(connection, {
+							conversationId: params.id,
+							modelClient: client,
+							connection: {
+								profileId: profile.id,
+								settingsRevision: connectionSettings.revision,
+								backend: "ai-sdk",
+								adapter: profile.adapter,
+							},
+						});
+						return toGenerationPayload(generated);
+					});
+				} catch (error) {
+					if (error instanceof ConversationNotFoundError) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof ConversationNotPlayableError) {
+						return status(409, {
+							outcome: "not-playable" as const,
+							reason: error.message,
+						});
+					}
+					if (error instanceof ModelClientTransportError) {
+						return status(502, {
+							outcome: "failed" as const,
+							reason: error.message,
+						});
+					}
+					if (error instanceof Error) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				params: t.Object({ id: t.Numeric() }),
+				body: t.Object({}),
+				response: {
+					200: t.Object({
+						outcome: t.Literal("applied"),
+						conversation: conversationSummary,
+						variant: generationVariant,
+					}),
+					409: t.Union([notPlayableOutcome, t.Object({
+						outcome: t.Literal("unconfigured"),
+						reason: t.String(),
+					})]),
+					404: notFoundOutcome,
+					422: invalidOutcome,
+					502: t.Object({ outcome: t.Literal("failed"), reason: t.String() }),
+				},
+			},
+		)
 		.post(
 			"/api/conversations/:id/commands",
 			({ params, body, status }) => {
 				try {
+					// SAFETY: Elysia validates the discriminated command shape at this
+					// boundary; the Conversation domain then validates generation values
+					// before persistence and keeps the action vocabulary closed.
+					const action = body.action as ConversationAction;
 					const conversation = withDatabase(database, (connection) =>
 						createConversationModule(connection).execute({
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
-							action: body.action,
+							action,
 						}),
 					);
 					return {
@@ -282,3 +418,49 @@ export const createConversationRoutes = (database: Database | undefined) =>
 				},
 			},
 		);
+
+function connectionSettingsModuleSecrets(
+	database: Database,
+	profileId: number,
+	options: ConnectionSettingsModuleOptions,
+) {
+	return createConnectionSettingsModule(database, options).getProfileSecrets(profileId);
+}
+
+function toGenerationSettingsPayload(
+	settings: ConversationGenerationSettings,
+) {
+	return {
+		modelId: settings.modelId,
+		temperature: settings.temperature,
+		topP: settings.topP,
+		frequencyPenalty: settings.frequencyPenalty,
+		presencePenalty: settings.presencePenalty,
+		contextLimit: settings.contextLimit,
+		responseBudget: settings.responseBudget,
+		requestOverrides: {
+			"chat-completions": { ...settings.requestOverrides["chat-completions"] },
+			responses: { ...settings.requestOverrides.responses },
+			"anthropic-messages": { ...settings.requestOverrides["anthropic-messages"] },
+		},
+	};
+}
+
+function toGenerationPayload(snapshot: ConversationSnapshot) {
+	const message = snapshot.messages.at(-1);
+	const variant = message?.variants.at(-1);
+	if (message === undefined || variant === undefined) {
+		throw new Error("Generation completed without a persisted Variant.");
+	}
+	return {
+		outcome: "applied" as const,
+		conversation: toConversationSummary(snapshot),
+		variant: {
+			messageId: message.id,
+			variantId: variant.id,
+			content: variant.content,
+			timestamp: variant.timestamp,
+			data: variant.data.map((entry) => ({ ...entry })),
+		},
+	};
+}

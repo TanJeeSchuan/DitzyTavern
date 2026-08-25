@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, eq, isNull, max, sql } from "drizzle-orm";
 import {
 	chatTable,
+	messageVariantDataTable,
 	messageVariantTable,
 	participantPromptTable,
 	participantTable,
@@ -111,7 +112,7 @@ export function commitConversationSiblingVariant(
 			.set({ selected: false })
 			.where(eq(messageVariantTable.message_id, input.messageId))
 			.run();
-		db.insert(messageVariantTable)
+		const variant = db.insert(messageVariantTable)
 			.values({
 				message_id: input.messageId,
 				position: (latestPosition ?? 0) + 1,
@@ -119,7 +120,21 @@ export function commitConversationSiblingVariant(
 				timestamp: input.timestamp,
 				selected: true,
 			})
-			.run();
+			.returning({ id: messageVariantTable.id })
+			.get();
+		if (variant === undefined) {
+			throw new Error("The sibling Variant could not be persisted.");
+		}
+		if (input.provenance !== undefined) {
+			db.insert(messageVariantDataTable)
+				.values({
+					message_variant_id: variant.id,
+					namespace: input.provenance.namespace,
+					key: input.provenance.key,
+					value: input.provenance.value,
+				})
+				.run();
+		}
 
 		db.update(chatTable)
 			.set({ revision: sql`${chatTable.revision} + 1` })

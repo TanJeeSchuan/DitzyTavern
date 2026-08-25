@@ -51,6 +51,33 @@ export interface ConversationControlValidity {
 	reason: "missing-seat" | "seats-not-distinct" | "seat-not-in-cast" | null;
 }
 
+export interface ConversationGenerationSettings {
+	modelId: string;
+	temperature: number | null;
+	topP: number | null;
+	frequencyPenalty: number | null;
+	presencePenalty: number | null;
+	contextLimit: number;
+	responseBudget: number;
+	requestOverrides: {
+		"chat-completions": GenerationRequestOverrides;
+		responses: GenerationRequestOverrides;
+		"anthropic-messages": GenerationRequestOverrides;
+	};
+}
+
+export type GenerationRequestValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly GenerationRequestValue[]
+	| Readonly<{ [key: string]: GenerationRequestValue }>;
+
+export type GenerationRequestOverrides = Readonly<
+	Record<string, GenerationRequestValue>
+>;
+
 // Slim conversational view: the transport never ships Messages or
 // per-Conversation data. The story reads through the paginated history
 // seam, and heavy provenance loads only through the Import Details
@@ -102,6 +129,10 @@ export type ConversationAction =
 				| { type: "variant"; messageId: number; variantId: number };
 			namespace: string;
 			key: string;
+	  }
+	| {
+			type: "update-generation-settings";
+			settings: ConversationGenerationSettings;
 	  }
 	| {
 			type: "add-participant";

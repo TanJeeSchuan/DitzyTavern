@@ -17,6 +17,7 @@ import {
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { selectVariant } from "./commands/select-variant";
+import { updateGenerationSettings } from "./commands/update-generation-settings";
 import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
@@ -106,6 +107,9 @@ export function executeConversationCommand(
 				break;
 			case "delete-data":
 				deleteData(db, input);
+				break;
+			case "update-generation-settings":
+				updateGenerationSettings(db, input);
 				break;
 		}
 

@@ -12,7 +12,12 @@ import {
 import type { ParticipantDefinition } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import { createFakeModelClient } from "../model-client";
-import { generateReply, inspectGenerationPrompt } from ".";
+import { createConnectionSettingsModule } from "../connection-settings";
+import {
+	generateReply,
+	generateSiblingVariant,
+	inspectGenerationPrompt,
+} from ".";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -420,5 +425,184 @@ describe("Current Generate workflow", () => {
 			key: "mid-flight-edit",
 			value: "landed",
 		});
+	});
+
+	test("captures effective settings and safe Profile provenance before a streamed request", async () => {
+		const key = new Uint8Array(32).fill(19);
+		const settingsModule = createConnectionSettingsModule(database, { masterKey: key });
+		const profile = {
+			displayName: "DeepSeek",
+			apiFormat: "chat-completions" as const,
+			requestUrl: "https://api.deepseek.com/",
+			modelsUrl: "https://api.deepseek.com/models",
+			modelBackend: "automatic" as const,
+			adapter: "deepseek" as const,
+			outputTokenRepresentation: "automatic" as const,
+			timeoutMs: 120_000,
+			pinnedModels: ["custom-before-discovery"],
+			backendOptions: {},
+		};
+		const created = settingsModule.createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "credential-never-stored-in-provenance",
+		});
+		const conversation = createConversationModule(database);
+		const updatedConversation = conversation.execute({
+			conversationId,
+			expectedRevision: 0,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "custom-before-discovery",
+					temperature: 0.4,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 8192,
+					responseBudget: 128,
+					requestOverrides: {
+						"chat-completions": { response_format: { type: "text" } },
+						responses: {},
+						"anthropic-messages": {},
+					},
+					},
+			},
+		});
+		expect(conversation.getGenerationSettings(conversationId)?.modelId).toBe(
+			"custom-before-discovery",
+		);
+
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let receivedInput: { modelId?: string; generationSettings?: unknown } | undefined;
+		const generation = generateReply(database, {
+			conversationId,
+			connectionSettings: { masterKey: key },
+			modelClient: {
+				async *generate(input) {
+					receivedInput = input;
+					await pending;
+					yield { type: "content", text: "Streamed response." };
+					yield { type: "finished", finishReason: "stop" };
+				},
+			},
+		});
+
+		// A Profile edit during transport is authoritative for the next
+		// Generation, never for the already captured one.
+		const profileId = created.activeProfileId;
+		if (profileId === null) throw new Error("Profile activation missing.");
+		settingsModule.applyProfile({
+			expectedRevision: created.revision,
+			profileId,
+			profile: { ...profile, displayName: "Edited after start" },
+		});
+		release();
+		const committed = await generation;
+		expect(receivedInput?.modelId).toBe("custom-before-discovery");
+		expect(receivedInput?.generationSettings).toMatchObject({
+		responseBudget: 128,
+		contextLimit: 8192,
+	});
+		const variant = committed.messages.at(-1)?.variants.at(-1);
+		const provenance = variant?.data.find(
+			(entry) => entry.namespace === "generation" && entry.key === "provenance",
+		);
+		if (provenance === undefined) throw new Error("Generation provenance missing.");
+		// SAFETY: the provenance value was written by the workflow immediately
+		// above and this test reads only its safe identity and settings fields.
+		const parsed = JSON.parse(provenance.value) as {
+			connectionProfileId: number;
+			connectionSettingsRevision: number;
+			modelBackend: string;
+			adapter: string;
+			modelId: string;
+			generationSettings: { responseBudget: number };
+		};
+		expect(parsed).toMatchObject({
+			connectionProfileId: created.activeProfileId,
+			connectionSettingsRevision: created.revision,
+			modelBackend: "ai-sdk",
+			adapter: "deepseek",
+			modelId: "custom-before-discovery",
+			generationSettings: { responseBudget: 128 },
+		});
+		expect(provenance.value).not.toContain("credential-never-stored-in-provenance");
+		expect(provenance.value).not.toContain("api.deepseek.com");
+		expect(updatedConversation.revision).toBe(1);
+	});
+
+	test("stores independent safe settings provenance for sibling Variants", async () => {
+		const conversation = createConversationModule(database);
+		conversation.execute({
+			conversationId,
+			expectedRevision: 0,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "first-model",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 4096,
+					responseBudget: 64,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		const first = await generateReply(database, {
+			conversationId,
+			modelClient: fakeModelClient(() => "first generation"),
+		});
+		const targetId = first.messages.at(-1)?.id;
+		if (targetId === undefined) throw new Error("Expected a generated Message.");
+		const secondSettings = conversation.execute({
+			conversationId,
+			expectedRevision: first.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "second-model",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 2048,
+					responseBudget: 128,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		const sibling = await generateSiblingVariant(database, {
+			conversationId,
+			messageId: targetId,
+			modelClient: fakeModelClient(() => "sibling generation"),
+		});
+		const target = sibling.messages.find((message) => message.id === targetId);
+		if (target === undefined) throw new Error("Target Message disappeared.");
+		const provenance = target.variants.map((variant) => {
+			const entry = variant.data.find((item) => item.key === "provenance");
+			if (entry === undefined) throw new Error("Sibling provenance missing.");
+			// SAFETY: both entries were written by the generation workflow and this
+			// test reads only the captured model id.
+			return (JSON.parse(entry.value) as { modelId: string }).modelId;
+		});
+		expect(provenance).toEqual([
+			"first-model",
+			"second-model",
+		]);
+		expect(secondSettings.revision).toBe(3);
 	});
 });

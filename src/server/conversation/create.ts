@@ -7,6 +7,7 @@ import {
 	artifactTable,
 	chatDataTable,
 	chatTable,
+	conversationGenerationSettingsTable,
 	conversationControlTable,
 	messageDataTable,
 	messageTable,
@@ -378,6 +379,9 @@ export function createConversation(
 				"Conversation insertion did not return an identifier.",
 			);
 		}
+		db.insert(conversationGenerationSettingsTable)
+			.values({ chat_id: conversation.id })
+			.run();
 
 		// Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers.

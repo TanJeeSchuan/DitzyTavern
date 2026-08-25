@@ -1,0 +1,106 @@
+import { describe, expect, test } from "bun:test";
+import type { ConnectionProfile } from "../connection-settings/types";
+import { createDeepSeekModelClient } from ".";
+
+const profile: ConnectionProfile = {
+	id: 7,
+	displayName: "DeepSeek",
+	apiFormat: "chat-completions",
+	requestUrl: "http://127.0.0.1:43127/v1/",
+	modelsUrl: "",
+	modelBackend: "automatic",
+	adapter: "deepseek",
+	outputTokenRepresentation: "automatic",
+	timeoutMs: 120_000,
+	pinnedModels: [],
+	backendOptions: {},
+	credentialConfigured: true,
+	headers: [],
+};
+
+const generationSettings = {
+	temperature: 0.7,
+	topP: null,
+	frequencyPenalty: null,
+	presencePenalty: null,
+	contextLimit: 32768,
+	responseBudget: 64,
+	requestOverrides: { "chat-completions": { custom_field: "kept" } },
+};
+
+interface CapturedBody {
+	model?: string;
+	max_tokens?: number;
+	custom_field?: string;
+}
+
+const streamResponse = () => {
+	const encoder = new TextEncoder();
+	const chunks = [
+		`data: ${JSON.stringify({
+			id: "chatcmpl-test",
+			choices: [{ index: 0, delta: { content: "Visible " }, finish_reason: null }],
+		})}\n\n`,
+		`data: ${JSON.stringify({
+			id: "chatcmpl-test",
+			choices: [{ index: 0, delta: { content: "reply." }, finish_reason: null }],
+		})}\n\n`,
+		`data: ${JSON.stringify({
+			id: "chatcmpl-test",
+			choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+		})}\n\n`,
+		"data: [DONE]\n\n",
+	];
+	return new Response(
+		new ReadableStream({
+			start(controller) {
+				for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+				controller.close();
+			},
+		}),
+		{ headers: { "content-type": "text/event-stream" } },
+	);
+};
+
+describe("DeepSeek production Model Client", () => {
+	test("normalizes visible text chunks and pins the resolved authenticated request", async () => {
+		let request: { url: string; body: CapturedBody; auth: string | null } | undefined;
+		const client = createDeepSeekModelClient({
+			profile,
+			secrets: { credential: "secret-never-returned", headers: {} },
+			fetch: async (input, init) => {
+				request = {
+					url: String(input),
+					// SAFETY: the controlled fake receives the AI SDK Chat Completions
+					// body and this test reads only its model and token fields.
+					body: JSON.parse(String(init?.body)) as CapturedBody,
+					auth: new Headers(init?.headers).get("authorization"),
+				};
+				return streamResponse();
+			},
+		});
+		const events = [];
+		for await (const event of client.generate({
+			promptPlan: {
+				blocks: [{ kind: "system-instruction", content: "Stay concise." }],
+				warnings: [],
+			},
+			modelId: "custom-model",
+			generationSettings,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "content", text: "Visible " },
+			{ type: "content", text: "reply." },
+			{ type: "finished", finishReason: "stop" },
+		]);
+		expect(request?.url).toBe("http://127.0.0.1:43127/v1/chat/completions");
+		expect(request?.auth).toBe("Bearer secret-never-returned");
+		expect(request?.body.model).toBe("custom-model");
+		expect(request?.body.max_tokens).toBe(64);
+		expect(request?.body.custom_field).toBe("kept");
+		expect(JSON.stringify(request)).toContain("secret-never-returned");
+	});
+});
