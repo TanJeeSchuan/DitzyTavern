@@ -1,7 +1,9 @@
 import { staticPlugin } from "@elysiajs/static";
 import { contract } from "../shared/contract";
 import { openDatabase } from "./database/database";
+import { initializeConnectionSecretKey } from "./connection-secrets";
 
+initializeConnectionSecretKey();
 const database = openDatabase();
 
 const serveIndex = () => Bun.file("dist/index.html");
