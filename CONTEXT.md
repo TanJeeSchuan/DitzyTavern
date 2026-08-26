@@ -2,6 +2,28 @@
 
 DitzyTavern is a chat-writing tool. A Conversation is the primary object people create and work in; Conversations can be created natively or brought in from an external chat import, and everything downstream — generation, history, provenance — is expressed in ordinary Conversation terms.
 
+## Generation
+
+**Generation**:
+The process that turns a Conversation's writing context into model-produced candidate writing.
+_Avoid_: response generation, reply generation
+
+**Generation attempt**:
+One request to a model made as part of a Generation.
+_Avoid_: response, API call
+
+**Generated Variant**:
+A Variant produced by a Generation attempt and retained as part of the Conversation.
+_Avoid_: response, completion
+
+**Tail Generation**:
+A Generation whose Generated Variant begins a new Message at the current end of a Conversation.
+_Avoid_: new response, normal generation
+
+**Sibling Generation**:
+A Generation whose Generated Variant becomes another Variant of an existing Message.
+_Avoid_: regenerate, swipe generation
+
 ## Chat provenance and imports
 
 **Native Conversation**:
