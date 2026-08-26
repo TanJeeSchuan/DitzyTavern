@@ -201,7 +201,7 @@
 .model-selector-menu {
 	position: absolute;
 	z-index: 20;
-	top: calc(100% + 0.35rem);
+	bottom: calc(100% + 0.35rem);
 	left: 0;
 	width: min(22rem, 80vw);
 	padding: 0.45rem;

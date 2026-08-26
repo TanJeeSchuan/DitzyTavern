@@ -154,6 +154,15 @@ export function ConnectionSettingsPanel() {
 	const selectedProfile = settings?.profiles.find(
 		(profile) => profile.id === selectedProfileId,
 	);
+	const refreshModelsDisabledReason = selectedProfileId === null
+		? "Save this connection before refreshing."
+		: draft.modelsUrl.trim().length === 0
+			? "Enter a Models URL before refreshing."
+			: selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()
+				? "Save the Models URL before refreshing."
+				: discoveryPending
+					? "A model refresh is already in progress."
+					: undefined;
 	const resolvedRequestUrl = useMemo(() => {
 		if (draft.requestUrl.trim().length === 0) return "Not configured";
 		try {
@@ -638,14 +647,16 @@ export function ConnectionSettingsPanel() {
 							<span>Models URL <em>(optional, exact endpoint)</em></span>
 							<input className="field-input" value={draft.modelsUrl} onChange={(event) => setDraft({ ...draft, modelsUrl: event.target.value })} placeholder="https://example.com/models" />
 						</label>
-						<button
-							className="secondary-button"
-							type="button"
-							disabled={selectedProfileId === null || selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim() || draft.modelsUrl.trim().length === 0 || discoveryPending}
-							onClick={() => void refreshModels()}
-						>
-							{discoveryPending ? "Refreshing..." : "Refresh Models"}
-						</button>
+						<span className="connection-refresh-models-button" title={refreshModelsDisabledReason}>
+							<button
+								className="secondary-button"
+								type="button"
+								disabled={refreshModelsDisabledReason !== undefined}
+								onClick={() => void refreshModels()}
+							>
+								{discoveryPending ? "Refreshing..." : "Refresh Models"}
+							</button>
+						</span>
 						<small>
 							{selectedProfile === undefined
 								? "Save the connection before refreshing."

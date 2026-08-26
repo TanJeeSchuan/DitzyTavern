@@ -905,7 +905,7 @@
 	gap: 0.45rem;
 }
 
-.connection-models-url > button {
+.connection-refresh-models-button {
 	justify-self: start;
 }
 
