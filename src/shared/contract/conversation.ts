@@ -29,7 +29,7 @@ import {
 import { withDatabase } from "../../server/database/database";
 import {
 	addCharacterToCast,
-	generateReply,
+	createGenerationCoordinator,
 	saveParticipantAsCharacter,
 } from "../../server/workflows";
 import {
@@ -177,7 +177,7 @@ export const createConversationRoutes = (
 									secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
 									fetch: options.fetch,
 								});
-								await generateReply(connection, {
+								await createGenerationCoordinator(connection).generate({
 									conversationId: params.id,
 									modelClient: client,
 									connection: {

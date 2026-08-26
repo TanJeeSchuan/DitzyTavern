@@ -87,6 +87,21 @@ interface GenerationDerivation {
 	modelParticipant: ParticipantPreview;
 }
 
+export interface GenerationCoordinator {
+	// Runs the existing Tail Generation behavior. The Model Client remains an
+	// injected dependency, so this seam can be controlled without provider
+	// traffic in workflow and contract tests.
+	generate(input: GenerateReplyInput): Promise<ConversationSnapshot>;
+}
+
+export function createGenerationCoordinator(
+	database: Database,
+): GenerationCoordinator {
+	return {
+		generate: (input) => executeTailGeneration(database, input),
+	};
+}
+
 interface SelectedHistory {
 	entries: readonly PromptHistoryEntry[];
 	roles: readonly ("human" | "model" | null)[];
@@ -170,7 +185,7 @@ function captureGenerationSettings(
 	conversationId: number,
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-): GenerationCapture {
+): GenerationSettingsCapture {
 	const conversation = createConversationModule(database);
 	const settings = conversation.getGenerationSettings(conversationId);
 	if (settings === undefined) {
@@ -200,6 +215,55 @@ function captureGenerationSettings(
 		}),
 	} satisfies ConversationDataEntry;
 	return { settings, connection: capturedConnection, provenance };
+}
+
+interface CapturedGeneration {
+	readonly promptPlan: PromptPlan;
+	readonly historyRoles: readonly ("human" | "model" | null)[];
+	readonly author: {
+		readonly participantId: number;
+		readonly capturedName: string;
+	};
+	readonly control: {
+		readonly humanParticipantId: number;
+		readonly modelParticipantId: number;
+	};
+	readonly settings: ConversationGenerationSettings;
+	readonly connection: ModelClientConnectionSnapshot | null;
+	readonly provenance: ConversationDataEntry;
+}
+
+function captureGeneration(
+	database: Database,
+	snapshot: ConversationSnapshot,
+	connection: ModelClientConnectionSnapshot | null | undefined,
+	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
+): CapturedGeneration {
+	const derivation = deriveGeneration(snapshot);
+	if (derivation === null) {
+		throw new ConversationNotPlayableError(snapshot.id);
+	}
+	const settingsCapture = captureGenerationSettings(
+		database,
+		snapshot.id,
+		connection,
+		connectionSettingsOptions,
+	);
+	return {
+		promptPlan: derivation.plan,
+		historyRoles: derivation.historyRoles,
+		author: {
+			participantId: derivation.modelParticipant.id,
+			capturedName: derivation.modelParticipant.name,
+		},
+		control: {
+			humanParticipantId: derivation.humanParticipant.id,
+			modelParticipantId: derivation.modelParticipant.id,
+		},
+		settings: settingsCapture.settings,
+		connection: settingsCapture.connection,
+		provenance: settingsCapture.provenance,
+	};
 }
 
 function resolveConnectionSnapshot(
@@ -310,34 +374,29 @@ export function inspectGenerationPrompt(
 	};
 }
 
-export async function generateReply(
+async function executeTailGeneration(
 	database: Database,
 	input: GenerateReplyInput,
 ): Promise<ConversationSnapshot> {
 	const conversation = createConversationModule(database);
 
-	// Generation-start capture: one authoritative snapshot derives the plan,
-	// the Author Stamp, and the historical Control pair.
+	// Capture the complete provider-neutral Generation input before contacting
+	// the Model Client. The snapshot and all copied values belong to this one
+	// attempt, so later edits affect only later Generations.
 	const snapshot = conversation.getSnapshot(input.conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
-		// Typed domain result before the transport is ever contacted.
-		throw new ConversationNotPlayableError(input.conversationId);
-	}
-	const { plan, historyRoles, humanParticipant, modelParticipant } = derivation;
-	const capture = captureGenerationSettings(
+	const capture = captureGeneration(
 		database,
-		input.conversationId,
+		snapshot,
 		input.connection,
 		input.connectionSettings,
 	);
 
 	const outcome = await runGeneration(input.modelClient, {
-		promptPlan: plan,
-		historyRoles,
+		promptPlan: capture.promptPlan,
+		historyRoles: capture.historyRoles,
 		modelId: capture.settings.modelId,
 		generationSettings: toModelClientGenerationSettings(capture.settings),
 		connection: capture.connection,
@@ -350,13 +409,22 @@ export async function generateReply(
 		conversationId: input.conversationId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
 		content: outcome.content,
-		authorParticipantId: modelParticipant.id,
-		capturedAuthorName: modelParticipant.name,
-		humanParticipantId: humanParticipant.id,
-		modelParticipantId: modelParticipant.id,
+		authorParticipantId: capture.author.participantId,
+		capturedAuthorName: capture.author.capturedName,
+		humanParticipantId: capture.control.humanParticipantId,
+		modelParticipantId: capture.control.modelParticipantId,
 		provenance: capture.provenance,
 		data: generationOutcomeData(outcome),
 	});
+}
+
+// Compatibility wrapper for the existing workflow and HTTP callers. New
+// server-owned Generation code should depend on the coordinator seam above.
+export function generateReply(
+	database: Database,
+	input: GenerateReplyInput,
+): Promise<ConversationSnapshot> {
+	return createGenerationCoordinator(database).generate(input);
 }
 
 export interface GenerateSiblingVariantInput {
@@ -547,7 +615,7 @@ function addUsage(target: Record<string, number>, key: string, value: number | u
 	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
 }
 
-interface GenerationCapture {
+interface GenerationSettingsCapture {
 	settings: ConversationGenerationSettings;
 	connection: ModelClientConnectionSnapshot | null;
 	provenance: ConversationDataEntry;

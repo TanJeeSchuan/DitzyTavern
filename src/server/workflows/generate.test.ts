@@ -11,9 +11,13 @@ import {
 } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
-import { createFakeModelClient } from "../model-client";
+import {
+	createFakeModelClient,
+	type ModelClientGenerationInput,
+} from "../model-client";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
+	createGenerationCoordinator,
 	generateReply,
 	generateSiblingVariant,
 	inspectGenerationPrompt,
@@ -161,6 +165,51 @@ describe("Current Generate workflow", () => {
 		]);
 		expect(committed.messages).toHaveLength(2);
 		expect(committed.revision).toBe(1);
+	});
+
+	test("the coordinator forwards normalized events and freezes the captured generation input", async () => {
+		const receivedEvents: unknown[] = [];
+		let receivedInput: ModelClientGenerationInput | undefined;
+		const coordinator = createGenerationCoordinator(database);
+		const expectedPlan = inspectGenerationPrompt(database, conversationId).plan;
+		if (expectedPlan === null) {
+			throw new Error("Expected a compiled plan for the playable Conversation.");
+		}
+
+		const committed = await coordinator.generate({
+			conversationId,
+			modelClient: createFakeModelClient((input) => {
+				receivedInput = input;
+				return [
+					{ type: "reasoning", text: "First, " },
+					{ type: "content", text: "the answer." },
+					{ type: "usage", usage: { inputTokens: 11, outputTokens: 3, totalTokens: 14 } },
+					{ type: "finished", finishReason: "stop" },
+				];
+			}),
+			onEvent: (event) => {
+				receivedEvents.push(event);
+			},
+		});
+
+		expect(receivedInput?.promptPlan).toEqual(expectedPlan);
+		expect(receivedInput?.generationSettings).toMatchObject({
+			contextLimit: 32_768,
+			responseBudget: 1_024,
+		});
+		expect(receivedInput?.connection).toBeNull();
+		expect(receivedEvents).toEqual([
+			{ type: "reasoning", text: "First, " },
+			{ type: "content", text: "the answer." },
+			{ type: "usage", usage: { inputTokens: 11, outputTokens: 3, totalTokens: 14 } },
+			{ type: "finished", finishReason: "stop" },
+		]);
+		expect(committed.messages.at(-1)?.variants[0]?.content).toBe("the answer.");
+		expect(committed.messages.at(-1)?.variants[0]?.data).toContainEqual({
+			namespace: "generation",
+			key: "reasoning",
+			value: "First, ",
+		});
 	});
 
 	test("later Generations include earlier selected Messages in prompt history", async () => {
