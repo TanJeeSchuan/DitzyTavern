@@ -26,9 +26,14 @@ import {
 	type ConversationSnapshot,
 } from "../conversation";
 import {
+	assertPromptBudget,
+	budgetPromptPlan,
 	compilePrompt,
 	type PromptHistoryEntry,
+	type PromptBudgetFailure,
+	type PromptBudgetResult,
 	type PromptPlan,
+	type TokenEstimator,
 } from "../prompt-compiler";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
@@ -58,6 +63,15 @@ export interface GenerationPromptInspection {
 	humanParticipant: ParticipantPreview | null;
 	modelParticipant: ParticipantPreview | null;
 	plan: PromptPlan | null;
+	tokenEstimate: number | null;
+	responseBudget: number | null;
+	safetyAllowance: number | null;
+	contextLimit: number | null;
+	totalRequiredTokens: number | null;
+	omittedHistory: readonly PromptHistoryEntry[];
+	budgetFits: boolean | null;
+	tokenEstimateIsApproximate: boolean;
+	budgetFailure: PromptBudgetFailure | null;
 }
 
 export interface GenerateReplyInput {
@@ -76,15 +90,20 @@ export interface GenerateReplyInput {
 	// changes the active Profile or another Conversation.
 	signal?: AbortSignal;
 	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	// Tests and future calibration work may replace the default project-owned
+	// estimator without allowing a provider to influence budgeting policy.
+	tokenEstimator?: TokenEstimator;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
 
 interface GenerationDerivation {
 	plan: PromptPlan;
+	history: readonly PromptHistoryEntry[];
 	historyRoles: readonly ("human" | "model" | null)[];
 	humanParticipant: ParticipantPreview;
 	modelParticipant: ParticipantPreview;
+	compile: (history: readonly PromptHistoryEntry[]) => PromptPlan;
 }
 
 export interface GenerationCoordinator {
@@ -155,17 +174,20 @@ const deriveGeneration = (
 	}
 
 	const selectedHistory = selectedHistoryFrom(snapshot, human.id, model.id);
-	const plan = compilePrompt({
+	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
 		human: toCompilerDefinition(human),
 		model: toCompilerDefinition(model),
-		history: selectedHistory.entries,
+		history,
 	});
+	const plan = compile(selectedHistory.entries);
 
 	return {
 		plan,
+		history: selectedHistory.entries,
 		historyRoles: selectedHistory.roles,
 		humanParticipant: { id: human.id, name: human.name },
 		modelParticipant: { id: model.id, name: model.name },
+		compile,
 	};
 };
 
@@ -210,6 +232,7 @@ function captureGenerationSettings(
 				presencePenalty: settings.presencePenalty,
 				contextLimit: settings.contextLimit,
 				responseBudget: settings.responseBudget,
+				safetyAllowance: settings.safetyAllowance,
 				requestOverrides: settings.requestOverrides,
 			},
 		}),
@@ -231,6 +254,7 @@ interface CapturedGeneration {
 	readonly settings: ConversationGenerationSettings;
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly provenance: ConversationDataEntry;
+	readonly budget: PromptBudgetResult;
 }
 
 function captureGeneration(
@@ -238,20 +262,24 @@ function captureGeneration(
 	snapshot: ConversationSnapshot,
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
+	tokenEstimator: TokenEstimator | undefined,
 ): CapturedGeneration {
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
-		throw new ConversationNotPlayableError(snapshot.id);
-	}
 	const settingsCapture = captureGenerationSettings(
 		database,
 		snapshot.id,
 		connection,
 		connectionSettingsOptions,
 	);
+	const derivation = deriveGeneration(snapshot);
+	if (derivation === null) {
+		throw new ConversationNotPlayableError(snapshot.id);
+	}
+	const budget = assertPromptBudget(
+		createBudgetedPlan(derivation, settingsCapture.settings, tokenEstimator),
+	);
 	return {
-		promptPlan: derivation.plan,
-		historyRoles: derivation.historyRoles,
+		promptPlan: budget.plan,
+		historyRoles: budget.retainedHistoryRoles,
 		author: {
 			participantId: derivation.modelParticipant.id,
 			capturedName: derivation.modelParticipant.name,
@@ -263,6 +291,7 @@ function captureGeneration(
 		settings: settingsCapture.settings,
 		connection: settingsCapture.connection,
 		provenance: settingsCapture.provenance,
+		budget,
 	};
 }
 
@@ -295,6 +324,23 @@ const toModelClientGenerationSettings = (
 	responseBudget: settings.responseBudget,
 	requestOverrides: settings.requestOverrides,
 });
+
+function createBudgetedPlan(
+	derivation: GenerationDerivation,
+	settings: ConversationGenerationSettings,
+	estimator?: TokenEstimator,
+): PromptBudgetResult {
+	return budgetPromptPlan({
+		plan: derivation.plan,
+		compile: derivation.compile,
+		history: derivation.history,
+		historyRoles: derivation.historyRoles,
+		contextLimit: settings.contextLimit,
+		responseBudget: settings.responseBudget,
+		safetyAllowance: settings.safetyAllowance,
+		estimator,
+	});
+}
 
 type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
 
@@ -348,6 +394,7 @@ async function runGeneration(
 export function inspectGenerationPrompt(
 	database: Database,
 	conversationId: number,
+	options: { readonly tokenEstimator?: TokenEstimator } = {},
 ): GenerationPromptInspection {
 	const snapshot = createConversationModule(database).getSnapshot(conversationId);
 	if (snapshot === undefined) {
@@ -362,15 +409,38 @@ export function inspectGenerationPrompt(
 			humanParticipant: null,
 			modelParticipant: null,
 			plan: null,
+			tokenEstimate: null,
+			responseBudget: null,
+			safetyAllowance: null,
+			contextLimit: null,
+			totalRequiredTokens: null,
+			omittedHistory: [],
+			budgetFits: null,
+			tokenEstimateIsApproximate: false,
+			budgetFailure: null,
 		};
 	}
+	const settings = createConversationModule(database).getGenerationSettings(conversationId);
+	if (settings === undefined) {
+		throw new ConversationNotFoundError(conversationId);
+	}
+	const budget = createBudgetedPlan(derivation, settings, options.tokenEstimator);
 
 	return {
 		conversationId,
 		playable: true,
 		humanParticipant: derivation.humanParticipant,
 		modelParticipant: derivation.modelParticipant,
-		plan: derivation.plan,
+		plan: budget.plan,
+		tokenEstimate: budget.tokenEstimate,
+		responseBudget: budget.responseBudget,
+		safetyAllowance: budget.safetyAllowance,
+		contextLimit: budget.contextLimit,
+		totalRequiredTokens: budget.totalRequiredTokens,
+		omittedHistory: budget.omittedHistory,
+		budgetFits: budget.fits,
+		tokenEstimateIsApproximate: true,
+		budgetFailure: budget.failure,
 	};
 }
 
@@ -392,6 +462,7 @@ async function executeTailGeneration(
 		snapshot,
 		input.connection,
 		input.connectionSettings,
+		input.tokenEstimator,
 	);
 
 	const outcome = await runGeneration(input.modelClient, {
@@ -441,6 +512,7 @@ export interface GenerateSiblingVariantInput {
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	signal?: AbortSignal;
 	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	tokenEstimator?: TokenEstimator;
 	// Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
@@ -506,15 +578,20 @@ const deriveSiblingDerivation = (
 	// The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
-	const plan = compilePrompt({
+	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
 		human: toCompilerDefinition(human),
 		model: toCompilerDefinition(model),
-		history: selectedHistory.entries,
+		history,
 	});
+	const plan = compile(selectedHistory.entries);
 
 	return {
 		plan,
+		history: selectedHistory.entries,
 		historyRoles: selectedHistory.roles,
+		humanParticipant: { id: human.id, name: human.name },
+		modelParticipant: { id: model.id, name: model.name },
+		compile,
 	};
 };
 
@@ -537,17 +614,20 @@ export async function generateSiblingVariant(
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	const { plan, historyRoles } = deriveSiblingDerivation(snapshot, input.messageId);
+	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
 	const capture = captureGenerationSettings(
 		database,
 		input.conversationId,
 		input.connection,
 		input.connectionSettings,
 	);
+	const budget = assertPromptBudget(
+		createBudgetedPlan(derivation, capture.settings, input.tokenEstimator),
+	);
 
 	const outcome = await runGeneration(input.modelClient, {
-		promptPlan: plan,
-		historyRoles,
+		promptPlan: budget.plan,
+		historyRoles: budget.retainedHistoryRoles,
 		modelId: capture.settings.modelId,
 		generationSettings: toModelClientGenerationSettings(capture.settings),
 		connection: capture.connection,

@@ -14,6 +14,8 @@ const DEFAULT_REQUEST_OVERRIDES = {
 	"anthropic-messages": {},
 } as const;
 
+export const DEFAULT_SAFETY_ALLOWANCE = 500;
+
 export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSettings = {
 	modelId: "deepseek-chat",
 	temperature: null,
@@ -22,6 +24,7 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	presencePenalty: null,
 	contextLimit: 32768,
 	responseBudget: 1024,
+	safetyAllowance: DEFAULT_SAFETY_ALLOWANCE,
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
@@ -55,9 +58,10 @@ export function updateConversationGenerationSettings(
 			top_p: normalized.topP,
 			frequency_penalty: normalized.frequencyPenalty,
 			presence_penalty: normalized.presencePenalty,
-			context_limit: normalized.contextLimit,
-			response_budget: normalized.responseBudget,
-			request_overrides_json: JSON.stringify(normalized.requestOverrides),
+		context_limit: normalized.contextLimit,
+		response_budget: normalized.responseBudget,
+		safety_allowance: normalized.safetyAllowance,
+		request_overrides_json: JSON.stringify(normalized.requestOverrides),
 		})
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
 		.returning()
@@ -79,6 +83,7 @@ function readGenerationSettingsRow(
 		presencePenalty: row.presence_penalty,
 		contextLimit: row.context_limit,
 		responseBudget: row.response_budget,
+		safetyAllowance: row.safety_allowance,
 		requestOverrides: parseRequestOverrides(row.request_overrides_json),
 	};
 }
@@ -108,6 +113,12 @@ function validateGenerationSettings(
 	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
 		throw new InvalidConversationCommandError("Response budget must be a positive whole number.");
 	}
+	const safetyAllowance = input.safetyAllowance ?? DEFAULT_SAFETY_ALLOWANCE;
+	if (!Number.isInteger(safetyAllowance) || safetyAllowance < 0) {
+		throw new InvalidConversationCommandError(
+			"Safety allowance must be a non-negative whole number.",
+		);
+	}
 	const requestOverrides = cloneRequestOverrides(input.requestOverrides);
 	return {
 		modelId,
@@ -117,6 +128,7 @@ function validateGenerationSettings(
 		presencePenalty: input.presencePenalty,
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
+		safetyAllowance,
 		requestOverrides,
 	};
 }

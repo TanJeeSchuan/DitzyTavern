@@ -3,6 +3,14 @@
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
 export { compileOpening, compilePrompt, expandText } from "./compiler";
+export {
+	assertPromptBudget,
+	budgetPromptPlan,
+	createTokenEstimator,
+	PromptBudgetExceededError,
+	toEstimationTranscript,
+	tokenxEstimator,
+} from "./budget";
 export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
@@ -14,3 +22,11 @@ export type {
 	PromptPlan,
 	PromptWarning,
 } from "./types";
+export type {
+	PromptBudgetBreakdown,
+	PromptBudgetFailure,
+	PromptBudgetInput,
+	PromptBudgetResult,
+	PromptHistoryRole,
+	TokenEstimator,
+} from "./budget";

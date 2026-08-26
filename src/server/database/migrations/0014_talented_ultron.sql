@@ -1,0 +1,1 @@
+ALTER TABLE `conversation_generation_settings` ADD `safety_allowance` integer DEFAULT 500 NOT NULL;

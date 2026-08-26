@@ -19,6 +19,7 @@ export interface ConversationGenerationSettings {
 	presencePenalty: number | null;
 	contextLimit: number;
 	responseBudget: number;
+	safetyAllowance: number;
 	requestOverrides: Readonly<{
 		"chat-completions": GenerationRequestOverrides;
 		responses: GenerationRequestOverrides;
@@ -38,7 +39,14 @@ export type GenerationRequestOverrides = Readonly<
 	Record<string, GenerationRequestValue>
 >;
 
-export type ConversationGenerationSettingsInput = ConversationGenerationSettings;
+// Older clients may omit the newly introduced Safety allowance. The domain
+// fills that omission with the same 500-token default used for new rows.
+export type ConversationGenerationSettingsInput = Omit<
+	ConversationGenerationSettings,
+	"safetyAllowance"
+> & {
+	safetyAllowance?: number | undefined;
+};
 
 // Narrowing for the on-demand Conversation data read. The filter is
 // vocabulary-free: namespace and key strings pass through uninterpreted, so

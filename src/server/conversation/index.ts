@@ -20,6 +20,7 @@ export {
 	ParticipantNotFoundError,
 	StaleConversationRevisionError,
 } from "./errors";
+export { DEFAULT_SAFETY_ALLOWANCE } from "./generation-settings";
 // Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";

@@ -26,6 +26,10 @@ import {
 	ModelClientTransportError,
 	type ModelFetch,
 } from "../../server/model-client";
+import {
+	PromptBudgetExceededError,
+	type PromptBudgetBreakdown,
+} from "../../server/prompt-compiler";
 import { withDatabase } from "../../server/database/database";
 import {
 	addCharacterToCast,
@@ -67,7 +71,11 @@ type GenerationSsePayload =
 	| { readonly outcome: "unconfigured"; readonly reason: string }
 	| { readonly outcome: "failed"; readonly reason: string }
 	| { readonly outcome: "not-playable"; readonly reason: string }
-	| { readonly outcome: "invalid"; readonly reason: string };
+	| {
+			readonly outcome: "invalid";
+			readonly reason: string;
+			readonly budget?: PromptBudgetBreakdown;
+	  };
 
 export const createConversationRoutes = (
 	database: Database | undefined,
@@ -193,6 +201,12 @@ export const createConversationRoutes = (
 							} catch (error) {
 								if (error instanceof ModelClientGenerationError || error instanceof ModelClientTransportError) {
 									emit("error", { outcome: "failed", reason: error.message });
+								} else if (error instanceof PromptBudgetExceededError) {
+									emit("error", {
+										outcome: "invalid",
+										reason: error.message,
+										budget: error.breakdown,
+									});
 								} else if (error instanceof ConversationNotPlayableError) {
 									emit("error", { outcome: "not-playable", reason: error.message });
 								} else if (error instanceof Error) {
@@ -437,6 +451,7 @@ function toGenerationSettingsPayload(
 		presencePenalty: settings.presencePenalty,
 		contextLimit: settings.contextLimit,
 		responseBudget: settings.responseBudget,
+		safetyAllowance: settings.safetyAllowance,
 		requestOverrides: {
 			"chat-completions": { ...settings.requestOverrides["chat-completions"] },
 			responses: { ...settings.requestOverrides.responses },

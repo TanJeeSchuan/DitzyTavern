@@ -10,7 +10,11 @@ import {
 	ConversationNotFoundError,
 } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
-import type { PromptPlan } from "../prompt-compiler";
+import {
+	createTokenEstimator,
+	PromptBudgetExceededError,
+	type PromptPlan,
+} from "../prompt-compiler";
 import {
 	createFakeModelClient,
 	type ModelClientGenerationInput,
@@ -124,6 +128,11 @@ describe("Current Generate workflow", () => {
 			block: "example-dialogue",
 			macro: "{{user}}",
 		});
+		expect(inspection.responseBudget).toBe(1_024);
+		expect(inspection.safetyAllowance).toBe(500);
+		expect(inspection.tokenEstimateIsApproximate).toBe(true);
+		expect(inspection.budgetFits).toBe(true);
+		expect(inspection.omittedHistory).toEqual([]);
 		// Provider vocabulary never leaks into the inspection.
 		expect(JSON.stringify(inspection)).not.toContain("assistant");
 		expect(JSON.stringify(inspection)).not.toContain('"user"');
@@ -768,5 +777,210 @@ describe("Current Generate workflow", () => {
 			"second-model",
 		]);
 		expect(secondSettings.revision).toBe(3);
+	});
+
+	test("reduces Tail history by whole Messages while protecting the latest human input", async () => {
+		const conversation = createConversationModule(database);
+		let current = conversation.getSnapshot(conversationId);
+		if (current === undefined) throw new Error("Snapshot missing.");
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:01:00Z",
+				variantContents: ["Older model history."],
+				authorParticipantId: modelId,
+			},
+		});
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:02:00Z",
+				variantContents: ["Latest human input."],
+				authorParticipantId: humanId,
+			},
+		});
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 102,
+					responseBudget: 1,
+					safetyAllowance: 0,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+
+		const estimates = [200, 100];
+		let receivedPlan: PromptPlan | undefined;
+		const committed = await generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				receivedPlan = promptPlan;
+				return "Budgeted Tail output.";
+			}),
+			tokenEstimator: createTokenEstimator(() => estimates.shift() ?? 100),
+		});
+
+		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
+			{ kind: "history", speakerName: "Maren Voss", content: "Older model history." },
+			{ kind: "history", speakerName: "Writer", content: "Latest human input." },
+		]);
+		expect(committed.messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
+	});
+
+	test("rejects an oversized protected human input before contacting the Model Client", async () => {
+		const conversation = createConversationModule(database);
+		let current = conversation.getSnapshot(conversationId);
+		if (current === undefined) throw new Error("Snapshot missing.");
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:04:00Z",
+				variantContents: ["Protected human input."],
+				authorParticipantId: humanId,
+			},
+		});
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 25,
+					responseBudget: 1,
+					safetyAllowance: 5,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		const before = conversation.getSnapshot(conversationId);
+		if (before === undefined) throw new Error("Snapshot missing.");
+		let contacted = false;
+
+		await expect(generateReply(database, {
+			conversationId,
+			modelClient: createFakeModelClient(() => {
+				contacted = true;
+				return "Must not be contacted.";
+			}),
+			tokenEstimator: createTokenEstimator(() => 20),
+		})).rejects.toBeInstanceOf(PromptBudgetExceededError);
+
+		expect(contacted).toBe(false);
+		expect(conversation.getSnapshot(conversationId)).toEqual(before);
+		const inspection = inspectGenerationPrompt(database, conversationId, {
+			tokenEstimator: createTokenEstimator(() => 20),
+		});
+		expect(inspection.budgetFits).toBe(false);
+		expect(inspection.budgetFailure?.reason).toBe("protected-history-too-large");
+		expect(inspection.budgetFailure?.breakdown).toMatchObject({
+			tokenEstimate: 20,
+			responseBudget: 1,
+			safetyAllowance: 5,
+			contextLimit: 25,
+		});
+	});
+
+	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
+		const conversation = createConversationModule(database);
+		let current = conversation.getSnapshot(conversationId);
+		if (current === undefined) throw new Error("Snapshot missing.");
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:01:00Z",
+				variantContents: ["Human context before target."],
+				authorParticipantId: humanId,
+			},
+		});
+		const target = await generateReply(database, {
+			conversationId,
+			modelClient: fakeModelClient(() => "Target model output."),
+		});
+		const targetId = target.messages.at(-1)?.id;
+		if (targetId === undefined) throw new Error("Target Message missing.");
+		current = conversation.getSnapshot(conversationId);
+		if (current === undefined) throw new Error("Snapshot missing.");
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:03:00Z",
+				variantContents: ["Later history must be excluded."],
+				authorParticipantId: humanId,
+			},
+		});
+		current = conversation.execute({
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 102,
+					responseBudget: 1,
+					safetyAllowance: 0,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+
+		let receivedPlan: PromptPlan | undefined;
+		const sibling = await generateSiblingVariant(database, {
+			conversationId,
+			messageId: targetId,
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				receivedPlan = promptPlan;
+				return "Budgeted sibling output.";
+			}),
+			tokenEstimator: createTokenEstimator((() => {
+				const estimates = [200, 100];
+				return () => estimates.shift() ?? 100;
+			})()),
+		});
+
+		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
+			{ kind: "history", speakerName: "Writer", content: "Human context before target." },
+		]);
+		const siblingTarget = sibling.messages.find((message) => message.id === targetId);
+		expect(siblingTarget?.variants.at(-1)?.content).toBe("Budgeted sibling output.");
 	});
 });

@@ -335,6 +335,7 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		presence_penalty: real(),
 		context_limit: int().notNull().default(32768),
 		response_budget: int().notNull().default(1024),
+		safety_allowance: int().notNull().default(500),
 		request_overrides_json: text().notNull().default("{}"),
 	},
 );

@@ -59,6 +59,7 @@ export interface ConversationGenerationSettings {
 	presencePenalty: number | null;
 	contextLimit: number;
 	responseBudget: number;
+	safetyAllowance: number;
 	requestOverrides: {
 		"chat-completions": GenerationRequestOverrides;
 		responses: GenerationRequestOverrides;

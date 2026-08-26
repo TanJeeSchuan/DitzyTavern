@@ -97,6 +97,7 @@ export const conversationGenerationSettings = t.Object({
 	presencePenalty: t.Nullable(t.Number()),
 	contextLimit: t.Integer(),
 	responseBudget: t.Integer(),
+	safetyAllowance: t.Integer(),
 	requestOverrides: t.Object({
 		"chat-completions": t.Record(t.String(), t.Unknown()),
 		responses: t.Record(t.String(), t.Unknown()),
@@ -291,6 +292,7 @@ const generationSettings = t.Object({
 	presencePenalty: t.Nullable(t.Number()),
 	contextLimit: t.Integer(),
 	responseBudget: t.Integer(),
+	safetyAllowance: t.Optional(t.Integer()),
 	requestOverrides: t.Object({
 		"chat-completions": t.Record(t.String(), t.Unknown()),
 		responses: t.Record(t.String(), t.Unknown()),

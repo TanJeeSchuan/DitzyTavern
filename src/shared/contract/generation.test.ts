@@ -91,7 +91,10 @@ describe("Generation transport contract", () => {
 			new Request(`http://localhost/api/conversations/${conversation.id}/generation-settings`),
 		);
 		expect(settings.status).toBe(200);
-		expect((await settings.json()).modelId).toBe("deepseek-chat");
+		expect((await settings.json())).toMatchObject({
+			modelId: "deepseek-chat",
+			safetyAllowance: 500,
+		});
 
 		const updated = await app.handle(
 			new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
@@ -109,6 +112,7 @@ describe("Generation transport contract", () => {
 							presencePenalty: null,
 							contextLimit: 4096,
 							responseBudget: 32,
+							safetyAllowance: 321,
 							requestOverrides: {
 								"chat-completions": {},
 								responses: {},
