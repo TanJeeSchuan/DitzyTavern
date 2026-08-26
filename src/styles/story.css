@@ -43,6 +43,32 @@
 	white-space: nowrap;
 }
 
+.preview-indicator {
+	display: flex;
+	align-items: center;
+	gap: 0.65rem;
+	width: min(calc(100% - 2rem), 44rem);
+	margin: 0.75rem auto 0;
+	padding: 0.55rem 0.7rem 0.55rem 0.85rem;
+	border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
+	border-radius: 0.8rem;
+	background: var(--accent-softer);
+	color: var(--foreground);
+	font-size: 0.76rem;
+}
+
+.preview-indicator > span:first-child {
+	font-weight: 700;
+}
+
+.preview-indicator-detail {
+	color: var(--text-muted);
+}
+
+.preview-indicator .secondary-button {
+	margin-left: auto;
+}
+
 .generation-state {
 	display: flex;
 	align-items: center;
@@ -744,6 +770,43 @@
 
 .prose-skeleton.wide {
 	width: 94%;
+}
+
+.preview-skeleton {
+	padding-top: 0.15rem;
+}
+
+.preview-panel-body {
+	display: grid;
+	align-content: start;
+	gap: 0.85rem;
+}
+
+.preview-panel-body p {
+	margin: 0;
+}
+
+.preview-lead {
+	color: var(--foreground);
+	font-family: var(--font-reading);
+	font-size: 0.98rem;
+	line-height: 1.58;
+}
+
+.preview-actions {
+	display: grid;
+	gap: 0.55rem;
+	margin-top: 0.35rem;
+}
+
+.preview-error {
+	padding: 0.65rem 0.75rem;
+	border: 1px solid color-mix(in oklch, var(--destructive) 42%, var(--border));
+	border-radius: 0.7rem;
+	background: color-mix(in oklch, var(--destructive) 8%, var(--surface));
+	color: var(--foreground);
+	font-size: 0.76rem;
+	line-height: 1.5;
 }
 
 .latest-anchor {

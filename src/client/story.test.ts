@@ -2,10 +2,17 @@ import { describe, expect, test } from "bun:test";
 import type { ChatHistoryPage } from "./chat-history";
 import {
 	EMPTY_VARIANT_PLACEHOLDER,
+	classifyVariantSelection,
+	confirmPreviewSelection,
 	createStoryState,
+	deriveRevisionWindow,
+	displayedVariantId,
+	isPreviewDownstream,
+	previewNavigationNeedsConfirmation,
 	moveActiveSwipe,
 	reduceStory,
 	visibleVariantContent,
+	type StoryPreviewState,
 	type StoryMessage,
 } from "./story";
 
@@ -44,6 +51,24 @@ const message = (
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 	],
 	...overrides,
+});
+
+const storyMessage = (
+	id: number,
+	position: number,
+	authorParticipantId: number,
+): StoryMessage => ({
+	id,
+	position,
+	timestamp: `2026-01-01T00:00:0${position}.000Z`,
+	authorName: authorParticipantId === 20 ? "Model" : "Writer",
+	authorParticipantId,
+	inCast: true,
+	activeSwipe: 0,
+	swipes: [
+		{ id: id * 10, position: 1, content: `Selected ${id}`, empty: false },
+		{ id: id * 10 + 1, position: 2, content: `Alternative ${id}`, empty: false },
+	],
 });
 
 describe("story reading state", () => {
@@ -257,4 +282,176 @@ describe("story reading state", () => {
 		expect(switched.messages).toEqual([]);
 		expect(switched.status).toBe("loading-first");
 	});
+
+	test("derives the Revision window from the latest two model Messages", () => {
+		const messages = [
+			storyMessage(1, 1, 10),
+			storyMessage(2, 2, 20),
+			storyMessage(3, 3, 10),
+			storyMessage(4, 4, 20),
+			storyMessage(5, 5, 10),
+			storyMessage(6, 6, 20),
+			storyMessage(7, 7, 10),
+		];
+
+		expect([...deriveRevisionWindow(messages, 20)]).toEqual([4, 5, 6]);
+		expect(deriveRevisionWindow(messages, null).size).toBe(0);
+	});
+
+	test("older Variant selection enters one local Preview with downstream skeleton state", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			revision: 3,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20)],
+		};
+		const selection = classifyVariantSelection(state, 1, 11, new Set([2]));
+		expect(selection).toEqual({ kind: "preview", messageId: 1, variantId: 11 });
+		expect(classifyVariantSelection(state, 2, 21, new Set([2]))).toEqual({
+			kind: "immediate",
+			messageId: 2,
+			variantId: 21,
+		});
+
+		const previewing = reduceStory(state, {
+			type: "preview-started",
+			messageId: 1,
+			variantId: 11,
+		});
+		expect(previewing.preview).toEqual({
+			messageId: 1,
+			targetPosition: 1,
+			variantId: 11,
+			priorVariantId: 10,
+			noticeOpen: true,
+		});
+		// SAFETY: the fixture creates two Messages with ids 1 and 2 before the
+		// reducer starts Preview mode, so the first lookup is defined here.
+		expect(displayedVariantId(previewing.messages[0] as StoryMessage, previewing.preview)).toBe(11);
+		// SAFETY: the same fixture creates the second Message before the reducer
+		// starts Preview mode, so this lookup is defined here.
+		expect(isPreviewDownstream(previewing.messages[1] as StoryMessage, previewing.preview)).toBe(true);
+		expect(classifyVariantSelection(previewing, 1, 10, new Set([2]))).toEqual({ kind: "blocked" });
+		const attemptedSelection = reduceStory(previewing, {
+			type: "swipe-selected",
+			messageId: 1,
+			variantId: 10,
+		});
+		expect(attemptedSelection.messages[0]?.activeSwipe).toBe(0);
+	});
+
+	test("Preview only starts for a different Variant and navigation warns only for another Chat", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 20)],
+		};
+
+		expect(
+			reduceStory(state, { type: "preview-started", messageId: 1, variantId: 10 }),
+		).toBe(state);
+		expect(previewNavigationNeedsConfirmation(null, 7, 8)).toBe(false);
+		expect(previewNavigationNeedsConfirmation(state.preview, 7, 7)).toBe(false);
+		expect(previewNavigationNeedsConfirmation({
+			messageId: 1,
+			targetPosition: 1,
+			variantId: 11,
+			priorVariantId: 10,
+			noticeOpen: true,
+		}, 7, 8)).toBe(true);
+	});
+
+	test("closing and cancelling Preview restores the authoritative path without a command", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10)],
+		};
+		const previewing = reduceStory(state, {
+			type: "preview-started",
+			messageId: 1,
+			variantId: 11,
+		});
+		const closed = reduceStory(previewing, { type: "preview-notice-closed" });
+		expect(closed.preview?.noticeOpen).toBe(false);
+		const cancelled = reduceStory(closed, { type: "preview-cancelled" });
+		expect(cancelled.preview).toBeNull();
+		expect(cancelled.messages[0]?.activeSwipe).toBe(0);
+	});
+
+	test("an authoritative history reload discards client-only Preview state", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			revision: 3,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10)],
+		};
+		const previewing = reduceStory(state, {
+			type: "preview-started",
+			messageId: 1,
+			variantId: 11,
+		});
+		const reloaded = reduceStory(previewing, {
+			type: "first-page",
+			page: page({ messages: [message({ id: 1 })] }),
+		});
+		expect(reloaded.preview).toBeNull();
+		expect(reloaded.messages[0]?.activeSwipe).toBe(0);
+	});
+
+	test("confirmation makes the previewed Variant authoritative and leaves later Messages intact", () => {
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			status: "ready",
+			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20)],
+		};
+		const previewing = reduceStory(state, {
+			type: "preview-started",
+			messageId: 1,
+			variantId: 11,
+		});
+		const confirmed = reduceStory(previewing, { type: "preview-confirmed" });
+		expect(confirmed.preview).toBeNull();
+		expect(confirmed.messages[0]?.activeSwipe).toBe(1);
+		expect(confirmed.messages[1]).toEqual(state.messages[1]);
+	});
+
+	test("confirmation transport sends once only for the matching Preview", async () => {
+		const preview: StoryPreviewState = {
+			messageId: 1,
+			targetPosition: 1,
+			variantId: 11,
+			priorVariantId: 10,
+			noticeOpen: true,
+		};
+		const requests: number[] = [];
+		const request = {
+			conversationId: 7,
+			expectedRevision: 3,
+			messageId: 1,
+			variantId: 11,
+		};
+		const sent = await confirmPreviewSelection(preview, request, async (value) => {
+			requests.push(value.variantId);
+			return "applied" as const;
+		});
+		expect(sent).toEqual({ status: "sent", result: "applied" });
+		expect(requests).toEqual([11]);
+
+		const notSent = await confirmPreviewSelection(null, request, async () => {
+			requests.push(99);
+			return "applied" as const;
+		});
+		expect(notSent).toEqual({ status: "not-sent" });
+		expect(requests).toEqual([11]);
+	});
 });
+
+type StoryStateForPreview = ReturnType<typeof createStoryState> & {
+	messages: StoryMessage[];
+};

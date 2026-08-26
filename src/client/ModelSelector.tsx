@@ -15,9 +15,11 @@ import { modelSuggestions, commitModelId, togglePinnedModel } from "./model-sele
 
 export function ModelSelector({
 	conversation,
+	disabled = false,
 	onConversationChange,
 }: {
 	conversation: ConversationSummary;
+	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
 	const [generation, setGeneration] = useState<ConversationGenerationSettings | null>(null);
@@ -49,6 +51,10 @@ export function ModelSelector({
 	}, [conversation.id]);
 
 	useEffect(() => {
+		if (disabled) setOpen(false);
+	}, [disabled]);
+
+	useEffect(() => {
 		if (!open) return;
 		const close = (event: MouseEvent) => {
 			const target = event.target;
@@ -72,6 +78,7 @@ export function ModelSelector({
 	}, [activeProfile, query]);
 
 	const updateGeneration = async (modelId: string) => {
+		if (disabled) return;
 		const committed = commitModelId(modelId);
 		if (committed === null || generation === null || committed === generation.modelId) {
 			if (committed !== null) setQuery("");
@@ -109,6 +116,7 @@ export function ModelSelector({
 	};
 
 	const togglePin = async (modelId: string) => {
+		if (disabled) return;
 		if (settings === null || activeProfile === undefined) return;
 		setPending(true);
 		setError(null);
@@ -150,7 +158,7 @@ export function ModelSelector({
 				type="button"
 				aria-haspopup="listbox"
 				aria-expanded={open}
-				disabled={pending}
+				disabled={disabled || pending}
 				onClick={() => {
 					setOpen((current) => !current);
 					setQuery("");
@@ -166,6 +174,7 @@ export function ModelSelector({
 						className="field-input"
 						aria-label="Search models"
 						value={query}
+						disabled={disabled}
 						autoFocus
 						placeholder="Search or enter any model ID"
 						onChange={(event) => setQuery(event.target.value)}
@@ -179,11 +188,12 @@ export function ModelSelector({
 					<div className="model-selector-options" role="listbox" aria-label="Model choices">
 						{suggestions.map((modelId) => (
 							<div className="model-selector-option" key={modelId} role="option" aria-selected={modelId === generation.modelId}>
-								<button type="button" onClick={() => void updateGeneration(modelId)}>{modelId}</button>
+								<button type="button" disabled={disabled || pending} onClick={() => void updateGeneration(modelId)}>{modelId}</button>
 								<button
 									type="button"
 									className="model-pin-button"
 									aria-label={`${activeProfile?.pinnedModels.includes(modelId) ? "Unstar" : "Star"} ${modelId}`}
+									disabled={disabled || pending}
 									onClick={(event) => {
 										event.stopPropagation();
 										void togglePin(modelId);

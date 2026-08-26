@@ -14,11 +14,13 @@ import { ModelSelector } from "./ModelSelector";
 
 interface ComposerControlSelectorsProps {
 	conversation: ConversationSummary;
+	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }
 
 export function ComposerControlSelectors({
 	conversation,
+	disabled = false,
 	onConversationChange,
 }: ComposerControlSelectorsProps) {
 	const [pending, setPending] = useState(false);
@@ -44,7 +46,7 @@ export function ComposerControlSelectors({
 	}));
 
 	const assign = async (seat: "human" | "model", participantId: number) => {
-		if (pending) return;
+		if (disabled || pending) return;
 		const description = controlChangeDescription(conversation, seat, participantId);
 		if (description.kind === "no-change") {
 			return;
@@ -85,7 +87,7 @@ export function ComposerControlSelectors({
 				<select
 					id="composer-human"
 					value={conversation.control.humanParticipantId ?? ""}
-					disabled={pending}
+					disabled={disabled || pending}
 					onChange={(event) => {
 						const participantId = Number(event.target.value);
 						if (Number.isInteger(participantId) && participantId > 0) {
@@ -105,6 +107,7 @@ export function ComposerControlSelectors({
 			</div>
 			<ModelSelector
 				conversation={conversation}
+				disabled={disabled}
 				onConversationChange={onConversationChange}
 			/>
 			<div className="control-select">
@@ -112,7 +115,7 @@ export function ComposerControlSelectors({
 				<select
 					id="composer-model"
 					value={conversation.control.modelParticipantId ?? ""}
-					disabled={pending}
+					disabled={disabled || pending}
 					onChange={(event) => {
 						const participantId = Number(event.target.value);
 						if (Number.isInteger(participantId) && participantId > 0) {

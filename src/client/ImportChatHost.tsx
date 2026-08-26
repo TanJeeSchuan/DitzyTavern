@@ -16,6 +16,7 @@ import type { ChatSummary } from "./workspace";
 interface ChatsPanelProps {
 	chats: ChatSummary[];
 	activeId: string;
+	mutationsDisabled?: boolean;
 	onSelect: (chatId: string) => void;
 	onNewChat: () => void;
 	onImportChat: () => void;
@@ -23,6 +24,7 @@ interface ChatsPanelProps {
 export function ChatsPanel({
 	chats,
 	activeId,
+	mutationsDisabled = false,
 	onSelect,
 	onNewChat,
 	onImportChat,
@@ -35,10 +37,10 @@ export function ChatsPanel({
 	return (
 		<div className="panel-body">
 			<div className="chats-actions">
-				<button className="secondary-button" type="button" onClick={onImportChat}>
+				<button className="secondary-button" type="button" disabled={mutationsDisabled} onClick={onImportChat}>
 					<Upload aria-hidden="true" /> Import Chat
 				</button>
-				<button className="secondary-button" type="button" onClick={onNewChat}>
+				<button className="secondary-button" type="button" disabled={mutationsDisabled} onClick={onNewChat}>
 					<Plus aria-hidden="true" /> New Chat
 				</button>
 			</div>
@@ -75,6 +77,7 @@ interface ImportChatHostProps {
 	open: boolean;
 	chats: ChatSummary[];
 	activeId: string;
+	mutationsDisabled?: boolean;
 	// Library Characters the resolver can fork from.
 	characters: { id: number; name: string }[];
 	onSelect: (chatId: string) => void;
@@ -88,6 +91,7 @@ export function ImportChatHost({
 	open,
 	chats,
 	activeId,
+	mutationsDisabled = false,
 	characters,
 	onSelect,
 	onNewChat,
@@ -105,23 +109,25 @@ export function ImportChatHost({
 
 	if (chatsNested === "import") {
 		return (
-			<ImportChatPanel
-				flow={importFlow}
-				onDispatch={dispatchImportFlow}
-				characters={characters}
-				onImportLaunched={(conversationId) => {
-					onImportLaunched(conversationId);
-					closeImport();
-				}}
-				onBackToList={() => {
-					discardStagedImport(importFlow.handle?.token ?? null);
-					closeImport();
-				}}
-				onClose={() => {
-					discardStagedImport(importFlow.handle?.token ?? null);
-					closeImport();
-				}}
-			/>
+			<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+				<ImportChatPanel
+					flow={importFlow}
+					onDispatch={dispatchImportFlow}
+					characters={characters}
+					onImportLaunched={(conversationId) => {
+						onImportLaunched(conversationId);
+						closeImport();
+					}}
+					onBackToList={() => {
+						discardStagedImport(importFlow.handle?.token ?? null);
+						closeImport();
+					}}
+					onClose={() => {
+						discardStagedImport(importFlow.handle?.token ?? null);
+						closeImport();
+					}}
+				/>
+			</div>
 		);
 	}
 
@@ -136,6 +142,7 @@ export function ImportChatHost({
 			<ChatsPanel
 				chats={chats}
 				activeId={activeId}
+				mutationsDisabled={mutationsDisabled}
 				onSelect={onSelect}
 				onNewChat={onNewChat}
 				onImportChat={openImport}

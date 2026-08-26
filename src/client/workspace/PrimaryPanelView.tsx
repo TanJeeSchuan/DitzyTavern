@@ -27,6 +27,7 @@ export function PrimaryPanelView({
 	libraryFocusCharacterId,
 	onLibraryFocusConsumed,
 	onOpenLibraryCharacter,
+	mutationsDisabled = false,
 }: {
 	panel: PrimaryPanel;
 	workspace: Workspace;
@@ -42,15 +43,22 @@ export function PrimaryPanelView({
 	libraryFocusCharacterId: number | null;
 	onLibraryFocusConsumed: () => void;
 	onOpenLibraryCharacter: (characterId: number) => void;
+	mutationsDisabled?: boolean;
 }) {
 	return (
-		<aside className="primary-panel" data-open={Boolean(panel)} aria-hidden={!panel}>
+		<aside
+			className="primary-panel"
+			data-open={Boolean(panel)}
+			data-preview-locked={mutationsDisabled}
+			aria-hidden={!panel}
+		>
 			{/* The Chats host stays mounted across panel toggles so the staged
 			    import flow survives; every other panel renders its own header. */}
 			<ImportChatHost
 				open={panel === "chats"}
 				chats={workspace.chats}
 				activeId={activeChat.id}
+				mutationsDisabled={mutationsDisabled}
 				characters={workspace.characters}
 				onSelect={onSelectChat}
 				onNewChat={onNewChat}
@@ -72,23 +80,31 @@ export function PrimaryPanelView({
 						onClose={onClose}
 					/>
 					{panel === "cast" && (
-						<CastPanel
-							conversationId={Number(activeChat.id)}
-							conversation={conversation}
-							onConversationChange={onConversationChange}
-							onOpenLibraryCharacter={onOpenLibraryCharacter}
-						/>
+						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+							<CastPanel
+								conversationId={Number(activeChat.id)}
+								conversation={conversation}
+								onConversationChange={onConversationChange}
+								onOpenLibraryCharacter={onOpenLibraryCharacter}
+							/>
+						</div>
 					)}
 					{panel === "library" && (
-						<CharacterLibraryPanel
-							focusCharacterId={libraryFocusCharacterId}
-							onFocusConsumed={onLibraryFocusConsumed}
-						/>
+						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+							<CharacterLibraryPanel
+								focusCharacterId={libraryFocusCharacterId}
+								onFocusConsumed={onLibraryFocusConsumed}
+							/>
+						</div>
 					)}
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
-					{panel === "models" && <ConnectionSettingsPanel />}
+					{panel === "models" && (
+						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+							<ConnectionSettingsPanel />
+						</div>
+					)}
 				</>
 			)}
 		</aside>

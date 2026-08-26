@@ -17,15 +17,23 @@ import {
 } from "../conversation";
 import {
 	createStoryState,
+	classifyVariantSelection,
+	confirmPreviewSelection,
+	deriveRevisionWindow,
+	displayedVariantId,
+	isPreviewDownstream,
 	moveActiveSwipe,
+	previewNavigationNeedsConfirmation,
 	reduceStory,
 } from "../story";
 import { Composer } from "../story/Composer";
+import { PreviewIndicator, PreviewNotice } from "../story/PreviewNotice";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
 import {
 	EmptyChat,
 	GenerationPlaceholder,
+	PreviewSkeleton,
 	StreamingGeneration,
 	HistoryLoading,
 } from "../story/StoryStatus";
@@ -85,6 +93,9 @@ export function ActiveWritingWorkspace({
 	const activeChatIdRef = useRef(activeChatId);
 	const generationAbortRef = useRef<AbortController | null>(null);
 	const [generationError, setGenerationError] = useState<string | null>(null);
+	const [previewPending, setPreviewPending] = useState(false);
+	const [previewError, setPreviewError] = useState<string | null>(null);
+	const previewConfirmInFlightRef = useRef(false);
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
@@ -94,6 +105,14 @@ export function ActiveWritingWorkspace({
 		generationAbortRef.current?.abort();
 		generationAbortRef.current = null;
 	}, []);
+
+	useEffect(() => {
+		if (story.preview === null) {
+			setPreviewPending(false);
+			setPreviewError(null);
+			previewConfirmInFlightRef.current = false;
+		}
+	}, [story.preview]);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -219,7 +238,16 @@ export function ActiveWritingWorkspace({
 	};
 
 	const selectChat = (chatId: string) => {
+		if (previewConfirmInFlightRef.current) return;
+		if (
+			previewNavigationNeedsConfirmation(story.preview, activeChatId, chatId) &&
+			!window.confirm("Discard Preview mode and open another Chat?")
+		) {
+			return;
+		}
 		activeChatIdRef.current = chatId;
+		dispatchStory({ type: "preview-cancelled" });
+		setPreviewError(null);
 		generationAbortRef.current?.abort();
 		generationAbortRef.current = null;
 		setIsGenerating(false);
@@ -254,14 +282,38 @@ export function ActiveWritingWorkspace({
 	// revisioned Variant-selection command persists the selection. A conflict
 	// reloads the authoritative state instead of rewriting the plan.
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
+		if (story.preview !== null || conversation === null) return;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
 		const target = storyMessage.swipes[moveActiveSwipe(storyMessage, direction)];
 		if (target === undefined) return;
+		const revisionWindow = deriveRevisionWindow(
+			story.messages,
+			conversation.control.modelParticipantId,
+		);
+		const selection = classifyVariantSelection(
+			story,
+			messageId,
+			target.id,
+			revisionWindow,
+		);
+		if (selection.kind === "noop" || selection.kind === "blocked") return;
+		if (selection.kind === "preview") {
+			setChatInfoOpen(false);
+			setPrimaryPanel(null);
+			onNewChatClose();
+			setPreviewError(null);
+			dispatchStory({
+				type: "preview-started",
+				messageId: selection.messageId,
+				variantId: selection.variantId,
+			});
+			return;
+		}
 		dispatchStory({
 			type: "swipe-selected",
-			messageId,
-			variantId: target.id,
+			messageId: selection.messageId,
+			variantId: selection.variantId,
 		});
 		const conversationId = story.conversationId;
 		if (conversationId === null) return;
@@ -269,8 +321,8 @@ export function ActiveWritingWorkspace({
 		if (expectedRevision < 0) return;
 		const outcome = await applyConversationCommand(conversationId, expectedRevision, {
 			type: "select-variant",
-			messageId,
-			variantId: target.id,
+			messageId: selection.messageId,
+			variantId: selection.variantId,
 		});
 		if (outcome.status === "applied") {
 			setConversation(outcome.conversation);
@@ -289,6 +341,7 @@ export function ActiveWritingWorkspace({
 	// revisioned edit-variant command and updates the story locally; only
 	// native domain state changes, never either preserved source.
 	const editStoryMessage = async (messageId: number, content: string) => {
+		if (story.preview !== null) return;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
 		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
@@ -324,9 +377,78 @@ export function ActiveWritingWorkspace({
 
 	const cancelGeneration = () => generationAbortRef.current?.abort();
 
+	const cancelPreview = () => {
+		if (previewPending) return;
+		setPreviewError(null);
+		dispatchStory({ type: "preview-cancelled" });
+	};
+
+	const confirmPreview = async () => {
+		const preview = story.preview;
+		const conversationId = story.conversationId;
+		if (preview === null || conversationId === null || previewConfirmInFlightRef.current) {
+			return;
+		}
+		const expectedRevision = conversation?.revision ?? story.revision ?? -1;
+		if (expectedRevision < 0) {
+			setPreviewError("The Conversation revision is not available yet.");
+			return;
+		}
+
+		previewConfirmInFlightRef.current = true;
+		setPreviewPending(true);
+		setPreviewError(null);
+		const request = {
+			conversationId,
+			expectedRevision,
+			messageId: preview.messageId,
+			variantId: preview.variantId,
+		};
+		try {
+			const result = await confirmPreviewSelection(
+				preview,
+				request,
+				async (selection) =>
+					applyConversationCommand(selection.conversationId, selection.expectedRevision, {
+						type: "select-variant",
+						messageId: selection.messageId,
+						variantId: selection.variantId,
+					}),
+			);
+			if (result.status === "not-sent") return;
+			const outcome = result.result;
+			if (outcome.status === "applied") {
+				setConversation(outcome.conversation);
+				dispatchStory({ type: "preview-confirmed" });
+				return;
+			}
+			if (outcome.status === "conflict") {
+				setConversation(outcome.currentConversation);
+				setPreviewError(
+					"The Conversation changed elsewhere. Preview remains local until you confirm or cancel it.",
+				);
+				return;
+			}
+			if (outcome.status === "not-found") {
+				setPreviewError("The Conversation no longer exists.");
+				return;
+			}
+			setPreviewError(
+				outcome.status === "network"
+					? "The Conversation could not be reached."
+					: outcome.reason,
+			);
+		} catch {
+			setPreviewError("The Conversation could not be reached.");
+		} finally {
+			previewConfirmInFlightRef.current = false;
+			setPreviewPending(false);
+		}
+	};
+
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (isGenerating || conversation === null || !conversation.playable) return;
+		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable) return;
 		setIsGenerating(true);
 		setStreamingOutput({ content: "", reasoning: "" });
 		setGenerationError(null);
@@ -413,20 +535,32 @@ export function ActiveWritingWorkspace({
 					setLibraryFocusCharacterId(characterId);
 					setPrimaryPanel("library");
 				}}
+				mutationsDisabled={story.preview !== null}
 			/>
 
-			<main className="story-stage" aria-label="Active Chat">
+			<main
+				className="story-stage"
+				aria-label="Active Chat"
+				data-preview-mode={story.preview !== null}
+			>
 				<StoryHeader
 					chat={activeChat}
 					isGenerating={isGenerating}
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
+						if (story.preview !== null) return;
 						setChatInfoOpen(true);
 						setPrimaryPanel(null);
 					}}
 				/>
 
 				<div className="story-scroll" ref={storyScrollRef}>
+					{story.preview !== null && !story.preview.noticeOpen && (
+						<PreviewIndicator
+							targetPosition={story.preview.targetPosition}
+							onOpen={() => dispatchStory({ type: "preview-notice-opened" })}
+						/>
+					)}
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
 							<div className="history-load-more">
@@ -445,18 +579,28 @@ export function ActiveWritingWorkspace({
 						{story.messages.length === 0 && story.status !== "loading-first" && (
 							<EmptyChat />
 						)}
-						{story.messages.map((message) => (
-							<StoryMessageView
-								key={message.id}
-								message={message}
-								onMoveSwipe={(messageId, direction) =>
-									void changeSwipe(messageId, direction)
-							}
-							onEdit={(messageId, content) =>
-								void editStoryMessage(messageId, content)
-							}
-						/>
-						))}
+						{story.messages.map((message) =>
+							isPreviewDownstream(message, story.preview) ? (
+								<PreviewSkeleton key={message.id} messageId={message.id} />
+							) : (
+								<StoryMessageView
+									key={message.id}
+									message={message}
+									displayedVariantId={
+										story.preview?.messageId === message.id
+											? displayedVariantId(message, story.preview)
+											: undefined
+									}
+									mutationsDisabled={story.preview !== null}
+									onMoveSwipe={(messageId, direction) =>
+										void changeSwipe(messageId, direction)
+									}
+									onEdit={(messageId, content) =>
+										void editStoryMessage(messageId, content)
+									}
+								/>
+							)
+						)}
 						{story.status === "loading-first" && (
 							<HistoryLoading />
 						)}
@@ -476,7 +620,7 @@ export function ActiveWritingWorkspace({
 				<Composer
 					draft={draft}
 					isGenerating={isGenerating}
-					canWrite={conversation?.playable === true && !isGenerating}
+					canWrite={conversation?.playable === true && !isGenerating && story.preview === null}
 					isReceded={composerIsReceded}
 					onDraftChange={setDraft}
 					onFocusChange={setIsComposerFocused}
@@ -486,6 +630,7 @@ export function ActiveWritingWorkspace({
 						conversation !== null ? (
 							<ComposerControlSelectors
 								conversation={conversation}
+								disabled={story.preview !== null}
 								onConversationChange={setConversation}
 							/>
 						) : null
@@ -494,7 +639,7 @@ export function ActiveWritingWorkspace({
 				{generationError !== null && <p className="generation-error" role="alert">{generationError}</p>}
 			</main>
 
-			{chatInfoOpen && (
+			{chatInfoOpen && story.preview === null && (
 				<ChatInformationPanel
 					conversationId={Number(activeChatId)}
 					chatTitle={activeChat.title}
@@ -506,6 +651,17 @@ export function ActiveWritingWorkspace({
 				<NewChatSurface
 					onCreated={onNewChatCreated}
 					onClose={onNewChatClose}
+				/>
+			)}
+
+			{story.preview?.noticeOpen && (
+				<PreviewNotice
+					targetPosition={story.preview.targetPosition}
+					pending={previewPending}
+					error={previewError}
+					onConfirm={() => void confirmPreview()}
+					onCancel={cancelPreview}
+					onClose={() => dispatchStory({ type: "preview-notice-closed" })}
 				/>
 			)}
 		</div>

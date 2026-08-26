@@ -6,6 +6,7 @@ import {
 import { useEffect, useState } from "react";
 import {
 	type StoryMessage,
+	displayedVariantId as getDisplayedVariantId,
 	visibleVariantContent,
 } from "../story";
 import { Portrait } from "./Portrait";
@@ -28,15 +29,25 @@ const formatTimestamp = (value: string): string => {
 // and its stored text is never modified.
 export function StoryMessageView({
 	message,
+	displayedVariantId,
+	mutationsDisabled = false,
 	onMoveSwipe,
 	onEdit,
 }: {
 	message: StoryMessage;
+	// Preview mode supplies a local Variant id for its one target Message.
+	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
+	displayedVariantId?: number | null;
+	mutationsDisabled?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
-	const active = message.swipes[message.activeSwipe];
+	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
+	const active = message.swipes.find((variant) => variant.id === visibleId);
+	const activeIndex = active === undefined
+		? message.activeSwipe
+		: message.swipes.findIndex((variant) => variant.id === active.id);
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
@@ -59,6 +70,7 @@ export function StoryMessageView({
 			className="story-message"
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}
+			data-previewing={displayedVariantId !== undefined}
 		>
 			<header className="message-header">
 				<Portrait name={authorName} size="medium" />
@@ -84,6 +96,7 @@ export function StoryMessageView({
 						<button
 							className="secondary-button"
 							type="button"
+							disabled={mutationsDisabled}
 							onClick={() => setIsEditing(false)}
 						>
 							Cancel
@@ -91,6 +104,7 @@ export function StoryMessageView({
 						<button
 							className="primary-button"
 							type="button"
+							disabled={mutationsDisabled}
 							onClick={saveEdit}
 						>
 							Save
@@ -114,6 +128,7 @@ export function StoryMessageView({
 				<button
 					className="edit-action"
 					type="button"
+					disabled={mutationsDisabled}
 					onClick={() => setIsEditing(true)}
 				>
 					<Edit3 aria-hidden="true" /> Edit
@@ -123,19 +138,19 @@ export function StoryMessageView({
 						className="icon-button"
 						type="button"
 						onClick={() => onMoveSwipe(message.id, -1)}
-						disabled={message.activeSwipe === 0}
+						disabled={mutationsDisabled || activeIndex === 0}
 						aria-label="Previous Swipe"
 					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
 					<span>
-						{message.activeSwipe + 1} of {message.swipes.length}
+						{activeIndex + 1} of {message.swipes.length}
 					</span>
 					<button
 						className="icon-button"
 						type="button"
 						onClick={() => onMoveSwipe(message.id, 1)}
-						disabled={message.activeSwipe === message.swipes.length - 1}
+						disabled={mutationsDisabled || activeIndex === message.swipes.length - 1}
 						aria-label="Next Swipe"
 					>
 						<ChevronRight aria-hidden="true" />
