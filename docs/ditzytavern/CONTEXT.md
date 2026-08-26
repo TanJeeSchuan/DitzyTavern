@@ -92,6 +92,40 @@ _Avoid_: Current Control, Author Stamp, imported role inference
 The provider-neutral ordered blocks produced by compiling Participant Definitions and selected Conversation history for one Generation.
 _Avoid_: Prompt, request body, Guidance Message
 
+## Model connection
+
+**Connection Preset**:
+An app-owned factory of recommended connection defaults for a named model provider. Selecting a Preset creates an independently editable Connection Profile; Presets never appear as empty Profiles by themselves.
+_Avoid_: Connection Profile, backend
+
+**Connection Profile**:
+A globally available saved model connection containing shared connection details, an API Format, secret references, a Model Backend preference, and any backend-specific options. When Profiles exist exactly one is active for new Generations; with none, model generation is unconfigured.
+_Avoid_: Conversation settings, Provider, Preset
+
+**API Format**:
+The model request and streaming contract selected by a Connection Profile. Version one implements OpenAI Chat Completions; OpenAI Responses and Anthropic Messages are reserved but deferred. API Format is independent of the Model Backend and the request URL.
+_Avoid_: Model Backend, Provider, endpoint
+
+**Model Backend**:
+The advanced selectable implementation that executes model requests for a Connection Profile. Automatic selects one compatible Backend before a request starts; it never changes Backend during that Generation.
+_Avoid_: Model Provider, Connection Profile, transport
+
+**AI SDK Adapter**:
+The advanced, explicit selection of one provider-dialect adapter bundled inside the AI SDK Model Backend. A Connection Preset copies a concrete Adapter into a Profile; changing the Profile URL never changes it implicitly.
+_Avoid_: Model Backend, Connection Preset, npm package name
+
+**Connection Secret**:
+A write-only authentication value owned by a Connection Profile, including credentials and configured header values. Clients may see its JSON key or configured state but never its stored value.
+_Avoid_: API key when referring to all secret connection material
+
+**Discovery Catalog**:
+The persisted per-Profile cache of model IDs returned by the latest successful Models endpoint refresh. It supplies autocomplete but never restricts which model ID a Conversation may use.
+_Avoid_: Supported-model allowlist, Pinned Models
+
+**Pinned Models**:
+The ordered model IDs starred on a Connection Profile and shown as its small default model-selection list. Selection never pins implicitly, and discovery refresh never rewrites the list.
+_Avoid_: Discovery Catalog, provider-supported models
+
 ## Lifecycle
 
 **Participant Tombstone**:
