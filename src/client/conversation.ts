@@ -100,11 +100,9 @@ export type GenerationRequestOverrides = Readonly<
 	Record<string, GenerationRequestValue>
 >;
 
-// Slim conversational view: the transport never ships Messages or
-// per-Conversation data. The story reads through the paginated history
-// seam, and heavy provenance loads only through the Import Details
-// operations; this view carries the header, Cast, Control, and derived
-// playability state the Cast drawer, composer, and setup surface need.
+// This summary drives workspace controls, not the transcript. Messages and
+// Conversation-scoped data load separately; Import Details loads heavy
+// provenance only when requested.
 export interface ConversationSummary {
 	id: number;
 	name: string;

@@ -21,20 +21,12 @@ import { ResolutionStep } from "./import-chat/ResolutionStep";
 import { ReviewStep } from "./import-chat/ReviewStep";
 import { SuccessStep } from "./import-chat/SuccessStep";
 
-// The nested Import Chat flow inside the Chats primary panel. The flow is
-// review-driven: choosing one local export uploads its bytes once into
-// managed staging, validation finishes before anything else, the staged
-// preview resolves exact captured author groups into native Participants,
-// the final review presents the complete operation, and the commit creates
-// one ordinary native Chat through public domain seams. No imported-only
-// badge, category, or capability flag is ever added.
+// Upload one file into temporary staging, validate it, then let the user
+// resolve Participants before committing an ordinary Chat. Do not add an
+// imported-only badge, category, or capability state.
 //
-// Back and Cancel follow the nested-panel pattern: Back returns to the
-// previous step without discarding resolution work (only Back to file
-// selection drops the staged handle), Cancel warns before discarding the
-// open flow and then removes only that flow's uncommitted temporary staging
-// data. The same panel inherits the primary panel's full-screen narrow-width
-// treatment; there is no separate mobile workflow.
+// Back preserves resolution work except when returning to file selection.
+// Cancel discards only this flow's uncommitted staging data.
 
 interface ImportChatPanelProps {
 	flow: ChatImportFlowState;

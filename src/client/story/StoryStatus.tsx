@@ -1,10 +1,10 @@
 export function EmptyChat() {
 	return (
 		<section className="empty-chat">
-			<h2>This Chat has no stored Messages yet</h2>
+			<h2>This Chat has no Messages yet.</h2>
 			<p>
-				Native Chats begin with the model Participant's openings as their
-				first Message. History appears here as Messages are added.
+				New Chats start with the model Participant's opening Message.
+				Messages appear here as they are added.
 			</p>
 		</section>
 	);
@@ -60,7 +60,7 @@ export function StreamingGeneration({
 			<div className="prose">
 				{content.length > 0
 					? content.split("\n\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)
-					: <span className="streaming-placeholder">Waiting for visible text</span>}
+					: <span className="streaming-placeholder">Waiting for the model to send text.</span>}
 			</div>
 		</article>
 	);

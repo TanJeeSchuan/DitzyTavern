@@ -23,7 +23,7 @@ export function WorkspaceError({ onRetry }: { onRetry: () => void }) {
 			<div>
 				<BookOpen aria-hidden="true" />
 				<h1>The Chat could not be opened</h1>
-				<p>Your story is still safe. Try loading the workspace again.</p>
+				<p>Try again to open the Chat.</p>
 				<button className="primary-button" type="button" onClick={onRetry}>Try again</button>
 			</div>
 		</main>
@@ -42,7 +42,7 @@ export function WorkspaceWithoutChats({
 			<div>
 				<MessageSquare aria-hidden="true" />
 				<h1>No Chats found</h1>
-				<p>Create a native Chat with two Participants to open the writing workspace.</p>
+				<p>Create a Chat with two Participants to open the writing workspace.</p>
 				<button className="primary-button" type="button" onClick={onNewChat}>
 					<Plus aria-hidden="true" /> New Chat
 				</button>

@@ -502,7 +502,7 @@ export function ConnectionSettingsPanel() {
 										{profile.id === settings.activeProfileId ? (
 											<strong><Check aria-hidden="true" /> Active</strong>
 										) : "Available"}
-										{profile.credentialConfigured ? ", credential configured" : ", no credential"}
+										{profile.credentialConfigured ? ", credential saved" : ", no credential saved"}
 									</small>
 								</button>
 								<details className="connection-profile-menu">
@@ -613,7 +613,7 @@ export function ConnectionSettingsPanel() {
 								</button>
 							)}
 						</div>
-						<small>{credentialDraft.length > 0 ? "Save this credential before testing it." : "The stored credential is write-only."}</small>
+						<small>{credentialDraft.length > 0 ? "Save this credential before testing it." : "Saved credentials cannot be viewed. Enter a new one to replace it."}</small>
 					</label>
 					<label className="field">
 						<span>Default and test model</span>
@@ -660,7 +660,7 @@ export function ConnectionSettingsPanel() {
 						<small>
 							{selectedProfile === undefined
 								? "Save the connection before refreshing."
-								: `${selectedProfile.discoveryCatalog.length} discovered model IDs cached for autocomplete.`}
+								: `${selectedProfile.discoveryCatalog.length} model names available as suggestions.`}
 						</small>
 					</div>
 					<div className="connection-header-editor">
@@ -677,7 +677,7 @@ export function ConnectionSettingsPanel() {
 									showStringQuotes={false}
 									restrictDrag
 								/>
-								<small>Values are write-only. Keep preserves a stored value, Replace updates it, and Remove deletes it.</small>
+								<small>Saved header values are never shown. Keep leaves a value unchanged, Replace updates it, and Remove deletes it.</small>
 							</>
 						)}
 					</div>
@@ -698,8 +698,8 @@ export function ConnectionSettingsPanel() {
 				</div>
 			</section>}
 
-			{(notice || error || conflict) && <p className={error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={error ? "alert" : "status"}>{error ?? notice}{conflict && <small> Authoritative revision {conflict.actualRevision} is loaded. Review the draft before retrying.</small>}</p>}
-			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers stay outside Conversation data and are never returned to the client.</span></div>
+			{(notice || error || conflict) && <p className={error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={error ? "alert" : "status"}>{error ?? notice}{conflict && <small> The settings changed elsewhere. Your draft is still here. Review it before saving again.</small>}</p>}
+			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers are stored separately from Conversation data and are never shown after saving.</span></div>
 		</div>
 	);
 }

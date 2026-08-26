@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileArchive, Info, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Download, FileArchive, TriangleAlert } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
 import {
 	artifactAvailabilityLabel,
@@ -14,14 +14,8 @@ import {
 } from "./chat-history";
 import { PanelHeader } from "./PanelHeader";
 
-// Chat information: the ordinary Chat-level detail surface, opened from the
-// story header. Import Details appears inside it only when the Chat carries
-// import provenance; there is no persistent Imported badge, header marker,
-// or separate category. Heavy provenance loads only through this deliberate
-// open; exact bytes load only when the user downloads them.
-//
-// The panel inherits the secondary right-side panel treatment (full-screen
-// nested layer on narrow widths), matching the DESIGN.md panel hierarchy.
+// Keep import origin in this on-demand panel. Do not add an Imported badge,
+// category, or capability mode. Load artifact bytes only for a download.
 
 interface ChatInformationPanelProps {
 	conversationId: number;
@@ -111,16 +105,15 @@ export function ChatInformationPanel({
 				{state.status === "no-import-details" && (
 					<>
 						<p className="panel-note">
-							This Chat was created here; no import provenance is
-							attached to it.
+							This Chat was created in DitzyTavern.
 						</p>
 					</>
 				)}
 
 				{state.status === "error" && (
 					<p className="import-problem" role="alert">
-						Chat information could not be loaded. Try again by reopening
-						this panel.
+						Chat information could not be loaded. Close and reopen this panel
+						to try again.
 					</p>
 				)}
 
@@ -199,13 +192,13 @@ function ImportDetailsSection({
 					<TriangleAlert aria-hidden="true" />
 					<span>
 						{details.duplicates.exact.length > 0
-							? `This exact source was also imported as ${details.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.`
+							? `This exact file was also imported as ${details.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.`
 							: ""}
 						{details.duplicates.exact.length > 0 && details.duplicates.related.length > 0 ? " " : ""}
 						{details.duplicates.related.length > 0
-							? `A related source with the same declared integrity was imported as ${details.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.`
+							? `A related import with the same declared integrity was imported as ${details.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.`
 							: ""}
-						{" "}This import is an independent copy.
+						{" "}This import remains a separate Chat.
 					</span>
 				</div>
 			)}
@@ -226,20 +219,16 @@ function ImportDetailsSection({
 				{availability !== null && availability.status === "available" && (
 					<div className="import-details-available">
 						<CheckCircle2 aria-hidden="true" />
-						<span>The exact source bytes are preserved and verified.</span>
+						<span>The original file is present and matches its recorded checksum.</span>
 					</div>
 				)}
 				{availability !== null && availability.status === "cleaned-up" && (
 					<div className="import-details-cleaned" role="alert">
 						<TriangleAlert aria-hidden="true" />
 						<span>
-							The preserved source artifact has been cleaned up or is
-							unavailable
-							{availability.reason === "missing"
-								? " (missing)"
-								: " (verification failed)"}
-							. This Chat keeps reading and editing normally; only the
-							exact download is disabled.
+							The original file is missing or no longer matches its recorded
+							checksum. You can still read and edit this Chat, but you cannot
+							download the original file.
 						</span>
 					</div>
 				)}
@@ -255,14 +244,13 @@ function ImportDetailsSection({
 					<Download aria-hidden="true" />
 					{downloadOutcome.status === "downloading"
 						? "Preparing download…"
-						: "Download preserved source"}
+						: "Download original file"}
 				</button>
 				{downloadOutcome.status === "cleaned-up" && (
 					<p className="import-problem" role="alert">
-						The preserved source artifact was cleaned up
-						{downloadOutcome.reason === "missing"
-							? "."
-							: " and could not be verified."}
+						The original file is missing or no longer matches its recorded
+						checksum. You can still read and edit this Chat, but you cannot
+						download the original file.
 					</p>
 				)}
 				{downloadOutcome.status === "network" && (
@@ -273,11 +261,6 @@ function ImportDetailsSection({
 				)}
 			</div>
 
-			<p className="panel-note">
-				<Info aria-hidden="true" />
-				Import Details are available here only; no imported badge or
-				category is shown elsewhere in the app.
-			</p>
 		</section>
 	);
 }

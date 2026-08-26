@@ -41,7 +41,7 @@ export function ModelSelector({
 				setSettings(loadedSettings);
 			})
 			.catch(() => {
-				if (!cancelled) setError("Model selection could not be loaded.");
+				if (!cancelled) setError("Model settings could not be loaded.");
 			});
 		return () => {
 			cancelled = true;
@@ -95,7 +95,7 @@ export function ModelSelector({
 				setOpen(false);
 			} else if (outcome.status === "conflict") {
 				onConversationChange(outcome.currentConversation);
-				setError("The Conversation changed elsewhere; model settings were reloaded.");
+				setError("This Conversation changed elsewhere. Its model settings were reloaded.");
 			} else if (outcome.status === "invalid") {
 				setError(outcome.reason);
 			} else {
@@ -130,10 +130,10 @@ export function ModelSelector({
 			} else if (result.outcome === "invalid") {
 				setError(result.reason);
 			} else {
-				setError("The active Profile could not be reached.");
+				setError("The active connection could not be reached.");
 			}
 		} catch {
-			setError("The active Profile could not be reached.");
+			setError("The active connection could not be reached.");
 		} finally {
 			setPending(false);
 		}

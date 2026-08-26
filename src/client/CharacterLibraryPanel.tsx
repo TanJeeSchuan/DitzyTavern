@@ -26,9 +26,9 @@ import {
 	type Drafts,
 } from "./character-library/definition";
 
-// Dedicated Character Library surface: list, create, detail, semantic Apply
-// actions, pinning, computed duplicate ordinals, and conflict recovery.
-// Internal identifiers stay behind the transport adapters and are never shown.
+// The library handles listing, creation, editing, pinning, deletion, and
+// conflict recovery. Duplicate names use computed ordinals; database
+// identifiers stay out of the UI.
 
 interface CharacterLibraryPanelProps {
 	// When set (e.g. after a Participant was saved as a Character from the

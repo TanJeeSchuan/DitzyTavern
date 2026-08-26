@@ -99,9 +99,9 @@ export function ReviewStep({
 				<section className="import-duplicate-confirm" role="alert">
 					<TriangleAlert aria-hidden="true" />
 					<span>
-						This exact source was already imported as{" "}
+						This exact file was already imported as{" "}
 						{flow.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.
-						Importing again creates an independent native copy.
+						Importing again creates a separate Chat.
 					</span>
 					<label>
 						<input
@@ -121,10 +121,9 @@ export function ReviewStep({
 			{exactCount === 0 && flow.duplicates.related.length > 0 && (
 				<p className="import-related-banner">
 					<span>
-						A related source with the same declared integrity was imported
-						as{" "}
+						A related import was found in{" "}
 						{flow.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.
-						This is not a byte-identical copy.
+						Both files report the same integrity value, but their bytes differ.
 					</span>
 				</p>
 			)}
@@ -149,8 +148,8 @@ export function ReviewStep({
 				</button>
 				<p className="panel-note">
 					{commitReady
-						? "Everything is confirmed. The exact bytes previewed here are the bytes that will be imported."
-						: "Finish the resolution step and confirm every blank name and exact-duplicate copy before importing."}
+						? "Everything is confirmed. The file being imported is the one you previewed."
+						: "Resolve every Participant and confirm any unnamed author or duplicate import before importing."}
 				</p>
 			</div>
 		</div>

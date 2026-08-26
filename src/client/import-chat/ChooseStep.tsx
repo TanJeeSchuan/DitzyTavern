@@ -11,9 +11,8 @@ export function ChooseStep({
 	return (
 		<div className="import-choose">
 			<p className="panel-intro">
-				Import one SillyTavern export. Its contents are validated before
-				anything is created, and nothing is saved until you finish the
-				final review step.
+				Choose a SillyTavern export. Validated before creating anything.
+				Nothing is saved until you finish the final review.
 			</p>
 
 			<button className="import-file-button" type="button" onClick={onPick}>
@@ -31,8 +30,8 @@ export function ChooseStep({
 			)}
 
 			<p className="panel-note">
-				The file is uploaded once into a temporary staged import. A server
-				restart expires the staged flow and requires reselecting the file.
+				The file uploads once for this import. If the server restarts, choose
+				the file again.
 			</p>
 		</div>
 	);
@@ -44,8 +43,8 @@ export function StagingStep() {
 			<Loader2 className="import-spinner" aria-hidden="true" />
 			<strong>Uploading and validating the export</strong>
 			<p>
-				Malformed JSON, invalid UTF-8, and structural defects are reported
-				here before any resolution begins.
+				We check the file format before you resolve Participants. Any errors
+				appear here.
 			</p>
 		</div>
 	);
@@ -55,10 +54,10 @@ export function CommittingStep() {
 	return (
 		<div className="import-staging" role="status" aria-live="polite">
 			<Loader2 className="import-spinner" aria-hidden="true" />
-			<strong>Committing the import</strong>
+			<strong>Saving the import</strong>
 			<p>
-				The Chat, requested new Characters, Participants, Messages, and the
-				exact preserved source commit together as one operation.
+				Your Chat, Participants, new Characters, Messages, and original file
+				are saved together.
 			</p>
 		</div>
 	);

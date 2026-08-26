@@ -17,8 +17,8 @@ export function SuccessStep({
 		return (
 			<div className="import-success">
 				<p className="import-problem" role="alert">
-					The import finished but its receipt is unavailable. The Chat is
-					listed in the Chats panel.
+					The import finished, but its details are unavailable. You can find
+					the Chat in the Chats panel.
 				</p>
 				<button className="primary-button" type="button" onClick={onClose}>
 					Close
@@ -33,7 +33,7 @@ export function SuccessStep({
 			</div>
 			<h3>Chat imported</h3>
 			<p className="panel-intro">
-				<strong>{receipt.title}</strong> was created as an ordinary Chat with{" "}
+				<strong>{receipt.title}</strong> was imported with{" "}
 				{receipt.counts.messages} Message{receipt.counts.messages === 1 ? "" : "s"}{" "}
 				and {receipt.counts.variants} Variant
 				{receipt.counts.variants === 1 ? "" : "s"} from{" "}
@@ -68,11 +68,6 @@ export function SuccessStep({
 										? "New Character"
 										: "Chat-only"}
 							</span>
-							<small>
-								{participant.sourceCharacterId === null
-									? "No Profile"
-									: `Profile ${participant.sourceCharacterId}`}
-							</small>
 						</li>
 					))}
 				</ul>

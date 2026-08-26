@@ -55,9 +55,9 @@ export function ResolvedGroupCard({
 			<header className="import-group-header">
 				<div>
 					<strong>
-						{group.isBlank ? "Blank captured name" : group.key}
+						{group.isBlank ? "Unnamed author" : group.key}
 						{group.isBlank && (
-							<span className="import-blank-tag">blank source</span>
+							<span className="import-blank-tag">name missing</span>
 						)}
 					</strong>
 					<small>
@@ -98,7 +98,7 @@ export function ResolvedGroupCard({
 			<div className="import-outcome" role="group" aria-label="Resolution outcome">
 				<OutcomeChoice
 					label="Fork existing Character"
-					hint="Copies the Profile into this Participant"
+					hint="Copies this Character into the Participant"
 					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "fork"}
 					disabled={group.suggestion === null && characters.length === 0}
@@ -125,7 +125,7 @@ export function ResolvedGroupCard({
 				)}
 				<OutcomeChoice
 					label="Create a new Character"
-					hint="Adds this Participant to the Character Library"
+					hint="Creates a Character from this Participant"
 					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "new-character"}
 					onSelect={() =>
@@ -138,7 +138,7 @@ export function ResolvedGroupCard({
 				/>
 				<OutcomeChoice
 					label="Keep Chat-only"
-					hint="A complete Participant without a Library Profile"
+					hint="Keeps this Participant only in the Chat"
 					name={`import-outcome-${group.id}`}
 					checked={group.outcome.type === "chat-only"}
 					onSelect={() =>
@@ -155,8 +155,8 @@ export function ResolvedGroupCard({
 				<div className="import-blank-confirm">
 					<TriangleAlert aria-hidden="true" />
 					<span>
-						This Participant includes Messages from a blank captured name.
-						Confirm the name above or edit it before importing.
+						This Participant includes Messages with no author name. Confirm or
+						edit the name before importing.
 					</span>
 					{!group.blankNameConfirmed && (
 						<button

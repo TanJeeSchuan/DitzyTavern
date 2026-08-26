@@ -53,20 +53,18 @@ export function ResolutionStep({
 				<p className="import-duplicate-banner" role="alert">
 					<TriangleAlert aria-hidden="true" />
 					<span>
-						This exact source was already imported as{" "}
+						This exact file was already imported as{" "}
 						{flow.duplicates.exact.map((match) => `Chat ${match.id}`).join(", ")}.
-						An exact duplicate needs explicit confirmation at the final
-						review before an independent copy is committed.
+						Confirm at the final step if you want to import another copy.
 					</span>
 				</p>
 			)}
 			{exactCount === 0 && relatedCount > 0 && (
 				<p className="import-related-banner">
 					<span>
-						A related source with the same declared integrity was imported
-						as{" "}
+						A related import was found in{" "}
 						{flow.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.
-						This is not a byte-identical copy.
+						Both files report the same integrity value, but their bytes differ.
 					</span>
 				</p>
 			)}
@@ -128,10 +126,10 @@ export function ResolutionStep({
 			<section className="import-groups">
 				<h3>Resolve Participants</h3>
 				<p className="panel-intro">
-					One participant begins per exact captured author string. Merge
-					spelling variants or aliases into one Participant, split selected
-					Messages into another Participant, and undo either change before
-					commit. Every Message stays assigned; nothing is skipped.
+					We start with one Participant for each distinct author name in the
+					file. Merge spelling variants or aliases, split selected Messages
+					into another Participant, then confirm each choice. Every Message
+					remains assigned.
 				</p>
 				{flow.groups.map((group) => (
 					<ResolvedGroupCard
@@ -185,8 +183,8 @@ export function ResolutionStep({
 				</button>
 				<p className="panel-note">
 					{ready
-						? "Every Participant is resolved; continue to the final review."
-						: "Resolve every Participant: name each one, approve or change every Character choice, confirm blank captured names, and assign at least one Message per Participant."}
+						? "Every Participant is ready. Continue to review."
+						: "Give each Participant a name, confirm each Character choice, name any unnamed author, and assign at least one Message to each."}
 				</p>
 			</div>
 		</div>

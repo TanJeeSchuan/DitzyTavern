@@ -9,15 +9,9 @@ import {
 import { PanelHeader } from "./PanelHeader";
 import type { ChatSummary } from "./workspace";
 
-// The Chats primary panel content: the chat list with its first-order
-// actions, plus the nested Import Chat flow. The host owns the nested-step
-// state and the full import flow reducer, so closing and reopening the Chats
-// panel never discards the staged preview: only explicit Back-to-selection
-// or a confirmed Cancel removes uncommitted staging data.
-//
-// The host stays mounted (returning null while the panel is closed) so the
-// staged flow survives panel toggles; it inherits the primary panel's
-// full-screen narrow-width treatment with no separate mobile workflow.
+// Keep this host mounted while the panel is closed so an open import retains
+// its staged preview and choices. The flow's Back and Cancel handlers decide
+// when staging is discarded.
 
 interface ChatsPanelProps {
 	chats: ChatSummary[];
