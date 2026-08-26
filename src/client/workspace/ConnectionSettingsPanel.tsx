@@ -1,4 +1,15 @@
-import { Check, KeyRound, RotateCcw, Save, ShieldCheck, Trash2, Zap } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Ellipsis,
+	KeyRound,
+	Plus,
+	RotateCcw,
+	Save,
+	ShieldCheck,
+	Trash2,
+	Zap,
+} from "lucide-react";
 import { JsonEditor, type JsonData } from "json-edit-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -102,6 +113,9 @@ export function ConnectionSettingsPanel() {
 	const [testPending, setTestPending] = useState(false);
 	const [discoveryPending, setDiscoveryPending] = useState(false);
 	const [replacementProfileId, setReplacementProfileId] = useState<number | null>(null);
+	const [pendingDeletionProfileId, setPendingDeletionProfileId] = useState<number | null>(null);
+	const [presetChoicesOpen, setPresetChoicesOpen] = useState(false);
+	const [headersExpanded, setHeadersExpanded] = useState(false);
 	const [conflict, setConflict] = useState<ConnectionSettingsConflict | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -121,6 +135,7 @@ export function ConnectionSettingsPanel() {
 					setSelectedProfileId(active.id);
 					setDraft(copyDraft(active));
 					setHeaderEditorData(headerEditorDataFor(active.headers));
+					setHeadersExpanded(active.headers.length > 0);
 					setTestModelId(active.pinnedModels[0] ?? "");
 					setReplacementProfileId(loadedSettings.profiles.find((profile) => profile.id !== active.id)?.id ?? null);
 				}
@@ -172,6 +187,9 @@ export function ConnectionSettingsPanel() {
 		setTestModelId(preset.profile.pinnedModels[0] ?? "");
 		setTestResult(null);
 		setReplacementProfileId(null);
+		setPendingDeletionProfileId(null);
+		setPresetChoicesOpen(false);
+		setHeadersExpanded(false);
 		setConflict(null);
 		setNotice(`${preset.label} defaults copied into a new editable Profile draft.`);
 		setError(null);
@@ -185,6 +203,9 @@ export function ConnectionSettingsPanel() {
 		setTestModelId(profile.pinnedModels[0] ?? "");
 		setTestResult(null);
 		setReplacementProfileId(settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null);
+		setPendingDeletionProfileId(null);
+		setPresetChoicesOpen(false);
+		setHeadersExpanded(profile.headers.length > 0);
 		setConflict(null);
 		setNotice(null);
 		setError(null);
@@ -219,7 +240,7 @@ export function ConnectionSettingsPanel() {
 
 	const refreshModels = async () => {
 		if (selectedProfileId === null) {
-			setError("Apply this Profile before refreshing its Models URL.");
+			setError("Save this connection before refreshing its Models URL.");
 			return;
 		}
 		if (draft.modelsUrl.trim().length === 0) {
@@ -227,7 +248,7 @@ export function ConnectionSettingsPanel() {
 			return;
 		}
 		if (selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()) {
-			setError("Apply the Models URL change before refreshing the catalog.");
+			setError("Save the Models URL change before refreshing the catalog.");
 			return;
 		}
 		setDiscoveryPending(true);
@@ -295,10 +316,29 @@ export function ConnectionSettingsPanel() {
 			);
 			return;
 		}
-		setSettings(result.settings);
+		let savedSettings = result.settings;
+		if (selectedProfileId !== null && credentialDraft.length > 0) {
+			const credentialResult = await saveConnectionCommand({
+				type: "set-credential",
+				expectedRevision: result.settings.revision,
+				profileId: selectedProfileId,
+				credential: credentialDraft,
+			});
+			if (credentialResult.outcome !== "applied") {
+				setSettings(
+					credentialResult.outcome === "conflict"
+						? credentialResult.currentSettings
+						: result.settings,
+				);
+				setError("Connection changes were saved, but the credential could not be updated. Try saving again.");
+				return;
+			}
+			savedSettings = credentialResult.settings;
+		}
+		setSettings(savedSettings);
 		setConflict(null);
 		setTestResult(null);
-		const saved = result.settings.profiles.find(
+		const saved = savedSettings.profiles.find(
 			(profile) =>
 				(selectedProfileId !== null && profile.id === selectedProfileId) ||
 				(selectedProfileId === null && profile.displayName === draft.displayName.trim().replace(/\s+/g, " ")),
@@ -309,7 +349,7 @@ export function ConnectionSettingsPanel() {
 			setHeaderEditorData(headerEditorDataFor(saved.headers));
 		}
 		setCredentialDraft("");
-		setNotice("Connection Profile applied offline. No provider request was made.");
+		setNotice("Changes saved. No provider request was made.");
 	};
 
 	const activateSelectedProfile = async () => {
@@ -332,12 +372,23 @@ export function ConnectionSettingsPanel() {
 		}
 		setSettings(result.settings);
 		setConflict(null);
-		setNotice("Profile activated for new Generations.");
+		setNotice("Connection set as active for new generations.");
 	};
 
-	const deleteSelectedProfile = async () => {
-		if (!settings || selectedProfileId === null) return;
-		const selected = settings.profiles.find((profile) => profile.id === selectedProfileId);
+	const requestProfileDeletion = (profile: ConnectionProfile) => {
+		setPendingDeletionProfileId(profile.id);
+		setReplacementProfileId(
+			profile.id === settings?.activeProfileId
+				? settings.profiles.find((entry) => entry.id !== profile.id)?.id ?? null
+				: null,
+		);
+		setNotice(null);
+		setError(null);
+	};
+
+	const deletePendingProfile = async () => {
+		if (!settings || pendingDeletionProfileId === null) return;
+		const selected = settings.profiles.find((profile) => profile.id === pendingDeletionProfileId);
 		if (!selected) return;
 		const deletingActive = selected.id === settings.activeProfileId;
 		const replacement = deletingActive && settings.profiles.length > 1
@@ -347,7 +398,6 @@ export function ConnectionSettingsPanel() {
 			setError("Choose a replacement Profile before deleting the active Profile.");
 			return;
 		}
-		if (!window.confirm(`Delete the Profile "${selected.displayName}"? This cannot be undone.`)) return;
 		setNotice(null);
 		setError(null);
 		const result = await saveConnectionCommand({
@@ -367,6 +417,7 @@ export function ConnectionSettingsPanel() {
 		}
 		setSettings(result.settings);
 		setConflict(null);
+		setPendingDeletionProfileId(null);
 		const nextProfile = result.settings.profiles.find(
 			(profile) => profile.id === (replacement ?? result.settings.activeProfileId),
 		);
@@ -382,27 +433,7 @@ export function ConnectionSettingsPanel() {
 			setReplacementProfileId(null);
 		}
 		setCredentialDraft("");
-		setNotice("Connection Profile deleted.");
-	};
-
-	const setCredential = async () => {
-		if (!settings || selectedProfileId === null || credentialDraft.length === 0) return;
-		setNotice(null);
-		setError(null);
-		const result = await saveConnectionCommand({
-			type: "set-credential",
-			expectedRevision: settings.revision,
-			profileId: selectedProfileId,
-			credential: credentialDraft,
-		});
-		if (result.outcome !== "applied") {
-			setError(result.outcome === "invalid" ? result.reason : "Credential update failed.");
-			return;
-		}
-		setSettings(result.settings);
-		setConflict(null);
-		setCredentialDraft("");
-		setNotice("Credential updated. The stored value is never returned to this page.");
+		setNotice(`${selected.displayName} deleted.`);
 	};
 
 	const resetCredential = async () => {
@@ -434,90 +465,169 @@ export function ConnectionSettingsPanel() {
 
 	return (
 		<div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={testResult?.outcome}>
-			<section>
-				<h3>Connection Profiles</h3>
-				<p>
-					Global model access is separate from Conversation data. Apply saves the
-					current draft without contacting a provider.
-				</p>
+			<section className="connection-profile-section">
+				<h3>Connections</h3>
+				<p>Choose the connection to edit or add a new one.</p>
 				{settings.profiles.length === 0 && (
 					<div className="connection-empty-state">
 						<strong>Model generation is unconfigured.</strong>
-						<span>Create a Profile when you are ready. Chats and imports remain available.</span>
+						<span>Add a connection to start generating. Chats and imports remain available.</span>
 					</div>
 				)}
 				{settings.profiles.length > 0 && (
-					<div className="connection-profile-list" aria-label="Connection Profiles">
+					<div className="connection-profile-list" aria-label="Connections">
 						{settings.profiles.map((profile) => (
-							<button
-								className="connection-profile-choice"
-								type="button"
+							<div
+								className="connection-profile-card"
 								key={profile.id}
-								data-active={profile.id === selectedProfileId}
-								onClick={() => chooseProfile(profile)}
+								data-selected={profile.id === selectedProfileId}
+								data-active={profile.id === settings.activeProfileId}
 							>
-								<span>{profile.displayName}</span>
-								<small>
-									{profile.id === settings.activeProfileId ? "Active" : "Available"}
-									{profile.credentialConfigured ? "; credential configured" : "; no credential"}
-								</small>
-							</button>
+								<button
+									className="connection-profile-choice"
+									type="button"
+									onClick={() => chooseProfile(profile)}
+								>
+									<span>{profile.displayName}</span>
+									<small>
+										{profile.id === settings.activeProfileId ? (
+											<strong><Check aria-hidden="true" /> Active</strong>
+										) : "Available"}
+										{profile.credentialConfigured ? ", credential configured" : ", no credential"}
+									</small>
+								</button>
+								<details className="connection-profile-menu">
+									<summary aria-label={`More actions for ${profile.displayName}`}>
+										<Ellipsis aria-hidden="true" />
+									</summary>
+									<div>
+										<button type="button" onClick={(event) => {
+											event.currentTarget.closest("details")?.removeAttribute("open");
+											requestProfileDeletion(profile);
+										}}>
+											<Trash2 aria-hidden="true" /> Delete profile
+										</button>
+									</div>
+								</details>
+							</div>
 						))}
 					</div>
 				)}
-				{selectedProfile && (
-					<div className="connection-profile-lifecycle">
-						{selectedProfile.id !== settings.activeProfileId && (
-							<button className="secondary-button" type="button" onClick={() => void activateSelectedProfile()}>
-								<Zap aria-hidden="true" /> Activate Profile
-							</button>
-						)}
-						{selectedProfile.id === settings.activeProfileId && settings.profiles.length > 1 && (
+				{pendingDeletionProfileId !== null && (() => {
+					const pendingProfile = settings.profiles.find((profile) => profile.id === pendingDeletionProfileId);
+					if (!pendingProfile) return null;
+					const needsReplacement = pendingProfile.id === settings.activeProfileId && settings.profiles.length > 1;
+					return (
+						<div className="connection-delete-confirmation" role="group" aria-label={`Delete ${pendingProfile.displayName}`}>
+							<div>
+								<strong>Delete {pendingProfile.displayName}?</strong>
+								<span>This cannot be undone.</span>
+							</div>
+							{needsReplacement && (
 							<label className="field">
-								<span>Replacement if deleted</span>
+								<span>Set another connection as active</span>
 								<select
 									className="field-input"
 									value={replacementProfileId ?? ""}
 									onChange={(event) => setReplacementProfileId(event.target.value.length > 0 ? Number(event.target.value) : null)}
 								>
-									<option value="">Choose a Profile</option>
-									{settings.profiles.filter((profile) => profile.id !== selectedProfile.id).map((profile) => (
+									<option value="">Choose a connection</option>
+									{settings.profiles.filter((profile) => profile.id !== pendingProfile.id).map((profile) => (
 										<option key={profile.id} value={profile.id}>{profile.displayName}</option>
 									))}
 								</select>
 							</label>
 						)}
-						<button className="secondary-button" type="button" onClick={() => void deleteSelectedProfile()}>
-							<Trash2 aria-hidden="true" /> Delete Profile
-						</button>
-					</div>
-				)}
-			</section>
-
-			<section className="connection-presets">
-				<h3>Start from a Preset</h3>
-				<div className="connection-preset-list">
-					{presets.map((preset) => (
-						<button type="button" className="secondary-button" key={preset.id} onClick={() => choosePreset(preset)}>
-							{preset.label}
-						</button>
-					))}
+							<div className="connection-delete-actions">
+								<button className="secondary-button" type="button" onClick={() => setPendingDeletionProfileId(null)}>Cancel</button>
+								<button className="danger-button" type="button" onClick={() => void deletePendingProfile()}>
+									<Trash2 aria-hidden="true" /> Delete profile
+								</button>
+							</div>
+						</div>
+					);
+				})()}
+				<div className="connection-add-area">
+					<button
+						className="secondary-button"
+						type="button"
+						aria-expanded={presetChoicesOpen}
+						onClick={() => setPresetChoicesOpen((current) => !current)}
+					>
+						<Plus aria-hidden="true" /> Add connection
+					</button>
+					{presetChoicesOpen && (
+						<div className="connection-preset-list" aria-label="Connection presets">
+							{presets.map((preset) => (
+								<button type="button" className="secondary-button" key={preset.id} onClick={() => choosePreset(preset)}>
+									{preset.label === "Generic OpenAI Compatible" ? "OpenAI Compatible" : preset.label}
+								</button>
+							))}
+						</div>
+					)}
 				</div>
 			</section>
 
-			<section className="connection-editor-section">
+			{(selectedProfile !== undefined || draft.displayName.length > 0) && <section className="connection-editor-section">
 				<div className="connection-editor-heading">
 					<div>
-						<h3>{selectedProfile ? `Edit ${selectedProfile.displayName}` : "New Connection Profile"}</h3>
-						<span>{selectedProfile ? `Revision ${settings.revision}` : "The first saved Profile becomes active."}</span>
+						<h3>{selectedProfile ? `Edit ${selectedProfile.displayName}` : "New connection"}</h3>
+						<span>{selectedProfile?.id === settings.activeProfileId ? "Active for new generations" : selectedProfile ? "Saved, not active" : "Not saved yet"}</span>
 					</div>
-					<ShieldCheck aria-hidden="true" />
+					{selectedProfile && selectedProfile.id !== settings.activeProfileId && (
+						<button className="secondary-button connection-activate-button" type="button" onClick={() => void activateSelectedProfile()}>
+							<Zap aria-hidden="true" /> Set as active
+						</button>
+					)}
 				</div>
 				<div className="definition-form">
 					<label className="field">
 						<span>Display name</span>
 						<input className="field-input" value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} />
 					</label>
+					<label className="field">
+						<span>Provider</span>
+						<div className="field-input connection-provider-value">
+							{draft.adapter === "deepseek" ? "DeepSeek" : draft.adapter === "openrouter" ? "OpenRouter" : "OpenAI Compatible"}
+						</div>
+					</label>
+					<label className="field">
+						<span>Credential</span>
+						<div className="credential-field-row">
+							<div className="credential-input-row">
+								<KeyRound aria-hidden="true" />
+								<input className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Enter API key"} />
+							</div>
+							{selectedProfile?.credentialConfigured && (
+								<button className="secondary-button" type="button" onClick={() => void resetCredential()}>
+									<RotateCcw aria-hidden="true" /> Reset
+								</button>
+							)}
+						</div>
+						<small>{credentialDraft.length > 0 ? "Save this credential before testing it." : "The stored credential is write-only."}</small>
+					</label>
+					<label className="field">
+						<span>Default and test model</span>
+						<input
+							className="field-input"
+							value={testModelId}
+							onChange={(event) => {
+								const value = event.target.value;
+								setTestModelId(value);
+								setDraft({ ...draft, pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] });
+							}}
+							placeholder="deepseek-chat"
+							list={`connection-models-${selectedProfileId ?? "new"}`}
+						/>
+						<datalist id={`connection-models-${selectedProfileId ?? "new"}`}>
+							{Array.from(new Set([...(selectedProfile?.discoveryCatalog ?? []), ...draft.pinnedModels])).map((modelId) => <option key={modelId} value={modelId} />)}
+						</datalist>
+						<small>Used for connection tests and saved as the default model.</small>
+					</label>
+
+					<details className="connection-advanced-settings">
+						<summary><span>Advanced settings</span><ChevronDown aria-hidden="true" /></summary>
+						<div className="connection-advanced-content">
 					<label className="field">
 						<span>Request URL</span>
 						<input className="field-input" value={draft.requestUrl} onChange={(event) => setDraft({ ...draft, requestUrl: event.target.value })} placeholder="https://example.com/" />
@@ -538,43 +648,27 @@ export function ConnectionSettingsPanel() {
 						</button>
 						<small>
 							{selectedProfile === undefined
-								? "Apply the Profile before refreshing."
+								? "Save the connection before refreshing."
 								: `${selectedProfile.discoveryCatalog.length} discovered model IDs cached for autocomplete.`}
 						</small>
 					</div>
-					<label className="field">
-						<span>Test model ID</span>
-						<input className="field-input" value={testModelId} onChange={(event) => setTestModelId(event.target.value)} placeholder="deepseek-chat" />
-						<small>Test Connection sends one short request using this model ID.</small>
-					</label>
-					<label className="field">
-						<span>Dedicated credential</span>
-						<div className="credential-input-row">
-							<KeyRound aria-hidden="true" />
-						<input className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Optional for now"} />
-						</div>
-						<small>
-							Stored encrypted and write-only. Test Connection uses the stored
-							credential; Set Credential before testing a replacement.
-						</small>
-					</label>
 					<div className="connection-header-editor">
-						<h4>Custom headers</h4>
-						<p>
-							Stored values are never returned. Keep preserves a configured value,
-							Replace writes the draft value, and Remove deletes it.
-						</p>
-						<JsonEditor
-							data={headerEditorData}
-							setData={(value) => setHeaderEditorData(parseHeaderEditorData(value))}
-							rootName="Headers"
-							showStringQuotes={false}
-							restrictDrag
-						/>
-						<small>
-							Use HTTP token names as keys. Header names are case-insensitive;
-							transport-owned names are rejected on Apply.
-						</small>
+						<div className="connection-header-heading">
+							<div><h4>Custom headers</h4>{Object.keys(headerEditorData).length === 0 && <span>No custom headers</span>}</div>
+							{!headersExpanded && <button className="secondary-button" type="button" onClick={() => setHeadersExpanded(true)}><Plus aria-hidden="true" /> Add header</button>}
+						</div>
+						{headersExpanded && (
+							<>
+								<JsonEditor
+									data={headerEditorData}
+									setData={(value) => setHeaderEditorData(parseHeaderEditorData(value))}
+									rootName="Headers"
+									showStringQuotes={false}
+									restrictDrag
+								/>
+								<small>Values are write-only. Keep preserves a stored value, Replace updates it, and Remove deletes it.</small>
+							</>
+						)}
 					</div>
 					<div className="connection-advanced-grid">
 						<label className="field"><span>API Format</span><select className="field-input" value={draft.apiFormat} onChange={(event) => { /* SAFETY: the select offers only the Chat Completions option. */ setDraft({ ...draft, apiFormat: event.target.value as ConnectionProfileDraft["apiFormat"] }); }}><option value="chat-completions">Chat Completions</option></select></label>
@@ -583,20 +677,18 @@ export function ConnectionSettingsPanel() {
 						<label className="field"><span>Output-token representation</span><select className="field-input" value={draft.outputTokenRepresentation} onChange={(event) => { const value = event.target.value; setDraft({ ...draft, outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" }); }}><option value="automatic">Automatic</option><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens</option><option value="omit">Omit remote limit</option></select></label>
 						<label className="field"><span>Stream inactivity timeout</span><input className="field-input" type="number" min="0" step="1000" value={draft.timeoutMs ?? ""} onChange={(event) => setDraft({ ...draft, timeoutMs: event.target.value.length === 0 ? null : Number(event.target.value) })} placeholder="120000" /><small>Milliseconds. Use zero or blank to disable.</small></label>
 					</div>
-					{draft.pinnedModels.length > 0 && <small className="pinned-models-note">Pinned defaults: {draft.pinnedModels.join(", ")}</small>}
+						</div>
+					</details>
 					<div className="connection-action-row">
-						<button className="primary-button" type="button" onClick={() => void applyDraft()}><Save aria-hidden="true" /> Apply Profile</button>
-						<button className="secondary-button" type="button" disabled={testPending} onClick={() => void testDraft()}><Zap aria-hidden="true" /> {testPending ? "Testing..." : "Test Connection"}</button>
-						{selectedProfile && credentialDraft.length > 0 && <button className="secondary-button" type="button" onClick={() => void setCredential()}><KeyRound aria-hidden="true" /> Set Credential</button>}
-						{selectedProfile?.credentialConfigured && <button className="secondary-button" type="button" onClick={() => void resetCredential()}><RotateCcw aria-hidden="true" /> Reset Credential</button>}
+						<button className="secondary-button" type="button" disabled={testPending} onClick={() => void testDraft()}><Zap aria-hidden="true" /> {testPending ? "Testing..." : "Test connection"}</button>
+						<button className="primary-button" type="button" onClick={() => void applyDraft()}><Save aria-hidden="true" /> {selectedProfile ? "Save changes" : "Save connection"}</button>
 					</div>
-					<small className="connection-test-warning">Test Connection contacts the provider and may incur a charge. It does not save this draft.</small>
+					<small className="connection-test-warning">Testing contacts the provider and may incur a charge. It does not save changes.</small>
 				</div>
-			</section>
+			</section>}
 
 			{(notice || error || conflict) && <p className={error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={error ? "alert" : "status"}>{error ?? notice}{conflict && <small> Authoritative revision {conflict.actualRevision} is loaded. Review the draft before retrying.</small>}</p>}
-			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers stay outside Conversation state and are never returned to the client.</span></div>
-			{selectedProfile && <p className="connection-active-note">{selectedProfile.id === settings.activeProfileId ? <><Check aria-hidden="true" /> This Profile is active for new Generations.</> : "This Profile is saved but not active yet."}</p>}
+			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers stay outside Conversation data and are never returned to the client.</span></div>
 		</div>
 	);
 }

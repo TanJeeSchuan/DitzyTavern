@@ -1,7 +1,6 @@
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../workspace";
-import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 
 export function SettingsPanel({
 	theme,
@@ -40,7 +39,6 @@ export function SettingsPanel({
 					))}
 				</div>
 			</section>
-			<ConnectionSettingsPanel />
 		</div>
 	);
 }

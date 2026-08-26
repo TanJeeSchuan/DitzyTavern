@@ -210,6 +210,19 @@
 }
 
 @media (max-width: 40rem) {
+	.connection-preset-list {
+		grid-template-columns: 1fr;
+	}
+
+	.credential-field-row {
+		grid-template-columns: 1fr;
+	}
+
+	.credential-field-row > button {
+		justify-self: start;
+		height: auto;
+	}
+
 	.navigation-rail {
 		grid-template-columns: auto 1fr auto;
 	}

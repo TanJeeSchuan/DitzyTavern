@@ -9,6 +9,7 @@ import type {
 	Workspace,
 } from "../workspace";
 import { SettingsPanel } from "./SettingsPanel";
+import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import type { PrimaryPanel } from "./types";
 
 export function PrimaryPanelView({
@@ -64,7 +65,9 @@ export function PrimaryPanelView({
 								? "Cast"
 								: panel === "library"
 									? "Character Library"
-									: "Settings"
+									: panel === "models"
+										? "Model Settings"
+										: "Settings"
 						}
 						onClose={onClose}
 					/>
@@ -85,6 +88,7 @@ export function PrimaryPanelView({
 					{panel === "settings" && (
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
+					{panel === "models" && <ConnectionSettingsPanel />}
 				</>
 			)}
 		</aside>
