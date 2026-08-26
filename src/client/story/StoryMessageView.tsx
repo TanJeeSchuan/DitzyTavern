@@ -105,7 +105,7 @@ export function StoryMessageView({
 					{active !== undefined
 						? visibleVariantContent(active)
 								.split("\n\n")
-								.map((paragraph) => <p key={paragraph}>{paragraph}</p>)
+								.map((paragraph, index) => <p key={index}>{paragraph}</p>)
 						: null}
 				</div>
 			)}
