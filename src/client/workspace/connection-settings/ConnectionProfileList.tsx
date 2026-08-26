@@ -50,9 +50,14 @@ export function ConnectionProfileList({
 							<details
 								className="connection-profile-menu"
 								open={profile.id === openProfileMenuId}
-								onToggle={(event) => onToggleProfileMenu(event.currentTarget.open ? profile.id : null)}
 							>
-								<summary aria-label={`More actions for ${profile.displayName}`}><Ellipsis aria-hidden="true" /></summary>
+								<summary
+									aria-label={`More actions for ${profile.displayName}`}
+									onClick={(event) => {
+										event.preventDefault();
+										onToggleProfileMenu(openProfileMenuId === profile.id ? null : profile.id);
+									}}
+								><Ellipsis aria-hidden="true" /></summary>
 								<div>
 									<button type="button" onClick={() => onRequestDeletion(profile)}><Trash2 aria-hidden="true" /> Delete profile</button>
 								</div>
