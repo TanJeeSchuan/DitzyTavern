@@ -12,6 +12,18 @@ _Avoid_: response generation, reply generation
 One request to a model made as part of a Generation.
 _Avoid_: response, API call
 
+**Active Generation**:
+A Generation that the server has accepted but whose Generation attempt has not reached a terminal outcome.
+_Avoid_: client stream, pending response
+
+**Provisional Variant**:
+The server-owned Variant that receives an Active Generation's output. It becomes durable after visible output arrives and is removed if the Generation terminates without output.
+_Avoid_: client placeholder, streaming response
+
+**Generation checkpoint**:
+A durable snapshot of an Active Generation's accumulated Content, Reasoning Content, and latest persisted event position.
+_Avoid_: autosave, stream event
+
 **Generated Variant**:
 A Variant produced by a Generation attempt and retained as part of the Conversation.
 _Avoid_: response, completion
@@ -20,9 +32,65 @@ _Avoid_: response, completion
 A Generation whose Generated Variant begins a new Message at the current end of a Conversation.
 _Avoid_: new response, normal generation
 
+**Continuation Generation**:
+A Tail Generation started without a new Human-authored Message. It continues from the existing Selected narrative path.
+_Avoid_: empty message, blank submission, appended continuation
+
+**Generation intent**:
+The purpose of a Generation attempt expressed without provider-specific roles. A Generation may respond to a Human-authored Message or continue the existing Selected narrative path.
+_Avoid_: generation type, synthetic user message
+
+**Continuation strategy**:
+The Generation setting that tells a model adapter to request continuation through an ephemeral instruction or an assistant prefill.
+_Avoid_: continue mode, provider role
+
+**Prefill suffix**:
+Whitespace appended to the preceding model text only while constructing an assistant-prefill request. It may be empty, a space, a newline, or two newlines and never changes stored Message content.
+_Avoid_: continue postfix, message separator
+
+**Continuation instruction**:
+Editable Conversation guidance used by the instruction Continuation strategy to request more writing without repetition. It is part of the Prompt Plan but not Conversation history.
+_Avoid_: continue nudge, synthetic Message
+
 **Sibling Generation**:
 A Generation whose Generated Variant becomes another Variant of an existing Message.
 _Avoid_: regenerate, swipe generation
+
+**Selected narrative path**:
+The ordered history formed by taking the selected Variant of each Message. Tail Generation uses the path through the end; Sibling Generation uses the path strictly before its target Message.
+_Avoid_: active branch, current responses
+
+**Token estimate**:
+An approximate measure of a Prompt Plan's input size before a Generation attempt. It is neither an exact provider token count nor proof that the provider will accept the request.
+_Avoid_: token count, exact tokens
+
+**Safety allowance**:
+A configurable token reserve added to the Token estimate before checking a Prompt Plan against its context limit. Its default is 500 tokens and it is not a statistical uncertainty range.
+_Avoid_: error bound, token variance
+
+**Estimation transcript**:
+A deterministic single-text representation of an ordered Prompt Plan used only to obtain its Token estimate. It is never sent to the model.
+_Avoid_: serialized prompt, provider request
+
+**Revision window**:
+The two latest model-authored Messages and the Human-authored Messages between them. Variant selections inside this window may change the Selected narrative path without entering Preview mode.
+_Avoid_: mutable tail, recent history
+
+**Preview mode**:
+A temporary view of one Variant outside the Revision window. It does not change the Selected narrative path unless the user confirms it.
+_Avoid_: pending selection, draft branch
+
+**Confirm Change**:
+The action that makes a previewed Variant part of the Selected narrative path. Messages after the changed Variant remain unchanged.
+_Avoid_: apply preview, commit branch
+
+**Human-authored Message**:
+An ordinary Message produced by the human-controlled Participant. Guidance and in-character writing are usage styles, not different Message types.
+_Avoid_: guidance record, instruction message
+
+**Message authorship**:
+The Participant responsible for producing a Message, independent of any fictional speakers or actions represented inside its content.
+_Avoid_: detected speaker, character attribution
 
 ## Chat provenance and imports
 

@@ -254,7 +254,6 @@ interface CapturedGeneration {
 	readonly settings: ConversationGenerationSettings;
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly provenance: ConversationDataEntry;
-	readonly budget: PromptBudgetResult;
 }
 
 function captureGeneration(
@@ -291,7 +290,6 @@ function captureGeneration(
 		settings: settingsCapture.settings,
 		connection: settingsCapture.connection,
 		provenance: settingsCapture.provenance,
-		budget,
 	};
 }
 

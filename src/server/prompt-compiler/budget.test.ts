@@ -41,15 +41,15 @@ describe("Prompt Plan budget", () => {
 
 		expect(calls).toEqual([toEstimationTranscript(planFor(history))]);
 		expect(result).toMatchObject({
-		fits: true,
-		tokenEstimate: 3,
-		responseBudget: 8,
-		safetyAllowance: 2,
-		totalRequiredTokens: 13,
-		omittedHistory: [],
-		retainedHistory: history,
-		retainedHistoryRoles: ["human", "model"],
-	});
+			fits: true,
+			tokenEstimate: 3,
+			responseBudget: 8,
+			safetyAllowance: 2,
+			totalRequiredTokens: 13,
+			omittedHistory: [],
+			retainedHistory: history,
+			retainedHistoryRoles: ["human", "model"],
+		});
 	});
 
 	test("drops the oldest whole history entry and recompiles until it fits", () => {

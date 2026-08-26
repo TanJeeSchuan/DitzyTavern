@@ -758,6 +758,7 @@ describe("Current Generate workflow", () => {
 				},
 			},
 		});
+		const estimates = [200, 100];
 		const sibling = await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
@@ -971,10 +972,7 @@ describe("Current Generate workflow", () => {
 				receivedPlan = promptPlan;
 				return "Budgeted sibling output.";
 			}),
-			tokenEstimator: createTokenEstimator((() => {
-				const estimates = [200, 100];
-				return () => estimates.shift() ?? 100;
-			})()),
+			tokenEstimator: createTokenEstimator(() => estimates.shift() ?? 100),
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([

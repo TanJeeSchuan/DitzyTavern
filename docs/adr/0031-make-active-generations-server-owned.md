@@ -1,0 +1,13 @@
+# Make Active Generations server-owned
+
+The server owns every Active Generation from prompt compilation through provider communication and terminal Conversation state. When it accepts a Tail or Continuation Generation, it creates a provisional Message and Variant; a Sibling Generation creates a provisional sibling Variant. Send-and-Generate creates the accepted Human-authored Message and provisional model target atomically. The server translates provider-specific streams into normalized application events for clients, so clients never contact providers or interpret their protocols.
+
+Visible output makes the Provisional Variant durable. A terminal attempt with no visible Content or Reasoning Content removes the provisional model target while retaining an accepted Human-authored Message. This adds explicit active-state cleanup, but gives every client the same authoritative response position and makes resumable streaming independent of the initiating browser connection.
+
+Client navigation, reload, or disconnection only unsubscribes that client and never cancels the Active Generation. Explicit Stop or Stop All, provider termination, inactivity timeout, and server shutdown are the terminal controls. A reconnecting client resumes from the server's ordered Generation events or reloads authoritative state.
+
+Normalized output events flow to subscribed clients immediately. The server periodically checkpoints accumulated Content, Reasoning Content, and the latest persisted Generation event position to the Provisional Variant, then forces a final checkpoint at termination. Checkpoints do not advance the Conversation Revision; Generation events carry their own order. Creating the provisional target and resolving or removing it are lifecycle transitions that do advance the Conversation Revision.
+
+Startup performs one small recovery sweep for Active Generations left by a stopped process. A checkpoint containing Content or Reasoning Content becomes an interrupted durable Variant with `server-restart` as its cause; an empty provisional target is removed, and a failed sibling restores the previously selected Variant. Accepted Human-authored Messages remain. The server never resumes or automatically retries the lost provider request.
+
+The complete Generation record and captured Prompt Plan live only while active and through the bounded SSE replay period. After that period the server removes them. The resulting Variant retains compact effective settings, usage, finish reason, terminal status, interruption cause, and provider-safe connection identity as its long-term provenance.

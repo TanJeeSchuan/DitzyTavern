@@ -1,0 +1,5 @@
+# Preview older Variant changes before persisting
+
+Selecting a Variant outside the Revision window enters client-owned Preview mode instead of immediately changing the server's Selected narrative path. Preview mode shows one changed Message at a time, replaces causally downstream writing with skeletons, blocks server mutations, and keeps a visible warning with Confirm Change and Cancel Preview actions. Closing the Chat requires confirmation before discarding the preview, while reload discards it.
+
+Confirm Change uses the ordinary revision-guarded Variant selection command. It persists only the previewed selection and leaves every later Message unchanged because the user has explicitly accepted the historical change. Keeping preview policy in the client preserves the server's general Variant selection command while preventing a casual historical Swipe from silently changing authoritative history.

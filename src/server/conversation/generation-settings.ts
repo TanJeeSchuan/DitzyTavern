@@ -113,7 +113,9 @@ function validateGenerationSettings(
 	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
 		throw new InvalidConversationCommandError("Response budget must be a positive whole number.");
 	}
-	const safetyAllowance = input.safetyAllowance ?? DEFAULT_SAFETY_ALLOWANCE;
+	const safetyAllowance = input.safetyAllowance === undefined
+		? DEFAULT_SAFETY_ALLOWANCE
+		: input.safetyAllowance;
 	if (!Number.isInteger(safetyAllowance) || safetyAllowance < 0) {
 		throw new InvalidConversationCommandError(
 			"Safety allowance must be a non-negative whole number.",
