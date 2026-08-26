@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openDatabase } from "../../server/database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
-import type { ConnectionProfileDraft } from "../../server/connection-settings";
 import type { ModelFetch } from "../../server/model-client";
+import type { ConnectionProfileDraft } from "../../server/connection-settings";
 
 const key = new Uint8Array(32).fill(11);
 
@@ -19,42 +19,17 @@ const deepSeekProfile = {
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
 };
 
+type LegacyConnectionProfileDraft = ConnectionProfileDraft & {
+	backendOptions: Record<string, string | number | boolean | null>;
+};
+
 type ConnectionCommandPayload =
-	| {
-		type: "create-profile";
-		expectedRevision: number;
-		profile: ConnectionProfileDraft;
-		credential?: string | null;
-	}
-	| {
-		type: "apply-profile";
-		expectedRevision: number;
-		profileId: number;
-		profile: ConnectionProfileDraft;
-	}
-	| {
-		type: "set-credential";
-		expectedRevision: number;
-		profileId: number;
-		credential: string;
-	}
-	| {
-		type: "reset-credential";
-		expectedRevision: number;
-		profileId: number;
-		confirmed: boolean;
-	}
-	| {
-		type: "activate-profile";
-		expectedRevision: number;
-		profileId: number;
-	}
-	| {
-		type: "delete-profile";
-		expectedRevision: number;
-		profileId: number;
-		replacementProfileId?: number | null;
-	};
+	| { type: "create-profile"; expectedRevision: number; profile: ConnectionProfileDraft | LegacyConnectionProfileDraft; credential?: string | null }
+	| { type: "apply-profile"; expectedRevision: number; profileId: number; profile: ConnectionProfileDraft | LegacyConnectionProfileDraft }
+	| { type: "set-credential"; expectedRevision: number; profileId: number; credential: string }
+	| { type: "reset-credential"; expectedRevision: number; profileId: number; confirmed: boolean }
+	| { type: "activate-profile"; expectedRevision: number; profileId: number }
+	| { type: "delete-profile"; expectedRevision: number; profileId: number; replacementProfileId?: number | null };
 
 describe("Connection Settings transport adapter", () => {
 	let database: Database;
@@ -227,6 +202,56 @@ describe("Connection Settings transport adapter", () => {
 		const afterApply = await applied.json();
 		expect(afterApply.settings.profiles[0].discoveryCatalog).toEqual([]);
 		expect(afterApply.settings.profiles[0].pinnedModels).toEqual(deepSeekProfile.pinnedModels);
+	});
+
+	test("does not commit a discovery result after the Profile changes while fetching", async () => {
+		const created = await post({
+			type: "create-profile",
+			expectedRevision: 0,
+			profile: deepSeekProfile,
+		});
+		const createdBody = await created.json();
+		const profileId = createdBody.settings.profiles[0].id;
+		let releaseFetch!: () => void;
+		let fetchStarted!: () => void;
+		const fetchReady = new Promise<void>((resolve) => { fetchStarted = resolve; });
+		const fetchRelease = new Promise<void>((resolve) => { releaseFetch = resolve; });
+		const pendingDiscovery = createConnectionSettingsRoutes(database, {
+			masterKey: key,
+			fetch: async () => {
+				fetchStarted();
+				await fetchRelease;
+				return new Response(JSON.stringify({ data: [{ id: "stale-model" }] }), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				});
+			},
+		}).handle(new Request("http://localhost/api/connection-settings/discovery", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ profileId }),
+		}));
+		await fetchReady;
+
+		const applied = await post({
+			type: "apply-profile",
+			expectedRevision: createdBody.settings.revision,
+			profileId,
+			profile: { ...deepSeekProfile, modelsUrl: "http://127.0.0.1:43127/new-models" },
+		});
+		expect(applied.status).toBe(200);
+		releaseFetch();
+
+		const stale = await pendingDiscovery;
+		expect(stale.status).toBe(409);
+		expect(await stale.json()).toMatchObject({
+			outcome: "conflict",
+			expectedRevision: createdBody.settings.revision,
+			actualRevision: createdBody.settings.revision + 1,
+			currentSettings: {
+				profiles: [{ id: profileId, modelsUrl: "http://127.0.0.1:43127/new-models", discoveryCatalog: [] }],
+			},
+		});
 	});
 
 	test("activates and deletes Profiles through revisioned commands", async () => {

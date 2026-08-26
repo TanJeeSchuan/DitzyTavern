@@ -82,11 +82,18 @@ export function ActiveWritingWorkspace({
 	const anchoredScrollHeightRef = useRef(0);
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [streamingOutput, setStreamingOutput] = useState({ content: "", reasoning: "" });
+	const activeChatIdRef = useRef(activeChatId);
 	const generationAbortRef = useRef<AbortController | null>(null);
 	const [generationError, setGenerationError] = useState<string | null>(null);
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
+	activeChatIdRef.current = activeChatId;
+
+	useEffect(() => () => {
+		generationAbortRef.current?.abort();
+		generationAbortRef.current = null;
+	}, []);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -124,9 +131,17 @@ export function ActiveWritingWorkspace({
 		if (!Number.isInteger(conversationId) || conversationId <= 0) {
 			return;
 		}
+		let cancelled = false;
 		loadConversation(conversationId)
-			.then(setConversation)
-			.catch(() => setConversation(null));
+			.then((loaded) => {
+				if (!cancelled) setConversation(loaded);
+			})
+			.catch(() => {
+				if (!cancelled) setConversation(null);
+			});
+		return () => {
+			cancelled = true;
+		};
 	}, [activeChatId]);
 
 	// Load the native history in stable chronological pages: the story reads
@@ -204,6 +219,12 @@ export function ActiveWritingWorkspace({
 	};
 
 	const selectChat = (chatId: string) => {
+		activeChatIdRef.current = chatId;
+		generationAbortRef.current?.abort();
+		generationAbortRef.current = null;
+		setIsGenerating(false);
+		setStreamingOutput({ content: "", reasoning: "" });
+		setGenerationError(null);
 		setActiveChatId(chatId);
 		setChatInfoOpen(false);
 		setPrimaryPanel(null);
@@ -311,18 +332,28 @@ export function ActiveWritingWorkspace({
 		setGenerationError(null);
 		const controller = new AbortController();
 		generationAbortRef.current = controller;
-		void streamConversationReply(conversation.id, {
+		const conversationId = conversation.id;
+		const requestIsCurrent = () =>
+			generationAbortRef.current === controller &&
+			Number(activeChatIdRef.current) === conversationId;
+		void streamConversationReply(conversationId, {
 			signal: controller.signal,
 			onDelta: (event) => {
+				if (!requestIsCurrent()) return;
 				if (event.type === "content") setStreamingOutput((current) => ({ ...current, content: current.content + event.text }));
 				if (event.type === "reasoning") setStreamingOutput((current) => ({ ...current, reasoning: current.reasoning + event.text }));
 			},
 		})
 			.then(async (outcome) => {
+				if (!requestIsCurrent()) return;
 				if (outcome.outcome === "applied") {
-					setConversation(outcome.conversation);
-					const fresh = await chatHistoryTransport.loadHistory(conversation.id, { page: 1 });
-					if (fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
+					const [freshConversation, freshHistory] = await Promise.all([
+						loadConversation(conversationId),
+						chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+					]);
+					if (!requestIsCurrent()) return;
+					if (freshConversation !== null) setConversation(freshConversation);
+					if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
 					return;
 				}
 				if (outcome.outcome === "not-found") {
@@ -332,17 +363,19 @@ export function ActiveWritingWorkspace({
 				setGenerationError(outcome.reason);
 			})
 			.catch(async () => {
+				if (!requestIsCurrent()) return;
 				if (controller.signal.aborted) {
 					// The server preserves any received partial output as an interrupted
 					// Variant before the cancelled request unwinds. Refresh the visible
 					// history so cancellation does not discard that writing in the UI.
-					const fresh = await chatHistoryTransport.loadHistory(conversation.id, { page: 1 });
-					if (fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
+					const fresh = await chatHistoryTransport.loadHistory(conversationId, { page: 1 });
+					if (requestIsCurrent() && fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
 					return;
 				}
 				setGenerationError("Generation could not be completed.");
 			})
 			.finally(() => {
+				if (!requestIsCurrent()) return;
 				generationAbortRef.current = null;
 				setIsGenerating(false);
 				setStreamingOutput({ content: "", reasoning: "" });

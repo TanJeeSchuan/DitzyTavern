@@ -18,7 +18,6 @@ const profile: ConnectionProfile = {
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
-	backendOptions: {},
 	credentialConfigured: true,
 	headers: [],
 };
@@ -94,6 +93,7 @@ describe("OpenRouter Model Client", () => {
 				blocks: [{ kind: "system-instruction", content: "Answer." }],
 				warnings: [],
 			},
+			historyRoles: [],
 			modelId: "deepseek/deepseek-v4-flash",
 			generationSettings,
 		});
@@ -129,6 +129,7 @@ describe("OpenRouter Model Client", () => {
 					blocks: [{ kind: "system-instruction", content: "Answer." }],
 					warnings: [],
 				},
+				historyRoles: [],
 				modelId: "deepseek/deepseek-v4-flash",
 				generationSettings,
 			})) {

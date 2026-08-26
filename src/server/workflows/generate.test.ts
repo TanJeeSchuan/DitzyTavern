@@ -556,7 +556,6 @@ describe("Current Generate workflow", () => {
 			outputTokenRepresentation: "automatic" as const,
 			timeoutMs: 120_000,
 			pinnedModels: ["custom-before-discovery"],
-			backendOptions: {},
 		};
 		const created = settingsModule.createProfile({
 			expectedRevision: 0,

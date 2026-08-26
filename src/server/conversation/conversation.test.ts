@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "../database/database";
+import { conversationGenerationSettingsTable } from "../database/schema";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
@@ -83,6 +85,16 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(StaleConversationRevisionError);
 		expect(secondBrowser.getSnapshot(conversationId)).toEqual(updated);
+	});
+
+	test("keeps generation-settings reads pure when the backing row is absent", () => {
+		const db = drizzle(database);
+		db.delete(conversationGenerationSettingsTable).run();
+
+		const settings = createConversationModule(database).getGenerationSettings(conversationId);
+
+		expect(settings).toBeUndefined();
+		expect(db.select().from(conversationGenerationSettingsTable).all()).toHaveLength(0);
 	});
 
 	test("creates Messages with immutable Author Stamps captured server-side", () => {

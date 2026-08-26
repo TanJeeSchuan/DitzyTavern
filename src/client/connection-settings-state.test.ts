@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionSettingsEditorState } from "./connection-settings-state";
-import { preserveConnectionDraftOnConflict } from "./connection-settings-state";
+import { copyDraft, preserveConnectionDraftOnConflict } from "./connection-settings-state";
 
 const draft = {
 	displayName: "Local draft",
@@ -44,5 +44,37 @@ describe("preserveConnectionDraftOnConflict", () => {
 		expect(next.credentialDraft).toBe("replacement-secret");
 		expect(next.conflict).toEqual(conflict);
 		expect(state.settings.revision).toBe(3);
+	});
+});
+
+describe("copyDraft", () => {
+	test("projects a complete profile without server-only fields", () => {
+		const profile = {
+			id: 7,
+			displayName: "DeepSeek",
+			apiFormat: "chat-completions" as const,
+			requestUrl: "https://api.deepseek.com/v1/",
+			modelsUrl: "https://api.deepseek.com/models",
+			modelBackend: "ai-sdk" as const,
+			adapter: "deepseek" as const,
+			outputTokenRepresentation: "automatic" as const,
+			timeoutMs: 120_000,
+			pinnedModels: ["deepseek-chat"],
+			discoveryCatalog: ["deepseek-chat", "deepseek-reasoner"],
+			credentialConfigured: true,
+			headers: [{ name: "X-Client", configured: true }],
+		};
+
+		expect(copyDraft(profile)).toEqual({
+			displayName: "DeepSeek",
+			apiFormat: "chat-completions",
+			requestUrl: "https://api.deepseek.com/v1/",
+			modelsUrl: "https://api.deepseek.com/models",
+			modelBackend: "ai-sdk",
+			adapter: "deepseek",
+			outputTokenRepresentation: "automatic",
+			timeoutMs: 120_000,
+			pinnedModels: ["deepseek-chat"],
+		});
 	});
 });

@@ -3,9 +3,12 @@ import type {
 	ConnectionProfileSecretSnapshot,
 } from "../connection-settings/types";
 import { authenticatedHeaders } from "./authenticated-headers";
-import type { ModelFetch } from "./test-connection";
+import type { ModelFetch } from "./model-fetch";
+import { fetchWithTimeout, ModelFetchTimeoutError, readBoundedResponse } from "./model-fetch";
+import { formatProviderError, snapshotProviderResponse } from "./provider-errors";
 
 const MAX_DISCOVERY_RESPONSE_BYTES = 2 * 1024 * 1024;
+const DISCOVERY_TIMEOUT_MS = 10_000;
 
 export type DiscoveryFailureKind =
 	| "authentication"
@@ -56,26 +59,31 @@ export async function discoverModels(
 
 	const credential = input.secrets?.credential ?? null;
 	const customHeaders = { ...input.secrets?.headers };
+	const timeoutMs = input.profile.timeoutMs !== null && input.profile.timeoutMs > 0
+		? input.profile.timeoutMs
+		: DISCOVERY_TIMEOUT_MS;
 	try {
-		const response = await (options.fetch ?? fetch)(modelsUrl, {
+		const response = await fetchWithTimeout(options.fetch ?? fetch, modelsUrl, {
 			method: "GET",
 			headers: authenticatedHeaders(undefined, credential, customHeaders),
 			redirect: "error",
-		});
+		}, timeoutMs);
 		if (response.status >= 300 && response.status < 400) {
 			return failure("redirect", "The Models endpoint redirected the credentialed request, so it was not followed.");
 		}
 		if (!response.ok) {
+			const snapshot = await snapshotProviderResponse(response);
 			return failure(
 				response.status === 401 || response.status === 403 ? "authentication" : "endpoint",
-				await providerFailureMessage(response, credential, customHeaders),
+				formatProviderError(snapshot, { credential, headers: customHeaders }, "models"),
 			);
 		}
 
-		const bytes = new Uint8Array(await response.arrayBuffer());
-		if (bytes.byteLength > MAX_DISCOVERY_RESPONSE_BYTES) {
+		const bounded = await readBoundedResponse(response, MAX_DISCOVERY_RESPONSE_BYTES);
+		if (bounded.truncated) {
 			return failure("malformed-response", "The Models response is too large to read safely.");
 		}
+		const bytes = bounded.bytes;
 		let parsed: JsonValue;
 		try {
 			// SAFETY: the JSON parser establishes the only boundary at which the
@@ -91,6 +99,9 @@ export async function discoverModels(
 		}
 		return { outcome: "success", catalog: normalizeDiscoveryCatalog(catalog.data) };
 	} catch (error) {
+		if (error instanceof ModelFetchTimeoutError) {
+			return failure("timeout", "The Models endpoint did not respond in time.");
+		}
 		if (error instanceof Error && /redirect/i.test(error.message)) {
 			return failure("redirect", "The Models endpoint redirected the credentialed request, so it was not followed.");
 		}
@@ -143,69 +154,6 @@ function compareModelIds(left: string, right: string): number {
 	if (left < right) return -1;
 	if (left > right) return 1;
 	return 0;
-}
-
-async function providerFailureMessage(
-	response: Response,
-	credential: string | null,
-	customHeaders: Readonly<Record<string, string>>,
-): Promise<string> {
-	const contentType = response.headers.get("content-type") ?? "";
-	if (contentType.length > 0 && !isTextualContentType(contentType)) {
-		const bytes = new Uint8Array(await response.arrayBuffer());
-		return `The Models endpoint returned HTTP ${response.status} with ${contentType} content (${bytes.byteLength} bytes).`;
-	}
-	const text = await response.text().catch(() => "");
-	const message = extractMessage(text) ?? text.trim();
-	if (message.length === 0) return `The Models endpoint returned HTTP ${response.status}.`;
-	let safe = message;
-	for (const secret of [credential ?? "", ...Object.values(customHeaders)]) {
-		if (secret.length > 0) safe = safe.split(secret).join("[redacted]");
-	}
-	const bounded = boundDiscoveryMessage(safe);
-	return `The Models endpoint returned HTTP ${response.status}: ${bounded.value}${bounded.truncated ? " (truncated)" : ""}`;
-}
-
-interface BoundedDiscoveryMessage {
-	readonly value: string;
-	readonly truncated: boolean;
-}
-
-function boundDiscoveryMessage(value: string): BoundedDiscoveryMessage {
-	const characters = Array.from(value);
-	let bytes = 0;
-	let result = "";
-	for (const character of characters) {
-		const size = new TextEncoder().encode(character).byteLength;
-		if (bytes + size > 16 * 1024) return { value: result, truncated: true };
-		bytes += size;
-		result += character;
-	}
-	return { value: result, truncated: false };
-}
-
-function extractMessage(value: string): string | undefined {
-	try {
-		// SAFETY: JSON.parse is followed by jsonObject/jsonString checks before
-		// any provider-controlled field is read.
-		const parsed = JSON.parse(value) as JsonValue;
-		const root = jsonObject(parsed);
-		const nested = jsonObject(root?.error ?? null);
-		const message = jsonString(nested?.message) ?? jsonString(root?.message) ?? jsonString(root?.detail);
-		return message ?? (value.trim().length > 0 ? value.trim() : undefined);
-	} catch {
-		return value.trim().length > 0 ? value.trim() : undefined;
-	}
-}
-
-function jsonString(value: JsonValue | undefined): string | undefined {
-	if (value === undefined || Object.prototype.toString.call(value) !== "[object String]") return undefined;
-	return String(value).trim() || undefined;
-}
-
-function isTextualContentType(contentType: string): boolean {
-	const normalized = contentType.toLowerCase();
-	return normalized.startsWith("text/") || normalized.includes("json") || normalized.includes("xml");
 }
 
 function failure(kind: DiscoveryFailureKind, message: string): DiscoveryResult {

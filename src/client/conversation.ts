@@ -66,18 +66,8 @@ export interface ConversationGenerationSettings {
 	};
 }
 
-export type GenerationResult =
-	| {
-			outcome: "applied";
-			conversation: ConversationSummary;
-			variant: {
-				messageId: number;
-				variantId: number;
-				content: string;
-				timestamp: string;
-				data: Array<{ namespace: string; key: string; value: string }>;
-			};
-		}
+export type GenerationStreamResult =
+	| { outcome: "applied" }
 	| { outcome: "not-found" }
 	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid"; reason: string };
 
@@ -343,20 +333,6 @@ export async function loadConversationGenerationSettings(
 	return (await response.json()) as ConversationGenerationSettings;
 }
 
-export async function generateConversationReply(
-	conversationId: number,
-): Promise<GenerationResult> {
-	const response = await fetch(`/api/conversations/${conversationId}/generate`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: "{}",
-	});
-	// SAFETY: the route's discriminated response contract is narrowed by the
-	// outcome field before callers consume its payload.
-	const body = (await response.json()) as GenerationResult;
-	return body;
-}
-
 // POST generation uses a native fetch stream because EventSource cannot send
 // a request body. Frames are decoded and validated here before the workspace
 // sees visible text; malformed provider or server payloads never become UI
@@ -367,7 +343,7 @@ export async function streamConversationReply(
 		signal?: AbortSignal;
 		onDelta: (event: GenerationStreamDelta) => void;
 	},
-): Promise<GenerationResult> {
+): Promise<GenerationStreamResult> {
 	const response = await fetch(`/api/conversations/${conversationId}/generate/stream`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -380,7 +356,7 @@ export async function streamConversationReply(
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let pending = "";
-	let result: GenerationResult | null = null;
+	let result: GenerationStreamResult | null = null;
 	const consumeFrame = (frame: string) => {
 		let eventType = "message";
 		const dataLines: string[] = [];
@@ -468,27 +444,20 @@ function parseGenerationStreamDelta(value: GenerationStreamJsonObject): Generati
 
 function parseGenerationApplied(
 	value: GenerationStreamJsonObject,
-): Extract<GenerationResult, { outcome: "applied" }> | null {
+): Extract<GenerationStreamResult, { outcome: "applied" }> | null {
 	if (generationStreamJsonString(value.outcome) !== "applied") return null;
-	// SAFETY: the server's SSE complete event is produced from the typed
-	// generation route payload; the discriminant was checked immediately above.
-	return value as AppliedGenerationPayload;
+	return { outcome: "applied" };
 }
 
 function parseGenerationFailure(
 	value: GenerationStreamJsonObject,
-): Exclude<GenerationResult, { outcome: "applied" }> | null {
+): Exclude<GenerationStreamResult, { outcome: "applied" }> | null {
 	const outcome = generationStreamJsonString(value.outcome);
-	if (outcome !== "not-found" && outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid") {
-		return null;
-	}
-	// SAFETY: the server's SSE error event is a typed discriminated outcome; the
-	// closed outcome vocabulary was checked immediately above.
-	return value as FailureGenerationPayload;
+	if (outcome === "not-found") return { outcome };
+	if (outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid") return null;
+	const reason = generationStreamJsonString(value.reason);
+	return reason === undefined ? null : { outcome, reason };
 }
-
-type AppliedGenerationPayload = GenerationStreamJsonObject & Extract<GenerationResult, { outcome: "applied" }>;
-type FailureGenerationPayload = GenerationStreamJsonObject & Exclude<GenerationResult, { outcome: "applied" }>;
 
 function generationStreamJsonObject(value: GenerationStreamJsonValue | undefined): GenerationStreamJsonObject | null {
 	if (Object.prototype.toString.call(value) !== "[object Object]") return null;

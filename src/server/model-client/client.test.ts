@@ -18,6 +18,16 @@ const plan: PromptPlan = {
 	warnings: [],
 };
 
+const testGenerationSettings = {
+	temperature: null,
+	topP: null,
+	frequencyPenalty: null,
+	presencePenalty: null,
+	contextLimit: 100,
+	responseBudget: 16,
+	requestOverrides: {},
+};
+
 describe("Model Client seam", () => {
 	test("the fake client streams a complete ordinary result without network access", async () => {
 		let receivedPlan: PromptPlan | undefined;
@@ -27,7 +37,12 @@ describe("Model Client seam", () => {
 		});
 
 		await expect(
-			collectModelClientContent(client, { promptPlan: plan }),
+			collectModelClientContent(client, {
+				promptPlan: plan,
+				historyRoles: [],
+				modelId: "test-model",
+				generationSettings: testGenerationSettings,
+			}),
 		).resolves.toBe("A complete reply.");
 		expect(receivedPlan).toBe(plan);
 	});
@@ -40,7 +55,12 @@ describe("Model Client seam", () => {
 		};
 
 		await expect(
-			collectModelClientContent(client, { promptPlan: plan }),
+			collectModelClientContent(client, {
+				promptPlan: plan,
+				historyRoles: [],
+				modelId: "test-model",
+				generationSettings: testGenerationSettings,
+			}),
 		).rejects.toThrow(ModelClientProtocolError);
 	});
 
@@ -53,7 +73,12 @@ describe("Model Client seam", () => {
 			{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
 		]);
 
-		await expect(collectModelClientGeneration(client, { promptPlan: plan })).resolves.toEqual({
+		await expect(collectModelClientGeneration(client, {
+			promptPlan: plan,
+			historyRoles: [],
+			modelId: "test-model",
+			generationSettings: testGenerationSettings,
+		})).resolves.toEqual({
 			content: "Visible answer.",
 			reasoning: "First think. ",
 			usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
@@ -68,7 +93,12 @@ describe("Model Client seam", () => {
 		]);
 
 		try {
-			await collectModelClientGeneration(client, { promptPlan: plan });
+			await collectModelClientGeneration(client, {
+				promptPlan: plan,
+				historyRoles: [],
+				modelId: "test-model",
+				generationSettings: testGenerationSettings,
+			});
 			throw new Error("Expected a typed generation error.");
 		} catch (error) {
 			expect(error).toBeInstanceOf(ModelClientGenerationError);

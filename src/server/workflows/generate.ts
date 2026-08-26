@@ -87,6 +87,11 @@ interface GenerationDerivation {
 	modelParticipant: ParticipantPreview;
 }
 
+interface SelectedHistory {
+	entries: readonly PromptHistoryEntry[];
+	roles: readonly ("human" | "model" | null)[];
+}
+
 // Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
 // `endExclusiveIndex` limits the entries to Messages strictly preceding a
@@ -94,31 +99,32 @@ interface GenerationDerivation {
 // a current Generate at the tail uses.
 const selectedHistoryFrom = (
 	snapshot: ConversationSnapshot,
-	endExclusiveIndex?: number,
-): readonly PromptHistoryEntry[] =>
-	snapshot.messages.slice(0, endExclusiveIndex).flatMap((message) => {
-		const selected = message.variants.find((variant) => variant.selected);
-		if (selected === undefined) return [];
-		return [
-			{
-				speakerName: message.author?.capturedName ?? null,
-				content: selected.content,
-			},
-		];
-	});
-
-const selectedHistoryRolesFrom = (
-	snapshot: ConversationSnapshot,
 	humanParticipantId: number,
 	modelParticipantId: number,
 	endExclusiveIndex?: number,
-): readonly ("human" | "model" | null)[] =>
-	snapshot.messages.slice(0, endExclusiveIndex).flatMap((message) => {
-		if (message.variants.find((variant) => variant.selected) === undefined) return [];
-		if (message.author?.participantId === humanParticipantId) return ["human"];
-		if (message.author?.participantId === modelParticipantId) return ["model"];
-		return [null];
-	});
+): SelectedHistory => {
+	const entries: PromptHistoryEntry[] = [];
+	const roles: ("human" | "model" | null)[] = [];
+
+	for (const message of snapshot.messages.slice(0, endExclusiveIndex)) {
+		const selected = message.variants.find((variant) => variant.selected);
+		if (selected === undefined) continue;
+
+		entries.push({
+			speakerName: message.author?.capturedName ?? null,
+			content: selected.content,
+		});
+		roles.push(
+			message.author?.participantId === humanParticipantId
+				? "human"
+				: message.author?.participantId === modelParticipantId
+					? "model"
+					: null,
+		);
+	}
+
+	return { entries, roles };
+};
 
 const deriveGeneration = (
 	snapshot: ConversationSnapshot,
@@ -133,15 +139,16 @@ const deriveGeneration = (
 		return null;
 	}
 
+	const selectedHistory = selectedHistoryFrom(snapshot, human.id, model.id);
 	const plan = compilePrompt({
 		human: toCompilerDefinition(human),
 		model: toCompilerDefinition(model),
-		history: selectedHistoryFrom(snapshot),
+		history: selectedHistory.entries,
 	});
 
 	return {
 		plan,
-		historyRoles: selectedHistoryRolesFrom(snapshot, human.id, model.id),
+		historyRoles: selectedHistory.roles,
 		humanParticipant: { id: human.id, name: human.name },
 		modelParticipant: { id: model.id, name: model.name },
 	};
@@ -225,6 +232,52 @@ const toModelClientGenerationSettings = (
 	requestOverrides: settings.requestOverrides,
 });
 
+type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
+
+interface GenerationOutcome {
+	content: string;
+	reasoning: string;
+	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+	finishReason: "stop" | "length" | "other" | null;
+	rawFinishReason: string | null;
+	status: GenerationOutcomeStatus;
+	error: string | null;
+}
+
+// The transport has one failure policy for both current and sibling
+// generations: preserve visible output when a stream fails after producing it,
+// but leave zero-output failures to the caller. Keeping that policy here means
+// commit paths only decide which Conversation operation receives the outcome.
+async function runGeneration(
+	modelClient: ModelClient,
+	input: Parameters<typeof collectModelClientGeneration>[1],
+	onEvent: GenerateReplyInput["onEvent"],
+): Promise<GenerationOutcome> {
+	try {
+		const result = await collectModelClientGeneration(modelClient, input, { onEvent });
+		return {
+			...result,
+			status: result.finishReason === "length" ? "length-limited" : "complete",
+			error: null,
+		};
+	} catch (error) {
+		if (!(error instanceof ModelClientGenerationError)) throw error;
+		const content = error.partial.content ?? "";
+		const reasoning = error.partial.reasoning ?? "";
+		if (content.length === 0 && reasoning.length === 0) throw error;
+
+		return {
+			content,
+			reasoning,
+			usage: error.partial.usage ?? null,
+			finishReason: null,
+			rawFinishReason: null,
+			status: "interrupted",
+			error: error.kind === "cancelled" ? null : error.message,
+		};
+	}
+}
+
 // Compiles the Prompt Plan the server would send for a current Generate
 // without contacting any transport. Exposes the agreed participant context
 // (the Control pair and their plan) using provider-neutral vocabulary only.
@@ -282,61 +335,27 @@ export async function generateReply(
 		input.connectionSettings,
 	);
 
-	let result: Awaited<ReturnType<typeof collectModelClientGeneration>>;
-	try {
-		result = await collectModelClientGeneration(input.modelClient, {
-			promptPlan: plan,
-			historyRoles,
-			modelId: capture.settings.modelId,
-			generationSettings: toModelClientGenerationSettings(capture.settings),
-			connection: capture.connection,
-			signal: input.signal,
-		}, { onEvent: input.onEvent });
-	} catch (error) {
-		if (!(error instanceof ModelClientGenerationError)) throw error;
-		const partial = error.partial;
-		const content = partial.content ?? "";
-		const reasoning = partial.reasoning ?? "";
-		if (content.length === 0 && reasoning.length === 0) throw error;
-		return conversation.commitGeneration({
-			conversationId: input.conversationId,
-			timestamp: input.timestamp ?? new Date().toISOString(),
-			content,
-			authorParticipantId: modelParticipant.id,
-			capturedAuthorName: modelParticipant.name,
-			humanParticipantId: humanParticipant.id,
-			modelParticipantId: modelParticipant.id,
-			provenance: capture.provenance,
-			data: generationOutcomeData({
-				status: "interrupted",
-				reasoning,
-				usage: partial.usage ?? null,
-				finishReason: null,
-				rawFinishReason: null,
-				error: error.kind === "cancelled" ? null : error.message,
-			}),
-		});
-	}
+	const outcome = await runGeneration(input.modelClient, {
+		promptPlan: plan,
+		historyRoles,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
+		signal: input.signal,
+	}, input.onEvent);
 
 	// Commit with the generation-start captures even if the Conversation
 	// moved on while the transport was working.
 	return conversation.commitGeneration({
 		conversationId: input.conversationId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
-		content: result.content,
+		content: outcome.content,
 		authorParticipantId: modelParticipant.id,
 		capturedAuthorName: modelParticipant.name,
 		humanParticipantId: humanParticipant.id,
 		modelParticipantId: modelParticipant.id,
 		provenance: capture.provenance,
-		data: generationOutcomeData({
-			status: result.finishReason === "length" ? "length-limited" : "complete",
-			reasoning: result.reasoning,
-			usage: result.usage,
-			finishReason: result.finishReason,
-			rawFinishReason: result.rawFinishReason,
-			error: null,
-		}),
+		data: generationOutcomeData(outcome),
 	});
 }
 
@@ -409,7 +428,12 @@ const deriveSiblingDerivation = (
 	// Selected history strictly preceding the target Message. Excluding the
 	// target by construction also excludes all of its existing sibling
 	// Variants: an alternative never prompts on another alternative.
-	const history = selectedHistoryFrom(snapshot, targetIndex);
+	const selectedHistory = selectedHistoryFrom(
+		snapshot,
+		human.id,
+		model.id,
+		targetIndex,
+	);
 
 	// The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
@@ -417,17 +441,12 @@ const deriveSiblingDerivation = (
 	const plan = compilePrompt({
 		human: toCompilerDefinition(human),
 		model: toCompilerDefinition(model),
-		history,
+		history: selectedHistory.entries,
 	});
 
 	return {
 		plan,
-		historyRoles: selectedHistoryRolesFrom(
-			snapshot,
-			human.id,
-			model.id,
-			targetIndex,
-		),
+		historyRoles: selectedHistory.roles,
 	};
 };
 
@@ -458,66 +477,26 @@ export async function generateSiblingVariant(
 		input.connectionSettings,
 	);
 
-	let result: Awaited<ReturnType<typeof collectModelClientGeneration>>;
-	try {
-		result = await collectModelClientGeneration(input.modelClient, {
-			promptPlan: plan,
-			historyRoles,
-			modelId: capture.settings.modelId,
-			generationSettings: toModelClientGenerationSettings(capture.settings),
-			connection: capture.connection,
-			signal: input.signal,
-		}, { onEvent: input.onEvent });
-	} catch (error) {
-		if (!(error instanceof ModelClientGenerationError)) throw error;
-		const partial = error.partial;
-		const content = partial.content ?? "";
-		const reasoning = partial.reasoning ?? "";
-		if (content.length === 0 && reasoning.length === 0) throw error;
-		return conversation.commitSiblingVariant({
-			conversationId: input.conversationId,
-			messageId: input.messageId,
-			timestamp: input.timestamp ?? new Date().toISOString(),
-			content,
-			provenance: capture.provenance,
-			data: generationOutcomeData({
-				status: "interrupted",
-				reasoning,
-				usage: partial.usage ?? null,
-				finishReason: null,
-				rawFinishReason: null,
-				error: error.kind === "cancelled" ? null : error.message,
-			}),
-		});
-	}
+	const outcome = await runGeneration(input.modelClient, {
+		promptPlan: plan,
+		historyRoles,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
+		signal: input.signal,
+	}, input.onEvent);
 
 	return conversation.commitSiblingVariant({
 		conversationId: input.conversationId,
 		messageId: input.messageId,
 		timestamp: input.timestamp ?? new Date().toISOString(),
-		content: result.content,
+		content: outcome.content,
 		provenance: capture.provenance,
-		data: generationOutcomeData({
-			status: result.finishReason === "length" ? "length-limited" : "complete",
-			reasoning: result.reasoning,
-			usage: result.usage,
-			finishReason: result.finishReason,
-			rawFinishReason: result.rawFinishReason,
-			error: null,
-		}),
+		data: generationOutcomeData(outcome),
 	});
 }
 
-type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
-
-function generationOutcomeData(input: {
-	status: GenerationOutcomeStatus;
-	reasoning: string;
-	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
-	finishReason: "stop" | "length" | "other" | null;
-	rawFinishReason: string | null;
-	error: string | null;
-}): ConversationDataEntry[] {
+function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {
 	const data: ConversationDataEntry[] = [];
 	if (input.status !== "complete") {
 		data.push({ namespace: "generation", key: "outcome", value: input.status });

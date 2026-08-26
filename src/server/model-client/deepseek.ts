@@ -1,6 +1,3 @@
-import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText } from "ai";
 import type {
 	ConnectionProfile,
@@ -15,7 +12,15 @@ import type {
 	ModelClientUsage,
 } from "./types";
 import { authenticatedHeaders } from "./authenticated-headers";
-import type { ModelFetch } from "./test-connection";
+import type { ModelFetch } from "./model-fetch";
+import { createModelAdapter } from "./adapter";
+import { ModelClientTransportError } from "./errors";
+import {
+	formatProviderError,
+	snapshotProviderError,
+	snapshotProviderResponse,
+	type ProviderErrorLike,
+} from "./provider-errors";
 
 export interface DeepSeekModelClientOptions {
 	readonly profile: ConnectionProfile;
@@ -25,20 +30,7 @@ export interface DeepSeekModelClientOptions {
 
 export type OpenAICompatibleModelClientOptions = DeepSeekModelClientOptions;
 
-export class ModelClientTransportError extends Error {
-	readonly kind: "cancelled" | "inactivity" | "transport" | "provider" | "protocol";
-
-	constructor(
-		message: string,
-		kind: "cancelled" | "inactivity" | "transport" | "provider" | "protocol" = "transport",
-	) {
-		super(message);
-		this.name = "ModelClientTransportError";
-		this.kind = kind;
-	}
-}
-
-const MAX_PROVIDER_ERROR_BYTES = 16 * 1024;
+export { ModelClientTransportError } from "./errors";
 
 // Production v1 Model Client. The adapter owns all provider request shaping;
 // callers only supply the opaque Prompt Plan and provider-neutral generation
@@ -115,14 +107,11 @@ async function* generateOpenAICompatibleStream(options: {
 	requestUrl: string;
 	actualFetch: ModelFetch;
 }): AsyncIterable<ModelClientEvent> {
-	const modelId = options.input.modelId?.trim() ?? "";
+	const modelId = options.input.modelId.trim();
 	if (modelId.length === 0) {
 		throw new ModelClientTransportError("A model ID is required for Generation.");
 	}
 	const settings = options.input.generationSettings;
-	if (settings === undefined) {
-		throw new ModelClientTransportError("Generation settings were not captured.");
-	}
 	const controller = new AbortController();
 	let cancellation: "cancelled" | "inactivity" | null = null;
 	let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
@@ -183,41 +172,14 @@ async function* generateOpenAICompatibleStream(options: {
 	};
 
 	try {
-		const model = options.adapter === "deepseek"
-			? createDeepSeek({
-			// An empty explicit value prevents the SDK from reading a process-wide
-			// DEEPSEEK_API_KEY that does not belong to this Profile.
-			apiKey: options.credential,
-			baseURL: new URL(options.requestUrl).origin,
+		const model = createModelAdapter({
+			adapter: options.adapter,
+			modelId,
+			requestUrl: options.requestUrl,
+			credential: options.credential,
 			headers: options.customHeaders,
-			// SAFETY: the AI SDK invokes only the standard fetch call signature;
-			// Bun's optional preconnect helper is not part of this seam.
-			fetch: fetchAtResolvedDestination as typeof fetch,
-			}).chat(modelId)
-			: options.adapter === "openrouter"
-				? createOpenRouter({
-					// An empty explicit value prevents the SDK from reading a process-wide
-					// OPENROUTER_API_KEY that does not belong to this Profile.
-					apiKey: options.credential,
-					baseURL: new URL(options.requestUrl).origin,
-					headers: options.customHeaders,
-					// Strict mode enables OpenRouter's Chat Completions usage accounting
-					// while leaving optional app attribution headers unset.
-					compatibility: "strict",
-					// SAFETY: the AI SDK invokes only the standard fetch call signature;
-					// Bun's optional preconnect helper is not part of this seam.
-					fetch: fetchAtResolvedDestination as typeof fetch,
-				}).chat(modelId)
-				: createOpenAICompatible({
-				name: "ditzytavern-openai-compatible",
-				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
-				apiKey: options.credential,
-				baseURL: new URL(options.requestUrl).origin,
-				headers: options.customHeaders,
-				// SAFETY: the AI SDK invokes this standard fetch-compatible function
-				// with the same RequestInfo/RequestInit/Response contract.
-				fetch: fetchAtResolvedDestination as typeof fetch,
-			}).languageModel(modelId, { url: () => options.requestUrl });
+			fetch: fetchAtResolvedDestination,
+		});
 		const streamOptions = {
 			model,
 			messages: toMessages(options.input),
@@ -336,38 +298,9 @@ async function rejectProviderResponse(
 	customHeaders: Readonly<Record<string, string>>,
 ): Promise<void> {
 	if (response.ok) return;
-
-	const contentType = response.headers.get("content-type") ?? undefined;
-	let body: string | undefined;
-	let bodyBytes = 0;
-	try {
-		const bytes = new Uint8Array(await response.arrayBuffer());
-		bodyBytes = bytes.byteLength;
-		if (contentType === undefined || isTextualContentType(contentType)) {
-			body = new TextDecoder().decode(bytes);
-		}
-	} catch {
-		// The status remains actionable even when the provider error body cannot be read.
-	}
-
-	if (contentType !== undefined && !isTextualContentType(contentType)) {
-		throw new ModelClientTransportError(
-			`The provider returned HTTP ${response.status} with ${contentType} content (${bodyBytes} bytes).`,
-			"provider",
-		);
-	}
-
-	const message = body === undefined ? undefined : extractProviderMessage(body);
-	const safeMessage = redactProviderMessage(message ?? body, credential, customHeaders);
-	if (safeMessage !== undefined) {
-		const bounded = boundProviderMessage(safeMessage);
-		throw new ModelClientTransportError(
-			`The provider returned HTTP ${response.status}: ${bounded.value}${bounded.truncated ? " (truncated)" : ""}`,
-			"provider",
-		);
-	}
+	const snapshot = await snapshotProviderResponse(response);
 	throw new ModelClientTransportError(
-		`The provider request failed with HTTP ${response.status}.`,
+		formatProviderError(snapshot, { credential, headers: customHeaders }),
 		"provider",
 	);
 }
@@ -378,121 +311,16 @@ function normalizeProviderStreamError(
 	customHeaders: Readonly<Record<string, string>>,
 ): ModelClientTransportError {
 	if (error instanceof ModelClientTransportError) return error;
-	// SAFETY: AI SDK provider errors extend Error and expose these optional
-	// response fields; only known status/body fields are read below.
-	const providerError = error as ProviderStreamError;
-	const status = providerError.statusCode ?? providerError.status;
-	const body = providerError.responseBody;
-	const contentType = readResponseHeader(providerError.responseHeaders, "content-type");
-	if (body === undefined && status === undefined) {
+	// SAFETY: AI SDK provider failures expose the optional status/body fields
+	// represented by ProviderErrorLike; snapshotProviderError reads only those fields.
+	const snapshot = snapshotProviderError(error as ProviderErrorLike);
+	if (snapshot.body === undefined && snapshot.status === undefined) {
 		return new ModelClientTransportError("The provider stream returned an error.", "provider");
 	}
-	const safeMessage = redactProviderMessage(
-		body === undefined ? undefined : extractProviderMessage(body) ?? body,
-		credential,
-		customHeaders,
-	);
-	if (contentType !== undefined && !isTextualContentType(contentType)) {
-		const bytes = body === undefined ? 0 : new TextEncoder().encode(body).byteLength;
-		return new ModelClientTransportError(
-			`The provider returned HTTP ${status ?? "an error"} with ${contentType} content (${bytes} bytes).`,
-			"provider",
-		);
-	}
-	if (safeMessage !== undefined) {
-		const bounded = boundProviderMessage(safeMessage);
-		return new ModelClientTransportError(
-			`The provider returned HTTP ${status ?? "an error"}: ${bounded.value}${bounded.truncated ? " (truncated)" : ""}`,
-			"provider",
-		);
-	}
 	return new ModelClientTransportError(
-		`The provider request failed${status === undefined ? "." : ` with HTTP ${status}.`}`,
+		formatProviderError(snapshot, { credential, headers: customHeaders }),
 		"provider",
 	);
-}
-
-interface ConventionalProviderError {
-	readonly message?: string;
-	readonly detail?: string;
-	readonly title?: string;
-	readonly error?: ConventionalProviderError;
-}
-
-interface ProviderStreamError extends Error {
-	readonly statusCode?: number;
-	readonly status?: number;
-	readonly responseBody?: string;
-	readonly responseHeaders?: Readonly<Record<string, string>>;
-}
-
-function extractProviderMessage(body: string): string | undefined {
-	try {
-		// SAFETY: this parser only reads optional conventional provider message fields;
-		// the adapter never treats the untrusted body as a transport object.
-		const parsed = JSON.parse(body) as ConventionalProviderError | null;
-		const message = [
-			parsed?.error?.message,
-			parsed?.message,
-			parsed?.detail,
-			parsed?.title,
-		].find((candidate) => candidate !== undefined);
-		return message?.trim() || undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function redactProviderMessage(
-	value: string | undefined,
-	credential: string,
-	customHeaders: Readonly<Record<string, string>>,
-): string | undefined {
-	if (value === undefined) return undefined;
-	let result = value;
-	for (const secret of [credential, ...Object.values(customHeaders)]) {
-		if (secret.length > 0) result = result.split(secret).join("[redacted]");
-	}
-	result = Array.from(result, (character) => {
-		const code = character.codePointAt(0) ?? 32;
-		return code < 32 || code === 127 ? " " : character;
-	}).join("").replace(/\s+/g, " ").trim();
-	return result.length === 0 ? undefined : result;
-}
-
-interface BoundProviderMessage {
-	readonly value: string;
-	readonly truncated: boolean;
-}
-
-function boundProviderMessage(value: string): BoundProviderMessage {
-	let bytes = 0;
-	let result = "";
-	for (const character of value) {
-		const characterBytes = new TextEncoder().encode(character).byteLength;
-		if (bytes + characterBytes > MAX_PROVIDER_ERROR_BYTES) {
-			return { value: result, truncated: true };
-		}
-		bytes += characterBytes;
-		result += character;
-	}
-	return { value: result, truncated: false };
-}
-
-function isTextualContentType(contentType: string): boolean {
-	const normalized = contentType.toLowerCase();
-	return normalized.startsWith("text/") || normalized.includes("json") || normalized.includes("xml");
-}
-
-function readResponseHeader(
-	headers: Readonly<Record<string, string>> | undefined,
-	name: string,
-): string | undefined {
-	if (headers === undefined) return undefined;
-	for (const [key, value] of Object.entries(headers)) {
-		if (key.toLowerCase() === name) return value;
-	}
-	return undefined;
 }
 
 function toMessages(input: ModelClientGenerationInput) {

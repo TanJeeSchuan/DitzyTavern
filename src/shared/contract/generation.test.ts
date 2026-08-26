@@ -24,7 +24,6 @@ const profile = {
 	outputTokenRepresentation: "automatic" as const,
 	timeoutMs: 120_000,
 	pinnedModels: [],
-	backendOptions: {},
 };
 
 interface CapturedGenerationBody {
@@ -123,18 +122,20 @@ describe("Generation transport contract", () => {
 		expect(updated.status).toBe(200);
 
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: "{}",
 		}),
 		);
 		expect(generated.status).toBe(200);
-		const body = await generated.json();
-		expect(body.variant.content).toBe("Contract reply.");
-		expect(body.variant.data).toHaveLength(1);
-		expect(JSON.stringify(body)).not.toContain("contract-secret-never-returned");
-		expect(JSON.stringify(body)).not.toContain("127.0.0.1:43127");
+		const body = await generated.text();
+		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const variant = persisted?.messages.at(-1)?.variants.at(-1);
+		expect(variant?.content).toBe("Contract reply.");
+		expect(variant?.data).toHaveLength(1);
+		expect(body).not.toContain("contract-secret-never-returned");
+		expect(body).not.toContain("127.0.0.1:43127");
 		expect(requestBody?.model).toBe("free-text-model");
 		expect(requestBody?.max_tokens).toBe(32);
 	});
@@ -157,14 +158,14 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const response = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: "{}",
 		}),
 		);
-		expect(response.status).toBe(409);
-		expect(await response.json()).toMatchObject({ outcome: "unconfigured" });
+		expect(response.status).toBe(200);
+		expect(await response.text()).toContain('"outcome":"unconfigured"');
 		expect(contacted).toBe(false);
 	});
 
@@ -237,16 +238,16 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: "{}",
 			}),
 		);
 		expect(generated.status).toBe(200);
-		const generatedBody = await generated.json();
-		expect(generatedBody.variant.content).toBe("Contract reply.");
-		expect(JSON.stringify(generatedBody)).not.toContain("never returned");
+		const generatedBody = await generated.text();
+		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
+		expect(generatedBody).not.toContain("never returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
 		expect(request?.headers.get("authorization")).toBe("Custom auth never returned");
 		expect(request?.headers.get("x-route")).toBe("route secret never returned");
@@ -282,16 +283,16 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: "{}",
 			}),
 		);
 		expect(generated.status).toBe(200);
-		const generatedBody = await generated.json();
-		expect(generatedBody.variant.content).toBe("Contract reply.");
-		expect(JSON.stringify(generatedBody)).not.toContain("openrouter-secret-never-returned");
+		const generatedBody = await generated.text();
+		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
+		expect(generatedBody).not.toContain("openrouter-secret-never-returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/api/v1/chat/completions");
 		expect(request?.headers.get("authorization")).toBe("Bearer openrouter-secret-never-returned");
 		expect(request?.headers.get("http-referer")).toBeNull();

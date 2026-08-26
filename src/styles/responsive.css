@@ -227,10 +227,6 @@
 		grid-template-columns: auto 1fr auto;
 	}
 
-	.rail-actions .rail-button:nth-child(3) {
-		display: none;
-	}
-
 	.story-header {
 		grid-template-columns: minmax(0, 1fr) auto auto;
 		padding: 0 0.75rem 0 1rem;

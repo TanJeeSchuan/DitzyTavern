@@ -11,7 +11,6 @@ const profile = {
 	outputTokenRepresentation: "automatic" as const,
 	timeoutMs: 120_000,
 	pinnedModels: ["custom-model"],
-	backendOptions: {},
 };
 
 describe("Model discovery", () => {
@@ -96,5 +95,26 @@ describe("Model discovery", () => {
 			expect(result.message.endsWith(" (truncated)")).toBe(true);
 			expect(new TextEncoder().encode(result.message).byteLength).toBeLessThan(16 * 1024 + 100);
 		}
+	});
+
+	test("aborts a discovery request at the profile timeout", async () => {
+		const result = await discoverModels(
+			{ profile: { ...profile, timeoutMs: 5 }, secrets: null },
+			{
+				fetch: async (_input, init) => await new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => {
+						const error = new Error("aborted");
+						error.name = "AbortError";
+						reject(error);
+					});
+				}),
+			},
+		);
+
+		expect(result).toEqual({
+			outcome: "failure",
+			kind: "timeout",
+			message: "The Models endpoint did not respond in time.",
+		});
 	});
 });

@@ -15,7 +15,6 @@ import {
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationGenerationSettings,
-	type ConversationSnapshot,
 } from "../../server/conversation";
 import {
 	createConnectionSettingsModule,
@@ -44,7 +43,6 @@ import {
 	conversationConflict,
 	conversationGenerationSettings,
 	conversationSummary,
-	generationVariant,
 	invalidOutcome,
 	notFoundOutcome,
 	notPlayableOutcome,
@@ -64,7 +62,7 @@ export interface ConversationRouteOptions extends ConnectionSettingsModuleOption
 
 type GenerationSsePayload =
 	| import("../../server/model-client").ModelClientEvent
-	| ReturnType<typeof toGenerationPayload>
+	| { readonly outcome: "applied" }
 	| { readonly outcome: "not-found" }
 	| { readonly outcome: "unconfigured"; readonly reason: string }
 	| { readonly outcome: "failed"; readonly reason: string }
@@ -141,104 +139,6 @@ export const createConversationRoutes = (
 			},
 		)
 		.post(
-			"/api/conversations/:id/generate",
-			async ({ params, status, request }) => {
-				try {
-					return await withDatabase(database, async (connection) => {
-						const conversation = createConversationModule(connection);
-						const current = conversation.getSnapshot(params.id);
-						if (current === undefined) {
-							return status(404, { outcome: "not-found" as const });
-						}
-						const connectionSettings = createConnectionSettingsModule(
-							connection,
-							options,
-						).get();
-						if (connectionSettings.activeProfileId === null) {
-							return status(409, {
-								outcome: "unconfigured" as const,
-								reason: "An active Connection Profile is required for Generation.",
-							});
-						}
-						const profile = connectionSettings.profiles.find(
-							(entry) => entry.id === connectionSettings.activeProfileId,
-						);
-						if (profile === undefined) {
-							return status(409, {
-								outcome: "unconfigured" as const,
-								reason: "The active Connection Profile is unavailable.",
-							});
-						}
-						const client = createModelClient({
-							profile,
-							secrets: connectionSettingsModuleSecrets(
-								connection,
-								profile.id,
-								options,
-							),
-							fetch: options.fetch,
-						});
-						const generated = await generateReply(connection, {
-							conversationId: params.id,
-							modelClient: client,
-							connection: {
-								profileId: profile.id,
-								settingsRevision: connectionSettings.revision,
-								backend: "ai-sdk",
-								adapter: profile.adapter,
-							},
-							signal: request.signal,
-						});
-						return toGenerationPayload(generated);
-					});
-				} catch (error) {
-					if (error instanceof ConversationNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					if (error instanceof ConversationNotPlayableError) {
-						return status(409, {
-							outcome: "not-playable" as const,
-							reason: error.message,
-						});
-					}
-					if (error instanceof ModelClientGenerationError) {
-						return status(502, {
-							outcome: "failed" as const,
-							reason: error.message,
-						});
-					}
-					if (error instanceof ModelClientTransportError) {
-						return status(502, {
-							outcome: "failed" as const,
-							reason: error.message,
-						});
-					}
-					if (error instanceof Error) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
-					}
-					throw error;
-				}
-			},
-			{
-				params: t.Object({ id: t.Numeric() }),
-				body: t.Object({}),
-				response: {
-					200: t.Object({
-						outcome: t.Literal("applied"),
-						conversation: conversationSummary,
-						variant: generationVariant,
-					}),
-					409: t.Union([notPlayableOutcome, t.Object({
-						outcome: t.Literal("unconfigured"),
-						reason: t.String(),
-					})]),
-					404: notFoundOutcome,
-					422: invalidOutcome,
-					502: t.Object({ outcome: t.Literal("failed"), reason: t.String() }),
-				},
-			},
-		)
-		.post(
 			"/api/conversations/:id/generate/stream",
 			({ params, request }) => {
 				const encoder = new TextEncoder();
@@ -277,7 +177,7 @@ export const createConversationRoutes = (
 									secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
 									fetch: options.fetch,
 								});
-								const generated = await generateReply(connection, {
+								await generateReply(connection, {
 									conversationId: params.id,
 									modelClient: client,
 									connection: {
@@ -289,7 +189,7 @@ export const createConversationRoutes = (
 									signal: request.signal,
 									onEvent: (event) => emit("generation", event),
 								});
-								emit("complete", toGenerationPayload(generated));
+								emit("complete", { outcome: "applied" });
 							} catch (error) {
 								if (error instanceof ModelClientGenerationError || error instanceof ModelClientTransportError) {
 									emit("error", { outcome: "failed", reason: error.message });
@@ -541,25 +441,6 @@ function toGenerationSettingsPayload(
 			"chat-completions": { ...settings.requestOverrides["chat-completions"] },
 			responses: { ...settings.requestOverrides.responses },
 			"anthropic-messages": { ...settings.requestOverrides["anthropic-messages"] },
-		},
-	};
-}
-
-function toGenerationPayload(snapshot: ConversationSnapshot) {
-	const message = snapshot.messages.at(-1);
-	const variant = message?.variants.at(-1);
-	if (message === undefined || variant === undefined) {
-		throw new Error("Generation completed without a persisted Variant.");
-	}
-	return {
-		outcome: "applied" as const,
-		conversation: toConversationSummary(snapshot),
-		variant: {
-			messageId: message.id,
-			variantId: variant.id,
-			content: variant.content,
-			timestamp: variant.timestamp,
-			data: variant.data.map((entry) => ({ ...entry })),
 		},
 	};
 }

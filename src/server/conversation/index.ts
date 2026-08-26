@@ -7,7 +7,7 @@ import { readChatHistory } from "./history";
 import { connectConversationDatabase } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
 import { readConversationData } from "./read-data";
-import { ensureConversationGenerationSettings } from "./generation-settings";
+import { readConversationGenerationSettings } from "./generation-settings";
 import type { ConversationModule } from "./types";
 
 export {
@@ -85,7 +85,7 @@ export function createConversationModule(database: Database): ConversationModule
 					conversationId,
 				);
 				if (snapshot === undefined) return undefined;
-				return ensureConversationGenerationSettings(
+		return readConversationGenerationSettings(
 					connectConversationDatabase(database),
 					conversationId,
 				);

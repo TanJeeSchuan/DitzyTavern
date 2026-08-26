@@ -192,6 +192,12 @@ const discoveryResult = t.Union([
 		kind: discoveryFailureKind,
 		message: t.String(),
 	}),
+	t.Object({
+		outcome: t.Literal("conflict"),
+		expectedRevision: t.Integer(),
+		actualRevision: t.Integer(),
+		currentSettings: settings,
+	}),
 ]);
 
 export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {
@@ -236,6 +242,7 @@ export const createConnectionSettingsRoutes = (
 					if (profile === undefined) return null;
 					return {
 						profile,
+						revision: snapshot.revision,
 						secrets: withConnectionSettings(connection, (domain) => domain.getProfileSecrets(profile.id), options),
 					};
 				});
@@ -249,13 +256,34 @@ export const createConnectionSettingsRoutes = (
 				const discovered = await discoverModels(
 					{ profile: prepared.profile, secrets: prepared.secrets },
 					{ fetch: options.fetch },
-				);
-				if (discovered.outcome === "failure") return discovered;
-				const replaced = withDatabase(database, (connection) =>
+			);
+			if (discovered.outcome === "failure") return discovered;
+			let replaced: ConnectionSettingsSnapshot["profiles"][number];
+			try {
+				replaced = withDatabase(database, (connection) =>
 					withConnectionSettings(connection, (domain) =>
-						domain.replaceDiscoveryCatalog(body.profileId, discovered.catalog), options),
+						domain.replaceDiscoveryCatalog(
+							body.profileId,
+							discovered.catalog,
+							prepared.revision,
+							prepared.profile.modelsUrl,
+						), options),
 				);
-				return {
+			} catch (error) {
+				if (error instanceof ConnectionProfileNotFoundError) {
+					return status(404, { outcome: "not-found" as const });
+				}
+				if (error instanceof StaleConnectionSettingsRevisionError) {
+					return status(409, {
+						outcome: "conflict" as const,
+						expectedRevision: error.expectedRevision,
+						actualRevision: error.actualRevision,
+						currentSettings: toSettingsPayload(error.currentSettings),
+					});
+				}
+				throw error;
+			}
+			return {
 					outcome: "success" as const,
 					profile: toProfilePayload(replaced),
 					settingsRevision: withDatabase(database, (connection) =>
@@ -268,6 +296,12 @@ export const createConnectionSettingsRoutes = (
 					200: discoveryResult,
 					404: t.Object({ outcome: t.Literal("not-found") }),
 					422: t.Object({ outcome: t.Literal("invalid"), reason: t.String() }),
+					409: t.Object({
+						outcome: t.Literal("conflict"),
+						expectedRevision: t.Integer(),
+						actualRevision: t.Integer(),
+						currentSettings: settings,
+					}),
 				},
 			},
 		)

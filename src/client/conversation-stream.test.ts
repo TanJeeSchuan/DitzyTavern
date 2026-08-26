@@ -27,7 +27,7 @@ describe("Conversation generation stream client", () => {
 			"event: generation\ndata: {\"type\":\"content\",\"text\":\"Hel",
 			"lo\"}\n\nevent: generation\ndata: {\"type\":\"reasoning\",\"text\":\"plan\"}\n\n",
 			"event: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n",
-			"event: complete\ndata: {\"outcome\":\"applied\",\"conversation\":{},\"variant\":{}}\n\n",
+			"event: complete\ndata: {\"outcome\":\"applied\"}\n\n",
 		];
 		installFetch(async () => new Response(new ReadableStream({
 			start(controller) {
@@ -59,6 +59,17 @@ describe("Conversation generation stream client", () => {
 		const result = await streamConversationReply(42, { onDelta: (delta) => deltas.push(delta) });
 
 		expect(deltas).toEqual([]);
+		expect(result).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
+	});
+
+	test("rejects terminal failures without their required reason", async () => {
+		installFetch(async () => new Response(
+			"event: error\ndata: {\"outcome\":\"failed\"}\n\n",
+			{ status: 200, headers: { "content-type": "text/event-stream" } },
+		));
+
+		const result = await streamConversationReply(42, { onDelta: () => {} });
+
 		expect(result).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
 	});
 });

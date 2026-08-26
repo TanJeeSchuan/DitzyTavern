@@ -25,23 +25,16 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
-export function ensureConversationGenerationSettings(
+export function readConversationGenerationSettings(
 	db: ConversationDatabase,
 	conversationId: number,
-): ConversationGenerationSettings {
-	db.insert(conversationGenerationSettingsTable)
-		.values({ chat_id: conversationId })
-		.onConflictDoNothing()
-		.run();
+): ConversationGenerationSettings | undefined {
 	const row = db
 		.select()
 		.from(conversationGenerationSettingsTable)
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
 		.get();
-	if (row === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-	return readGenerationSettingsRow(row);
+	return row === undefined ? undefined : readGenerationSettingsRow(row);
 }
 
 export function updateConversationGenerationSettings(

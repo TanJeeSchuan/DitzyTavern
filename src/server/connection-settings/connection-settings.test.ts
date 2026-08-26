@@ -14,7 +14,7 @@ import {
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from ".";
-import type { BackendOptions, ConnectionProfileDraft } from "./types";
+import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
 
@@ -28,7 +28,6 @@ const deepSeekDraft = (): ConnectionProfileDraft => ({
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
-	backendOptions: {},
 });
 
 describe("Connection Settings", () => {
@@ -70,7 +69,6 @@ describe("Connection Settings", () => {
 			outputTokenRepresentation: "automatic",
 			timeoutMs: 120000,
 			pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
-			backendOptions: {},
 		});
 	});
 
@@ -92,7 +90,6 @@ describe("Connection Settings", () => {
 				"google/gemma-4-31b-it",
 				"z-ai/glm-5.3",
 			],
-			backendOptions: {},
 		});
 		expect(JSON.stringify(preset?.profile)).not.toContain("Referer");
 		expect(JSON.stringify(preset?.profile)).not.toContain("Title");
@@ -117,13 +114,9 @@ describe("Connection Settings", () => {
 		// SAFETY: listPresets returns a mutable client-facing clone of this
 		// profile; this test intentionally simulates an editor mutating it.
 		(listedProfile.pinnedModels as string[]).push("temporary-edit");
-		// SAFETY: BackendOptions is the closed JSON value vocabulary accepted by
-		// the Connection Profile draft and this test adds a valid temporary key.
-		(listedProfile.backendOptions as BackendOptions & Record<string, boolean>).temporary = true;
 
 		const reread = settings.listPresets().find((preset) => preset.id === "deepseek")?.profile;
 		expect(reread?.pinnedModels).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
-		expect(reread?.backendOptions).toEqual({});
 	});
 
 	test("creates the first Profile and credential atomically, redacting the credential", () => {

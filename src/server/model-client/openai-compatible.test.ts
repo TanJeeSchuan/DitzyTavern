@@ -17,7 +17,6 @@ const profile: ConnectionProfile = {
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
-	backendOptions: {},
 	credentialConfigured: false,
 	headers: [],
 };
@@ -85,6 +84,7 @@ describe("OpenAI Compatible Model Client", () => {
 
 		const result = await collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
+			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -117,6 +117,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 		await collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
+			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -184,6 +185,7 @@ describe("OpenAI Compatible Model Client", () => {
 
 		await expect(collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
+			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: {
 				...settings,

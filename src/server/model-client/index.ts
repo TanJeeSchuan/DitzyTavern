@@ -19,6 +19,7 @@ export type {
 	ModelClientGenerationSettings,
 	ModelClientConnectionSnapshot,
 	ModelClientUsage,
+	ModelFetch,
 } from "./types";
 export {
 	createModelClient,
@@ -50,7 +51,6 @@ export type {
 	DiscoveryResult,
 } from "./discovery";
 export type {
-	ModelFetch,
 	TestConnectionFailureKind,
 	TestConnectionInput,
 	TestConnectionOptions,

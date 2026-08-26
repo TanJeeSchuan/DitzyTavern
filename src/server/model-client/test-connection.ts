@@ -1,15 +1,19 @@
-import { createDeepSeek } from "@ai-sdk/deepseek";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
 import { authenticatedHeaders } from "./authenticated-headers";
+import { createModelAdapter, isModelAdapter } from "./adapter";
+import type { ModelFetch } from "./model-fetch";
+import {
+	formatProviderError,
+	providerErrorStatus,
+	snapshotProviderError,
+	type ProviderErrorLike,
+} from "./provider-errors";
 
 export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
 export const TEST_CONNECTION_TIMEOUT_MS = 10_000;
 export const TEST_CONNECTION_PROMPT = "Reply with exactly OK.";
-const MAX_PROVIDER_FALLBACK_BYTES = 16 * 1024;
 
 export type TestConnectionFailureKind =
 	| "authentication"
@@ -39,8 +43,6 @@ export interface TestConnectionOptions {
 	readonly maxOutputTokens?: number;
 }
 
-export type ModelFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
 export function resolveTestConnectionBackend(
 	modelBackend: ConnectionProfileDraft["modelBackend"],
 ): "ai-sdk" {
@@ -67,11 +69,7 @@ export async function testConnection(
 			error instanceof Error ? error.message : "The selected Model Backend is unavailable.",
 		);
 	}
-	if (
-		input.profile.adapter !== "deepseek" &&
-		input.profile.adapter !== "openrouter" &&
-		input.profile.adapter !== "openai-compatible"
-	) {
+	if (!isModelAdapter(input.profile.adapter)) {
 		return failure(
 			"adapter-unavailable",
 			`The AI SDK Adapter "${input.profile.adapter}" is unavailable for Test Connection.`,
@@ -112,41 +110,14 @@ export async function testConnection(
 		});
 
 	try {
-		const provider = input.profile.adapter === "deepseek"
-			? createDeepSeek({
-			// An empty explicit value prevents the SDK from reading a process-wide
-			// DEEPSEEK_API_KEY that does not belong to this Profile.
-			apiKey: credential ?? "",
-			baseURL: new URL(requestUrl).origin,
+		const provider = createModelAdapter({
+			adapter: input.profile.adapter,
+			modelId,
+			requestUrl,
+			credential: credential ?? "",
 			headers,
-			// SAFETY: the AI SDK invokes only the standard fetch call signature;
-			// Bun's optional preconnect helper is not part of the provider contract.
-			fetch: fetchAtResolvedDestination as typeof fetch,
-			}).chat(modelId)
-			: input.profile.adapter === "openrouter"
-				? createOpenRouter({
-					// An empty explicit value prevents the SDK from reading a process-wide
-					// OPENROUTER_API_KEY that does not belong to this Profile.
-					apiKey: credential ?? "",
-					baseURL: new URL(requestUrl).origin,
-					headers,
-					// Strict mode requests OpenRouter usage accounting without adding
-					// optional application attribution headers.
-					compatibility: "strict",
-					// SAFETY: the AI SDK invokes only the standard fetch call signature;
-					// Bun's optional preconnect helper is not part of the provider contract.
-					fetch: fetchAtResolvedDestination as typeof fetch,
-				}).chat(modelId)
-				: createOpenAICompatible({
-				name: "ditzytavern-openai-compatible",
-				// Generic Profiles are never allowed to inherit OPENAI_API_KEY.
-				apiKey: credential ?? "",
-				baseURL: new URL(requestUrl).origin,
-				headers,
-				// SAFETY: the AI SDK invokes this standard fetch-compatible function
-				// with the same RequestInfo/RequestInit/Response contract.
-				fetch: fetchAtResolvedDestination as typeof fetch,
-			}).languageModel(modelId, { url: () => requestUrl });
+			fetch: fetchAtResolvedDestination,
+		});
 		const result = await generateText({
 			model: provider,
 			prompt: TEST_CONNECTION_PROMPT,
@@ -164,7 +135,7 @@ export async function testConnection(
 		}
 		// SAFETY: AI SDK provider failures extend Error and expose these optional
 		// response fields; the parser below reads only those known fields.
-		return normalizeTestConnectionError(error as ProviderError, {
+		return normalizeTestConnectionError(error as ProviderErrorLike, {
 			timedOut,
 			credential,
 			headers,
@@ -184,128 +155,51 @@ interface ErrorContext {
 	headers: Readonly<Record<string, string>>;
 }
 
-interface ProviderError extends Error {
-	readonly cause?: Error;
-	readonly statusCode?: number;
-	readonly status?: number;
-	readonly responseBody?: string;
-	readonly responseHeaders?: Readonly<Record<string, string>>;
-}
-
-interface ConventionalErrorBody {
-	readonly message?: string;
-	readonly detail?: string;
-	readonly title?: string;
-	readonly error?: ConventionalErrorBody;
-}
-
 function normalizeTestConnectionError(
-	error: ProviderError,
+	error: ProviderErrorLike,
 	context: ErrorContext,
 ): TestConnectionResult {
 	if (context.timedOut || isAbortError(error)) {
 		return failure("timeout", "The provider did not respond within the short Test Connection timeout.");
 	}
-	const status = readNumber(error, "statusCode") ?? readNumber(error, "status");
+	const status = providerErrorStatus(error);
 	if (status !== undefined && status >= 300 && status < 400) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
 	if (status === 401 || status === 403) {
-		return failure("authentication", providerFailureMessage(error, status, context));
+		return failure("authentication", providerFailureMessage(error, context));
 	}
 	if (isMalformedResponseError(error)) {
-		return failure("malformed-response", providerFailureMessage(error, status, context));
+		return failure("malformed-response", providerFailureMessage(error, context));
 	}
 	if (isRedirectError(error)) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
-	return failure("endpoint", providerFailureMessage(error, status, context));
+	return failure("endpoint", providerFailureMessage(error, context));
 }
 
 function providerFailureMessage(
-	error: ProviderError,
-	status: number | undefined,
+	error: ProviderErrorLike,
 	context: ErrorContext,
 ): string {
-	const contentType = readHeader(error, "content-type");
-	const body = readString(error, "responseBody");
-	if (contentType !== undefined && !isTextualContentType(contentType)) {
-		const bytes = body === undefined ? 0 : new TextEncoder().encode(body).byteLength;
-		return `The provider returned HTTP ${status ?? "an error"} with ${contentType} content (${bytes} bytes).`;
-	}
-	const conventional = body === undefined ? undefined : extractConventionalMessage(body);
-	const fallback = conventional ?? body;
-	if (fallback !== undefined && fallback.length > 0) {
-		const safe = redactSensitive(fallback, context);
-		const bounded = safe.slice(0, MAX_PROVIDER_FALLBACK_BYTES);
-		return `The provider returned HTTP ${status ?? "an error"}: ${bounded}${safe.length > MAX_PROVIDER_FALLBACK_BYTES ? " (truncated)" : ""}`;
-	}
-	return `The provider request failed${status === undefined ? "." : ` with HTTP ${status}.`}`;
+	return formatProviderError(
+		snapshotProviderError(error),
+		{ credential: context.credential, headers: context.headers },
+	);
 }
 
-function extractConventionalMessage(body: string): string | undefined {
-	try {
-		// SAFETY: provider error bodies use this conventional nested message
-		// shape; optional chaining safely ignores other JSON shapes.
-		const parsed = JSON.parse(body) as ConventionalErrorBody | null;
-		const message = [
-			parsed?.error?.message,
-			parsed?.message,
-			parsed?.detail,
-			parsed?.title,
-		].find((candidate) => candidate !== undefined);
-		return message?.trim() || undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-function redactSensitive(value: string, context: ErrorContext): string {
-	let result = value;
-	for (const secret of [context.credential, ...Object.values(context.headers)]) {
-		if (secret !== null && secret.length > 0) result = result.split(secret).join("[redacted]");
-	}
-	return result.replace(/\s+/g, " ").trim();
-}
-
-function isTextualContentType(contentType: string): boolean {
-	const normalized = contentType.toLowerCase();
-	return normalized.startsWith("text/") || normalized.includes("json") || normalized.includes("xml");
-}
-
-function isMalformedResponseError(error: ProviderError): boolean {
+function isMalformedResponseError(error: ProviderErrorLike): boolean {
 	const name = `${error.name} ${error.cause?.name ?? ""}`.toLowerCase();
 	return name.includes("jsonparse") || name.includes("invalidresponsedata") || name.includes("emptyresponse");
 }
 
-function isRedirectError(error: ProviderError): boolean {
-	const message = safeErrorMessage(error).toLowerCase();
+function isRedirectError(error: ProviderErrorLike): boolean {
+	const message = error.message.toLowerCase();
 	return message.includes("redirect") || message.includes("maximum redirect");
 }
 
-function isAbortError(error: ProviderError): boolean {
+function isAbortError(error: ProviderErrorLike): boolean {
 	return error.name === "AbortError";
-}
-
-function readString(value: ProviderError, key: "responseBody"): string | undefined {
-	return key === "responseBody" ? value.responseBody : undefined;
-}
-
-function readNumber(value: ProviderError, key: "statusCode" | "status"): number | undefined {
-	return key === "statusCode" ? value.statusCode : value.status;
-}
-
-function readHeader(value: ProviderError, name: "content-type"): string | undefined {
-	const headers = value.responseHeaders;
-	if (headers === undefined) return undefined;
-	for (const [key, headerValue] of Object.entries(headers)) {
-		if (key.toLowerCase() === name) return headerValue;
-	}
-	return undefined;
-}
-
-function safeErrorMessage(error: ProviderError): string {
-	return error.message;
 }
 
 function failure(kind: TestConnectionFailureKind, message: string): TestConnectionResult {

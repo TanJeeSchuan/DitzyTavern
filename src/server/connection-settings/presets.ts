@@ -10,7 +10,6 @@ const deepSeekProfile: ConnectionProfileDraft = {
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120000,
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
-	backendOptions: {},
 };
 
 const presets: readonly ConnectionPreset[] = [
@@ -38,7 +37,6 @@ const presets: readonly ConnectionPreset[] = [
 				"google/gemma-4-31b-it",
 				"z-ai/glm-5.3",
 			],
-			backendOptions: {},
 		},
 	},
 	{
@@ -55,7 +53,6 @@ const presets: readonly ConnectionPreset[] = [
 			outputTokenRepresentation: "automatic",
 			timeoutMs: 120000,
 			pinnedModels: [],
-			backendOptions: {},
 		},
 	},
 ];
@@ -72,6 +69,5 @@ export function cloneProfileDraft(profile: ConnectionProfileDraft): ConnectionPr
 	return {
 		...profile,
 		pinnedModels: [...profile.pinnedModels],
-		backendOptions: { ...profile.backendOptions },
 	};
 }

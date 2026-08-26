@@ -16,9 +16,6 @@ export type OutputTokenRepresentation =
 	| "max_completion_tokens"
 	| "omit";
 
-export type BackendOptionValue = string | number | boolean | null;
-export type BackendOptions = Readonly<Record<string, BackendOptionValue>>;
-
 export interface ConnectionProfileDraft {
 	readonly displayName: string;
 	readonly apiFormat: ConnectionApiFormat;
@@ -31,8 +28,6 @@ export interface ConnectionProfileDraft {
 	// quiet interval, not a total Generation duration.
 	readonly timeoutMs: number | null;
 	readonly pinnedModels: readonly string[];
-	/** Legacy storage compatibility only. Version one accepts no options. */
-	readonly backendOptions?: BackendOptions;
 }
 
 export interface RedactedHeader {
@@ -122,7 +117,12 @@ export interface ConnectionSettingsModule {
 	activateProfile(input: ActivateConnectionProfileInput): ConnectionSettingsSnapshot;
 	deleteProfile(input: DeleteConnectionProfileInput): ConnectionSettingsSnapshot;
 	setPinnedModels(input: SetPinnedModelsInput): ConnectionSettingsSnapshot;
-	replaceDiscoveryCatalog(profileId: number, models: readonly string[]): ConnectionProfile;
+	replaceDiscoveryCatalog(
+		profileId: number,
+		models: readonly string[],
+		expectedRevision: number,
+		expectedModelsUrl: string,
+	): ConnectionProfile;
 	setCredential(input: SetConnectionCredentialInput): ConnectionSettingsSnapshot;
 	resetCredential(input: ResetConnectionCredentialInput): ConnectionSettingsSnapshot;
 }

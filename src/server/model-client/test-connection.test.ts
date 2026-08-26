@@ -19,7 +19,6 @@ const profile: ConnectionProfileDraft = {
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120_000,
 	pinnedModels: [],
-	backendOptions: {},
 };
 
 const successfulResponse = () => new Response(JSON.stringify({
