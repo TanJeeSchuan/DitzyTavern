@@ -6,9 +6,11 @@ type Props = {
 	presets: ConnectionPreset[];
 	selectedProfileId: number | null;
 	presetChoicesOpen: boolean;
+	openProfileMenuId: number | null;
 	onChooseProfile: (profile: ConnectionProfile) => void;
 	onRequestDeletion: (profile: ConnectionProfile) => void;
 	onTogglePresets: () => void;
+	onToggleProfileMenu: (profileId: number | null) => void;
 	onChoosePreset: (preset: ConnectionPreset) => void;
 };
 
@@ -17,9 +19,11 @@ export function ConnectionProfileList({
 	presets,
 	selectedProfileId,
 	presetChoicesOpen,
+	openProfileMenuId,
 	onChooseProfile,
 	onRequestDeletion,
 	onTogglePresets,
+	onToggleProfileMenu,
 	onChoosePreset,
 }: Props) {
 	return (
@@ -43,13 +47,14 @@ export function ConnectionProfileList({
 									{profile.credentialConfigured ? ", credential saved" : ", no credential saved"}
 								</small>
 							</button>
-							<details className="connection-profile-menu">
+							<details
+								className="connection-profile-menu"
+								open={profile.id === openProfileMenuId}
+								onToggle={(event) => onToggleProfileMenu(event.currentTarget.open ? profile.id : null)}
+							>
 								<summary aria-label={`More actions for ${profile.displayName}`}><Ellipsis aria-hidden="true" /></summary>
 								<div>
-									<button type="button" onClick={(event) => {
-										event.currentTarget.closest("details")?.removeAttribute("open");
-										onRequestDeletion(profile);
-									}}><Trash2 aria-hidden="true" /> Delete profile</button>
+									<button type="button" onClick={() => onRequestDeletion(profile)}><Trash2 aria-hidden="true" /> Delete profile</button>
 								</div>
 							</details>
 						</div>

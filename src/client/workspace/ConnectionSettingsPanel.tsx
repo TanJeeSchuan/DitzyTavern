@@ -17,9 +17,11 @@ export function ConnectionSettingsPanel() {
 				presets={controller.presets}
 				selectedProfileId={controller.selectedProfileId}
 				presetChoicesOpen={controller.presetChoicesOpen}
+				openProfileMenuId={controller.openProfileMenuId}
 				onChooseProfile={controller.chooseProfile}
 				onRequestDeletion={controller.requestProfileDeletion}
 				onTogglePresets={() => controller.setPresetChoicesOpen(!controller.presetChoicesOpen)}
+				onToggleProfileMenu={controller.setOpenProfileMenuId}
 				onChoosePreset={controller.choosePreset}
 			/>
 

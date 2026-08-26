@@ -102,6 +102,7 @@ type ControllerState = {
 	discoveryPending: boolean;
 	replacementProfileId: number | null;
 	pendingDeletionProfileId: number | null;
+	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
 	headersExpanded: boolean;
 	conflict: ConnectionSettingsConflict | null;
@@ -123,6 +124,7 @@ const initialState: ControllerState = {
 	discoveryPending: false,
 	replacementProfileId: null,
 	pendingDeletionProfileId: null,
+	openProfileMenuId: null,
 	presetChoicesOpen: false,
 	headersExpanded: false,
 	conflict: null,
@@ -150,6 +152,7 @@ export type ConnectionSettingsController = ControllerState & {
 	setTestModelId: (value: string) => void;
 	setHeadersExpanded: (value: boolean) => void;
 	setPresetChoicesOpen: (value: boolean) => void;
+	setOpenProfileMenuId: (value: number | null) => void;
 	setReplacementProfileId: (value: number | null) => void;
 	setPendingDeletionProfileId: (value: number | null) => void;
 	testDraft: () => Promise<void>;
@@ -241,6 +244,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testResult: null,
 		replacementProfileId: null,
 		pendingDeletionProfileId: null,
+		openProfileMenuId: null,
 		presetChoicesOpen: false,
 		headersExpanded: false,
 		conflict: null,
@@ -257,6 +261,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testResult: null,
 		replacementProfileId: state.settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null,
 		pendingDeletionProfileId: null,
+		openProfileMenuId: null,
 		presetChoicesOpen: false,
 		headersExpanded: profile.headers.length > 0,
 		conflict: null,
@@ -373,6 +378,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const requestProfileDeletion = (profile: ConnectionProfile) => patch({
 		pendingDeletionProfileId: profile.id,
 		replacementProfileId: profile.id === state.settings?.activeProfileId ? state.settings.profiles.find((entry) => entry.id !== profile.id)?.id ?? null : null,
+		openProfileMenuId: null,
 		notice: null,
 		error: null,
 	});
@@ -422,6 +428,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		setTestModelId: (testModelId) => patch({ testModelId }),
 		setHeadersExpanded: (headersExpanded) => patch({ headersExpanded }),
 		setPresetChoicesOpen: (presetChoicesOpen) => patch({ presetChoicesOpen }),
+		setOpenProfileMenuId: (openProfileMenuId) => patch({ openProfileMenuId }),
 		setReplacementProfileId: (replacementProfileId) => patch({ replacementProfileId }),
 		setPendingDeletionProfileId: (pendingDeletionProfileId) => patch({ pendingDeletionProfileId }),
 		testDraft,
