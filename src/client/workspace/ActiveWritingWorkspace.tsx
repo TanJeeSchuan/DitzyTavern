@@ -872,8 +872,6 @@ export function ActiveWritingWorkspace({
 				<ChatInformationPanel
 					conversationId={Number(activeChatId)}
 					chatTitle={activeChat.title}
-					conversation={conversation}
-					onConversationChange={setConversation}
 					onClose={() => setChatInfoOpen(false)}
 				/>
 			)}

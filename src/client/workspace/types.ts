@@ -3,6 +3,7 @@ export type PrimaryPanel =
 	| "cast"
 	| "library"
 	| "models"
+	| "continuation"
 	| "settings"
 	| null;
 

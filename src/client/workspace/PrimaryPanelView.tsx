@@ -10,6 +10,7 @@ import type {
 } from "../workspace";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
+import { ContinuationPanel } from "./ContinuationPanel";
 import type { PrimaryPanel } from "./types";
 
 export function PrimaryPanelView({
@@ -75,7 +76,9 @@ export function PrimaryPanelView({
 									? "Character Library"
 									: panel === "models"
 										? "Model Settings"
-										: "Settings"
+										: panel === "continuation"
+											? "Continuation"
+											: "Settings"
 						}
 						onClose={onClose}
 					/>
@@ -103,6 +106,14 @@ export function PrimaryPanelView({
 					{panel === "models" && (
 						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<ConnectionSettingsPanel />
+						</div>
+					)}
+					{panel === "continuation" && (
+						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+							<ContinuationPanel
+								conversation={conversation}
+								onConversationChange={onConversationChange}
+							/>
 						</div>
 					)}
 				</>
