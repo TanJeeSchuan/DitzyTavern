@@ -75,11 +75,11 @@ describe("Model discovery", () => {
 		expect(result).toEqual({
 			outcome: "failure",
 			kind: "endpoint",
-			message: "The Models endpoint returned HTTP 503: provider unavailable",
+			message: "The Models endpoint request failed with HTTP 503 (34-byte response body).",
 		});
 	});
 
-	test("marks bounded discovery error messages when the provider body is oversized", async () => {
+	test("reports only the size of an oversized provider body", async () => {
 		const result = await discoverModels(
 			{ profile, secrets: null },
 			{
@@ -92,8 +92,8 @@ describe("Model discovery", () => {
 
 		expect(result.outcome).toBe("failure");
 		if (result.outcome === "failure") {
-			expect(result.message.endsWith(" (truncated)")).toBe(true);
-			expect(new TextEncoder().encode(result.message).byteLength).toBeLessThan(16 * 1024 + 100);
+			expect(result.message).toBe("The Models endpoint request failed with HTTP 503 (20480-byte response body).");
+			expect(result.message).not.toContain("xxx");
 		}
 	});
 

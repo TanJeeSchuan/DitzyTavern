@@ -200,7 +200,7 @@ describe("Model Test Connection", () => {
 		expect(result).toMatchObject({ outcome: "failure", kind: "malformed-response" });
 	});
 
-	test("bounds textual fallback and summarizes binary upstream failures", async () => {
+	test("omits textual response bodies and summarizes binary upstream failures", async () => {
 		const longBody = "x".repeat(20_000);
 		const textual = await testDeepSeekConnection({
 			profile,
@@ -213,7 +213,8 @@ describe("Model Test Connection", () => {
 			}),
 		});
 		expect(textual).toMatchObject({ outcome: "failure", kind: "endpoint" });
-		expect(failureMessage(textual).length).toBeLessThan(17_000);
+		expect(failureMessage(textual)).toContain("20000-byte response body");
+		expect(failureMessage(textual)).not.toContain("xxx");
 
 		const binary = await testDeepSeekConnection({
 			profile,

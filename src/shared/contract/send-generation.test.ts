@@ -233,6 +233,57 @@ describe("Send generation transport", () => {
 		expect(persisted?.messages[1]?.variants[0]?.content).toBe("Retry succeeded.");
 	});
 
+	test("provider response bodies and request details never enter Generation HTTP or SSE errors", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Safe provider failure contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const masterKey = new Uint8Array(32).fill(17);
+		createConnectionSettingsModule(database, { masterKey }).createProfile({
+			expectedRevision: 0,
+			profile: { ...profile, requestUrl: "https://secret.endpoint/v1/" },
+			credential: "credential-do-not-expose",
+		});
+		const leakedBody = "RAW BODY https://secret.endpoint credential-do-not-expose header-do-not-expose";
+		const app = createConversationRoutes(database, {
+			masterKey,
+			fetch: async () => new Response(leakedBody, {
+				status: 502,
+				headers: { "content-type": "text/plain", "x-provider-secret": "header-do-not-expose" },
+			}),
+		});
+
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Fail safely." }),
+			},
+		));
+		const acceptedBody = await acceptedResponse.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = JSON.parse(acceptedBody) as { generationId: number };
+		const eventsResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const events = await eventsResponse.text();
+
+		expect(acceptedResponse.status).toBe(200);
+		expect(events).toContain("event: error");
+		expect(events).toContain("HTTP 502");
+		for (const visible of [acceptedBody, events]) {
+			expect(visible).not.toContain("RAW BODY");
+			expect(visible).not.toContain("secret.endpoint");
+			expect(visible).not.toContain("credential-do-not-expose");
+			expect(visible).not.toContain("header-do-not-expose");
+		}
+	});
+
 	test("persists a length-limited terminal outcome through the HTTP routes", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Length-limited Send contract",
