@@ -31,3 +31,9 @@ Continuation compatibility aliases were removed as part of the same audit.
 New Swipe and Details
 now follow the advanced Message-action disclosure used for hover, keyboard
 focus, and touch selection.
+
+The final route-level review adds HTTP coverage for partial provider failure,
+zero-output cleanup plus explicit retry without duplicate input or provider
+requests, and length-limited completion. Narrow viewports retain the same
+focus and touch-selected advanced-action disclosure instead of forcing those
+actions visible at idle.

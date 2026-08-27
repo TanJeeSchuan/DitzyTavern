@@ -275,13 +275,6 @@
 		transform: none;
 	}
 
-	.advanced-actions {
-		opacity: 1;
-		visibility: visible;
-		pointer-events: auto;
-		transform: none;
-	}
-
 	.prose {
 		font-size: 1rem;
 		line-height: 1.72;
