@@ -58,6 +58,8 @@ import {
 	conversationGenerationSettings,
 	continuationBody,
 	conversationSummary,
+	activeGenerationDetails,
+	variantDetails,
 	generationBody,
 	invalidOutcome,
 	notFoundOutcome,
@@ -290,6 +292,60 @@ export const createConversationRoutes = (
 					}),
 					404: notFoundOutcome,
 				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/generations/:generationId/inspection",
+			({ params, status }) => {
+				const details = withDatabase(database, (connection) =>
+					createConversationModule(connection).readActiveGenerationDetails(
+						params.id,
+						params.generationId,
+					),
+				);
+				if (details === undefined) return status(404, { outcome: "not-found" as const });
+				return details;
+			},
+			{
+				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
+				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+			},
+		)
+		// Details is a vocabulary-friendly alias used by Message/Generation
+		// panels; both paths share the same bounded read semantics.
+		.get(
+			"/api/conversations/:id/generations/:generationId/details",
+			({ params, status }) => {
+				const details = withDatabase(database, (connection) =>
+					createConversationModule(connection).readActiveGenerationDetails(
+						params.id,
+						params.generationId,
+					),
+				);
+				if (details === undefined) return status(404, { outcome: "not-found" as const });
+				return details;
+			},
+			{
+				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
+				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+			},
+		)
+		.get(
+			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
+			({ params, status }) => {
+				const details = withDatabase(database, (connection) =>
+					createConversationModule(connection).readVariantDetails(
+						params.id,
+						params.messageId,
+						params.variantId,
+					),
+				);
+				if (details === undefined) return status(404, { outcome: "not-found" as const });
+				return details;
+			},
+			{
+				params: t.Object({ id: t.Numeric(), messageId: t.Numeric(), variantId: t.Numeric() }),
+				response: { 200: variantDetails, 404: notFoundOutcome },
 			},
 		)
 		.get(

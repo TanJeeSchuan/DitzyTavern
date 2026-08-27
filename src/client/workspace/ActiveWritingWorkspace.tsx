@@ -7,6 +7,10 @@ import {
 	useState,
 } from "react";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import {
+	GenerationDetailsPanel,
+	type GenerationDetailsTarget,
+} from "../GenerationDetailsPanel";
 import { ComposerControlSelectors } from "../ComposerControls";
 import { chatHistoryTransport } from "../chat-history";
 import {
@@ -77,6 +81,7 @@ export function ActiveWritingWorkspace({
 		null,
 	);
 	const [chatInfoOpen, setChatInfoOpen] = useState(false);
+	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
 	const [theme, setTheme] = useState<ThemePreference>("system");
 	const [draft, setDraft] = useState("");
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
@@ -299,6 +304,7 @@ export function ActiveWritingWorkspace({
 
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
 		setChatInfoOpen(false);
+		setGenerationDetailsTarget(null);
 		setPrimaryPanel((current) => (current === panel ? null : panel));
 	};
 
@@ -320,6 +326,7 @@ export function ActiveWritingWorkspace({
 		setGenerationError(null);
 		setActiveChatId(chatId);
 		setChatInfoOpen(false);
+		setGenerationDetailsTarget(null);
 		setPrimaryPanel(null);
 	};
 
@@ -748,6 +755,27 @@ export function ActiveWritingWorkspace({
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
+	const openActiveGenerationDetails = () => {
+		if (conversation === null || selectedGenerationTarget === undefined) return;
+		setChatInfoOpen(false);
+		setPrimaryPanel(null);
+		setGenerationDetailsTarget({
+			type: "active",
+			conversationId: conversation.id,
+			generationId: selectedGenerationTarget.generationId,
+		});
+	};
+	const openVariantDetails = (messageId: number, variantId: number) => {
+		if (conversation === null) return;
+		setChatInfoOpen(false);
+		setPrimaryPanel(null);
+		setGenerationDetailsTarget({
+			type: "variant",
+			conversationId: conversation.id,
+			messageId,
+			variantId,
+		});
+	};
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
 
 	return (
@@ -793,6 +821,7 @@ export function ActiveWritingWorkspace({
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
 						if (story.preview !== null) return;
+						setGenerationDetailsTarget(null);
 						setChatInfoOpen(true);
 						setPrimaryPanel(null);
 					}}
@@ -847,6 +876,7 @@ export function ActiveWritingWorkspace({
 									}
 									continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 									onContinue={continueMessage}
+									onInspect={openVariantDetails}
 									onMoveSwipe={(messageId, direction) =>
 										void changeSwipe(messageId, direction)
 									}
@@ -874,6 +904,7 @@ export function ActiveWritingWorkspace({
 								pending={stopPending}
 								onStop={() => void stopGeneration(selectedGenerationTarget!.generationId)}
 								onStopAll={() => void stopAllGenerations()}
+								onInspect={openActiveGenerationDetails}
 							/>
 						)}
 						<div className="latest-anchor" ref={latestRef} aria-hidden="true" />
@@ -910,6 +941,13 @@ export function ActiveWritingWorkspace({
 					conversation={conversation}
 					onConversationChange={setConversation}
 					onClose={() => setChatInfoOpen(false)}
+				/>
+			)}
+
+			{generationDetailsTarget !== null && story.preview === null && (
+				<GenerationDetailsPanel
+					target={generationDetailsTarget}
+					onClose={() => setGenerationDetailsTarget(null)}
 				/>
 			)}
 

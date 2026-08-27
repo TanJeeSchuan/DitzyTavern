@@ -36,6 +36,7 @@ export function StoryMessageView({
 	canContinue = false,
 	continueLabel = "Continue",
 	onContinue,
+	onInspect,
 }: {
 	message: StoryMessage;
 	// Preview mode supplies a local Variant id for its one target Message.
@@ -47,6 +48,7 @@ export function StoryMessageView({
 	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
+	onInspect?: (messageId: number, variantId: number) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
@@ -149,6 +151,15 @@ export function StoryMessageView({
 						{continueLabel}
 					</button>
 				)}
+				{onInspect !== undefined && active !== undefined && (
+					<button
+						className="edit-action"
+						type="button"
+						onClick={() => onInspect(message.id, active.id)}
+					>
+						Details
+					</button>
+				)}
 				<div className="swipe-controls" aria-label="Swipe controls">
 					<button
 						className="icon-button"
@@ -176,4 +187,3 @@ export function StoryMessageView({
 		</article>
 	);
 }
-

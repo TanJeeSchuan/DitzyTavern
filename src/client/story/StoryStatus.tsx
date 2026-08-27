@@ -91,14 +91,21 @@ export function GenerationControls({
 	pending = false,
 	onStop,
 	onStopAll,
+	onInspect,
 }: {
 	showStopAll: boolean;
 	pending?: boolean;
 	onStop: () => void;
 	onStopAll: () => void;
+	onInspect?: () => void;
 }) {
 	return (
 		<div className="generation-controls" aria-label="Generation controls">
+			{onInspect !== undefined && (
+				<button className="secondary-button" type="button" onClick={onInspect}>
+					Inspect Generation
+				</button>
+			)}
 			<button className="secondary-button" type="button" onClick={onStop} disabled={pending}>
 				<Square aria-hidden="true" />
 				{pending ? "Stopping…" : "Stop Generation"}

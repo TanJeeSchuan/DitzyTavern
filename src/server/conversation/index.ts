@@ -18,6 +18,10 @@ import { readChatHistory } from "./history";
 import { connectConversationDatabase } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
 import { readConversationData } from "./read-data";
+import {
+	readActiveGenerationDetails,
+	readVariantDetails,
+} from "./generation-details";
 import { readConversationGenerationSettings } from "./generation-settings";
 import type { ConversationModule } from "./types";
 
@@ -59,6 +63,7 @@ export {
 	MAX_HISTORY_PAGE_SIZE,
 	readChatHistory,
 } from "./history";
+export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
 export type {
 	CapabilityAvailability,
 	ActiveGenerationSnapshot,
@@ -91,6 +96,9 @@ export type {
 	ConversationJsonValue,
 	ConversationDataRead,
 	ConversationDataReadFilter,
+	ActiveGenerationDetails,
+	GenerationProvenance,
+	VariantDetails,
 	CheckpointGenerationInput,
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
@@ -143,6 +151,19 @@ export function createConversationModule(database: Database): ConversationModule
 				connectConversationDatabase(database),
 				conversationId,
 				filter,
+			),
+		readActiveGenerationDetails: (conversationId, generationId) =>
+			readActiveGenerationDetails(
+				connectConversationDatabase(database),
+				conversationId,
+				generationId,
+			),
+		readVariantDetails: (conversationId, messageId, variantId) =>
+			readVariantDetails(
+				connectConversationDatabase(database),
+				conversationId,
+				messageId,
+				variantId,
 			),
 		execute: (command) => executeConversationCommand(database, command),
 		commitGeneration: (input) => commitConversationGeneration(database, input),

@@ -49,6 +49,7 @@ import type { CastParticipantSnapshot } from "../conversation/types";
 import {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
+	type ModelClientFailureKind,
 	type AssistantPrefill,
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
@@ -329,8 +330,15 @@ function captureGenerationSettings(
 				contextLimit: settings.contextLimit,
 				responseBudget: settings.responseBudget,
 				safetyAllowance: settings.safetyAllowance,
-				requestOverrides: settings.requestOverrides,
+				siblingGenerationLimit: settings.siblingGenerationLimit,
+				continuationStrategy: settings.continuationStrategy,
+				continuationInstruction: settings.continuationInstruction,
+				continuationPrefillSuffix: settings.continuationPrefillSuffix,
 			},
+			usage: null,
+			finishReason: null,
+			status: null,
+			interruptionCause: null,
 		}),
 	} satisfies ConversationDataEntry;
 	return { settings, connection: capturedConnection, provenance };
@@ -338,7 +346,9 @@ function captureGenerationSettings(
 
 interface CapturedGeneration {
 	readonly promptPlan: PromptPlan;
+	readonly budget: PromptBudgetResult;
 	readonly historyRoles: readonly ("human" | "model" | null)[];
+	readonly humanParticipant: ParticipantPreview;
 	readonly author: {
 		readonly participantId: number;
 		readonly capturedName: string;
@@ -374,7 +384,9 @@ function captureGeneration(
 	);
 	return {
 		promptPlan: budget.plan,
+		budget,
 		historyRoles: budget.retainedHistoryRoles,
+		humanParticipant: derivation.humanParticipant,
 		author: {
 			participantId: derivation.modelParticipant.id,
 			capturedName: derivation.modelParticipant.name,
@@ -446,6 +458,7 @@ interface GenerationOutcome {
 	finishReason: "stop" | "length" | "other" | null;
 	rawFinishReason: string | null;
 	status: GenerationOutcomeStatus;
+	interruptionCause: ModelClientFailureKind | null;
 	error: string | null;
 }
 
@@ -463,6 +476,7 @@ async function runGeneration(
 		return {
 			...result,
 			status: result.finishReason === "length" ? "length-limited" : "complete",
+			interruptionCause: null,
 			error: null,
 		};
 	} catch (error) {
@@ -478,9 +492,66 @@ async function runGeneration(
 			finishReason: null,
 			rawFinishReason: null,
 			status: "interrupted",
+			interruptionCause: error.kind,
 			error: error.kind === "cancelled" ? null : error.message,
 		};
 	}
+}
+
+// Adds terminal outcome metadata to the compact safe provenance value. The
+// same allow-listed object is written for direct Generate calls and for the
+// Active Generation terminal seams; the complete Prompt Plan never enters
+// this durable value.
+type PersistedGenerationJsonObject = { readonly [key: string]: ConversationJsonValue };
+
+const persistedGenerationObject = (
+	value: ConversationJsonValue | undefined,
+): PersistedGenerationJsonObject | null => {
+	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
+	// SAFETY: the object-tag check above establishes the JSON object shape before
+	// this projection is used to inspect the allow-listed provenance fields.
+	return value as PersistedGenerationJsonObject;
+};
+
+const persistedGenerationNumber = (value: ConversationJsonValue | undefined): number | null => {
+	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+};
+
+const persistedGenerationString = (value: ConversationJsonValue | undefined): string | null =>
+	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
+
+function terminalGenerationProvenance(
+	base: ConversationDataEntry,
+	outcome: GenerationOutcome,
+): ConversationDataEntry {
+	let parsed: PersistedGenerationJsonObject = {};
+	try {
+		// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
+		// objects; persistedGenerationObject validates the object shape below.
+		const value = persistedGenerationObject(JSON.parse(base.value) as ConversationJsonValue);
+		if (value !== null) parsed = value;
+	} catch {
+		// A malformed legacy provenance value is replaced by the safe terminal
+		// projection rather than echoed into a detail response.
+	}
+	return {
+		namespace: base.namespace,
+		key: base.key,
+		value: JSON.stringify({
+			connectionProfileId: persistedGenerationNumber(parsed.connectionProfileId),
+			connectionSettingsRevision: persistedGenerationNumber(parsed.connectionSettingsRevision),
+			modelBackend: persistedGenerationString(parsed.modelBackend),
+			adapter: persistedGenerationString(parsed.adapter),
+			modelId: persistedGenerationString(parsed.modelId),
+			generationSettings: persistedGenerationObject(parsed.generationSettings) ?? {},
+			usage: outcome.usage === null ? null : normalizeUsage(outcome.usage),
+			finishReason: outcome.finishReason,
+			status: outcome.status,
+			interruptionCause: outcome.interruptionCause,
+		}),
+	};
 }
 
 // Compiles the Prompt Plan the server would send for a current Generate
@@ -592,7 +663,7 @@ async function executeTailGeneration(
 		capturedAuthorName: capture.author.capturedName,
 		humanParticipantId: capture.control.humanParticipantId,
 		modelParticipantId: capture.control.modelParticipantId,
-		provenance: capture.provenance,
+		provenance: terminalGenerationProvenance(capture.provenance, outcome),
 		data: generationOutcomeData(outcome),
 	});
 }
@@ -654,6 +725,21 @@ const connectionJson = (
 			adapter: connection.adapter,
 		};
 
+// Active inspection keeps the exact budget decision made at Generation
+// start, including the whole history entries omitted during preflight. It is
+// deliberately not copied into terminal Variant provenance.
+const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
+	tokenEstimate: budget.tokenEstimate,
+	responseBudget: budget.responseBudget,
+	safetyAllowance: budget.safetyAllowance,
+	contextLimit: budget.contextLimit,
+	totalRequiredTokens: budget.totalRequiredTokens,
+	omittedHistory: budget.omittedHistory.map((entry) => ({
+		speakerName: entry.speakerName,
+		content: entry.content,
+	})),
+});
+
 // Build the candidate Prompt Plan without writing it. A retry reuses the
 // already accepted trailing human Message; a fresh Send appends the submitted
 // human writing to the selected narrative path before budgeting.
@@ -702,7 +788,9 @@ function captureSendGeneration(
 	);
 	return {
 		promptPlan: budget.plan,
+		budget,
 		historyRoles: budget.retainedHistoryRoles,
+		humanParticipant: derivation.humanParticipant,
 		author: {
 			participantId: derivation.modelParticipant.id,
 			capturedName: derivation.modelParticipant.name,
@@ -759,8 +847,10 @@ export async function sendThroughProvisionalTailGeneration(
 		reuseHumanMessageId: capture.reuseHumanMessageId,
 		humanParticipantId: capture.control.humanParticipantId,
 		modelParticipantId: capture.control.modelParticipantId,
+		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
 		promptPlan: promptPlanJson(capture.promptPlan),
+		promptInspection: promptInspectionJson(capture.budget),
 		historyRoles: capture.historyRoles,
 		generationSettings: generationSettingsJson({
 			modelId: capture.settings.modelId,
@@ -984,7 +1074,9 @@ function captureContinuationGeneration(
 	);
 	return {
 		promptPlan: budget.plan,
+		budget,
 		historyRoles: budget.retainedHistoryRoles,
+		humanParticipant: derivation.humanParticipant,
 		author: {
 			participantId: derivation.modelParticipant.id,
 			capturedName: derivation.modelParticipant.name,
@@ -1038,8 +1130,10 @@ export async function continueGeneration(
 		precedingVariantId: capture.precedingVariantId,
 		humanParticipantId: capture.control.humanParticipantId,
 		modelParticipantId: capture.control.modelParticipantId,
+		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
 		promptPlan: promptPlanJson(capture.promptPlan),
+		promptInspection: promptInspectionJson(capture.budget),
 		historyRoles: capture.historyRoles,
 		generationSettings: generationSettingsJson({
 			modelId: capture.settings.modelId,
@@ -1298,6 +1392,7 @@ const deriveSiblingDerivation = (
 
 interface SiblingGenerationCapture {
 	readonly promptPlan: PromptPlan;
+	readonly budget: PromptBudgetResult;
 	readonly historyRoles: readonly ("human" | "model" | null)[];
 	readonly humanParticipant: ParticipantPreview;
 	readonly modelParticipant: ParticipantPreview;
@@ -1321,13 +1416,18 @@ function captureSiblingGeneration(
 		input.connection,
 		input.connectionSettings,
 	);
+	const siblingDerivation: GenerationDerivation = {
+		...derivation,
+		plan: { ...derivation.plan, intent: { type: "sibling" } },
+	};
 	const budget = assertPromptBudget(
-		createBudgetedPlan(derivation, settingsCapture.settings, input.tokenEstimator),
+		createBudgetedPlan(siblingDerivation, settingsCapture.settings, input.tokenEstimator),
 	);
 	const target = snapshot.messages.find((message) => message.id === input.messageId);
 	const priorVariantId = target?.variants.find((variant) => variant.selected)?.id ?? null;
 	return {
-		promptPlan: { ...budget.plan, intent: { type: "sibling" } },
+		promptPlan: budget.plan,
+		budget,
 		historyRoles: budget.retainedHistoryRoles,
 		humanParticipant: derivation.humanParticipant,
 		modelParticipant: derivation.modelParticipant,
@@ -1367,8 +1467,10 @@ export async function generateSiblingVariant(
 		timestamp,
 		humanParticipantId: capture.humanParticipantId,
 		modelParticipantId: capture.modelParticipantId,
+		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.modelParticipant.name,
 		promptPlan: promptPlanJson(capture.promptPlan),
+		promptInspection: promptInspectionJson(capture.budget),
 		historyRoles: capture.historyRoles,
 		generationSettings: generationSettingsJson({
 			modelId: capture.settings.modelId,

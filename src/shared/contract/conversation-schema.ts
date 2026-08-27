@@ -144,6 +144,84 @@ export const generationVariant = t.Object({
 	})),
 });
 
+const generationProvenance = t.Nullable(t.Object({
+	connectionProfileId: t.Nullable(t.Integer()),
+	connectionSettingsRevision: t.Nullable(t.Integer()),
+	modelBackend: t.Nullable(t.String()),
+	adapter: t.Nullable(t.String()),
+	modelId: t.Nullable(t.String()),
+	generationSettings: t.Object({
+		temperature: t.Nullable(t.Number()),
+		topP: t.Nullable(t.Number()),
+		frequencyPenalty: t.Nullable(t.Number()),
+		presencePenalty: t.Nullable(t.Number()),
+		contextLimit: t.Nullable(t.Integer()),
+		responseBudget: t.Nullable(t.Integer()),
+		safetyAllowance: t.Nullable(t.Integer()),
+		siblingGenerationLimit: t.Nullable(t.Integer()),
+		continuationStrategy: t.Union([t.Literal("instruction"), t.Literal("assistant-prefill"), t.Null()]),
+		continuationInstruction: t.Nullable(t.String()),
+		continuationPrefillSuffix: t.Union([t.Literal(""), t.Literal(" "), t.Literal("\n"), t.Literal("\n\n"), t.Null()]),
+	}),
+	usage: t.Nullable(t.Record(t.String(), t.Number())),
+	finishReason: t.Union([t.Literal("stop"), t.Literal("length"), t.Literal("other"), t.Null()]),
+	status: t.Union([t.Literal("complete"), t.Literal("length-limited"), t.Literal("interrupted")]),
+	interruptionCause: t.Nullable(t.String()),
+}));
+
+// Active details are intentionally a separate contract from Conversation
+// summaries and ordinary history. Opaque prompt JSON is provider-neutral and
+// retained only for the bounded Active Generation/replay lifecycle.
+export const activeGenerationDetails = t.Object({
+	conversationId: t.Integer(),
+	generationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	startedAt: t.String(),
+	status: t.Literal("active"),
+	intent: t.Unknown(),
+	participants: t.Object({
+		human: t.Object({ id: t.Integer(), name: t.String() }),
+		model: t.Object({ id: t.Integer(), name: t.String() }),
+	}),
+	promptPlan: t.Unknown(),
+	historyRoles: t.Unknown(),
+	generationSettings: t.Unknown(),
+	connection: t.Unknown(),
+	budget: t.Object({
+		tokenEstimate: t.Nullable(t.Integer()),
+		responseBudget: t.Nullable(t.Integer()),
+		safetyAllowance: t.Nullable(t.Integer()),
+		contextLimit: t.Nullable(t.Integer()),
+		totalRequiredTokens: t.Nullable(t.Integer()),
+		omittedHistory: t.Unknown(),
+	}),
+	checkpoint: t.Object({
+		content: t.String(),
+		reasoning: t.String(),
+		latestEventId: t.Integer(),
+		checkpointedAt: t.Nullable(t.String()),
+	}),
+});
+
+export const variantDetails = t.Object({
+	conversationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	content: t.String(),
+	timestamp: t.String(),
+	author: t.Nullable(t.Object({
+		participantId: t.Nullable(t.Integer()),
+		capturedName: t.Nullable(t.String()),
+		inCast: t.Boolean(),
+	})),
+	historicalContext: t.Nullable(t.Object({
+		humanParticipantId: t.Integer(),
+		modelParticipantId: t.Integer(),
+	})),
+	provenance: generationProvenance,
+});
+
 // Adapts the seam's immutable snapshot into the summary transport shape: the
 // Conversation seam returns readonly arrays, while the typed response
 // contract declares mutable ones. Mirrors toCharacterPayload in the
@@ -456,4 +534,3 @@ export const characterConflict = t.Object({
 	actualRevision: t.Integer(),
 	currentCharacter: characterSnapshot,
 });
-

@@ -365,6 +365,333 @@ export async function loadConversationGenerationSettings(
 	return (await response.json()) as ConversationGenerationSettings;
 }
 
+export type GenerationDetailsJsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| GenerationDetailsJsonValue[]
+	| { readonly [key: string]: GenerationDetailsJsonValue };
+
+export type GenerationDetailsJsonObject = {
+	readonly [key: string]: GenerationDetailsJsonValue;
+};
+
+export interface ActiveGenerationDetails {
+	conversationId: number;
+	generationId: number;
+	messageId: number;
+	variantId: number;
+	startedAt: string;
+	status: "active";
+	intent: GenerationDetailsJsonValue;
+	participants: {
+		human: { id: number; name: string };
+		model: { id: number; name: string };
+	};
+	promptPlan: GenerationDetailsJsonValue;
+	historyRoles: GenerationDetailsJsonValue;
+	generationSettings: GenerationDetailsJsonValue;
+	connection: GenerationDetailsJsonValue;
+	budget: {
+		tokenEstimate: number | null;
+		responseBudget: number | null;
+		safetyAllowance: number | null;
+		contextLimit: number | null;
+		totalRequiredTokens: number | null;
+		omittedHistory: GenerationDetailsJsonValue;
+	};
+	checkpoint: {
+		content: string;
+		reasoning: string;
+		latestEventId: number;
+		checkpointedAt: string | null;
+	};
+}
+
+export interface GenerationProvenance {
+	connectionProfileId: number | null;
+	connectionSettingsRevision: number | null;
+	modelBackend: string | null;
+	adapter: string | null;
+	modelId: string | null;
+	generationSettings: {
+		temperature: number | null;
+		topP: number | null;
+		frequencyPenalty: number | null;
+		presencePenalty: number | null;
+		contextLimit: number | null;
+		responseBudget: number | null;
+		safetyAllowance: number | null;
+		siblingGenerationLimit: number | null;
+		continuationStrategy: "instruction" | "assistant-prefill" | null;
+		continuationInstruction: string | null;
+		continuationPrefillSuffix: "" | " " | "\n" | "\n\n" | null;
+	};
+	usage: Record<string, number> | null;
+	finishReason: "stop" | "length" | "other" | null;
+	status: "complete" | "length-limited" | "interrupted";
+	interruptionCause: string | null;
+}
+
+export interface VariantDetails {
+	conversationId: number;
+	messageId: number;
+	variantId: number;
+	content: string;
+	timestamp: string;
+	author: {
+		participantId: number | null;
+		capturedName: string | null;
+		inCast: boolean;
+	} | null;
+	historicalContext: {
+		humanParticipantId: number;
+		modelParticipantId: number;
+	} | null;
+	provenance: GenerationProvenance | null;
+}
+
+export type GenerationDetailsOutcome<T> =
+	| { status: "available"; details: T }
+	| { status: "not-found" }
+	| { status: "network" };
+
+const generationDetailsObject = (value: GenerationDetailsJsonValue | undefined): GenerationDetailsJsonObject | null => {
+	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
+	// SAFETY: the object-tag check above establishes the JSON object shape before
+	// this projection is used to inspect named detail fields.
+	return value as GenerationDetailsJsonObject;
+};
+
+const generationDetailsNumber = (value: GenerationDetailsJsonValue | undefined): number | null => {
+	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+};
+
+const generationDetailsString = (value: GenerationDetailsJsonValue | undefined): string | null =>
+	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
+
+const generationDetailsBoolean = (value: GenerationDetailsJsonValue | undefined): boolean | null =>
+	Object.prototype.toString.call(value) === "[object Boolean]" ? Boolean(value) : null;
+
+const generationDetailsNullableNumber = (value: GenerationDetailsJsonValue | undefined): number | null =>
+	value === null ? null : generationDetailsNumber(value);
+
+type GenerationUsage = Record<string, number>;
+
+const parseGenerationUsage = (value: GenerationDetailsJsonValue | undefined): GenerationUsage | null | undefined => {
+	if (value === null) return null;
+	const object = generationDetailsObject(value);
+	if (object === null) return undefined;
+	const usage: GenerationUsage = {};
+	for (const [key, candidate] of Object.entries(object)) {
+		const number = generationDetailsNumber(candidate);
+		if (number === null || number < 0) return undefined;
+		usage[key] = number;
+	}
+	return usage;
+};
+
+const parseGenerationProvenance = (
+	value: GenerationDetailsJsonValue | undefined,
+): GenerationProvenance | null | undefined => {
+	if (value === null) return null;
+	const object = generationDetailsObject(value);
+	if (object === null) return undefined;
+	const settings = generationDetailsObject(object.generationSettings);
+	if (settings === null) return undefined;
+	const status = generationDetailsString(object.status);
+	if (status !== "complete" && status !== "length-limited" && status !== "interrupted") return undefined;
+	const continuationStrategy = generationDetailsString(settings.continuationStrategy);
+	const continuationPrefillSuffix = generationDetailsString(settings.continuationPrefillSuffix);
+	const rawFinishReason = generationDetailsString(object.finishReason);
+	const usage = parseGenerationUsage(object.usage);
+	if (usage === undefined) return undefined;
+	return {
+		connectionProfileId: generationDetailsNullableNumber(object.connectionProfileId),
+		connectionSettingsRevision: generationDetailsNullableNumber(object.connectionSettingsRevision),
+		modelBackend: generationDetailsString(object.modelBackend),
+		adapter: generationDetailsString(object.adapter),
+		modelId: generationDetailsString(object.modelId),
+		generationSettings: {
+			temperature: generationDetailsNullableNumber(settings.temperature),
+			topP: generationDetailsNullableNumber(settings.topP),
+			frequencyPenalty: generationDetailsNullableNumber(settings.frequencyPenalty),
+			presencePenalty: generationDetailsNullableNumber(settings.presencePenalty),
+			contextLimit: generationDetailsNullableNumber(settings.contextLimit),
+			responseBudget: generationDetailsNullableNumber(settings.responseBudget),
+			safetyAllowance: generationDetailsNullableNumber(settings.safetyAllowance),
+			siblingGenerationLimit: generationDetailsNullableNumber(settings.siblingGenerationLimit),
+			continuationStrategy: continuationStrategy === "instruction" || continuationStrategy === "assistant-prefill"
+				? continuationStrategy
+				: null,
+			continuationInstruction: generationDetailsString(settings.continuationInstruction),
+			continuationPrefillSuffix: continuationPrefillSuffix === "" || continuationPrefillSuffix === " " || continuationPrefillSuffix === "\n" || continuationPrefillSuffix === "\n\n"
+				? continuationPrefillSuffix
+				: null,
+		},
+		usage,
+		finishReason: rawFinishReason === "stop" || rawFinishReason === "length" || rawFinishReason === "other"
+			? rawFinishReason
+			: null,
+		status,
+		interruptionCause: generationDetailsString(object.interruptionCause),
+	};
+};
+
+const parseActiveGenerationDetails = (value: GenerationDetailsJsonValue): ActiveGenerationDetails | null => {
+	const object = generationDetailsObject(value);
+	const participants = generationDetailsObject(object?.participants);
+	const human = generationDetailsObject(participants?.human);
+	const model = generationDetailsObject(participants?.model);
+	const budget = generationDetailsObject(object?.budget);
+	const checkpoint = generationDetailsObject(object?.checkpoint);
+	const generationId = generationDetailsNumber(object?.generationId);
+	const conversationId = generationDetailsNumber(object?.conversationId);
+	const messageId = generationDetailsNumber(object?.messageId);
+	const variantId = generationDetailsNumber(object?.variantId);
+	const startedAt = generationDetailsString(object?.startedAt);
+	const status = generationDetailsString(object?.status);
+	const humanId = generationDetailsNumber(human?.id);
+	const humanName = generationDetailsString(human?.name);
+	const modelId = generationDetailsNumber(model?.id);
+	const modelName = generationDetailsString(model?.name);
+	const checkpointContent = generationDetailsString(checkpoint?.content);
+	const checkpointReasoning = generationDetailsString(checkpoint?.reasoning);
+	const checkpointEventId = generationDetailsNumber(checkpoint?.latestEventId);
+	const checkpointedAt = checkpoint?.checkpointedAt === null ? null : generationDetailsString(checkpoint?.checkpointedAt);
+	if (
+		object === null || participants === null || human === null || model === null ||
+		budget === null || checkpoint === null || generationId === null || conversationId === null ||
+		messageId === null || variantId === null || startedAt === null || status !== "active" ||
+		humanId === null || humanName === null || modelId === null || modelName === null ||
+		checkpointContent === null || checkpointReasoning === null || checkpointEventId === null ||
+		(checkpoint.checkpointedAt !== null && checkpointedAt === null)
+	) return null;
+	const numberOrNull = (candidate: GenerationDetailsJsonValue | undefined): number | null => candidate === null ? null : generationDetailsNumber(candidate);
+	if (
+		(budget.tokenEstimate !== null && generationDetailsNumber(budget.tokenEstimate) === null) ||
+		(budget.responseBudget !== null && generationDetailsNumber(budget.responseBudget) === null) ||
+		(budget.safetyAllowance !== null && generationDetailsNumber(budget.safetyAllowance) === null) ||
+		(budget.contextLimit !== null && generationDetailsNumber(budget.contextLimit) === null) ||
+		(budget.totalRequiredTokens !== null && generationDetailsNumber(budget.totalRequiredTokens) === null)
+	) return null;
+	return {
+		conversationId,
+		generationId,
+		messageId,
+		variantId,
+		startedAt,
+		status,
+		intent: object.intent,
+		participants: {
+			human: { id: humanId, name: humanName },
+			model: { id: modelId, name: modelName },
+		},
+		promptPlan: object.promptPlan,
+		historyRoles: object.historyRoles,
+		generationSettings: object.generationSettings,
+		connection: object.connection,
+		budget: {
+			tokenEstimate: numberOrNull(budget.tokenEstimate),
+			responseBudget: numberOrNull(budget.responseBudget),
+			safetyAllowance: numberOrNull(budget.safetyAllowance),
+			contextLimit: numberOrNull(budget.contextLimit),
+			totalRequiredTokens: numberOrNull(budget.totalRequiredTokens),
+			omittedHistory: budget.omittedHistory,
+		},
+		checkpoint: {
+			content: checkpointContent,
+			reasoning: checkpointReasoning,
+			latestEventId: checkpointEventId,
+			checkpointedAt,
+		},
+	};
+};
+
+const parseVariantDetails = (value: GenerationDetailsJsonValue): VariantDetails | null => {
+	const object = generationDetailsObject(value);
+	if (object === null) return null;
+	const conversationId = generationDetailsNumber(object.conversationId);
+	const messageId = generationDetailsNumber(object.messageId);
+	const variantId = generationDetailsNumber(object.variantId);
+	const content = generationDetailsString(object.content);
+	const timestamp = generationDetailsString(object.timestamp);
+	if (conversationId === null || messageId === null || variantId === null || content === null || timestamp === null) return null;
+	const author = object.author === null ? null : (() => {
+		const authorObject = generationDetailsObject(object.author);
+		const participantId = generationDetailsNullableNumber(authorObject?.participantId);
+		const capturedName = generationDetailsString(authorObject?.capturedName);
+		const inCast = generationDetailsBoolean(authorObject?.inCast);
+		return authorObject === null || inCast === null ? undefined : { participantId, capturedName, inCast };
+	})();
+	if (author === undefined) return null;
+	const historicalContext = object.historicalContext === null ? null : (() => {
+		const context = generationDetailsObject(object.historicalContext);
+		const humanParticipantId = generationDetailsNumber(context?.humanParticipantId);
+		const modelParticipantId = generationDetailsNumber(context?.modelParticipantId);
+		return context === null || humanParticipantId === null || modelParticipantId === null
+			? undefined
+			: { humanParticipantId, modelParticipantId };
+	})();
+	if (historicalContext === undefined) return null;
+	const provenance = parseGenerationProvenance(object.provenance);
+	if (provenance === undefined) return null;
+	return {
+		conversationId,
+		messageId,
+		variantId,
+		content,
+		timestamp,
+		author,
+		historicalContext,
+		provenance,
+	};
+};
+
+export async function loadActiveGenerationDetails(
+	conversationId: number,
+	generationId: number,
+): Promise<GenerationDetailsOutcome<ActiveGenerationDetails>> {
+	try {
+		const response = await fetch(`/api/conversations/${conversationId}/generations/${generationId}/inspection`);
+		if (response.status === 404) return { status: "not-found" };
+		if (!response.ok) return { status: "network" };
+		// SAFETY: JSON responses contain only JSON-compatible values; the parser
+		// validates the object and every field before exposing detail types.
+		const value = await response.json() as GenerationDetailsJsonValue;
+		const details = parseActiveGenerationDetails(value);
+		return details === null ? { status: "network" } : { status: "available", details };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export const loadActiveGenerationInspection = loadActiveGenerationDetails;
+
+export async function loadVariantDetails(
+	conversationId: number,
+	messageId: number,
+	variantId: number,
+): Promise<GenerationDetailsOutcome<VariantDetails>> {
+	try {
+		const response = await fetch(`/api/conversations/${conversationId}/messages/${messageId}/variants/${variantId}/details`);
+		if (response.status === 404) return { status: "not-found" };
+		if (!response.ok) return { status: "network" };
+		// SAFETY: JSON responses contain only JSON-compatible values; the parser
+		// validates the object and every field before exposing detail types.
+		const value = await response.json() as GenerationDetailsJsonValue;
+		const details = parseVariantDetails(value);
+		return details === null ? { status: "network" } : { status: "available", details };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export const loadGenerationVariantDetails = loadVariantDetails;
+
 export type StartConversationGenerationResult =
 	| {
 			outcome: "accepted";

@@ -449,6 +449,18 @@ export interface ConversationModule {
 		conversationId: number,
 		filter?: ConversationDataReadFilter,
 	): ConversationDataRead | undefined;
+	// Deliberate detail reads. Active inspection is available only while the
+	// server-owned row is retained; compact Variant provenance survives that
+	// cleanup and is loaded separately from ordinary history.
+	readActiveGenerationDetails(
+		conversationId: number,
+		generationId: number,
+	): ActiveGenerationDetails | undefined;
+	readVariantDetails(
+		conversationId: number,
+		messageId: number,
+		variantId: number,
+	): VariantDetails | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
 	// Server-side commit of a finished current Generate; see
 	// CommitGenerationInput. Not a client-submitted command.
@@ -507,6 +519,84 @@ export interface ActiveGenerationSnapshot {
 	startedAt: string;
 }
 
+// Deliberate, on-demand read of one server-owned Active Generation. The
+// captured plan and omitted history are intentionally absent from ordinary
+// Conversation snapshots and history pages; they exist only while the
+// active/replay lifecycle retains the generation row.
+export interface ActiveGenerationDetails {
+	conversationId: number;
+	generationId: number;
+	messageId: number;
+	variantId: number;
+	startedAt: string;
+	status: "active";
+	intent: ConversationJsonValue;
+	participants: {
+		human: { id: number; name: string };
+		model: { id: number; name: string };
+	};
+	promptPlan: ConversationJsonValue;
+	historyRoles: ConversationJsonValue;
+	generationSettings: ConversationJsonValue;
+	connection: ConversationJsonValue;
+	budget: {
+		tokenEstimate: number | null;
+		responseBudget: number | null;
+		safetyAllowance: number | null;
+		contextLimit: number | null;
+		totalRequiredTokens: number | null;
+		omittedHistory: ConversationJsonValue;
+	};
+	checkpoint: {
+		content: string;
+		reasoning: string;
+		latestEventId: number;
+		checkpointedAt: string | null;
+	};
+}
+
+// Compact terminal provenance is the only Generation detail that survives
+// Active Generation cleanup. It has a positive allow-list by design: no
+// request overrides, URLs, headers, credentials, or raw provider payloads.
+export interface GenerationProvenance {
+	connectionProfileId: number | null;
+	connectionSettingsRevision: number | null;
+	modelBackend: string | null;
+	adapter: string | null;
+	modelId: string | null;
+	generationSettings: {
+		temperature: number | null;
+		topP: number | null;
+		frequencyPenalty: number | null;
+		presencePenalty: number | null;
+		contextLimit: number | null;
+		responseBudget: number | null;
+		safetyAllowance: number | null;
+		siblingGenerationLimit: number | null;
+		continuationStrategy: "instruction" | "assistant-prefill" | null;
+		continuationInstruction: string | null;
+		continuationPrefillSuffix: "" | " " | "\n" | "\n\n" | null;
+	};
+	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
+	finishReason: "stop" | "length" | "other" | null;
+	status: "complete" | "length-limited" | "interrupted";
+	interruptionCause: string | null;
+}
+
+// On-demand details for a terminal Variant. Reasoning and arbitrary data
+// rows remain outside this contract; Generation provenance is compact and
+// safe while the normal history read stays lightweight.
+export interface VariantDetails {
+	conversationId: number;
+	messageId: number;
+	variantId: number;
+	content: string;
+	timestamp: string;
+	author: AuthorStampSnapshot | null;
+	historicalContext: HistoricalControlSnapshot | null;
+	provenance: GenerationProvenance | null;
+}
+
 // Captured, provider-neutral input stored with an Active Generation. The
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
@@ -520,8 +610,12 @@ export interface AcceptTailGenerationInput {
 	reuseHumanMessageId?: number | undefined;
 	humanParticipantId: number;
 	modelParticipantId: number;
+	capturedHumanName?: string | undefined;
 	capturedModelName: string;
 	promptPlan: ConversationJsonValue;
+	// Active-only budget/omission diagnostics. Older direct callers may omit
+	// this field; workflow callers always capture it before acceptance.
+	promptInspection?: ConversationJsonValue | undefined;
 	historyRoles: readonly ("human" | "model" | null)[];
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
@@ -571,8 +665,10 @@ export interface AcceptContinuationGenerationInput {
 	precedingVariantId: number;
 	humanParticipantId: number;
 	modelParticipantId: number;
+	capturedHumanName?: string | undefined;
 	capturedModelName: string;
 	promptPlan: ConversationJsonValue;
+	promptInspection?: ConversationJsonValue | undefined;
 	historyRoles: readonly ("human" | "model" | null)[];
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
@@ -596,8 +692,10 @@ export interface AcceptSiblingGenerationInput {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
+	capturedHumanName?: string | undefined;
 	capturedModelName: string;
 	promptPlan: ConversationJsonValue;
+	promptInspection?: ConversationJsonValue | undefined;
 	historyRoles: readonly ("human" | "model" | null)[];
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;

@@ -86,6 +86,126 @@ const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolea
 	}
 };
 
+// Convert the captured base provenance plus terminal data into the compact
+// positive allow-list retained by a Variant. Request overrides and any
+// malformed/legacy fields are deliberately dropped here, before persistence.
+type ActiveProvenanceJsonObject = { readonly [key: string]: ConversationJsonValue };
+
+const activeProvenanceObject = (
+	value: ConversationJsonValue | undefined,
+): ActiveProvenanceJsonObject | null => {
+	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
+	// SAFETY: the object-tag check above establishes the JSON object shape before
+	// this projection is used to inspect the allow-listed provenance fields.
+	return value as ActiveProvenanceJsonObject;
+};
+
+const activeProvenanceNumber = (value: ConversationJsonValue | undefined): number | null => {
+	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+};
+
+const activeProvenanceString = (value: ConversationJsonValue | undefined): string | null =>
+	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
+
+interface TerminalUsage {
+	inputTokens?: number;
+	outputTokens?: number;
+	totalTokens?: number;
+}
+
+const terminalProvenance = (
+	active: { provenance_namespace: string | null; provenance_key: string | null; provenance_value: string | null },
+	data: readonly ConversationDataEntry[],
+): ConversationDataEntry | undefined => {
+	if (active.provenance_namespace === null || active.provenance_key === null || active.provenance_value === null) return undefined;
+	let source: ActiveProvenanceJsonObject = {};
+	try {
+		// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
+		// objects; activeProvenanceObject validates the object shape below.
+		const parsed = activeProvenanceObject(JSON.parse(active.provenance_value) as ConversationJsonValue);
+		if (parsed !== null) source = parsed;
+	} catch {
+		// Replace malformed legacy values with the safe terminal projection.
+	}
+	const settings = activeProvenanceObject(source.generationSettings) ?? {};
+	const generationSettings = {
+		temperature: activeProvenanceNumber(settings.temperature),
+		topP: activeProvenanceNumber(settings.topP),
+		frequencyPenalty: activeProvenanceNumber(settings.frequencyPenalty),
+		presencePenalty: activeProvenanceNumber(settings.presencePenalty),
+		contextLimit: activeProvenanceNumber(settings.contextLimit),
+		responseBudget: activeProvenanceNumber(settings.responseBudget),
+		safetyAllowance: activeProvenanceNumber(settings.safetyAllowance),
+		siblingGenerationLimit: activeProvenanceNumber(settings.siblingGenerationLimit),
+		continuationStrategy: settings.continuationStrategy === "instruction" || settings.continuationStrategy === "assistant-prefill"
+			? settings.continuationStrategy
+			: null,
+		continuationInstruction: activeProvenanceString(settings.continuationInstruction),
+		continuationPrefillSuffix: settings.continuationPrefillSuffix === "" || settings.continuationPrefillSuffix === " " || settings.continuationPrefillSuffix === "\n" || settings.continuationPrefillSuffix === "\n\n"
+			? settings.continuationPrefillSuffix
+			: null,
+	};
+	let usage: TerminalUsage | null = null;
+	const usageEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "usage");
+	if (usageEntry !== undefined) {
+		try {
+			// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
+			// objects; activeProvenanceObject validates the usage object below.
+			const parsed = activeProvenanceObject(JSON.parse(usageEntry.value) as ConversationJsonValue);
+			if (parsed !== null) {
+				const next: TerminalUsage = {};
+				for (const key of ["inputTokens", "outputTokens", "totalTokens"] as const) {
+					const value = activeProvenanceNumber(parsed[key]);
+					if (value !== null && value >= 0) next[key] = value;
+				}
+				if (Object.keys(next).length > 0) usage = next;
+			}
+		} catch { /* malformed usage remains unavailable */ }
+	}
+	const finishEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "finish");
+	let finishReason = activeProvenanceString(source.finishReason);
+	if (finishEntry !== undefined) {
+		try {
+			// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
+			// objects; activeProvenanceObject validates the finish object below.
+			const parsed = activeProvenanceObject(JSON.parse(finishEntry.value) as ConversationJsonValue);
+			if (parsed !== null) {
+				const reason = activeProvenanceString(parsed.reason);
+				if (reason === "stop" || reason === "length" || reason === "other") finishReason = reason;
+			}
+		} catch { /* malformed finish remains unavailable */ }
+	}
+	if (finishReason !== "stop" && finishReason !== "length" && finishReason !== "other") finishReason = null;
+	const outcome = data.find((entry) => entry.namespace === "generation" && entry.key === "outcome")?.value;
+	const status = outcome === "length-limited" || outcome === "interrupted" || outcome === "complete"
+		? outcome
+		: source.status === "length-limited" || source.status === "interrupted" || source.status === "complete"
+			? source.status
+			: "complete";
+	const interruptionCause = data.find((entry) => entry.namespace === "generation" && entry.key === "interruption-cause")?.value
+		?? activeProvenanceString(source.interruptionCause);
+	const profileId = activeProvenanceNumber(source.connectionProfileId);
+	const settingsRevision = activeProvenanceNumber(source.connectionSettingsRevision);
+	return {
+		namespace: active.provenance_namespace,
+		key: active.provenance_key,
+		value: JSON.stringify({
+			connectionProfileId: profileId,
+			connectionSettingsRevision: settingsRevision,
+			modelBackend: activeProvenanceString(source.modelBackend),
+			adapter: activeProvenanceString(source.adapter),
+			modelId: activeProvenanceString(source.modelId),
+			generationSettings,
+			usage,
+			finishReason,
+			status,
+			interruptionCause,
+		}),
+	};
+};
+
 const ensureConversationRevision = (
 	db: ReturnType<typeof connectConversationDatabase>,
 	conversationId: number,
@@ -271,9 +391,11 @@ export function acceptConversationTailGeneration(
 				variant_id: provisional.id,
 				human_participant_id: human.id,
 				model_participant_id: model.id,
+				captured_human_name: input.capturedHumanName ?? human.name,
 				captured_model_name: model.name,
 				started_at: input.timestamp,
 				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
+				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
 				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
 				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 				connection_json: jsonText(input.connection, "Connection identity"),
@@ -448,9 +570,11 @@ export function acceptConversationContinuationGeneration(
 				variant_id: provisional.id,
 				human_participant_id: human.id,
 				model_participant_id: model.id,
+				captured_human_name: input.capturedHumanName ?? human.name,
 				captured_model_name: model.name,
 				started_at: input.timestamp,
 				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
+				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
 				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
 				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 				connection_json: jsonText(input.connection, "Connection identity"),
@@ -519,6 +643,7 @@ export function acceptConversationSiblingGeneration(
 				"A Sibling Generation requires distinct historical Participants.",
 			);
 		}
+		const human = requireParticipant(db, input.conversationId, input.humanParticipantId);
 
 		const control = readControlAssignment(db, input.conversationId);
 		const message = requireMessage(db, input.conversationId, input.messageId);
@@ -640,9 +765,11 @@ export function acceptConversationSiblingGeneration(
 				prior_variant_id: prior,
 				human_participant_id: input.humanParticipantId,
 				model_participant_id: input.modelParticipantId,
+				captured_human_name: input.capturedHumanName ?? human.name,
 				captured_model_name: input.capturedModelName,
 				started_at: input.timestamp,
 				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
+				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
 				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
 				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 				connection_json: jsonText(input.connection, "Connection identity"),
@@ -702,15 +829,8 @@ export function resolveConversationSiblingGeneration(
 			.set({ content: input.content, timestamp: input.timestamp })
 			.where(eq(messageVariantTable.id, variant.id))
 			.run();
-		const provenance = active.provenance_namespace !== null &&
-			active.provenance_key !== null && active.provenance_value !== null
-			? {
-				namespace: active.provenance_namespace,
-				key: active.provenance_key,
-				value: active.provenance_value,
-			}
-			: undefined;
 		const suppliedData = input.data ?? [];
+		const provenance = terminalProvenance(active, suppliedData);
 		const data = [
 			...(provenance === undefined ? [] : [provenance]),
 			...(input.reasoning !== undefined && input.reasoning.length > 0 &&
@@ -845,16 +965,8 @@ export function resolveConversationTailGeneration(
 			.set({ content: input.content, timestamp: input.timestamp })
 			.where(eq(messageVariantTable.id, variant.id))
 			.run();
-		const provenance = active.provenance_namespace !== null &&
-			active.provenance_key !== null &&
-			active.provenance_value !== null
-			? {
-				namespace: active.provenance_namespace,
-				key: active.provenance_key,
-				value: active.provenance_value,
-			}
-			: undefined;
 		const suppliedData = input.data ?? [];
+		const provenance = terminalProvenance(active, suppliedData);
 		const data = [
 			...(provenance === undefined ? [] : [provenance]),
 			...(input.reasoning !== undefined && input.reasoning.length > 0 &&

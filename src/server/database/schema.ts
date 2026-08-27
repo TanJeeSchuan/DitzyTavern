@@ -348,9 +348,16 @@ export const activeGenerationTable = sqliteTable(
 		model_participant_id: int()
 			.notNull()
 			.references(() => participantTable.id),
+		// Names are captured with the Control pair so an inspection remains
+		// stable when either Participant is renamed while the provider runs.
+		captured_human_name: text().notNull().default(""),
 		captured_model_name: text().notNull(),
 		started_at: text().notNull(),
 		prompt_plan_json: text().notNull(),
+		// Budget diagnostics are active-only inspection data. Keeping this
+		// separate from the plan makes the lifecycle able to discard the
+		// complete prompt while retaining only compact Variant provenance.
+		prompt_inspection_json: text().notNull().default("{}"),
 		history_roles_json: text().notNull(),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
