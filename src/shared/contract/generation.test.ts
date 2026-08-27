@@ -142,9 +142,26 @@ describe("Generation transport contract", () => {
 		));
 		const body = await observed.text();
 		const persisted = createConversationModule(database).getSnapshot(conversation.id);
-		const variant = persisted?.messages.at(-1)?.variants.at(-1);
+		const message = persisted?.messages.at(-1);
+		const variant = message?.variants.at(-1);
 		expect(variant?.content).toBe("Contract reply.");
-		expect(variant?.data).toHaveLength(1);
+		expect(variant?.data).toEqual(expect.arrayContaining([
+			{
+				namespace: "generation",
+				key: "finish",
+				value: JSON.stringify({ reason: "stop", raw: null }),
+			},
+		]));
+		if (message === undefined || variant === undefined) throw new Error("Generated Variant missing.");
+		expect(createConversationModule(database).readVariantDetails(
+			conversation.id,
+			message.id,
+			variant.id,
+		)?.provenance).toMatchObject({
+			status: "complete",
+			finishReason: "stop",
+			interruptionCause: null,
+		});
 		expect(body).not.toContain("contract-secret-never-returned");
 		expect(body).not.toContain("127.0.0.1:43127");
 		expect(requestBody?.model).toBe("free-text-model");

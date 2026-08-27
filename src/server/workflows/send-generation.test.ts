@@ -65,6 +65,110 @@ describe("Send through provisional Tail Generation", () => {
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
 
+	test("terminal details retain stop, other, and length finish reasons", async () => {
+		const completed = await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: 0,
+			content: "Complete this thought.",
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Finished cleanly." },
+				{ type: "finished", finishReason: "stop" },
+			]),
+		});
+		const completedMessage = completed.conversation.messages.at(-1);
+		const completedVariant = completedMessage?.variants[0];
+		if (completedMessage === undefined || completedVariant === undefined) {
+			throw new Error("Completed Variant missing.");
+		}
+		expect(createConversationModule(database).readVariantDetails(
+			conversationId,
+			completedMessage.id,
+			completedVariant.id,
+		)?.provenance).toMatchObject({
+			status: "complete",
+			finishReason: "stop",
+			interruptionCause: null,
+		});
+
+		const other = await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: completed.conversation.revision,
+			content: "Use another terminal reason.",
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "Finished another way." },
+				{ type: "finished", finishReason: "other" },
+			]),
+		});
+		const otherMessage = other.conversation.messages.at(-1);
+		const otherVariant = otherMessage?.variants[0];
+		if (otherMessage === undefined || otherVariant === undefined) {
+			throw new Error("Other-finished Variant missing.");
+		}
+		expect(createConversationModule(database).readVariantDetails(
+			conversationId,
+			otherMessage.id,
+			otherVariant.id,
+		)?.provenance).toMatchObject({
+			status: "complete",
+			finishReason: "other",
+			interruptionCause: null,
+		});
+
+		const lengthLimited = await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: other.conversation.revision,
+			content: "Reach the output limit.",
+			modelClient: createFakeModelClient(() => [
+				{ type: "content", text: "The bounded output." },
+				{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+			]),
+		});
+		const lengthMessage = lengthLimited.conversation.messages.at(-1);
+		const lengthVariant = lengthMessage?.variants[0];
+		if (lengthMessage === undefined || lengthVariant === undefined) {
+			throw new Error("Length-limited Variant missing.");
+		}
+		expect(createConversationModule(database).readVariantDetails(
+			conversationId,
+			lengthMessage.id,
+			lengthVariant.id,
+		)?.provenance).toMatchObject({
+			status: "length-limited",
+			finishReason: "length",
+			interruptionCause: null,
+		});
+	});
+
+	test("terminal details retain every normalized interruption cause", async () => {
+		let expectedRevision = 0;
+		for (const cause of ["provider", "inactivity", "cancelled", "transport", "protocol"] as const) {
+			const interrupted = await sendThroughProvisionalTailGeneration(database, {
+				conversationId,
+				expectedRevision,
+				content: `Exercise the ${cause} path.`,
+				modelClient: createFakeModelClient(() => [
+					{ type: "content", text: `Partial ${cause} output.` },
+					{ type: "failed", kind: cause, message: `Safe ${cause} failure.` },
+				]),
+			});
+			expectedRevision = interrupted.conversation.revision;
+			const message = interrupted.conversation.messages.at(-1);
+			const variant = message?.variants[0];
+			if (message === undefined || variant === undefined) {
+				throw new Error(`Interrupted ${cause} Variant missing.`);
+			}
+			expect(createConversationModule(database).readVariantDetails(
+				conversationId,
+				message.id,
+				variant.id,
+			)?.provenance).toMatchObject({
+				status: "interrupted",
+				finishReason: null,
+				interruptionCause: cause,
+			});
+		}
+	});
+
 	test("removes zero-output targets while preserving the accepted human Message and reuses it on retry", async () => {
 		await expect(sendThroughProvisionalTailGeneration(database, {
 			conversationId,

@@ -1585,7 +1585,7 @@ function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[
 			value: JSON.stringify(normalizeUsage(input.usage)),
 		});
 	}
-	if (input.finishReason === "length" || input.rawFinishReason !== null) {
+	if (input.finishReason !== null || input.rawFinishReason !== null) {
 		data.push({
 			namespace: "generation",
 			key: "finish",
@@ -1593,6 +1593,13 @@ function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[
 				reason: input.finishReason,
 				raw: input.rawFinishReason?.slice(0, 128) ?? null,
 			}),
+		});
+	}
+	if (input.interruptionCause !== null) {
+		data.push({
+			namespace: "generation",
+			key: "interruption-cause",
+			value: input.interruptionCause,
 		});
 	}
 	if (input.error !== null) {

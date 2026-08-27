@@ -9,6 +9,7 @@ import {
 	createConversationModule,
 	stopConversationGeneration,
 } from ".";
+import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -76,7 +77,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 		const modelMessage = stopped.messages.at(-1);
 		const variant = modelMessage?.variants[0];
-		if (variant === undefined) throw new Error("Interrupted Variant missing.");
+		if (modelMessage === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
 
 		expect(stopped.activeGenerations).toEqual([]);
 		expect(stopped.messages).toHaveLength(2);
@@ -86,6 +87,47 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "reasoning", value: "Private thought." },
 		]);
+		expect(input.module.readVariantDetails(
+			input.created.id,
+			modelMessage.id,
+			variant.id,
+		)?.provenance).toMatchObject({
+			status: "interrupted",
+			finishReason: null,
+			interruptionCause: "user-stop",
+		});
+	});
+
+	test("restart recovery retains its interruption cause on the recovered Variant", () => {
+		const input = setup();
+		const accepted = acceptTail(input);
+		checkpointConversationTailGeneration(database, {
+			conversationId: input.created.id,
+			generationId: accepted.generationId,
+			content: "Recovered partial answer.",
+			latestEventId: 2,
+		});
+
+		expect(recoverActiveGenerations(database)).toEqual({
+			inspected: 1,
+			interrupted: 1,
+			removed: 0,
+			failed: 0,
+		});
+		const recoveredMessage = input.module.getSnapshot(input.created.id)?.messages.at(-1);
+		const recoveredVariant = recoveredMessage?.variants[0];
+		if (recoveredMessage === undefined || recoveredVariant === undefined) {
+			throw new Error("Recovered Variant missing.");
+		}
+		expect(input.module.readVariantDetails(
+			input.created.id,
+			recoveredMessage.id,
+			recoveredVariant.id,
+		)?.provenance).toMatchObject({
+			status: "interrupted",
+			finishReason: null,
+			interruptionCause: "server-restart",
+		});
 	});
 
 	test("removes zero-output Tail targets while preserving the human input", () => {
@@ -143,6 +185,11 @@ describe("explicit Conversation Generation Stop", () => {
 			generationId: accepted.generationId,
 		});
 		const variants = stopped.messages[0]?.variants ?? [];
+		const stoppedMessage = stopped.messages[0];
+		const stoppedVariant = variants[1];
+		if (stoppedMessage === undefined || stoppedVariant === undefined) {
+			throw new Error("Stopped Sibling Variant missing.");
+		}
 
 		expect(stopped.activeGenerations).toEqual([]);
 		expect(variants).toHaveLength(2);
@@ -151,6 +198,15 @@ describe("explicit Conversation Generation Stop", () => {
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 		]);
+		expect(input.module.readVariantDetails(
+			input.created.id,
+			stoppedMessage.id,
+			stoppedVariant.id,
+		)?.provenance).toMatchObject({
+			status: "interrupted",
+			finishReason: null,
+			interruptionCause: "user-stop",
+		});
 	});
 
 	test("removes zero-output Sibling targets and restores the prior selection", () => {

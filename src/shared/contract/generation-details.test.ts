@@ -106,7 +106,7 @@ describe("Generation detail transport", () => {
 				content: "The scene shifts.",
 				data: [
 					{ namespace: "generation", key: "outcome", value: "length-limited" },
-					{ namespace: "generation", key: "finish", value: JSON.stringify({ reason: "length", raw: "max_tokens" }) },
+					{ namespace: "generation", key: "finish", value: JSON.stringify({ reason: "length", raw: "raw-provider-body-do-not-expose" }) },
 					{ namespace: "generation", key: "usage", value: JSON.stringify({ inputTokens: 10, outputTokens: 4, totalTokens: 14 }) },
 				],
 			});
@@ -127,11 +127,19 @@ describe("Generation detail transport", () => {
 			));
 			expect(details.status).toBe(200);
 			const detailsBody = await details.text();
+			expect(detailsBody).toContain('"connectionProfileId":3');
+			expect(detailsBody).toContain('"connectionSettingsRevision":4');
+			expect(detailsBody).toContain('"modelBackend":"ai-sdk"');
+			expect(detailsBody).toContain('"adapter":"deepseek"');
+			expect(detailsBody).toContain('"modelId":"details-model"');
+			expect(detailsBody).toContain('"responseBudget":64');
 			expect(detailsBody).toContain('"status":"length-limited"');
 			expect(detailsBody).toContain('"finishReason":"length"');
+			expect(detailsBody).toContain('"interruptionCause":null');
 			expect(detailsBody).toContain('"inputTokens":10');
 			expect(detailsBody).not.toContain("credential-do-not-expose");
 			expect(detailsBody).not.toContain("requestOverrides");
+			expect(detailsBody).not.toContain("raw-provider-body-do-not-expose");
 
 			cleanupRetainedGenerationInspections(
 				database,
