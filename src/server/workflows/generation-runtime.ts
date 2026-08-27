@@ -34,14 +34,24 @@ export interface GenerationRuntimeSubscription {
 	close(): void;
 }
 
+export interface GenerationCheckpointOptions {
+	/** Checkpoint after this many visible deltas (the normal bounded cadence). */
+	readonly eventInterval?: number;
+	/** Also checkpoint when this amount of time elapsed between visible deltas. */
+	readonly intervalMs?: number;
+	/** Injectable clock for deterministic lifecycle tests. */
+	readonly now?: () => number;
+}
+
 export interface StartGenerationRuntimeInput {
 	generationId: number;
 	conversationId: number;
 	messageId: number;
 	variantId: number;
 	startedAt: string;
-	/** Called for each visible output checkpoint, before subscriber fan-out. */
-	onCheckpoint?: (output: { content: string; reasoning: string }) => void;
+	/** Called only at the bounded checkpoint cadence, or by flushCheckpoint. */
+	onCheckpoint?: (output: { content: string; reasoning: string; latestEventId: number }) => void;
+	checkpoint?: GenerationCheckpointOptions;
 }
 
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
@@ -68,10 +78,12 @@ interface MutableRuntimeState {
  */
 export class GenerationRuntimeRegistry {
 	static readonly MAX_RETAINED_EVENTS = 256;
+	static readonly TERMINAL_REPLAY_RETENTION_MS = 5 * 60 * 1_000;
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
 
 	start(input: StartGenerationRuntimeInput): GenerationRuntime {
+		this.cleanup();
 		const existing = this.runtimes.get(input.generationId);
 		if (existing !== undefined) return existing;
 		const runtime = new GenerationRuntime(input);
@@ -80,11 +92,30 @@ export class GenerationRuntimeRegistry {
 	}
 
 	get(generationId: number): GenerationRuntime | undefined {
+		this.cleanup();
 		return this.runtimes.get(generationId);
 	}
 
 	remove(generationId: number): void {
 		this.runtimes.delete(generationId);
+	}
+
+	/** Drop terminal runtime state after the bounded reconnect/replay window. */
+	cleanup(now = Date.now()): void {
+		for (const [generationId, runtime] of this.runtimes) {
+			const terminalAt = runtime.terminalTime;
+			if (terminalAt !== null && now - terminalAt >= GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS) {
+				this.runtimes.delete(generationId);
+			}
+		}
+	}
+
+	flushAll(): void {
+		for (const runtime of this.runtimes.values()) runtime.flushCheckpoint();
+	}
+
+	stopAll(): void {
+		for (const runtime of this.runtimes.values()) runtime.stop();
 	}
 }
 
@@ -93,11 +124,22 @@ export class GenerationRuntime {
 	private readonly stateSubscribers = new Set<StateSubscriber>();
 	private readonly events: GenerationEventEnvelope[] = [];
 	private readonly onCheckpoint?: StartGenerationRuntimeInput["onCheckpoint"];
+	private readonly checkpointEventInterval: number;
+	private readonly checkpointIntervalMs: number;
+	private readonly checkpointNow: () => number;
+	private lastCheckpointEventId = 0;
+	private lastCheckpointAt: number;
+	private checkpointPending = false;
 	private stateValue: MutableRuntimeState;
 	private readonly controller = new AbortController();
+	private terminalAt: number | null = null;
 
 	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
+		this.checkpointEventInterval = Math.max(1, Math.floor(input.checkpoint?.eventInterval ?? 8));
+		this.checkpointIntervalMs = Math.max(0, input.checkpoint?.intervalMs ?? 1_000);
+		this.checkpointNow = input.checkpoint?.now ?? Date.now;
+		this.lastCheckpointAt = this.checkpointNow();
 		this.stateValue = {
 			generationId: input.generationId,
 			conversationId: input.conversationId,
@@ -137,12 +179,6 @@ export class GenerationRuntime {
 
 		if (event.type === "content") this.stateValue.content += event.text;
 		if (event.type === "reasoning") this.stateValue.reasoning += event.text;
-		if (event.type === "content" || event.type === "reasoning") {
-			this.onCheckpoint?.({
-				content: this.stateValue.content,
-				reasoning: this.stateValue.reasoning,
-			});
-		}
 
 		const envelope: GenerationEventEnvelope = {
 			generationId: this.stateValue.generationId,
@@ -158,12 +194,24 @@ export class GenerationRuntime {
 			try { subscriber(envelope); } catch { /* one disconnected observer cannot stop Generation */ }
 		}
 		this.notifyState();
+		if (event.type === "content" || event.type === "reasoning") {
+			this.checkpointPending = true;
+			const elapsed = this.checkpointNow() - this.lastCheckpointAt;
+			if (
+				envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
+				(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)
+			) {
+				this.flushCheckpoint();
+			}
+		}
 		return envelope;
 	}
 
 	complete(): void {
 		if (this.stateValue.status !== "active") return;
+		this.flushCheckpoint();
 		this.stateValue.status = "complete";
+		this.terminalAt = this.checkpointNow();
 		this.notifyState();
 	}
 
@@ -175,9 +223,37 @@ export class GenerationRuntime {
 		if (this.events.at(-1)?.event.type !== "failed") {
 			this.publish({ type: "failed", kind, message: reason });
 		}
+		this.flushCheckpoint();
 		this.stateValue.status = "failed";
 		this.stateValue.terminalReason = reason;
+		this.terminalAt = this.checkpointNow();
 		this.notifyState();
+	}
+
+	/** Persist the latest accumulated output immediately, including its event position. */
+	flushCheckpoint(): void {
+		if (!this.checkpointPending && this.lastCheckpointEventId === this.stateValue.latestEventId) return;
+		this.checkpointPending = false;
+		this.lastCheckpointEventId = this.stateValue.latestEventId;
+		this.lastCheckpointAt = this.checkpointNow();
+		try {
+			this.onCheckpoint?.({
+				content: this.stateValue.content,
+				reasoning: this.stateValue.reasoning,
+				latestEventId: this.stateValue.latestEventId,
+			});
+		} catch {
+			// A transient checkpoint failure must not stop normalized delivery or
+			// turn a provider stream into a client-visible transport failure.
+		}
+	}
+
+	get isTerminal(): boolean {
+		return this.stateValue.status !== "active";
+	}
+
+	get terminalTime(): number | null {
+		return this.terminalAt;
 	}
 
 	stop(): void {

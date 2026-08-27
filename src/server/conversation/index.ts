@@ -5,6 +5,7 @@ import {
 	acceptConversationTailGeneration,
 	acceptConversationContinuationGeneration,
 	acceptConversationSiblingGeneration,
+	checkpointConversationGeneration,
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
 	resolveConversationSiblingGeneration,
@@ -40,6 +41,7 @@ export {
 	acceptConversationContinuationGeneration,
 	acceptConversationTailGeneration,
 	acceptConversationSiblingGeneration,
+	checkpointConversationGeneration,
 	checkpointConversationSiblingGeneration,
 	checkpointConversationTailGeneration,
 	removeConversationSiblingGeneration,
@@ -87,6 +89,7 @@ export type {
 	ConversationJsonValue,
 	ConversationDataRead,
 	ConversationDataReadFilter,
+	CheckpointGenerationInput,
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
@@ -145,7 +148,9 @@ export function createConversationModule(database: Database): ConversationModule
 	acceptContinuationGeneration: (input) =>
 			acceptConversationContinuationGeneration(database, input),
 		acceptSiblingGeneration: (input) =>
-			acceptConversationSiblingGeneration(database, input),
+		acceptConversationSiblingGeneration(database, input),
+		checkpointGeneration: (input) =>
+			checkpointConversationGeneration(database, input),
 		resolveTailGeneration: (input) =>
 			resolveConversationTailGeneration(database, input),
 		removeTailGeneration: (input) =>

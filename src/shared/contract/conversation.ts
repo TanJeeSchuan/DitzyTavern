@@ -291,10 +291,12 @@ export const createConversationRoutes = (
 								messageId: accepted.modelMessageId,
 								variantId: accepted.provisionalVariantId,
 								startedAt: new Date().toISOString(),
-								onCheckpoint: ({ content: checkpointContent }) => checkpointConversationTailGeneration(connection, {
+								onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationTailGeneration(connection, {
 									conversationId: params.id,
 									generationId: accepted.generationId,
 									content: checkpointContent,
+									reasoning,
+									latestEventId,
 								}),
 							});
 						},
@@ -462,12 +464,14 @@ export const createConversationRoutes = (
 											messageId: accepted.modelMessageId,
 											variantId: accepted.provisionalVariantId,
 											startedAt: new Date().toISOString(),
-											onCheckpoint: ({ content: checkpointContent }) => {
-												checkpointConversationTailGeneration(connection, {
-													conversationId: accepted.conversation.id,
-													generationId: accepted.generationId,
-													content: checkpointContent,
-												});
+											onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => {
+													checkpointConversationTailGeneration(connection, {
+															conversationId: accepted.conversation.id,
+															generationId: accepted.generationId,
+															content: checkpointContent,
+															reasoning,
+															latestEventId,
+														});
 											},
 										});
 									},
@@ -604,11 +608,13 @@ export const createConversationRoutes = (
                                                                 messageId: accepted.messageId,
                                                                 variantId: accepted.provisionalVariantId,
                                                                 startedAt: new Date().toISOString(),
-                                                                onCheckpoint: ({ content: checkpointContent }) => checkpointConversationSiblingGeneration(connection, {
-                                                                        conversationId: params.id,
-                                                                        generationId: accepted.generationId,
-                                                                        content: checkpointContent,
-                                                                }),
+													onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationSiblingGeneration(connection, {
+														conversationId: params.id,
+														generationId: accepted.generationId,
+														content: checkpointContent,
+														reasoning,
+														latestEventId,
+													}),
                                                         });
                                                 },
                                                 onEvent: (event) => { runtime?.publish(event); },
@@ -705,11 +711,13 @@ export const createConversationRoutes = (
                                                                                         messageId: accepted.messageId,
                                                                                         variantId: accepted.provisionalVariantId,
                                                                                         startedAt: new Date().toISOString(),
-                                                                                        onCheckpoint: ({ content: checkpointContent }) => checkpointConversationSiblingGeneration(connection, {
-                                                                                                conversationId: params.id,
-                                                                                                generationId: accepted.generationId,
-                                                                                                content: checkpointContent,
-                                                                                        }),
+																onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationSiblingGeneration(connection, {
+																	conversationId: params.id,
+																	generationId: accepted.generationId,
+																	content: checkpointContent,
+																	reasoning,
+																	latestEventId,
+																}),
                                                                                 });
                                                                         },
                                                                         onEvent: (event) => { runtime?.publish(event); },
@@ -830,12 +838,14 @@ export const createConversationRoutes = (
                                                                                         messageId: accepted.modelMessageId,
                                                                                         variantId: accepted.provisionalVariantId,
                                                                                         startedAt: new Date().toISOString(),
-                                                                                        onCheckpoint: ({ content: checkpointContent }) => {
-                                                                                                checkpointConversationTailGeneration(connection, {
-                                                                                                        conversationId: accepted.conversation.id,
-                                                                                                        generationId: accepted.generationId,
-                                                                                                        content: checkpointContent,
-                                                                                                });
+																	onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => {
+																	checkpointConversationTailGeneration(connection, {
+																		conversationId: accepted.conversation.id,
+																		generationId: accepted.generationId,
+																		content: checkpointContent,
+																		reasoning,
+																		latestEventId,
+																	});
                                                                                         },
                                                                                 });
                                                                         },

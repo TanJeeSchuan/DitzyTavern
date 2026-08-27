@@ -706,9 +706,14 @@ export function resolveConversationSiblingGeneration(
 				value: active.provenance_value,
 			}
 			: undefined;
+		const suppliedData = input.data ?? [];
 		const data = [
 			...(provenance === undefined ? [] : [provenance]),
-			...(input.data ?? []),
+			...(input.reasoning !== undefined && input.reasoning.length > 0 &&
+				!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
+				? [{ namespace: "generation", key: "reasoning", value: input.reasoning }]
+				: []),
+			...suppliedData,
 		];
 		if (data.length > 0) {
 			db.insert(messageVariantDataTable)
@@ -845,9 +850,14 @@ export function resolveConversationTailGeneration(
 				value: active.provenance_value,
 			}
 			: undefined;
+		const suppliedData = input.data ?? [];
 		const data = [
 			...(provenance === undefined ? [] : [provenance]),
-			...(input.data ?? []),
+			...(input.reasoning !== undefined && input.reasoning.length > 0 &&
+				!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
+				? [{ namespace: "generation", key: "reasoning", value: input.reasoning }]
+				: []),
+			...suppliedData,
 		];
 		if (data.length > 0) {
 			db.insert(messageVariantDataTable)
@@ -883,23 +893,12 @@ export function checkpointConversationTailGeneration(
 		conversationId: number;
 		generationId: number;
 		content: string;
+		reasoning?: string;
+		latestEventId?: number;
 		timestamp?: string;
 	},
 ): void {
-	const db = connectConversationDatabase(database);
-	const active = readActiveGeneration(db, input.conversationId, input.generationId);
-	if (active === undefined) return;
-	const values: TailGenerationCheckpointValues = { content: input.content };
-	if (input.timestamp !== undefined) values.timestamp = input.timestamp;
-	db.update(messageVariantTable)
-		.set(values)
-		.where(
-			and(
-				eq(messageVariantTable.id, active.variant_id),
-				eq(messageVariantTable.message_id, active.message_id),
-			),
-		)
-		.run();
+	checkpointConversationGeneration(database, input);
 }
 
 // Sibling checkpoints share the same revision-neutral semantics as Tail
@@ -911,28 +910,80 @@ export function checkpointConversationSiblingGeneration(
 		conversationId: number;
 		generationId: number;
 		content: string;
+		reasoning?: string;
+		latestEventId?: number;
 		timestamp?: string;
 	},
 ): void {
 	const db = connectConversationDatabase(database);
 	const active = readActiveGeneration(db, input.conversationId, input.generationId);
 	if (active === undefined || !isSiblingGenerationRow(active)) return;
-	const values: TailGenerationCheckpointValues = { content: input.content };
-	if (input.timestamp !== undefined) values.timestamp = input.timestamp;
-	db.update(messageVariantTable)
-		.set(values)
-		.where(
-			and(
-				eq(messageVariantTable.id, active.variant_id),
-				eq(messageVariantTable.message_id, active.message_id),
-			),
-		)
-		.run();
+	checkpointConversationGeneration(database, input);
 }
 
-interface TailGenerationCheckpointValues {
-	content: string;
-	timestamp?: string;
+/**
+ * Persist one revision-neutral Generation checkpoint.
+ *
+ * The Active Generation row is the authoritative crash-recovery copy of both
+ * streams and their application event position. The provisional Variant's
+ * visible content is mirrored as well so a normal Conversation read remains
+ * useful while the provider is still running. Reasoning stays active-only
+ * until terminal resolution, keeping ordinary history free of partial private
+ * reasoning.
+ */
+export function checkpointConversationGeneration(
+	database: Database,
+	input: {
+		conversationId: number;
+		generationId: number;
+		content: string;
+		reasoning?: string;
+		latestEventId?: number;
+		timestamp?: string;
+	},
+): void {
+	const checkpoint = database.transaction(() => {
+		const db = connectConversationDatabase(database);
+		const active = readActiveGeneration(db, input.conversationId, input.generationId);
+		if (active === undefined) return;
+		const currentEventId = active.checkpoint_event_id;
+		if (
+			input.latestEventId !== undefined &&
+			Number.isInteger(input.latestEventId) &&
+			input.latestEventId < currentEventId
+		) return;
+		const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
+			? currentEventId
+			: Math.max(currentEventId, input.latestEventId);
+		const values = {
+			content: input.content,
+			...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
+		};
+		db.update(messageVariantTable)
+			.set(values)
+			.where(
+				and(
+					eq(messageVariantTable.id, active.variant_id),
+					eq(messageVariantTable.message_id, active.message_id),
+				),
+			)
+			.run();
+		db.update(activeGenerationTable)
+			.set({
+				checkpoint_content: input.content,
+				checkpoint_reasoning: input.reasoning ?? active.checkpoint_reasoning,
+				checkpoint_event_id: eventId,
+				checkpointed_at: input.timestamp ?? new Date().toISOString(),
+			})
+			.where(
+				and(
+					eq(activeGenerationTable.id, active.id),
+					eq(activeGenerationTable.chat_id, input.conversationId),
+				),
+			)
+			.run();
+	});
+	checkpoint.immediate();
 }
 
 // A zero-output failure removes only the provisional model Message and its

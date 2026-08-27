@@ -468,6 +468,7 @@ export interface ConversationModule {
 	acceptContinuationGeneration(
 		input: AcceptContinuationGenerationInput,
 	): AcceptedContinuationGeneration;
+	checkpointGeneration(input: CheckpointGenerationInput): void;
 	acceptSiblingGeneration(
 		input: AcceptSiblingGenerationInput,
 	): AcceptedSiblingGeneration;
@@ -540,6 +541,7 @@ export interface ResolveTailGenerationInput {
 	generationId: number;
 	timestamp: string;
 	content: string;
+	reasoning?: string | undefined;
 	data?: readonly ConversationDataEntry[] | undefined;
 }
 
@@ -606,12 +608,25 @@ export interface ResolveSiblingGenerationInput {
 	generationId: number;
 	timestamp: string;
 	content: string;
+	reasoning?: string | undefined;
 	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 export interface RemoveSiblingGenerationInput {
 	conversationId: number;
 	generationId: number;
+}
+
+// Checkpointing is mutable execution state, not a Conversation edit. The
+// latest event position is monotonic so a delayed write cannot regress a
+// crash-recovery boundary.
+export interface CheckpointGenerationInput {
+	conversationId: number;
+	generationId: number;
+	content: string;
+	reasoning?: string | undefined;
+	latestEventId?: number | undefined;
+	timestamp?: string | undefined;
 }
 
 // The generation workflow captures these values at generation start; the

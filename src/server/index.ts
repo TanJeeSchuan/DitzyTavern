@@ -2,9 +2,14 @@ import { staticPlugin } from "@elysiajs/static";
 import { contract } from "../shared/contract";
 import { openDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
+import { recoverActiveGenerations, shutdownActiveGenerations } from "./workflows/generation-recovery";
+import { generationRuntimeFor } from "./workflows/generation-runtime";
 
 initializeConnectionSecretKey();
 const database = openDatabase();
+// One process-start sweep resolves only abandoned local Active Generations;
+// it never resumes or retries a provider request.
+recoverActiveGenerations(database);
 
 const serveIndex = () => Bun.file("dist/index.html");
 const staticAssets = await staticPlugin({
@@ -30,6 +35,9 @@ const app = contract
 
 const shutdown = () => {
 	app.stop();
+	generationRuntimeFor(database).flushAll();
+	generationRuntimeFor(database).stopAll();
+	shutdownActiveGenerations(database);
 	database.close();
 };
 

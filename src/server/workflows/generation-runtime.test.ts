@@ -63,5 +63,23 @@ describe("Generation runtime", () => {
 		runtime.publish({ type: "content", text: "still running" });
 		expect(runtime.state.content).toBe("still running");
 	});
-});
 
+	test("checkpoints visible streams at a bounded cadence and can be flushed deterministically", () => {
+		const checkpoints: Array<{ content: string; reasoning: string; latestEventId: number }> = [];
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 10,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { eventInterval: 2, intervalMs: 0 },
+			onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
+		});
+		runtime.publish({ type: "content", text: "one" });
+		runtime.publish({ type: "reasoning", text: "think" });
+		expect(checkpoints).toEqual([{ content: "one", reasoning: "think", latestEventId: 2 }]);
+		runtime.publish({ type: "content", text: "two" });
+		runtime.flushCheckpoint();
+		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
+	});
+});

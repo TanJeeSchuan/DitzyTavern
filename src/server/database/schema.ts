@@ -355,6 +355,13 @@ export const activeGenerationTable = sqliteTable(
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
+		// Mutable execution state. Checkpoints deliberately live on the active
+		// record rather than Conversation revision history: they are a bounded
+		// crash-recovery aid and never represent a new authored edit.
+		checkpoint_content: text().notNull().default(""),
+		checkpoint_reasoning: text().notNull().default(""),
+		checkpoint_event_id: int().notNull().default(0),
+		checkpointed_at: text(),
 		provenance_namespace: text(),
 		provenance_key: text(),
 		provenance_value: text(),
@@ -482,4 +489,3 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 );
 
 // logical tables end here.
-

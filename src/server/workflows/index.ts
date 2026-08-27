@@ -58,4 +58,11 @@ export {
 	type GenerationRuntimeState,
 	type GenerationRuntimeSubscription,
 	type StartGenerationRuntimeInput,
+	type GenerationCheckpointOptions,
 } from "./generation-runtime";
+export {
+	recoverActiveGenerations,
+	shutdownActiveGenerations,
+	type GenerationRecoveryCause,
+	type GenerationRecoverySummary,
+} from "./generation-recovery";
