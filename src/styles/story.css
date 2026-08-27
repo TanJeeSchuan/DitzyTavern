@@ -867,8 +867,10 @@
 	width: 94%;
 }
 
-.preview-skeleton {
-	padding-top: 0.15rem;
+/* Preview mode leaves causally downstream Messages readable but dimmed and
+   non-interactive until the Preview is confirmed or cancelled. */
+.story-message[data-preview-downstream="true"] {
+	opacity: 0.38;
 }
 
 .preview-panel-body {

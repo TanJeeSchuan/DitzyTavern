@@ -26,24 +26,6 @@ export function HistoryLoading() {
 	);
 }
 
-export function PreviewSkeleton({ messageId }: { messageId: number }) {
-	return (
-		<div
-			className="generation-placeholder preview-skeleton"
-			data-message-id={messageId}
-			role="status"
-			aria-label="Downstream Message hidden during Preview mode"
-		>
-			<div className="placeholder-header">
-				<span className="skeleton portrait-skeleton" />
-				<span className="skeleton label-skeleton" />
-			</div>
-			<div className="skeleton prose-skeleton wide" />
-			<div className="skeleton prose-skeleton" />
-		</div>
-	);
-}
-
 export function GenerationControls({
 	showStopAll,
 	pending = false,

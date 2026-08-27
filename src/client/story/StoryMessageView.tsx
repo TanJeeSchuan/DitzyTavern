@@ -33,6 +33,8 @@ export function StoryMessageView({
 	message,
 	displayedVariantId,
 	mutationsDisabled = false,
+	previewDownstream = false,
+	previewTarget = false,
 	onMoveSwipe,
 	onEdit,
 	canContinue = false,
@@ -46,6 +48,14 @@ export function StoryMessageView({
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
+	// Causally downstream of the previewed Variant: the stored text stays
+	// readable but dimmed and non-interactive until the Preview is confirmed
+	// or cancelled.
+	previewDownstream?: boolean;
+	// This Message is the Preview target: its Swipe controls stay enabled so
+	// Variants can be compared freely without server commands, while every
+	// other mutation remains locked.
+	previewTarget?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => void;
 	canContinue?: boolean;
@@ -85,6 +95,8 @@ export function StoryMessageView({
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}
 			data-previewing={displayedVariantId !== undefined}
+			data-preview-downstream={previewDownstream}
+			inert={previewDownstream || undefined}
 			data-selected={advancedActionsSelected}
 			onPointerUp={(event) => {
 				if (event.pointerType !== "touch") return;
@@ -195,7 +207,7 @@ export function StoryMessageView({
 						className="icon-button"
 						type="button"
 						onClick={() => onMoveSwipe(message.id, -1)}
-						disabled={mutationsDisabled || activeIndex === 0}
+						disabled={(mutationsDisabled && !previewTarget) || activeIndex === 0}
 						aria-label="Previous Swipe"
 					>
 						<ChevronLeft aria-hidden="true" />
@@ -207,7 +219,10 @@ export function StoryMessageView({
 						className="icon-button"
 						type="button"
 						onClick={() => onMoveSwipe(message.id, 1)}
-						disabled={mutationsDisabled || activeIndex === message.swipes.length - 1}
+						disabled={
+							(mutationsDisabled && !previewTarget) ||
+							activeIndex === message.swipes.length - 1
+						}
 						aria-label="Next Swipe"
 					>
 						<ChevronRight aria-hidden="true" />

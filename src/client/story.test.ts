@@ -341,7 +341,7 @@ describe("story reading state", () => {
 		expect(deriveRevisionWindow(messages, null).size).toBe(0);
 	});
 
-	test("older Variant selection enters one local Preview with downstream skeleton state", () => {
+	test("older Variant selection enters one local Preview with downstream read-only state", () => {
 		const state: StoryStateForPreview = {
 			...createStoryState(),
 			conversationId: 7,
@@ -382,6 +382,66 @@ describe("story reading state", () => {
 			variantId: 10,
 		});
 		expect(attemptedSelection.messages[0]?.activeSwipe).toBe(0);
+	});
+
+	test("the previewed Message's Variants can be switched freely while Preview stays local", () => {
+		const target: StoryMessage = {
+			...storyMessage(1, 1, 10),
+			swipes: [
+				{ id: 10, position: 1, content: "Selected", empty: false },
+				{ id: 11, position: 2, content: "Second", empty: false },
+				{ id: 12, position: 3, content: "Third", empty: false },
+			],
+		};
+		const state: StoryStateForPreview = {
+			...createStoryState(),
+			conversationId: 7,
+			revision: 3,
+			status: "ready",
+			messages: [target, storyMessage(2, 2, 20)],
+		};
+		const previewing = reduceStory(state, {
+			type: "preview-started",
+			messageId: 1,
+			variantId: 11,
+		});
+
+		// Swiping forward moves the local Preview to the next Variant and keeps
+		// the authoritative selection as the cancellation anchor.
+		const retargeted = reduceStory(previewing, {
+			type: "preview-retargeted",
+			messageId: 1,
+			variantId: 12,
+		});
+		expect(retargeted.preview).toEqual({
+			messageId: 1,
+			targetPosition: 1,
+			variantId: 12,
+			priorVariantId: 10,
+			noticeOpen: true,
+		});
+		// SAFETY: the fixture creates Message 1 before the retarget, so this
+			// lookup is defined here.
+		expect(displayedVariantId(retargeted.messages[0] as StoryMessage, retargeted.preview)).toBe(12);
+
+		// Retargeting another Message or an unknown Variant changes nothing.
+		expect(
+			reduceStory(retargeted, { type: "preview-retargeted", messageId: 2, variantId: 21 }),
+		).toBe(retargeted);
+		expect(
+			reduceStory(retargeted, { type: "preview-retargeted", messageId: 1, variantId: 99 }),
+		).toBe(retargeted);
+
+		// Cycling back onto the server-selected Variant ends the Preview without
+		// touching any Message state.
+		const restored = reduceStory(retargeted, {
+			type: "preview-retargeted",
+			messageId: 1,
+			variantId: 10,
+		});
+		expect(restored.preview).toBeNull();
+		expect(restored.messages[0]?.activeSwipe).toBe(0);
+		expect(restored.messages).toEqual(state.messages);
 	});
 
 	test("Preview only starts for a different Variant and navigation warns only for another Chat", () => {

@@ -33,7 +33,6 @@ import {
 	displayedVariantId,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
-	moveActiveSwipe,
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 } from "../story";
@@ -44,7 +43,6 @@ import { StoryMessageView } from "../story/StoryMessageView";
 import {
 	EmptyChat,
 	GenerationControls,
-	PreviewSkeleton,
 	HistoryLoading,
 } from "../story/StoryStatus";
 import type {
@@ -289,6 +287,22 @@ export function ActiveWritingWorkspace({
 		}
 	}, [story.messages, story.conversationId]);
 
+	// Every Variant switch re-anchors the viewport to the top of the switched
+	// Message: a fresh Variant is read from its first line, whether the switch
+	// entered Preview mode, moved the Preview to another Variant, or was an
+	// ordinary revisioned selection. changeSwipe records the target before
+	// dispatching; running after the bottom-pin anchor lets this scroll win
+	// over the keep-viewport-still adjustment.
+	const swipeScrollTargetRef = useRef<number | null>(null);
+	useLayoutEffect(() => {
+		const target = swipeScrollTargetRef.current;
+		swipeScrollTargetRef.current = null;
+		if (target === null) return;
+		storyScrollRef.current
+			?.querySelector(`.story-message[data-message-id="${target}"]`)
+			?.scrollIntoView({ block: "start" });
+	});
+
 	// A just-imported Chat is selected as soon as the refreshed workspace
 	// list contains it; the selection effect is idempotent and never fires
 	// for a target that is not yet present.
@@ -355,11 +369,29 @@ export function ActiveWritingWorkspace({
 	// revisioned Variant-selection command persists the selection. A conflict
 	// reloads the authoritative state instead of rewriting the plan.
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
-		if (story.preview !== null || conversation === null) return;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const target = storyMessage.swipes[moveActiveSwipe(storyMessage, direction)];
+		const preview = story.preview;
+		// During Preview only the previewed Message accepts Swipes: cycling
+		// moves the local preview across its Variants with no server command.
+		if (preview !== null && preview.messageId !== messageId) return;
+		const currentIndex = preview !== null
+			? storyMessage.swipes.findIndex((variant) => variant.id === preview.variantId)
+			: storyMessage.activeSwipe;
+		if (currentIndex === -1) return;
+		const targetIndex = Math.min(
+			storyMessage.swipes.length - 1,
+			Math.max(0, currentIndex + direction),
+		);
+		const target = storyMessage.swipes[targetIndex];
 		if (target === undefined) return;
+		if (preview !== null) {
+			swipeScrollTargetRef.current = messageId;
+			setPreviewError(null);
+			dispatchStory({ type: "preview-retargeted", messageId, variantId: target.id });
+			return;
+		}
+		if (conversation === null) return;
 		const revisionWindow = deriveRevisionWindow(
 			story.messages,
 			conversation.control.modelParticipantId,
@@ -376,6 +408,7 @@ export function ActiveWritingWorkspace({
 			setPrimaryPanel(null);
 			onNewChatClose();
 			setPreviewError(null);
+			swipeScrollTargetRef.current = messageId;
 			dispatchStory({
 				type: "preview-started",
 				messageId: selection.messageId,
@@ -383,6 +416,7 @@ export function ActiveWritingWorkspace({
 			});
 			return;
 		}
+		swipeScrollTargetRef.current = messageId;
 		dispatchStory({
 			type: "swipe-selected",
 			messageId: selection.messageId,
@@ -778,51 +812,49 @@ export function ActiveWritingWorkspace({
 						{story.messages.length === 0 && story.status !== "loading-first" && (
 							<EmptyChat />
 						)}
-						{story.messages.map((message) =>
-							isPreviewDownstream(message, story.preview) ? (
-								<PreviewSkeleton key={message.id} messageId={message.id} />
-							) : (
-								<StoryMessageView
-									key={message.id}
-									message={message}
-									displayedVariantId={
-										story.preview?.messageId === message.id
-											? displayedVariantId(message, story.preview)
-											: undefined
-									}
-									mutationsDisabled={story.preview !== null}
-									canContinue={
-										latestStoryMessage?.id === message.id &&
-										conversation?.playable === true &&
-										(conversation.activeGenerations?.length ?? (conversation.activeGeneration === null ? 0 : 1)) === 0 &&
-										isModelAuthoredMessage(message, conversation.control.modelParticipantId) &&
-										message.continuable === true &&
-										isGenerating === false &&
-										story.preview === null
-									}
-									onSibling={
-										conversation !== null && canOfferSiblingGeneration({
-											message,
-											playable: conversation.playable,
-											previewActive: story.preview !== null,
-											modelParticipantId: conversation.control.modelParticipantId,
-											activeGenerationMessageIds,
-										})
-											? siblingMessage
-											: undefined
-									}
-									continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-									onContinue={continueMessage}
-									onInspect={openVariantDetails}
-									onMoveSwipe={(messageId, direction) =>
-										void changeSwipe(messageId, direction)
-									}
-									onEdit={(messageId, content) =>
-										void editStoryMessage(messageId, content)
-									}
-								/>
-							)
-						)}
+						{story.messages.map((message) => (
+							<StoryMessageView
+								key={message.id}
+								message={message}
+								displayedVariantId={
+									story.preview?.messageId === message.id
+										? displayedVariantId(message, story.preview)
+										: undefined
+								}
+								mutationsDisabled={story.preview !== null}
+								previewDownstream={isPreviewDownstream(message, story.preview)}
+								previewTarget={story.preview?.messageId === message.id}
+								canContinue={
+									latestStoryMessage?.id === message.id &&
+									conversation?.playable === true &&
+									(conversation.activeGenerations?.length ?? (conversation.activeGeneration === null ? 0 : 1)) === 0 &&
+									isModelAuthoredMessage(message, conversation.control.modelParticipantId) &&
+									message.continuable === true &&
+									isGenerating === false &&
+									story.preview === null
+								}
+								onSibling={
+									conversation !== null && canOfferSiblingGeneration({
+										message,
+										playable: conversation.playable,
+										previewActive: story.preview !== null,
+										modelParticipantId: conversation.control.modelParticipantId,
+										activeGenerationMessageIds,
+									})
+										? siblingMessage
+										: undefined
+								}
+								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
+								onContinue={continueMessage}
+								onInspect={story.preview === null ? openVariantDetails : undefined}
+								onMoveSwipe={(messageId, direction) =>
+									void changeSwipe(messageId, direction)
+								}
+								onEdit={(messageId, content) =>
+									void editStoryMessage(messageId, content)
+								}
+							/>
+						))}
 						{story.status === "loading-first" && (
 							<HistoryLoading />
 						)}

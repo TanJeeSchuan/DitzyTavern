@@ -34,7 +34,7 @@ export function PreviewNotice({
 					You are viewing an older Variant locally. The Selected narrative path has not changed.
 				</p>
 				<p className="panel-note">
-					Message {targetPosition} is previewed. Later Messages show skeletons until you confirm or cancel.
+					Message {targetPosition} is previewed. Later Messages are dimmed until you confirm or cancel.
 				</p>
 				<div className="preview-actions">
 					<button

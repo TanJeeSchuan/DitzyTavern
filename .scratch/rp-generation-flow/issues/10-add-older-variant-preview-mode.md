@@ -10,7 +10,10 @@
 - [x] Variant selection inside the Revision window retains the existing immediate revisioned server behavior.
 - [x] Selecting a Variant outside the Revision window changes only client story state and sends no selection command.
 - [x] Preview mode supports exactly one changed Message at a time.
-- [x] The previewed Variant renders normally while every causally downstream Message renders as skeleton state.
+- [x] Preview start scrolls the previewed Message to the top of the reading area so its Variant text is immediately visible.
+- [x] The previewed Variant renders normally while every causally downstream Message renders as dimmed non-interactive text.
+- [x] The previewed Message's Swipes switch freely during Preview with no server commands; cycling back onto the server-selected Variant exits Preview.
+- [x] Every Variant switch — Preview entry, Preview retarget, or ordinary revisioned selection — re-anchors the viewport to the top of the switched Message.
 - [x] Generation, editing, deletion, Control changes, and other server mutations are unavailable during Preview mode.
 - [x] A right-side Preview notice explains the state and offers Confirm Change and Cancel Preview.
 - [x] Closing the right-side notice leaves a compact persistent Preview indicator near the story.

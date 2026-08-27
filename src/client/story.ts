@@ -105,6 +105,9 @@ export type StoryAction =
 			content: string;
 		}
 	| { type: "preview-started"; messageId: number; variantId: number }
+	// Swiping the already-previewed Message moves the local Preview to another
+	// Variant of the same Message without any server command.
+	| { type: "preview-retargeted"; messageId: number; variantId: number }
 	| { type: "preview-notice-opened" }
 	| { type: "preview-notice-closed" }
 	| { type: "preview-cancelled" }
@@ -268,6 +271,26 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					priorVariantId: message.swipes[message.activeSwipe]?.id ?? null,
 					noticeOpen: true,
 				},
+			};
+		}
+		case "preview-retargeted": {
+			if (state.preview === null) return state;
+			if (state.preview.messageId !== action.messageId) return state;
+			const message = state.messages.find((entry) => entry.id === action.messageId);
+			if (message === undefined) return state;
+			const variant = message.swipes.find(
+				(entry) => entry.id === action.variantId,
+			);
+			if (variant === undefined) return state;
+			if (variant.id === state.preview.variantId) return state;
+			// Cycling back to the server-selected Variant ends the local Preview:
+			// there is no longer a divergent selection to confirm or cancel.
+			if (variant.id === state.preview.priorVariantId) {
+				return { ...state, preview: null };
+			}
+			return {
+				...state,
+				preview: { ...state.preview, variantId: variant.id },
 			};
 		}
 		case "preview-notice-opened":
