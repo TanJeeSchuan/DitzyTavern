@@ -6,9 +6,14 @@ import {
 	chatTable,
 } from "../database/schema";
 import {
+	cleanupRetainedGenerationInspections,
 	createConversationModule,
 	type ConversationDataEntry,
 } from "../conversation";
+import {
+	defaultGenerationRuntime,
+	type GenerationRuntimeRegistry,
+} from "./generation-runtime";
 
 /** The only local terminal causes used by startup and graceful shutdown. */
 export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
@@ -61,6 +66,7 @@ export function recoverActiveGenerations(
 	options: { readonly cause?: GenerationRecoveryCause } = {},
 ): GenerationRecoverySummary {
 	const cause = options.cause ?? "server-restart";
+	cleanupRetainedGenerationInspections(database);
 	const conversation = createConversationModule(database);
 	const rows = readActiveRows(database);
 	let interrupted = 0;
@@ -124,3 +130,13 @@ export function recoverActiveGenerations(
 /** Terminalize local Active Generations before a graceful database close. */
 export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
+
+/** Flush and stop the process-owned runtime before terminalizing its rows. */
+export function gracefullyShutdownGenerations(
+	database: Database,
+	runtime: GenerationRuntimeRegistry = defaultGenerationRuntime(),
+): GenerationRecoverySummary {
+	runtime.flushAll();
+	runtime.stopAll();
+	return shutdownActiveGenerations(database);
+}

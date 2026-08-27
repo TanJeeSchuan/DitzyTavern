@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openDatabase } from "../../server/database/database";
-import { createConversationModule } from "../../server/conversation";
+import {
+	cleanupRetainedGenerationInspections,
+	createConversationModule,
+	GENERATION_REPLAY_RETENTION_MS,
+} from "../../server/conversation";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -106,6 +110,15 @@ describe("Generation detail transport", () => {
 					{ namespace: "generation", key: "usage", value: JSON.stringify({ inputTokens: 10, outputTokens: 4, totalTokens: 14 }) },
 				],
 			});
+			const terminalInspection = await app.handle(new Request(
+				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/inspection`,
+			));
+			expect(terminalInspection.status).toBe(200);
+			const terminalInspectionBody = await terminalInspection.text();
+			expect(terminalInspectionBody).toContain('"status":"length-limited"');
+			expect(terminalInspectionBody).toContain("Guide the scene.");
+			expect(terminalInspectionBody).toContain("Omitted.");
+			expect(terminalInspectionBody).not.toContain("credential-do-not-expose");
 			const message = module.getSnapshot(conversation.id)?.messages.at(-1);
 			const variant = message?.variants.at(-1);
 			if (variant === undefined || message === undefined) throw new Error("Variant missing.");
@@ -119,6 +132,14 @@ describe("Generation detail transport", () => {
 			expect(detailsBody).toContain('"inputTokens":10');
 			expect(detailsBody).not.toContain("credential-do-not-expose");
 			expect(detailsBody).not.toContain("requestOverrides");
+
+			cleanupRetainedGenerationInspections(
+				database,
+				new Date(Date.now() + GENERATION_REPLAY_RETENTION_MS + 1),
+			);
+			expect(module.readActiveGenerationDetails(conversation.id, accepted.generationId)).toBeUndefined();
+			expect(module.readVariantDetails(conversation.id, message.id, variant.id)?.provenance?.status)
+				.toBe("length-limited");
 		});
 	});
 });

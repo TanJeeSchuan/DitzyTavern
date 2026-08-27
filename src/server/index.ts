@@ -2,8 +2,7 @@ import { staticPlugin } from "@elysiajs/static";
 import { contract } from "../shared/contract";
 import { openDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
-import { recoverActiveGenerations, shutdownActiveGenerations } from "./workflows/generation-recovery";
-import { generationRuntimeFor } from "./workflows/generation-runtime";
+import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
 
 initializeConnectionSecretKey();
 const database = openDatabase();
@@ -35,9 +34,7 @@ const app = contract
 
 const shutdown = () => {
 	app.stop();
-	generationRuntimeFor(database).flushAll();
-	generationRuntimeFor(database).stopAll();
-	shutdownActiveGenerations(database);
+	gracefullyShutdownGenerations(database);
 	database.close();
 };
 

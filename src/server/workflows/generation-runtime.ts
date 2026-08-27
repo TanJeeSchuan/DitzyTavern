@@ -3,6 +3,7 @@ import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
 } from "../model-client";
+import { GENERATION_REPLAY_RETENTION_MS } from "../conversation/generation-retention";
 
 /**
  * A normalized event with an application-owned position. Provider streams do
@@ -53,6 +54,8 @@ export interface StartGenerationRuntimeInput {
 	onCheckpoint?: (output: { content: string; reasoning: string; latestEventId: number }) => void;
 	/** Aborts the provider attempt owned by the runtime when Stop is requested. */
 	onStop?: () => void;
+	/** Removes the terminal inspection copy with the retained event buffer. */
+	onRetentionExpired?: () => void;
 	checkpoint?: GenerationCheckpointOptions;
 }
 
@@ -80,7 +83,7 @@ interface MutableRuntimeState {
  */
 export class GenerationRuntimeRegistry {
 	static readonly MAX_RETAINED_EVENTS = 256;
-	static readonly TERMINAL_REPLAY_RETENTION_MS = 5 * 60 * 1_000;
+	static readonly TERMINAL_REPLAY_RETENTION_MS = GENERATION_REPLAY_RETENTION_MS;
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
 
@@ -117,6 +120,7 @@ export class GenerationRuntimeRegistry {
 		for (const [generationId, runtime] of this.runtimes) {
 			const terminalAt = runtime.terminalTime;
 			if (terminalAt !== null && now - terminalAt >= GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS) {
+				runtime.expireRetention();
 				this.runtimes.delete(generationId);
 			}
 		}
@@ -139,6 +143,7 @@ export class GenerationRuntime {
 	private readonly events: GenerationEventEnvelope[] = [];
 	private readonly onCheckpoint?: StartGenerationRuntimeInput["onCheckpoint"];
 	private readonly onStop?: StartGenerationRuntimeInput["onStop"];
+	private readonly onRetentionExpired?: StartGenerationRuntimeInput["onRetentionExpired"];
 	private readonly checkpointEventInterval: number;
 	private readonly checkpointIntervalMs: number;
 	private readonly checkpointNow: () => number;
@@ -153,6 +158,7 @@ export class GenerationRuntime {
 	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
 		this.onStop = input.onStop;
+		this.onRetentionExpired = input.onRetentionExpired;
 		this.checkpointEventInterval = Math.max(1, Math.floor(input.checkpoint?.eventInterval ?? 8));
 		this.checkpointIntervalMs = Math.max(0, input.checkpoint?.intervalMs ?? 1_000);
 		this.checkpointNow = input.checkpoint?.now ?? Date.now;
@@ -271,6 +277,10 @@ export class GenerationRuntime {
 
 	get terminalTime(): number | null {
 		return this.terminalAt;
+	}
+
+	expireRetention(): void {
+		try { this.onRetentionExpired?.(); } catch { /* cleanup is retried by the persisted expiry boundary */ }
 	}
 
 	stop(): void {

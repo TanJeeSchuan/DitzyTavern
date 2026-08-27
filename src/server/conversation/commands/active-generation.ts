@@ -4,6 +4,7 @@ import {
 	activeGenerationTable,
 	chatTable,
 	conversationGenerationSettingsTable,
+	generationReplayTable,
 	messageTable,
 	messageVariantTable,
 	messageVariantDataTable,
@@ -42,6 +43,7 @@ import type {
 	ResolveSiblingGenerationInput,
 } from "../types";
 import { deriveMessageSwipeEligibility } from "../snapshot";
+import { GENERATION_REPLAY_RETENTION_MS } from "../generation-retention";
 
 type CheckpointVariantValues = { content: string; timestamp?: string };
 
@@ -84,6 +86,51 @@ const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolea
 	} catch {
 		return false;
 	}
+};
+
+type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
+
+const terminalStatusFrom = (
+	data: readonly ConversationDataEntry[],
+): "complete" | "length-limited" | "interrupted" => {
+	const value = data.find(
+		(entry) => entry.namespace === "generation" && entry.key === "outcome",
+	)?.value;
+	return value === "length-limited" || value === "interrupted" ? value : "complete";
+};
+
+const retainTerminalInspection = (
+	db: ReturnType<typeof connectConversationDatabase>,
+	active: ActiveGenerationRow,
+	data: readonly ConversationDataEntry[],
+	content: string,
+	reasoning: string | undefined,
+): void => {
+	const terminalAt = new Date();
+	db.insert(generationReplayTable).values({
+		id: active.id,
+		chat_id: active.chat_id,
+		message_id: active.message_id,
+		variant_id: active.variant_id,
+		human_participant_id: active.human_participant_id,
+		model_participant_id: active.model_participant_id,
+		captured_human_name: active.captured_human_name,
+		captured_model_name: active.captured_model_name,
+		started_at: active.started_at,
+		prompt_plan_json: active.prompt_plan_json,
+		prompt_inspection_json: active.prompt_inspection_json,
+		history_roles_json: active.history_roles_json,
+		generation_settings_json: active.generation_settings_json,
+		connection_json: active.connection_json,
+		generation_intent_json: active.generation_intent_json,
+		checkpoint_content: content,
+		checkpoint_reasoning: reasoning ?? active.checkpoint_reasoning,
+		checkpoint_event_id: active.checkpoint_event_id,
+		checkpointed_at: active.checkpointed_at,
+		terminal_status: terminalStatusFrom(data),
+		terminal_at: terminalAt.toISOString(),
+		expires_at: new Date(terminalAt.getTime() + GENERATION_REPLAY_RETENTION_MS).toISOString(),
+	}).run();
 };
 
 // Convert the captured base provenance plus terminal data into the compact
@@ -849,6 +896,7 @@ export function resolveConversationSiblingGeneration(
 				})))
 				.run();
 		}
+		retainTerminalInspection(db, active, suppliedData, input.content, input.reasoning);
 		db.delete(activeGenerationTable)
 			.where(eq(activeGenerationTable.id, active.id))
 			.run();
@@ -985,6 +1033,7 @@ export function resolveConversationTailGeneration(
 				})))
 				.run();
 		}
+		retainTerminalInspection(db, active, suppliedData, input.content, input.reasoning);
 		db.delete(activeGenerationTable)
 			.where(eq(activeGenerationTable.id, active.id))
 			.run();

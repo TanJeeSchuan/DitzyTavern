@@ -375,6 +375,44 @@ export const activeGenerationTable = sqliteTable(
 	},
 );
 
+// Terminal inspection copy retained only for the bounded SSE replay window.
+// The durable Variant owns compact provenance; this row temporarily keeps the
+// complete provider-neutral capture so a reconnecting client can inspect the
+// Generation that produced the just-finished Variant.
+export const generationReplayTable = sqliteTable(
+	"generation_replay",
+	{
+		id: int().primaryKey(),
+		chat_id: int()
+			.notNull()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		message_id: int()
+			.notNull()
+			.references(() => messageTable.id, { onDelete: "cascade" }),
+		variant_id: int()
+			.notNull()
+			.references(() => messageVariantTable.id, { onDelete: "cascade" }),
+		human_participant_id: int().notNull(),
+		model_participant_id: int().notNull(),
+		captured_human_name: text().notNull(),
+		captured_model_name: text().notNull(),
+		started_at: text().notNull(),
+		prompt_plan_json: text().notNull(),
+		prompt_inspection_json: text().notNull(),
+		history_roles_json: text().notNull(),
+		generation_settings_json: text().notNull(),
+		connection_json: text().notNull(),
+		generation_intent_json: text().notNull(),
+		checkpoint_content: text().notNull(),
+		checkpoint_reasoning: text().notNull(),
+		checkpoint_event_id: int().notNull(),
+		checkpointed_at: text(),
+		terminal_status: text().notNull(),
+		terminal_at: text().notNull(),
+		expires_at: text().notNull(),
+	},
+);
+
 // Keep the short name available to callers that refer to the persisted
 // record as a Generation. Both exports point at the same Drizzle table.
 export const generationTable = activeGenerationTable;

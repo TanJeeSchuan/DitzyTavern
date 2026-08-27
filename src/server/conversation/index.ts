@@ -64,6 +64,11 @@ export {
 	readChatHistory,
 } from "./history";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
+export {
+	cleanupRetainedGenerationInspections,
+	GENERATION_REPLAY_RETENTION_MS,
+	removeRetainedGenerationInspection,
+} from "./generation-retention";
 export type {
 	CapabilityAvailability,
 	ActiveGenerationSnapshot,

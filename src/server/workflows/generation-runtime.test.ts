@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { GenerationRuntimeRegistry } from "./generation-runtime";
+import { openDatabase } from "../database/database";
+import { gracefullyShutdownGenerations } from "./generation-recovery";
+import { defaultGenerationRuntime, GenerationRuntimeRegistry } from "./generation-runtime";
 
 describe("Generation runtime", () => {
 	test("fans one ordered provider stream out to multiple subscribers", () => {
@@ -115,5 +117,36 @@ describe("Generation runtime", () => {
 		expect(runtime.state.content).toBe("partial");
 		expect(runtime.state.terminalReason).toBeNull();
 		expect(checkpoints).toHaveLength(1);
+	});
+
+	test("graceful shutdown flushes and stops the production default registry", () => {
+		const database = openDatabase({ path: ":memory:" });
+		const registry = defaultGenerationRuntime();
+		const generationId = 91_234;
+		registry.remove(generationId);
+		let stopped = false;
+		const checkpoints: string[] = [];
+		try {
+			const runtime = registry.start({
+				generationId,
+				conversationId: 3,
+				messageId: 12,
+				variantId: 18,
+				startedAt: "2026-08-27T00:00:00.000Z",
+				checkpoint: { eventInterval: 99, intervalMs: 0 },
+				onCheckpoint: ({ content }) => checkpoints.push(content),
+				onStop: () => { stopped = true; },
+			});
+			runtime.publish({ type: "content", text: "production partial" });
+
+			gracefullyShutdownGenerations(database);
+
+			expect(checkpoints).toEqual(["production partial"]);
+			expect(stopped).toBe(true);
+			expect(runtime.signal.aborted).toBe(true);
+		} finally {
+			registry.remove(generationId);
+			database.close();
+		}
 	});
 });

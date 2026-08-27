@@ -178,7 +178,12 @@ export const activeGenerationDetails = t.Object({
 	messageId: t.Integer(),
 	variantId: t.Integer(),
 	startedAt: t.String(),
-	status: t.Literal("active"),
+	status: t.Union([
+		t.Literal("active"),
+		t.Literal("complete"),
+		t.Literal("length-limited"),
+		t.Literal("interrupted"),
+	]),
 	intent: t.Unknown(),
 	participants: t.Object({
 		human: t.Object({ id: t.Integer(), name: t.String() }),

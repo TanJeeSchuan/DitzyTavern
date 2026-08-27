@@ -529,7 +529,7 @@ export interface ActiveGenerationDetails {
 	messageId: number;
 	variantId: number;
 	startedAt: string;
-	status: "active";
+	status: "active" | "complete" | "length-limited" | "interrupted";
 	intent: ConversationJsonValue;
 	participants: {
 		human: { id: number; name: string };

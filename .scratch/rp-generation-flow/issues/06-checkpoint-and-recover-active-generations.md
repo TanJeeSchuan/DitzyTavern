@@ -29,4 +29,8 @@ window before runtime cleanup. Startup and graceful shutdown use a single
 recovery sweep that resolves checkpointed output as interrupted with an explicit
 cause, removes empty provisional targets, restores failed sibling selections,
 and never contacts a provider. Added a migration for the checkpoint columns and
-updated the generation lifecycle exports and tests.
+updated the generation lifecycle exports and tests. Terminal resolution copies
+the complete inspectable capture into a replay-only record, which expires with
+the runtime event buffer while compact Variant provenance remains. Graceful
+shutdown targets the same process-wide runtime registry used by production
+routes, flushing its checkpoints before provider cancellation and recovery.

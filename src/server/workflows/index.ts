@@ -63,6 +63,7 @@ export {
 } from "./generation-runtime";
 export {
 	recoverActiveGenerations,
+	gracefullyShutdownGenerations,
 	shutdownActiveGenerations,
 	type GenerationRecoveryCause,
 	type GenerationRecoverySummary,

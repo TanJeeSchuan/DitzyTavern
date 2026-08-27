@@ -7,6 +7,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	chatTable,
+	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
@@ -224,10 +225,23 @@ export function readActiveGenerationDetails(
 	conversationId: number,
 	generationId: number,
 ): ActiveGenerationDetails | undefined {
-	const row = db.select().from(activeGenerationTable).where(and(
+	const active = db.select().from(activeGenerationTable).where(and(
 		eq(activeGenerationTable.id, generationId),
 		eq(activeGenerationTable.chat_id, conversationId),
 	)).get();
+	const retained = active === undefined
+		? db.select().from(generationReplayTable).where(and(
+			eq(generationReplayTable.id, generationId),
+			eq(generationReplayTable.chat_id, conversationId),
+		)).get()
+		: undefined;
+	if (retained !== undefined && retained.expires_at <= new Date().toISOString()) {
+		db.delete(generationReplayTable)
+			.where(eq(generationReplayTable.id, retained.id))
+			.run();
+		return undefined;
+	}
+	const row = active ?? retained;
 	if (row === undefined) return undefined;
 	const conversation = db.select({ id: chatTable.id }).from(chatTable).where(eq(chatTable.id, conversationId)).get();
 	if (conversation === undefined) return undefined;
@@ -245,7 +259,11 @@ export function readActiveGenerationDetails(
 		messageId: row.message_id,
 		variantId: row.variant_id,
 		startedAt: row.started_at,
-		status: "active",
+		status: active === undefined
+			? retained?.terminal_status === "length-limited" || retained?.terminal_status === "interrupted"
+				? retained.terminal_status
+				: "complete"
+			: "active",
 		intent: parseJson(row.generation_intent_json, {}),
 		participants: {
 			human: { id: row.human_participant_id, name: humanName },

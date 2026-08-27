@@ -15,6 +15,7 @@ import {
 	createConversationModule,
 	checkpointConversationTailGeneration,
 	checkpointConversationSiblingGeneration,
+	removeRetainedGenerationInspection,
 	stopConversationGeneration,
 	StaleConversationRevisionError,
 	type ConversationAction,
@@ -66,6 +67,12 @@ type GenerationRuntimeValue = ReturnType<ReturnType<typeof generationRuntimeFor>
 
 const runtimeRegistryForRequest = (connection: Database, configuredDatabase: Database | undefined) =>
 	configuredDatabase === undefined ? defaultGenerationRuntime() : generationRuntimeFor(connection);
+
+const retainedInspectionCleanup = (
+	configuredDatabase: Database | undefined,
+	generationId: number,
+) => () => withDatabase(configuredDatabase, (connection) =>
+	removeRetainedGenerationInspection(connection, generationId));
 
 const activeGenerationPayload = (state: GenerationRuntimeState) => ({
 	outcome: "active-state" as const,
@@ -322,6 +329,7 @@ export const createConversationRoutes = (
 								variantId: accepted.provisionalVariantId,
 								startedAt: new Date().toISOString(),
 								onStop: control.stop,
+								onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
 								onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) =>
 									checkpointConversationTailGeneration(connection, {
 										conversationId: params.id,
@@ -542,6 +550,7 @@ export const createConversationRoutes = (
 								variantId: accepted.provisionalVariantId,
 								startedAt: new Date().toISOString(),
 								onStop: control.stop,
+								onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
 								onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationTailGeneration(connection, {
 									conversationId: params.id,
 									generationId: accepted.generationId,
@@ -667,6 +676,7 @@ export const createConversationRoutes = (
                                                                 variantId: accepted.provisionalVariantId,
                                                                 startedAt: new Date().toISOString(),
 												onStop: control.stop,
+												onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
 													onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationSiblingGeneration(connection, {
 														conversationId: params.id,
 														generationId: accepted.generationId,
