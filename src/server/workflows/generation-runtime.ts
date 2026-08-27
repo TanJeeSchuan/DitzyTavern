@@ -75,6 +75,10 @@ interface MutableRuntimeState {
 	terminalReason: string | null;
 }
 
+type PendingProviderTerminal =
+	| { readonly status: "complete" }
+	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind };
+
 /**
  * Process-local fan-out for one database. Event history is deliberately
  * bounded: it is a reconnect aid, not a second copy of Conversation history.
@@ -153,6 +157,7 @@ export class GenerationRuntime {
 	private stateValue: MutableRuntimeState;
 	private readonly controller = new AbortController();
 	private stopRequested = false;
+	private pendingProviderTerminal: PendingProviderTerminal | null = null;
 	private terminalAt: number | null = null;
 
 	constructor(input: StartGenerationRuntimeInput) {
@@ -231,7 +236,11 @@ export class GenerationRuntime {
 	}
 
 	complete(): void {
-		if (this.stateValue.status !== "active" || this.stopRequested) return;
+		if (this.stateValue.status !== "active") return;
+		if (this.stopRequested) {
+			this.pendingProviderTerminal ??= { status: "complete" };
+			return;
+		}
 		this.flushCheckpoint();
 		this.stateValue.status = "complete";
 		this.terminalAt = this.checkpointNow();
@@ -239,7 +248,11 @@ export class GenerationRuntime {
 	}
 
 	fail(reason: string, kind: ModelClientFailureKind = "transport"): void {
-		if (this.stateValue.status !== "active" || this.stopRequested) return;
+		if (this.stateValue.status !== "active") return;
+		if (this.stopRequested) {
+			this.pendingProviderTerminal ??= { status: "failed", reason, kind };
+			return;
+		}
 		// A failure event is part of the same ordered stream. If the provider
 		// already emitted one, retain that single authoritative frame rather than
 		// duplicating it when the workflow reports its rejected Promise.
@@ -298,9 +311,24 @@ export class GenerationRuntime {
 		return this.stopRequested;
 	}
 
+	/**
+	 * Return terminal ownership to the provider after the durable Stop loses
+	 * its race. A provider callback observed during cancellation is replayed;
+	 * otherwise its eventual callback can settle the still-active runtime.
+	 */
+	releaseStopRequest(): void {
+		if (this.stateValue.status !== "active" || !this.stopRequested) return;
+		this.stopRequested = false;
+		const pending = this.pendingProviderTerminal;
+		this.pendingProviderTerminal = null;
+		if (pending?.status === "complete") this.complete();
+		if (pending?.status === "failed") this.fail(pending.reason, pending.kind);
+	}
+
 	/** Mark the runtime terminal after the durable Conversation transition. */
 	markStopped(): void {
 		if (this.stateValue.status !== "active") return;
+		this.pendingProviderTerminal = null;
 		this.flushCheckpoint();
 		this.stateValue.status = "stopped";
 		this.terminalAt = this.checkpointNow();

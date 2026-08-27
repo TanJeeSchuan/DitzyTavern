@@ -196,9 +196,10 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/:generationId/stop",
 			({ params, status }) => {
 				const connection = database ?? openDatabase();
+				let runtime: GenerationRuntimeValue;
 				try {
 					const registry = runtimeRegistryForRequest(connection, database);
-					const runtime = registry.get(params.generationId);
+					runtime = registry.get(params.generationId);
 					if (runtime !== undefined && runtime.state.conversationId !== params.id) {
 						return status(404, { outcome: "not-found" as const });
 					}
@@ -215,6 +216,7 @@ export const createConversationRoutes = (
 					};
 				} catch (error) {
 					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
+						runtime?.releaseStopRequest();
 						return status(404, { outcome: "not-found" as const });
 					}
 					throw error;
@@ -260,6 +262,7 @@ export const createConversationRoutes = (
 							matchingRuntime?.markStopped();
 						} catch (error) {
 							if (!(error instanceof InvalidConversationCommandError)) throw error;
+							matchingRuntime?.releaseStopRequest();
 						}
 					}
 					if (stoppedIds.length === 0) return status(404, { outcome: "not-found" as const });
