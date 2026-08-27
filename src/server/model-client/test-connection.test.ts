@@ -227,7 +227,8 @@ describe("Model Test Connection", () => {
 			}),
 		});
 		expect(binary).toMatchObject({ outcome: "failure", kind: "endpoint" });
-		expect(failureMessage(binary)).toContain("application/octet-stream");
+		expect(failureMessage(binary)).toContain("binary response body");
+		expect(failureMessage(binary)).not.toContain("application/octet-stream");
 		expect(failureMessage(binary)).toContain("bytes");
 	});
 

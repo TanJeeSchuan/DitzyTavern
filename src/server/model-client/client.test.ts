@@ -70,7 +70,7 @@ describe("Model Client seam", () => {
 			{ type: "content", text: "Visible " },
 			{ type: "usage", usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 } },
 			{ type: "content", text: "answer." },
-			{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+			{ type: "finished", finishReason: "length" },
 		]);
 
 		await expect(collectModelClientGeneration(client, {
@@ -83,7 +83,6 @@ describe("Model Client seam", () => {
 			reasoning: "First think. ",
 			usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6 },
 			finishReason: "length",
-			rawFinishReason: "max_tokens",
 		});
 	});
 

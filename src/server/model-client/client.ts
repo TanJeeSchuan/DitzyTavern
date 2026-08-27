@@ -41,7 +41,6 @@ export interface CollectedModelClientGeneration {
 	readonly reasoning: string;
 	readonly usage: ModelClientUsage | null;
 	readonly finishReason: "stop" | "length" | "other";
-	readonly rawFinishReason: string | null;
 }
 
 type MutableCollectedModelClientGeneration = {
@@ -92,7 +91,6 @@ export async function collectModelClientGeneration(
 		const partial: Partial<MutableCollectedModelClientGeneration> = { content, reasoning, usage };
 		if (finished !== null) {
 			partial.finishReason = finished.finishReason;
-			partial.rawFinishReason = finished.rawFinishReason ?? null;
 		}
 		if (error instanceof ModelClientGenerationError) {
 			throw new ModelClientGenerationError(error.kind, error.message, partial);
@@ -114,7 +112,6 @@ export async function collectModelClientGeneration(
 		reasoning,
 		usage,
 		finishReason: finished.finishReason,
-		rawFinishReason: finished.rawFinishReason ?? null,
 	};
 }
 

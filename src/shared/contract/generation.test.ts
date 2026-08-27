@@ -164,7 +164,7 @@ describe("Generation transport contract", () => {
 			{
 				namespace: "generation",
 				key: "finish",
-				value: JSON.stringify({ reason: "stop", raw: null }),
+				value: JSON.stringify({ reason: "stop" }),
 			},
 		]));
 		if (message === undefined || variant === undefined) throw new Error("Generated Variant missing.");

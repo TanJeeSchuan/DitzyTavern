@@ -137,8 +137,6 @@ export async function testConnection(
 		// response fields; the parser below reads only those known fields.
 		return normalizeTestConnectionError(error as ProviderErrorLike, {
 			timedOut,
-			credential,
-			headers,
 		});
 	} finally {
 		clearTimeout(timeout);
@@ -151,8 +149,6 @@ export const testDeepSeekConnection = testConnection;
 
 interface ErrorContext {
 	timedOut: boolean;
-	credential: string | null;
-	headers: Readonly<Record<string, string>>;
 }
 
 function normalizeTestConnectionError(
@@ -167,24 +163,20 @@ function normalizeTestConnectionError(
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
 	if (status === 401 || status === 403) {
-		return failure("authentication", providerFailureMessage(error, context));
+		return failure("authentication", providerFailureMessage(error));
 	}
 	if (isMalformedResponseError(error)) {
-		return failure("malformed-response", providerFailureMessage(error, context));
+		return failure("malformed-response", providerFailureMessage(error));
 	}
 	if (isRedirectError(error)) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
-	return failure("endpoint", providerFailureMessage(error, context));
+	return failure("endpoint", providerFailureMessage(error));
 }
 
-function providerFailureMessage(
-	error: ProviderErrorLike,
-	context: ErrorContext,
-): string {
+function providerFailureMessage(error: ProviderErrorLike): string {
 	return formatProviderError(
 		snapshotProviderError(error),
-		{ credential: context.credential, headers: context.headers },
 	);
 }
 

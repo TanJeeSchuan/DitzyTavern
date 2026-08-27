@@ -143,7 +143,7 @@ async function* generateOpenAICompatibleStream(options: {
 					),
 				redirect: "error",
 			});
-			await rejectProviderResponse(response, options.credential, options.customHeaders);
+			await rejectProviderResponse(response);
 			return monitorResponseActivity(response, resetInactivity, controller.signal);
 		}
 		// SAFETY: the AI SDK serializes this request as a JSON object whose values
@@ -167,7 +167,7 @@ async function* generateOpenAICompatibleStream(options: {
 			body: JSON.stringify(requestBody),
 			redirect: "error",
 		});
-		await rejectProviderResponse(response, options.credential, options.customHeaders);
+		await rejectProviderResponse(response);
 		return monitorResponseActivity(response, resetInactivity, controller.signal);
 	};
 
@@ -194,7 +194,6 @@ async function* generateOpenAICompatibleStream(options: {
 		};
 		const result = streamText(streamOptions);
 		let finishReason: string | null = null;
-		let rawFinishReason: string | null = null;
 		let usageEmitted = false;
 		for await (const part of result.fullStream) {
 			switch (part.type) {
@@ -218,12 +217,10 @@ async function* generateOpenAICompatibleStream(options: {
 						yield { type: "usage", usage: stepUsage };
 					}
 					finishReason = part.finishReason;
-					rawFinishReason = boundRawFinishReason(part.rawFinishReason);
 					break;
 				case "finish":
 					resetInactivity();
 					finishReason = part.finishReason ?? finishReason;
-					rawFinishReason = boundRawFinishReason(part.rawFinishReason) ?? rawFinishReason;
 					break;
 				case "abort":
 					throw new ModelClientTransportError(
@@ -232,11 +229,7 @@ async function* generateOpenAICompatibleStream(options: {
 					);
 				case "error":
 					if (part.error instanceof Error) {
-						throw normalizeProviderStreamError(
-							part.error,
-							options.credential,
-							options.customHeaders,
-						);
+						throw normalizeProviderStreamError(part.error);
 					}
 					throw new ModelClientTransportError(
 						"The provider stream returned an error.",
@@ -257,17 +250,7 @@ async function* generateOpenAICompatibleStream(options: {
 			}
 		}
 		const normalizedFinishReason = normalizeFinishReason(resolvedFinishReason);
-		const normalizedRawFinishReason = rawFinishReason ??
-			boundRawFinishReason(await result.rawFinishReason);
-		const finishedEvent: ModelClientEvent = normalizedRawFinishReason !== null &&
-			normalizedRawFinishReason !== normalizedFinishReason
-			? {
-				type: "finished",
-				finishReason: normalizedFinishReason,
-				rawFinishReason: normalizedRawFinishReason,
-			}
-			: { type: "finished", finishReason: normalizedFinishReason };
-		yield finishedEvent;
+		yield { type: "finished", finishReason: normalizedFinishReason };
 	} catch (error) {
 		if (cancellation === "inactivity") {
 			throw new ModelClientTransportError(
@@ -294,21 +277,17 @@ async function* generateOpenAICompatibleStream(options: {
 
 async function rejectProviderResponse(
 	response: Response,
-	credential: string,
-	customHeaders: Readonly<Record<string, string>>,
 ): Promise<void> {
 	if (response.ok) return;
 	const snapshot = await snapshotProviderResponse(response);
 	throw new ModelClientTransportError(
-		formatProviderError(snapshot, { credential, headers: customHeaders }),
+		formatProviderError(snapshot),
 		"provider",
 	);
 }
 
 function normalizeProviderStreamError(
 	error: Error,
-	credential: string,
-	customHeaders: Readonly<Record<string, string>>,
 ): ModelClientTransportError {
 	if (error instanceof ModelClientTransportError) return error;
 	// SAFETY: AI SDK provider failures expose the optional status/body fields
@@ -318,7 +297,7 @@ function normalizeProviderStreamError(
 		return new ModelClientTransportError("The provider stream returned an error.", "provider");
 	}
 	return new ModelClientTransportError(
-		formatProviderError(snapshot, { credential, headers: customHeaders }),
+		formatProviderError(snapshot),
 		"provider",
 	);
 }
@@ -493,15 +472,6 @@ function normalizeUsage(value: {
 
 function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
 	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
-}
-
-function boundRawFinishReason(value: string | undefined): string | null {
-	if (value === undefined) return null;
-	const normalized = Array.from(value, (character) => {
-		const code = character.codePointAt(0) ?? 32;
-		return code < 32 || code === 127 ? " " : character;
-	}).join("").trim();
-	return normalized.length === 0 ? null : normalized.slice(0, 128);
 }
 
 function monitorResponseActivity(

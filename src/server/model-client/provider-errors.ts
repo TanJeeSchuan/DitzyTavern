@@ -1,8 +1,3 @@
-export interface ProviderErrorContext {
-	readonly credential: string | null;
-	readonly headers: Readonly<Record<string, string>>;
-}
-
 export interface ProviderErrorLike extends Error {
 	readonly cause?: Error;
 	readonly statusCode?: number;
@@ -53,12 +48,11 @@ export function snapshotProviderError(error: ProviderErrorLike): ProviderErrorSn
  */
 export function formatProviderError(
 	snapshot: ProviderErrorSnapshot,
-	_context: ProviderErrorContext,
 	subject: "provider" | "models" = "provider",
 ): string {
 	const prefix = subject === "models" ? "The Models endpoint" : "The provider";
 	if (snapshot.contentType !== undefined && !isTextualContentType(snapshot.contentType)) {
-		return `${prefix} returned HTTP ${snapshot.status ?? "an error"} with ${snapshot.contentType} content (${snapshot.bodyBytes} bytes).`;
+		return `${prefix} returned HTTP ${snapshot.status ?? "an error"} with a binary response body (${snapshot.bodyBytes} bytes).`;
 	}
 	const responseSize = snapshot.bodyBytes > 0 ? ` (${snapshot.bodyBytes}-byte response body)` : "";
 	return `${prefix} request failed${snapshot.status === undefined ? "" : ` with HTTP ${snapshot.status}`}${responseSize}.`;

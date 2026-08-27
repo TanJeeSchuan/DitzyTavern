@@ -75,7 +75,7 @@ export async function discoverModels(
 			const snapshot = await snapshotProviderResponse(response);
 			return failure(
 				response.status === 401 || response.status === 403 ? "authentication" : "endpoint",
-				formatProviderError(snapshot, { credential, headers: customHeaders }, "models"),
+				formatProviderError(snapshot, "models"),
 			);
 		}
 

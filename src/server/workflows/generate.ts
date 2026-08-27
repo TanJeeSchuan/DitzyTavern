@@ -440,7 +440,6 @@ interface GenerationOutcome {
 	reasoning: string;
 	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
 	finishReason: "stop" | "length" | "other" | null;
-	rawFinishReason: string | null;
 	status: GenerationOutcomeStatus;
 	interruptionCause: ModelClientFailureKind | null;
 	error: string | null;
@@ -474,7 +473,6 @@ async function runGeneration(
 			reasoning,
 			usage: error.partial.usage ?? null,
 			finishReason: null,
-			rawFinishReason: null,
 			status: "interrupted",
 			interruptionCause: error.kind,
 			error: error.kind === "cancelled" ? null : error.message,
@@ -1568,13 +1566,12 @@ function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[
 			value: JSON.stringify(normalizeUsage(input.usage)),
 		});
 	}
-	if (input.finishReason !== null || input.rawFinishReason !== null) {
+	if (input.finishReason !== null) {
 		data.push({
 			namespace: "generation",
 			key: "finish",
 			value: JSON.stringify({
 				reason: input.finishReason,
-				raw: input.rawFinishReason?.slice(0, 128) ?? null,
 			}),
 		});
 	}

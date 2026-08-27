@@ -120,7 +120,7 @@ describe("Send through provisional Tail Generation", () => {
 			content: "Reach the output limit.",
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "The bounded output." },
-				{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+				{ type: "finished", finishReason: "length" },
 			]),
 		});
 		const lengthMessage = lengthLimited.conversation.messages.at(-1);

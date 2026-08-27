@@ -80,7 +80,6 @@ export type ModelClientEvent =
 	| {
 			type: "finished";
 			finishReason: ModelClientFinishReason;
-			rawFinishReason?: string;
 	  }
 	| { type: "failed"; kind: ModelClientFailureKind; message: string };
 

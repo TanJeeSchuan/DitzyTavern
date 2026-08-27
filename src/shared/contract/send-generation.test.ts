@@ -31,7 +31,7 @@ const providerStreamResponse = ({
 	failAfterContent = false,
 }: {
 	content?: string;
-	finishReason?: "stop" | "length";
+	finishReason?: string;
 	failAfterContent?: boolean;
 }) => {
 	const encoder = new TextEncoder();
@@ -253,7 +253,7 @@ describe("Send generation transport", () => {
 			masterKey,
 			fetch: async () => new Response(leakedBody, {
 				status: 502,
-				headers: { "content-type": "text/plain", "x-provider-secret": "header-do-not-expose" },
+				headers: { "content-type": "application/secret.endpoint+binary; credential=header-do-not-expose" },
 			}),
 		});
 
@@ -276,12 +276,54 @@ describe("Send generation transport", () => {
 		expect(acceptedResponse.status).toBe(200);
 		expect(events).toContain("event: error");
 		expect(events).toContain("HTTP 502");
+		expect(events).toContain("binary response body");
 		for (const visible of [acceptedBody, events]) {
 			expect(visible).not.toContain("RAW BODY");
 			expect(visible).not.toContain("secret.endpoint");
 			expect(visible).not.toContain("credential-do-not-expose");
 			expect(visible).not.toContain("header-do-not-expose");
 		}
+	});
+
+	test("raw provider finish reasons are normalized before Generation SSE", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Safe finish contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const masterKey = new Uint8Array(32).fill(18);
+		createConnectionSettingsModule(database, { masterKey }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "finish-credential-do-not-expose",
+		});
+		const rawFinishReason = "https://secret.endpoint X-Secret=header-do-not-expose arbitrary-provider-text";
+		const app = createConversationRoutes(database, {
+			masterKey,
+			fetch: async () => providerStreamResponse({ content: "Safe answer.", finishReason: rawFinishReason }),
+		});
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Finish safely." }),
+			},
+		));
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await acceptedResponse.json() as { generationId: number };
+		const events = await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		))).text();
+
+		expect(events).toContain('"finishReason":"other"');
+		expect(events).not.toContain(rawFinishReason);
+		expect(events).not.toContain("secret.endpoint");
+		expect(events).not.toContain("header-do-not-expose");
+		expect(events).not.toContain("arbitrary-provider-text");
 	});
 
 	test("persists a length-limited terminal outcome through the HTTP routes", async () => {

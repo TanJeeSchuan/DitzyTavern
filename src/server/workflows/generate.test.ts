@@ -442,7 +442,7 @@ describe("Generation capture and terminal fixture support", () => {
 			conversationId,
 			modelClient: createFakeModelClient(() => [
 				{ type: "content", text: "Truncated answer." },
-				{ type: "finished", finishReason: "length", rawFinishReason: "max_tokens" },
+				{ type: "finished", finishReason: "length" },
 			]),
 		});
 
@@ -455,7 +455,7 @@ describe("Generation capture and terminal fixture support", () => {
 		expect(variant?.data).toContainEqual({
 			namespace: "generation",
 			key: "finish",
-			value: JSON.stringify({ reason: "length", raw: "max_tokens" }),
+			value: JSON.stringify({ reason: "length" }),
 		});
 	});
 

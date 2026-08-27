@@ -83,7 +83,7 @@ export type GenerationStreamDelta =
 	| { type: "content"; text: string }
 	| { type: "reasoning"; text: string }
 	| { type: "usage"; usage: Record<string, number> }
-	| { type: "finished"; finishReason: "stop" | "length" | "other"; rawFinishReason?: string }
+	| { type: "finished"; finishReason: "stop" | "length" | "other" }
 	| { type: "keepalive" };
 
 export interface GenerationStreamState {
@@ -1023,10 +1023,7 @@ function parseGenerationStreamDelta(value: GenerationStreamJsonObject): Generati
 	if (type !== "finished") return null;
 	const finishReason = generationStreamJsonString(value.finishReason);
 	if (finishReason !== "stop" && finishReason !== "length" && finishReason !== "other") return null;
-	const rawFinishReason = generationStreamJsonString(value.rawFinishReason);
-	return rawFinishReason === undefined
-		? { type, finishReason }
-		: { type, finishReason, rawFinishReason };
+	return { type, finishReason };
 }
 
 function parseGenerationStreamState(value: GenerationStreamJsonObject): GenerationStreamState | null {
