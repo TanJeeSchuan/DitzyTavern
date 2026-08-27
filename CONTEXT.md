@@ -52,6 +52,14 @@ _Avoid_: continue postfix, message separator
 Editable Conversation guidance used by the instruction Continuation strategy to request more writing without repetition. It is part of the Prompt Plan but not Conversation history.
 _Avoid_: continue nudge, synthetic Message
 
+**Generation Settings**:
+The Conversation-owned configuration a new Generation starts from: model selection, sampling parameters, budget fields, Continuation strategy, and Request Overrides. Endpoints, credentials, and transport details belong to Connection Profiles instead.
+_Avoid_: connection settings, generation config, Model Settings
+
+**Request Overrides**:
+Extra request body fields owned by the Conversation and grouped by API Format namespace. Only the namespace matching the active Connection Profile's format is merged into each request; the other namespaces are kept editable and never transmitted. Overrides never replace structural request framing such as messages, stream behavior, or the managed output limit.
+_Avoid_: custom payload, raw request editing
+
 **Sibling Generation**:
 A Generation whose Generated Variant becomes another Variant of an existing Message.
 _Avoid_: regenerate, swipe generation

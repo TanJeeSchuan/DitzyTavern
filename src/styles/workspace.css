@@ -544,6 +544,20 @@
 	font-size: 0.72rem;
 }
 
+.field small.field-error {
+	color: var(--destructive);
+}
+
+.generation-model-value {
+	margin: 0;
+	padding: 0.55rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-size: 0.84rem;
+}
+
 .field-input,
 .field textarea {
 	width: 100%;
