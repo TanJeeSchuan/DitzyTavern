@@ -77,7 +77,7 @@ export type GenerationStreamResult =
 	| { outcome: "applied" }
 	| { outcome: "stopped"; generationId?: number }
 	| { outcome: "not-found" }
-	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid" | "conflict"; reason: string };
+	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string };
 
 export type GenerationStreamDelta =
 	| { type: "content"; text: string }
@@ -700,7 +700,8 @@ export type StartConversationGenerationResult =
 			messageId: number;
 			variantId: number;
 	  }
-	| { outcome: "not-found" | "conflict" | "invalid"; reason?: string };
+	| { outcome: "not-found" }
+	| { outcome: "conflict" | "invalid" | "not-playable"; reason: string };
 
 // Starts a server-owned generation without coupling acceptance to a browser
 // stream. Call subscribeConversationGeneration separately for each observing
@@ -724,9 +725,9 @@ export async function startConversationGeneration(
 	if (value === null) return { outcome: "invalid", reason: "Generation start returned malformed JSON." };
 	if (!response.ok) {
 		if (isGenerationStartValue(value, "not-found")) return { outcome: "not-found" };
-		if (isGenerationStartValue(value, "conflict") || isGenerationStartValue(value, "invalid")) {
-			return { outcome: value.outcome, reason: value.reason };
-		}
+		if (isGenerationStartValue(value, "conflict")) return { outcome: "conflict", reason: value.reason ?? "Generation start conflicted with a newer Conversation revision." };
+		if (isGenerationStartValue(value, "not-playable")) return { outcome: "not-playable", reason: value.reason ?? "The Conversation is not playable." };
+		if (isGenerationStartValue(value, "invalid")) return { outcome: "invalid", reason: value.reason ?? "Generation could not be started." };
 		return { outcome: "invalid", reason: "Generation could not be started." };
 	}
 	if (!isGenerationStartAccepted(value)) return { outcome: "invalid", reason: "Generation start returned malformed JSON." };
@@ -751,12 +752,41 @@ export async function startConversationSiblingGeneration(
 	if (value === null) return { outcome: "invalid", reason: "Sibling Generation start returned malformed JSON." };
 	if (!response.ok) {
 		if (isGenerationStartValue(value, "not-found")) return { outcome: "not-found" };
-		if (isGenerationStartValue(value, "conflict") || isGenerationStartValue(value, "invalid")) {
-			return { outcome: value.outcome, reason: value.reason };
-		}
+		if (isGenerationStartValue(value, "conflict")) return { outcome: "conflict", reason: value.reason ?? "Generation start conflicted with a newer Conversation revision." };
+		if (isGenerationStartValue(value, "not-playable")) return { outcome: "not-playable", reason: value.reason ?? "The Conversation is not playable." };
+		if (isGenerationStartValue(value, "invalid")) return { outcome: "invalid", reason: value.reason ?? "Sibling Generation could not be started." };
 		return { outcome: "invalid", reason: "Sibling Generation could not be started." };
 	}
 	if (!isGenerationStartAccepted(value)) return { outcome: "invalid", reason: "Sibling Generation start returned malformed JSON." };
+	return value;
+}
+
+export async function startConversationContinuationGeneration(
+	conversationId: number,
+	expectedRevision: number,
+): Promise<StartConversationGenerationResult> {
+	const response = await fetch(`/api/conversations/${conversationId}/continue/generations`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ expectedRevision }),
+	});
+	let value: GenerationStreamJsonObject | null;
+	try {
+		value = generationStreamJsonObject(await response.json());
+	} catch {
+		return { outcome: "invalid", reason: "Continuation Generation start returned malformed JSON." };
+	}
+	if (value === null) return { outcome: "invalid", reason: "Continuation Generation start returned malformed JSON." };
+	if (!response.ok) {
+		if (isGenerationStartValue(value, "not-found")) return { outcome: "not-found" };
+		if (isGenerationStartValue(value, "conflict")) return { outcome: "conflict", reason: value.reason ?? "Generation start conflicted with a newer Conversation revision." };
+		if (isGenerationStartValue(value, "not-playable")) return { outcome: "not-playable", reason: value.reason ?? "The Conversation is not playable." };
+		if (isGenerationStartValue(value, "invalid")) return { outcome: "invalid", reason: value.reason ?? "Continuation Generation could not be started." };
+		return { outcome: "invalid", reason: "Continuation Generation could not be started." };
+	}
+	if (!isGenerationStartAccepted(value)) {
+		return { outcome: "invalid", reason: "Continuation Generation start returned malformed JSON." };
+	}
 	return value;
 }
 
@@ -819,38 +849,6 @@ async function postGenerationStop(
 	}
 }
 
-// POST generation uses a native fetch stream because EventSource cannot send
-// a request body. Frames are decoded and validated here before the workspace
-// sees visible text; malformed provider or server payloads never become UI
-// state.
-export async function streamConversationReply(
-	conversationId: number,
-	input: {
-		endpoint?: "generate" | "continue";
-		expectedRevision?: number;
-		content?: string;
-		signal?: AbortSignal;
-		onDelta: (event: GenerationStreamDelta) => void;
-		onAccepted?: (generationId: number) => void;
-		onState?: (state: GenerationStreamState) => void;
-		afterEventId?: number;
-	},
-): Promise<GenerationStreamResult> {
-	const endpoint = input.endpoint === "continue" ? "continue" : "generate";
-	const response = await fetch(`/api/conversations/${conversationId}/${endpoint}/stream`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: input.expectedRevision === undefined && input.content === undefined
-			? "{}"
-			: JSON.stringify({ expectedRevision: input.expectedRevision, content: input.content }),
-		signal: input.signal,
-	});
-	if (!response.ok || response.body === null) {
-		return { outcome: "failed", reason: "Generation stream could not be opened." };
-	}
-	return consumeGenerationStream(response, input);
-}
-
 // A GET subscription is deliberately separate from POST acceptance. Reloads
 // and navigation can reconnect with the last observed event position without
 // contacting the provider or creating another Generation.
@@ -868,7 +866,7 @@ export async function subscribeConversationGeneration(
 	if (input.afterEventId !== undefined) query.set("after", String(input.afterEventId));
 	const suffix = query.size === 0 ? "" : `?${query.toString()}`;
 	const response = await fetch(
-		`/api/conversations/${conversationId}/generate/stream/${generationId}${suffix}`,
+		`/api/conversations/${conversationId}/generations/${generationId}/events${suffix}`,
 		{ method: "GET", signal: input.signal },
 	);
 	if (!response.ok || response.body === null) {
@@ -881,7 +879,6 @@ async function consumeGenerationStream(
 	response: Response,
 	input: {
 		onDelta: (event: GenerationStreamDelta) => void;
-		onAccepted?: (generationId: number) => void;
 		onState?: (state: GenerationStreamState) => void;
 	},
 ): Promise<GenerationStreamResult> {
@@ -937,11 +934,6 @@ async function consumeGenerationStream(
 			result = stopped;
 			return;
 		}
-		const accepted = eventType === "accepted" ? parseGenerationAccepted(value) : null;
-		if (accepted !== null) {
-			input.onAccepted?.(accepted.generationId);
-			return;
-		}
 		const failure = eventType === "error" ? parseGenerationFailure(value) : null;
 		if (failure !== null) result = failure;
 	};
@@ -956,46 +948,6 @@ async function consumeGenerationStream(
 	if (pending.length > 0) consumeFrame(pending);
 	return result ?? { outcome: "failed", reason: "Generation ended without a terminal result." };
 }
-
-export function streamConversationContinuation(
-	conversationId: number,
-	input: {
-		expectedRevision: number;
-		signal?: AbortSignal;
-		onDelta: (event: GenerationStreamDelta) => void;
-		onAccepted?: (generationId: number) => void;
-	},
-): Promise<GenerationStreamResult> {
-	return streamConversationReply(conversationId, { ...input, endpoint: "continue" });
-}
-
-// Starts and observes a server-owned Sibling Generation at one existing
-// Message. Each call receives its own Generation/event IDs, so parallel
-// sibling streams share the decoder without provider-specific handling.
-export function streamConversationSibling(
-	conversationId: number,
-	messageId: number,
-	input: {
-		signal?: AbortSignal;
-		onDelta: (event: GenerationStreamDelta) => void;
-		onAccepted?: (generationId: number) => void;
-		onState?: (state: GenerationStreamState) => void;
-	},
-): Promise<GenerationStreamResult> {
-	return fetch(`/api/conversations/${conversationId}/messages/${messageId}/sibling/stream`, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: "{}",
-		signal: input.signal,
-	}).then((response) => {
-		if (!response.ok || response.body === null) {
-			return { outcome: "failed", reason: "Sibling Generation stream could not be opened." } satisfies GenerationStreamResult;
-		}
-		return consumeGenerationStream(response, input);
-	});
-}
-
-export const streamConversationContinue = streamConversationContinuation;
 
 type GenerationStreamJsonValue =
 	| string
@@ -1023,7 +975,7 @@ function parseGenerationStreamObject(serialized: string): GenerationStreamJsonOb
 
 function isGenerationStartValue(
 	value: GenerationStreamJsonObject,
-	outcome: "not-found" | "conflict" | "invalid",
+		outcome: "not-found" | "conflict" | "invalid" | "not-playable",
 ): value is GenerationStreamJsonObject & { outcome: typeof outcome; reason?: string } {
 	return generationStreamJsonString(value.outcome) === outcome;
 }
@@ -1117,22 +1069,12 @@ function parseGenerationStopped(
 	return generationId === undefined ? { outcome: "stopped" } : { outcome: "stopped", generationId };
 }
 
-function parseGenerationAccepted(
-	value: GenerationStreamJsonObject,
-): { outcome: "accepted"; generationId: number } | null {
-	if (generationStreamJsonString(value.outcome) !== "accepted") return null;
-	const generationId = generationStreamJsonNumber(value.generationId);
-	return generationId === undefined
-		? null
-		: { outcome: "accepted", generationId };
-}
-
 function parseGenerationFailure(
 	value: GenerationStreamJsonObject,
 ): Exclude<GenerationStreamResult, { outcome: "applied" }> | null {
 	const outcome = generationStreamJsonString(value.outcome);
 	if (outcome === "not-found") return { outcome };
-	if (outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid" && outcome !== "conflict") return null;
+	if (outcome !== "not-playable" && outcome !== "failed" && outcome !== "invalid" && outcome !== "conflict") return null;
 	const reason = generationStreamJsonString(value.reason);
 	return reason === undefined ? null : { outcome, reason };
 }

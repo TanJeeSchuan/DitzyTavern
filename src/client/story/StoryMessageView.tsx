@@ -36,6 +36,7 @@ export function StoryMessageView({
 	canContinue = false,
 	continueLabel = "Continue",
 	onContinue,
+	onSibling,
 	onInspect,
 }: {
 	message: StoryMessage;
@@ -48,6 +49,7 @@ export function StoryMessageView({
 	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
+	onSibling?: (messageId: number) => void;
 	onInspect?: (messageId: number, variantId: number) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
@@ -149,6 +151,16 @@ export function StoryMessageView({
 						onClick={() => onContinue(message.id)}
 					>
 						{continueLabel}
+					</button>
+				)}
+				{onSibling !== undefined && (
+					<button
+						className="edit-action"
+						type="button"
+						disabled={mutationsDisabled}
+						onClick={() => onSibling(message.id)}
+					>
+						New Swipe
 					</button>
 				)}
 				{onInspect !== undefined && active !== undefined && (

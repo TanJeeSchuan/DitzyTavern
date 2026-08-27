@@ -113,7 +113,7 @@ describe("Continuation Generation", () => {
 		const module = createConversationModule(database);
 		const seed = module.getSnapshot(conversationId);
 		if (seed === undefined) throw new Error("Missing Conversation.");
-		const generated = await generateReply(database, {
+		const _generated = await generateReply(database, {
 			conversationId,
 			modelClient: createFakeModelClient(() => "The generated terminal Message."),
 		});

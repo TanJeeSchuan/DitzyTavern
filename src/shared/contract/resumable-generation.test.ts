@@ -72,12 +72,13 @@ describe("Resumable generation transport", () => {
 		// SAFETY: this contract test controls the start endpoint and checks the
 		// response status immediately before reading its accepted identifier.
 		// SAFETY: this contract test controls the accepted response shape.
+		// SAFETY: this contract test controls the typed acceptance response.
 		const accepted = await acceptedResponse.json() as { generationId: number };
 		expect(acceptedResponse.status).toBe(200);
 		expect(accepted.generationId).toBeGreaterThan(0);
 
 		const subscription = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generate/stream/${accepted.generationId}`,
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 		));
 		const bodyPromise = subscription.text();
 		release();
@@ -194,15 +195,20 @@ describe("Resumable generation transport", () => {
 			},
 		});
 
-		const abort = new AbortController();
-		const initiating = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generate/stream`,
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
-				signal: abort.signal,
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Keep running." }),
 			},
+		));
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await acceptedResponse.json() as { generationId: number };
+		const abort = new AbortController();
+		const initiating = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+			{ signal: abort.signal },
 		));
 		const reader = initiating.body?.getReader();
 		if (reader === undefined) throw new Error("Initiating stream has no body.");
@@ -217,7 +223,7 @@ describe("Resumable generation transport", () => {
 		const generationId = current?.activeGeneration?.generationId;
 		if (generationId === undefined) throw new Error("Active Generation missing.");
 		const observer = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generate/stream/${generationId}`,
+			`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`,
 		));
 		const observedBody = observer.text();
 		release();

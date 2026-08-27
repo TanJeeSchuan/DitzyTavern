@@ -67,18 +67,23 @@ describe("Continuation transport contract", () => {
 			masterKey: key,
 			fetch: async () => streamResponse(),
 		});
-		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/continue/stream`,
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/continue/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ expectedRevision: conversation.revision }),
 			},
 		));
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await acceptedResponse.json() as { generationId: number };
+		const response = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
 		const body = await response.text();
 		const after = createConversationModule(database).getSnapshot(conversation.id);
+		expect(acceptedResponse.status).toBe(200);
 		expect(response.status).toBe(200);
-		expect(body).toContain('"outcome":"accepted"');
 		expect(body).toContain('"outcome":"applied"');
 		expect(after?.messages).toHaveLength(2);
 		expect(after?.messages.at(-1)?.variants[0]?.content).toBe("Continued.");

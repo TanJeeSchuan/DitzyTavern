@@ -70,18 +70,23 @@ describe("Send generation transport", () => {
 			},
 		});
 
-		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generate/stream`,
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Open the door." }),
 			},
 		));
-		const body = await response.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await acceptedResponse.json() as { generationId: number };
+		const response = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		await response.text();
 		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		expect(acceptedResponse.status).toBe(200);
 		expect(response.status).toBe(200);
-		expect(body).toContain("event: accepted");
 		expect(providerSawHuman).toBe(true);
 		expect(persisted?.messages).toHaveLength(2);
 		expect(persisted?.messages[0]?.variants[0]?.content).toBe("Open the door.");

@@ -495,12 +495,11 @@ export const conversationCommandBody = t.Object({
 });
 
 // Send carries the client draft and the Conversation revision it was based
-// on. Both are optional at the schema level to preserve the legacy empty
-// Generate request used by older clients; the route requires them together
-// whenever either field is present.
+// on. Generation acceptance is deliberately a complete typed operation: an
+// omitted revision or draft must never fall through to an older request shape.
 export const generationBody = t.Object({
-	expectedRevision: t.Optional(t.Integer()),
-	content: t.Optional(t.String()),
+	expectedRevision: t.Integer(),
+	content: t.String(),
 });
 
 // Continue carries only the Conversation revision. The server derives the

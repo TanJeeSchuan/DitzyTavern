@@ -26,20 +26,6 @@ export function HistoryLoading() {
 	);
 }
 
-export function GenerationPlaceholder() {
-	return (
-		<div className="generation-placeholder" role="status" aria-live="polite">
-			<div className="placeholder-header">
-				<span className="skeleton portrait-skeleton" />
-				<span className="skeleton label-skeleton" />
-			</div>
-			<div className="skeleton prose-skeleton wide" />
-			<div className="skeleton prose-skeleton" />
-			<span className="sr-only">Generating Message</span>
-		</div>
-	);
-}
-
 export function PreviewSkeleton({ messageId }: { messageId: number }) {
 	return (
 		<div
@@ -55,34 +41,6 @@ export function PreviewSkeleton({ messageId }: { messageId: number }) {
 			<div className="skeleton prose-skeleton wide" />
 			<div className="skeleton prose-skeleton" />
 		</div>
-	);
-}
-
-export function StreamingGeneration({
-	content,
-	reasoning,
-}: {
-	content: string;
-	reasoning: string;
-}) {
-	return (
-		<article className="story-message streaming-generation" aria-live="polite">
-			<header className="message-header">
-				<strong>Generating Message</strong>
-				<span className="generation-state">Streaming</span>
-			</header>
-			{reasoning.length > 0 && (
-				<details className="streaming-reasoning">
-					<summary>Reasoning</summary>
-					<div className="prose">{reasoning}</div>
-				</details>
-			)}
-			<div className="prose">
-				{content.length > 0
-					? content.split("\n\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)
-					: <span className="streaming-placeholder">Waiting for the model to send text.</span>}
-			</div>
-		</article>
 	);
 }
 

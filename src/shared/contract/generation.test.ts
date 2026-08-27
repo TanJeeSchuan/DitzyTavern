@@ -124,16 +124,23 @@ describe("Generation transport contract", () => {
 			}),
 		);
 		expect(updated.status).toBe(200);
+		// SAFETY: this contract test controls the typed command response.
+		const updatedPayload = await updated.json() as { conversation: { revision: number } };
 
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: "{}",
+			body: JSON.stringify({ expectedRevision: updatedPayload.conversation.revision, content: "Generate this." }),
 		}),
 		);
 		expect(generated.status).toBe(200);
-		const body = await generated.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await generated.json() as { generationId: number };
+		const observed = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const body = await observed.text();
 		const persisted = createConversationModule(database).getSnapshot(conversation.id);
 		const variant = persisted?.messages.at(-1)?.variants.at(-1);
 		expect(variant?.content).toBe("Contract reply.");
@@ -162,14 +169,14 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const response = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: "{}",
+			body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
 		}),
 		);
-		expect(response.status).toBe(200);
-		expect(await response.text()).toContain('"outcome":"unconfigured"');
+		expect(response.status).toBe(422);
+		expect(await response.text()).toContain('"outcome":"invalid"');
 		expect(contacted).toBe(false);
 	});
 
@@ -193,16 +200,21 @@ describe("Generation transport contract", () => {
 		});
 
 		const response = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: "{}",
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
-		const body = await response.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await response.json() as { generationId: number };
+		const events = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const body = await events.text();
 
 		expect(response.status).toBe(200);
-		expect(response.headers.get("content-type")).toContain("text/event-stream");
+		expect(events.headers.get("content-type")).toContain("text/event-stream");
 		expect(body).toContain("event: generation");
 		expect(body).toContain('"type":"content"');
 		expect(body).toContain('"text":"Contract "');
@@ -242,14 +254,19 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: "{}",
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
-		const generatedBody = await generated.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await generated.json() as { generationId: number };
+		const events = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const generatedBody = await events.text();
 		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(generatedBody).not.toContain("never returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
@@ -287,14 +304,19 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const generated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generate/stream`, {
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: "{}",
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
 			}),
 		);
 		expect(generated.status).toBe(200);
-		const generatedBody = await generated.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await generated.json() as { generationId: number };
+		const events = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const generatedBody = await events.text();
 		expect(createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1)?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(generatedBody).not.toContain("openrouter-secret-never-returned");
 		expect(request?.url).toBe("http://127.0.0.1:43127/api/v1/chat/completions");
@@ -324,14 +346,18 @@ describe("Generation transport contract", () => {
 			fetch: async () => streamResponse(),
 		});
 		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/stream`,
-			{ method: "POST" },
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			{ method: "POST", body: "{}" },
 		));
-		const body = await response.text();
+		// SAFETY: this contract test controls the typed acceptance response.
+		const accepted = await response.json() as { generationId: number };
+		const events = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
+		));
+		const body = await events.text();
 		const persisted = createConversationModule(database).getSnapshot(conversation.id);
 		const targetAfter = persisted?.messages.find((message) => message.id === target.id);
 		expect(response.status).toBe(200);
-		expect(body).toContain("event: accepted");
 		expect(body).toContain("event: complete");
 		expect(targetAfter?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(targetAfter?.variants.at(-1)?.selected).toBe(true);
