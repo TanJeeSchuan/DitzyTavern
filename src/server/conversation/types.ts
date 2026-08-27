@@ -465,6 +465,7 @@ export interface ConversationModule {
 	removeTailGeneration(
 		input: RemoveTailGenerationInput,
 	): ConversationSnapshot;
+	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
 	acceptContinuationGeneration(
 		input: AcceptContinuationGenerationInput,
 	): AcceptedContinuationGeneration;
@@ -548,6 +549,15 @@ export interface ResolveTailGenerationInput {
 export interface RemoveTailGenerationInput {
 	conversationId: number;
 	generationId: number;
+}
+
+// Explicit Stop is a server-owned lifecycle transition. The checkpoint is
+// read from the Active Generation row, so a client cannot forge partial
+// output or target another Conversation's Generation.
+export interface StopGenerationInput {
+	conversationId: number;
+	generationId: number;
+	timestamp?: string | undefined;
 }
 
 // Continuation acceptance creates only the model-authored provisional target.

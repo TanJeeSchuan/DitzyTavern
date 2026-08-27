@@ -82,4 +82,38 @@ describe("Generation runtime", () => {
 		runtime.flushCheckpoint();
 		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
 	});
+
+	test("stop flushes the latest output, aborts the provider, and wins a terminal race", () => {
+		const checkpoints: Array<{ content: string; reasoning: string; latestEventId: number }> = [];
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 11,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { eventInterval: 99, intervalMs: 0 },
+			onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
+		});
+
+		runtime.publish({ type: "content", text: "partial" });
+		runtime.stop();
+
+		expect(runtime.signal.aborted).toBe(true);
+		expect(runtime.isStopRequested).toBe(true);
+		expect(checkpoints).toEqual([{ content: "partial", reasoning: "", latestEventId: 1 }]);
+		expect(runtime.state.status).toBe("active");
+
+		// Provider frames and terminal callbacks can arrive after AbortSignal is
+		// observed. They must not append output or replace the explicit Stop.
+		runtime.publish({ type: "content", text: "late" });
+		runtime.fail("late provider failure");
+		runtime.complete();
+		runtime.markStopped();
+		runtime.markStopped();
+
+		expect(runtime.state.status).toBe("stopped");
+		expect(runtime.state.content).toBe("partial");
+		expect(runtime.state.terminalReason).toBeNull();
+		expect(checkpoints).toHaveLength(1);
+	});
 });

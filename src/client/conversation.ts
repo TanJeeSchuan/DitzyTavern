@@ -75,6 +75,7 @@ export type ContinuationPrefillSuffix = "" | " " | "\n" | "\n\n";
 
 export type GenerationStreamResult =
 	| { outcome: "applied" }
+	| { outcome: "stopped"; generationId?: number }
 	| { outcome: "not-found" }
 	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid" | "conflict"; reason: string };
 
@@ -93,7 +94,7 @@ export interface GenerationStreamState {
 	content: string;
 	reasoning: string;
 	latestEventId: number;
-	status: "active" | "complete" | "failed";
+	status: "active" | "complete" | "stopped" | "failed";
 	terminalReason: string | null;
 }
 
@@ -432,6 +433,65 @@ export async function startConversationSiblingGeneration(
 	return value;
 }
 
+export type StopConversationGenerationResult =
+	| { outcome: "stopped"; generationId?: number; conversation?: ConversationSummary }
+	| { outcome: "not-found" }
+	| { outcome: "failed"; reason: string };
+
+// Stop is an explicit server command. The caller may separately abort its
+// local subscription after this request; closing that subscription alone never
+// reaches this function and therefore cannot cancel provider work.
+export async function stopConversationGeneration(
+	conversationId: number,
+	generationId: number,
+): Promise<StopConversationGenerationResult> {
+	return postGenerationStop(`/api/conversations/${conversationId}/generations/${generationId}/stop`);
+}
+
+export async function stopAllConversationGenerations(
+	conversationId: number,
+): Promise<StopConversationGenerationResult & { generationIds?: number[] }> {
+	return postGenerationStop(`/api/conversations/${conversationId}/generations/stop-all`, true);
+}
+
+async function postGenerationStop(
+	path: string,
+	all = false,
+): Promise<StopConversationGenerationResult & { generationIds?: number[] }> {
+	try {
+		const response = await fetch(path, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: "{}",
+		});
+		let value: GenerationStreamJsonObject | null;
+		try {
+			value = generationStreamJsonObject(await response.json());
+		} catch {
+			return { outcome: "failed", reason: "Stop Generation returned malformed JSON." };
+		}
+		if (value === null) return { outcome: "failed", reason: "Stop Generation returned malformed JSON." };
+		if (!response.ok) {
+			return generationStreamJsonString(value.outcome) === "not-found"
+				? { outcome: "not-found" }
+				: { outcome: "failed", reason: generationStreamJsonString(value.reason) ?? "Generation could not be stopped." };
+		}
+		if (generationStreamJsonString(value.outcome) !== "stopped") {
+			return { outcome: "failed", reason: "Stop Generation returned an unexpected result." };
+		}
+		const generationId = generationStreamJsonNumber(value.generationId);
+		const generationIdsValue = Array.isArray(value.generationIds)
+			? value.generationIds.filter((candidate): candidate is number => generationStreamJsonNumber(candidate) !== undefined).map(Number)
+			: undefined;
+		const result: StopConversationGenerationResult & { generationIds?: number[] } = { outcome: "stopped" };
+		if (generationId !== undefined) result.generationId = generationId;
+		if (generationIdsValue !== undefined) result.generationIds = generationIdsValue;
+		return result;
+	} catch {
+		return { outcome: "failed", reason: all ? "Generations could not be stopped." : "Generation could not be stopped." };
+	}
+}
+
 // POST generation uses a native fetch stream because EventSource cannot send
 // a request body. Frames are decoded and validated here before the workspace
 // sees visible text; malformed provider or server payloads never become UI
@@ -543,6 +603,11 @@ async function consumeGenerationStream(
 		const applied = eventType === "complete" ? parseGenerationApplied(value) : null;
 		if (applied !== null) {
 			result = applied;
+			return;
+		}
+		const stopped = eventType === "stopped" ? parseGenerationStopped(value) : null;
+		if (stopped !== null) {
+			result = stopped;
 			return;
 		}
 		const accepted = eventType === "accepted" ? parseGenerationAccepted(value) : null;
@@ -694,7 +759,7 @@ function parseGenerationStreamState(value: GenerationStreamJsonObject): Generati
 	if (
 		generationId === undefined || conversationId === undefined || messageId === undefined ||
 		variantId === undefined || content === undefined || reasoning === undefined ||
-		latestEventId === undefined || (status !== "active" && status !== "complete" && status !== "failed") ||
+		latestEventId === undefined || (status !== "active" && status !== "complete" && status !== "stopped" && status !== "failed") ||
 		terminalReason === undefined
 	) return null;
 	return {
@@ -715,6 +780,14 @@ function parseGenerationApplied(
 ): Extract<GenerationStreamResult, { outcome: "applied" }> | null {
 	if (generationStreamJsonString(value.outcome) !== "applied") return null;
 	return { outcome: "applied" };
+}
+
+function parseGenerationStopped(
+	value: GenerationStreamJsonObject,
+): Extract<GenerationStreamResult, { outcome: "stopped" }> | null {
+	if (generationStreamJsonString(value.outcome) !== "stopped") return null;
+	const generationId = generationStreamJsonNumber(value.generationId);
+	return generationId === undefined ? { outcome: "stopped" } : { outcome: "stopped", generationId };
 }
 
 function parseGenerationAccepted(

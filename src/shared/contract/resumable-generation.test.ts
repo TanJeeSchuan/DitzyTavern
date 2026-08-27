@@ -71,6 +71,7 @@ describe("Resumable generation transport", () => {
 		));
 		// SAFETY: this contract test controls the start endpoint and checks the
 		// response status immediately before reading its accepted identifier.
+		// SAFETY: this contract test controls the accepted response shape.
 		const accepted = await acceptedResponse.json() as { generationId: number };
 		expect(acceptedResponse.status).toBe(200);
 		expect(accepted.generationId).toBeGreaterThan(0);
@@ -88,6 +89,75 @@ describe("Resumable generation transport", () => {
 		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
 		expect(snapshot?.activeGeneration).toBeNull();
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Buffered.");
+	});
+
+	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Stop Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(6) }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "stop-secret",
+		});
+		let providerSignal: AbortSignal | undefined;
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(6),
+			fetch: async (_input, init) => {
+				providerSignal = init?.signal ?? undefined;
+				// Keep the provider request pending until the explicit Stop aborts it.
+				await new Promise<void>((resolve) => {
+					if (init?.signal?.aborted === true) {
+						resolve();
+						return;
+					}
+					init?.signal?.addEventListener("abort", () => resolve(), { once: true });
+				});
+				return new Response(null, { headers: { "content-type": "text/event-stream" } });
+			},
+		});
+
+		const acceptedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Stop me." }),
+			},
+		));
+		// SAFETY: this contract test controls the accepted response shape.
+		const accepted = await acceptedResponse.json() as { generationId: number };
+		expect(acceptedResponse.status).toBe(200);
+
+		// Let the detached attempt reach the injected provider before issuing the
+		// command; the command remains valid if it is issued earlier as well.
+		for (let attempt = 0; attempt < 20 && providerSignal === undefined; attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		expect(providerSignal).toBeDefined();
+		const stoppedResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/stop`,
+			{ method: "POST", body: "{}" },
+		));
+		// SAFETY: the Stop response is checked for HTTP success immediately below
+		// and this test controls the route's documented stopped shape.
+		const stopped = await stoppedResponse.json() as { outcome: string; generationId: number };
+
+		expect(stoppedResponse.status).toBe(200);
+		expect(stopped).toEqual(expect.objectContaining({
+			outcome: "stopped",
+			generationId: accepted.generationId,
+		}));
+		expect(providerSignal?.aborted).toBe(true);
+		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
+		expect(snapshot?.activeGenerations).toEqual([]);
+		expect(snapshot?.messages).toHaveLength(1);
+		expect(snapshot?.messages[0]?.variants[0]?.content).toBe("Stop me.");
 	});
 
 	test("disconnecting the initiating stream leaves the controlled provider running", async () => {

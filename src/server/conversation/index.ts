@@ -8,6 +8,7 @@ import {
 	checkpointConversationGeneration,
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
+	stopConversationGeneration,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
@@ -46,6 +47,7 @@ export {
 	checkpointConversationTailGeneration,
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
+	stopConversationGeneration,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
@@ -95,6 +97,7 @@ export type {
 	ContinuationPrefillSuffix,
 	RemoveTailGenerationInput,
 	RemoveSiblingGenerationInput,
+	StopGenerationInput,
 	ResolveTailGenerationInput,
 	ResolveSiblingGenerationInput,
 	ConversationDataScope,
@@ -153,8 +156,10 @@ export function createConversationModule(database: Database): ConversationModule
 			checkpointConversationGeneration(database, input),
 		resolveTailGeneration: (input) =>
 			resolveConversationTailGeneration(database, input),
-		removeTailGeneration: (input) =>
+	removeTailGeneration: (input) =>
 			removeConversationTailGeneration(database, input),
+		stopGeneration: (input) =>
+			stopConversationGeneration(database, input),
 		resolveSiblingGeneration: (input) =>
 			resolveConversationSiblingGeneration(database, input),
 		removeSiblingGeneration: (input) =>

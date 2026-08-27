@@ -34,6 +34,7 @@ export {
 	type SiblingGenerationResult,
 	type ServerOwnedSiblingGeneration,
 	type ServerOwnedSiblingGenerationCallbacks,
+	type ServerOwnedGenerationControl,
 	sendMessage,
 	sendThroughProvisionalTailGeneration,
 	type SendThroughProvisionalTailGenerationInput,

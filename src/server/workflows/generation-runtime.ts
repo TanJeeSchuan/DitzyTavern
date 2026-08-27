@@ -24,7 +24,7 @@ export interface GenerationRuntimeState {
 	readonly content: string;
 	readonly reasoning: string;
 	readonly latestEventId: number;
-	readonly status: "active" | "complete" | "failed";
+	readonly status: "active" | "complete" | "stopped" | "failed";
 	readonly terminalReason: string | null;
 }
 
@@ -51,6 +51,8 @@ export interface StartGenerationRuntimeInput {
 	startedAt: string;
 	/** Called only at the bounded checkpoint cadence, or by flushCheckpoint. */
 	onCheckpoint?: (output: { content: string; reasoning: string; latestEventId: number }) => void;
+	/** Aborts the provider attempt owned by the runtime when Stop is requested. */
+	onStop?: () => void;
 	checkpoint?: GenerationCheckpointOptions;
 }
 
@@ -100,6 +102,16 @@ export class GenerationRuntimeRegistry {
 		this.runtimes.delete(generationId);
 	}
 
+	/** Request cancellation for one Generation without touching subscribers. */
+	stop(generationId: number, conversationId?: number): GenerationRuntime | undefined {
+		const runtime = this.get(generationId);
+		if (runtime === undefined || (conversationId !== undefined && runtime.state.conversationId !== conversationId)) {
+			return undefined;
+		}
+		runtime.stop();
+		return runtime;
+	}
+
 	/** Drop terminal runtime state after the bounded reconnect/replay window. */
 	cleanup(now = Date.now()): void {
 		for (const [generationId, runtime] of this.runtimes) {
@@ -114,8 +126,10 @@ export class GenerationRuntimeRegistry {
 		for (const runtime of this.runtimes.values()) runtime.flushCheckpoint();
 	}
 
-	stopAll(): void {
-		for (const runtime of this.runtimes.values()) runtime.stop();
+	stopAll(conversationId?: number): void {
+		for (const runtime of this.runtimes.values()) {
+			if (conversationId === undefined || runtime.state.conversationId === conversationId) runtime.stop();
+		}
 	}
 }
 
@@ -124,6 +138,7 @@ export class GenerationRuntime {
 	private readonly stateSubscribers = new Set<StateSubscriber>();
 	private readonly events: GenerationEventEnvelope[] = [];
 	private readonly onCheckpoint?: StartGenerationRuntimeInput["onCheckpoint"];
+	private readonly onStop?: StartGenerationRuntimeInput["onStop"];
 	private readonly checkpointEventInterval: number;
 	private readonly checkpointIntervalMs: number;
 	private readonly checkpointNow: () => number;
@@ -132,10 +147,12 @@ export class GenerationRuntime {
 	private checkpointPending = false;
 	private stateValue: MutableRuntimeState;
 	private readonly controller = new AbortController();
+	private stopRequested = false;
 	private terminalAt: number | null = null;
 
 	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
+		this.onStop = input.onStop;
 		this.checkpointEventInterval = Math.max(1, Math.floor(input.checkpoint?.eventInterval ?? 8));
 		this.checkpointIntervalMs = Math.max(0, input.checkpoint?.intervalMs ?? 1_000);
 		this.checkpointNow = input.checkpoint?.now ?? Date.now;
@@ -167,7 +184,7 @@ export class GenerationRuntime {
 	}
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
-		if (this.stateValue.status !== "active") {
+		if (this.stateValue.status !== "active" || this.stopRequested) {
 			// A late provider frame is ignored rather than being allowed to mutate
 			// a terminal generation or appear out of order to a reconnecting client.
 			return {
@@ -208,7 +225,7 @@ export class GenerationRuntime {
 	}
 
 	complete(): void {
-		if (this.stateValue.status !== "active") return;
+		if (this.stateValue.status !== "active" || this.stopRequested) return;
 		this.flushCheckpoint();
 		this.stateValue.status = "complete";
 		this.terminalAt = this.checkpointNow();
@@ -216,7 +233,7 @@ export class GenerationRuntime {
 	}
 
 	fail(reason: string, kind: ModelClientFailureKind = "transport"): void {
-		if (this.stateValue.status !== "active") return;
+		if (this.stateValue.status !== "active" || this.stopRequested) return;
 		// A failure event is part of the same ordered stream. If the provider
 		// already emitted one, retain that single authoritative frame rather than
 		// duplicating it when the workflow reports its rejected Promise.
@@ -257,7 +274,27 @@ export class GenerationRuntime {
 	}
 
 	stop(): void {
+		if (this.stateValue.status !== "active") return;
+		this.stopRequested = true;
+		// Stop is the explicit server-owned cancellation seam. Flush before
+		// aborting so the terminal Conversation transition can use every delta
+		// observed by this runtime, even when the provider ignores the abort.
+		this.flushCheckpoint();
+		try { this.onStop?.(); } catch { /* provider cancellation remains best effort */ }
 		if (!this.signal.aborted) this.controller.abort();
+	}
+
+	get isStopRequested(): boolean {
+		return this.stopRequested;
+	}
+
+	/** Mark the runtime terminal after the durable Conversation transition. */
+	markStopped(): void {
+		if (this.stateValue.status !== "active") return;
+		this.flushCheckpoint();
+		this.stateValue.status = "stopped";
+		this.terminalAt = this.checkpointNow();
+		this.notifyState();
 	}
 
 	subscribe(afterEventId: number, onEvent: Subscriber, onState?: StateSubscriber): GenerationRuntimeSubscription {

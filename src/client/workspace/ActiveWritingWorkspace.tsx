@@ -11,6 +11,8 @@ import { ComposerControlSelectors } from "../ComposerControls";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
+	stopAllConversationGenerations,
+	stopConversationGeneration,
 	streamConversationReply,
 	subscribeConversationGeneration,
 	streamConversationContinuation,
@@ -36,6 +38,7 @@ import { StoryMessageView } from "../story/StoryMessageView";
 import {
 	EmptyChat,
 	GenerationPlaceholder,
+	GenerationControls,
 	PreviewSkeleton,
 	StreamingGeneration,
 	HistoryLoading,
@@ -95,6 +98,7 @@ export function ActiveWritingWorkspace({
 	const [streamingOutput, setStreamingOutput] = useState({ content: "", reasoning: "" });
 	const activeChatIdRef = useRef(activeChatId);
 	const generationAbortRef = useRef<AbortController | null>(null);
+	const [stopPending, setStopPending] = useState(false);
 	const [generationError, setGenerationError] = useState<string | null>(null);
 	const [previewPending, setPreviewPending] = useState(false);
 	const [previewError, setPreviewError] = useState<string | null>(null);
@@ -436,7 +440,72 @@ export function ActiveWritingWorkspace({
 		if (fresh !== null) setConversation(fresh);
 	};
 
-	const cancelGeneration = () => generationAbortRef.current?.abort();
+	const activeGenerationTargets = conversation === null
+		? []
+		: conversation.activeGenerations ?? (conversation.activeGeneration === null || conversation.activeGeneration === undefined
+			? []
+			: [conversation.activeGeneration]);
+	const selectedGenerationTarget = activeGenerationTargets.find((target) => {
+		const message = story.messages.find((entry) => entry.id === target.messageId);
+		return message?.swipes[message.activeSwipe]?.id === target.variantId;
+	}) ?? activeGenerationTargets[0];
+
+	const refreshAfterStop = async (conversationId: number) => {
+		const [freshConversation, freshHistory] = await Promise.all([
+			loadConversation(conversationId),
+			chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+		]);
+		if (Number(activeChatIdRef.current) !== conversationId) return;
+		if (freshConversation !== null) setConversation(freshConversation);
+		if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+	};
+
+	const stopGeneration = async (generationId: number) => {
+		const conversationId = conversation?.id;
+		if (conversationId === undefined || stopPending) return;
+		setStopPending(true);
+		setGenerationError(null);
+		try {
+			const outcome = await stopConversationGeneration(conversationId, generationId);
+			// This abort only ends the initiating request's local subscription. The
+			// explicit Stop command above owns provider cancellation on the server.
+			generationAbortRef.current?.abort();
+			generationAbortRef.current = null;
+			setIsGenerating(false);
+			setStreamingOutput({ content: "", reasoning: "" });
+			await refreshAfterStop(conversationId);
+			if (outcome.outcome === "failed") setGenerationError(outcome.reason);
+		} catch {
+			setGenerationError("Generation could not be stopped.");
+		} finally {
+			setStopPending(false);
+		}
+	};
+
+	const stopAllGenerations = async () => {
+		const conversationId = conversation?.id;
+		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending) return;
+		setStopPending(true);
+		setGenerationError(null);
+		try {
+			const outcome = await stopAllConversationGenerations(conversationId);
+			generationAbortRef.current?.abort();
+			generationAbortRef.current = null;
+			setIsGenerating(false);
+			setStreamingOutput({ content: "", reasoning: "" });
+			await refreshAfterStop(conversationId);
+			if (outcome.outcome === "failed") setGenerationError(outcome.reason);
+		} catch {
+			setGenerationError("Generations could not be stopped.");
+		} finally {
+			setStopPending(false);
+		}
+	};
+
+	const cancelGeneration = () => {
+		const target = selectedGenerationTarget?.generationId;
+		if (target !== undefined) void stopGeneration(target);
+	};
 
 	const cancelPreview = () => {
 		if (previewPending) return;
@@ -562,6 +631,7 @@ export function ActiveWritingWorkspace({
 					setGenerationError("The Conversation no longer exists.");
 					return;
 				}
+				if (outcome.outcome === "stopped") return;
 				// A Send acceptance and its terminal cleanup/resolution each
 				// advance the authoritative Conversation revision. Refresh both
 				// reads after any terminal rejection so a retry can reuse an
@@ -650,7 +720,7 @@ export function ActiveWritingWorkspace({
 				if (!requestIsCurrent()) return;
 				if (freshConversation !== null) setConversation(freshConversation);
 				if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
-				if (outcome.outcome !== "applied" && outcome.outcome !== "not-found") {
+				if (outcome.outcome !== "applied" && outcome.outcome !== "not-found" && outcome.outcome !== "stopped") {
 					setGenerationError(outcome.reason);
 				}
 				if (outcome.outcome === "not-found") setGenerationError("The Conversation no longer exists.");
@@ -798,6 +868,14 @@ export function ActiveWritingWorkspace({
 						{isGenerating && (streamingOutput.content.length > 0 || streamingOutput.reasoning.length > 0
 							? <StreamingGeneration content={streamingOutput.content} reasoning={streamingOutput.reasoning} />
 							: <GenerationPlaceholder />)}
+						{isGenerating && activeGenerationTargets.length > 0 && (
+							<GenerationControls
+								showStopAll={activeGenerationTargets.length > 1}
+								pending={stopPending}
+								onStop={() => void stopGeneration(selectedGenerationTarget!.generationId)}
+								onStopAll={() => void stopAllGenerations()}
+							/>
+						)}
 						<div className="latest-anchor" ref={latestRef} aria-hidden="true" />
 					</div>
 				</div>
@@ -811,6 +889,7 @@ export function ActiveWritingWorkspace({
 					onFocusChange={setIsComposerFocused}
 				onSubmit={submitMessage}
 				onCancel={cancelGeneration}
+				stopPending={stopPending}
 					controlSelectors={
 						conversation !== null ? (
 							<ComposerControlSelectors
@@ -854,4 +933,3 @@ export function ActiveWritingWorkspace({
 		</div>
 	);
 }
-

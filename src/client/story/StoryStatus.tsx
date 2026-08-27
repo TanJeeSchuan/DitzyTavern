@@ -1,3 +1,5 @@
+import { Square } from "lucide-react";
+
 export function EmptyChat() {
 	return (
 		<section className="empty-chat">
@@ -84,3 +86,28 @@ export function StreamingGeneration({
 	);
 }
 
+export function GenerationControls({
+	showStopAll,
+	pending = false,
+	onStop,
+	onStopAll,
+}: {
+	showStopAll: boolean;
+	pending?: boolean;
+	onStop: () => void;
+	onStopAll: () => void;
+}) {
+	return (
+		<div className="generation-controls" aria-label="Generation controls">
+			<button className="secondary-button" type="button" onClick={onStop} disabled={pending}>
+				<Square aria-hidden="true" />
+				{pending ? "Stopping…" : "Stop Generation"}
+			</button>
+			{showStopAll && (
+				<button className="secondary-button" type="button" onClick={onStopAll} disabled={pending}>
+					Stop All
+				</button>
+			)}
+		</div>
+	);
+}

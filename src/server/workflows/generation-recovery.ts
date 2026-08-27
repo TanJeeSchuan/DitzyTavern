@@ -30,6 +30,8 @@ interface ActiveRecoveryRow {
 
 const isSibling = (intent: string): boolean => {
 	try {
+		// SAFETY: only the optional `type` discriminator is read from the
+		// provider-neutral JSON payload; malformed values are handled below.
 		return (JSON.parse(intent) as { readonly type?: unknown }).type === "sibling";
 	} catch {
 		return false;

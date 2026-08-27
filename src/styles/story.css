@@ -738,6 +738,29 @@
 	margin: 0 0 3.6rem;
 }
 
+.generation-controls {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.55rem;
+	margin: -2.7rem 0 2.4rem;
+}
+
+.generation-controls .secondary-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	min-height: 2.2rem;
+	padding: 0 0.75rem;
+	font-size: 0.74rem;
+}
+
+.generation-controls svg {
+	width: 0.82rem;
+	height: 0.82rem;
+	stroke-width: 2;
+}
+
 .placeholder-header {
 	display: flex;
 	align-items: center;
@@ -898,4 +921,3 @@
 		animation: generation-pulse 1.25s ease-in-out infinite;
 	}
 }
-

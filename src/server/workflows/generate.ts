@@ -160,8 +160,14 @@ export interface ServerOwnedSendGeneration {
 }
 
 export interface ServerOwnedSendGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
+	onAccepted?: (accepted: AcceptedTailGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
+}
+
+/** Provider cancellation handle passed only to the server-owned runtime seam. */
+export interface ServerOwnedGenerationControl {
+	readonly signal: AbortSignal;
+	stop(): void;
 }
 
 export function createGenerationCoordinator(
@@ -193,10 +199,10 @@ export function startServerOwnedSendGeneration(
 	const result = sendThroughProvisionalTailGeneration(database, {
 		...input,
 		signal: controller.signal,
-		onAccepted: async (value) => {
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value);
+			onAccepted: async (value) => {
+				accepted = true;
+				resolveAccepted(value);
+				await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
 		},
 		onEvent: async (event) => {
 			await input.onEvent?.(event);
@@ -855,7 +861,7 @@ export interface ServerOwnedContinuationGeneration {
 }
 
 export interface ServerOwnedContinuationGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
+	onAccepted?: (accepted: AcceptedContinuationGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
@@ -1152,7 +1158,7 @@ export function startServerOwnedContinuationGeneration(
 		onAccepted: async (value) => {
 			accepted = true;
 			resolveAccepted(value);
-			await callbacks.onAccepted?.(value);
+			await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
 		},
 		onEvent: async (event) => {
 			await input.onEvent?.(event);
@@ -1208,7 +1214,7 @@ export interface ServerOwnedSiblingGeneration {
 }
 
 export interface ServerOwnedSiblingGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
+	onAccepted?: (accepted: AcceptedSiblingGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
@@ -1440,7 +1446,7 @@ export function startServerOwnedSiblingGeneration(
 		onAccepted: async (value) => {
 			accepted = true;
 			resolveAccepted(value);
-			await callbacks.onAccepted?.(value);
+			await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
 		},
 		onEvent: async (event) => {
 			await input.onEvent?.(event);

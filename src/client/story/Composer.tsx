@@ -11,6 +11,7 @@ export function Composer({
 	onFocusChange,
 	onSubmit,
 	onCancel,
+	stopPending = false,
 }: {
 	draft: string;
 	isGenerating: boolean;
@@ -21,6 +22,7 @@ export function Composer({
 	onFocusChange: (focused: boolean) => void;
 	onSubmit: (event: FormEvent) => void;
 	onCancel?: () => void;
+	stopPending?: boolean;
 }) {
 	return (
 		<form
@@ -50,7 +52,7 @@ export function Composer({
 				rows={1}
 			/>
 			{isGenerating ? (
-				<button className="send-button" type="button" onClick={onCancel} aria-label="Cancel Generation">
+				<button className="send-button" type="button" onClick={onCancel} disabled={stopPending} aria-label="Stop Generation">
 					<Square aria-hidden="true" />
 				</button>
 			) : (
@@ -61,4 +63,3 @@ export function Composer({
 		</form>
 	);
 }
-

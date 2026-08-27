@@ -32,14 +32,18 @@ import type {
 	AcceptSiblingGenerationInput,
 	AcceptContinuationGenerationInput,
 	AcceptTailGenerationInput,
+	ConversationDataEntry,
 	ConversationJsonValue,
 	ConversationSnapshot,
 	RemoveTailGenerationInput,
 	RemoveSiblingGenerationInput,
+	StopGenerationInput,
 	ResolveTailGenerationInput,
 	ResolveSiblingGenerationInput,
 } from "../types";
 import { deriveMessageSwipeEligibility } from "../snapshot";
+
+type CheckpointVariantValues = { content: string; timestamp?: string };
 
 const jsonText = (
 	value: ConversationJsonValue,
@@ -955,10 +959,8 @@ export function checkpointConversationGeneration(
 		const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
 			? currentEventId
 			: Math.max(currentEventId, input.latestEventId);
-		const values = {
-			content: input.content,
-			...(input.timestamp === undefined ? {} : { timestamp: input.timestamp }),
-		};
+		const values: CheckpointVariantValues = { content: input.content };
+		if (input.timestamp !== undefined) values.timestamp = input.timestamp;
 		db.update(messageVariantTable)
 			.set(values)
 			.where(
@@ -1019,4 +1021,59 @@ export function removeConversationTailGeneration(
 		return snapshot;
 	});
 	return remove.immediate();
+}
+
+// Explicit Stop uses the latest durable checkpoint as its terminal input. A
+// live runtime flushes immediately before calling this seam; a caller without
+// a runtime still gets the last authoritative checkpoint and the same cleanup
+// rules. The existing resolve/remove operations keep the transition atomic,
+// and a race with a provider terminal event simply reports that the target is
+// no longer available to the losing caller.
+export function stopConversationGeneration(
+	database: Database,
+	input: StopGenerationInput,
+): ConversationSnapshot {
+	const db = connectConversationDatabase(database);
+	const active = readActiveGeneration(db, input.conversationId, input.generationId);
+	if (active === undefined) {
+		throw new InvalidConversationCommandError("The Active Generation is no longer available.");
+	}
+	const timestamp = input.timestamp ?? new Date().toISOString();
+	const content = active.checkpoint_content;
+	const reasoning = active.checkpoint_reasoning;
+	if (content.length === 0 && reasoning.length === 0) {
+		if (isSiblingGenerationRow(active)) {
+			return removeConversationSiblingGeneration(database, {
+				conversationId: input.conversationId,
+				generationId: input.generationId,
+			});
+		}
+		return removeConversationTailGeneration(database, {
+			conversationId: input.conversationId,
+			generationId: input.generationId,
+		});
+	}
+
+	const data = [
+		{ namespace: "generation", key: "outcome", value: "interrupted" },
+		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
+	] satisfies ConversationDataEntry[];
+	if (isSiblingGenerationRow(active)) {
+		return resolveConversationSiblingGeneration(database, {
+			conversationId: input.conversationId,
+			generationId: input.generationId,
+			timestamp,
+			content,
+			reasoning,
+			data,
+		});
+	}
+	return resolveConversationTailGeneration(database, {
+		conversationId: input.conversationId,
+		generationId: input.generationId,
+		timestamp,
+		content,
+		reasoning,
+		data,
+	});
 }
