@@ -107,6 +107,8 @@ export interface GenerationAttemptInput {
 	// changes the active Profile or another Conversation.
 	signal?: AbortSignal;
 	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	/** Flush process-local output before the workflow performs a terminal write. */
+	onBeforeTerminal?: () => void | Promise<void>;
 	// Tests and future calibration work may replace the default project-owned
 	// estimator without allowing a provider to influence budgeting policy.
 	tokenEstimator?: TokenEstimator;
@@ -868,6 +870,7 @@ export async function sendThroughProvisionalTailGeneration(
 			signal: input.signal,
 		}, input.onEvent);
 		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
+			await input.onBeforeTerminal?.();
 			conversation.removeTailGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
@@ -877,6 +880,7 @@ export async function sendThroughProvisionalTailGeneration(
 				"Generation produced no usable output.",
 			);
 		}
+		await input.onBeforeTerminal?.();
 		const committed = conversation.resolveTailGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,
@@ -1148,6 +1152,7 @@ export async function continueGeneration(
 			signal: input.signal,
 		}, input.onEvent);
 		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
+			await input.onBeforeTerminal?.();
 			conversation.removeTailGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
@@ -1157,6 +1162,7 @@ export async function continueGeneration(
 				"Generation produced no usable output.",
 			);
 		}
+		await input.onBeforeTerminal?.();
 		const committed = conversation.resolveTailGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,
@@ -1181,6 +1187,7 @@ export async function continueGeneration(
 				// resolved. runGeneration normally handles this; this guard is for a
 				// future collector that may rethrow a partial provider failure.
 				if ((partial.content ?? "").length > 0 || (partial.reasoning ?? "").length > 0) {
+					await input.onBeforeTerminal?.();
 					const committed = conversation.resolveTailGeneration({
 						conversationId: input.conversationId,
 						generationId: accepted.generationId,
@@ -1261,6 +1268,7 @@ export interface GenerateSiblingVariantInput {
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	signal?: AbortSignal;
 	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
 	// Optional explicit write time; defaults to the current wall clock.
@@ -1472,12 +1480,14 @@ export async function generateSiblingVariant(
 			signal: input.signal,
 		}, input.onEvent);
 		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
+			await input.onBeforeTerminal?.();
 			conversation.removeSiblingGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
 			throw new ModelClientGenerationError("provider", "Generation produced no usable output.");
 		}
+		await input.onBeforeTerminal?.();
 		return conversation.resolveSiblingGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,

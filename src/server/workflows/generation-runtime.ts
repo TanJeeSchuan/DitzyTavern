@@ -59,6 +59,16 @@ export interface StartGenerationRuntimeInput {
 	checkpoint?: GenerationCheckpointOptions;
 }
 
+export interface GenerationRuntimeScheduleHandle {
+	cancel(): void;
+}
+
+export interface GenerationRuntimeScheduler {
+	readonly now?: () => number;
+	readonly schedule?: (callback: () => void, delayMs: number) => GenerationRuntimeScheduleHandle;
+	readonly cancel?: (handle: GenerationRuntimeScheduleHandle) => void;
+}
+
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
@@ -90,12 +100,26 @@ export class GenerationRuntimeRegistry {
 	static readonly TERMINAL_REPLAY_RETENTION_MS = GENERATION_REPLAY_RETENTION_MS;
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
+	private readonly now: () => number;
+	private readonly schedule: (callback: () => void, delayMs: number) => GenerationRuntimeScheduleHandle;
+	private readonly cancel: (handle: GenerationRuntimeScheduleHandle) => void;
+	private cleanupHandle: GenerationRuntimeScheduleHandle | undefined;
+
+	constructor(scheduler: GenerationRuntimeScheduler = {}) {
+		this.now = scheduler.now ?? Date.now;
+		this.schedule = scheduler.schedule ?? ((callback, delayMs) => {
+			const handle = setTimeout(callback, delayMs);
+			handle.unref?.();
+			return { cancel: () => clearTimeout(handle) };
+		});
+		this.cancel = scheduler.cancel ?? ((handle) => handle.cancel());
+	}
 
 	start(input: StartGenerationRuntimeInput): GenerationRuntime {
 		this.cleanup();
 		const existing = this.runtimes.get(input.generationId);
 		if (existing !== undefined) return existing;
-		const runtime = new GenerationRuntime(input);
+		const runtime = new GenerationRuntime(input, () => this.scheduleCleanup());
 		this.runtimes.set(input.generationId, runtime);
 		return runtime;
 	}
@@ -107,6 +131,7 @@ export class GenerationRuntimeRegistry {
 
 	remove(generationId: number): void {
 		this.runtimes.delete(generationId);
+		this.scheduleCleanup();
 	}
 
 	/** Request cancellation for one Generation without touching subscribers. */
@@ -120,7 +145,7 @@ export class GenerationRuntimeRegistry {
 	}
 
 	/** Drop terminal runtime state after the bounded reconnect/replay window. */
-	cleanup(now = Date.now()): void {
+	cleanup(now = this.now()): void {
 		for (const [generationId, runtime] of this.runtimes) {
 			const terminalAt = runtime.terminalTime;
 			if (terminalAt !== null && now - terminalAt >= GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS) {
@@ -128,6 +153,25 @@ export class GenerationRuntimeRegistry {
 				this.runtimes.delete(generationId);
 			}
 		}
+		this.scheduleCleanup();
+	}
+
+	private scheduleCleanup(): void {
+		if (this.cleanupHandle !== undefined) {
+			this.cancel(this.cleanupHandle);
+			this.cleanupHandle = undefined;
+		}
+		let nextExpiry: number | undefined;
+		for (const runtime of this.runtimes.values()) {
+			if (runtime.terminalTime === null) continue;
+			const expiry = runtime.terminalTime + GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS;
+			nextExpiry = nextExpiry === undefined ? expiry : Math.min(nextExpiry, expiry);
+		}
+		if (nextExpiry === undefined) return;
+		this.cleanupHandle = this.schedule(() => {
+			this.cleanupHandle = undefined;
+			this.cleanup();
+		}, Math.max(0, nextExpiry - this.now()));
 	}
 
 	flushAll(): void {
@@ -160,7 +204,7 @@ export class GenerationRuntime {
 	private pendingProviderTerminal: PendingProviderTerminal | null = null;
 	private terminalAt: number | null = null;
 
-	constructor(input: StartGenerationRuntimeInput) {
+	constructor(input: StartGenerationRuntimeInput, private readonly onTerminal?: () => void) {
 		this.onCheckpoint = input.onCheckpoint;
 		this.onStop = input.onStop;
 		this.onRetentionExpired = input.onRetentionExpired;
@@ -245,6 +289,7 @@ export class GenerationRuntime {
 		this.stateValue.status = "complete";
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
+		this.onTerminal?.();
 	}
 
 	fail(reason: string, kind: ModelClientFailureKind = "transport"): void {
@@ -264,6 +309,7 @@ export class GenerationRuntime {
 		this.stateValue.terminalReason = reason;
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
+		this.onTerminal?.();
 	}
 
 	/** Persist the latest accumulated output immediately, including its event position. */
@@ -333,6 +379,7 @@ export class GenerationRuntime {
 		this.stateValue.status = "stopped";
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
+		this.onTerminal?.();
 	}
 
 	subscribe(afterEventId: number, onEvent: Subscriber, onState?: StateSubscriber): GenerationRuntimeSubscription {

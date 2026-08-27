@@ -323,6 +323,7 @@ export const createConversationRoutes = (
 							backend: "ai-sdk",
 							adapter: profile.adapter,
 						},
+						onBeforeTerminal: () => runtime?.flushCheckpoint(),
 					}, {
 						onAccepted: (accepted, control) => {
 							runtime = runtimeRegistry.start({
@@ -544,6 +545,7 @@ export const createConversationRoutes = (
 						},
 						expectedRevision: body.expectedRevision,
 						content: body.content,
+						onBeforeTerminal: () => runtime?.flushCheckpoint(),
 					}, {
 						onAccepted: (accepted, control) => {
 							runtime = runtimeRegistry.start({
@@ -670,6 +672,7 @@ export const createConversationRoutes = (
                                                         backend: "ai-sdk",
                                                         adapter: profile.adapter,
                                                 },
+							onBeforeTerminal: () => runtime?.flushCheckpoint(),
                                         }, {
                                                 onAccepted: (accepted, control) => {
                                                         runtime = registry.start({

@@ -57,6 +57,7 @@ describe("Resumable generation transport", () => {
 			masterKey: new Uint8Array(32).fill(4),
 			fetch: async () => new Response(new ReadableStream({
 				async start(controller) {
+					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: "Consider." }, finish_reason: null }] })}\n\n`));
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Buffered." }, finish_reason: null }] })}\n\n`));
 					await paused;
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
@@ -81,6 +82,7 @@ describe("Resumable generation transport", () => {
 		const accepted = await acceptedResponse.json() as { generationId: number };
 		expect(acceptedResponse.status).toBe(200);
 		expect(accepted.generationId).toBeGreaterThan(0);
+		const acceptedRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
 
 		const subscription = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
@@ -95,6 +97,16 @@ describe("Resumable generation transport", () => {
 		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
 		expect(snapshot?.activeGeneration).toBeNull();
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Buffered.");
+		expect(snapshot?.revision).toBe((acceptedRevision ?? 0) + 1);
+		const retained = createConversationModule(database).readActiveGenerationDetails(
+			conversation.id,
+			accepted.generationId,
+		);
+		expect(retained?.checkpoint).toEqual(expect.objectContaining({
+			content: "Buffered.",
+			reasoning: "Consider.",
+			latestEventId: 3,
+		}));
 	});
 
 	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {

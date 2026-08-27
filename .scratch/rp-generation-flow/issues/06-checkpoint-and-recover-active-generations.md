@@ -34,3 +34,8 @@ the complete inspectable capture into a replay-only record, which expires with
 the runtime event buffer while compact Variant provenance remains. Graceful
 shutdown targets the same process-wide runtime registry used by production
 routes, flushing its checkpoints before provider cancellation and recovery.
+The runtime schedules replay cleanup at the terminal expiry boundary, so an
+idle process does not retain expired event buffers or inspection rows. Each
+provider and Stop terminal path forces its final checkpoint before the durable
+resolution, preserving reasoning and the last event position without another
+Conversation revision.

@@ -85,6 +85,63 @@ describe("Generation runtime", () => {
 		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
 	});
 
+	test("expires terminal replay state on the scheduled boundary while the process is idle", () => {
+		let now = 1_000;
+		let scheduled: (() => void) | undefined;
+		let delay = -1;
+		let expired = 0;
+		const registry = new GenerationRuntimeRegistry({
+			now: () => now,
+			schedule: (callback, delayMs) => {
+				scheduled = callback;
+				delay = delayMs;
+				return { cancel: () => {} };
+			},
+			cancel: () => {},
+		});
+		const runtime = registry.start({
+			generationId: 12,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+			checkpoint: { now: () => now },
+			onRetentionExpired: () => { expired += 1; },
+		});
+		runtime.complete();
+
+		expect(delay).toBe(GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS);
+		expect(scheduled).toBeDefined();
+		now += GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS;
+		scheduled?.();
+
+		expect(expired).toBe(1);
+		expect(registry.get(12)).toBeUndefined();
+	});
+
+	test("complete and failed terminals flush sub-cadence output first", () => {
+		for (const terminal of ["complete", "failed"] as const) {
+			const checkpoints: Array<{ reasoning: string; latestEventId: number }> = [];
+			const runtime = new GenerationRuntimeRegistry().start({
+				generationId: terminal === "complete" ? 13 : 14,
+				conversationId: 3,
+				messageId: 12,
+				variantId: 18,
+				startedAt: "2026-08-27T00:00:00.000Z",
+				checkpoint: { eventInterval: 99, intervalMs: 0 },
+				onCheckpoint: ({ reasoning, latestEventId }) => checkpoints.push({ reasoning, latestEventId }),
+			});
+			runtime.publish({ type: "reasoning", text: "final thought" });
+			if (terminal === "complete") runtime.complete();
+			else runtime.fail("provider disconnected");
+
+			expect(checkpoints).toEqual([{
+				reasoning: "final thought",
+				latestEventId: terminal === "complete" ? 1 : 2,
+			}]);
+		}
+	});
+
 	test("stop flushes the latest output, aborts the provider, and wins a terminal race", () => {
 		const checkpoints: Array<{ content: string; reasoning: string; latestEventId: number }> = [];
 		const runtime = new GenerationRuntimeRegistry().start({
