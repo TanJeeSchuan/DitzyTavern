@@ -37,3 +37,9 @@ zero-output cleanup plus explicit retry without duplicate input or provider
 requests, and length-limited completion. Narrow viewports retain the same
 focus and touch-selected advanced-action disclosure instead of forcing those
 actions visible at idle.
+
+The Message action follow-up removes the latest-Message restriction from New
+Swipe. Every generated Message can now expose its own action when the Chat is
+playable and not in Preview; active sibling work keeps parallel actions at its
+current response position, while conflicting starts remain authoritative
+server outcomes. Client-state coverage fixes the older-Message case.

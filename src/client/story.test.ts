@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ChatHistoryPage } from "./chat-history";
 import {
 	EMPTY_VARIANT_PLACEHOLDER,
+	canOfferSiblingGeneration,
 	classifyVariantSelection,
 	confirmPreviewSelection,
 	createStoryState,
@@ -72,6 +73,48 @@ const storyMessage = (
 });
 
 describe("story reading state", () => {
+	test("offers New Swipe on an older eligible generated Message", () => {
+		const olderGenerated: StoryMessage = {
+			...storyMessage(10, 1, 20),
+			modelParticipantIdAtCreation: 20,
+		};
+		const newerGenerated: StoryMessage = {
+			...storyMessage(11, 2, 20),
+			modelParticipantIdAtCreation: 20,
+		};
+		const messages = [olderGenerated, newerGenerated];
+
+		expect(messages.at(-1)?.id).toBe(newerGenerated.id);
+		expect(canOfferSiblingGeneration({
+			message: olderGenerated,
+			playable: true,
+			previewActive: false,
+			modelParticipantId: 20,
+			activeGenerationMessageIds: [],
+		})).toBe(true);
+		expect(canOfferSiblingGeneration({
+			message: olderGenerated,
+			playable: true,
+			previewActive: false,
+			modelParticipantId: 20,
+			activeGenerationMessageIds: [olderGenerated.id],
+		})).toBe(true);
+		expect(canOfferSiblingGeneration({
+			message: olderGenerated,
+			playable: true,
+			previewActive: false,
+			modelParticipantId: 20,
+			activeGenerationMessageIds: [newerGenerated.id],
+		})).toBe(false);
+		expect(canOfferSiblingGeneration({
+			message: olderGenerated,
+			playable: true,
+			previewActive: true,
+			modelParticipantId: 20,
+			activeGenerationMessageIds: [],
+		})).toBe(false);
+	});
+
 	test("accumulates pages without overlap and keeps stable chronology", () => {
 		const opened = reduceStory(createStoryState(), {
 			type: "chat-opened",

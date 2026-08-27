@@ -26,6 +26,7 @@ import {
 } from "../conversation";
 import {
 	createStoryState,
+	canOfferSiblingGeneration,
 	classifyVariantSelection,
 	confirmPreviewSelection,
 	deriveRevisionWindow,
@@ -452,6 +453,7 @@ export function ActiveWritingWorkspace({
 		: conversation.activeGenerations ?? (conversation.activeGeneration === null || conversation.activeGeneration === undefined
 			? []
 			: [conversation.activeGeneration]);
+	const activeGenerationMessageIds = activeGenerationTargets.map((generation) => generation.messageId);
 	const selectedGenerationTarget = activeGenerationTargets.find((target) => {
 		const message = story.messages.find((entry) => entry.id === target.messageId);
 		return message?.swipes[message.activeSwipe]?.id === target.variantId;
@@ -658,8 +660,13 @@ export function ActiveWritingWorkspace({
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
 			target === undefined ||
-			target.id !== story.messages.at(-1)?.id ||
-			!isModelAuthoredMessage(target, conversation.control.modelParticipantId)
+			!canOfferSiblingGeneration({
+				message: target,
+				playable: conversation.playable,
+				previewActive: story.preview !== null,
+				modelParticipantId: conversation.control.modelParticipantId,
+				activeGenerationMessageIds,
+			})
 		) return;
 		const conversationId = conversation.id;
 		setIsGenerating(true);
@@ -794,13 +801,16 @@ export function ActiveWritingWorkspace({
 										story.preview === null
 									}
 									onSibling={
-										conversation?.playable === true &&
-										story.preview === null &&
-										latestStoryMessage?.id === message.id &&
-										isModelAuthoredMessage(message, conversation.control.modelParticipantId)
-										? siblingMessage
-										: undefined
-								}
+										conversation !== null && canOfferSiblingGeneration({
+											message,
+											playable: conversation.playable,
+											previewActive: story.preview !== null,
+											modelParticipantId: conversation.control.modelParticipantId,
+											activeGenerationMessageIds,
+										})
+											? siblingMessage
+											: undefined
+									}
 									continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 									onContinue={continueMessage}
 									onInspect={openVariantDetails}

@@ -158,6 +158,28 @@ export const isModelAuthoredMessage = (
 		? true
 		: modelParticipantId !== null && message.authorParticipantId === modelParticipantId;
 
+// New Swipe belongs to every generated Message, including older history.
+// When sibling attempts are already active, the server permits parallel work
+// only at that same response position, so the client hides conflicting targets
+// while leaving the active target available for another parallel attempt.
+export const canOfferSiblingGeneration = ({
+	message,
+	playable,
+	previewActive,
+	modelParticipantId,
+	activeGenerationMessageIds,
+}: {
+	message: Pick<StoryMessage, "id" | "authorParticipantId" | "modelParticipantIdAtCreation">;
+	playable: boolean;
+	previewActive: boolean;
+	modelParticipantId: number | null;
+	activeGenerationMessageIds: readonly number[];
+}): boolean =>
+	playable &&
+	!previewActive &&
+	isModelAuthoredMessage(message, modelParticipantId) &&
+	activeGenerationMessageIds.every((messageId) => messageId === message.id);
+
 const prependUnique = (
 	existing: readonly StoryMessage[],
 	incoming: readonly StoryMessage[],
