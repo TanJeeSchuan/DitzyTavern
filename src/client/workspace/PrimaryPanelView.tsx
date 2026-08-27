@@ -83,7 +83,7 @@ export function PrimaryPanelView({
 						onClose={onClose}
 					/>
 					{panel === "cast" && (
-						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CastPanel
 								conversationId={Number(activeChat.id)}
 								conversation={conversation}
@@ -93,7 +93,7 @@ export function PrimaryPanelView({
 						</div>
 					)}
 					{panel === "library" && (
-						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharacterLibraryPanel
 								focusCharacterId={libraryFocusCharacterId}
 								onFocusConsumed={onLibraryFocusConsumed}
@@ -104,12 +104,12 @@ export function PrimaryPanelView({
 						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
 					)}
 					{panel === "models" && (
-						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<ConnectionSettingsPanel />
 						</div>
 					)}
 					{panel === "generation" && (
-						<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<GenerationPanel
 								conversation={conversation}
 								onConversationChange={onConversationChange}

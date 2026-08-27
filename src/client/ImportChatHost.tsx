@@ -109,7 +109,7 @@ export function ImportChatHost({
 
 	if (chatsNested === "import") {
 		return (
-			<div inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+			<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 				<ImportChatPanel
 					flow={importFlow}
 					onDispatch={dispatchImportFlow}

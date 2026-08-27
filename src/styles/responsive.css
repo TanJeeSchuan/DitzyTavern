@@ -59,14 +59,16 @@
 	/* Panels nested in the workspace grid return to grid flow here so the
 	   1fr tracks expand them into the utility bays. The 1.25rem column gap
 	   stays visible as the thin ambient sliver between each panel edge and
-	   the story surface. Details panels rendered outside the workspace
-	   (e.g. New Chat on the no-chat surface) keep their fixed placement. */
+	   the story surface. Heights stay definite (never auto) so panels cap at
+	   the viewport and their bodies scroll internally instead of growing
+	   the workspace grid row past the fold. Details panels rendered outside
+	   the workspace (e.g. New Chat on the no-chat surface) keep their fixed
+	   placement. */
 	.workspace > .primary-panel,
 	.workspace > .details-panel {
 		position: static;
 		top: auto;
 		bottom: auto;
-		height: auto;
 		border-radius: 1.35rem;
 	}
 

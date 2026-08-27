@@ -159,8 +159,8 @@
 
 .primary-panel,
 .details-panel {
-	display: grid;
-	grid-template-rows: auto 1fr;
+	display: flex;
+	flex-direction: column;
 	overflow: hidden;
 	border-radius: 1.35rem;
 	box-shadow: 0 1rem 3rem var(--shadow-soft);
@@ -191,6 +191,7 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex: 0 0 auto;
 	min-height: 4.5rem;
 	padding: 0 1rem 0 1.25rem;
 	border-bottom: 1px solid var(--border);
@@ -228,9 +229,22 @@
 }
 
 .panel-body {
+	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
 	padding: 1rem;
+}
+
+/* Inner panels are wrapped (for the preview state's inert lock) in a
+   filling frame. The frame must keep the `.panel-body` inside height-
+   constrained: as a grid child with `min-height: auto` it would grow the
+   panel's 1fr row to its content height and the body would never scroll. */
+.panel-fill {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
 }
 
 .search-field {
