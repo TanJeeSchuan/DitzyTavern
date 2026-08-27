@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { JsonEditor, type JsonData } from "json-edit-react";
+import { loadConnectionSettings } from "../connection-settings";
 import {
 	applyConversationCommand,
 	loadConversationGenerationSettings,
@@ -11,11 +13,20 @@ import {
 	BUDGET_FIELDS,
 	BUDGET_FIELD_ERROR,
 	BUDGET_FIELD_LABELS,
+	collidingSamplingOverrideKeys,
 	makeEmptyBudgetDrafts,
+	makeEmptyOverridesDrafts,
 	makeEmptySamplingDrafts,
+	managedOverrideKeys,
+	OVERRIDES_DRAFT_ERROR,
+	OVERRIDES_NAMESPACE_LABELS,
+	OVERRIDES_NAMESPACES,
+	overridesDraftsFromSettings,
 	parseBudgetDraft,
+	parseOverridesDraft,
 	parseSamplingDraft,
 	resolveBudgetValues,
+	resolveOverridesValues,
 	resolveSamplingValues,
 	samplingDraftsFromSettings,
 	SAMPLING_DRAFT_ERROR,
@@ -23,6 +34,8 @@ import {
 	SAMPLING_FIELD_LABELS,
 	type BudgetDrafts,
 	type BudgetField,
+	type OverridesDrafts,
+	type OverridesNamespace,
 	type SamplingDrafts,
 	type SamplingField,
 } from "../generation-settings-draft";
@@ -74,6 +87,17 @@ function GenerationSettings({
 	const [prefillSuffix, setPrefillSuffix] = useState<ContinuationPrefillSuffix>("");
 	const [samplingDrafts, setSamplingDrafts] = useState<SamplingDrafts>(makeEmptySamplingDrafts());
 	const [budgetDrafts, setBudgetDrafts] = useState<BudgetDrafts>(makeEmptyBudgetDrafts());
+	const [overridesDrafts, setOverridesDrafts] = useState<OverridesDrafts>(makeEmptyOverridesDrafts());
+	// The namespace transmitted with requests follows the active Connection
+	// Profile's API Format. The state is a discriminated union so the badges
+	// only claim a namespace is transmitted after Contact resolves one; the
+	// no-active-profile and load-failure cases carry their own status lines.
+	const [transmittingNamespace, setTransmittingNamespace] = useState<
+		| { status: "loading" }
+		| { status: "unavailable" }
+		| { status: "no-active-profile" }
+		| { status: "known"; namespace: OverridesNamespace }
+	>({ status: "loading" });
 	const [status, setStatus] = useState<LoadStatus>("loading");
 	const [problem, setProblem] = useState<string | null>(null);
 	const conversationIdRef = useRef(conversation.id);
@@ -91,6 +115,7 @@ function GenerationSettings({
 				setPrefillSuffix(loaded.continuationPrefillSuffix);
 				setSamplingDrafts(samplingDraftsFromSettings(loaded));
 				setBudgetDrafts(budgetDraftsFromSettings(loaded));
+				setOverridesDrafts(overridesDraftsFromSettings(loaded));
 				setProblem(null);
 				setStatus("ready");
 			})
@@ -102,13 +127,39 @@ function GenerationSettings({
 		};
 	}, [conversation.id]);
 
+	// Connection Settings are global and this panel remounts on every open, so
+	// a single load identifies the transmitting namespace for this visit.
+	useEffect(() => {
+		let cancelled = false;
+		void loadConnectionSettings()
+			.then((settings) => {
+				if (cancelled) return;
+				const active = settings.profiles.find(
+					(profile) => profile.id === settings.activeProfileId,
+				);
+				setTransmittingNamespace(
+					active === undefined
+						? { status: "no-active-profile" }
+						: { status: "known", namespace: active.apiFormat },
+				);
+			})
+			.catch(() => {
+				if (!cancelled) setTransmittingNamespace({ status: "unavailable" });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
+	const overridesValues = resolveOverridesValues(overridesDrafts);
 	const canSave =
 		status === "ready" &&
 		settings !== null &&
 		samplingValues !== null &&
 		budgetValues !== null &&
+		overridesValues !== null &&
 		instruction.trim() !== "";
 
 	const updateSampling = (field: SamplingField, raw: string) => {
@@ -121,8 +172,19 @@ function GenerationSettings({
 		setBudgetDrafts((current) => ({ ...current, [field]: raw }));
 	};
 
+	const updateOverrides = (namespace: OverridesNamespace, value: JsonData) => {
+		setProblem(null);
+		setOverridesDrafts((current) => ({ ...current, [namespace]: value }));
+	};
+
 	const save = async () => {
-		if (!canSave || settings === null || samplingValues === null || budgetValues === null) return;
+		if (
+			!canSave ||
+			settings === null ||
+			samplingValues === null ||
+			budgetValues === null ||
+			overridesValues === null
+		) return;
 		setStatus("saving");
 		const next: ConversationGenerationSettings = {
 			...settings,
@@ -137,6 +199,7 @@ function GenerationSettings({
 			continuationStrategy: strategy,
 			continuationInstruction: instruction,
 			continuationPrefillSuffix: prefillSuffix,
+			requestOverrides: overridesValues,
 		};
 		const outcome = await applyConversationCommand(conversation.id, conversation.revision, {
 			type: "update-generation-settings",
@@ -282,6 +345,83 @@ function GenerationSettings({
 								<small>Ignored while the Assistant prefill strategy is active.</small>
 							)}
 						</div>
+					</section>
+					<section aria-labelledby="generation-overrides-title">
+						<h3 id="generation-overrides-title">Request Overrides</h3>
+						<p>
+							Extra request body fields for this Chat, kept per API Format. Only
+							the namespace of the active Connection Profile is transmitted; the
+							others stay editable and are never sent.
+						</p>
+						{transmittingNamespace.status === "unavailable" && (
+							<small className="overrides-namespace-status" role="note">
+								Connection Settings could not be loaded, so the transmitted
+								namespace is unknown.
+							</small>
+						)}
+						{transmittingNamespace.status === "no-active-profile" && (
+							<small className="overrides-namespace-status" role="note">
+								No Connection Profile is active, so no namespace is transmitted.
+							</small>
+						)}
+						{OVERRIDES_NAMESPACES.map((namespace) => {
+							const parsed = parseOverridesDraft(overridesDrafts[namespace]);
+							const overrides = parsed.status === "valid" ? parsed.value : {};
+							const colliding = collidingSamplingOverrideKeys(overrides);
+							const managed = managedOverrideKeys(namespace, overrides);
+							const transmitting =
+								transmittingNamespace.status === "known" &&
+								transmittingNamespace.namespace === namespace;
+							return (
+								<div className="overrides-namespace" key={namespace}>
+									<div className="overrides-namespace-heading">
+										<h4>{OVERRIDES_NAMESPACE_LABELS[namespace]}</h4>
+										{transmittingNamespace.status === "known" ||
+										transmittingNamespace.status === "no-active-profile" ? (
+											<span data-transmitting={transmitting}>
+												{transmitting ? "Transmitted" : "Not transmitted"}
+											</span>
+										) : null}
+									</div>
+									<div className="overrides-namespace-editor">
+										<JsonEditor
+											data={overridesDrafts[namespace]}
+											setData={(value) => updateOverrides(namespace, value)}
+											rootName={OVERRIDES_NAMESPACE_LABELS[namespace]}
+											collapse={transmitting ? false : 1}
+											restrictDrag
+											showStringQuotes={false}
+											showIconTooltips
+											rootFontSize={13}
+											maxWidth="100%"
+										/>
+									</div>
+									{transmitting && colliding.length > 0 && (
+										<small className="overrides-notice" role="note">
+											These keys override the Sampling fields with the same names
+											when the request is built: {colliding.join(", ")}.
+										</small>
+									)}
+									{managed.structural.map((key) => (
+										<small className="overrides-notice" key={key} role="note">
+											The app manages "{key}" on every request, so this override
+											is never sent.
+										</small>
+									))}
+									{managed.outputLimit.map((key) => (
+										<small className="overrides-notice" key={key} role="note">
+											The response budget sets the output limit, so the "{key}"
+											override is never sent.
+										</small>
+									))}
+									{parsed.status === "invalid" && (
+										<small className="field-error" role="alert">
+											{OVERRIDES_DRAFT_ERROR}
+										</small>
+									)}
+								</div>
+							);
+						})}
 					</section>
 					<button
 						className="primary-button"

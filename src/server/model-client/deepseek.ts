@@ -5,6 +5,10 @@ import type {
 } from "../connection-settings/types";
 import type { GenerationRequestOverrides } from "../conversation/types";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
+import {
+	OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS,
+	STRUCTURAL_CHAT_COMPLETIONS_WIRE_KEYS,
+} from "../../shared/generation-overrides";
 import type {
 	ModelClient,
 	ModelClientEvent,
@@ -400,13 +404,10 @@ function isPrefillSuffix(value: string): value is "" | " " | "\n" | "\n\n" {
 	return value === "" || value === " " || value === "\n" || value === "\n\n";
 }
 
-const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set([
-	"messages",
-	"model",
-	"stream",
-	"n",
-]);
-const OUTPUT_LIMIT_FIELDS = new Set(["max_tokens", "max_completion_tokens"]);
+const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set<string>(
+	STRUCTURAL_CHAT_COMPLETIONS_WIRE_KEYS,
+);
+const OUTPUT_LIMIT_FIELDS = new Set<string>(OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS);
 const UNSUPPORTED_CHAT_COMPLETIONS_FIELDS = new Set([
 	"tools",
 	"tool_choice",

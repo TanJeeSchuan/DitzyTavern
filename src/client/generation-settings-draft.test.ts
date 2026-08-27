@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
 	budgetDraftsFromSettings,
+	collidingSamplingOverrideKeys,
 	makeEmptyBudgetDrafts,
+	makeEmptyOverridesDrafts,
 	makeEmptySamplingDrafts,
+	managedOverrideKeys,
+	overridesDraftsFromSettings,
 	parseBudgetDraft,
+	parseOverridesDraft,
 	parseSamplingDraft,
 	resolveBudgetValues,
+	resolveOverridesValues,
 	resolveSamplingValues,
 	samplingDraftsFromSettings,
 } from "./generation-settings-draft";
@@ -142,6 +148,127 @@ describe("budget drafts", () => {
 			responseBudget: 256,
 			safetyAllowance: 0,
 			siblingGenerationLimit: 3,
+		});
+	});
+});
+
+describe("request override drafts", () => {
+	test("a plain JSON object parses as a valid namespace", () => {
+		const parsed = parseOverridesDraft({
+			custom_field: "kept",
+			off: 0.5,
+			nested: { list: [1, true, null] },
+		});
+		expect(parsed).toEqual({
+			status: "valid",
+			value: {
+				custom_field: "kept",
+				off: 0.5,
+				nested: { list: [1, true, null] },
+			},
+		});
+	});
+
+	test("non-object and non-JSON drafts are invalid", () => {
+		for (const candidate of [
+			null,
+			undefined,
+			[],
+			[1, 2],
+			"text",
+			42,
+			true,
+			() => undefined,
+		]) {
+			expect(parseOverridesDraft(candidate)).toEqual({ status: "invalid" });
+		}
+	});
+
+	test("values that cannot serialize follow the server's JSON-value rule", () => {
+		// JSON.stringify throws on BigInt, mirroring cloneRequestOverrides.
+		expect(parseOverridesDraft({ big: 7n })).toEqual({ status: "invalid" });
+		// JSON.stringify normalizes NaN to null exactly like the server copy.
+		expect(parseOverridesDraft({ notANumber: Number.NaN })).toEqual({
+			status: "valid",
+			value: { notANumber: null },
+		});
+	});
+
+	test("resolving drafts blocks on any invalid namespace", () => {
+		const drafts = makeEmptyOverridesDrafts();
+		expect(resolveOverridesValues(drafts)).toEqual({
+			"chat-completions": {},
+			responses: {},
+			"anthropic-messages": {},
+		});
+		drafts.responses = ["not", "an", "object"];
+		expect(resolveOverridesValues(drafts)).toBeNull();
+	});
+
+	test("stored overrides seed drafts and resolvers invert them exactly", () => {
+		const drafts = overridesDraftsFromSettings({
+			requestOverrides: {
+				"chat-completions": { custom_field: "kept" },
+				responses: {},
+				"anthropic-messages": { max_tokens: "never" },
+			},
+		});
+		expect(drafts).toEqual({
+			"chat-completions": { custom_field: "kept" },
+			responses: {},
+			"anthropic-messages": { max_tokens: "never" },
+		});
+		expect(resolveOverridesValues(drafts)).toEqual({
+			"chat-completions": { custom_field: "kept" },
+			responses: {},
+			"anthropic-messages": { max_tokens: "never" },
+		});
+	});
+
+	test("collision detection matches the closed first-class Sampling key set", () => {
+		expect(collidingSamplingOverrideKeys({})).toEqual([]);
+		expect(
+			collidingSamplingOverrideKeys({
+				temperature: 0.7,
+				top_p: 0.9,
+				frequency_penalty: 0,
+				presence_penalty: 0,
+				custom_field: "kept",
+			}),
+		).toEqual(["temperature", "top_p", "frequency_penalty", "presence_penalty"]);
+		expect(
+			collidingSamplingOverrideKeys({ max_tokens: 10, custom_field: "kept" }),
+		).toEqual([]);
+	});
+
+	test("managed keys are reported only in the Chat Completions namespace", () => {
+		const overrides = {
+			messages: [],
+			model: "deepseek-chat",
+			stream: false,
+			n: 1,
+			max_tokens: 10,
+			max_completion_tokens: 10,
+			custom_field: "kept",
+		};
+		expect(managedOverrideKeys("chat-completions", overrides)).toEqual({
+			structural: ["messages", "model", "stream", "n"],
+			outputLimit: ["max_tokens", "max_completion_tokens"],
+		});
+		expect(managedOverrideKeys("responses", overrides)).toEqual({
+			structural: [],
+			outputLimit: [],
+		});
+		expect(managedOverrideKeys("anthropic-messages", overrides)).toEqual({
+			structural: [],
+			outputLimit: [],
+		});
+	});
+
+	test("managed keys are absent when the override does not use them", () => {
+		expect(managedOverrideKeys("chat-completions", { custom_field: "kept" })).toEqual({
+			structural: [],
+			outputLimit: [],
 		});
 	});
 });

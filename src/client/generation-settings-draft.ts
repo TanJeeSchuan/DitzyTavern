@@ -1,4 +1,13 @@
-import type { ConversationGenerationSettings } from "./conversation";
+import type { JsonData } from "json-edit-react";
+import {
+	FIRST_CLASS_SAMPLING_WIRE_KEYS,
+	OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS,
+	STRUCTURAL_CHAT_COMPLETIONS_WIRE_KEYS,
+} from "../shared/generation-overrides";
+import type {
+	ConversationGenerationSettings,
+	GenerationRequestOverrides,
+} from "./conversation";
 
 // The four first-class sampling keys mirror the server validation domain:
 // null means the provider default, otherwise a finite number between -2 and 2.
@@ -205,5 +214,143 @@ export function resolveSamplingValues(
 		topP: draftNumber(topP),
 		frequencyPenalty: draftNumber(frequencyPenalty),
 		presencePenalty: draftNumber(presencePenalty),
+	};
+}
+
+// Request Overrides drafts. Each namespace is an independent JSON object and
+// the closed namespace set mirrors the Conversation Generation Settings
+// contract, so switching the active Connection Profile never transmits
+// overrides authored for another API Format.
+export type OverridesNamespace =
+	| "chat-completions"
+	| "responses"
+	| "anthropic-messages";
+
+export const OVERRIDES_NAMESPACES = [
+	"chat-completions",
+	"responses",
+	"anthropic-messages",
+] as const satisfies readonly OverridesNamespace[];
+
+export const OVERRIDES_NAMESPACE_LABELS = {
+	"chat-completions": "Chat Completions",
+	responses: "Responses",
+	"anthropic-messages": "Anthropic Messages",
+} as const;
+
+export interface OverridesDrafts {
+	"chat-completions": unknown;
+	responses: unknown;
+	"anthropic-messages": unknown;
+}
+
+export function makeEmptyOverridesDrafts(): OverridesDrafts {
+	return { "chat-completions": {}, responses: {}, "anthropic-messages": {} };
+}
+
+export function overridesDraftsFromSettings(
+	settings: Pick<ConversationGenerationSettings, "requestOverrides">,
+): OverridesDrafts {
+	return {
+		"chat-completions": settings.requestOverrides["chat-completions"],
+		responses: settings.requestOverrides["responses"],
+		"anthropic-messages": settings.requestOverrides["anthropic-messages"],
+	};
+}
+
+export type OverridesDraftValue =
+	| { status: "valid"; value: GenerationRequestOverrides }
+	| { status: "invalid" };
+
+// Matches the server command's JSON-value message so client feedback reads
+// as one system: the namespace must be an object whose JSON serialization
+// succeeds. Arrays and scalars are invalid because the shared contract
+// requires a Record per namespace.
+export const OVERRIDES_DRAFT_ERROR = "Request Overrides must be JSON values.";
+
+export function parseOverridesDraft(value: JsonData): OverridesDraftValue {
+	// SAFETY: the object-tag check establishes a plain object (null, arrays,
+	// and scalars all carry other tags) accepted by JSON.stringify.
+	if (Object.prototype.toString.call(value) !== "[object Object]") {
+		return { status: "invalid" };
+	}
+	let serialized: string | undefined;
+	try {
+		serialized = JSON.stringify(value);
+	} catch {
+		return { status: "invalid" };
+	}
+	if (serialized === undefined) return { status: "invalid" };
+	return {
+		status: "valid",
+		// SAFETY: serializing an object and parsing the result restores the
+		// closed JSON value domain the shared contract allows, mirroring the
+		// server's cloneRequestOverrides normalization.
+		value: JSON.parse(serialized) as GenerationRequestOverrides,
+	};
+}
+
+// Returns null whenever any namespace draft is invalid so Apply cannot send
+// a partially resolved aggregate.
+export function resolveOverridesValues(
+	drafts: OverridesDrafts,
+): ConversationGenerationSettings["requestOverrides"] | null {
+	const chatCompletions = parseOverridesDraft(drafts["chat-completions"]);
+	if (chatCompletions.status === "invalid") return null;
+	const responses = parseOverridesDraft(drafts["responses"]);
+	if (responses.status === "invalid") return null;
+	const anthropicMessages = parseOverridesDraft(drafts["anthropic-messages"]);
+	if (anthropicMessages.status === "invalid") return null;
+	return {
+		"chat-completions": chatCompletions.value,
+		responses: responses.value,
+		"anthropic-messages": anthropicMessages.value,
+	};
+}
+
+// The first-class Sampling wire keys and the two managed key families are
+// the shared closed sets from src/shared/generation-overrides.ts, so the
+// editor notices can never drift from the server merge.
+const FIRST_CLASS_SAMPLING_OVERRIDE_KEY_SET = new Set<string>(
+	FIRST_CLASS_SAMPLING_WIRE_KEYS,
+);
+
+export function collidingSamplingOverrideKeys(
+	overrides: GenerationRequestOverrides,
+): string[] {
+	return Object.keys(overrides).filter((key) =>
+		FIRST_CLASS_SAMPLING_OVERRIDE_KEY_SET.has(key),
+	);
+}
+
+// Chat Completions is the only namespace with a server-side merge today, and
+// the merge skips the two shared managed key families rather than failing.
+// Other namespaces are never transmitted, so nothing is managed for them and
+// no key is rejected silently.
+const MANAGED_OVERRIDE_KEY_SETS = {
+	"chat-completions": {
+		structural: STRUCTURAL_CHAT_COMPLETIONS_WIRE_KEYS,
+		outputLimit: OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS,
+	},
+	responses: { structural: [], outputLimit: [] },
+	"anthropic-messages": { structural: [], outputLimit: [] },
+} as const satisfies Record<
+	OverridesNamespace,
+	{ structural: readonly string[]; outputLimit: readonly string[] }
+>;
+
+export interface ManagedOverrideKeys {
+	structural: string[];
+	outputLimit: string[];
+}
+
+export function managedOverrideKeys(
+	namespace: OverridesNamespace,
+	overrides: GenerationRequestOverrides,
+): ManagedOverrideKeys {
+	const managed = MANAGED_OVERRIDE_KEY_SETS[namespace];
+	return {
+		structural: managed.structural.filter((key: string) => key in overrides),
+		outputLimit: managed.outputLimit.filter((key: string) => key in overrides),
 	};
 }

@@ -606,6 +606,58 @@
 	font-weight: 670;
 }
 
+.overrides-namespace {
+	display: grid;
+	gap: 0.5rem;
+	margin: 0.15rem 0 0.75rem;
+	padding: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+}
+
+.overrides-namespace-heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.overrides-namespace-heading h4 {
+	margin: 0;
+	font-size: 0.8rem;
+}
+
+.overrides-namespace-heading span {
+	color: var(--text-muted);
+	font-size: 0.7rem;
+}
+
+.overrides-namespace-heading span[data-transmitting="true"] {
+	color: var(--accent);
+	font-weight: 640;
+}
+
+.overrides-namespace-editor {
+	max-width: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: 0.6rem;
+	background: var(--surface);
+}
+
+.overrides-namespace-status,
+.overrides-notice {
+	display: block;
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.45;
+}
+
+.overrides-namespace-status {
+	margin: 0 0 0.65rem;
+}
+
 .settings-panel-body section > p {
 	margin: 0.35rem 0 1rem;
 	color: var(--text-muted);
