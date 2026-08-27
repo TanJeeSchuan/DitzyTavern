@@ -146,6 +146,10 @@ describe("Generation detail transport", () => {
 				new Date(Date.now() + GENERATION_REPLAY_RETENTION_MS + 1),
 			);
 			expect(module.readActiveGenerationDetails(conversation.id, accepted.generationId)).toBeUndefined();
+			const expiredInspection = await app.handle(new Request(
+				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/inspection`,
+			));
+			expect(expiredInspection.status).toBe(404);
 			expect(module.readVariantDetails(conversation.id, message.id, variant.id)?.provenance?.status)
 				.toBe("length-limited");
 		});

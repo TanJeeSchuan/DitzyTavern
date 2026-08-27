@@ -377,13 +377,19 @@ export type GenerationDetailsJsonObject = {
 	readonly [key: string]: GenerationDetailsJsonValue;
 };
 
+export type GenerationInspectionStatus =
+	| "active"
+	| "complete"
+	| "length-limited"
+	| "interrupted";
+
 export interface ActiveGenerationDetails {
 	conversationId: number;
 	generationId: number;
 	messageId: number;
 	variantId: number;
 	startedAt: string;
-	status: "active";
+	status: GenerationInspectionStatus;
 	intent: GenerationDetailsJsonValue;
 	participants: {
 		human: { id: number; name: string };
@@ -565,7 +571,8 @@ const parseActiveGenerationDetails = (value: GenerationDetailsJsonValue): Active
 	if (
 		object === null || participants === null || human === null || model === null ||
 		budget === null || checkpoint === null || generationId === null || conversationId === null ||
-		messageId === null || variantId === null || startedAt === null || status !== "active" ||
+		messageId === null || variantId === null || startedAt === null ||
+		(status !== "active" && status !== "complete" && status !== "length-limited" && status !== "interrupted") ||
 		humanId === null || humanName === null || modelId === null || modelName === null ||
 		checkpointContent === null || checkpointReasoning === null || checkpointEventId === null ||
 		(checkpoint.checkpointedAt !== null && checkpointedAt === null)

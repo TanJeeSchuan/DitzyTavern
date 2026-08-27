@@ -5,6 +5,7 @@ import {
 	type ActiveGenerationDetails,
 	type GenerationDetailsJsonObject,
 	type GenerationDetailsJsonValue,
+	type GenerationInspectionStatus,
 	type GenerationProvenance,
 	type VariantDetails,
 } from "./conversation";
@@ -24,7 +25,7 @@ export function GenerationDetailsPanel({
 	const [state, setState] = useState<
 		| { status: "loading" }
 		| { status: "error"; message: string }
-		| { status: "active"; details: ActiveGenerationDetails }
+		| { status: "inspection"; details: ActiveGenerationDetails }
 		| { status: "variant"; details: VariantDetails }
 	>({ status: "loading" });
 
@@ -44,7 +45,7 @@ export function GenerationDetailsPanel({
 			void loadActiveGenerationDetails(target.conversationId, target.generationId).then((outcome) => {
 				if (cancelled) return;
 				if (outcome.status === "available") {
-					setState({ status: "active", details: outcome.details });
+					setState({ status: "inspection", details: outcome.details });
 					return;
 				}
 				showError(outcome.status);
@@ -65,25 +66,25 @@ export function GenerationDetailsPanel({
 	return (
 		<aside className="details-panel generation-details-panel" data-open="true" aria-label="Generation details">
 			<PanelHeader
-				title={target.type === "active" ? "Active Generation" : "Generation details"}
+				title={target.type === "active" ? "Generation inspection" : "Generation details"}
 				onClose={onClose}
 			/>
 			<div className="panel-body generation-details-body">
 				{state.status === "loading" && <p className="panel-note" role="status">Loading Generation details…</p>}
 				{state.status === "error" && <p className="import-problem" role="alert">{state.message}</p>}
-				{state.status === "active" && <ActiveDetails details={state.details} />}
+				{state.status === "inspection" && <GenerationInspectionDetails details={state.details} />}
 				{state.status === "variant" && <VariantDetailsView details={state.details} />}
 			</div>
 		</aside>
 	);
 }
 
-function ActiveDetails({ details }: { details: ActiveGenerationDetails }) {
+function GenerationInspectionDetails({ details }: { details: ActiveGenerationDetails }) {
 	const intent = intentLabel(details.intent);
 	const omitted = Array.isArray(details.budget.omittedHistory) ? details.budget.omittedHistory : [];
 	return (
 		<>
-			<p className="generation-detail-status" role="status">Active · Generation {details.generationId}</p>
+			<p className="generation-detail-status" role="status">{inspectionStatusLabel(details.status)} · Generation {details.generationId}</p>
 			<dl className="detail-list">
 				<div><dt>Target</dt><dd>Message {details.messageId} · Variant {details.variantId}</dd></div>
 				<div><dt>Intent</dt><dd>{intent}</dd></div>
@@ -186,6 +187,13 @@ function statusLabel(provenance: GenerationProvenance): string {
 	if (provenance.status === "length-limited") return "Length-limited";
 	if (provenance.status === "interrupted") return "Interrupted";
 	return "Complete";
+}
+
+function inspectionStatusLabel(status: GenerationInspectionStatus): string {
+	if (status === "length-limited") return "Length-limited";
+	if (status === "interrupted") return "Interrupted";
+	if (status === "complete") return "Complete";
+	return "Active";
 }
 
 function formatUsage(usage: Record<string, number>): string {
