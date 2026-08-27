@@ -13,7 +13,8 @@ import {
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import { createFakeModelClient } from "../model-client";
-import { generateReply, generateSiblingVariant, startServerOwnedSiblingGeneration } from ".";
+import { generateSiblingVariant, startServerOwnedSiblingGeneration } from ".";
+import { generateTerminalTailFixture } from "./generate";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
@@ -82,7 +83,7 @@ describe("Historical sibling Variant generation", () => {
 	const generateOnce = async (contents: string[], timestamp?: string) => {
 		const plans: PromptPlan[] = [];
 		for (const [index, content] of contents.entries()) {
-			conversation = await generateReply(database, {
+			conversation = await generateTerminalTailFixture(database, {
 				conversationId: conversation.id,
 				timestamp:
 					timestamp ??

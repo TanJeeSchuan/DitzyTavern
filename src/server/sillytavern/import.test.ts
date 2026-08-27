@@ -38,9 +38,9 @@ import {
 } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import {
-	generateReply,
 	generateSiblingVariant,
 } from "../workflows";
+import { generateTerminalTailFixture } from "../workflows/generate";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,
@@ -583,7 +583,7 @@ describe("SillyTavern chat import", () => {
 		// The workflow seams deny Generate and targeted Swipe before any
 		// transport is contacted, with the identical typed outcome.
 		await expect(
-			generateReply(database, {
+			generateTerminalTailFixture(database, {
 				conversationId: conversation.id,
 				modelClient: createFakeModelClient(() => "never called"),
 			}),
@@ -768,7 +768,7 @@ describe("SillyTavern chat import", () => {
 		const model = completed.cast[1];
 		expect(human).toBeDefined();
 		expect(model).toBeDefined();
-		const generated = await generateReply(database, {
+		const generated = await generateTerminalTailFixture(database, {
 			conversationId: completed.id,
 			timestamp: "2026-08-08T14:30:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers at last."),

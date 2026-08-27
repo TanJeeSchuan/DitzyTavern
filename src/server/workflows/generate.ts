@@ -1,4 +1,4 @@
-// Current Generate workflow.
+// Server-owned Generation workflows.
 //
 // Composes the deep Conversation seam and the pure Prompt Compiler in one
 // deterministic flow: read one authoritative snapshot, compile the
@@ -9,7 +9,7 @@
 // the Message needs to be understood later — the immutable Author Stamp and
 // the human/model historical pair — is captured at generation start, so
 // concurrent renames or Definition edits never rewrite an in-flight
-// generation and affect only later ones.
+// Generation and affect only later ones.
 //
 // The transport is injected as a seam: this module stays independent of any
 // concrete provider, streaming protocol, or credentials.
@@ -91,7 +91,7 @@ export interface GenerationPromptInspection {
 	budgetFailure: PromptBudgetFailure | null;
 }
 
-export interface GenerateReplyInput {
+export interface GenerationAttemptInput {
 	conversationId: number;
 	// The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events. The workflow never calls a
@@ -124,16 +124,7 @@ interface GenerationDerivation {
 	protectedHistoryIndex?: number;
 }
 
-export interface GenerationCoordinator {
-	// Runs the existing Tail Generation behavior. The Model Client remains an
-	// injected dependency, so this seam can be controlled without provider
-	// traffic in workflow and contract tests.
-	generate(input: GenerateReplyInput): Promise<ConversationSnapshot>;
-	// Revisioned Send acceptance with a server-owned provisional Tail target.
-	send(input: SendThroughProvisionalTailGenerationInput): Promise<SendThroughProvisionalTailGenerationResult>;
-}
-
-export interface SendThroughProvisionalTailGenerationInput extends GenerateReplyInput {
+export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
 	// Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
@@ -169,15 +160,6 @@ export interface ServerOwnedSendGenerationCallbacks {
 export interface ServerOwnedGenerationControl {
 	readonly signal: AbortSignal;
 	stop(): void;
-}
-
-export function createGenerationCoordinator(
-	database: Database,
-): GenerationCoordinator {
-	return {
-		generate: (input) => executeTailGeneration(database, input),
-		send: (input) => sendThroughProvisionalTailGeneration(database, input),
-	};
 }
 
 // Starts Send as a detached server-owned attempt. The caller receives an
@@ -225,7 +207,7 @@ interface SelectedHistory {
 // Message's selected Variant and its immutable Author Stamp name.
 // `endExclusiveIndex` limits the entries to Messages strictly preceding a
 // targeted sibling Variant; omitted, the entire ordered snapshot counts, as
-// a current Generate at the tail uses.
+// a Tail Generation uses.
 const selectedHistoryFrom = (
 	snapshot: ConversationSnapshot,
 	humanParticipantId: number,
@@ -469,7 +451,7 @@ interface GenerationOutcome {
 async function runGeneration(
 	modelClient: ModelClient,
 	input: Parameters<typeof collectModelClientGeneration>[1],
-	onEvent: GenerateReplyInput["onEvent"],
+	onEvent: GenerationAttemptInput["onEvent"],
 ): Promise<GenerationOutcome> {
 	try {
 		const result = await collectModelClientGeneration(modelClient, input, { onEvent });
@@ -554,7 +536,7 @@ function terminalGenerationProvenance(
 	};
 }
 
-// Compiles the Prompt Plan the server would send for a current Generate
+// Compiles the Prompt Plan the server would send for a Tail Generation
 // without contacting any transport. Exposes the agreed participant context
 // (the Control pair and their plan) using provider-neutral vocabulary only.
 export function inspectGenerationPrompt(
@@ -623,9 +605,15 @@ export function inspectGenerationPrompt(
 	};
 }
 
-async function executeTailGeneration(
+/**
+ * Test-fixture seam for suites that need a terminal model Message without a
+ * user Send. It deliberately bypasses Active Generation persistence and is
+ * therefore absent from the public workflow barrel and every HTTP route.
+ * Product code must use the server-owned Send, Continue, or Sibling starts.
+ */
+export async function generateTerminalTailFixture(
 	database: Database,
-	input: GenerateReplyInput,
+	input: GenerationAttemptInput,
 ): Promise<ConversationSnapshot> {
 	const conversation = createConversationModule(database);
 
@@ -926,10 +914,7 @@ export async function sendThroughProvisionalTailGeneration(
 	}
 }
 
-// Short workflow spelling for callers that describe the operation as Send.
-export const sendMessage = sendThroughProvisionalTailGeneration;
-
-export interface ContinueGenerationInput extends GenerateReplyInput {
+export interface ContinueGenerationInput extends GenerationAttemptInput {
 	// Continue is a revisioned acceptance operation. The selected terminal
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
@@ -1230,9 +1215,6 @@ export async function continueGeneration(
 	}
 }
 
-export const generateContinuation = continueGeneration;
-export const continueConversation = continueGeneration;
-
 export function startServerOwnedContinuationGeneration(
 	database: Database,
 	input: ContinueGenerationInput,
@@ -1263,15 +1245,6 @@ export function startServerOwnedContinuationGeneration(
 		if (!accepted) rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
 	});
 	return { accepted: acceptedPromise, result, signal: controller.signal };
-}
-
-// Compatibility wrapper for the existing workflow and HTTP callers. New
-// server-owned Generation code should depend on the coordinator seam above.
-export function generateReply(
-	database: Database,
-	input: GenerateReplyInput,
-): Promise<ConversationSnapshot> {
-	return createGenerationCoordinator(database).generate(input);
 }
 
 export interface GenerateSiblingVariantInput {

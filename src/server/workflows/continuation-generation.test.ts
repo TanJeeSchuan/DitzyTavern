@@ -5,7 +5,8 @@ import type { ParticipantDefinition } from "../conversation";
 import { openDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import { createTokenEstimator, type PromptPlan } from "../prompt-compiler";
-import { continueGeneration, generateReply, inspectGenerationPrompt } from ".";
+import { continueGeneration, inspectGenerationPrompt } from ".";
+import { generateTerminalTailFixture } from "./generate";
 
 const definition = (name: string): ParticipantDefinition => ({
 	name,
@@ -113,7 +114,7 @@ describe("Continuation Generation", () => {
 		const module = createConversationModule(database);
 		const seed = module.getSnapshot(conversationId);
 		if (seed === undefined) throw new Error("Missing Conversation.");
-		const _generated = await generateReply(database, {
+		const _generated = await generateTerminalTailFixture(database, {
 			conversationId,
 			modelClient: createFakeModelClient(() => "The generated terminal Message."),
 		});

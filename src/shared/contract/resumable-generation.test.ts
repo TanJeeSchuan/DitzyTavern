@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openDatabase } from "../../server/database/database";
 import { createConnectionSettingsModule } from "../../server/connection-settings";
-import { createConversationModule } from "../../server/conversation";
+import {
+	acceptConversationTailGeneration,
+	checkpointConversationTailGeneration,
+	createConversationModule,
+} from "../../server/conversation";
+import { recoverActiveGenerations } from "../../server/workflows";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -231,5 +236,77 @@ describe("Resumable generation transport", () => {
 		expect(providerSignal?.aborted).toBe(false);
 		expect(body).toContain('"text":"Survives."');
 		expect(body).toContain("event: complete");
+	});
+
+	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
+		const conversationModule = createConversationModule(database);
+		const conversation = conversationModule.create({
+			name: "Restart Recovery Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const human = conversation.cast[0];
+		const model = conversation.cast[1];
+		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+		const accepted = acceptConversationTailGeneration(database, {
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			timestamp: "2026-08-27T00:00:00.000Z",
+			humanContent: "Keep the recovered scene.",
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedModelName: model.name,
+			promptPlan: {},
+			historyRoles: [],
+			generationSettings: {},
+			connection: {},
+		});
+		checkpointConversationTailGeneration(database, {
+			conversationId: conversation.id,
+			generationId: accepted.generationId,
+			content: "Recovered checkpoint.",
+			reasoning: "Recovered reasoning.",
+			latestEventId: 2,
+		});
+
+		expect(recoverActiveGenerations(database)).toEqual({
+			inspected: 1,
+			interrupted: 1,
+			removed: 0,
+			failed: 0,
+		});
+		expect(recoverActiveGenerations(database)).toEqual({
+			inspected: 0,
+			interrupted: 0,
+			removed: 0,
+			failed: 0,
+		});
+
+		const app = createConversationRoutes(database);
+		const summaryResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}`,
+		));
+		// SAFETY: this contract test controls the typed Conversation response.
+		const summary = await summaryResponse.json() as { activeGenerations: unknown[] };
+		expect(summaryResponse.status).toBe(200);
+		expect(summary.activeGenerations).toEqual([]);
+
+		const recoveredMessage = conversationModule.getSnapshot(conversation.id)?.messages.at(-1);
+		const recoveredVariant = recoveredMessage?.variants[0];
+		if (recoveredMessage === undefined || recoveredVariant === undefined) {
+			throw new Error("Recovered terminal Variant missing.");
+		}
+		const detailsResponse = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${recoveredMessage.id}/variants/${recoveredVariant.id}/details`,
+		));
+		const detailsBody = await detailsResponse.text();
+		expect(detailsResponse.status).toBe(200);
+		expect(detailsBody).toContain('"content":"Recovered checkpoint."');
+		expect(detailsBody).toContain('"status":"interrupted"');
+		expect(detailsBody).toContain('"interruptionCause":"server-restart"');
+		expect(detailsBody).not.toContain("Recovered reasoning.");
 	});
 });

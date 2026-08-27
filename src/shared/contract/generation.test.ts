@@ -50,6 +50,21 @@ const streamResponse = () => {
 	);
 };
 
+const streamResponseWith = (content: string) => {
+	const encoder = new TextEncoder();
+	return new Response(
+		new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`));
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
+				controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+				controller.close();
+			},
+		}),
+		{ headers: { "content-type": "text/event-stream" } },
+	);
+};
+
 describe("Generation transport contract", () => {
 	let database: Database;
 
@@ -378,5 +393,73 @@ describe("Generation transport contract", () => {
 		expect(body).toContain("event: complete");
 		expect(targetAfter?.variants.at(-1)?.content).toBe("Contract reply.");
 		expect(targetAfter?.variants.at(-1)?.selected).toBe(true);
+	});
+
+	test("runs parallel Sibling Generations as independent accepted outcomes", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Parallel Sibling Contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const target = conversation.messages[0];
+		if (target === undefined) throw new Error("Sibling target missing.");
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "parallel-sibling-secret",
+		});
+		let release!: () => void;
+		const paused = new Promise<void>((resolve) => { release = resolve; });
+		let providerRequest = 0;
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => {
+				providerRequest += 1;
+				const content = `Alternative ${providerRequest}.`;
+				await paused;
+				return streamResponseWith(content);
+			},
+		});
+		const startSibling = () => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			{ method: "POST", body: "{}" },
+		));
+		const firstResponse = await startSibling();
+		const secondResponse = await startSibling();
+		// SAFETY: both responses come from the typed Sibling acceptance route.
+		const first = await firstResponse.json() as { generationId: number; variantId: number };
+		// SAFETY: both responses come from the typed Sibling acceptance route.
+		const second = await secondResponse.json() as { generationId: number; variantId: number };
+		expect(firstResponse.status).toBe(200);
+		expect(secondResponse.status).toBe(200);
+		expect(first.generationId).not.toBe(second.generationId);
+		expect(first.variantId).not.toBe(second.variantId);
+		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toHaveLength(2);
+
+		const firstEvents = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${first.generationId}/events`,
+		));
+		const secondEvents = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${second.generationId}/events`,
+		));
+		const firstBody = firstEvents.text();
+		const secondBody = secondEvents.text();
+		release();
+		expect(await firstBody).toContain("event: complete");
+		expect(await secondBody).toContain("event: complete");
+
+		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const variants = persisted?.messages.find((message) => message.id === target.id)?.variants ?? [];
+		expect(providerRequest).toBe(2);
+		expect(variants.map((variant) => variant.content)).toEqual([
+			"Opening.",
+			"Alternative 1.",
+			"Alternative 2.",
+		]);
+		expect(variants.filter((variant) => variant.selected)).toHaveLength(1);
+		expect(persisted?.activeGenerations).toEqual([]);
 	});
 });

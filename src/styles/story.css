@@ -285,6 +285,11 @@
 	outline: none;
 }
 
+.story-message:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 0.45rem;
+}
+
 .message-header {
 	display: grid;
 	grid-template-columns: auto 1fr auto;
@@ -324,8 +329,12 @@
 .advanced-actions {
 	display: flex;
 	align-items: center;
+	gap: 0.2rem;
 	opacity: 0;
-	transition: opacity 150ms ease;
+	visibility: hidden;
+	pointer-events: none;
+	transform: translateY(0.15rem);
+	transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
 }
 
 .generated-message:hover .message-meta,
@@ -335,8 +344,14 @@
 .generated-message:focus-within .advanced-actions,
 .generated-message[data-selected="true"] .advanced-actions,
 .story-message:hover .message-meta,
-.story-message:focus-within .message-meta {
+.story-message:focus-within .message-meta,
+.story-message[data-selected="true"] .message-meta,
+.story-message:hover .advanced-actions,
+.story-message:focus-within .advanced-actions,
+.story-message[data-selected="true"] .advanced-actions {
 	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
 	transform: translateY(0);
 }
 

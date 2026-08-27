@@ -277,6 +277,9 @@
 
 	.advanced-actions {
 		opacity: 1;
+		visibility: visible;
+		pointer-events: auto;
+		transform: none;
 	}
 
 	.prose {
@@ -607,4 +610,3 @@
 		transform: scale(1);
 	}
 }
-

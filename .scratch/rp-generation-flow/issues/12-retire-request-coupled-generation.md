@@ -20,3 +20,14 @@
 - [x] Client state tests cover Preview mode alongside authoritative Variant selection and history reload.
 - [x] Obsolete request-coupled code and tests are removed only after replacement coverage is green.
 - [x] The complete test, type-check, lint, and build suite passes.
+
+Review follow-up added transport coverage for startup recovery and two parallel
+Sibling outcomes. The obsolete `createGenerationCoordinator` and
+`generateReply` exports were removed. A narrowly named terminal fixture helper
+remains available only by direct test-module import so prompt capture, provider
+event normalization, and concurrent-edit invariants can be tested without
+presenting a non-authoritative workflow to product code. Unused Send and
+Continuation compatibility aliases were removed as part of the same audit.
+New Swipe and Details
+now follow the advanced Message-action disclosure used for hover, keyboard
+focus, and touch selection.

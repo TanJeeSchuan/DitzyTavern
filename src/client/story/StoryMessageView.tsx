@@ -2,6 +2,8 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Edit3,
+	Info,
+	RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -53,6 +55,7 @@ export function StoryMessageView({
 	onInspect?: (messageId: number, variantId: number) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
+	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
 	const active = message.swipes.find((variant) => variant.id === visibleId);
 	const activeIndex = active === undefined
@@ -78,9 +81,22 @@ export function StoryMessageView({
 	return (
 		<article
 			className="story-message"
+			tabIndex={0}
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}
 			data-previewing={displayedVariantId !== undefined}
+			data-selected={advancedActionsSelected}
+			onPointerUp={(event) => {
+				if (event.pointerType !== "touch") return;
+				if (event.target instanceof Element && event.target.closest("button, textarea, input")) return;
+				event.currentTarget.focus({ preventScroll: true });
+				setAdvancedActionsSelected(true);
+			}}
+			onBlur={(event) => {
+				if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
+					setAdvancedActionsSelected(false);
+				}
+			}}
 		>
 			<header className="message-header">
 				<Portrait name={authorName} size="medium" />
@@ -90,6 +106,27 @@ export function StoryMessageView({
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
 					</div>
+				</div>
+				<div className="advanced-actions" aria-label="Advanced Message actions">
+					{onSibling !== undefined && (
+						<button
+							className="edit-action"
+							type="button"
+							disabled={mutationsDisabled}
+							onClick={() => onSibling(message.id)}
+						>
+							<RefreshCw aria-hidden="true" /> New Swipe
+						</button>
+					)}
+					{onInspect !== undefined && active !== undefined && (
+						<button
+							className="edit-action"
+							type="button"
+							onClick={() => onInspect(message.id, active.id)}
+						>
+							<Info aria-hidden="true" /> Details
+						</button>
+					)}
 				</div>
 			</header>
 
@@ -151,25 +188,6 @@ export function StoryMessageView({
 						onClick={() => onContinue(message.id)}
 					>
 						{continueLabel}
-					</button>
-				)}
-				{onSibling !== undefined && (
-					<button
-						className="edit-action"
-						type="button"
-						disabled={mutationsDisabled}
-						onClick={() => onSibling(message.id)}
-					>
-						New Swipe
-					</button>
-				)}
-				{onInspect !== undefined && active !== undefined && (
-					<button
-						className="edit-action"
-						type="button"
-						onClick={() => onInspect(message.id, active.id)}
-					>
-						Details
 					</button>
 				)}
 				<div className="swipe-controls" aria-label="Swipe controls">

@@ -20,13 +20,8 @@ export {
 	type NewChatSeat,
 } from "./native-chat";
 export {
-	createGenerationCoordinator,
-	continueConversation,
 	continueGeneration,
-	generateReply,
-	generateContinuation,
-	type GenerateReplyInput,
-	type GenerationCoordinator,
+	type GenerationAttemptInput,
 	type GenerationPromptInspection,
 	generateSiblingVariant,
 	type GenerateSiblingVariantInput,
@@ -35,7 +30,6 @@ export {
 	type ServerOwnedSiblingGeneration,
 	type ServerOwnedSiblingGenerationCallbacks,
 	type ServerOwnedGenerationControl,
-	sendMessage,
 	sendThroughProvisionalTailGeneration,
 	type SendThroughProvisionalTailGenerationInput,
 	type SendThroughProvisionalTailGenerationResult,
