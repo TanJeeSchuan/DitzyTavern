@@ -33,6 +33,9 @@ export function StoryMessageView({
 	mutationsDisabled = false,
 	onMoveSwipe,
 	onEdit,
+	canContinue = false,
+	continueLabel = "Continue",
+	onContinue,
 }: {
 	message: StoryMessage;
 	// Preview mode supplies a local Variant id for its one target Message.
@@ -41,6 +44,9 @@ export function StoryMessageView({
 	mutationsDisabled?: boolean;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => void;
+	canContinue?: boolean;
+	continueLabel?: string;
+	onContinue?: (messageId: number) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
@@ -133,6 +139,16 @@ export function StoryMessageView({
 				>
 					<Edit3 aria-hidden="true" /> Edit
 				</button>
+				{canContinue && onContinue !== undefined && (
+					<button
+						className="secondary-button continue-action"
+						type="button"
+						disabled={mutationsDisabled}
+						onClick={() => onContinue(message.id)}
+					>
+						{continueLabel}
+					</button>
+				)}
 				<div className="swipe-controls" aria-label="Swipe controls">
 					<button
 						className="icon-button"

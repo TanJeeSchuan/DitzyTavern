@@ -16,6 +16,7 @@ export type {
 	CompilePromptInput,
 	CompilePromptSource,
 	ExpansionResult,
+	GenerationIntent,
 	MacroContext,
 	PromptBlock,
 	PromptHistoryEntry,

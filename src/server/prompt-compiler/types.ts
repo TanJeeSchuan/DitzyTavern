@@ -28,6 +28,15 @@ export interface PromptHistoryEntry {
 	content: string;
 }
 
+// Provider-neutral purpose of one Generation attempt. A continuation is
+// represented as intent metadata rather than a synthetic history Message;
+// adapters may use the instruction to shape their request while the selected
+// Conversation path remains unchanged.
+export type GenerationIntent =
+	| { type: "sibling" }
+	| { type: "continuation"; strategy: "instruction"; instruction: string }
+	| { type: "continuation"; strategy: "assistant-prefill"; suffix: "" | " " | "\n" | "\n\n" };
+
 export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
@@ -55,6 +64,9 @@ export interface PromptWarning {
 export interface PromptPlan {
 	blocks: readonly PromptBlock[];
 	warnings: readonly PromptWarning[];
+	// Omitted for ordinary Tail and Sibling attempts. Continuation workflows
+	// attach this exact editable instruction without adding history.
+	intent?: GenerationIntent;
 }
 
 // Owner-relative macro context. `self` is the name of the Participant whose

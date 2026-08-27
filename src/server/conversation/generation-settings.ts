@@ -5,6 +5,7 @@ import { InvalidConversationCommandError, ConversationNotFoundError } from "./er
 import type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
+	ContinuationPrefillSuffix,
 	GenerationRequestOverrides,
 } from "./types";
 
@@ -15,6 +16,9 @@ const DEFAULT_REQUEST_OVERRIDES = {
 } as const;
 
 export const DEFAULT_SAFETY_ALLOWANCE = 500;
+export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
+export const DEFAULT_CONTINUATION_INSTRUCTION =
+	"Continue the narrative naturally without repeating the previous text.";
 
 export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSettings = {
 	modelId: "deepseek-chat",
@@ -25,6 +29,10 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	contextLimit: 32768,
 	responseBudget: 1024,
 	safetyAllowance: DEFAULT_SAFETY_ALLOWANCE,
+	siblingGenerationLimit: DEFAULT_SIBLING_GENERATION_LIMIT,
+	continuationStrategy: "instruction",
+	continuationInstruction: DEFAULT_CONTINUATION_INSTRUCTION,
+	continuationPrefillSuffix: "",
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
@@ -45,7 +53,33 @@ export function updateConversationGenerationSettings(
 	conversationId: number,
 	input: ConversationGenerationSettingsInput,
 ): ConversationGenerationSettings {
-	const normalized = validateGenerationSettings(input);
+	// Commands normally submit the complete settings object, but retain a
+	// previously edited instruction when an older caller updates only sampling
+	// fields. This keeps Continuation settings durable across unrelated edits.
+	const existing = db
+		.select()
+		.from(conversationGenerationSettingsTable)
+		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
+		.get();
+	const normalized = validateGenerationSettings({
+		...input,
+		continuationStrategy:
+			input.continuationStrategy ??
+			(existing === undefined
+				? undefined
+				: parseContinuationStrategy(existing.continuation_strategy)) ??
+			"instruction",
+		continuationInstruction:
+			input.continuationInstruction ??
+			existing?.continuation_instruction ??
+			DEFAULT_CONTINUATION_INSTRUCTION,
+		continuationPrefillSuffix:
+			input.continuationPrefillSuffix ??
+			(existing === undefined
+				? undefined
+				: parseContinuationPrefillSuffix(existing.continuation_prefill_suffix)) ??
+			"",
+	});
 	db.insert(conversationGenerationSettingsTable)
 		.values({ chat_id: conversationId })
 		.onConflictDoNothing()
@@ -61,6 +95,10 @@ export function updateConversationGenerationSettings(
 		context_limit: normalized.contextLimit,
 		response_budget: normalized.responseBudget,
 		safety_allowance: normalized.safetyAllowance,
+		sibling_generation_limit: normalized.siblingGenerationLimit,
+		continuation_strategy: normalized.continuationStrategy,
+		continuation_instruction: normalized.continuationInstruction,
+		continuation_prefill_suffix: normalized.continuationPrefillSuffix,
 		request_overrides_json: JSON.stringify(normalized.requestOverrides),
 		})
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
@@ -75,6 +113,15 @@ export function updateConversationGenerationSettings(
 function readGenerationSettingsRow(
 	row: typeof conversationGenerationSettingsTable.$inferSelect,
 ): ConversationGenerationSettings {
+	if (
+		row.continuation_strategy !== "instruction" &&
+		row.continuation_strategy !== "assistant-prefill"
+	) {
+		throw new Error("Conversation Continuation strategy is corrupt.");
+	}
+	const continuationPrefillSuffix = parseContinuationPrefillSuffix(
+		row.continuation_prefill_suffix,
+	);
 	return {
 		modelId: row.model_id,
 		temperature: row.temperature,
@@ -84,6 +131,10 @@ function readGenerationSettingsRow(
 		contextLimit: row.context_limit,
 		responseBudget: row.response_budget,
 		safetyAllowance: row.safety_allowance,
+		siblingGenerationLimit: row.sibling_generation_limit,
+		continuationStrategy: row.continuation_strategy,
+		continuationInstruction: row.continuation_instruction,
+		continuationPrefillSuffix,
 		requestOverrides: parseRequestOverrides(row.request_overrides_json),
 	};
 }
@@ -121,6 +172,31 @@ function validateGenerationSettings(
 			"Safety allowance must be a non-negative whole number.",
 		);
 	}
+	const siblingGenerationLimit = input.siblingGenerationLimit === undefined
+		? DEFAULT_SIBLING_GENERATION_LIMIT
+		: input.siblingGenerationLimit;
+	if (!Number.isInteger(siblingGenerationLimit) || siblingGenerationLimit <= 0) {
+		throw new InvalidConversationCommandError(
+			"Sibling Generation limit must be a positive whole number.",
+		);
+	}
+	const continuationStrategy = input.continuationStrategy ?? "instruction";
+	if (continuationStrategy !== "instruction" && continuationStrategy !== "assistant-prefill") {
+		throw new InvalidConversationCommandError(
+			"Continuation strategy must be instruction or assistant prefill.",
+		);
+	}
+	const continuationInstruction = input.continuationInstruction === undefined
+		? DEFAULT_CONTINUATION_INSTRUCTION
+		: input.continuationInstruction;
+	if (continuationInstruction.trim() === "") {
+		throw new InvalidConversationCommandError(
+			"Continuation instruction must not be blank.",
+		);
+	}
+	const continuationPrefillSuffix = validateContinuationPrefillSuffix(
+		input.continuationPrefillSuffix ?? "",
+	);
 	const requestOverrides = cloneRequestOverrides(input.requestOverrides);
 	return {
 		modelId,
@@ -131,8 +207,31 @@ function validateGenerationSettings(
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
 		safetyAllowance,
+		siblingGenerationLimit,
+		continuationStrategy,
+		continuationInstruction,
+		continuationPrefillSuffix,
 		requestOverrides,
 	};
+}
+
+function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffix {
+	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;
+	throw new Error("Conversation Continuation prefill suffix is corrupt.");
+}
+
+function parseContinuationStrategy(value: string): "instruction" | "assistant-prefill" {
+	if (value === "instruction" || value === "assistant-prefill") return value;
+	throw new Error("Conversation Continuation strategy is corrupt.");
+}
+
+function validateContinuationPrefillSuffix(
+	value: ContinuationPrefillSuffix,
+): ContinuationPrefillSuffix {
+	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;
+	throw new InvalidConversationCommandError(
+		"Continuation prefill suffix must be none, a space, a newline, or a double newline.",
+	);
 }
 
 function parseRequestOverrides(value: string): ConversationGenerationSettings["requestOverrides"] {

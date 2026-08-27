@@ -60,6 +60,10 @@ export interface ConversationGenerationSettings {
 	contextLimit: number;
 	responseBudget: number;
 	safetyAllowance: number;
+	siblingGenerationLimit: number;
+	continuationStrategy: "instruction" | "assistant-prefill";
+	continuationInstruction: string;
+	continuationPrefillSuffix: ContinuationPrefillSuffix;
 	requestOverrides: {
 		"chat-completions": GenerationRequestOverrides;
 		responses: GenerationRequestOverrides;
@@ -67,10 +71,12 @@ export interface ConversationGenerationSettings {
 	};
 }
 
+export type ContinuationPrefillSuffix = "" | " " | "\n" | "\n\n";
+
 export type GenerationStreamResult =
 	| { outcome: "applied" }
 	| { outcome: "not-found" }
-	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid"; reason: string };
+	| { outcome: "not-playable" | "unconfigured" | "failed" | "invalid" | "conflict"; reason: string };
 
 export type GenerationStreamDelta =
 	| { type: "content"; text: string }
@@ -78,6 +84,18 @@ export type GenerationStreamDelta =
 	| { type: "usage"; usage: Record<string, number> }
 	| { type: "finished"; finishReason: "stop" | "length" | "other"; rawFinishReason?: string }
 	| { type: "keepalive" };
+
+export interface GenerationStreamState {
+	generationId: number;
+	conversationId: number;
+	messageId: number;
+	variantId: number;
+	content: string;
+	reasoning: string;
+	latestEventId: number;
+	status: "active" | "complete" | "failed";
+	terminalReason: string | null;
+}
 
 export type GenerationRequestValue =
 	| string
@@ -107,6 +125,18 @@ export interface ConversationSummary {
 		generate: { available: boolean; reason: "conversation-not-playable" | null };
 		swipe: { available: boolean; reason: "conversation-not-playable" | null };
 	};
+	activeGeneration?: {
+		generationId: number;
+		messageId: number;
+		variantId: number;
+		startedAt: string;
+	} | null;
+	activeGenerations?: {
+		generationId: number;
+		messageId: number;
+		variantId: number;
+		startedAt: string;
+	}[];
 }
 
 export type ConversationAction =
@@ -334,6 +364,74 @@ export async function loadConversationGenerationSettings(
 	return (await response.json()) as ConversationGenerationSettings;
 }
 
+export type StartConversationGenerationResult =
+	| {
+			outcome: "accepted";
+			generationId: number;
+			conversationId: number;
+			messageId: number;
+			variantId: number;
+	  }
+	| { outcome: "not-found" | "conflict" | "invalid"; reason?: string };
+
+// Starts a server-owned generation without coupling acceptance to a browser
+// stream. Call subscribeConversationGeneration separately for each observing
+// client, including clients that reconnect after a reload.
+export async function startConversationGeneration(
+	conversationId: number,
+	expectedRevision: number,
+	content: string,
+): Promise<StartConversationGenerationResult> {
+	const response = await fetch(`/api/conversations/${conversationId}/generations`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ expectedRevision, content }),
+	});
+	let value: GenerationStreamJsonObject | null;
+	try {
+		// SAFETY: the object-tag check in generationStreamJsonObject validates the
+		// untrusted JSON before any named field is consumed below.
+		value = generationStreamJsonObject(await response.json());
+	} catch { return { outcome: "invalid", reason: "Generation start returned malformed JSON." }; }
+	if (value === null) return { outcome: "invalid", reason: "Generation start returned malformed JSON." };
+	if (!response.ok) {
+		if (isGenerationStartValue(value, "not-found")) return { outcome: "not-found" };
+		if (isGenerationStartValue(value, "conflict") || isGenerationStartValue(value, "invalid")) {
+			return { outcome: value.outcome, reason: value.reason };
+		}
+		return { outcome: "invalid", reason: "Generation could not be started." };
+	}
+	if (!isGenerationStartAccepted(value)) return { outcome: "invalid", reason: "Generation start returned malformed JSON." };
+	return value;
+}
+
+export async function startConversationSiblingGeneration(
+	conversationId: number,
+	messageId: number,
+): Promise<StartConversationGenerationResult> {
+	const response = await fetch(`/api/conversations/${conversationId}/messages/${messageId}/sibling/generations`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+	});
+	let value: GenerationStreamJsonObject | null;
+	try {
+		// SAFETY: the object-tag check in generationStreamJsonObject validates the
+		// untrusted JSON before any named field is consumed below.
+		value = generationStreamJsonObject(await response.json());
+	} catch { return { outcome: "invalid", reason: "Sibling Generation start returned malformed JSON." }; }
+	if (value === null) return { outcome: "invalid", reason: "Sibling Generation start returned malformed JSON." };
+	if (!response.ok) {
+		if (isGenerationStartValue(value, "not-found")) return { outcome: "not-found" };
+		if (isGenerationStartValue(value, "conflict") || isGenerationStartValue(value, "invalid")) {
+			return { outcome: value.outcome, reason: value.reason };
+		}
+		return { outcome: "invalid", reason: "Sibling Generation could not be started." };
+	}
+	if (!isGenerationStartAccepted(value)) return { outcome: "invalid", reason: "Sibling Generation start returned malformed JSON." };
+	return value;
+}
+
 // POST generation uses a native fetch stream because EventSource cannot send
 // a request body. Frames are decoded and validated here before the workspace
 // sees visible text; malformed provider or server payloads never become UI
@@ -341,41 +439,115 @@ export async function loadConversationGenerationSettings(
 export async function streamConversationReply(
 	conversationId: number,
 	input: {
+		endpoint?: "generate" | "continue";
+		expectedRevision?: number;
+		content?: string;
 		signal?: AbortSignal;
 		onDelta: (event: GenerationStreamDelta) => void;
+		onAccepted?: (generationId: number) => void;
+		onState?: (state: GenerationStreamState) => void;
+		afterEventId?: number;
 	},
 ): Promise<GenerationStreamResult> {
-	const response = await fetch(`/api/conversations/${conversationId}/generate/stream`, {
+	const endpoint = input.endpoint === "continue" ? "continue" : "generate";
+	const response = await fetch(`/api/conversations/${conversationId}/${endpoint}/stream`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: "{}",
+		body: input.expectedRevision === undefined && input.content === undefined
+			? "{}"
+			: JSON.stringify({ expectedRevision: input.expectedRevision, content: input.content }),
 		signal: input.signal,
 	});
 	if (!response.ok || response.body === null) {
 		return { outcome: "failed", reason: "Generation stream could not be opened." };
 	}
-	const reader = response.body.getReader();
+	return consumeGenerationStream(response, input);
+}
+
+// A GET subscription is deliberately separate from POST acceptance. Reloads
+// and navigation can reconnect with the last observed event position without
+// contacting the provider or creating another Generation.
+export async function subscribeConversationGeneration(
+	conversationId: number,
+	generationId: number,
+	input: {
+		afterEventId?: number;
+		signal?: AbortSignal;
+		onDelta: (event: GenerationStreamDelta) => void;
+		onState?: (state: GenerationStreamState) => void;
+	},
+): Promise<GenerationStreamResult> {
+	const query = new URLSearchParams();
+	if (input.afterEventId !== undefined) query.set("after", String(input.afterEventId));
+	const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+	const response = await fetch(
+		`/api/conversations/${conversationId}/generate/stream/${generationId}${suffix}`,
+		{ method: "GET", signal: input.signal },
+	);
+	if (!response.ok || response.body === null) {
+		return { outcome: "failed", reason: "Generation subscription could not be opened." };
+	}
+	return consumeGenerationStream(response, input);
+}
+
+async function consumeGenerationStream(
+	response: Response,
+	input: {
+		onDelta: (event: GenerationStreamDelta) => void;
+		onAccepted?: (generationId: number) => void;
+		onState?: (state: GenerationStreamState) => void;
+	},
+): Promise<GenerationStreamResult> {
+	const body = response.body;
+	if (body === null) {
+		return { outcome: "failed", reason: "Generation stream had no body." };
+	}
+	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	let pending = "";
 	let result: GenerationStreamResult | null = null;
+	let lastEventId = 0;
 	const consumeFrame = (frame: string) => {
 		let eventType = "message";
+		let frameId: number | undefined;
+		let malformedId = false;
 		const dataLines: string[] = [];
 		for (const line of frame.split(/\r?\n/)) {
 			if (line.startsWith("event:")) eventType = line.slice(6).trim();
+			if (line.startsWith("id:")) {
+				const candidate = Number(line.slice(3).trim());
+				if (!Number.isInteger(candidate) || candidate < 1) malformedId = true;
+				else frameId = candidate;
+			}
 			if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
 		}
 		if (dataLines.length === 0) return;
+		if (malformedId) return;
 		const value = parseGenerationStreamObject(dataLines.join("\n"));
 		if (value === null) return;
 		const delta = eventType === "generation" ? parseGenerationStreamDelta(value) : null;
 		if (delta !== null) {
+			if (frameId !== undefined) {
+				if (frameId <= lastEventId) return;
+				lastEventId = frameId;
+			}
 			input.onDelta(delta);
+			return;
+		}
+		const state = eventType === "state" ? parseGenerationStreamState(value) : null;
+		if (state !== null) {
+			lastEventId = Math.max(lastEventId, state.latestEventId);
+			input.onState?.(state);
 			return;
 		}
 		const applied = eventType === "complete" ? parseGenerationApplied(value) : null;
 		if (applied !== null) {
 			result = applied;
+			return;
+		}
+		const accepted = eventType === "accepted" ? parseGenerationAccepted(value) : null;
+		if (accepted !== null) {
+			input.onAccepted?.(accepted.generationId);
 			return;
 		}
 		const failure = eventType === "error" ? parseGenerationFailure(value) : null;
@@ -392,6 +564,46 @@ export async function streamConversationReply(
 	if (pending.length > 0) consumeFrame(pending);
 	return result ?? { outcome: "failed", reason: "Generation ended without a terminal result." };
 }
+
+export function streamConversationContinuation(
+	conversationId: number,
+	input: {
+		expectedRevision: number;
+		signal?: AbortSignal;
+		onDelta: (event: GenerationStreamDelta) => void;
+		onAccepted?: (generationId: number) => void;
+	},
+): Promise<GenerationStreamResult> {
+	return streamConversationReply(conversationId, { ...input, endpoint: "continue" });
+}
+
+// Starts and observes a server-owned Sibling Generation at one existing
+// Message. Each call receives its own Generation/event IDs, so parallel
+// sibling streams share the decoder without provider-specific handling.
+export function streamConversationSibling(
+	conversationId: number,
+	messageId: number,
+	input: {
+		signal?: AbortSignal;
+		onDelta: (event: GenerationStreamDelta) => void;
+		onAccepted?: (generationId: number) => void;
+		onState?: (state: GenerationStreamState) => void;
+	},
+): Promise<GenerationStreamResult> {
+	return fetch(`/api/conversations/${conversationId}/messages/${messageId}/sibling/stream`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: "{}",
+		signal: input.signal,
+	}).then((response) => {
+		if (!response.ok || response.body === null) {
+			return { outcome: "failed", reason: "Sibling Generation stream could not be opened." } satisfies GenerationStreamResult;
+		}
+		return consumeGenerationStream(response, input);
+	});
+}
+
+export const streamConversationContinue = streamConversationContinuation;
 
 type GenerationStreamJsonValue =
 	| string
@@ -415,6 +627,29 @@ function parseGenerationStreamObject(serialized: string): GenerationStreamJsonOb
 		return null;
 	}
 	return generationStreamJsonObject(parsed);
+}
+
+function isGenerationStartValue(
+	value: GenerationStreamJsonObject,
+	outcome: "not-found" | "conflict" | "invalid",
+): value is GenerationStreamJsonObject & { outcome: typeof outcome; reason?: string } {
+	return generationStreamJsonString(value.outcome) === outcome;
+}
+
+function isGenerationStartAccepted(
+	value: GenerationStreamJsonObject,
+): value is GenerationStreamJsonObject & {
+	outcome: "accepted";
+	generationId: number;
+	conversationId: number;
+	messageId: number;
+	variantId: number;
+} {
+	return generationStreamJsonString(value.outcome) === "accepted" &&
+		generationStreamJsonNumber(value.generationId) !== undefined &&
+		generationStreamJsonNumber(value.conversationId) !== undefined &&
+		generationStreamJsonNumber(value.messageId) !== undefined &&
+		generationStreamJsonNumber(value.variantId) !== undefined;
 }
 
 function parseGenerationStreamDelta(value: GenerationStreamJsonObject): GenerationStreamDelta | null {
@@ -443,6 +678,38 @@ function parseGenerationStreamDelta(value: GenerationStreamJsonObject): Generati
 		: { type, finishReason, rawFinishReason };
 }
 
+function parseGenerationStreamState(value: GenerationStreamJsonObject): GenerationStreamState | null {
+	if (generationStreamJsonString(value.outcome) !== "active-state") return null;
+	const generationId = generationStreamJsonNumber(value.generationId);
+	const conversationId = generationStreamJsonNumber(value.conversationId);
+	const messageId = generationStreamJsonNumber(value.messageId);
+	const variantId = generationStreamJsonNumber(value.variantId);
+	const content = generationStreamJsonString(value.content);
+	const reasoning = generationStreamJsonString(value.reasoning);
+	const latestEventId = generationStreamJsonNumber(value.latestEventId);
+	const status = generationStreamJsonString(value.status);
+	const terminalReason = value.terminalReason === null
+		? null
+		: generationStreamJsonString(value.terminalReason);
+	if (
+		generationId === undefined || conversationId === undefined || messageId === undefined ||
+		variantId === undefined || content === undefined || reasoning === undefined ||
+		latestEventId === undefined || (status !== "active" && status !== "complete" && status !== "failed") ||
+		terminalReason === undefined
+	) return null;
+	return {
+		generationId,
+		conversationId,
+		messageId,
+		variantId,
+		content,
+		reasoning,
+		latestEventId,
+		status,
+		terminalReason,
+	};
+}
+
 function parseGenerationApplied(
 	value: GenerationStreamJsonObject,
 ): Extract<GenerationStreamResult, { outcome: "applied" }> | null {
@@ -450,12 +717,22 @@ function parseGenerationApplied(
 	return { outcome: "applied" };
 }
 
+function parseGenerationAccepted(
+	value: GenerationStreamJsonObject,
+): { outcome: "accepted"; generationId: number } | null {
+	if (generationStreamJsonString(value.outcome) !== "accepted") return null;
+	const generationId = generationStreamJsonNumber(value.generationId);
+	return generationId === undefined
+		? null
+		: { outcome: "accepted", generationId };
+}
+
 function parseGenerationFailure(
 	value: GenerationStreamJsonObject,
 ): Exclude<GenerationStreamResult, { outcome: "applied" }> | null {
 	const outcome = generationStreamJsonString(value.outcome);
 	if (outcome === "not-found") return { outcome };
-	if (outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid") return null;
+	if (outcome !== "not-playable" && outcome !== "unconfigured" && outcome !== "failed" && outcome !== "invalid" && outcome !== "conflict") return null;
 	const reason = generationStreamJsonString(value.reason);
 	return reason === undefined ? null : { outcome, reason };
 }

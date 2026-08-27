@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
 	characterTable,
+	activeGenerationTable,
 	chatDataTable,
 	chatTable,
 	messageDataTable,
@@ -21,6 +22,7 @@ import type {
 	ConversationControlSnapshot,
 	ConversationControlValidity,
 	ConversationDataEntry,
+	ActiveGenerationSnapshot,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
@@ -385,6 +387,19 @@ export function readConversationSnapshot(
 		.all()
 		.map(toDataEntry);
 
+	const activeGenerationRows = db
+		.select({
+			generationId: activeGenerationTable.id,
+			messageId: activeGenerationTable.message_id,
+			variantId: activeGenerationTable.variant_id,
+			startedAt: activeGenerationTable.started_at,
+		})
+		.from(activeGenerationTable)
+		.where(eq(activeGenerationTable.chat_id, conversationId))
+		.orderBy(asc(activeGenerationTable.id))
+		.all();
+	const activeGeneration: ActiveGenerationSnapshot | null = activeGenerationRows[0] ?? null;
+
 	// Removal eligibility follows Messages: the deletion mode and
 	// affected-generation count derive from the same references the command
 	// enforces, so clients never reconstruct the rule.
@@ -408,6 +423,8 @@ export function readConversationSnapshot(
 		controlValidity,
 		playable,
 		capabilities: deriveCapabilities(playable),
+		activeGeneration,
+		activeGenerations: activeGenerationRows,
 		messages,
 		data,
 	};

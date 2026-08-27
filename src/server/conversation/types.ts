@@ -8,6 +8,17 @@ export interface ConversationDataEntry {
 	value: string;
 }
 
+// JSON values are the only opaque values allowed across server-owned
+// persistence seams. Keeping this closed recursive type avoids admitting
+// provider classes, credentials, or unserializable runtime values.
+export type ConversationJsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly ConversationJsonValue[]
+	| Readonly<{ [key: string]: ConversationJsonValue }>;
+
 // Conversation-local generation controls. Request Overrides retain separate
 // namespaces for each API Format so switching a global Connection Profile
 // never transmits settings authored for another wire format.
@@ -20,6 +31,10 @@ export interface ConversationGenerationSettings {
 	contextLimit: number;
 	responseBudget: number;
 	safetyAllowance: number;
+	siblingGenerationLimit: number;
+	continuationStrategy: "instruction" | "assistant-prefill";
+	continuationInstruction: string;
+	continuationPrefillSuffix: ContinuationPrefillSuffix;
 	requestOverrides: Readonly<{
 		"chat-completions": GenerationRequestOverrides;
 		responses: GenerationRequestOverrides;
@@ -39,13 +54,21 @@ export type GenerationRequestOverrides = Readonly<
 	Record<string, GenerationRequestValue>
 >;
 
+// Suffixes are intentionally a closed set. They are request-time formatting
+// choices, not authored Conversation content.
+export type ContinuationPrefillSuffix = "" | " " | "\n" | "\n\n";
+
 // Older clients may omit the newly introduced Safety allowance. The domain
 // fills that omission with the same 500-token default used for new rows.
 export type ConversationGenerationSettingsInput = Omit<
 	ConversationGenerationSettings,
-	"safetyAllowance"
+	"safetyAllowance" | "siblingGenerationLimit" | "continuationStrategy" | "continuationInstruction" | "continuationPrefillSuffix"
 > & {
 	safetyAllowance?: number | undefined;
+	siblingGenerationLimit?: number | undefined;
+	continuationStrategy?: "instruction" | "assistant-prefill" | undefined;
+	continuationInstruction?: string | undefined;
+	continuationPrefillSuffix?: ContinuationPrefillSuffix | undefined;
 };
 
 // Narrowing for the on-demand Conversation data read. The filter is
@@ -243,6 +266,14 @@ export interface ConversationSnapshot {
 	controlValidity: ConversationControlValidity;
 	playable: boolean;
 	capabilities: ConversationCapabilities;
+	// A provisional target is server-owned execution state. It is exposed in
+	// the snapshot so a reloaded workspace can render the target from
+	// authoritative storage instead of a browser-local text accumulator.
+	activeGeneration: ActiveGenerationSnapshot | null;
+	// All server-owned targets at the active response position. The singular
+	// field above remains a compatibility shorthand for the first target;
+	// clients that support parallel siblings use this complete list.
+	activeGenerations: ActiveGenerationSnapshot[];
 	messages: ConversationMessageSnapshot[];
 	data: ConversationDataEntry[];
 }
@@ -271,6 +302,13 @@ export interface ChatHistoryMessage {
 	// Immutable Author Stamp created from the resolved Participant name at
 	// commit; no source Writer or role flag has any special treatment.
 	author: AuthorStampSnapshot | null;
+	// The model Control captured when this Message was generated. This small
+	// capability hint lets a client keep Continue available after Control has
+	// moved to another Participant without exposing prompt or provenance data.
+	modelParticipantIdAtCreation?: number | null;
+	// Derived from the selected Variant's visible text or private reasoning;
+	// no reasoning payload crosses the ordinary history boundary.
+	continuable?: boolean;
 	// Variant order is preserved exactly as stored; empty and duplicate
 	// variants remain separate positions with their exact content.
 	variants: ChatHistoryVariant[];
@@ -415,6 +453,30 @@ export interface ConversationModule {
 	// Server-side commit of a finished current Generate; see
 	// CommitGenerationInput. Not a client-submitted command.
 	commitGeneration(input: CommitGenerationInput): ConversationSnapshot;
+	// Server-owned Send lifecycle. Acceptance creates the ordinary human
+	// Message and provisional model target in one revisioned transaction;
+	// terminal transitions resolve or remove only that target.
+	acceptTailGeneration(
+		input: AcceptTailGenerationInput,
+	): AcceptedTailGeneration;
+	resolveTailGeneration(
+		input: ResolveTailGenerationInput,
+	): ConversationSnapshot;
+	removeTailGeneration(
+		input: RemoveTailGenerationInput,
+	): ConversationSnapshot;
+	acceptContinuationGeneration(
+		input: AcceptContinuationGenerationInput,
+	): AcceptedContinuationGeneration;
+	acceptSiblingGeneration(
+		input: AcceptSiblingGenerationInput,
+	): AcceptedSiblingGeneration;
+	resolveSiblingGeneration(
+		input: ResolveSiblingGenerationInput,
+	): ConversationSnapshot;
+	removeSiblingGeneration(
+		input: RemoveSiblingGenerationInput,
+	): ConversationSnapshot;
 	// Server-side commit of a finished targeted Swipe (sibling Variant
 	// generation); see CommitSiblingVariantInput. Like commitGeneration, it
 	// captures at generation start and commits unguarded by the revision so
@@ -434,6 +496,122 @@ export interface CommitSiblingVariantInput {
 	content: string;
 	provenance?: ConversationDataEntry | undefined;
 	data?: readonly ConversationDataEntry[] | undefined;
+}
+
+export interface ActiveGenerationSnapshot {
+	generationId: number;
+	messageId: number;
+	variantId: number;
+	startedAt: string;
+}
+
+// Captured, provider-neutral input stored with an Active Generation. The
+// domain treats the plan/settings/connection values as opaque JSON so this
+// seam never imports provider protocol types.
+export interface AcceptTailGenerationInput {
+	conversationId: number;
+	expectedRevision: number;
+	timestamp: string;
+	humanContent: string;
+	// A retry may point at the already accepted trailing human Message. When
+	// omitted, acceptance creates one in the same transaction.
+	reuseHumanMessageId?: number | undefined;
+	humanParticipantId: number;
+	modelParticipantId: number;
+	capturedModelName: string;
+	promptPlan: ConversationJsonValue;
+	historyRoles: readonly ("human" | "model" | null)[];
+	generationSettings: ConversationJsonValue;
+	connection: ConversationJsonValue;
+	generationIntent?: ConversationJsonValue | undefined;
+	provenance?: ConversationDataEntry | undefined;
+}
+
+export interface AcceptedTailGeneration {
+	generationId: number;
+	humanMessageId: number;
+	modelMessageId: number;
+	provisionalVariantId: number;
+	conversation: ConversationSnapshot;
+}
+
+export interface ResolveTailGenerationInput {
+	conversationId: number;
+	generationId: number;
+	timestamp: string;
+	content: string;
+	data?: readonly ConversationDataEntry[] | undefined;
+}
+
+export interface RemoveTailGenerationInput {
+	conversationId: number;
+	generationId: number;
+}
+
+// Continuation acceptance creates only the model-authored provisional target.
+// The current human seat remains part of the captured historical pair, but
+// there is deliberately no Human-authored Message for this lifecycle.
+export interface AcceptContinuationGenerationInput {
+	conversationId: number;
+	expectedRevision: number;
+	timestamp: string;
+	precedingMessageId: number;
+	precedingVariantId: number;
+	humanParticipantId: number;
+	modelParticipantId: number;
+	capturedModelName: string;
+	promptPlan: ConversationJsonValue;
+	historyRoles: readonly ("human" | "model" | null)[];
+	generationSettings: ConversationJsonValue;
+	connection: ConversationJsonValue;
+	generationIntent?: ConversationJsonValue | undefined;
+	provenance?: ConversationDataEntry | undefined;
+}
+
+export interface AcceptedContinuationGeneration {
+	generationId: number;
+	modelMessageId: number;
+	provisionalVariantId: number;
+	conversation: ConversationSnapshot;
+}
+
+// Sibling acceptance creates a Provisional Variant on an existing Message.
+// `priorVariantId` lets an empty failure restore the selection that was
+// visible before this attempt, without overwriting a later user selection.
+export interface AcceptSiblingGenerationInput {
+	conversationId: number;
+	messageId: number;
+	timestamp: string;
+	humanParticipantId: number;
+	modelParticipantId: number;
+	capturedModelName: string;
+	promptPlan: ConversationJsonValue;
+	historyRoles: readonly ("human" | "model" | null)[];
+	generationSettings: ConversationJsonValue;
+	connection: ConversationJsonValue;
+	generationIntent?: ConversationJsonValue | undefined;
+	provenance?: ConversationDataEntry | undefined;
+}
+
+export interface AcceptedSiblingGeneration {
+	generationId: number;
+	messageId: number;
+	provisionalVariantId: number;
+	priorVariantId: number | null;
+	conversation: ConversationSnapshot;
+}
+
+export interface ResolveSiblingGenerationInput {
+	conversationId: number;
+	generationId: number;
+	timestamp: string;
+	content: string;
+	data?: readonly ConversationDataEntry[] | undefined;
+}
+
+export interface RemoveSiblingGenerationInput {
+	conversationId: number;
+	generationId: number;
 }
 
 // The generation workflow captures these values at generation start; the

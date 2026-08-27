@@ -13,7 +13,7 @@ import {
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import { createFakeModelClient } from "../model-client";
-import { generateReply, generateSiblingVariant } from ".";
+import { generateReply, generateSiblingVariant, startServerOwnedSiblingGeneration } from ".";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
@@ -504,7 +504,7 @@ describe("Historical sibling Variant generation", () => {
 		expect(contacted).toBe(false);
 	});
 
-	test("a transport failure commits nothing", async () => {
+	test("a zero-output transport failure removes its provisional sibling and restores the prior selection", async () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
 		const before = module().getSnapshot(conversation.id);
@@ -522,7 +522,9 @@ describe("Historical sibling Variant generation", () => {
 
 		const after = module().getSnapshot(conversation.id);
 		expect(after?.messages).toEqual(before.messages);
-		expect(after?.revision).toBe(before.revision);
+		// Acceptance and terminal removal are both authoritative lifecycle
+		// transitions even though no durable Variant remains.
+		expect(after?.revision).toBe(before.revision + 2);
 	});
 
 	test("a sibling transport failure preserves visible partial output as interrupted", async () => {
@@ -548,5 +550,43 @@ describe("Historical sibling Variant generation", () => {
 			{ namespace: "generation", key: "outcome", value: "interrupted" },
 			{ namespace: "generation", key: "error", value: "Connection dropped." },
 		]));
+	});
+
+	test("parallel siblings reserve distinct active targets at one response position", async () => {
+		const greeting = conversation.messages[0];
+		if (greeting === undefined) throw new Error("Greeting missing.");
+		let releaseFirst!: () => void;
+		let releaseSecond!: () => void;
+		const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		const secondGate = new Promise<void>((resolve) => { releaseSecond = resolve; });
+		const held = (text: string, gate: Promise<void>) => createFakeModelClient(() => (async function* () {
+			yield { type: "content" as const, text };
+			await gate;
+			yield { type: "finished" as const, finishReason: "stop" as const };
+		})());
+
+		const first = startServerOwnedSiblingGeneration(database, {
+			conversationId: conversation.id,
+			messageId: greeting.id,
+			modelClient: held("First sibling", firstGate),
+		});
+		const firstAccepted = await first.accepted;
+		const second = startServerOwnedSiblingGeneration(database, {
+			conversationId: conversation.id,
+			messageId: greeting.id,
+			modelClient: held("Second sibling", secondGate),
+		});
+		const secondAccepted = await second.accepted;
+		const active = createConversationModule(database).getSnapshot(conversation.id);
+		expect(active?.activeGenerations.map((entry) => entry.generationId)).toEqual([
+			firstAccepted.generationId,
+			secondAccepted.generationId,
+		]);
+		expect(firstAccepted.provisionalVariantId).not.toBe(secondAccepted.provisionalVariantId);
+
+		releaseFirst();
+		releaseSecond();
+		await Promise.all([first.result, second.result]);
+		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toEqual([]);
 	});
 });

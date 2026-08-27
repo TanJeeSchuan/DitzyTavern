@@ -71,6 +71,19 @@ const conversationCapabilities = t.Object({
 	swipe: capabilityAvailability,
 });
 
+const activeGeneration = t.Nullable(t.Object({
+	generationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	startedAt: t.String(),
+}));
+const activeGenerations = t.Array(t.Object({
+	generationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+	startedAt: t.String(),
+}));
+
 // The conversational transport shape for every response that returns a
 // Conversation: the header, the full Cast, Control, and the derived
 // playability and capability state. Messages and per-Conversation data are
@@ -87,6 +100,8 @@ export const conversationSummary = t.Object({
 	controlValidity: conversationControlValidity,
 	playable: t.Boolean(),
 	capabilities: conversationCapabilities,
+	activeGeneration,
+	activeGenerations,
 });
 
 export const conversationGenerationSettings = t.Object({
@@ -98,6 +113,18 @@ export const conversationGenerationSettings = t.Object({
 	contextLimit: t.Integer(),
 	responseBudget: t.Integer(),
 	safetyAllowance: t.Integer(),
+	siblingGenerationLimit: t.Integer(),
+	continuationStrategy: t.Union([
+		t.Literal("instruction"),
+		t.Literal("assistant-prefill"),
+	]),
+	continuationInstruction: t.String(),
+	continuationPrefillSuffix: t.Union([
+		t.Literal(""),
+		t.Literal(" "),
+		t.Literal("\n"),
+		t.Literal("\n\n"),
+	]),
 	requestOverrides: t.Object({
 		"chat-completions": t.Record(t.String(), t.Unknown()),
 		responses: t.Record(t.String(), t.Unknown()),
@@ -133,6 +160,8 @@ export const toConversationSummary = (conversation: ConversationSnapshot) => ({
 	controlValidity: conversation.controlValidity,
 	playable: conversation.playable,
 	capabilities: conversation.capabilities,
+	activeGeneration: conversation.activeGeneration,
+	activeGenerations: conversation.activeGenerations,
 });
 
 // Lightweight paginated history read contract: stable chronological pages
@@ -150,6 +179,8 @@ const chatHistoryMessage = t.Object({
 	id: t.Integer(),
 	position: t.Integer(),
 	timestamp: t.String(),
+	modelParticipantIdAtCreation: t.Optional(t.Nullable(t.Integer())),
+	continuable: t.Optional(t.Boolean()),
 	author: t.Nullable(
 		t.Object({
 			participantId: t.Nullable(t.Integer()),
@@ -293,6 +324,17 @@ const generationSettings = t.Object({
 	contextLimit: t.Integer(),
 	responseBudget: t.Integer(),
 	safetyAllowance: t.Optional(t.Integer()),
+	continuationStrategy: t.Optional(t.Union([
+		t.Literal("instruction"),
+		t.Literal("assistant-prefill"),
+	])),
+	continuationInstruction: t.Optional(t.String()),
+	continuationPrefillSuffix: t.Optional(t.Union([
+		t.Literal(""),
+		t.Literal(" "),
+		t.Literal("\n"),
+		t.Literal("\n\n"),
+	])),
 	requestOverrides: t.Object({
 		"chat-completions": t.Record(t.String(), t.Unknown()),
 		responses: t.Record(t.String(), t.Unknown()),
@@ -372,6 +414,21 @@ const conversationCommandAction = t.Union([
 export const conversationCommandBody = t.Object({
 	expectedRevision: t.Integer(),
 	action: conversationCommandAction,
+});
+
+// Send carries the client draft and the Conversation revision it was based
+// on. Both are optional at the schema level to preserve the legacy empty
+// Generate request used by older clients; the route requires them together
+// whenever either field is present.
+export const generationBody = t.Object({
+	expectedRevision: t.Optional(t.Integer()),
+	content: t.Optional(t.String()),
+});
+
+// Continue carries only the Conversation revision. The server derives the
+// selected terminal Message and current Control pair from its snapshot.
+export const continuationBody = t.Object({
+	expectedRevision: t.Integer(),
 });
 
 export const notFoundOutcome = t.Object({ outcome: t.Literal("not-found") });

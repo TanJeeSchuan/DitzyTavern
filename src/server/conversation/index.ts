@@ -1,6 +1,15 @@
 import type { Database } from "bun:sqlite";
 import { commitConversationSiblingVariant } from "./commands/commit-sibling-variant";
 import { commitConversationGeneration } from "./commands/commit-generation";
+import {
+	acceptConversationTailGeneration,
+	acceptConversationContinuationGeneration,
+	acceptConversationSiblingGeneration,
+	removeConversationSiblingGeneration,
+	removeConversationTailGeneration,
+	resolveConversationSiblingGeneration,
+	resolveConversationTailGeneration,
+} from "./commands/active-generation";
 import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
@@ -12,6 +21,7 @@ import type { ConversationModule } from "./types";
 
 export {
 	ConversationNotPlayableError,
+	ContinuationUnavailableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	InvalidConversationCreationError,
@@ -20,7 +30,23 @@ export {
 	ParticipantNotFoundError,
 	StaleConversationRevisionError,
 } from "./errors";
-export { DEFAULT_SAFETY_ALLOWANCE } from "./generation-settings";
+export type { ContinuationUnavailableReason } from "./errors";
+export {
+	DEFAULT_CONTINUATION_INSTRUCTION,
+	DEFAULT_SAFETY_ALLOWANCE,
+	DEFAULT_SIBLING_GENERATION_LIMIT,
+} from "./generation-settings";
+export {
+	acceptConversationContinuationGeneration,
+	acceptConversationTailGeneration,
+	acceptConversationSiblingGeneration,
+	checkpointConversationSiblingGeneration,
+	checkpointConversationTailGeneration,
+	removeConversationSiblingGeneration,
+	removeConversationTailGeneration,
+	resolveConversationSiblingGeneration,
+	resolveConversationTailGeneration,
+} from "./commands/active-generation";
 // Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";
@@ -31,6 +57,7 @@ export {
 } from "./history";
 export type {
 	CapabilityAvailability,
+	ActiveGenerationSnapshot,
 	CapabilityBlockReason,
 	CastParticipantSnapshot,
 	AuthorStampSnapshot,
@@ -39,6 +66,12 @@ export type {
 	ChatHistoryPageRequest,
 	ChatHistoryVariant,
 	CommitGenerationInput,
+	AcceptTailGenerationInput,
+	AcceptedTailGeneration,
+	AcceptContinuationGenerationInput,
+	AcceptedContinuationGeneration,
+	AcceptSiblingGenerationInput,
+	AcceptedSiblingGeneration,
 	CommitSiblingVariantInput,
 	ConversationAction,
 	ConversationArtifactSeed,
@@ -51,10 +84,16 @@ export type {
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
+	ConversationJsonValue,
 	ConversationDataRead,
 	ConversationDataReadFilter,
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
+	ContinuationPrefillSuffix,
+	RemoveTailGenerationInput,
+	RemoveSiblingGenerationInput,
+	ResolveTailGenerationInput,
+	ResolveSiblingGenerationInput,
 	ConversationDataScope,
 	ConversationMessageSnapshot,
 	ConversationModule,
@@ -101,6 +140,20 @@ export function createConversationModule(database: Database): ConversationModule
 			),
 		execute: (command) => executeConversationCommand(database, command),
 		commitGeneration: (input) => commitConversationGeneration(database, input),
+		acceptTailGeneration: (input) =>
+			acceptConversationTailGeneration(database, input),
+	acceptContinuationGeneration: (input) =>
+			acceptConversationContinuationGeneration(database, input),
+		acceptSiblingGeneration: (input) =>
+			acceptConversationSiblingGeneration(database, input),
+		resolveTailGeneration: (input) =>
+			resolveConversationTailGeneration(database, input),
+		removeTailGeneration: (input) =>
+			removeConversationTailGeneration(database, input),
+		resolveSiblingGeneration: (input) =>
+			resolveConversationSiblingGeneration(database, input),
+		removeSiblingGeneration: (input) =>
+			removeConversationSiblingGeneration(database, input),
 		commitSiblingVariant: (input) =>
 			commitConversationSiblingVariant(database, input),
 	};

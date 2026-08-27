@@ -17,10 +17,20 @@ export interface ModelClientGenerationInput {
 	// and travel with the opaque Prompt Plan into the transport seam.
 	modelId: string;
 	generationSettings: ModelClientGenerationSettings;
+	// Request-only assistant prefill. The prefix is copied from the selected
+	// preceding model Variant and is never persisted as part of the new
+	// continuation Message. Adapters that support prefill place this in their
+	// provider-specific assistant-prefix position.
+	assistantPrefill?: AssistantPrefill | undefined;
 	connection?: ModelClientConnectionSnapshot | null;
 	// A caller-owned signal targets only this Generation. The transport must
 	// never reuse it for another request or turn cancellation into retry.
 	signal?: AbortSignal;
+}
+
+export interface AssistantPrefill {
+	readonly prefix: string;
+	readonly suffix: "" | " " | "\n" | "\n\n";
 }
 
 export type ModelFetch = (

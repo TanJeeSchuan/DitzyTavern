@@ -12,7 +12,24 @@ import {
 	downloadImportedSourceInBrowser,
 	type ChatSourceDownloadOutcome,
 } from "./chat-history";
+import {
+	applyConversationCommand,
+	loadConversationGenerationSettings,
+	type ConversationGenerationSettings,
+	type ContinuationPrefillSuffix,
+	type ConversationSummary,
+} from "./conversation";
 import { PanelHeader } from "./PanelHeader";
+
+function continuationStrategyValue(
+	value: string,
+): ConversationGenerationSettings["continuationStrategy"] {
+	return value === "assistant-prefill" ? value : "instruction";
+}
+
+function continuationPrefillSuffixValue(value: string): ContinuationPrefillSuffix {
+	return value === " " || value === "\n" || value === "\n\n" ? value : "";
+}
 
 // Keep import origin in this on-demand panel. Do not add an Imported badge,
 // category, or capability mode. Load artifact bytes only for a download.
@@ -20,6 +37,8 @@ import { PanelHeader } from "./PanelHeader";
 interface ChatInformationPanelProps {
 	conversationId: number;
 	chatTitle: string;
+	conversation?: ConversationSummary | null;
+	onConversationChange?: (conversation: ConversationSummary) => void;
 	onClose: () => void;
 }
 
@@ -34,6 +53,8 @@ const formatSize = (byteLength: number | null): string => {
 export function ChatInformationPanel({
 	conversationId,
 	chatTitle,
+	conversation = null,
+	onConversationChange,
 	onClose,
 }: ChatInformationPanelProps) {
 	const [state, dispatch] = useReducer(
@@ -95,6 +116,13 @@ export function ChatInformationPanel({
 						<dd>{conversationId}</dd>
 					</div>
 				</dl>
+
+				{conversation !== null && onConversationChange !== undefined && (
+					<ContinuationSettings
+						conversation={conversation}
+						onConversationChange={onConversationChange}
+					/>
+				)}
 
 				{state.status === "loading" && (
 					<p className="panel-note" role="status">
@@ -261,6 +289,105 @@ function ImportDetailsSection({
 				)}
 			</div>
 
+		</section>
+	);
+}
+
+function ContinuationSettings({
+	conversation,
+	onConversationChange,
+}: {
+	conversation: ConversationSummary;
+	onConversationChange: (conversation: ConversationSummary) => void;
+}) {
+	const [settings, setSettings] = useState<ConversationGenerationSettings | null>(null);
+	const [instruction, setInstruction] = useState("");
+	const [strategy, setStrategy] = useState<ConversationGenerationSettings["continuationStrategy"]>("instruction");
+	const [prefillSuffix, setPrefillSuffix] = useState<ContinuationPrefillSuffix>("");
+	const [status, setStatus] = useState<"loading" | "ready" | "saving" | "error">("loading");
+	useEffect(() => {
+		let cancelled = false;
+		setStatus("loading");
+		void loadConversationGenerationSettings(conversation.id)
+			.then((loaded) => {
+				if (cancelled) return;
+				setSettings(loaded);
+				setInstruction(loaded.continuationInstruction);
+				setStrategy(loaded.continuationStrategy);
+				setPrefillSuffix(loaded.continuationPrefillSuffix);
+				setStatus("ready");
+			})
+			.catch(() => { if (!cancelled) setStatus("error"); });
+		return () => { cancelled = true; };
+	}, [conversation.id]);
+
+	const saveInstruction = async () => {
+		if (settings === null || instruction.trim() === "") return;
+		setStatus("saving");
+		const next = {
+			...settings,
+			continuationStrategy: strategy,
+			continuationInstruction: instruction,
+			continuationPrefillSuffix: prefillSuffix,
+		};
+		const outcome = await applyConversationCommand(conversation.id, conversation.revision, {
+			type: "update-generation-settings",
+			settings: next,
+		});
+		if (outcome.status === "applied") {
+			setSettings(next);
+			setStrategy(next.continuationStrategy);
+			setPrefillSuffix(next.continuationPrefillSuffix);
+			onConversationChange(outcome.conversation);
+			setStatus("ready");
+			return;
+		}
+		setStatus("error");
+	};
+
+	return (
+		<section className="continuation-settings" aria-labelledby="continuation-settings-title">
+			<h3 id="continuation-settings-title">Continuation</h3>
+			{status === "loading" && <p className="panel-note">Loading Continuation settings…</p>}
+			{status === "error" && <p className="import-problem" role="alert">Continuation settings could not be saved.</p>}
+			{settings !== null && status !== "loading" && (
+				<>
+					<label htmlFor="continuation-strategy">Strategy</label>
+					<select
+						id="continuation-strategy"
+						value={strategy}
+						onChange={(event) => setStrategy(continuationStrategyValue(event.target.value))}
+					>
+						<option value="instruction">Instruction</option>
+						<option value="assistant-prefill">Assistant prefill</option>
+					</select>
+					{strategy === "assistant-prefill" && (
+						<>
+							<label htmlFor="continuation-prefill-suffix">Prefill suffix</label>
+							<select
+								id="continuation-prefill-suffix"
+								value={prefillSuffix}
+								onChange={(event) => setPrefillSuffix(continuationPrefillSuffixValue(event.target.value))}
+							>
+								<option value="">None</option>
+								<option value=" ">Space</option>
+								<option value="\n">Newline</option>
+								<option value="\n\n">Double newline</option>
+							</select>
+						</>
+					)}
+					<label htmlFor="continuation-instruction">Continuation instruction</label>
+					<textarea
+						id="continuation-instruction"
+						value={instruction}
+						onChange={(event) => setInstruction(event.target.value)}
+						rows={3}
+					/>
+					<button className="secondary-button" type="button" disabled={status === "saving" || instruction.trim() === ""} onClick={() => void saveInstruction()}>
+						{status === "saving" ? "Saving…" : "Save Continuation settings"}
+					</button>
+				</>
+			)}
 		</section>
 	);
 }

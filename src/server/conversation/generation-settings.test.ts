@@ -64,6 +64,42 @@ describe("Conversation Generation Settings", () => {
 		expect(updated.revision).toBe(1);
 	});
 
+	test("persists and validates the parallel Sibling Generation limit", () => {
+		const conversation = createConversationModule(database).create({
+			name: "Sibling limit settings",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const module = createConversationModule(database);
+		expect(module.getGenerationSettings(conversation.id)?.siblingGenerationLimit).toBe(4);
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 4096,
+					responseBudget: 128,
+					siblingGenerationLimit: 2,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		expect(module.getGenerationSettings(conversation.id)?.siblingGenerationLimit).toBe(2);
+	});
+
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
 		const conversation = createConversationModule(database).create({
 			name: "Invalid budget settings",

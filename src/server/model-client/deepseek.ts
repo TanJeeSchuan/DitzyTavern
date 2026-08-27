@@ -326,10 +326,45 @@ function normalizeProviderStreamError(
 function toMessages(input: ModelClientGenerationInput) {
 	type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 	const messages: ChatMessage[] = [];
+	const continuationIntent = input.promptPlan.intent?.type === "continuation"
+		? input.promptPlan.intent
+		: undefined;
+	const assistantPrefill = continuationIntent?.strategy === "assistant-prefill";
+	if (assistantPrefill && !isPrefillSuffix(continuationIntent.suffix)) {
+		throw new ModelClientTransportError(
+			"The selected Assistant prefill suffix is unsupported by this adapter.",
+			"protocol",
+		);
+	}
+	if (
+		assistantPrefill &&
+		input.assistantPrefill !== undefined &&
+		input.assistantPrefill.suffix !== continuationIntent.suffix
+	) {
+		throw new ModelClientTransportError(
+			"Assistant prefill metadata does not match the selected suffix.",
+			"protocol",
+		);
+	}
 	let historyIndex = 0;
+	const lastModelHistoryIndex = input.historyRoles.reduce(
+		(last, role, index) => role === "model" ? index : last,
+		-1,
+	);
+	let lastModelHistoryContent: string | undefined;
 	for (const block of input.promptPlan.blocks) {
 		if (block.kind === "history") {
+			const currentHistoryIndex = historyIndex;
 			const role = input.historyRoles?.[historyIndex++] ?? "user";
+			if (role === "model") {
+				lastModelHistoryContent = block.content;
+			}
+			// The selected preceding model text is moved to the final assistant
+			// message below when prefill is active. Leaving the history copy in
+			// place would send the prefix twice and would not be a true prefill.
+			if (assistantPrefill && currentHistoryIndex === lastModelHistoryIndex) {
+				continue;
+			}
 			if (block.content.length > 0) {
 				messages.push({
 					role: role === "model" ? "assistant" : "user",
@@ -358,7 +393,32 @@ function toMessages(input: ModelClientGenerationInput) {
 				break;
 		}
 	}
+	// Continuation instructions are request intent, not Conversation history.
+	// Keep them as an adapter-owned system message so no synthetic user turn
+	// is persisted or inferred by the provider-neutral workflow.
+	if (continuationIntent?.strategy === "instruction") {
+		if (continuationIntent.instruction.length > 0) {
+			messages.push({ role: "system", content: continuationIntent.instruction });
+		}
+	}
+	if (continuationIntent?.strategy === "assistant-prefill") {
+		const prefix = input.assistantPrefill?.prefix ?? lastModelHistoryContent;
+		if (lastModelHistoryIndex < 0 || prefix === undefined || prefix.length === 0) {
+			throw new ModelClientTransportError(
+				"Assistant prefill requires a visible preceding model message.",
+				"protocol",
+			);
+		}
+		messages.push({
+			role: "assistant",
+			content: `${prefix}${continuationIntent.suffix}`,
+		});
+	}
 	return messages;
+}
+
+function isPrefillSuffix(value: string): value is "" | " " | "\n" | "\n\n" {
+	return value === "" || value === " " || value === "\n" || value === "\n\n";
 }
 
 const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set([

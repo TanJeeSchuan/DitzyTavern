@@ -758,7 +758,6 @@ describe("Current Generate workflow", () => {
 				},
 			},
 		});
-		const estimates = [200, 100];
 		const sibling = await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
@@ -965,6 +964,7 @@ describe("Current Generate workflow", () => {
 		});
 
 		let receivedPlan: PromptPlan | undefined;
+		const estimates = [200, 100];
 		const sibling = await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,

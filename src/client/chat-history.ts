@@ -30,6 +30,12 @@ export interface ChatHistoryMessage {
 	id: number;
 	position: number;
 	timestamp: string;
+	// Historical model Control identity used to decide whether a terminal
+	// Message is eligible for Continue after Control changes.
+	modelParticipantIdAtCreation?: number | null;
+	// Server-derived capability for the selected Variant. Reasoning remains
+	// private even when it makes a reasoning-only Message continuable.
+	continuable?: boolean;
 	author: ChatHistoryAuthorStamp | null;
 	variants: ChatHistoryVariant[];
 }
@@ -210,6 +216,16 @@ const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
 				inCast: rawAuthor.inCast,
 			};
 		}
+		const rawModelParticipantId = rawMessage.modelParticipantIdAtCreation;
+		if (
+			rawModelParticipantId !== undefined &&
+			rawModelParticipantId !== null &&
+			!isNumber(rawModelParticipantId)
+		) {
+			return null;
+		}
+		const rawContinuable = rawMessage.continuable;
+		if (rawContinuable !== undefined && !isBoolean(rawContinuable)) return null;
 		if (!Array.isArray(rawMessage.variants)) return null;
 		const variants: ChatHistoryVariant[] = [];
 		for (const rawVariant of rawMessage.variants) {
@@ -235,6 +251,8 @@ const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
 			id: rawMessage.id,
 			position: rawMessage.position,
 			timestamp: rawMessage.timestamp,
+			modelParticipantIdAtCreation: rawModelParticipantId,
+			continuable: rawContinuable,
 			author,
 			variants,
 		});

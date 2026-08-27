@@ -105,3 +105,26 @@ export class ConversationNotPlayableError extends Error {
 		this.name = "ConversationNotPlayableError";
 	}
 }
+
+export type ContinuationUnavailableReason =
+	| "active-generation"
+	| "not-terminal-model-message"
+	| "assistant-prefill-requires-visible-text";
+
+// Typed denial for Continue. Existing history remains untouched and callers
+// can present the reason without reproducing the terminal-position rule.
+export class ContinuationUnavailableError extends Error {
+	readonly reason: ContinuationUnavailableReason;
+
+	constructor(reason: ContinuationUnavailableReason) {
+		super(
+			reason === "active-generation"
+				? "Continue is unavailable while this Conversation has an Active Generation."
+				: reason === "assistant-prefill-requires-visible-text"
+					? "Assistant prefill is unavailable because the preceding Variant has no visible model text."
+					: "Continue is available only after a terminal model-authored Message.",
+		);
+		this.name = "ContinuationUnavailableError";
+		this.reason = reason;
+	}
+}

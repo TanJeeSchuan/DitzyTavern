@@ -12,7 +12,14 @@
 // Variant-selection command, never a second source representation.
 
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
-import { chatTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
+import {
+	chatTable,
+	conversationGenerationSettingsTable,
+	messageTable,
+	messageVariantDataTable,
+	messageVariantTable,
+	participantTable,
+} from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import type {
 	AuthorStampSnapshot,
@@ -49,6 +56,11 @@ export function readChatHistory(
 		.where(eq(chatTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
+	const continuationStrategy = db
+		.select({ strategy: conversationGenerationSettingsTable.continuation_strategy })
+		.from(conversationGenerationSettingsTable)
+		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
+		.get()?.strategy ?? "instruction";
 
 	const totalMessages = db
 		.select({ count: messageTable.id })
@@ -107,6 +119,28 @@ export function readChatHistory(
 		});
 		variantsByMessage.set(variant.message_id, variants);
 	}
+	const selectedVariantIds = messageRows
+		.flatMap((message) =>
+			variantRows
+				.filter((variant) => variant.message_id === message.id && variant.selected)
+				.map((variant) => variant.id),
+		);
+	const reasoningVariantIds = new Set(
+		selectedVariantIds.length === 0
+			? []
+			: db
+					.select({ variantId: messageVariantDataTable.message_variant_id })
+					.from(messageVariantDataTable)
+					.where(
+						and(
+							inArray(messageVariantDataTable.message_variant_id, selectedVariantIds),
+							eq(messageVariantDataTable.namespace, "generation"),
+							eq(messageVariantDataTable.key, "reasoning"),
+						),
+					)
+					.all()
+					.map((row) => row.variantId),
+	);
 
 	const castIds = new Set<number>();
 	const cast = db
@@ -144,6 +178,14 @@ export function readChatHistory(
 			position: message.position,
 			timestamp: message.timestamp,
 			author,
+			modelParticipantIdAtCreation:
+				message.context_model_participant_id ?? null,
+			continuable: (() => {
+				const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
+				return selected !== undefined &&
+					(selected.content.length > 0 ||
+						(continuationStrategy === "instruction" && reasoningVariantIds.has(selected.id)));
+			})(),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
 		};
 	});

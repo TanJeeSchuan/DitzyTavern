@@ -302,4 +302,38 @@ describe("Generation transport contract", () => {
 		expect(request?.headers.get("http-referer")).toBeNull();
 		expect(request?.headers.get("x-openrouter-title")).toBeNull();
 	});
+
+	test("streams a server-owned Sibling Generation on the target Message", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Sibling Generation Contract",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const target = conversation.messages[0];
+		if (target === undefined) throw new Error("Sibling target missing.");
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "sibling-contract-secret",
+		});
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => streamResponse(),
+		});
+		const response = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/stream`,
+			{ method: "POST" },
+		));
+		const body = await response.text();
+		const persisted = createConversationModule(database).getSnapshot(conversation.id);
+		const targetAfter = persisted?.messages.find((message) => message.id === target.id);
+		expect(response.status).toBe(200);
+		expect(body).toContain("event: accepted");
+		expect(body).toContain("event: complete");
+		expect(targetAfter?.variants.at(-1)?.content).toBe("Contract reply.");
+		expect(targetAfter?.variants.at(-1)?.selected).toBe(true);
+	});
 });

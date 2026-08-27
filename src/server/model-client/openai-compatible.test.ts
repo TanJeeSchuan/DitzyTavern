@@ -203,4 +203,37 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 		expect(calls).toBe(0);
 	});
+
+	test("places the preceding model text in the assistant prefill slot", async () => {
+		for (const suffix of ["", " ", "\n", "\n\n"] as const) {
+			let body: CapturedBody | undefined;
+			const client = createOpenAICompatibleModelClient({
+				profile: { ...profile, outputTokenRepresentation: "omit" },
+				secrets: null,
+				fetch: async (_input, init) => {
+					// SAFETY: this controlled fake receives the adapter's JSON request body.
+					body = JSON.parse(String(init?.body)) as CapturedBody;
+					return streamResponse();
+				},
+			});
+			await collectModelClientGeneration(client, {
+				promptPlan: {
+					blocks: [
+						{ kind: "system-instruction", content: "System" },
+						{ kind: "history", speakerName: "Maren", content: "Previous model text." },
+					],
+					warnings: [],
+					intent: { type: "continuation", strategy: "assistant-prefill", suffix },
+				},
+				historyRoles: ["model"],
+				assistantPrefill: { prefix: "Previous model text.", suffix },
+				modelId: "local-model",
+				generationSettings: settings,
+			});
+			expect(body?.messages).toEqual([
+				{ role: "system", content: "System" },
+				{ role: "assistant", content: `Previous model text.${suffix}` },
+			]);
+		}
+	});
 });

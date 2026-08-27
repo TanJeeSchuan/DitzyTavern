@@ -72,4 +72,46 @@ describe("Conversation generation stream client", () => {
 
 		expect(result).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
 	});
+
+	test("sends the draft and revision, then reports acceptance before completion", async () => {
+		let requestBody = "";
+		installFetch(async (_input, init) => {
+			requestBody = String(init?.body);
+			return new Response(
+				"event: accepted\ndata: {\"outcome\":\"accepted\",\"generationId\":7}\n\n" +
+				"event: complete\ndata: {\"outcome\":\"applied\"}\n\n",
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			);
+		});
+		let acceptedId: number | undefined;
+		const result = await streamConversationReply(42, {
+			expectedRevision: 3,
+			content: "Keep going.",
+			onDelta: () => {},
+			onAccepted: (generationId) => { acceptedId = generationId; },
+		});
+
+		expect(JSON.parse(requestBody)).toEqual({ expectedRevision: 3, content: "Keep going." });
+		expect(acceptedId).toBe(7);
+		expect(result).toEqual({ outcome: "applied" });
+	});
+
+	test("ignores duplicated and out-of-order numbered generation frames", async () => {
+		installFetch(async () => new Response(
+			"id: 2\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"B\"}\n\n" +
+			"id: 1\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"A\"}\n\n" +
+			"id: 2\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"duplicate\"}\n\n" +
+			"id: 3\nevent: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n" +
+			"event: complete\ndata: {\"outcome\":\"applied\"}\n\n",
+			{ status: 200, headers: { "content-type": "text/event-stream" } },
+		));
+
+		const deltas: GenerationStreamDelta[] = [];
+		const result = await streamConversationReply(42, { onDelta: (delta) => deltas.push(delta) });
+		expect(deltas).toEqual([
+			{ type: "content", text: "B" },
+			{ type: "finished", finishReason: "stop" },
+		]);
+		expect(result).toEqual({ outcome: "applied" });
+	});
 });

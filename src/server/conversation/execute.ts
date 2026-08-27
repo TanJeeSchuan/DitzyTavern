@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, sql } from "drizzle-orm";
-import { chatTable } from "../database/schema";
+import { activeGenerationTable, chatTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
@@ -21,6 +21,7 @@ import { updateGenerationSettings } from "./commands/update-generation-settings"
 import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
+	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 } from "./errors";
 import {
@@ -49,6 +50,20 @@ export function executeConversationCommand(
 			throw new StaleConversationRevisionError(
 				command.expectedRevision,
 				conversation.revision,
+			);
+		}
+		const responsePositionIsActive = db
+			.select({ id: activeGenerationTable.id })
+			.from(activeGenerationTable)
+			.where(eq(activeGenerationTable.chat_id, command.conversationId))
+			.get() !== undefined;
+		if (
+			responsePositionIsActive &&
+			(command.action.type === "create-message" ||
+				command.action.type === "assign-control")
+		) {
+			throw new InvalidConversationCommandError(
+				"A new Conversation turn or Control mutation is unavailable while a response Generation is active.",
 			);
 		}
 

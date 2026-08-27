@@ -30,6 +30,11 @@ export interface StoryMessage {
 	// Immutable Author Stamp name (the captured resolved Participant name).
 	authorName: string | null;
 	authorParticipantId: number | null;
+	// Historical model Control identity, when the Message came from
+	// generation. It may differ from the current Conversation Control.
+	modelParticipantIdAtCreation?: number | null;
+	// Server-derived capability for the selected Variant.
+	continuable?: boolean;
 	// Whether the authoring Participant is still an active Cast member.
 	inCast: boolean;
 	// Index of the persisted selected Variant within `swipes`.
@@ -93,6 +98,12 @@ export type StoryAction =
 	// select-variant command; the server response is authoritative but the
 	// local position updates immediately so reading never waits.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
+	| {
+			type: "generation-content";
+			messageId: number;
+			variantId: number;
+			content: string;
+		}
 	| { type: "preview-started"; messageId: number; variantId: number }
 	| { type: "preview-notice-opened" }
 	| { type: "preview-notice-closed" }
@@ -124,6 +135,8 @@ const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMess
 	timestamp: message.timestamp,
 	authorName: message.author?.capturedName ?? null,
 	authorParticipantId: message.author?.participantId ?? null,
+	modelParticipantIdAtCreation: message.modelParticipantIdAtCreation,
+	continuable: message.continuable,
 	inCast: message.author?.inCast ?? false,
 	activeSwipe: Math.max(
 		0,
@@ -131,6 +144,19 @@ const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMess
 	),
 	swipes: message.variants.map(toStoryVariant),
 });
+
+// A generated Message remains continuable when the current model Control has
+// moved to another Participant. The historical identity is the authoritative
+// signal; the current assignment is retained as a fallback for older rows.
+export const isModelAuthoredMessage = (
+	message: Pick<StoryMessage, "authorParticipantId" | "modelParticipantIdAtCreation">,
+	modelParticipantId: number | null,
+): boolean =>
+	message.modelParticipantIdAtCreation !== undefined &&
+	message.modelParticipantIdAtCreation !== null &&
+	message.authorParticipantId === message.modelParticipantIdAtCreation
+		? true
+		: modelParticipantId !== null && message.authorParticipantId === modelParticipantId;
 
 const prependUnique = (
 	existing: readonly StoryMessage[],
@@ -189,6 +215,18 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					if (index === -1) return message;
 					return { ...message, activeSwipe: index };
 				}),
+			};
+		case "generation-content":
+			return {
+				...state,
+				messages: state.messages.map((message) => message.id !== action.messageId
+					? message
+					: {
+							...message,
+						swipes: message.swipes.map((variant) => variant.id !== action.variantId
+								? variant
+								: { ...variant, content: action.content, empty: action.content === "" }),
+						}),
 			};
 		case "preview-started": {
 			if (state.preview !== null) return state;

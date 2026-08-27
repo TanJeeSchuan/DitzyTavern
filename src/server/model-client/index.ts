@@ -17,6 +17,7 @@ export type {
 	ModelClientFailureKind,
 	ModelClientGenerationInput,
 	ModelClientGenerationSettings,
+	AssistantPrefill,
 	ModelClientConnectionSnapshot,
 	ModelClientUsage,
 	ModelFetch,

@@ -12,6 +12,8 @@ import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
 	streamConversationReply,
+	subscribeConversationGeneration,
+	streamConversationContinuation,
 	loadConversation,
 	type ConversationSummary,
 } from "../conversation";
@@ -21,6 +23,7 @@ import {
 	confirmPreviewSelection,
 	deriveRevisionWindow,
 	displayedVariantId,
+	isModelAuthoredMessage,
 	isPreviewDownstream,
 	moveActiveSwipe,
 	previewNavigationNeedsConfirmation,
@@ -162,6 +165,64 @@ export function ActiveWritingWorkspace({
 			cancelled = true;
 		};
 	}, [activeChatId]);
+
+	// A Conversation snapshot carries the server-owned provisional target. On
+	// reload or after returning from another Chat, subscribe from event zero:
+	// the server either replays the retained ordered stream or sends its
+	// authoritative checkpoint before live events. No browser-local text is
+	// needed to reconstruct the visible target.
+	useEffect(() => {
+		const active = conversation?.activeGeneration;
+		const activeGenerations = conversation?.activeGenerations ??
+			(active === undefined || active === null ? [] : [active]);
+		if (activeGenerations.length === 0 || conversation === null) return;
+		// The initiating POST already owns a subscriber. A second replay from
+		// event zero would duplicate its deltas in the local presentation; a
+		// later reload/navigation (with no active POST) attaches normally.
+		if (generationAbortRef.current !== null) return;
+		const controller = new AbortController();
+		const conversationId = conversation.id;
+		let current = true;
+		setIsGenerating(true);
+		const outputByGeneration = new Map<number, { content: string; reasoning: string }>();
+		for (const target of activeGenerations) outputByGeneration.set(target.generationId, { content: "", reasoning: "" });
+		const subscriptions = activeGenerations.map((target) => subscribeConversationGeneration(conversationId, target.generationId, {
+			signal: controller.signal,
+			onDelta: (event) => {
+				if (!current || Number(activeChatIdRef.current) !== conversationId) return;
+				const output = outputByGeneration.get(target.generationId) ?? { content: "", reasoning: "" };
+				if (event.type === "content") output.content += event.text;
+				if (event.type === "reasoning") output.reasoning += event.text;
+				outputByGeneration.set(target.generationId, output);
+				if (target.generationId === activeGenerations[0]?.generationId) setStreamingOutput(output);
+				dispatchStory({ type: "generation-content", messageId: target.messageId, variantId: target.variantId, content: output.content });
+			},
+			onState: (state) => {
+				if (!current || Number(activeChatIdRef.current) !== conversationId) return;
+				outputByGeneration.set(target.generationId, { content: state.content, reasoning: state.reasoning });
+				if (target.generationId === activeGenerations[0]?.generationId) setStreamingOutput({ content: state.content, reasoning: state.reasoning });
+				dispatchStory({ type: "generation-content", messageId: target.messageId, variantId: target.variantId, content: state.content });
+			},
+		}));
+		void Promise.all(subscriptions).then(async () => {
+			if (!current) return;
+			const [freshConversation, freshHistory] = await Promise.all([
+				loadConversation(conversationId),
+				chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+			]);
+			if (!current || Number(activeChatIdRef.current) !== conversationId) return;
+			if (freshConversation !== null) setConversation(freshConversation);
+			if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+		}).finally(() => {
+			if (!current || Number(activeChatIdRef.current) !== conversationId) return;
+			setIsGenerating(false);
+			setStreamingOutput({ content: "", reasoning: "" });
+		});
+		return () => {
+			current = false;
+			controller.abort();
+		};
+	}, [conversation?.activeGeneration?.generationId, conversation?.activeGenerations?.length, conversation?.id]);
 
 	// Load the native history in stable chronological pages: the story reads
 	// through the paginated seam, never the full Conversation with all its
@@ -448,7 +509,9 @@ export function ActiveWritingWorkspace({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable) return;
+		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable || draft.trim() === "") return;
+		const content = draft;
+		const expectedRevision = conversation.revision;
 		setIsGenerating(true);
 		setStreamingOutput({ content: "", reasoning: "" });
 		setGenerationError(null);
@@ -459,7 +522,24 @@ export function ActiveWritingWorkspace({
 			generationAbortRef.current === controller &&
 			Number(activeChatIdRef.current) === conversationId;
 		void streamConversationReply(conversationId, {
+			expectedRevision,
+			content,
 			signal: controller.signal,
+			onAccepted: () => {
+				if (!requestIsCurrent()) return;
+				setDraft("");
+				// The accepted human Message and provisional model position are
+				// authoritative immediately, so history can show both while the
+				// normalized provider stream is still in flight.
+				void Promise.all([
+					loadConversation(conversationId),
+					chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				]).then(([freshConversation, freshHistory]) => {
+					if (!requestIsCurrent()) return;
+					if (freshConversation !== null) setConversation(freshConversation);
+					if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+				});
+			},
 			onDelta: (event) => {
 				if (!requestIsCurrent()) return;
 				if (event.type === "content") setStreamingOutput((current) => ({ ...current, content: current.content + event.text }));
@@ -482,6 +562,17 @@ export function ActiveWritingWorkspace({
 					setGenerationError("The Conversation no longer exists.");
 					return;
 				}
+				// A Send acceptance and its terminal cleanup/resolution each
+				// advance the authoritative Conversation revision. Refresh both
+				// reads after any terminal rejection so a retry can reuse an
+				// unanswered human Message with the current revision.
+				const [freshConversation, freshHistory] = await Promise.all([
+					loadConversation(conversationId),
+					chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				]);
+				if (!requestIsCurrent()) return;
+				if (freshConversation !== null) setConversation(freshConversation);
+				if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
 				setGenerationError(outcome.reason);
 			})
 			.catch(async () => {
@@ -490,8 +581,13 @@ export function ActiveWritingWorkspace({
 					// The server preserves any received partial output as an interrupted
 					// Variant before the cancelled request unwinds. Refresh the visible
 					// history so cancellation does not discard that writing in the UI.
-					const fresh = await chatHistoryTransport.loadHistory(conversationId, { page: 1 });
-					if (requestIsCurrent() && fresh.status === "available") dispatchStory({ type: "first-page", page: fresh.page });
+					const [freshConversation, freshHistory] = await Promise.all([
+						loadConversation(conversationId),
+						chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+					]);
+					if (!requestIsCurrent()) return;
+					if (freshConversation !== null) setConversation(freshConversation);
+					if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
 					return;
 				}
 				setGenerationError("Generation could not be completed.");
@@ -504,6 +600,84 @@ export function ActiveWritingWorkspace({
 			});
 	};
 
+	const continueMessage = (messageId: number) => {
+		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable) return;
+		const latest = story.messages.at(-1);
+		if (
+			latest?.id !== messageId ||
+			latest.continuable !== true ||
+			!isModelAuthoredMessage(latest, conversation.control.modelParticipantId)
+		) return;
+		const expectedRevision = conversation.revision;
+		setIsGenerating(true);
+		setStreamingOutput({ content: "", reasoning: "" });
+		setGenerationError(null);
+		const controller = new AbortController();
+		generationAbortRef.current = controller;
+		const conversationId = conversation.id;
+		const requestIsCurrent = () =>
+			generationAbortRef.current === controller &&
+			Number(activeChatIdRef.current) === conversationId;
+		void streamConversationContinuation(conversationId, {
+			expectedRevision,
+			signal: controller.signal,
+			onAccepted: () => {
+				if (!requestIsCurrent()) return;
+				// The server-owned acceptance is authoritative before provider
+				// deltas arrive. Refresh so the provisional model Message and
+				// Active Generation target are visible during the stream.
+				void Promise.all([
+					loadConversation(conversationId),
+					chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				]).then(([freshConversation, freshHistory]) => {
+					if (!requestIsCurrent()) return;
+					if (freshConversation !== null) setConversation(freshConversation);
+					if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+				});
+			},
+			onDelta: (event) => {
+				if (!requestIsCurrent()) return;
+				if (event.type === "content") setStreamingOutput((current) => ({ ...current, content: current.content + event.text }));
+				if (event.type === "reasoning") setStreamingOutput((current) => ({ ...current, reasoning: current.reasoning + event.text }));
+			},
+		})
+			.then(async (outcome) => {
+				if (!requestIsCurrent()) return;
+				const [freshConversation, freshHistory] = await Promise.all([
+					loadConversation(conversationId),
+					chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				]);
+				if (!requestIsCurrent()) return;
+				if (freshConversation !== null) setConversation(freshConversation);
+				if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+				if (outcome.outcome !== "applied" && outcome.outcome !== "not-found") {
+					setGenerationError(outcome.reason);
+				}
+				if (outcome.outcome === "not-found") setGenerationError("The Conversation no longer exists.");
+			})
+			.catch(async () => {
+				if (!requestIsCurrent()) return;
+				const [freshConversation, freshHistory] = await Promise.all([
+					loadConversation(conversationId),
+					chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				]);
+				if (!requestIsCurrent()) return;
+				if (freshConversation !== null) setConversation(freshConversation);
+				if (freshHistory.status === "available") dispatchStory({ type: "first-page", page: freshHistory.page });
+				setGenerationError("Generation could not be completed.");
+			})
+			.finally(() => {
+				if (!requestIsCurrent()) return;
+				generationAbortRef.current = null;
+				setIsGenerating(false);
+				setStreamingOutput({ content: "", reasoning: "" });
+			});
+	};
+
+	const latestStoryMessage = story.messages.at(-1);
+	const modelParticipant = conversation === null
+		? null
+		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const composerIsReceded = !isAtLatest && !isComposerFocused;
 
 	return (
@@ -592,6 +766,17 @@ export function ActiveWritingWorkspace({
 											: undefined
 									}
 									mutationsDisabled={story.preview !== null}
+									canContinue={
+										latestStoryMessage?.id === message.id &&
+										conversation?.playable === true &&
+										(conversation.activeGenerations?.length ?? (conversation.activeGeneration === null ? 0 : 1)) === 0 &&
+										isModelAuthoredMessage(message, conversation.control.modelParticipantId) &&
+										message.continuable === true &&
+										isGenerating === false &&
+										story.preview === null
+									}
+									continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
+									onContinue={continueMessage}
 									onMoveSwipe={(messageId, direction) =>
 										void changeSwipe(messageId, direction)
 									}
@@ -643,6 +828,8 @@ export function ActiveWritingWorkspace({
 				<ChatInformationPanel
 					conversationId={Number(activeChatId)}
 					chatTitle={activeChat.title}
+					conversation={conversation}
+					onConversationChange={setConversation}
 					onClose={() => setChatInfoOpen(false)}
 				/>
 			)}

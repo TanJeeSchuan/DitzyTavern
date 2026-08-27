@@ -318,6 +318,53 @@ export const artifactTable = sqliteTable(
 	],
 );
 
+// A server-owned Tail Generation lives in this table only while its provider
+// attempt is active.  Its provisional Message/Variant are ordinary
+// Conversation rows, but this record keeps the captured generation input
+// and target identity together so the provider can be contacted only after
+// the target has committed authoritatively.  JSON columns deliberately keep
+// the domain seam independent from provider-specific request types.
+export const activeGenerationTable = sqliteTable(
+	"active_generation",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		chat_id: int()
+			.notNull()
+			.references(() => chatTable.id, { onDelete: "cascade" }),
+		human_message_id: int()
+			.references(() => messageTable.id, { onDelete: "cascade" }),
+		message_id: int()
+			.notNull()
+			.references(() => messageTable.id, { onDelete: "cascade" }),
+		variant_id: int()
+			.notNull()
+			.references(() => messageVariantTable.id, { onDelete: "cascade" }),
+		// A sibling records the Variant that was selected before its provisional
+		// target was created. Tail and Continuation rows leave this null.
+		prior_variant_id: int().references(() => messageVariantTable.id, { onDelete: "set null" }),
+		human_participant_id: int()
+			.notNull()
+			.references(() => participantTable.id),
+		model_participant_id: int()
+			.notNull()
+			.references(() => participantTable.id),
+		captured_model_name: text().notNull(),
+		started_at: text().notNull(),
+		prompt_plan_json: text().notNull(),
+		history_roles_json: text().notNull(),
+		generation_settings_json: text().notNull(),
+		connection_json: text().notNull(),
+		generation_intent_json: text().notNull().default('{"type":"tail"}'),
+		provenance_namespace: text(),
+		provenance_key: text(),
+		provenance_value: text(),
+	},
+);
+
+// Keep the short name available to callers that refer to the persisted
+// record as a Generation. Both exports point at the same Drizzle table.
+export const generationTable = activeGenerationTable;
+
 // Conversation-owned generation controls. These values are deliberately
 // separate from the application-global Connection Profile: activating or
 // editing a Profile changes the transport used by later Generations, never
@@ -336,6 +383,14 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		context_limit: int().notNull().default(32768),
 		response_budget: int().notNull().default(1024),
 		safety_allowance: int().notNull().default(500),
+		// Maximum number of parallel Sibling Generations at one response
+		// position. Tail and Continuation still use the single-position gate.
+		sibling_generation_limit: int().notNull().default(4),
+		continuation_strategy: text().notNull().default("instruction"),
+		continuation_instruction: text()
+			.notNull()
+			.default("Continue the narrative naturally without repeating the previous text."),
+		continuation_prefill_suffix: text().notNull().default(""),
 		request_overrides_json: text().notNull().default("{}"),
 	},
 );

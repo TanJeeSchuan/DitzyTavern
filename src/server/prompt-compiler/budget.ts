@@ -86,7 +86,24 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 			block.content,
 		].join("\n");
 	});
-	return ["ditzytavern-estimation-transcript-v1", ...blocks].join("\n");
+	const intent = plan.intent === undefined
+		? []
+		: plan.intent.type === "sibling"
+			? ["\u001eINTENT\u001fsibling"]
+		: plan.intent.strategy === "instruction"
+			? [
+					"\u001eINTENT\u001fcontinuation",
+					"\u001eSTRATEGY\u001finstruction",
+					"\u001eINSTRUCTION\u001f",
+					plan.intent.instruction,
+				]
+			: [
+					"\u001eINTENT\u001fcontinuation",
+					"\u001eSTRATEGY\u001fassistant-prefill",
+					"\u001eSUFFIX\u001f",
+					plan.intent.suffix,
+				];
+	return ["ditzytavern-estimation-transcript-v1", ...blocks, ...intent].join("\n");
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
@@ -195,7 +212,14 @@ function createBreakdown(
 ): PromptBudgetBreakdown {
 	const fixedPromptCharacters = plan.blocks
 		.filter((block) => block.kind !== "history")
-		.reduce((total, block) => total + block.content.length, 0);
+		.reduce((total, block) => total + block.content.length, 0) +
+		(plan.intent === undefined
+			? 0
+		: plan.intent.type === "sibling"
+				? 0
+				: plan.intent.strategy === "instruction"
+					? plan.intent.instruction.length
+					: plan.intent.suffix.length);
 	const protectedHistoryCharacters = protectedHistoryIndex === undefined
 		? 0
 		: input.history[protectedHistoryIndex]?.content.length ?? 0;
