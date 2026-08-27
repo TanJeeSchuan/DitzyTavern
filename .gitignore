@@ -3,7 +3,6 @@ dist
 data
 .env
 .dsh-thread-statuses.json
-.scratch/
 test_data/
 
 # Local tooling config (pi-subagents agents, opencode config)
