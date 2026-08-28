@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { t } from "elysia";
+import { t, type Static } from "elysia";
 import {
 	type ConversationSnapshot,
 	createConversationModule,
@@ -7,6 +7,11 @@ import {
 } from "../../server/conversation";
 import { withDatabase } from "../../server/database/database";
 import { characterSnapshot } from "./character-library";
+import type {
+	GenerationJsonObject,
+	GenerationJsonValue,
+	GenerationProvenance as SharedGenerationProvenance,
+} from "../generation-provenance";
 
 export const participantPrompt = t.Object({
 	systemInstruction: t.String(),
@@ -104,6 +109,12 @@ export const conversationSummary = t.Object({
 	activeGenerations,
 });
 
+export type ParticipantPrompt = Static<typeof participantPrompt>;
+export type CastParticipant = Static<typeof castParticipant>;
+export type ConversationControl = Static<typeof conversationControl>;
+export type ConversationControlValidity = Static<typeof conversationControlValidity>;
+export type ConversationSummary = Static<typeof conversationSummary>;
+
 export const conversationGenerationSettings = t.Object({
 	modelId: t.String(),
 	temperature: t.Nullable(t.Number()),
@@ -132,6 +143,28 @@ export const conversationGenerationSettings = t.Object({
 	}),
 });
 
+export type GenerationRequestValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly GenerationRequestValue[]
+	| Readonly<{ [key: string]: GenerationRequestValue }>;
+
+export type GenerationRequestOverrides = Readonly<Record<string, GenerationRequestValue>>;
+
+export type ConversationGenerationSettings = Omit<
+	Static<typeof conversationGenerationSettings>,
+	"requestOverrides"
+> & {
+	requestOverrides: {
+		"chat-completions": GenerationRequestOverrides;
+		responses: GenerationRequestOverrides;
+		"anthropic-messages": GenerationRequestOverrides;
+	};
+};
+export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
+
 export const generationVariant = t.Object({
 	messageId: t.Integer(),
 	variantId: t.Integer(),
@@ -143,6 +176,8 @@ export const generationVariant = t.Object({
 		value: t.String(),
 	})),
 });
+
+export type GenerationVariant = Static<typeof generationVariant>;
 
 const generationProvenance = t.Nullable(t.Object({
 	connectionProfileId: t.Nullable(t.Integer()),
@@ -209,6 +244,22 @@ export const activeGenerationDetails = t.Object({
 	}),
 });
 
+export type GenerationDetailsJsonValue = GenerationJsonValue;
+
+export type GenerationDetailsJsonObject = GenerationJsonObject;
+
+export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>["status"];
+export type ActiveGenerationDetails = Omit<
+	Static<typeof activeGenerationDetails>,
+	"intent" | "promptPlan" | "historyRoles" | "generationSettings" | "connection"
+> & {
+	intent: GenerationDetailsJsonValue;
+	promptPlan: GenerationDetailsJsonValue;
+	historyRoles: GenerationDetailsJsonValue;
+	generationSettings: GenerationDetailsJsonValue;
+	connection: GenerationDetailsJsonValue;
+};
+
 export const variantDetails = t.Object({
 	conversationId: t.Integer(),
 	messageId: t.Integer(),
@@ -226,6 +277,9 @@ export const variantDetails = t.Object({
 	})),
 	provenance: generationProvenance,
 });
+
+export type GenerationProvenance = SharedGenerationProvenance;
+export type VariantDetails = Static<typeof variantDetails>;
 
 // Adapts the seam's immutable snapshot into the summary transport shape: the
 // Conversation seam returns readonly arrays, while the typed response
@@ -334,6 +388,8 @@ const participantDefinition = t.Object({
 	prompt: participantPrompt,
 	openings: t.Array(t.String()),
 });
+
+export type ParticipantDefinition = Static<typeof participantDefinition>;
 
 const dataScope = t.Union([
 	t.Object({ type: t.Literal("conversation") }),
@@ -492,6 +548,8 @@ const conversationCommandAction = t.Union([
 	removeParticipantAction,
 ]);
 
+export type ConversationAction = Static<typeof conversationCommandAction>;
+
 // The revision is part of the Conversation command; the conversation id
 // lives in the route path.
 export const conversationCommandBody = t.Object({
@@ -512,6 +570,10 @@ export const generationBody = t.Object({
 export const continuationBody = t.Object({
 	expectedRevision: t.Integer(),
 });
+
+export type ConversationCommandBody = Static<typeof conversationCommandBody>;
+export type GenerationBody = Static<typeof generationBody>;
+export type ContinuationBody = Static<typeof continuationBody>;
 
 export const notFoundOutcome = t.Object({ outcome: t.Literal("not-found") });
 export const invalidOutcome = t.Object({
@@ -538,3 +600,37 @@ export const characterConflict = t.Object({
 	actualRevision: t.Integer(),
 	currentCharacter: characterSnapshot,
 });
+
+export const generationAccepted = t.Object({
+	outcome: t.Literal("accepted"),
+	generationId: t.Integer(),
+	conversationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+});
+
+export const generationStartResponse = t.Union([
+	generationAccepted,
+	notFoundOutcome,
+	t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
+	notPlayableOutcome,
+	invalidOutcome,
+]);
+
+export type GenerationAccepted = Static<typeof generationAccepted>;
+export type GenerationStartResponse = Static<typeof generationStartResponse>;
+
+export const generationStopped = t.Object({
+	outcome: t.Literal("stopped"),
+	generationId: t.Integer(),
+	conversation: conversationSummary,
+});
+
+export const generationsStopped = t.Object({
+	outcome: t.Literal("stopped"),
+	generationIds: t.Array(t.Integer()),
+	conversation: conversationSummary,
+});
+
+export type GenerationStopped = Static<typeof generationStopped>;
+export type GenerationsStopped = Static<typeof generationsStopped>;

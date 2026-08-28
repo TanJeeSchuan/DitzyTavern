@@ -38,6 +38,8 @@ const snapshot = (overrides: {
 			generate: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
 			swipe: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
 		},
+		activeGeneration: null,
+		activeGenerations: [],
 	};
 };
 

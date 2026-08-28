@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, max, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	chatTable,
@@ -38,6 +38,8 @@ import type {
 	ConversationSnapshot,
 	RemoveTailGenerationInput,
 	RemoveSiblingGenerationInput,
+	StopGenerationsInput,
+	StoppedGenerations,
 	StopGenerationInput,
 	ResolveTailGenerationInput,
 	ResolveSiblingGenerationInput,
@@ -170,6 +172,174 @@ const ensureConversationRevision = (
 	return conversation;
 };
 
+interface PersistActiveGenerationInput {
+	conversationId: number;
+	humanMessageId: number | null;
+	messageId: number;
+	variantId: number;
+	priorVariantId?: number | null;
+	humanParticipantId: number;
+	modelParticipantId: number;
+	capturedHumanName: string;
+	capturedModelName: string;
+	startedAt: string;
+	promptPlan: ConversationJsonValue;
+	promptInspection?: ConversationJsonValue;
+	historyRoles: readonly ("human" | "model" | null)[];
+	generationSettings: ConversationJsonValue;
+	connection: ConversationJsonValue;
+	generationIntent: ConversationJsonValue;
+	provenance?: ConversationDataEntry;
+}
+
+/** Persist the common server-owned Generation record after target creation. */
+const persistActiveGeneration = (
+	db: ReturnType<typeof connectConversationDatabase>,
+	input: PersistActiveGenerationInput,
+): number => {
+	const active = db
+		.insert(activeGenerationTable)
+		.values({
+			chat_id: input.conversationId,
+			human_message_id: input.humanMessageId,
+			message_id: input.messageId,
+			variant_id: input.variantId,
+			prior_variant_id: input.priorVariantId ?? null,
+			human_participant_id: input.humanParticipantId,
+			model_participant_id: input.modelParticipantId,
+			captured_human_name: input.capturedHumanName,
+			captured_model_name: input.capturedModelName,
+			started_at: input.startedAt,
+			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
+			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
+			history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
+			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
+			connection_json: jsonText(input.connection, "Connection identity"),
+			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
+			provenance_namespace: input.provenance?.namespace ?? null,
+			provenance_key: input.provenance?.key ?? null,
+			provenance_value: input.provenance?.value ?? null,
+		})
+		.returning({ id: activeGenerationTable.id })
+		.get();
+	if (active === undefined) {
+		throw new InvalidConversationCommandError(
+			"The Active Generation could not be persisted.",
+		);
+	}
+	return active.id;
+};
+
+interface ProvisionalModelTargetInput {
+	conversationId: number;
+	timestamp: string;
+	humanParticipantId: number;
+	modelParticipantId: number;
+	/** Supply the next position when it was already read as part of validation. */
+	position?: number;
+}
+
+interface ProvisionalModelTarget {
+	modelMessageId: number;
+	provisionalVariantId: number;
+}
+
+interface ProvisionalSiblingVariant {
+	provisionalVariantId: number;
+	priorVariantId: number | null;
+}
+
+/** Create the model Message and its selected empty Variant as one target. */
+const createProvisionalModelTarget = (
+	db: ReturnType<typeof connectConversationDatabase>,
+	input: ProvisionalModelTargetInput,
+): ProvisionalModelTarget => {
+	const nextPosition = input.position ?? ((db
+		.select({ value: max(messageTable.position) })
+		.from(messageTable)
+		.where(eq(messageTable.chat_id, input.conversationId))
+		.get()?.value ?? 0) + 1);
+	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
+	const message = db
+		.insert(messageTable)
+		.values({
+			chat_id: input.conversationId,
+			position: nextPosition,
+			timestamp: input.timestamp,
+			author_participant_id: model.id,
+			author_name: model.name,
+			context_human_participant_id: input.humanParticipantId,
+			context_model_participant_id: model.id,
+		})
+		.returning({ id: messageTable.id })
+		.get();
+	if (message === undefined) {
+		throw new InvalidConversationCommandError(
+			"The provisional model Message could not be persisted.",
+		);
+	}
+	const variant = db
+		.insert(messageVariantTable)
+		.values({
+			message_id: message.id,
+			position: 1,
+			content: "",
+			timestamp: input.timestamp,
+			selected: true,
+		})
+		.returning({ id: messageVariantTable.id })
+		.get();
+	if (variant === undefined) {
+		throw new InvalidConversationCommandError(
+			"The provisional model Variant could not be persisted.",
+		);
+	}
+	return { modelMessageId: message.id, provisionalVariantId: variant.id };
+};
+
+const createProvisionalSiblingVariant = (
+	db: ReturnType<typeof connectConversationDatabase>,
+	messageId: number,
+	timestamp: string,
+): ProvisionalSiblingVariant => {
+	const priorVariantId = db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.message_id, messageId),
+				eq(messageVariantTable.selected, true),
+			),
+		)
+		.get()?.id ?? null;
+	const position = db
+		.select({ value: max(messageVariantTable.position) })
+		.from(messageVariantTable)
+		.where(eq(messageVariantTable.message_id, messageId))
+		.get()?.value ?? 0;
+	db.update(messageVariantTable)
+		.set({ selected: false })
+		.where(eq(messageVariantTable.message_id, messageId))
+		.run();
+	const variant = db
+		.insert(messageVariantTable)
+		.values({
+			message_id: messageId,
+			position: position + 1,
+			content: "",
+			timestamp,
+			selected: true,
+		})
+		.returning({ id: messageVariantTable.id })
+		.get();
+	if (variant === undefined) {
+		throw new InvalidConversationCommandError(
+			"The provisional sibling Variant could not be persisted.",
+		);
+	}
+	return { provisionalVariantId: variant.id, priorVariantId };
+};
+
 // Accepting Send is the lifecycle boundary. The human Message, provisional
 // model Message/Variant, and Active Generation row are committed together,
 // and the revision guard makes the preflight candidate safe to apply.
@@ -289,78 +459,36 @@ export function acceptConversationTailGeneration(
 				.run();
 		}
 
-		const latestPosition = db
-			.select({ value: max(messageTable.position) })
-			.from(messageTable)
-			.where(eq(messageTable.chat_id, input.conversationId))
-			.get()?.value;
-		const modelMessage = db
-			.insert(messageTable)
-			.values({
-				chat_id: input.conversationId,
-				position: (latestPosition ?? 0) + 1,
-				timestamp: input.timestamp,
-				author_participant_id: model.id,
-				author_name: model.name,
-				context_human_participant_id: human.id,
-				context_model_participant_id: model.id,
-			})
-			.returning({ id: messageTable.id })
-			.get();
-		if (modelMessage === undefined || humanMessageId === undefined) {
+		if (humanMessageId === undefined) {
 			throw new InvalidConversationCommandError(
 				"The provisional model Message could not be persisted.",
 			);
 		}
-		const provisional = db
-			.insert(messageVariantTable)
-			.values({
-				message_id: modelMessage.id,
-				position: 1,
-				content: "",
-				timestamp: input.timestamp,
-				selected: true,
-			})
-			.returning({ id: messageVariantTable.id })
-			.get();
-		if (provisional === undefined) {
-			throw new InvalidConversationCommandError(
-				"The provisional model Variant could not be persisted.",
-			);
-		}
+		const provisional = createProvisionalModelTarget(db, {
+			conversationId: input.conversationId,
+			timestamp: input.timestamp,
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+		});
 
-		const active = db
-			.insert(activeGenerationTable)
-			.values({
-				chat_id: input.conversationId,
-				human_message_id: humanMessageId,
-				message_id: modelMessage.id,
-				variant_id: provisional.id,
-				human_participant_id: human.id,
-				model_participant_id: model.id,
-				captured_human_name: input.capturedHumanName ?? human.name,
-				captured_model_name: model.name,
-				started_at: input.timestamp,
-				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
-				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
-				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
-				connection_json: jsonText(input.connection, "Connection identity"),
-				generation_intent_json: jsonText(
-					input.generationIntent ?? { type: "tail" },
-					"Generation intent",
-				),
-				provenance_namespace: input.provenance?.namespace ?? null,
-				provenance_key: input.provenance?.key ?? null,
-				provenance_value: input.provenance?.value ?? null,
-			})
-			.returning({ id: activeGenerationTable.id })
-			.get();
-		if (active === undefined) {
-			throw new InvalidConversationCommandError(
-				"The Active Generation could not be persisted.",
-			);
-		}
+		const activeGenerationId = persistActiveGeneration(db, {
+			conversationId: input.conversationId,
+			humanMessageId,
+			messageId: provisional.modelMessageId,
+			variantId: provisional.provisionalVariantId,
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedHumanName: input.capturedHumanName ?? human.name,
+			capturedModelName: model.name,
+			startedAt: input.timestamp,
+			promptPlan: input.promptPlan,
+			promptInspection: input.promptInspection,
+			historyRoles: input.historyRoles,
+			generationSettings: input.generationSettings,
+			connection: input.connection,
+			generationIntent: input.generationIntent ?? { type: "tail" },
+			provenance: input.provenance,
+		});
 
 		const advanced = db
 			.update(chatTable)
@@ -382,10 +510,10 @@ export function acceptConversationTailGeneration(
 		const conversation = readConversationSnapshot(db, input.conversationId);
 		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
 		return {
-			generationId: active.id,
+			generationId: activeGenerationId,
 			humanMessageId,
-			modelMessageId: modelMessage.id,
-			provisionalVariantId: provisional.id,
+			modelMessageId: provisional.modelMessageId,
+			provisionalVariantId: provisional.provisionalVariantId,
 			conversation,
 		};
 	});
@@ -474,72 +602,31 @@ export function acceptConversationContinuationGeneration(
 			);
 		}
 
-		const modelMessage = db
-			.insert(messageTable)
-			.values({
-				chat_id: input.conversationId,
-				position: latest.position + 1,
-				timestamp: input.timestamp,
-				author_participant_id: model.id,
-				author_name: model.name,
-				context_human_participant_id: human.id,
-				context_model_participant_id: model.id,
-			})
-			.returning({ id: messageTable.id })
-			.get();
-		if (modelMessage === undefined) {
-			throw new InvalidConversationCommandError(
-				"The provisional model Message could not be persisted.",
-			);
-		}
-		const provisional = db
-			.insert(messageVariantTable)
-			.values({
-				message_id: modelMessage.id,
-				position: 1,
-				content: "",
-				timestamp: input.timestamp,
-				selected: true,
-			})
-			.returning({ id: messageVariantTable.id })
-			.get();
-		if (provisional === undefined) {
-			throw new InvalidConversationCommandError(
-				"The provisional model Variant could not be persisted.",
-			);
-		}
-		const active = db
-			.insert(activeGenerationTable)
-			.values({
-				chat_id: input.conversationId,
-				human_message_id: null,
-				message_id: modelMessage.id,
-				variant_id: provisional.id,
-				human_participant_id: human.id,
-				model_participant_id: model.id,
-				captured_human_name: input.capturedHumanName ?? human.name,
-				captured_model_name: model.name,
-				started_at: input.timestamp,
-				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
-				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
-				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
-				connection_json: jsonText(input.connection, "Connection identity"),
-				generation_intent_json: jsonText(
-					input.generationIntent ?? { type: "continuation", strategy: "instruction" },
-					"Generation intent",
-				),
-				provenance_namespace: input.provenance?.namespace ?? null,
-				provenance_key: input.provenance?.key ?? null,
-				provenance_value: input.provenance?.value ?? null,
-			})
-			.returning({ id: activeGenerationTable.id })
-			.get();
-		if (active === undefined) {
-			throw new InvalidConversationCommandError(
-				"The Active Generation could not be persisted.",
-			);
-		}
+		const provisional = createProvisionalModelTarget(db, {
+			conversationId: input.conversationId,
+			timestamp: input.timestamp,
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			position: latest.position + 1,
+		});
+		const activeGenerationId = persistActiveGeneration(db, {
+			conversationId: input.conversationId,
+			humanMessageId: null,
+			messageId: provisional.modelMessageId,
+			variantId: provisional.provisionalVariantId,
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedHumanName: input.capturedHumanName ?? human.name,
+			capturedModelName: model.name,
+			startedAt: input.timestamp,
+			promptPlan: input.promptPlan,
+			promptInspection: input.promptInspection,
+			historyRoles: input.historyRoles,
+			generationSettings: input.generationSettings,
+			connection: input.connection,
+			generationIntent: input.generationIntent ?? { type: "continuation", strategy: "instruction" },
+			provenance: input.provenance,
+		});
 		const advanced = db
 			.update(chatTable)
 			.set({ revision: sql`${chatTable.revision} + 1`, last_message_time: input.timestamp })
@@ -560,9 +647,9 @@ export function acceptConversationContinuationGeneration(
 		const conversation = readConversationSnapshot(db, input.conversationId);
 		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
 		return {
-			generationId: active.id,
-			modelMessageId: modelMessage.id,
-			provisionalVariantId: provisional.id,
+			generationId: activeGenerationId,
+			modelMessageId: provisional.modelMessageId,
+			provisionalVariantId: provisional.provisionalVariantId,
 			conversation,
 		};
 	});
@@ -669,67 +756,30 @@ export function acceptConversationSiblingGeneration(
 			);
 		}
 
-		const prior = db
-			.select({ id: messageVariantTable.id })
-			.from(messageVariantTable)
-			.where(
-				and(
-					eq(messageVariantTable.message_id, input.messageId),
-					eq(messageVariantTable.selected, true),
-				),
-			)
-			.get()?.id ?? null;
-		const latestPosition = db
-			.select({ value: max(messageVariantTable.position) })
-			.from(messageVariantTable)
-			.where(eq(messageVariantTable.message_id, input.messageId))
-			.get()?.value;
-		db.update(messageVariantTable)
-			.set({ selected: false })
-			.where(eq(messageVariantTable.message_id, input.messageId))
-			.run();
-		const provisional = db
-			.insert(messageVariantTable)
-			.values({
-				message_id: input.messageId,
-				position: (latestPosition ?? 0) + 1,
-				content: "",
-				timestamp: input.timestamp,
-				selected: true,
-			})
-			.returning({ id: messageVariantTable.id })
-			.get();
-		if (provisional === undefined) {
-			throw new InvalidConversationCommandError("The provisional sibling Variant could not be persisted.");
-		}
-		const active = db
-			.insert(activeGenerationTable)
-			.values({
-				chat_id: input.conversationId,
-				human_message_id: null,
-				message_id: input.messageId,
-				variant_id: provisional.id,
-				prior_variant_id: prior,
-				human_participant_id: input.humanParticipantId,
-				model_participant_id: input.modelParticipantId,
-				captured_human_name: input.capturedHumanName ?? human.name,
-				captured_model_name: input.capturedModelName,
-				started_at: input.timestamp,
-				prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-				prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
-				history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
-				generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
-				connection_json: jsonText(input.connection, "Connection identity"),
-				generation_intent_json: jsonText(input.generationIntent ?? { type: "sibling" }, "Generation intent"),
-				provenance_namespace: input.provenance?.namespace ?? null,
-				provenance_key: input.provenance?.key ?? null,
-				provenance_value: input.provenance?.value ?? null,
-			})
-			.returning({ id: activeGenerationTable.id })
-			.get();
-		if (active === undefined) {
-			throw new InvalidConversationCommandError("The Active Generation could not be persisted.");
-		}
+		const provisional = createProvisionalSiblingVariant(
+			db,
+			input.messageId,
+			input.timestamp,
+		);
+		const activeGenerationId = persistActiveGeneration(db, {
+			conversationId: input.conversationId,
+			humanMessageId: null,
+			messageId: input.messageId,
+			variantId: provisional.provisionalVariantId,
+			priorVariantId: provisional.priorVariantId,
+			humanParticipantId: input.humanParticipantId,
+			modelParticipantId: input.modelParticipantId,
+			capturedHumanName: input.capturedHumanName ?? human.name,
+			capturedModelName: input.capturedModelName,
+			startedAt: input.timestamp,
+			promptPlan: input.promptPlan,
+			promptInspection: input.promptInspection,
+			historyRoles: input.historyRoles,
+			generationSettings: input.generationSettings,
+			connection: input.connection,
+			generationIntent: input.generationIntent ?? { type: "sibling" },
+			provenance: input.provenance,
+		});
 		db.update(chatTable)
 			.set({ revision: sql`${chatTable.revision} + 1`, last_message_time: input.timestamp })
 			.where(eq(chatTable.id, input.conversationId))
@@ -737,27 +787,39 @@ export function acceptConversationSiblingGeneration(
 		const snapshot = readConversationSnapshot(db, input.conversationId);
 		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
 		return {
-			generationId: active.id,
+			generationId: activeGenerationId,
 			messageId: input.messageId,
-			provisionalVariantId: provisional.id,
-			priorVariantId: prior,
+			provisionalVariantId: provisional.provisionalVariantId,
+			priorVariantId: provisional.priorVariantId,
 			conversation: snapshot,
 		};
 	});
 	return accept.immediate();
 }
 
-// Resolving a sibling keeps the target Message and its original Author Stamp
-// intact; only the accepted provisional Variant becomes durable.
-export function resolveConversationSiblingGeneration(
+type ResolveGenerationInput =
+	| ResolveTailGenerationInput
+	| ResolveSiblingGenerationInput;
+
+/**
+ * Resolve either kind of provisional target in one transaction. Tail and
+ * continuation targets are model Messages; siblings are Variants on an
+ * existing Message. Everything else about terminal persistence is shared.
+ */
+const resolveConversationGeneration = (
 	database: Database,
-	input: ResolveSiblingGenerationInput,
-): ConversationSnapshot {
+	input: ResolveGenerationInput,
+	mode: "tail" | "sibling",
+): ConversationSnapshot => {
 	const resolve = database.transaction(() => {
 		const db = connectConversationDatabase(database);
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined || !isSiblingGenerationRow(active)) {
-			throw new InvalidConversationCommandError("The Sibling Generation is no longer available.");
+		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
+			throw new InvalidConversationCommandError(
+				mode === "sibling"
+					? "The Sibling Generation is no longer available."
+					: "The Active Generation is no longer available.",
+			);
 		}
 		const variant = db
 			.select({ id: messageVariantTable.id })
@@ -770,8 +832,13 @@ export function resolveConversationSiblingGeneration(
 			)
 			.get();
 		if (variant === undefined) {
-			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
+			throw new InvalidConversationCommandError(
+				mode === "sibling"
+					? "The provisional sibling Variant is no longer available."
+					: "The provisional Variant is no longer available.",
+			);
 		}
+
 		db.update(messageVariantTable)
 			.set({ content: input.content, timestamp: input.timestamp })
 			.where(eq(messageVariantTable.id, variant.id))
@@ -809,51 +876,82 @@ export function resolveConversationSiblingGeneration(
 		return snapshot;
 	});
 	return resolve.immediate();
+};
+
+// Resolving a sibling keeps the target Message and its original Author Stamp
+// intact; only the accepted provisional Variant becomes durable.
+export function resolveConversationSiblingGeneration(
+	database: Database,
+	input: ResolveSiblingGenerationInput,
+): ConversationSnapshot {
+	return resolveConversationGeneration(database, input, "sibling");
 }
 
-// An empty sibling failure removes only its provisional Variant. If that
-// Variant is still selected, restore the selection visible at acceptance;
-// an explicit selection made while it ran remains authoritative.
-export function removeConversationSiblingGeneration(
+type RemoveGenerationInput = RemoveTailGenerationInput | RemoveSiblingGenerationInput;
+
+/** Remove one accepted target while preserving sibling-selection semantics. */
+const removeConversationGeneration = (
 	database: Database,
-	input: RemoveSiblingGenerationInput,
-): ConversationSnapshot {
+	input: RemoveGenerationInput,
+	mode: "tail" | "sibling",
+): ConversationSnapshot => {
 	const remove = database.transaction(() => {
 		const db = connectConversationDatabase(database);
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined || !isSiblingGenerationRow(active)) {
-			throw new InvalidConversationCommandError("The Sibling Generation is no longer available.");
+		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
+			throw new InvalidConversationCommandError(
+				mode === "sibling"
+					? "The Sibling Generation is no longer available."
+					: "The Active Generation is no longer available.",
+			);
 		}
-		const variant = db
-			.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
-			.from(messageVariantTable)
-			.where(
-				and(
-					eq(messageVariantTable.id, active.variant_id),
-					eq(messageVariantTable.message_id, active.message_id),
-				),
-			)
-			.get();
-		if (variant === undefined) {
-			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
-		}
-		db.delete(activeGenerationTable)
-			.where(eq(activeGenerationTable.id, active.id))
-			.run();
-		db.delete(messageVariantTable)
-			.where(eq(messageVariantTable.id, variant.id))
-			.run();
-		if (variant.selected && active.prior_variant_id !== null) {
-			db.update(messageVariantTable)
-				.set({ selected: true })
+
+		if (mode === "sibling") {
+			const variant = db
+				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
+				.from(messageVariantTable)
 				.where(
 					and(
-						eq(messageVariantTable.id, active.prior_variant_id),
+						eq(messageVariantTable.id, active.variant_id),
 						eq(messageVariantTable.message_id, active.message_id),
+					),
+				)
+				.get();
+			if (variant === undefined) {
+				throw new InvalidConversationCommandError(
+					"The provisional sibling Variant is no longer available.",
+				);
+			}
+			db.delete(messageVariantTable)
+				.where(eq(messageVariantTable.id, variant.id))
+				.run();
+			if (variant.selected && active.prior_variant_id !== null) {
+				db.update(messageVariantTable)
+					.set({ selected: true })
+					.where(
+						and(
+							eq(messageVariantTable.id, active.prior_variant_id),
+							eq(messageVariantTable.message_id, active.message_id),
+						),
+					)
+					.run();
+			}
+		} else {
+			// Tail and Continuation targets are their own provisional Messages;
+			// removing the Message cascades its Variant and leaves a retriable
+			// accepted Human Message (when Send created one).
+			db.delete(messageTable)
+				.where(
+					and(
+						eq(messageTable.id, active.message_id),
+						eq(messageTable.chat_id, input.conversationId),
 					),
 				)
 				.run();
 		}
+		db.delete(activeGenerationTable)
+			.where(eq(activeGenerationTable.id, active.id))
+			.run();
 		db.update(chatTable)
 			.set({ revision: sql`${chatTable.revision} + 1` })
 			.where(eq(chatTable.id, input.conversationId))
@@ -863,6 +961,16 @@ export function removeConversationSiblingGeneration(
 		return snapshot;
 	});
 	return remove.immediate();
+};
+
+// An empty sibling failure removes only its provisional Variant. If that
+// Variant is still selected, restore the selection visible at acceptance;
+// an explicit selection made while it ran remains authoritative.
+export function removeConversationSiblingGeneration(
+	database: Database,
+	input: RemoveSiblingGenerationInput,
+): ConversationSnapshot {
+	return removeConversationGeneration(database, input, "sibling");
 }
 
 function hasReasoningData(
@@ -890,62 +998,7 @@ export function resolveConversationTailGeneration(
 	database: Database,
 	input: ResolveTailGenerationInput,
 ): ConversationSnapshot {
-	const resolve = database.transaction(() => {
-		const db = connectConversationDatabase(database);
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) {
-			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-		}
-		const variant = db
-			.select({ id: messageVariantTable.id })
-			.from(messageVariantTable)
-			.where(
-				and(
-					eq(messageVariantTable.id, active.variant_id),
-					eq(messageVariantTable.message_id, active.message_id),
-				),
-			)
-			.get();
-		if (variant === undefined) {
-			throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
-		}
-		db.update(messageVariantTable)
-			.set({ content: input.content, timestamp: input.timestamp })
-			.where(eq(messageVariantTable.id, variant.id))
-			.run();
-		const suppliedData = input.data ?? [];
-		const provenance = terminalProvenance(active, suppliedData);
-		const data = [
-			...(provenance === undefined ? [] : [provenance]),
-			...(input.reasoning !== undefined && input.reasoning.length > 0 &&
-				!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
-				? [{ namespace: "generation", key: "reasoning", value: input.reasoning }]
-				: []),
-			...suppliedData,
-		];
-		if (data.length > 0) {
-			db.insert(messageVariantDataTable)
-				.values(data.map((entry) => ({
-					message_variant_id: variant.id,
-					namespace: entry.namespace,
-					key: entry.key,
-					value: entry.value,
-				})))
-				.run();
-		}
-		retainTerminalInspection(db, active, suppliedData, input.content, input.reasoning);
-		db.delete(activeGenerationTable)
-			.where(eq(activeGenerationTable.id, active.id))
-			.run();
-		db.update(chatTable)
-			.set({ revision: sql`${chatTable.revision} + 1`, last_message_time: input.timestamp })
-			.where(eq(chatTable.id, input.conversationId))
-			.run();
-		const snapshot = readConversationSnapshot(db, input.conversationId);
-		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
-		return snapshot;
-	});
-	return resolve.immediate();
+	return resolveConversationGeneration(database, input, "tail");
 }
 
 // Checkpointing a Provisional Variant is deliberately revision-neutral. The
@@ -1049,18 +1102,60 @@ export function checkpointConversationGeneration(
 	checkpoint.immediate();
 }
 
-// A zero-output failure removes only the provisional model Message and its
-// Active Generation. The accepted human Message remains the latest authored
-// writing, ready for an identical Send to reuse it without duplication.
-export function removeConversationTailGeneration(
-	database: Database,
-	input: RemoveTailGenerationInput,
-): ConversationSnapshot {
-	const remove = database.transaction(() => {
-		const db = connectConversationDatabase(database);
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined) {
-			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
+interface StoppedSiblingTarget {
+	messageId: number;
+	variantId: number;
+	priorVariantId: number | null;
+	selected: boolean;
+}
+
+interface StopTransition {
+	readonly durableOutput: boolean;
+	readonly removedSibling?: StoppedSiblingTarget;
+}
+
+/**
+ * Apply one Stop transition against an already-open transaction. Keeping the
+ * row mutation here lets Stop and Stop All share exactly the same terminal
+ * persistence rules while Stop All can commit the complete target set once.
+ */
+function stopActiveGenerationInTransaction(
+	db: ReturnType<typeof connectConversationDatabase>,
+	active: ActiveGenerationRow,
+	timestamp: string,
+): StopTransition {
+	const content = active.checkpoint_content;
+	const reasoning = active.checkpoint_reasoning;
+	if (content.length === 0 && reasoning.length === 0) {
+		if (isSiblingGenerationRow(active)) {
+			const variant = db
+				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
+				.from(messageVariantTable)
+				.where(
+					and(
+						eq(messageVariantTable.id, active.variant_id),
+						eq(messageVariantTable.message_id, active.message_id),
+					),
+				)
+				.get();
+			if (variant === undefined) {
+				throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
+			}
+			db.delete(activeGenerationTable)
+				.where(eq(activeGenerationTable.id, active.id))
+				.run();
+			db.delete(messageVariantTable)
+				.where(eq(messageVariantTable.id, variant.id))
+				.run();
+			return {
+				durableOutput: false,
+				removedSibling: {
+					messageId: active.message_id,
+					variantId: variant.id,
+					priorVariantId: active.prior_variant_id,
+					selected: variant.selected,
+				},
+			};
 		}
 		db.delete(activeGenerationTable)
 			.where(eq(activeGenerationTable.id, active.id))
@@ -1069,19 +1164,91 @@ export function removeConversationTailGeneration(
 			.where(
 				and(
 					eq(messageTable.id, active.message_id),
-					eq(messageTable.chat_id, input.conversationId),
+					eq(messageTable.chat_id, active.chat_id),
 				),
 			)
 			.run();
-		db.update(chatTable)
-			.set({ revision: sql`${chatTable.revision} + 1` })
-			.where(eq(chatTable.id, input.conversationId))
+		return { durableOutput: false };
+	}
+
+	const variant = db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.get();
+	if (variant === undefined) {
+		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
+	}
+	db.update(messageVariantTable)
+		.set({ content, timestamp })
+		.where(eq(messageVariantTable.id, variant.id))
+		.run();
+	const data = [
+		{ namespace: "generation", key: "outcome", value: "interrupted" },
+		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
+	] satisfies ConversationDataEntry[];
+	const suppliedData = data;
+	const provenance = terminalProvenance(active, suppliedData);
+	const terminalData = [
+		...(provenance === undefined ? [] : [provenance]),
+		...(reasoning.length > 0 ? [{ namespace: "generation", key: "reasoning", value: reasoning }] : []),
+		...suppliedData,
+	];
+	if (terminalData.length > 0) {
+		db.insert(messageVariantDataTable)
+			.values(terminalData.map((entry) => ({
+				message_variant_id: variant.id,
+				namespace: entry.namespace,
+				key: entry.key,
+				value: entry.value,
+			})))
 			.run();
-		const snapshot = readConversationSnapshot(db, input.conversationId);
-		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
-		return snapshot;
-	});
-	return remove.immediate();
+	}
+	retainTerminalInspection(db, active, suppliedData, content, reasoning);
+	db.delete(activeGenerationTable)
+		.where(eq(activeGenerationTable.id, active.id))
+		.run();
+	return { durableOutput: true };
+}
+
+function restoreStoppedSiblingSelection(
+	db: ReturnType<typeof connectConversationDatabase>,
+	removed: readonly StoppedSiblingTarget[],
+): void {
+	const removedIds = new Set(removed.map((target) => target.variantId));
+	const priorByVariantId = new Map(removed.map((target) => [target.variantId, target.priorVariantId]));
+	for (const target of removed) {
+		if (!target.selected) continue;
+		let fallback = target.priorVariantId;
+		while (fallback !== null && removedIds.has(fallback)) {
+			fallback = priorByVariantId.get(fallback) ?? null;
+		}
+		if (fallback === null) continue;
+		db.update(messageVariantTable)
+			.set({ selected: true })
+			.where(
+				and(
+					eq(messageVariantTable.id, fallback),
+					eq(messageVariantTable.message_id, target.messageId),
+				),
+			)
+			.run();
+	}
+}
+
+// A zero-output failure removes only the provisional model Message and its
+// Active Generation. The accepted human Message remains the latest authored
+// writing, ready for an identical Send to reuse it without duplication.
+export function removeConversationTailGeneration(
+	database: Database,
+	input: RemoveTailGenerationInput,
+): ConversationSnapshot {
+	return removeConversationGeneration(database, input, "tail");
 }
 
 // Explicit Stop uses the latest durable checkpoint as its terminal input. A
@@ -1094,47 +1261,81 @@ export function stopConversationGeneration(
 	database: Database,
 	input: StopGenerationInput,
 ): ConversationSnapshot {
-	const db = connectConversationDatabase(database);
-	const active = readActiveGeneration(db, input.conversationId, input.generationId);
-	if (active === undefined) {
-		throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-	}
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const content = active.checkpoint_content;
-	const reasoning = active.checkpoint_reasoning;
-	if (content.length === 0 && reasoning.length === 0) {
-		if (isSiblingGenerationRow(active)) {
-			return removeConversationSiblingGeneration(database, {
-				conversationId: input.conversationId,
-				generationId: input.generationId,
-			});
+	const stop = database.transaction(() => {
+		const db = connectConversationDatabase(database);
+		const active = readActiveGeneration(db, input.conversationId, input.generationId);
+		if (active === undefined) {
+			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
 		}
-		return removeConversationTailGeneration(database, {
-			conversationId: input.conversationId,
-			generationId: input.generationId,
-		});
-	}
-
-	const data = [
-		{ namespace: "generation", key: "outcome", value: "interrupted" },
-		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
-	] satisfies ConversationDataEntry[];
-	if (isSiblingGenerationRow(active)) {
-		return resolveConversationSiblingGeneration(database, {
-			conversationId: input.conversationId,
-			generationId: input.generationId,
+		const transition = stopActiveGenerationInTransaction(
+			db,
+			active,
 			timestamp,
-			content,
-			reasoning,
-			data,
-		});
-	}
-	return resolveConversationTailGeneration(database, {
-		conversationId: input.conversationId,
-		generationId: input.generationId,
-		timestamp,
-		content,
-		reasoning,
-		data,
+		);
+		if (transition.removedSibling !== undefined) {
+			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
+		}
+		db.update(chatTable)
+			.set(transition.durableOutput
+				? { revision: sql`${chatTable.revision} + 1`, last_message_time: timestamp }
+				: { revision: sql`${chatTable.revision} + 1` })
+			.where(eq(chatTable.id, input.conversationId))
+			.run();
+		const snapshot = readConversationSnapshot(db, input.conversationId);
+		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+		return snapshot;
 	});
+	return stop.immediate();
+}
+
+/**
+ * Atomically stop every Active Generation currently owned by a Conversation.
+ * The result is the durable target set; callers must use it to settle only
+ * runtimes whose Conversation transition actually committed.
+ */
+export function stopConversationGenerations(
+	database: Database,
+	input: StopGenerationsInput,
+): StoppedGenerations {
+	const stop = database.transaction(() => {
+		const db = connectConversationDatabase(database);
+		const conversation = db
+			.select({ id: chatTable.id })
+			.from(chatTable)
+			.where(eq(chatTable.id, input.conversationId))
+			.get();
+		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+		const activeRows = db
+			.select()
+			.from(activeGenerationTable)
+			.where(eq(activeGenerationTable.chat_id, input.conversationId))
+			.orderBy(asc(activeGenerationTable.id))
+			.all();
+		if (activeRows.length === 0) {
+			throw new InvalidConversationCommandError("The Conversation has no active Generations to stop.");
+		}
+		const timestamp = input.timestamp ?? new Date().toISOString();
+		const removedSiblings: StoppedSiblingTarget[] = [];
+		let durableOutput = false;
+		for (const active of activeRows) {
+			const transition = stopActiveGenerationInTransaction(db, active, timestamp);
+			durableOutput ||= transition.durableOutput;
+			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
+		}
+		restoreStoppedSiblingSelection(db, removedSiblings);
+		db.update(chatTable)
+			.set(durableOutput
+				? { revision: sql`${chatTable.revision} + 1`, last_message_time: timestamp }
+				: { revision: sql`${chatTable.revision} + 1` })
+			.where(eq(chatTable.id, input.conversationId))
+			.run();
+		const snapshot = readConversationSnapshot(db, input.conversationId);
+		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+		return {
+			generationIds: activeRows.map((active) => active.id),
+			conversation: snapshot,
+		};
+	});
+	return stop.immediate();
 }

@@ -477,6 +477,7 @@ export interface ConversationModule {
 		input: RemoveTailGenerationInput,
 	): ConversationSnapshot;
 	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
+	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
 	acceptContinuationGeneration(
 		input: AcceptContinuationGenerationInput,
 	): AcceptedContinuationGeneration;
@@ -628,6 +629,19 @@ export interface StopGenerationInput {
 	conversationId: number;
 	generationId: number;
 	timestamp?: string | undefined;
+}
+
+// Stop All is one Conversation-owned lifecycle transition. The target set is
+// read inside the same transaction that resolves/removes every active target,
+// so callers never observe a partially stopped response position.
+export interface StopGenerationsInput {
+	conversationId: number;
+	timestamp?: string | undefined;
+}
+
+export interface StoppedGenerations {
+	generationIds: number[];
+	conversation: ConversationSnapshot;
 }
 
 // Continuation acceptance creates only the model-authored provisional target.
