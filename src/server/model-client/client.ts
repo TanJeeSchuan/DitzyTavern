@@ -1,3 +1,4 @@
+import { scheduler } from "node:timers/promises";
 import type {
 	ModelClient,
 	ModelClientEvent,
@@ -56,6 +57,7 @@ export async function collectModelClientGeneration(
 	let reasoning = "";
 	let usage: ModelClientUsage | null = null;
 	let finished: Extract<ModelClientEvent, { type: "finished" }> | null = null;
+	let eventsSinceYield = 0;
 
 	try {
 		for await (const event of client.generate(input)) {
@@ -85,6 +87,15 @@ export async function collectModelClientGeneration(
 					throw new ModelClientGenerationError(event.kind, event.message);
 				default:
 					assertNeverModelClientEvent(event);
+			}
+			// An async iterator can resolve every read from its in-memory queue. A
+			// plain await then remains in the microtask queue and starves Elysia's
+			// request dispatcher until the provider stream drains. Bound each burst
+			// without adding a scheduling turn to ordinary short streams.
+			eventsSinceYield += 1;
+			if (eventsSinceYield >= 32) {
+				eventsSinceYield = 0;
+				await scheduler.yield();
 			}
 		}
 	} catch (error) {

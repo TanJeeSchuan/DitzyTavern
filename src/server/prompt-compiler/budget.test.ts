@@ -105,4 +105,33 @@ describe("Prompt Plan budget", () => {
 			throw new PromptBudgetExceededError(result);
 		}).toThrow("Prompt Plan exceeds the Conversation context limit");
 	});
+
+	test("finds the oldest-first history cutoff with logarithmic estimator work", () => {
+		const history = Array.from({ length: 1_024 }, (_, index) => ({
+			speakerName: index % 2 === 0 ? "Writer" : "Maren",
+			content: `History ${index}`,
+		}));
+		let estimateCalls = 0;
+		const estimator = createTokenEstimator((transcript) => {
+			estimateCalls += 1;
+			const historyBlocks = transcript.split("\u001fhistory").length - 1;
+			return historyBlocks * 10;
+		});
+
+		const result = budgetPromptPlan({
+			plan: planFor(history),
+			history,
+			historyRoles: history.map((_, index) => index === history.length - 1 ? "human" : "model"),
+			compile: (nextHistory) => planFor(nextHistory),
+			contextLimit: 81,
+			responseBudget: 1,
+			safetyAllowance: 0,
+			estimator,
+		});
+
+		expect(result.retainedHistory).toHaveLength(8);
+		expect(result.retainedHistory[0]).toBe(history[1_016]);
+		expect(result.retainedHistory.at(-1)).toBe(history.at(-1));
+		expect(estimateCalls).toBeLessThanOrEqual(12);
+	});
 });

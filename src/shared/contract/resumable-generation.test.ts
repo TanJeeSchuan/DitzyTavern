@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { Elysia } from "elysia";
 import { openDatabase } from "../../server/database/database";
 import { createConnectionSettingsModule } from "../../server/connection-settings";
 import {
@@ -107,6 +108,86 @@ describe("Resumable generation transport", () => {
 			reasoning: "Consider.",
 			latestEventId: 3,
 		}));
+	});
+
+	test("keeps other HTTP routes responsive while provider events are buffered", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Responsive Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(7) }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "responsive-secret",
+		});
+		const encoder = new TextEncoder();
+		let emitted = 0;
+		let providerSignal: AbortSignal | undefined;
+		const app = new Elysia()
+			.get("/probe", () => ({ ok: true }))
+			.use(createConversationRoutes(database, {
+				masterKey: new Uint8Array(32).fill(7),
+				fetch: async (_input, init) => {
+					providerSignal = init?.signal ?? undefined;
+					return new Response(new ReadableStream({
+						pull(controller) {
+							if (providerSignal?.aborted === true) {
+								controller.close();
+								return;
+							}
+							if (emitted < 20_000) {
+								emitted += 1;
+								controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "x" }, finish_reason: null }] })}\n\n`));
+								return;
+							}
+							if (emitted === 20_000) {
+								emitted += 1;
+								controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
+								return;
+							}
+							controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+							controller.close();
+						},
+					}), { headers: { "content-type": "text/event-stream" } });
+				},
+			}))
+			.listen({ hostname: "127.0.0.1", port: 0 });
+		const deadline = <Value>(promise: Promise<Value>, label: string) => Promise.race([
+			promise,
+			new Promise<never>((_resolve, reject) => {
+				setTimeout(() => reject(new Error(`${label} exceeded 500 ms.`)), 500);
+			}),
+		]);
+		try {
+			const origin = app.server?.url.origin;
+			if (origin === undefined) throw new Error("Responsive test server did not listen.");
+			const acceptedResponse = await deadline(fetch(
+				`${origin}/api/conversations/${conversation.id}/generations`,
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ expectedRevision: conversation.revision, content: "Start." }),
+				},
+			), "Generation acceptance");
+			const probeResponse = await deadline(fetch(`${origin}/probe`), "Unrelated route");
+			expect(acceptedResponse.status).toBe(200);
+			expect(probeResponse.status).toBe(200);
+			expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toHaveLength(1);
+
+			// SAFETY: this test controls the accepted response shape.
+			const accepted = await acceptedResponse.json() as { generationId: number };
+			const stopped = await deadline(fetch(
+				`${origin}/api/conversations/${conversation.id}/generations/${accepted.generationId}/stop`,
+				{ method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+			), "Stop command");
+			expect(stopped.status).toBe(200);
+		} finally {
+			app.stop();
+		}
 	});
 
 	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {

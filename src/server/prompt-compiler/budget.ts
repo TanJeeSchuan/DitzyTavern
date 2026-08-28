@@ -129,34 +129,56 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 	}
 
 	const estimator = input.estimator ?? tokenxEstimator;
-	let retainedIndexes = input.history.map((_, index) => index);
-	let plan = input.plan;
-	let tokenEstimate = estimateCandidate(estimator, plan);
+	const allIndexes = input.history.map((_, index) => index);
+	const removableIndexes = allIndexes.filter((index) => index !== protectedHistoryIndex);
+	const candidateAfterRemoving = (count: number) => {
+		const removed = new Set(removableIndexes.slice(0, count));
+		const retainedIndexes = allIndexes.filter((index) => !removed.has(index));
+		const plan = count === 0
+			? input.plan
+			: input.compile(retainedIndexes.map((index) => input.history[index]));
+		return { retainedIndexes, plan, tokenEstimate: estimateCandidate(estimator, plan) };
+	};
+	const fits = (tokenEstimate: number) =>
+		tokenEstimate + input.responseBudget + input.safetyAllowance <= input.contextLimit;
+	let candidate = candidateAfterRemoving(0);
 
-	while (tokenEstimate + input.responseBudget + input.safetyAllowance > input.contextLimit) {
-		const removableIndex = retainedIndexes.find(
-			(index) => index !== protectedHistoryIndex,
-		);
-		if (removableIndex === undefined) {
-			const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
-			return createResult({
-				input,
-				plan,
-				retainedIndexes,
-				tokenEstimate,
-				breakdown,
-				failure: {
-					reason: protectedHistoryIndex === undefined
-						? "fixed-prompt-too-large"
-						: "protected-history-too-large",
-					breakdown,
-				},
-			});
+	if (!fits(candidate.tokenEstimate) && removableIndexes.length > 0) {
+		// Removing oldest whole history blocks only shortens this compiler's
+		// estimation transcript. Find the smallest fitting removal count without
+		// rebuilding and rescanning a multi-megabyte prompt once per Message.
+		let lower = 1;
+		let upper = removableIndexes.length;
+		let fitting: ReturnType<typeof candidateAfterRemoving> | undefined;
+		while (lower <= upper) {
+			const middle = Math.floor((lower + upper) / 2);
+			const inspected = candidateAfterRemoving(middle);
+			if (fits(inspected.tokenEstimate)) {
+				fitting = inspected;
+				upper = middle - 1;
+			} else {
+				lower = middle + 1;
+			}
 		}
+		candidate = fitting ?? candidateAfterRemoving(removableIndexes.length);
+	}
 
-		retainedIndexes = retainedIndexes.filter((index) => index !== removableIndex);
-		plan = input.compile(retainedIndexes.map((index) => input.history[index]));
-		tokenEstimate = estimateCandidate(estimator, plan);
+	const { retainedIndexes, plan, tokenEstimate } = candidate;
+	if (!fits(tokenEstimate)) {
+		const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
+		return createResult({
+			input,
+			plan,
+			retainedIndexes,
+			tokenEstimate,
+			breakdown,
+			failure: {
+				reason: protectedHistoryIndex === undefined
+					? "fixed-prompt-too-large"
+					: "protected-history-too-large",
+				breakdown,
+			},
+		});
 	}
 
 	const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
