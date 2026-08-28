@@ -156,12 +156,22 @@ describe("Resumable generation transport", () => {
 				},
 			}))
 			.listen({ hostname: "127.0.0.1", port: 0 });
-		const deadline = <Value>(promise: Promise<Value>, label: string) => Promise.race([
-			promise,
-			new Promise<never>((_resolve, reject) => {
-				setTimeout(() => reject(new Error(`${label} exceeded 500 ms.`)), 500);
-			}),
-		]);
+		const deadline = async <Value>(promise: Promise<Value>, label: string): Promise<Value> => {
+			let timeout: ReturnType<typeof setTimeout> | undefined;
+			try {
+				return await Promise.race([
+					promise,
+					new Promise<never>((_resolve, reject) => {
+						timeout = setTimeout(
+							() => reject(new Error(`${label} exceeded 500 ms.`)),
+							500,
+						);
+					}),
+				]);
+			} finally {
+				if (timeout !== undefined) clearTimeout(timeout);
+			}
+		};
 		try {
 			const origin = app.server?.url.origin;
 			if (origin === undefined) throw new Error("Responsive test server did not listen.");
