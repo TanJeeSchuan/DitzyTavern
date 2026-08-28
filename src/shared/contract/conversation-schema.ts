@@ -7,6 +7,11 @@ import {
 } from "../../server/conversation";
 import { withDatabase } from "../../server/database/database";
 import { characterSnapshot } from "./character-library";
+import type {
+	GenerationJsonObject,
+	GenerationJsonValue,
+	GenerationProvenance as SharedGenerationProvenance,
+} from "../generation-provenance";
 
 export const participantPrompt = t.Object({
 	systemInstruction: t.String(),
@@ -239,17 +244,9 @@ export const activeGenerationDetails = t.Object({
 	}),
 });
 
-export type GenerationDetailsJsonValue =
-	| string
-	| number
-	| boolean
-	| null
-	| GenerationDetailsJsonValue[]
-	| { readonly [key: string]: GenerationDetailsJsonValue };
+export type GenerationDetailsJsonValue = GenerationJsonValue;
 
-export type GenerationDetailsJsonObject = {
-	readonly [key: string]: GenerationDetailsJsonValue;
-};
+export type GenerationDetailsJsonObject = GenerationJsonObject;
 
 export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>["status"];
 export type ActiveGenerationDetails = Omit<
@@ -281,7 +278,7 @@ export const variantDetails = t.Object({
 	provenance: generationProvenance,
 });
 
-export type GenerationProvenance = NonNullable<Static<typeof variantDetails>["provenance"]>;
+export type GenerationProvenance = SharedGenerationProvenance;
 export type VariantDetails = Static<typeof variantDetails>;
 
 // Adapts the seam's immutable snapshot into the summary transport shape: the

@@ -1,3 +1,8 @@
+import type {
+	GenerationJsonValue,
+	GenerationProvenance as SharedGenerationProvenance,
+} from "../../shared/generation-provenance";
+
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
 // callers see only these types plus command execution outcomes.
@@ -11,13 +16,7 @@ export interface ConversationDataEntry {
 // JSON values are the only opaque values allowed across server-owned
 // persistence seams. Keeping this closed recursive type avoids admitting
 // provider classes, credentials, or unserializable runtime values.
-export type ConversationJsonValue =
-	| string
-	| number
-	| boolean
-	| null
-	| readonly ConversationJsonValue[]
-	| Readonly<{ [key: string]: ConversationJsonValue }>;
+export type ConversationJsonValue = GenerationJsonValue;
 
 // Conversation-local generation controls. Request Overrides retain separate
 // namespaces for each API Format so switching a global Connection Profile
@@ -559,30 +558,7 @@ export interface ActiveGenerationDetails {
 // Compact terminal provenance is the only Generation detail that survives
 // Active Generation cleanup. It has a positive allow-list by design: no
 // request overrides, URLs, headers, credentials, or raw provider payloads.
-export interface GenerationProvenance {
-	connectionProfileId: number | null;
-	connectionSettingsRevision: number | null;
-	modelBackend: string | null;
-	adapter: string | null;
-	modelId: string | null;
-	generationSettings: {
-		temperature: number | null;
-		topP: number | null;
-		frequencyPenalty: number | null;
-		presencePenalty: number | null;
-		contextLimit: number | null;
-		responseBudget: number | null;
-		safetyAllowance: number | null;
-		siblingGenerationLimit: number | null;
-		continuationStrategy: "instruction" | "assistant-prefill" | null;
-		continuationInstruction: string | null;
-		continuationPrefillSuffix: "" | " " | "\n" | "\n\n" | null;
-	};
-	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
-	finishReason: "stop" | "length" | "other" | null;
-	status: "complete" | "length-limited" | "interrupted";
-	interruptionCause: string | null;
-}
+export type GenerationProvenance = SharedGenerationProvenance;
 
 // On-demand details for a terminal Variant. Reasoning and arbitrary data
 // rows remain outside this contract; Generation provenance is compact and
