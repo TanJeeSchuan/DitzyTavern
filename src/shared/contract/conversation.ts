@@ -48,6 +48,9 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 	notRemovableOutcome,
+	generationAccepted,
+	generationStopped,
+	generationsStopped,
 	staleConversationConflict,
 	toConversationSummary,
 } from "./conversation-schema";
@@ -211,11 +214,7 @@ export const createConversationRoutes = (
 			{
 				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
 				response: {
-					200: t.Object({
-						outcome: t.Literal("stopped"),
-						generationId: t.Integer(),
-						conversation: conversationSummary,
-					}),
+					200: generationStopped,
 					404: notFoundOutcome,
 				},
 			},
@@ -256,11 +255,7 @@ export const createConversationRoutes = (
 			{
 				params: t.Object({ id: t.Numeric() }),
 				response: {
-					200: t.Object({
-						outcome: t.Literal("stopped"),
-						generationIds: t.Array(t.Integer()),
-						conversation: conversationSummary,
-					}),
+					200: generationsStopped,
 					404: notFoundOutcome,
 				},
 			},
@@ -293,13 +288,7 @@ export const createConversationRoutes = (
 				params: t.Object({ id: t.Numeric() }),
 				body: continuationBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("accepted"),
-						generationId: t.Integer(),
-						conversationId: t.Integer(),
-						messageId: t.Integer(),
-						variantId: t.Integer(),
-					}),
+					200: generationAccepted,
 					404: notFoundOutcome,
 					409: t.Union([
 						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
@@ -459,13 +448,7 @@ export const createConversationRoutes = (
 				params: t.Object({ id: t.Numeric() }),
 				body: generationBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("accepted"),
-						generationId: t.Integer(),
-						conversationId: t.Integer(),
-						messageId: t.Integer(),
-						variantId: t.Integer(),
-					}),
+                                        200: generationAccepted,
 					404: notFoundOutcome,
 					409: t.Union([
 						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
@@ -535,13 +518,7 @@ export const createConversationRoutes = (
                         {
                                 params: t.Object({ id: t.Numeric(), messageId: t.Numeric() }),
                                 response: {
-                                        200: t.Object({
-                                                outcome: t.Literal("accepted"),
-                                                generationId: t.Integer(),
-                                                conversationId: t.Integer(),
-                                                messageId: t.Integer(),
-                                                variantId: t.Integer(),
-                                        }),
+                                        200: generationAccepted,
                                         404: notFoundOutcome,
                                         409: notPlayableOutcome,
                                         422: invalidOutcome,
