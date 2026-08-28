@@ -89,7 +89,7 @@ describe("Generation Stop terminal races", () => {
 		);
 	});
 
-	test("Stop All settles each Generation once when provider and Stop win different races", async () => {
+	test("Stop All commits every target before settling provider runtimes", async () => {
 		const input = setup();
 		const generated = input.module.commitGeneration({
 			conversationId: input.conversation.id,
@@ -124,13 +124,9 @@ describe("Generation Stop terminal races", () => {
 			variantId: providerWinner.provisionalVariantId,
 			startedAt: "2026-08-27T00:00:01.000Z",
 			onStop: () => {
-				input.module.resolveSiblingGeneration({
-					conversationId: input.conversation.id,
-					generationId: providerWinner.generationId,
-					timestamp: "2026-08-27T00:00:03.000Z",
-					content: "Provider alternative.",
-				});
-				providerRuntime.complete();
+				// Stop All must secure the durable Conversation transition before
+				// asking this provider attempt to abort.
+				expect(input.module.getSnapshot(input.conversation.id)?.activeGenerations).toEqual([]);
 			},
 		});
 		const stopRuntime = generationRuntimeFor(database).start({
@@ -158,17 +154,14 @@ describe("Generation Stop terminal races", () => {
 		const payload = await response.json() as { generationIds: number[] };
 
 		expect(response.status).toBe(200);
-		expect(payload.generationIds).toEqual([stopWinner.generationId]);
-		expect(providerRuntime.state.status).toBe("complete");
+		expect(payload.generationIds).toEqual([providerWinner.generationId, stopWinner.generationId]);
+		expect(providerRuntime.state.status).toBe("stopped");
 		expect(stopRuntime.state.status).toBe("stopped");
-		expect(providerTerminalStates).toEqual(["complete"]);
+		expect(providerTerminalStates).toEqual(["stopped"]);
 		expect(stopTerminalStates).toEqual(["stopped"]);
 		const snapshot = input.module.getSnapshot(input.conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
-		expect(snapshot?.messages[0]?.variants.map((variant) => variant.content)).toEqual([
-			"Original.",
-			"Provider alternative.",
-		]);
+		expect(snapshot?.messages[0]?.variants.map((variant) => variant.content)).toEqual(["Original."]);
 		expect(snapshot?.messages[0]?.variants.filter((variant) => variant.selected)).toHaveLength(1);
 	});
 });

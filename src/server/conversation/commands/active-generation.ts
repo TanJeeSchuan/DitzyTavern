@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, max, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	chatTable,
@@ -38,6 +38,8 @@ import type {
 	ConversationSnapshot,
 	RemoveTailGenerationInput,
 	RemoveSiblingGenerationInput,
+	StopGenerationsInput,
+	StoppedGenerations,
 	StopGenerationInput,
 	ResolveTailGenerationInput,
 	ResolveSiblingGenerationInput,
@@ -1149,6 +1151,145 @@ export function checkpointConversationGeneration(
 	checkpoint.immediate();
 }
 
+interface StoppedSiblingTarget {
+	messageId: number;
+	variantId: number;
+	priorVariantId: number | null;
+	selected: boolean;
+}
+
+interface StopTransition {
+	readonly durableOutput: boolean;
+	readonly removedSibling?: StoppedSiblingTarget;
+}
+
+/**
+ * Apply one Stop transition against an already-open transaction. Keeping the
+ * row mutation here lets Stop and Stop All share exactly the same terminal
+ * persistence rules while Stop All can commit the complete target set once.
+ */
+function stopActiveGenerationInTransaction(
+	db: ReturnType<typeof connectConversationDatabase>,
+	active: ActiveGenerationRow,
+	timestamp: string,
+): StopTransition {
+	const content = active.checkpoint_content;
+	const reasoning = active.checkpoint_reasoning;
+	if (content.length === 0 && reasoning.length === 0) {
+		if (isSiblingGenerationRow(active)) {
+			const variant = db
+				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
+				.from(messageVariantTable)
+				.where(
+					and(
+						eq(messageVariantTable.id, active.variant_id),
+						eq(messageVariantTable.message_id, active.message_id),
+					),
+				)
+				.get();
+			if (variant === undefined) {
+				throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
+			}
+			db.delete(activeGenerationTable)
+				.where(eq(activeGenerationTable.id, active.id))
+				.run();
+			db.delete(messageVariantTable)
+				.where(eq(messageVariantTable.id, variant.id))
+				.run();
+			return {
+				durableOutput: false,
+				removedSibling: {
+					messageId: active.message_id,
+					variantId: variant.id,
+					priorVariantId: active.prior_variant_id,
+					selected: variant.selected,
+				},
+			};
+		}
+		db.delete(activeGenerationTable)
+			.where(eq(activeGenerationTable.id, active.id))
+			.run();
+		db.delete(messageTable)
+			.where(
+				and(
+					eq(messageTable.id, active.message_id),
+					eq(messageTable.chat_id, active.chat_id),
+				),
+			)
+			.run();
+		return { durableOutput: false };
+	}
+
+	const variant = db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.get();
+	if (variant === undefined) {
+		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
+	}
+	db.update(messageVariantTable)
+		.set({ content, timestamp })
+		.where(eq(messageVariantTable.id, variant.id))
+		.run();
+	const data = [
+		{ namespace: "generation", key: "outcome", value: "interrupted" },
+		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
+	] satisfies ConversationDataEntry[];
+	const suppliedData = data;
+	const provenance = terminalProvenance(active, suppliedData);
+	const terminalData = [
+		...(provenance === undefined ? [] : [provenance]),
+		...(reasoning.length > 0 ? [{ namespace: "generation", key: "reasoning", value: reasoning }] : []),
+		...suppliedData,
+	];
+	if (terminalData.length > 0) {
+		db.insert(messageVariantDataTable)
+			.values(terminalData.map((entry) => ({
+				message_variant_id: variant.id,
+				namespace: entry.namespace,
+				key: entry.key,
+				value: entry.value,
+			})))
+			.run();
+	}
+	retainTerminalInspection(db, active, suppliedData, content, reasoning);
+	db.delete(activeGenerationTable)
+		.where(eq(activeGenerationTable.id, active.id))
+		.run();
+	return { durableOutput: true };
+}
+
+function restoreStoppedSiblingSelection(
+	db: ReturnType<typeof connectConversationDatabase>,
+	removed: readonly StoppedSiblingTarget[],
+): void {
+	const removedIds = new Set(removed.map((target) => target.variantId));
+	const priorByVariantId = new Map(removed.map((target) => [target.variantId, target.priorVariantId]));
+	for (const target of removed) {
+		if (!target.selected) continue;
+		let fallback = target.priorVariantId;
+		while (fallback !== null && removedIds.has(fallback)) {
+			fallback = priorByVariantId.get(fallback) ?? null;
+		}
+		if (fallback === null) continue;
+		db.update(messageVariantTable)
+			.set({ selected: true })
+			.where(
+				and(
+					eq(messageVariantTable.id, fallback),
+					eq(messageVariantTable.message_id, target.messageId),
+				),
+			)
+			.run();
+	}
+}
+
 // A zero-output failure removes only the provisional model Message and its
 // Active Generation. The accepted human Message remains the latest authored
 // writing, ready for an identical Send to reuse it without duplication.
@@ -1194,47 +1335,81 @@ export function stopConversationGeneration(
 	database: Database,
 	input: StopGenerationInput,
 ): ConversationSnapshot {
-	const db = connectConversationDatabase(database);
-	const active = readActiveGeneration(db, input.conversationId, input.generationId);
-	if (active === undefined) {
-		throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-	}
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const content = active.checkpoint_content;
-	const reasoning = active.checkpoint_reasoning;
-	if (content.length === 0 && reasoning.length === 0) {
-		if (isSiblingGenerationRow(active)) {
-			return removeConversationSiblingGeneration(database, {
-				conversationId: input.conversationId,
-				generationId: input.generationId,
-			});
+	const stop = database.transaction(() => {
+		const db = connectConversationDatabase(database);
+		const active = readActiveGeneration(db, input.conversationId, input.generationId);
+		if (active === undefined) {
+			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
 		}
-		return removeConversationTailGeneration(database, {
-			conversationId: input.conversationId,
-			generationId: input.generationId,
-		});
-	}
-
-	const data = [
-		{ namespace: "generation", key: "outcome", value: "interrupted" },
-		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
-	] satisfies ConversationDataEntry[];
-	if (isSiblingGenerationRow(active)) {
-		return resolveConversationSiblingGeneration(database, {
-			conversationId: input.conversationId,
-			generationId: input.generationId,
+		const transition = stopActiveGenerationInTransaction(
+			db,
+			active,
 			timestamp,
-			content,
-			reasoning,
-			data,
-		});
-	}
-	return resolveConversationTailGeneration(database, {
-		conversationId: input.conversationId,
-		generationId: input.generationId,
-		timestamp,
-		content,
-		reasoning,
-		data,
+		);
+		if (transition.removedSibling !== undefined) {
+			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
+		}
+		db.update(chatTable)
+			.set(transition.durableOutput
+				? { revision: sql`${chatTable.revision} + 1`, last_message_time: timestamp }
+				: { revision: sql`${chatTable.revision} + 1` })
+			.where(eq(chatTable.id, input.conversationId))
+			.run();
+		const snapshot = readConversationSnapshot(db, input.conversationId);
+		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+		return snapshot;
 	});
+	return stop.immediate();
+}
+
+/**
+ * Atomically stop every Active Generation currently owned by a Conversation.
+ * The result is the durable target set; callers must use it to settle only
+ * runtimes whose Conversation transition actually committed.
+ */
+export function stopConversationGenerations(
+	database: Database,
+	input: StopGenerationsInput,
+): StoppedGenerations {
+	const stop = database.transaction(() => {
+		const db = connectConversationDatabase(database);
+		const conversation = db
+			.select({ id: chatTable.id })
+			.from(chatTable)
+			.where(eq(chatTable.id, input.conversationId))
+			.get();
+		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+		const activeRows = db
+			.select()
+			.from(activeGenerationTable)
+			.where(eq(activeGenerationTable.chat_id, input.conversationId))
+			.orderBy(asc(activeGenerationTable.id))
+			.all();
+		if (activeRows.length === 0) {
+			throw new InvalidConversationCommandError("The Conversation has no active Generations to stop.");
+		}
+		const timestamp = input.timestamp ?? new Date().toISOString();
+		const removedSiblings: StoppedSiblingTarget[] = [];
+		let durableOutput = false;
+		for (const active of activeRows) {
+			const transition = stopActiveGenerationInTransaction(db, active, timestamp);
+			durableOutput ||= transition.durableOutput;
+			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
+		}
+		restoreStoppedSiblingSelection(db, removedSiblings);
+		db.update(chatTable)
+			.set(durableOutput
+				? { revision: sql`${chatTable.revision} + 1`, last_message_time: timestamp }
+				: { revision: sql`${chatTable.revision} + 1` })
+			.where(eq(chatTable.id, input.conversationId))
+			.run();
+		const snapshot = readConversationSnapshot(db, input.conversationId);
+		if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+		return {
+			generationIds: activeRows.map((active) => active.id),
+			conversation: snapshot,
+		};
+	});
+	return stop.immediate();
 }
