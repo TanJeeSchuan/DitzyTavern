@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { t } from "elysia";
+import { t, type Static } from "elysia";
+import { Kind, Type } from "@sinclair/typebox";
 import {
 	type ConversationSnapshot,
 	createConversationModule,
@@ -71,6 +72,25 @@ const conversationCapabilities = t.Object({
 	swipe: capabilityAvailability,
 });
 
+// Provider request overrides and retained generation details are restricted
+// to JSON values. The runtime schema stays open like the previous opaque
+// payload boundary, while the Unsafe generic keeps Eden's Static type exact
+// and recursive instead of widening these fields to `unknown`.
+type JsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly JsonValue[]
+	| { readonly [key: string]: JsonValue };
+const jsonValue = Type.Unsafe<JsonValue>({ [Kind]: "Unknown" });
+const jsonObject = Type.Record(Type.String(), jsonValue);
+
+export type GenerationDetailsJsonValue = Static<typeof jsonValue>;
+export type GenerationDetailsJsonObject = Static<typeof jsonObject>;
+export type GenerationRequestValue = GenerationDetailsJsonValue;
+export type GenerationRequestOverrides = Static<typeof jsonObject>;
+
 const activeGenerations = t.Array(t.Object({
 	generationId: t.Integer(),
 	messageId: t.Integer(),
@@ -97,6 +117,12 @@ export const conversationSummary = t.Object({
 	activeGenerations,
 });
 
+export type ParticipantPrompt = Static<typeof participantPrompt>;
+export type CastParticipant = Static<typeof castParticipant>;
+export type ConversationControl = Static<typeof conversationControl>;
+export type ConversationControlValidity = Static<typeof conversationControlValidity>;
+export type ConversationSummary = Static<typeof conversationSummary>;
+
 export const conversationGenerationSettings = t.Object({
 	modelId: t.String(),
 	temperature: t.Nullable(t.Number()),
@@ -119,11 +145,14 @@ export const conversationGenerationSettings = t.Object({
 		t.Literal("\n\n"),
 	]),
 	requestOverrides: t.Object({
-		"chat-completions": t.Record(t.String(), t.Unknown()),
-		responses: t.Record(t.String(), t.Unknown()),
-		"anthropic-messages": t.Record(t.String(), t.Unknown()),
+		"chat-completions": jsonObject,
+		responses: jsonObject,
+		"anthropic-messages": jsonObject,
 	}),
 });
+
+export type ConversationGenerationSettings = Static<typeof conversationGenerationSettings>;
+export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
 export const generationVariant = t.Object({
 	messageId: t.Integer(),
@@ -136,6 +165,8 @@ export const generationVariant = t.Object({
 		value: t.String(),
 	})),
 });
+
+export type GenerationVariant = Static<typeof generationVariant>;
 
 const generationProvenance = t.Nullable(t.Object({
 	connectionProfileId: t.Nullable(t.Integer()),
@@ -177,22 +208,22 @@ export const activeGenerationDetails = t.Object({
 		t.Literal("length-limited"),
 		t.Literal("interrupted"),
 	]),
-	intent: t.Unknown(),
+	intent: jsonValue,
 	participants: t.Object({
 		human: t.Object({ id: t.Integer(), name: t.String() }),
 		model: t.Object({ id: t.Integer(), name: t.String() }),
 	}),
-	promptPlan: t.Unknown(),
-	historyRoles: t.Unknown(),
-	generationSettings: t.Unknown(),
-	connection: t.Unknown(),
+	promptPlan: jsonValue,
+	historyRoles: jsonValue,
+	generationSettings: jsonValue,
+	connection: jsonValue,
 	budget: t.Object({
 		tokenEstimate: t.Nullable(t.Integer()),
 		responseBudget: t.Nullable(t.Integer()),
 		safetyAllowance: t.Nullable(t.Integer()),
 		contextLimit: t.Nullable(t.Integer()),
 		totalRequiredTokens: t.Nullable(t.Integer()),
-		omittedHistory: t.Unknown(),
+		omittedHistory: jsonValue,
 	}),
 	checkpoint: t.Object({
 		content: t.String(),
@@ -201,6 +232,9 @@ export const activeGenerationDetails = t.Object({
 		checkpointedAt: t.Nullable(t.String()),
 	}),
 });
+
+export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>["status"];
+export type ActiveGenerationDetails = Static<typeof activeGenerationDetails>;
 
 export const variantDetails = t.Object({
 	conversationId: t.Integer(),
@@ -219,6 +253,9 @@ export const variantDetails = t.Object({
 	})),
 	provenance: generationProvenance,
 });
+
+export type GenerationProvenance = NonNullable<Static<typeof variantDetails>["provenance"]>;
+export type VariantDetails = Static<typeof variantDetails>;
 
 // Adapts the seam's immutable snapshot into the summary transport shape: the
 // Conversation seam returns readonly arrays, while the typed response
@@ -326,6 +363,8 @@ const participantDefinition = t.Object({
 	prompt: participantPrompt,
 	openings: t.Array(t.String()),
 });
+
+export type ParticipantDefinition = Static<typeof participantDefinition>;
 
 const dataScope = t.Union([
 	t.Object({ type: t.Literal("conversation") }),
@@ -484,6 +523,8 @@ const conversationCommandAction = t.Union([
 	removeParticipantAction,
 ]);
 
+export type ConversationAction = Static<typeof conversationCommandAction>;
+
 // The revision is part of the Conversation command; the conversation id
 // lives in the route path.
 export const conversationCommandBody = t.Object({
@@ -504,6 +545,10 @@ export const generationBody = t.Object({
 export const continuationBody = t.Object({
 	expectedRevision: t.Integer(),
 });
+
+export type ConversationCommandBody = Static<typeof conversationCommandBody>;
+export type GenerationBody = Static<typeof generationBody>;
+export type ContinuationBody = Static<typeof continuationBody>;
 
 export const notFoundOutcome = t.Object({ outcome: t.Literal("not-found") });
 export const invalidOutcome = t.Object({
@@ -530,3 +575,37 @@ export const characterConflict = t.Object({
 	actualRevision: t.Integer(),
 	currentCharacter: characterSnapshot,
 });
+
+export const generationAccepted = t.Object({
+	outcome: t.Literal("accepted"),
+	generationId: t.Integer(),
+	conversationId: t.Integer(),
+	messageId: t.Integer(),
+	variantId: t.Integer(),
+});
+
+export const generationStartResponse = t.Union([
+	generationAccepted,
+	notFoundOutcome,
+	t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
+	notPlayableOutcome,
+	invalidOutcome,
+]);
+
+export type GenerationAccepted = Static<typeof generationAccepted>;
+export type GenerationStartResponse = Static<typeof generationStartResponse>;
+
+export const generationStopped = t.Object({
+	outcome: t.Literal("stopped"),
+	generationId: t.Integer(),
+	conversation: conversationSummary,
+});
+
+export const generationsStopped = t.Object({
+	outcome: t.Literal("stopped"),
+	generationIds: t.Array(t.Integer()),
+	conversation: conversationSummary,
+});
+
+export type GenerationStopped = Static<typeof generationStopped>;
+export type GenerationsStopped = Static<typeof generationsStopped>;

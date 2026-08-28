@@ -174,8 +174,12 @@ export class GenerationRuntimeRegistry {
 		}, Math.max(0, nextExpiry - this.now()));
 	}
 
-	flushAll(): void {
-		for (const runtime of this.runtimes.values()) runtime.flushCheckpoint();
+	flushAll(conversationId?: number): void {
+		for (const runtime of this.runtimes.values()) {
+			if (conversationId === undefined || runtime.state.conversationId === conversationId) {
+				runtime.flushCheckpoint();
+			}
+		}
 	}
 
 	stopAll(conversationId?: number): void {
