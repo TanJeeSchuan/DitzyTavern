@@ -14,29 +14,22 @@ import {
 	ParticipantNotFoundError,
 	ParticipantNotRemovableError,
 	createConversationModule,
-	checkpointConversationTailGeneration,
-	checkpointConversationSiblingGeneration,
-	removeRetainedGenerationInspection,
 	stopConversationGeneration,
+	stopConversationGenerations,
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationGenerationSettings,
 } from "../../server/conversation";
 import { PromptBudgetExceededError } from "../../server/prompt-compiler";
+import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
+import type { ModelFetch } from "../../server/model-client";
 import {
-	createConnectionSettingsModule,
-	type ConnectionSettingsModuleOptions,
-} from "../../server/connection-settings";
-import {
-	createModelClient,
-	type ModelFetch,
-} from "../../server/model-client";
+	createGenerationCoordinator,
+	GenerationConfigurationError,
+} from "../../server/application/generation-coordinator";
 import { openDatabase, withDatabase } from "../../server/database/database";
 import {
 	addCharacterToCast,
-	startServerOwnedSendGeneration,
-	startServerOwnedContinuationGeneration,
-	startServerOwnedSiblingGeneration,
 	generationRuntimeFor,
 	defaultGenerationRuntime,
 	type GenerationRuntimeState,
@@ -61,6 +54,9 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 	notRemovableOutcome,
+	generationAccepted,
+	generationStopped,
+	generationsStopped,
 	staleConversationConflict,
 	toConversationSummary,
 } from "./conversation-schema";
@@ -93,6 +89,7 @@ const generationStartFailure = (error: Error): GenerationStartFailure | undefine
 	}
 	if (
 		error instanceof ContinuationUnavailableError ||
+		error instanceof GenerationConfigurationError ||
 		error instanceof InvalidConversationCommandError ||
 		error instanceof PromptBudgetExceededError ||
 		error instanceof SiblingVariantUnavailableError
@@ -101,13 +98,6 @@ const generationStartFailure = (error: Error): GenerationStartFailure | undefine
 	}
 	return undefined;
 };
-
-const retainedInspectionCleanup = (
-	configuredDatabase: Database | undefined,
-	generationId: number,
-) => () => withDatabase(configuredDatabase, (connection) =>
-	removeRetainedGenerationInspection(connection, generationId));
-
 const activeGenerationPayload = (state: GenerationRuntimeState) => ({
 	outcome: "active-state" as const,
 	generationId: state.generationId,
@@ -224,8 +214,9 @@ type GenerationSsePayload =
 export const createConversationRoutes = (
 	database: Database | undefined,
 	options: ConversationRouteOptions = {},
-) =>
-	new Elysia()
+) => {
+	const generationCoordinator = createGenerationCoordinator(database, options);
+	return new Elysia()
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
 			({ params, status }) => {
@@ -261,11 +252,7 @@ export const createConversationRoutes = (
 			{
 				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
 				response: {
-					200: t.Object({
-						outcome: t.Literal("stopped"),
-						generationId: t.Integer(),
-						conversation: conversationSummary,
-					}),
+					200: generationStopped,
 					404: notFoundOutcome,
 				},
 			},
@@ -275,36 +262,30 @@ export const createConversationRoutes = (
 			({ params, status }) => {
 				const connection = database ?? openDatabase();
 				try {
-					const conversationModule = createConversationModule(connection);
-					const current = conversationModule.getSnapshot(params.id);
-					if (current === undefined) return status(404, { outcome: "not-found" as const });
-					const generationIds = current.activeGenerations.map((entry) => entry.generationId);
-					if (generationIds.length === 0) return status(404, { outcome: "not-found" as const });
 					const registry = runtimeRegistryForRequest(connection, database);
-					const stoppedIds: number[] = [];
-					let latest = current;
-					for (const generationId of generationIds) {
+					// Checkpoint without aborting first. The Conversation transition below
+					// owns the complete target set; runtimes are settled only after its
+					// durable commit succeeds.
+					registry.flushAll(params.id);
+					const stopped = stopConversationGenerations(connection, {
+						conversationId: params.id,
+					});
+					for (const generationId of stopped.generationIds) {
 						const runtime = registry.get(generationId);
-						const matchingRuntime = runtime?.state.conversationId === params.id ? runtime : undefined;
-						matchingRuntime?.stop();
-						try {
-							latest = stopConversationGeneration(connection, {
-								conversationId: params.id,
-								generationId,
-							});
-							stoppedIds.push(generationId);
-							matchingRuntime?.markStopped();
-						} catch (error) {
-							if (!(error instanceof InvalidConversationCommandError)) throw error;
-							matchingRuntime?.releaseStopRequest();
-						}
+						if (runtime?.state.conversationId !== params.id) continue;
+						runtime.stop();
+						runtime.markStopped();
 					}
-					if (stoppedIds.length === 0) return status(404, { outcome: "not-found" as const });
 					return {
 						outcome: "stopped" as const,
-						generationIds: stoppedIds,
-						conversation: toConversationSummary(latest),
+						generationIds: stopped.generationIds,
+						conversation: toConversationSummary(stopped.conversation),
 					};
+				} catch (error) {
+					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					throw error;
 				} finally {
 					if (!database) connection.close();
 				}
@@ -312,11 +293,7 @@ export const createConversationRoutes = (
 			{
 				params: t.Object({ id: t.Numeric() }),
 				response: {
-					200: t.Object({
-						outcome: t.Literal("stopped"),
-						generationIds: t.Array(t.Integer()),
-						conversation: conversationSummary,
-					}),
+					200: generationsStopped,
 					404: notFoundOutcome,
 				},
 			},
@@ -324,68 +301,12 @@ export const createConversationRoutes = (
 		.post(
 			"/api/conversations/:id/continue/generations",
 			async ({ params, body, status }) => {
-				const connection = database ?? openDatabase();
 				try {
-					const current = createConversationModule(connection).getSnapshot(params.id);
-					if (current === undefined) {
-						if (!database) connection.close();
-						return status(404, { outcome: "not-found" as const });
-					}
-					const connectionSettings = createConnectionSettingsModule(connection, options).get();
-					if (connectionSettings.activeProfileId === null) {
-						if (!database) connection.close();
-						return status(422, { outcome: "invalid" as const, reason: "An active Connection Profile is required for Generation." });
-					}
-					const profile = connectionSettings.profiles.find((entry) => entry.id === connectionSettings.activeProfileId);
-					if (profile === undefined) {
-						if (!database) connection.close();
-						return status(422, { outcome: "invalid" as const, reason: "The active Connection Profile is unavailable." });
-					}
-					const runtimeRegistry = runtimeRegistryForRequest(connection, database);
-					let runtime: ReturnType<typeof runtimeRegistry.start> | undefined;
-					const started = startServerOwnedContinuationGeneration(connection, {
+					const started = await generationCoordinator.startContinuationGeneration({
 						conversationId: params.id,
 						expectedRevision: body.expectedRevision,
-						modelClient: createModelClient({
-							profile,
-							secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
-							fetch: options.fetch,
-						}),
-						connection: {
-							profileId: profile.id,
-							settingsRevision: connectionSettings.revision,
-							backend: "ai-sdk",
-							adapter: profile.adapter,
-						},
-						onBeforeTerminal: () => runtime?.flushCheckpoint(),
-					}, {
-						onAccepted: (accepted, control) => {
-							runtime = runtimeRegistry.start({
-								generationId: accepted.generationId,
-								conversationId: params.id,
-								messageId: accepted.modelMessageId,
-								variantId: accepted.provisionalVariantId,
-								startedAt: new Date().toISOString(),
-								onStop: control.stop,
-								onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
-								onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) =>
-									checkpointConversationTailGeneration(connection, {
-										conversationId: params.id,
-										generationId: accepted.generationId,
-										content: checkpointContent,
-										reasoning,
-										latestEventId,
-									}),
-							});
-						},
-						onEvent: (event) => { runtime?.publish(event); },
 					});
-					const accepted = await started.accepted;
-					if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-					void started.result
-						.then(() => runtime?.complete())
-						.catch((error) => runtime?.fail(error instanceof Error ? error.message : "Generation failed."))
-						.finally(() => { if (!database) connection.close(); });
+					const accepted = started.accepted;
 					return {
 						outcome: "accepted" as const,
 						generationId: accepted.generationId,
@@ -394,7 +315,6 @@ export const createConversationRoutes = (
 						variantId: accepted.provisionalVariantId,
 					};
 				} catch (error) {
-					if (!database) connection.close();
 					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
 					if (failure?.status === 404) return status(404, failure.body);
 					if (failure?.status === 409) return status(409, failure.body);
@@ -406,13 +326,7 @@ export const createConversationRoutes = (
 				params: t.Object({ id: t.Numeric() }),
 				body: continuationBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("accepted"),
-						generationId: t.Integer(),
-						conversationId: t.Integer(),
-						messageId: t.Integer(),
-						variantId: t.Integer(),
-					}),
+					200: generationAccepted,
 					404: notFoundOutcome,
 					409: t.Union([
 						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
@@ -546,68 +460,13 @@ export const createConversationRoutes = (
 				if (body.expectedRevision === undefined || body.content === undefined) {
 					return status(422, { outcome: "invalid", reason: "Generation start requires content and an expected Conversation revision." });
 				}
-				const connection = database ?? openDatabase();
 				try {
-					const current = createConversationModule(connection).getSnapshot(params.id);
-					if (current === undefined) {
-						if (!database) connection.close();
-						return status(404, { outcome: "not-found" as const });
-					}
-					const connectionSettings = createConnectionSettingsModule(connection, options).get();
-					if (connectionSettings.activeProfileId === null) {
-						if (!database) connection.close();
-						return status(422, { outcome: "invalid", reason: "An active Connection Profile is required for Generation." });
-					}
-					const profile = connectionSettings.profiles.find((entry) => entry.id === connectionSettings.activeProfileId);
-					if (profile === undefined) {
-						if (!database) connection.close();
-						return status(422, { outcome: "invalid", reason: "The active Connection Profile is unavailable." });
-					}
-					const runtimeRegistry = runtimeRegistryForRequest(connection, database);
-					let runtime: ReturnType<typeof runtimeRegistry.start> | undefined;
-					const started = startServerOwnedSendGeneration(connection, {
+					const started = await generationCoordinator.startSendGeneration({
 						conversationId: params.id,
-						modelClient: createModelClient({
-							profile,
-							secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
-							fetch: options.fetch,
-						}),
-						connection: {
-							profileId: profile.id,
-							settingsRevision: connectionSettings.revision,
-							backend: "ai-sdk",
-							adapter: profile.adapter,
-						},
 						expectedRevision: body.expectedRevision,
 						content: body.content,
-						onBeforeTerminal: () => runtime?.flushCheckpoint(),
-					}, {
-						onAccepted: (accepted, control) => {
-							runtime = runtimeRegistry.start({
-								generationId: accepted.generationId,
-								conversationId: params.id,
-								messageId: accepted.modelMessageId,
-								variantId: accepted.provisionalVariantId,
-								startedAt: new Date().toISOString(),
-								onStop: control.stop,
-								onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
-								onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationTailGeneration(connection, {
-									conversationId: params.id,
-									generationId: accepted.generationId,
-									content: checkpointContent,
-									reasoning,
-									latestEventId,
-								}),
-							});
-						},
-						onEvent: (event) => { runtime?.publish(event); },
 					});
-					const accepted = await started.accepted;
-					if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-					void started.result
-						.then(() => runtime?.complete())
-						.catch((error) => runtime?.fail(error instanceof Error ? error.message : "Generation failed."))
-						.finally(() => { if (!database) connection.close(); });
+					const accepted = started.accepted;
 					return {
 						outcome: "accepted" as const,
 						generationId: accepted.generationId,
@@ -616,7 +475,6 @@ export const createConversationRoutes = (
 						variantId: accepted.provisionalVariantId,
 					};
 				} catch (error) {
-					if (!database) connection.close();
 					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
 					if (failure?.status === 404) return status(404, failure.body);
 					if (failure?.status === 409) return status(409, failure.body);
@@ -628,13 +486,7 @@ export const createConversationRoutes = (
 				params: t.Object({ id: t.Numeric() }),
 				body: generationBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("accepted"),
-						generationId: t.Integer(),
-						conversationId: t.Integer(),
-						messageId: t.Integer(),
-						variantId: t.Integer(),
-					}),
+                                        200: generationAccepted,
 					404: notFoundOutcome,
 					409: t.Union([
 						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
@@ -675,67 +527,12 @@ export const createConversationRoutes = (
                 .post(
                         "/api/conversations/:id/messages/:messageId/sibling/generations",
                         async ({ params, status }) => {
-                                const connection = database ?? openDatabase();
                                 try {
-                                        const current = createConversationModule(connection).getSnapshot(params.id);
-                                        if (current === undefined) {
-                                                if (!database) connection.close();
-                                                return status(404, { outcome: "not-found" as const });
-                                        }
-                                        const connectionSettings = createConnectionSettingsModule(connection, options).get();
-                                        if (connectionSettings.activeProfileId === null) {
-                                                if (!database) connection.close();
-                                                return status(422, { outcome: "invalid" as const, reason: "An active Connection Profile is required for Generation." });
-                                        }
-                                        const profile = connectionSettings.profiles.find((entry) => entry.id === connectionSettings.activeProfileId);
-                                        if (profile === undefined) {
-                                                if (!database) connection.close();
-                                                return status(422, { outcome: "invalid" as const, reason: "The active Connection Profile is unavailable." });
-                                        }
-                                        const registry = runtimeRegistryForRequest(connection, database);
-										let runtime: ReturnType<typeof registry.start> | undefined;
-										const started = startServerOwnedSiblingGeneration(connection, {
+                                        const started = await generationCoordinator.startSiblingGeneration({
                                                 conversationId: params.id,
                                                 messageId: params.messageId,
-                                                modelClient: createModelClient({
-                                                        profile,
-                                                        secrets: connectionSettingsModuleSecrets(connection, profile.id, options),
-                                                        fetch: options.fetch,
-                                                }),
-                                                connection: {
-                                                        profileId: profile.id,
-                                                        settingsRevision: connectionSettings.revision,
-                                                        backend: "ai-sdk",
-                                                        adapter: profile.adapter,
-                                                },
-							onBeforeTerminal: () => runtime?.flushCheckpoint(),
-                                        }, {
-                                                onAccepted: (accepted, control) => {
-                                                        runtime = registry.start({
-                                                                generationId: accepted.generationId,
-                                                                conversationId: params.id,
-                                                                messageId: accepted.messageId,
-                                                                variantId: accepted.provisionalVariantId,
-                                                                startedAt: new Date().toISOString(),
-												onStop: control.stop,
-												onRetentionExpired: retainedInspectionCleanup(database, accepted.generationId),
-													onCheckpoint: ({ content: checkpointContent, reasoning, latestEventId }) => checkpointConversationSiblingGeneration(connection, {
-														conversationId: params.id,
-														generationId: accepted.generationId,
-														content: checkpointContent,
-														reasoning,
-														latestEventId,
-													}),
-                                                        });
-                                                },
-                                                onEvent: (event) => { runtime?.publish(event); },
                                         });
-                                        const accepted = await started.accepted;
-                                        if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-                                        void started.result
-                                                .then(() => runtime?.complete())
-                                                .catch((error) => runtime?.fail(error instanceof Error ? error.message : "Generation failed."))
-                                                .finally(() => { if (!database) connection.close(); });
+                                        const accepted = started.accepted;
                                         return {
                                                 outcome: "accepted" as const,
                                                 generationId: accepted.generationId,
@@ -744,7 +541,6 @@ export const createConversationRoutes = (
                                                 variantId: accepted.provisionalVariantId,
                                         };
                                 } catch (error) {
-                                        if (!database) connection.close();
                                         const failure = error instanceof Error ? generationStartFailure(error) : undefined;
 						if (failure?.status === 404) return status(404, failure.body);
 						if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
@@ -755,13 +551,7 @@ export const createConversationRoutes = (
                         {
                                 params: t.Object({ id: t.Numeric(), messageId: t.Numeric() }),
                                 response: {
-                                        200: t.Object({
-                                                outcome: t.Literal("accepted"),
-                                                generationId: t.Integer(),
-                                                conversationId: t.Integer(),
-                                                messageId: t.Integer(),
-                                                variantId: t.Integer(),
-                                        }),
+                                        200: generationAccepted,
                                         404: notFoundOutcome,
                                         409: notPlayableOutcome,
                                         422: invalidOutcome,
@@ -967,14 +757,7 @@ export const createConversationRoutes = (
 				},
 			},
 		);
-
-function connectionSettingsModuleSecrets(
-	database: Database,
-	profileId: number,
-	options: ConnectionSettingsModuleOptions,
-) {
-	return createConnectionSettingsModule(database, options).getProfileSecrets(profileId);
-}
+};
 
 function toGenerationSettingsPayload(
 	settings: ConversationGenerationSettings,
