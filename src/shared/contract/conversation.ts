@@ -13,6 +13,7 @@ import {
 	ParticipantNotRemovableError,
 	createConversationModule,
 	stopConversationGeneration,
+	stopConversationGenerations,
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationGenerationSettings,
@@ -224,36 +225,30 @@ export const createConversationRoutes = (
 			({ params, status }) => {
 				const connection = database ?? openDatabase();
 				try {
-					const conversationModule = createConversationModule(connection);
-					const current = conversationModule.getSnapshot(params.id);
-					if (current === undefined) return status(404, { outcome: "not-found" as const });
-					const generationIds = current.activeGenerations.map((entry) => entry.generationId);
-					if (generationIds.length === 0) return status(404, { outcome: "not-found" as const });
 					const registry = runtimeRegistryForRequest(connection, database);
-					const stoppedIds: number[] = [];
-					let latest = current;
-					for (const generationId of generationIds) {
+					// Checkpoint without aborting first. The Conversation transition below
+					// owns the complete target set; runtimes are settled only after its
+					// durable commit succeeds.
+					registry.flushAll(params.id);
+					const stopped = stopConversationGenerations(connection, {
+						conversationId: params.id,
+					});
+					for (const generationId of stopped.generationIds) {
 						const runtime = registry.get(generationId);
-						const matchingRuntime = runtime?.state.conversationId === params.id ? runtime : undefined;
-						matchingRuntime?.stop();
-						try {
-							latest = stopConversationGeneration(connection, {
-								conversationId: params.id,
-								generationId,
-							});
-							stoppedIds.push(generationId);
-							matchingRuntime?.markStopped();
-						} catch (error) {
-							if (!(error instanceof InvalidConversationCommandError)) throw error;
-							matchingRuntime?.releaseStopRequest();
-						}
+						if (runtime?.state.conversationId !== params.id) continue;
+						runtime.stop();
+						runtime.markStopped();
 					}
-					if (stoppedIds.length === 0) return status(404, { outcome: "not-found" as const });
 					return {
 						outcome: "stopped" as const,
-						generationIds: stoppedIds,
-						conversation: toConversationSummary(latest),
+						generationIds: stopped.generationIds,
+						conversation: toConversationSummary(stopped.conversation),
 					};
+				} catch (error) {
+					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					throw error;
 				} finally {
 					if (!database) connection.close();
 				}

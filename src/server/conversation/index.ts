@@ -9,6 +9,7 @@ import {
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
 	stopConversationGeneration,
+	stopConversationGenerations,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
@@ -52,6 +53,7 @@ export {
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
 	stopConversationGeneration,
+	stopConversationGenerations,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
@@ -111,6 +113,8 @@ export type {
 	RemoveTailGenerationInput,
 	RemoveSiblingGenerationInput,
 	StopGenerationInput,
+	StopGenerationsInput,
+	StoppedGenerations,
 	ResolveTailGenerationInput,
 	ResolveSiblingGenerationInput,
 	ConversationDataScope,
@@ -184,8 +188,10 @@ export function createConversationModule(database: Database): ConversationModule
 			resolveConversationTailGeneration(database, input),
 	removeTailGeneration: (input) =>
 			removeConversationTailGeneration(database, input),
-		stopGeneration: (input) =>
-			stopConversationGeneration(database, input),
+	stopGeneration: (input) =>
+		stopConversationGeneration(database, input),
+	stopGenerations: (input) =>
+		stopConversationGenerations(database, input),
 		resolveSiblingGeneration: (input) =>
 			resolveConversationSiblingGeneration(database, input),
 		removeSiblingGeneration: (input) =>

@@ -8,6 +8,7 @@ import {
 	checkpointConversationTailGeneration,
 	createConversationModule,
 	stopConversationGeneration,
+	stopConversationGenerations,
 } from ".";
 import { recoverActiveGenerations } from "../workflows";
 
@@ -223,5 +224,47 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(variants).toHaveLength(1);
 		expect(variants[0]?.selected).toBe(true);
 		expect(variants[0]?.content).toBe("Original answer.");
+	});
+
+	test("stops every active Sibling target in one revisioned transition", () => {
+		const input = setup();
+		const generated = input.module.commitGeneration({
+			conversationId: input.created.id,
+			timestamp: "2026-08-27T00:00:00.000Z",
+			content: "Original answer.",
+			authorParticipantId: input.modelId,
+			capturedAuthorName: input.modelName,
+			humanParticipantId: input.humanId,
+			modelParticipantId: input.modelId,
+		});
+		const target = generated.messages.at(-1);
+		if (target === undefined) throw new Error("Generated target missing.");
+		const accept = (timestamp: string) => input.module.acceptSiblingGeneration({
+			conversationId: input.created.id,
+			messageId: target.id,
+			timestamp,
+			humanParticipantId: input.humanId,
+			modelParticipantId: input.modelId,
+			capturedModelName: input.modelName,
+			promptPlan: {},
+			historyRoles: [],
+			generationSettings: {},
+			connection: {},
+		});
+		const first = accept("2026-08-27T00:00:01.000Z");
+		const second = accept("2026-08-27T00:00:02.000Z");
+		const revisionBeforeStop = input.module.getSnapshot(input.created.id)?.revision;
+
+		const stopped = stopConversationGenerations(database, {
+			conversationId: input.created.id,
+			timestamp: "2026-08-27T00:00:03.000Z",
+		});
+
+		expect(stopped.generationIds).toEqual([first.generationId, second.generationId]);
+		expect(stopped.conversation.activeGenerations).toEqual([]);
+		expect(stopped.conversation.revision).toBe((revisionBeforeStop ?? 0) + 1);
+		expect(stopped.conversation.messages[0]?.variants).toHaveLength(1);
+		expect(stopped.conversation.messages[0]?.variants[0]?.selected).toBe(true);
+		expect(stopped.conversation.messages[0]?.variants[0]?.content).toBe("Original answer.");
 	});
 });
