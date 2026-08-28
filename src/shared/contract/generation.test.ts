@@ -212,6 +212,79 @@ describe("Generation transport contract", () => {
 		expect(contacted).toBe(false);
 	});
 
+	test("maps a known prompt budget failure to the invalid contract", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Budget-bound Generation",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "budget-contract-secret",
+		});
+		database.run(
+			"UPDATE conversation_generation_settings SET context_limit = 1 WHERE chat_id = ?",
+			[conversation.id],
+		);
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => streamResponse(),
+		});
+
+		const response = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+			}),
+		);
+
+		expect(response.status).toBe(422);
+		expect(await response.json()).toEqual({
+			outcome: "invalid",
+			reason: "Prompt Plan exceeds the Conversation context limit.",
+		});
+	});
+
+	test("does not hide malformed persisted generation settings as invalid input", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Malformed Generation Settings",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "malformed-settings-secret",
+		});
+		database.run(
+			"UPDATE conversation_generation_settings SET context_limit = 0 WHERE chat_id = ?",
+			[conversation.id],
+		);
+		const app = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: async () => streamResponse(),
+		});
+
+		const response = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "Generate this." }),
+			}),
+		);
+
+		expect(response.status).toBe(500);
+		expect(await response.text()).not.toContain('"outcome":"invalid"');
+	});
+
 	test("streams normalized generation events and completion over the live SSE route", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Live Generation Contract",
