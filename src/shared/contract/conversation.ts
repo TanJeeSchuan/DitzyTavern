@@ -8,7 +8,9 @@ import {
 import {
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
+	SiblingVariantUnavailableError,
 	InvalidConversationCommandError,
+	ContinuationUnavailableError,
 	ParticipantNotFoundError,
 	ParticipantNotRemovableError,
 	createConversationModule,
@@ -18,9 +20,13 @@ import {
 	type ConversationAction,
 	type ConversationGenerationSettings,
 } from "../../server/conversation";
+import { PromptBudgetExceededError } from "../../server/prompt-compiler";
 import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
 import type { ModelFetch } from "../../server/model-client";
-import { createGenerationCoordinator } from "../../server/application/generation-coordinator";
+import {
+	createGenerationCoordinator,
+	GenerationConfigurationError,
+} from "../../server/application/generation-coordinator";
 import { openDatabase, withDatabase } from "../../server/database/database";
 import {
 	addCharacterToCast,
@@ -60,6 +66,38 @@ type GenerationRuntimeValue = ReturnType<ReturnType<typeof generationRuntimeFor>
 const runtimeRegistryForRequest = (connection: Database, configuredDatabase: Database | undefined) =>
 	configuredDatabase === undefined ? defaultGenerationRuntime() : generationRuntimeFor(connection);
 
+type GenerationStartFailure =
+	| { readonly status: 404; readonly body: { readonly outcome: "not-found" } }
+	| { readonly status: 409; readonly body: { readonly outcome: "not-playable"; readonly reason: string } }
+	| { readonly status: 409; readonly body: { readonly outcome: "conflict"; readonly reason: string } }
+	| { readonly status: 422; readonly body: { readonly outcome: "invalid"; readonly reason: string } };
+
+/**
+ * Map only errors that are part of the Generation acceptance contract. An
+ * unexpected Error must reach the framework's 500 handling instead of being
+ * presented as a client-correctable invalid request.
+ */
+const generationStartFailure = (error: Error): GenerationStartFailure | undefined => {
+	if (error instanceof ConversationNotFoundError) {
+		return { status: 404, body: { outcome: "not-found" } };
+	}
+	if (error instanceof ConversationNotPlayableError) {
+		return { status: 409, body: { outcome: "not-playable", reason: error.message } };
+	}
+	if (error instanceof StaleConversationRevisionError) {
+		return { status: 409, body: { outcome: "conflict", reason: error.message } };
+	}
+	if (
+		error instanceof ContinuationUnavailableError ||
+		error instanceof GenerationConfigurationError ||
+		error instanceof InvalidConversationCommandError ||
+		error instanceof PromptBudgetExceededError ||
+		error instanceof SiblingVariantUnavailableError
+	) {
+		return { status: 422, body: { outcome: "invalid", reason: error.message } };
+	}
+	return undefined;
+};
 const activeGenerationPayload = (state: GenerationRuntimeState) => ({
 	outcome: "active-state" as const,
 	generationId: state.generationId,
@@ -277,11 +315,11 @@ export const createConversationRoutes = (
 						variantId: accepted.provisionalVariantId,
 					};
 				} catch (error) {
-					if (error instanceof ConversationNotFoundError) return status(404, { outcome: "not-found" as const });
-					if (error instanceof ConversationNotPlayableError) return status(409, { outcome: "not-playable", reason: error.message });
-					if (error instanceof StaleConversationRevisionError) return status(409, { outcome: "conflict", reason: error.message });
-					if (error instanceof Error) return status(422, { outcome: "invalid", reason: error.message });
-					return status(422, { outcome: "invalid", reason: "Continuation Generation could not be started." });
+					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+					if (failure?.status === 404) return status(404, failure.body);
+					if (failure?.status === 409) return status(409, failure.body);
+					if (failure?.status === 422) return status(422, failure.body);
+					throw error;
 				}
 			},
 			{
@@ -437,11 +475,11 @@ export const createConversationRoutes = (
 						variantId: accepted.provisionalVariantId,
 					};
 				} catch (error) {
-					if (error instanceof ConversationNotFoundError) return status(404, { outcome: "not-found" as const });
-					if (error instanceof ConversationNotPlayableError) return status(409, { outcome: "not-playable", reason: error.message });
-					if (error instanceof StaleConversationRevisionError) return status(409, { outcome: "conflict", reason: error.message });
-					if (error instanceof Error) return status(422, { outcome: "invalid", reason: error.message });
-					return status(422, { outcome: "invalid", reason: "Generation could not be started." });
+					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+					if (failure?.status === 404) return status(404, failure.body);
+					if (failure?.status === 409) return status(409, failure.body);
+					if (failure?.status === 422) return status(422, failure.body);
+					throw error;
 				}
 			},
 			{
@@ -503,16 +541,11 @@ export const createConversationRoutes = (
                                                 variantId: accepted.provisionalVariantId,
                                         };
                                 } catch (error) {
-                                        if (error instanceof ConversationNotFoundError) {
-                                                return status(404, { outcome: "not-found" as const });
-                                        }
-                                        if (error instanceof ConversationNotPlayableError) {
-                                                return status(409, { outcome: "not-playable" as const, reason: error.message });
-                                        }
-                                        if (error instanceof Error) {
-                                                return status(422, { outcome: "invalid" as const, reason: error.message });
-                                        }
-                                        return status(422, { outcome: "invalid" as const, reason: "Sibling Generation could not be started." });
+                                        const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+						if (failure?.status === 404) return status(404, failure.body);
+						if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
+						if (failure?.status === 422) return status(422, failure.body);
+						throw error;
                                 }
                         },
                         {

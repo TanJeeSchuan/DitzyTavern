@@ -8,6 +8,11 @@ import {
 } from "../../server/conversation";
 import { withDatabase } from "../../server/database/database";
 import { characterSnapshot } from "./character-library";
+import type {
+	GenerationJsonObject,
+	GenerationJsonValue,
+	GenerationProvenance as SharedGenerationProvenance,
+} from "../generation-provenance";
 
 export const participantPrompt = t.Object({
 	systemInstruction: t.String(),
@@ -73,23 +78,17 @@ const conversationCapabilities = t.Object({
 });
 
 // Provider request overrides and retained generation details are restricted
-// to JSON values. The runtime schema stays open like the previous opaque
-// payload boundary, while the Unsafe generic keeps Eden's Static type exact
-// and recursive instead of widening these fields to `unknown`.
-type JsonValue =
-	| string
-	| number
-	| boolean
-	| null
-	| readonly JsonValue[]
-	| { readonly [key: string]: JsonValue };
-const jsonValue = Type.Unsafe<JsonValue>({ [Kind]: "Unknown" });
+// to the shared generation JSON vocabulary. The runtime schema stays open
+// like the previous opaque payload boundary, while the Unsafe generic keeps
+// Eden's Static type exact and recursive instead of widening these fields to
+// `unknown`.
+const jsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
 const jsonObject = Type.Record(Type.String(), jsonValue);
 
-export type GenerationDetailsJsonValue = Static<typeof jsonValue>;
-export type GenerationDetailsJsonObject = Static<typeof jsonObject>;
+export type GenerationDetailsJsonValue = GenerationJsonValue;
+export type GenerationDetailsJsonObject = GenerationJsonObject;
 export type GenerationRequestValue = GenerationDetailsJsonValue;
-export type GenerationRequestOverrides = Static<typeof jsonObject>;
+export type GenerationRequestOverrides = GenerationJsonObject;
 
 const activeGenerations = t.Array(t.Object({
 	generationId: t.Integer(),
@@ -254,7 +253,7 @@ export const variantDetails = t.Object({
 	provenance: generationProvenance,
 });
 
-export type GenerationProvenance = NonNullable<Static<typeof variantDetails>["provenance"]>;
+export type GenerationProvenance = SharedGenerationProvenance;
 export type VariantDetails = Static<typeof variantDetails>;
 
 // Adapts the seam's immutable snapshot into the summary transport shape: the

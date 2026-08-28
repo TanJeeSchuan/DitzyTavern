@@ -22,38 +22,20 @@ import type {
 	HistoricalControlSnapshot,
 	VariantDetails,
 } from "./types";
+import {
+	generationProvenanceCodec,
+	generationJsonInteger,
+	generationJsonNumber,
+	generationJsonObject,
+	generationJsonString,
+	parseGenerationJson,
+} from "../../shared/generation-provenance";
 
-type JsonRecord = { [key: string]: ConversationJsonValue };
-
-const isRecord = (value: ConversationJsonValue | undefined): value is JsonRecord => {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return false;
-	return true;
-};
-
-const parseJson = (value: string, fallback: ConversationJsonValue): ConversationJsonValue => {
-	try {
-		// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
-		// objects; the fallback handles malformed or non-JSON input.
-		return JSON.parse(value) as ConversationJsonValue;
-	} catch {
-		return fallback;
-	}
-};
-
-const finiteInteger = (value: ConversationJsonValue | undefined): number | null => {
-	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
-	const number = Number(value);
-	return Number.isInteger(number) && Number.isFinite(number) ? number : null;
-};
-
-const finiteNumber = (value: ConversationJsonValue | undefined): number | null => {
-	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : null;
-};
-
-const nullableString = (value: ConversationJsonValue | undefined): string | null =>
-	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
+const isRecord = generationJsonObject;
+const parseJson = parseGenerationJson;
+const finiteInteger = generationJsonInteger;
+const finiteNumber = generationJsonNumber;
+const nullableString = generationJsonString;
 
 interface SafeConnection {
 	readonly [key: string]: ConversationJsonValue;
@@ -64,12 +46,12 @@ interface SafeConnection {
 }
 
 const safeConnection = (value: ConversationJsonValue): SafeConnection => {
-	const source = isRecord(value) ? value : {};
+	const source = isRecord(value);
 	return {
-		profileId: finiteInteger(source.profileId),
-		settingsRevision: finiteInteger(source.settingsRevision),
-		backend: nullableString(source.backend),
-		adapter: nullableString(source.adapter),
+		profileId: finiteInteger(source?.profileId),
+		settingsRevision: finiteInteger(source?.settingsRevision),
+		backend: nullableString(source?.backend),
+		adapter: nullableString(source?.adapter),
 	};
 };
 
@@ -90,101 +72,27 @@ interface SafeGenerationSettings {
 }
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
-	const source = isRecord(value) ? value : {};
+	const source = isRecord(value);
 	return {
-		modelId: nullableString(source.modelId),
-		temperature: finiteNumber(source.temperature),
-		topP: finiteNumber(source.topP),
-		frequencyPenalty: finiteNumber(source.frequencyPenalty),
-		presencePenalty: finiteNumber(source.presencePenalty),
-		contextLimit: finiteInteger(source.contextLimit),
-		responseBudget: finiteInteger(source.responseBudget),
-		safetyAllowance: finiteInteger(source.safetyAllowance),
-		siblingGenerationLimit: finiteInteger(source.siblingGenerationLimit),
-		continuationStrategy: nullableString(source.continuationStrategy),
-		continuationInstruction: nullableString(source.continuationInstruction),
-		continuationPrefillSuffix: nullableString(source.continuationPrefillSuffix),
+		modelId: nullableString(source?.modelId),
+		temperature: finiteNumber(source?.temperature),
+		topP: finiteNumber(source?.topP),
+		frequencyPenalty: finiteNumber(source?.frequencyPenalty),
+		presencePenalty: finiteNumber(source?.presencePenalty),
+		contextLimit: finiteInteger(source?.contextLimit),
+		responseBudget: finiteInteger(source?.responseBudget),
+		safetyAllowance: finiteInteger(source?.safetyAllowance),
+		siblingGenerationLimit: finiteInteger(source?.siblingGenerationLimit),
+		continuationStrategy: nullableString(source?.continuationStrategy),
+		continuationInstruction: nullableString(source?.continuationInstruction),
+		continuationPrefillSuffix: nullableString(source?.continuationPrefillSuffix),
 	};
 };
-
-interface SafeUsage {
-	inputTokens?: number;
-	outputTokens?: number;
-	totalTokens?: number;
-}
-
-const safeUsage = (value: ConversationJsonValue | undefined): SafeUsage | null => {
-	if (!isRecord(value)) return null;
-	const usage: SafeUsage = {};
-	for (const key of ["inputTokens", "outputTokens", "totalTokens"] as const) {
-		const number = finiteNumber(value[key]);
-		if (number !== null && number >= 0) usage[key] = number;
-	}
-	return Object.keys(usage).length === 0 ? null : usage;
-};
-
-const safeStatus = (value: ConversationJsonValue | undefined): GenerationProvenance["status"] | null =>
-	value === "complete" || value === "length-limited" || value === "interrupted"
-		? value
-		: null;
-
-const safeFinishReason = (value: ConversationJsonValue | undefined): GenerationProvenance["finishReason"] =>
-	value === "stop" || value === "length" || value === "other" ? value : null;
 
 const safeProvenance = (
 	value: ConversationJsonValue | null,
 	data: readonly { namespace: string; key: string; value: string }[],
-): GenerationProvenance | null => {
-	const sourceValue = value ?? undefined;
-	const source: JsonRecord = isRecord(sourceValue) ? sourceValue : {};
-	const outcome = data.find((entry) => entry.namespace === "generation" && entry.key === "outcome")?.value;
-	const interruptionCause = data.find(
-		(entry) => entry.namespace === "generation" && entry.key === "interruption-cause",
-	)?.value ?? null;
-	const usageEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "usage");
-	const finishEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "finish");
-	let parsedUsage: ConversationJsonValue = source.usage;
-	if (usageEntry !== undefined) {
-		parsedUsage = parseJson(usageEntry.value, null);
-	}
-	let parsedFinish: JsonRecord = isRecord(source.finish) ? source.finish : {};
-	if (finishEntry !== undefined) {
-		const candidate = parseJson(finishEntry.value, null);
-		if (isRecord(candidate)) parsedFinish = candidate;
-	}
-	const status = safeStatus(source.status) ?? safeStatus(outcome) ?? "complete";
-	const hasProvenance = Object.keys(source).length > 0 || outcome !== undefined || usageEntry !== undefined || finishEntry !== undefined;
-	if (!hasProvenance) return null;
-	const settings = safeGenerationSettings(source.generationSettings);
-	return {
-		connectionProfileId: finiteInteger(source.connectionProfileId),
-		connectionSettingsRevision: finiteInteger(source.connectionSettingsRevision),
-		modelBackend: nullableString(source.modelBackend),
-		adapter: nullableString(source.adapter),
-		modelId: nullableString(source.modelId),
-		generationSettings: {
-			temperature: finiteNumber(settings.temperature),
-			topP: finiteNumber(settings.topP),
-			frequencyPenalty: finiteNumber(settings.frequencyPenalty),
-			presencePenalty: finiteNumber(settings.presencePenalty),
-			contextLimit: finiteInteger(settings.contextLimit),
-			responseBudget: finiteInteger(settings.responseBudget),
-			safetyAllowance: finiteInteger(settings.safetyAllowance),
-			siblingGenerationLimit: finiteInteger(settings.siblingGenerationLimit),
-			continuationStrategy: settings.continuationStrategy === "instruction" || settings.continuationStrategy === "assistant-prefill"
-				? settings.continuationStrategy
-				: null,
-			continuationInstruction: nullableString(settings.continuationInstruction),
-			continuationPrefillSuffix: settings.continuationPrefillSuffix === "" || settings.continuationPrefillSuffix === " " || settings.continuationPrefillSuffix === "\n" || settings.continuationPrefillSuffix === "\n\n"
-				? settings.continuationPrefillSuffix
-				: null,
-		},
-		usage: safeUsage(parsedUsage),
-		finishReason: safeFinishReason(source.finishReason) ?? safeFinishReason(parsedFinish.reason),
-		status,
-		interruptionCause: nullableString(source.interruptionCause) ?? interruptionCause,
-	};
-};
+): GenerationProvenance | null => generationProvenanceCodec.decodeStored(value, data);
 
 const authorFor = (
 	db: ConversationDatabase,
@@ -250,9 +158,9 @@ export function readActiveGenerationDetails(
 		: db.select({ name: participantTable.name }).from(participantTable)
 			.where(eq(participantTable.id, row.human_participant_id)).get()?.name ?? "";
 	const inspection = parseJson(row.prompt_inspection_json, {});
-	const inspectionRecord = isRecord(inspection) ? inspection : {};
+	const inspectionRecord = isRecord(inspection);
 	const settings = safeGenerationSettings(parseJson(row.generation_settings_json, {}));
-	const omittedHistory = Array.isArray(inspectionRecord.omittedHistory) ? inspectionRecord.omittedHistory : [];
+	const omittedHistory = Array.isArray(inspectionRecord?.omittedHistory) ? inspectionRecord.omittedHistory : [];
 	return {
 		conversationId,
 		generationId: row.id,
@@ -274,11 +182,11 @@ export function readActiveGenerationDetails(
 		generationSettings: settings,
 		connection: safeConnection(parseJson(row.connection_json, null)),
 		budget: {
-			tokenEstimate: finiteInteger(inspectionRecord.tokenEstimate),
-		responseBudget: finiteInteger(inspectionRecord.responseBudget) ?? finiteInteger(settings.responseBudget),
-		safetyAllowance: finiteInteger(inspectionRecord.safetyAllowance) ?? finiteInteger(settings.safetyAllowance),
-		contextLimit: finiteInteger(inspectionRecord.contextLimit) ?? finiteInteger(settings.contextLimit),
-			totalRequiredTokens: finiteInteger(inspectionRecord.totalRequiredTokens),
+			tokenEstimate: finiteInteger(inspectionRecord?.tokenEstimate),
+			responseBudget: finiteInteger(inspectionRecord?.responseBudget) ?? finiteInteger(settings.responseBudget),
+			safetyAllowance: finiteInteger(inspectionRecord?.safetyAllowance) ?? finiteInteger(settings.safetyAllowance),
+			contextLimit: finiteInteger(inspectionRecord?.contextLimit) ?? finiteInteger(settings.contextLimit),
+			totalRequiredTokens: finiteInteger(inspectionRecord?.totalRequiredTokens),
 			omittedHistory,
 		},
 		checkpoint: {

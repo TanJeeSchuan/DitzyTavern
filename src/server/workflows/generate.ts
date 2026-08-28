@@ -61,6 +61,11 @@ import {
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
 import type { ConversationGenerationSettings } from "../conversation";
+import {
+	generationProvenanceCodec,
+	parseGenerationJson,
+	type GenerationProvenanceRecord,
+} from "../../shared/generation-provenance";
 
 export interface ParticipantPreview {
 	id: number;
@@ -344,33 +349,34 @@ function captureGenerationSettings(
 	const capturedConnection = connection === undefined
 		? resolveConnectionSnapshot(database, connectionSettingsOptions)
 		: connection;
+	const provenanceRecord: GenerationProvenanceRecord = {
+		connectionProfileId: capturedConnection?.profileId ?? null,
+		connectionSettingsRevision: capturedConnection?.settingsRevision ?? null,
+		modelBackend: capturedConnection?.backend ?? null,
+		adapter: capturedConnection?.adapter ?? null,
+		modelId: settings.modelId,
+		generationSettings: {
+			temperature: settings.temperature,
+			topP: settings.topP,
+			frequencyPenalty: settings.frequencyPenalty,
+			presencePenalty: settings.presencePenalty,
+			contextLimit: settings.contextLimit,
+			responseBudget: settings.responseBudget,
+			safetyAllowance: settings.safetyAllowance,
+			siblingGenerationLimit: settings.siblingGenerationLimit,
+			continuationStrategy: settings.continuationStrategy,
+			continuationInstruction: settings.continuationInstruction,
+			continuationPrefillSuffix: settings.continuationPrefillSuffix,
+		},
+		usage: null,
+		finishReason: null,
+		status: null,
+		interruptionCause: null,
+	};
 	const provenance = {
 		namespace: "generation",
 		key: "provenance",
-		value: JSON.stringify({
-			connectionProfileId: capturedConnection?.profileId ?? null,
-			connectionSettingsRevision: capturedConnection?.settingsRevision ?? null,
-			modelBackend: capturedConnection?.backend ?? null,
-			adapter: capturedConnection?.adapter ?? null,
-			modelId: settings.modelId,
-			generationSettings: {
-				temperature: settings.temperature,
-				topP: settings.topP,
-				frequencyPenalty: settings.frequencyPenalty,
-				presencePenalty: settings.presencePenalty,
-				contextLimit: settings.contextLimit,
-				responseBudget: settings.responseBudget,
-				safetyAllowance: settings.safetyAllowance,
-				siblingGenerationLimit: settings.siblingGenerationLimit,
-				continuationStrategy: settings.continuationStrategy,
-				continuationInstruction: settings.continuationInstruction,
-				continuationPrefillSuffix: settings.continuationPrefillSuffix,
-			},
-			usage: null,
-			finishReason: null,
-			status: null,
-			interruptionCause: null,
-		}),
+		value: generationProvenanceCodec.encode(provenanceRecord),
 	} satisfies ConversationDataEntry;
 	return { settings, connection: capturedConnection, provenance };
 }
@@ -578,59 +584,22 @@ async function runAcceptedGeneration<TResult>(
 	}
 }
 
-// Adds terminal outcome metadata to the compact safe provenance value. The
-// same allow-listed object is written for direct Generate calls and for the
-// Active Generation terminal seams; the complete Prompt Plan never enters
-// this durable value.
-type PersistedGenerationJsonObject = { readonly [key: string]: ConversationJsonValue };
-
-const persistedGenerationObject = (
-	value: ConversationJsonValue | undefined,
-): PersistedGenerationJsonObject | null => {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// SAFETY: the object-tag check above establishes the JSON object shape before
-	// this projection is used to inspect the allow-listed provenance fields.
-	return value as PersistedGenerationJsonObject;
-};
-
-const persistedGenerationNumber = (value: ConversationJsonValue | undefined): number | null => {
-	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : null;
-};
-
-const persistedGenerationString = (value: ConversationJsonValue | undefined): string | null =>
-	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
-
 function terminalGenerationProvenance(
 	base: ConversationDataEntry,
 	outcome: GenerationOutcome,
 ): ConversationDataEntry {
-	let parsed: PersistedGenerationJsonObject = {};
-	try {
-		// SAFETY: JSON.parse returns only JSON-compatible scalars, arrays, and
-		// objects; persistedGenerationObject validates the object shape below.
-		const value = persistedGenerationObject(JSON.parse(base.value) as ConversationJsonValue);
-		if (value !== null) parsed = value;
-	} catch {
-		// A malformed legacy provenance value is replaced by the safe terminal
-		// projection rather than echoed into a detail response.
-	}
 	return {
 		namespace: base.namespace,
 		key: base.key,
-		value: JSON.stringify({
-			connectionProfileId: persistedGenerationNumber(parsed.connectionProfileId),
-			connectionSettingsRevision: persistedGenerationNumber(parsed.connectionSettingsRevision),
-			modelBackend: persistedGenerationString(parsed.modelBackend),
-			adapter: persistedGenerationString(parsed.adapter),
-			modelId: persistedGenerationString(parsed.modelId),
-			generationSettings: persistedGenerationObject(parsed.generationSettings) ?? {},
-			usage: outcome.usage === null ? null : normalizeUsage(outcome.usage),
-			finishReason: outcome.finishReason,
-			status: outcome.status,
-			interruptionCause: outcome.interruptionCause,
-		}),
+		value: generationProvenanceCodec.encode(generationProvenanceCodec.project(
+			parseGenerationJson(base.value, null),
+			{
+				usage: outcome.usage === null ? null : normalizeUsage(outcome.usage),
+				finishReason: outcome.finishReason,
+				status: outcome.status,
+				interruptionCause: outcome.interruptionCause,
+			},
+		)),
 	};
 }
 

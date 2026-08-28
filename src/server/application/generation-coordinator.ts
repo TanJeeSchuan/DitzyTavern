@@ -45,6 +45,14 @@ export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOp
 	readonly fetch?: ModelFetch;
 }
 
+/** A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
+export class GenerationConfigurationError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "GenerationConfigurationError";
+	}
+}
+
 export interface CoordinatedGeneration<TAccepted, TResult> {
 	/** The authoritative acceptance returned after the provisional target exists. */
 	readonly accepted: TAccepted;
@@ -283,11 +291,11 @@ export class GenerationCoordinator {
 		const settingsModule = createConnectionSettingsModule(database, this.options);
 		const settings = settingsModule.get();
 		if (settings.activeProfileId === null) {
-			throw new Error("An active Connection Profile is required for Generation.");
+			throw new GenerationConfigurationError("An active Connection Profile is required for Generation.");
 		}
 		const profile = settings.profiles.find((entry) => entry.id === settings.activeProfileId);
 		if (profile === undefined) {
-			throw new Error("The active Connection Profile is unavailable.");
+			throw new GenerationConfigurationError("The active Connection Profile is unavailable.");
 		}
 		return {
 			modelClient: createModelClient({
