@@ -164,6 +164,63 @@ export interface ServerOwnedGenerationControl {
 	stop(): void;
 }
 
+interface ServerOwnedGeneration<Accepted, Result> {
+	readonly accepted: Promise<Accepted>;
+	readonly result: Promise<Result>;
+	readonly signal: AbortSignal;
+}
+
+interface ServerOwnedGenerationCallbacks<Accepted> {
+	onAccepted?: (accepted: Accepted, control: ServerOwnedGenerationControl) => void | Promise<void>;
+	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
+}
+
+/**
+ * Detach one Generation from its observing request.
+ *
+ * Acceptance is exposed separately so an HTTP caller can return as soon as
+ * the provisional target exists. The provider attempt remains owned by the
+ * controller until its terminal result settles, regardless of request
+ * disconnects.
+ */
+function startServerOwnedGeneration<Accepted, Result>(
+	execute: (
+		signal: AbortSignal,
+		onAccepted: (accepted: Accepted) => void | Promise<void>,
+		onEvent: (event: ModelClientEvent) => void | Promise<void>,
+	) => Promise<Result>,
+	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
+): ServerOwnedGeneration<Accepted, Result> {
+	const controller = new AbortController();
+	let accepted = false;
+	let resolveAccepted!: (value: Accepted) => void;
+	let rejectAccepted!: (reason: Error) => void;
+	const acceptedPromise = new Promise<Accepted>((resolve, reject) => {
+		resolveAccepted = resolve;
+		rejectAccepted = reject;
+	});
+	const result = execute(
+		controller.signal,
+		async (value) => {
+			accepted = true;
+			resolveAccepted(value);
+			await callbacks.onAccepted?.(value, {
+				signal: controller.signal,
+				stop: () => controller.abort(),
+			});
+		},
+		async (event) => {
+			await callbacks.onEvent?.(event);
+		},
+	);
+	void result.catch((error) => {
+		if (!accepted) {
+			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
+		}
+	});
+	return { accepted: acceptedPromise, result, signal: controller.signal };
+}
+
 // Starts Send as a detached server-owned attempt. The caller receives an
 // acceptance promise separately from the terminal result and may attach zero
 // or more observers to the generation runtime in between. In particular, the
@@ -173,31 +230,21 @@ export function startServerOwnedSendGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 	callbacks: ServerOwnedSendGenerationCallbacks = {},
 ): ServerOwnedSendGeneration {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: AcceptedTailGeneration) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<AcceptedTailGeneration>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const result = sendThroughProvisionalTailGeneration(database, {
-		...input,
-		signal: controller.signal,
+	return startServerOwnedGeneration(
+		(signal, onAccepted, onEvent) => sendThroughProvisionalTailGeneration(database, {
+			...input,
+			signal,
 			onAccepted: async (value) => {
-				accepted = true;
-				resolveAccepted(value);
-				await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
-		},
-		onEvent: async (event) => {
-			await input.onEvent?.(event);
-			await callbacks.onEvent?.(event);
-		},
-	});
-	void result.catch((error) => {
-		if (!accepted) rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
+				await input.onAccepted?.(value);
+				await onAccepted(value);
+			},
+			onEvent: async (event) => {
+				await input.onEvent?.(event);
+				await onEvent(event);
+			},
+		}),
+		callbacks,
+	);
 }
 
 interface SelectedHistory {
@@ -477,6 +524,57 @@ async function runGeneration(
 			interruptionCause: error.kind,
 			error: error.kind === "cancelled" ? null : error.message,
 		};
+	}
+}
+
+interface AcceptedGenerationLifecycle<TResult> {
+	/** Commit the normalized terminal outcome to the accepted target. */
+	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
+	/** Remove the accepted target after a zero-output or unexpected failure. */
+	remove(): void | Promise<void>;
+}
+
+/**
+ * Run the common server-owned tail of a Generation.
+ *
+ * Send, Continue, and Sibling all differ at acceptance and at the final
+ * Conversation operation, but their provider lifecycle is identical: collect
+ * normalized output, remove an empty provisional target, and resolve a target
+ * with visible output. Keeping that policy here makes those differences
+ * explicit at the call sites instead of encoding three subtly drifting copies.
+ */
+async function runAcceptedGeneration<TResult>(
+	input: GenerationAttemptInput,
+	request: Parameters<typeof collectModelClientGeneration>[1],
+	lifecycle: AcceptedGenerationLifecycle<TResult>,
+): Promise<TResult> {
+	let removed = false;
+	try {
+		const outcome = await runGeneration(input.modelClient, request, input.onEvent);
+		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
+			await input.onBeforeTerminal?.();
+			await lifecycle.remove();
+			removed = true;
+			throw new ModelClientGenerationError(
+				"provider",
+				"Generation produced no usable output.",
+			);
+		}
+		await input.onBeforeTerminal?.();
+		return await lifecycle.resolve(outcome);
+	} catch (error) {
+		// runGeneration converts visible provider failures into an interrupted
+		// outcome. This cleanup path is therefore only for empty output and
+		// unexpected failures. A successful empty-output removal must not be
+		// attempted a second time after the synthetic provider error is thrown.
+		if (!removed) {
+			try {
+				await lifecycle.remove();
+			} catch {
+				// Preserve the provider or commit error; recovery can clean an orphan.
+			}
+		}
+		throw error;
 	}
 }
 
@@ -858,62 +956,35 @@ export async function sendThroughProvisionalTailGeneration(
 		// disconnected. Continue the server-owned provider attempt.
 	}
 
-	try {
-		const outcome = await runGeneration(input.modelClient, {
-			promptPlan: capture.promptPlan,
-			historyRoles: capture.historyRoles,
-			modelId: capture.settings.modelId,
-			generationSettings: toModelClientGenerationSettings(capture.settings),
-			connection: capture.connection,
-			signal: input.signal,
-		}, input.onEvent);
-		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-			await input.onBeforeTerminal?.();
+	const committed = await runAcceptedGeneration(input, {
+		promptPlan: capture.promptPlan,
+		historyRoles: capture.historyRoles,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
+		signal: input.signal,
+	}, {
+		remove: () => {
 			conversation.removeTailGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
-			throw new ModelClientGenerationError(
-				"provider",
-				"Generation produced no usable output.",
-			);
-		}
-		await input.onBeforeTerminal?.();
-		const committed = conversation.resolveTailGeneration({
+		},
+		resolve: (outcome) => conversation.resolveTailGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,
 			timestamp,
 			content: outcome.content,
 			data: generationOutcomeData(outcome),
-		});
-		return {
-			conversation: committed,
-			generationId: accepted.generationId,
-			humanMessageId: accepted.humanMessageId,
-			modelMessageId: accepted.modelMessageId,
-			provisionalVariantId: accepted.provisionalVariantId,
-		};
-	} catch (error) {
-		// Visible provider failures are converted by runGeneration into an
-		// interrupted outcome and resolve normally. All zero-output failures,
-		// including unexpected transport errors, clean up only the target.
-		if (error instanceof ModelClientGenerationError) {
-			const partial = error.partial;
-			if ((partial.content ?? "").length > 0 || (partial.reasoning ?? "").length > 0) {
-				throw error;
-			}
-		}
-		try {
-			conversation.removeTailGeneration({
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-			});
-		} catch {
-			// Preserve the provider error; a later recovery sweep can remove an
-			// orphaned target if the process failed during cleanup.
-		}
-		throw error;
-	}
+		}),
+	});
+	return {
+		conversation: committed,
+		generationId: accepted.generationId,
+		humanMessageId: accepted.humanMessageId,
+		modelMessageId: accepted.modelMessageId,
+		provisionalVariantId: accepted.provisionalVariantId,
+	};
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
@@ -1139,29 +1210,22 @@ export async function continueGeneration(
 	} catch {
 		// Acceptance is authoritative even when the observing caller disconnects.
 	}
-	try {
-		const outcome = await runGeneration(input.modelClient, {
+	const committed = await runAcceptedGeneration(input, {
 		promptPlan: capture.promptPlan,
 		historyRoles: capture.historyRoles,
 		modelId: capture.settings.modelId,
 		generationSettings: toModelClientGenerationSettings(capture.settings),
 		assistantPrefill: capture.assistantPrefill,
 		connection: capture.connection,
-			signal: input.signal,
-		}, input.onEvent);
-		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-			await input.onBeforeTerminal?.();
+		signal: input.signal,
+	}, {
+		remove: () => {
 			conversation.removeTailGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
-			throw new ModelClientGenerationError(
-				"provider",
-				"Generation produced no usable output.",
-			);
-		}
-		await input.onBeforeTerminal?.();
-		const committed = conversation.resolveTailGeneration({
+		},
+		resolve: (outcome) => conversation.resolveTailGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,
 			timestamp,
@@ -1170,54 +1234,14 @@ export async function continueGeneration(
 				{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
 				...generationOutcomeData(outcome),
 			],
-		});
-		return {
-			conversation: committed,
-			generationId: accepted.generationId,
-			modelMessageId: accepted.modelMessageId,
-			provisionalVariantId: accepted.provisionalVariantId,
-		};
-	} catch (error) {
-		if (error instanceof ModelClientGenerationError) {
-			const partial = error.partial;
-			if ((partial.content ?? "").length > 0 || (partial.reasoning ?? "").length > 0) {
-				// Visible partial output is durable only when the provisional target is
-				// resolved. runGeneration normally handles this; this guard is for a
-				// future collector that may rethrow a partial provider failure.
-				if ((partial.content ?? "").length > 0 || (partial.reasoning ?? "").length > 0) {
-					await input.onBeforeTerminal?.();
-					const committed = conversation.resolveTailGeneration({
-						conversationId: input.conversationId,
-						generationId: accepted.generationId,
-						timestamp,
-						content: partial.content ?? "",
-						data: [
-							{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
-							{ namespace: "generation", key: "outcome", value: "interrupted" },
-							...(partial.reasoning === undefined || partial.reasoning.length === 0
-								? []
-								: [{ namespace: "generation", key: "reasoning", value: partial.reasoning }]),
-						],
-					});
-					return {
-						conversation: committed,
-						generationId: accepted.generationId,
-						modelMessageId: accepted.modelMessageId,
-						provisionalVariantId: accepted.provisionalVariantId,
-					};
-				}
-			}
-		}
-		try {
-			conversation.removeTailGeneration({
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-			});
-		} catch {
-			// Preserve the provider error; recovery can clean an orphan later.
-		}
-		throw error;
-	}
+		}),
+	});
+	return {
+		conversation: committed,
+		generationId: accepted.generationId,
+		modelMessageId: accepted.modelMessageId,
+		provisionalVariantId: accepted.provisionalVariantId,
+	};
 }
 
 export function startServerOwnedContinuationGeneration(
@@ -1225,31 +1249,21 @@ export function startServerOwnedContinuationGeneration(
 	input: ContinueGenerationInput,
 	callbacks: ServerOwnedContinuationGenerationCallbacks = {},
 ): ServerOwnedContinuationGeneration {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: AcceptedContinuationGeneration) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<AcceptedContinuationGeneration>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const result = continueGeneration(database, {
-		...input,
-		signal: controller.signal,
-		onAccepted: async (value) => {
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
-		},
-		onEvent: async (event) => {
-			await input.onEvent?.(event);
-			await callbacks.onEvent?.(event);
-		},
-	});
-	void result.catch((error) => {
-		if (!accepted) rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
+	return startServerOwnedGeneration(
+		(signal, onAccepted, onEvent) => continueGeneration(database, {
+			...input,
+			signal,
+			onAccepted: async (value) => {
+				await input.onAccepted?.(value);
+				await onAccepted(value);
+			},
+			onEvent: async (event) => {
+				await input.onEvent?.(event);
+				await onEvent(event);
+			},
+		}),
+		callbacks,
+	);
 }
 
 export interface GenerateSiblingVariantInput {
@@ -1468,43 +1482,28 @@ export async function generateSiblingVariant(
 		// Acceptance is authoritative even if an observer disconnects while
 		// the provider request is being started.
 	}
-	try {
-		const outcome = await runGeneration(input.modelClient, {
-			promptPlan: capture.promptPlan,
-			historyRoles: capture.historyRoles,
-			modelId: capture.settings.modelId,
-			generationSettings: toModelClientGenerationSettings(capture.settings),
-			connection: capture.connection,
-			signal: input.signal,
-		}, input.onEvent);
-		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-			await input.onBeforeTerminal?.();
+	return runAcceptedGeneration(input, {
+		promptPlan: capture.promptPlan,
+		historyRoles: capture.historyRoles,
+		modelId: capture.settings.modelId,
+		generationSettings: toModelClientGenerationSettings(capture.settings),
+		connection: capture.connection,
+		signal: input.signal,
+	}, {
+		remove: () => {
 			conversation.removeSiblingGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
-			throw new ModelClientGenerationError("provider", "Generation produced no usable output.");
-		}
-		await input.onBeforeTerminal?.();
-		return conversation.resolveSiblingGeneration({
+		},
+		resolve: (outcome) => conversation.resolveSiblingGeneration({
 			conversationId: input.conversationId,
 			generationId: accepted.generationId,
 			timestamp,
 			content: outcome.content,
 			data: generationOutcomeData(outcome),
-		});
-	} catch (error) {
-		try {
-			conversation.removeSiblingGeneration({
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-			});
-		} catch {
-			// Preserve the provider error; a later recovery sweep can clean an
-			// orphaned provisional sibling target.
-		}
-		throw error;
-	}
+		}),
+	});
 }
 
 // Detached server-owned Sibling Generation. The acceptance promise resolves
@@ -1515,40 +1514,34 @@ export function startServerOwnedSiblingGeneration(
 	input: GenerateSiblingVariantInput,
 	callbacks: ServerOwnedSiblingGenerationCallbacks = {},
 ): ServerOwnedSiblingGeneration {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: AcceptedSiblingGeneration) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<AcceptedSiblingGeneration>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const generationResult = generateSiblingVariant(database, {
-		...input,
-		signal: controller.signal,
-		onAccepted: async (value) => {
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, { signal: controller.signal, stop: () => controller.abort() });
-		},
-		onEvent: async (event) => {
-			await input.onEvent?.(event);
-			await callbacks.onEvent?.(event);
-		},
-	});
-	const result = generationResult.then(async (conversation) => {
-		const acceptedValue = await acceptedPromise;
-		return {
-			conversation,
-			generationId: acceptedValue.generationId,
-			messageId: acceptedValue.messageId,
-			provisionalVariantId: acceptedValue.provisionalVariantId,
-		};
-	});
-	void generationResult.catch((error) => {
-		if (!accepted) rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
+	const started = startServerOwnedGeneration(
+		(signal, onAccepted, onEvent) => generateSiblingVariant(database, {
+			...input,
+			signal,
+			onAccepted: async (value) => {
+				await input.onAccepted?.(value);
+				await onAccepted(value);
+			},
+			onEvent: async (event) => {
+				await input.onEvent?.(event);
+				await onEvent(event);
+			},
+		}),
+		callbacks,
+	);
+	return {
+		accepted: started.accepted,
+		result: started.result.then(async (conversation) => {
+			const accepted = await started.accepted;
+			return {
+				conversation,
+				generationId: accepted.generationId,
+				messageId: accepted.messageId,
+				provisionalVariantId: accepted.provisionalVariantId,
+			};
+		}),
+		signal: started.signal,
+	};
 }
 
 function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {
