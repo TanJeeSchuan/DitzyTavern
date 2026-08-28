@@ -40,6 +40,7 @@ const conflict = (): SaveParticipantAsCharacterOutcome => ({
 		control: { humanParticipantId: null, modelParticipantId: null },
 		controlValidity: { valid: false, reason: "missing-seat" },
 		playable: false,
+		activeGenerations: [],
 		capabilities: {
 			compose: { available: false, reason: "conversation-not-playable" },
 			generate: { available: false, reason: "conversation-not-playable" },

@@ -96,7 +96,7 @@ describe("Resumable generation transport", () => {
 		expect(body).toContain("event: complete");
 
 		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
-		expect(snapshot?.activeGeneration).toBeNull();
+		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages.at(-1)?.variants[0]?.content).toBe("Buffered.");
 		expect(snapshot?.revision).toBe((acceptedRevision ?? 0) + 1);
 		const retained = createConversationModule(database).readActiveGenerationDetails(
@@ -328,7 +328,7 @@ describe("Resumable generation transport", () => {
 		// gone; releasing the fake provider proves the generation was not tied to
 		// the first Request signal.
 		const current = createConversationModule(database).getSnapshot(conversation.id);
-		const generationId = current?.activeGeneration?.generationId;
+		const generationId = current?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Active Generation missing.");
 		const observer = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`,

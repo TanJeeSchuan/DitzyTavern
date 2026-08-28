@@ -71,12 +71,6 @@ const conversationCapabilities = t.Object({
 	swipe: capabilityAvailability,
 });
 
-const activeGeneration = t.Nullable(t.Object({
-	generationId: t.Integer(),
-	messageId: t.Integer(),
-	variantId: t.Integer(),
-	startedAt: t.String(),
-}));
 const activeGenerations = t.Array(t.Object({
 	generationId: t.Integer(),
 	messageId: t.Integer(),
@@ -100,7 +94,6 @@ export const conversationSummary = t.Object({
 	controlValidity: conversationControlValidity,
 	playable: t.Boolean(),
 	capabilities: conversationCapabilities,
-	activeGeneration,
 	activeGenerations,
 });
 
@@ -243,7 +236,6 @@ export const toConversationSummary = (conversation: ConversationSnapshot) => ({
 	controlValidity: conversation.controlValidity,
 	playable: conversation.playable,
 	capabilities: conversation.capabilities,
-	activeGeneration: conversation.activeGeneration,
 	activeGenerations: conversation.activeGenerations,
 });
 

@@ -22,7 +22,6 @@ import type {
 	ConversationControlSnapshot,
 	ConversationControlValidity,
 	ConversationDataEntry,
-	ActiveGenerationSnapshot,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
@@ -398,7 +397,6 @@ export function readConversationSnapshot(
 		.where(eq(activeGenerationTable.chat_id, conversationId))
 		.orderBy(asc(activeGenerationTable.id))
 		.all();
-	const activeGeneration: ActiveGenerationSnapshot | null = activeGenerationRows[0] ?? null;
 
 	// Removal eligibility follows Messages: the deletion mode and
 	// affected-generation count derive from the same references the command
@@ -423,7 +421,6 @@ export function readConversationSnapshot(
 		controlValidity,
 		playable,
 		capabilities: deriveCapabilities(playable),
-		activeGeneration,
 		activeGenerations: activeGenerationRows,
 		messages,
 		data,

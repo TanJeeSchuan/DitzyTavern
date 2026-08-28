@@ -126,13 +126,7 @@ export interface ConversationSummary {
 		generate: { available: boolean; reason: "conversation-not-playable" | null };
 		swipe: { available: boolean; reason: "conversation-not-playable" | null };
 	};
-	activeGeneration?: {
-		generationId: number;
-		messageId: number;
-		variantId: number;
-		startedAt: string;
-	} | null;
-	activeGenerations?: {
+	activeGenerations: {
 		generationId: number;
 		messageId: number;
 		variantId: number;

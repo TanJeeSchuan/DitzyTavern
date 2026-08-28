@@ -180,9 +180,7 @@ export function ActiveWritingWorkspace({
 	// authoritative checkpoint before live events. No browser-local text is
 	// needed to reconstruct the visible target.
 	useEffect(() => {
-		const active = conversation?.activeGeneration;
-		const activeGenerations = conversation?.activeGenerations ??
-			(active === undefined || active === null ? [] : [active]);
+		const activeGenerations = conversation?.activeGenerations ?? [];
 		if (activeGenerations.length === 0 || conversation === null) return;
 		const controller = new AbortController();
 		generationSubscriptionAbortRef.current?.abort();
@@ -231,7 +229,7 @@ export function ActiveWritingWorkspace({
 			controller.abort();
 			if (generationSubscriptionAbortRef.current === controller) generationSubscriptionAbortRef.current = null;
 		};
-	}, [conversation?.id, conversation?.activeGeneration?.generationId, conversation?.activeGenerations?.map((target) => target.generationId).join(",")]);
+	}, [conversation?.id, conversation?.activeGenerations.map((target) => target.generationId).join(",")]);
 
 	// Load the native history in stable chronological pages: the story reads
 	// through the paginated seam, never the full Conversation with all its
@@ -482,11 +480,7 @@ export function ActiveWritingWorkspace({
 		if (fresh !== null) setConversation(fresh);
 	};
 
-	const activeGenerationTargets = conversation === null
-		? []
-		: conversation.activeGenerations ?? (conversation.activeGeneration === null || conversation.activeGeneration === undefined
-			? []
-			: [conversation.activeGeneration]);
+	const activeGenerationTargets = conversation?.activeGenerations ?? [];
 	const activeGenerationMessageIds = activeGenerationTargets.map((generation) => generation.messageId);
 	const selectedGenerationTarget = activeGenerationTargets.find((target) => {
 		const message = story.messages.find((entry) => entry.id === target.messageId);
@@ -827,7 +821,7 @@ export function ActiveWritingWorkspace({
 								canContinue={
 									latestStoryMessage?.id === message.id &&
 									conversation?.playable === true &&
-									(conversation.activeGenerations?.length ?? (conversation.activeGeneration === null ? 0 : 1)) === 0 &&
+									conversation.activeGenerations.length === 0 &&
 									isModelAuthoredMessage(message, conversation.control.modelParticipantId) &&
 									message.continuable === true &&
 									isGenerating === false &&

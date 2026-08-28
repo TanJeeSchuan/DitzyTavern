@@ -266,13 +266,8 @@ export interface ConversationSnapshot {
 	controlValidity: ConversationControlValidity;
 	playable: boolean;
 	capabilities: ConversationCapabilities;
-	// A provisional target is server-owned execution state. It is exposed in
-	// the snapshot so a reloaded workspace can render the target from
-	// authoritative storage instead of a browser-local text accumulator.
-	activeGeneration: ActiveGenerationSnapshot | null;
-	// All server-owned targets at the active response position. The singular
-	// field above remains a compatibility shorthand for the first target;
-	// clients that support parallel siblings use this complete list.
+	// All server-owned targets at the active response position. The list is
+	// empty when no generation is active and preserves every parallel sibling.
 	activeGenerations: ActiveGenerationSnapshot[];
 	messages: ConversationMessageSnapshot[];
 	data: ConversationDataEntry[];

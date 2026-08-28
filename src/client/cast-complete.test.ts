@@ -33,6 +33,7 @@ const snapshot = (overrides: {
 			reason: playable ? null : "missing-seat",
 		},
 		playable,
+		activeGenerations: [],
 		capabilities: {
 			compose: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
 			generate: { available: composeAvailable, reason: composeAvailable ? null : "conversation-not-playable" },
