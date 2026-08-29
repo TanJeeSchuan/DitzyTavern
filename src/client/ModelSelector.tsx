@@ -11,6 +11,7 @@ import {
 	saveConnectionCommand,
 	type ConnectionSettings,
 } from "./connection-settings";
+import { useAsyncEffect } from "./lib/use-async";
 import { modelSuggestions, commitModelId, togglePinnedModel } from "./model-selection";
 
 export function ModelSelector({
@@ -31,23 +32,19 @@ export function ModelSelector({
 	const [error, setError] = useState<string | null>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
-		let cancelled = false;
+	useAsyncEffect((isCancelled) => {
 		void Promise.all([
 			loadConversationGenerationSettings(conversation.id),
 			loadConnectionSettings(),
 		])
 			.then(([loadedGeneration, loadedSettings]) => {
-				if (cancelled) return;
+				if (isCancelled()) return;
 				setGeneration(loadedGeneration);
 				setSettings(loadedSettings);
 			})
 			.catch(() => {
-				if (!cancelled) setError("Model settings could not be loaded.");
+				if (!isCancelled()) setError("Model settings could not be loaded.");
 			});
-		return () => {
-			cancelled = true;
-		};
 	}, [conversation.id]);
 
 	useEffect(() => {

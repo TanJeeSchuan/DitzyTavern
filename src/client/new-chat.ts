@@ -1,4 +1,5 @@
 import { api } from "./lib/eden";
+import { commandOutcome } from "./lib/command-outcome";
 
 // Typed client for the native New Chat workflow. Outcomes mirror the
 // server's typed results so setup problems (stale fork sources, invalid
@@ -58,21 +59,14 @@ export async function createNativeConversation(input: {
 		modelSeat: input.modelSeat,
 	});
 	if (error) {
-		const payload = error.value;
-		if (payload.outcome === "conflict") {
-			return {
+		return commandOutcome(error.value, {
+			conflict: (payload) => ({
 				status: "conflict",
 				currentCharacterName:
 					payload.currentCharacter?.name ?? "the Character",
-			};
-		}
-		if (payload.outcome === "not-found") {
-			return { status: "not-found" };
-		}
-		if (payload.outcome === "invalid") {
-			return { status: "invalid", reason: String(payload.reason ?? "") };
-		}
-		return { status: "network" };
+			}),
+			invalid: (payload) => ({ status: "invalid", reason: String(payload.reason ?? "") }),
+		});
 	}
 	return {
 		status: "created",

@@ -9,19 +9,10 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { libraryPickerEntries } from "./cast";
-import { presentRemovalOutcome, removalConfirmationCopy } from "./cast-remove";
-import {
-	presentSaveParticipantOutcome,
-	type SavedCharacterReference,
-} from "./cast-save";
+import { removalConfirmationCopy } from "./cast-remove";
 import { listCharacters, type CharacterSummary } from "./character-library";
-import {
-	addCharacterToCast,
-	applyConversationCommand,
-	loadConversation,
-	saveParticipantAsCharacter,
-	type ConversationSummary,
-} from "./conversation";
+import type { ConversationSummary } from "./conversation";
+import { useCastActions } from "./cast/useCastActions";
 
 // Conversation-local Cast drawer: ordered Participants with computed
 // duplicate labels, Control badges, Character provenance, and the actions
@@ -44,7 +35,6 @@ interface CastPanelProps {
 }
 import {
 	emptyAdHocDraft,
-	openingsFromText,
 	type AdHocDraft,
 } from "./cast/definition";
 import { AddParticipant } from "./cast/AddParticipant";
@@ -62,20 +52,29 @@ export function CastPanel({
 	const [editingParticipantId, setEditingParticipantId] = useState<number | null>(
 		null,
 	);
-	const [notice, setNotice] = useState<string | null>(null);
-	const [pending, setPending] = useState(false);
 	// Identifies the Participant whose removal confirmation dialog is open.
 	// The confirmation copy is derived from the snapshot's removal impact
 	// (deletion mode and affected-generation count) shown before dispatch.
 	const [removeTargetId, setRemoveTargetId] = useState<number | null>(null);
 	const [adHocDraft, setAdHocDraft] = useState<AdHocDraft>(emptyAdHocDraft);
-	// Announces a completed promotion and the navigation action to the new
-	// Character Library entry; cleared when the next save attempt starts so
-	// the drawer never shows a stale confirmation next to a fresh failure.
-	const [saveConfirmation, setSaveConfirmation] = useState<{
-		participantLabel: string;
-		character: SavedCharacterReference;
-	} | null>(null);
+
+	const {
+		pending,
+		notice,
+		setNotice,
+		saveConfirmation,
+		applyRemove,
+		applyAddCharacter,
+		applyAddAdHoc,
+		applySaveParticipant,
+	} = useCastActions({
+		conversationId,
+		conversation,
+		onConversationChange,
+		setRemoveTargetId,
+		adHocDraft,
+		setAdHocDraft,
+	});
 
 	const loadCharacters = useCallback(async () => {
 		try {
@@ -89,49 +88,6 @@ export function CastPanel({
 		void loadCharacters();
 	}, [loadCharacters]);
 
-	const refreshConversation = useCallback(async () => {
-		try {
-			onConversationChange(await loadConversation(conversationId));
-		} catch {
-			setNotice("The Conversation could not be reached.");
-		}
-	}, [conversationId, onConversationChange]);
-
-	// Removes one unseated Participant after the confirmation dialog. The
-	// impact was already shown from the snapshot; the typed not-removable
-	// outcome covers the race where Control changed before the command
-	// landed, and the authoritative Cast is reloaded after it.
-	const applyRemove = async (participant: {
-		id: number;
-		duplicateLabel: string;
-	}) => {
-		if (conversation === null) return;
-		setRemoveTargetId(null);
-		await runCommand(async () => {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				{ type: "remove-participant", participantId: participant.id },
-			);
-			const presentation = presentRemovalOutcome(
-				outcome,
-				participant.duplicateLabel,
-			);
-			if (presentation.reloadConversation) {
-				await refreshConversation();
-			}
-			if (outcome.status === "applied") {
-				onConversationChange(outcome.conversation);
-				setNotice(null);
-				return { ok: true };
-			}
-			if (presentation.notice !== null) {
-				return { ok: false, message: presentation.notice };
-			}
-			return { ok: true };
-		});
-	};
-
 	const pickerEntries = useMemo(
 		() => libraryPickerEntries(characters ?? [], conversation?.cast ?? []),
 		[characters, conversation],
@@ -144,132 +100,6 @@ export function CastPanel({
 			</div>
 		);
 	}
-
-	const runCommand = async (
-		run: () => Promise<{ ok: boolean; message?: string }>,
-	) => {
-		setPending(true);
-		try {
-			const outcome = await run();
-			if (!outcome.ok && outcome.message) {
-				setNotice(outcome.message);
-			}
-		} finally {
-			setPending(false);
-		}
-	};
-
-	const applyAddCharacter = async (characterId: number, expectedRevision: number) => {
-		if (conversation === null) return;
-		await runCommand(async () => {
-			const outcome = await addCharacterToCast({
-				conversationId,
-				expectedConversationRevision: conversation.revision,
-				characterId,
-				expectedCharacterRevision: expectedRevision,
-			});
-			switch (outcome.status) {
-				case "applied":
-					onConversationChange(outcome.conversation);
-					setNotice(null);
-					return { ok: true };
-				case "conflict":
-					if (outcome.currentConversation !== undefined) {
-						onConversationChange(outcome.currentConversation);
-						return {
-							ok: false,
-							message:
-								"The Conversation changed elsewhere; the authoritative Cast was reloaded.",
-						};
-					}
-					await refreshConversation();
-					return {
-						ok: false,
-						message: `${outcome.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
-					};
-				case "not-found":
-					await refreshConversation();
-					return { ok: false, message: "That Character is no longer available." };
-				case "invalid":
-					return { ok: false, message: outcome.reason };
-				default:
-					return { ok: false, message: "The Library could not be reached." };
-			}
-		});
-	};
-
-	const applyAddAdHoc = async () => {
-		if (conversation === null) return;
-		await runCommand(async () => {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				{
-					type: "add-participant",
-					definition: {
-						name: adHocDraft.name,
-						prompt: adHocDraft.prompt,
-						openings: openingsFromText(adHocDraft.openingsText),
-					},
-				},
-			);
-			switch (outcome.status) {
-				case "applied":
-					onConversationChange(outcome.conversation);
-					setAdHocDraft(emptyAdHocDraft);
-					setNotice(null);
-					return { ok: true };
-				case "conflict":
-					onConversationChange(outcome.currentConversation);
-					return {
-						ok: false,
-						message: "The Conversation changed elsewhere; the Cast was reloaded.",
-					};
-				case "invalid":
-					return { ok: false, message: outcome.reason };
-				default:
-					return { ok: false, message: "The Conversation could not be reached." };
-			}
-		});
-	};
-
-	// Saves one active Participant as a new reusable Character. The command
-	// carries only the expected Conversation revision and the Participant
-	// reference: the authoritative server-side Definition is copied by the
-	// workflow, so a stale client copy can never leak into the Library. The
-	// Participant, its provenance, and every local draft stay untouched;
-	// on success the drawer offers navigation to the new Library entry.
-	const applySaveParticipant = async (participant: {
-		id: number;
-		duplicateLabel: string;
-	}) => {
-		if (conversation === null) return;
-		setSaveConfirmation(null);
-		await runCommand(async () => {
-			const outcome = await saveParticipantAsCharacter({
-				conversationId,
-				expectedConversationRevision: conversation.revision,
-				participantId: participant.id,
-			});
-			const presentation = presentSaveParticipantOutcome(
-				outcome,
-				participant.duplicateLabel,
-			);
-			if (presentation.savedCharacter !== null) {
-				setSaveConfirmation({
-					participantLabel: participant.duplicateLabel,
-					character: presentation.savedCharacter,
-				});
-			}
-			if (presentation.reloadConversation) {
-				await refreshConversation();
-			}
-			if (presentation.notice !== null) {
-				return { ok: false, message: presentation.notice };
-			}
-			return { ok: true };
-		});
-	};
 
 	// Removes the targeted unseated Participant after an explicit confirmation
 	// showing the snapshot-derived impact (hard delete versus tombstone and

@@ -1,4 +1,5 @@
 import { api } from "./lib/eden";
+import { commandOutcome } from "./lib/command-outcome";
 
 // Typed client for the Character Library transport adapters. Outcomes mirror
 // the server's typed results so the UI can recover from conflicts without
@@ -121,17 +122,10 @@ export async function applyCommand(
 ): Promise<CommandOutcome> {
 	const { data, error } = await api.api.characters.commands.post(command);
 	if (error) {
-		const payload = error.value;
-		if (payload.outcome === "conflict") {
-			return { status: "conflict", currentCharacter: payload.currentCharacter };
-		}
-		if (payload.outcome === "not-found") {
-			return { status: "not-found" };
-		}
-		if (payload.outcome === "invalid") {
-			return { status: "invalid", reason: payload.reason };
-		}
-		return { status: "network" };
+		return commandOutcome(error.value, {
+			conflict: (payload) => ({ status: "conflict", currentCharacter: payload.currentCharacter }),
+			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+		});
 	}
 	// Deletion returns the typed result instead of a snapshot; every other
 	// command returns the authoritative updated Character. The payload is a

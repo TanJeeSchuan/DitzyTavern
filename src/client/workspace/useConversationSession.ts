@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useRef, useState, type Dispatch } from "react";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	loadConversation,
@@ -6,6 +6,7 @@ import {
 } from "../conversation";
 import type { StoryAction, StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
+import { useAsyncEffect } from "../lib/use-async";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -32,41 +33,33 @@ export function useConversationSession({
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
 
-	useEffect(() => {
+	useAsyncEffect((isCancelled) => {
 		setConversation(null);
 		const conversationId = Number(activeChatId);
 		if (!Number.isInteger(conversationId) || conversationId <= 0) return;
 
-		let cancelled = false;
 		loadConversation(conversationId)
 			.then((loaded) => {
-				if (!cancelled) setConversation(loaded);
+				if (!isCancelled()) setConversation(loaded);
 			})
 			.catch(() => {
-				if (!cancelled) setConversation(null);
+				if (!isCancelled()) setConversation(null);
 			});
-		return () => {
-			cancelled = true;
-		};
 	}, [activeChatId]);
 
-	useEffect(() => {
+	useAsyncEffect((isCancelled) => {
 		const conversationId = Number(activeChatId);
 		if (!Number.isInteger(conversationId) || conversationId <= 0) return;
 
 		dispatchStory({ type: "chat-opened", conversationId });
-		let cancelled = false;
 		void chatHistoryTransport.loadHistory(conversationId, { page: 1 }).then((outcome) => {
-			if (cancelled) return;
+			if (isCancelled()) return;
 			if (outcome.status === "available") {
 				dispatchStory({ type: "first-page", page: outcome.page });
 			} else {
 				dispatchStory({ type: "history-failed" });
 			}
 		});
-		return () => {
-			cancelled = true;
-		};
 	}, [activeChatId, dispatchStory]);
 
 	const selectChat = (chatId: string) => {

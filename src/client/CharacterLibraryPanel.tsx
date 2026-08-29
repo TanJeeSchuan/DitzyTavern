@@ -25,6 +25,7 @@ import {
 	openingsToText,
 	type Drafts,
 } from "./character-library/definition";
+import { useAsyncEffect } from "./lib/use-async";
 
 // The library handles listing, creation, editing, pinning, deletion, and
 // conflict recovery. Duplicate names use computed ordinals; database
@@ -52,18 +53,21 @@ export function CharacterLibraryPanel({
 	const [creating, setCreating] = useState(false);
 	const [createDraft, setCreateDraft] = useState<Drafts>(emptyDrafts);
 
-	const loadList = useCallback(async () => {
+	const loadList = useCallback(async (isCancelled?: () => boolean) => {
 		try {
-			setCharacters(await listCharacters());
+			const loaded = await listCharacters();
+			if (isCancelled?.()) return false;
+			setCharacters(loaded);
 			return true;
 		} catch {
+			if (isCancelled?.()) return false;
 			setCharacters(null);
 			return false;
 		}
 	}, []);
 
-	useEffect(() => {
-		void loadList();
+	useAsyncEffect((isCancelled) => {
+		void loadList(isCancelled);
 	}, [loadList]);
 
 	// Computed duplicate ordinals follow library order, so each repeated name

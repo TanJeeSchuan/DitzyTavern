@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useMemo, useState } from "react";
 import { JsonData } from "json-edit-react";
 import {
 	loadConnectionPresets,
@@ -21,6 +21,7 @@ import {
 	preserveConnectionDraftOnConflict,
 	type ConnectionSettingsConflict,
 } from "../../connection-settings-state";
+import { useAsyncEffect } from "../../lib/use-async";
 import { resolveChatCompletionsRequestUrl } from "../../../shared/connection-url";
 
 export const emptyDraft: ConnectionProfileDraft = {
@@ -89,11 +90,20 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 	});
 }
 
-type ControllerState = {
+// The command-failure wording shared by every Profile command handler; the
+// conflict variant is passed per command because it names what was preserved.
+const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
+const CREDENTIAL_CONFLICT_ERROR = "These settings changed elsewhere. Your credential draft is preserved.";
+const PROFILE_NOT_FOUND_ERROR = "The selected Profile no longer exists.";
+
+type AppliedConnectionSettings = Extract<ConnectionSettingsResult, { outcome: "applied" }>;
+
+export type ConnectionSettingsController = {
 	settings: ConnectionSettings | null;
 	presets: ConnectionPreset[];
-	draft: ConnectionProfileDraft;
+	loading: boolean;
 	selectedProfileId: number | null;
+	draft: ConnectionProfileDraft;
 	credentialDraft: string;
 	headerEditorData: HeaderEditorData;
 	testModelId: string;
@@ -108,38 +118,6 @@ type ControllerState = {
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
-	loading: boolean;
-};
-
-const initialState: ControllerState = {
-	settings: null,
-	presets: [],
-	draft: emptyDraft,
-	selectedProfileId: null,
-	credentialDraft: "",
-	headerEditorData: {},
-	testModelId: "",
-	testResult: null,
-	testPending: false,
-	discoveryPending: false,
-	replacementProfileId: null,
-	pendingDeletionProfileId: null,
-	openProfileMenuId: null,
-	presetChoicesOpen: false,
-	headersExpanded: false,
-	conflict: null,
-	notice: null,
-	error: null,
-	loading: true,
-};
-
-type Action = { type: "patch"; patch: Partial<ControllerState> };
-
-function reducer(state: ControllerState, action: Action): ControllerState {
-	return action.type === "patch" ? { ...state, ...action.patch } : state;
-}
-
-export type ConnectionSettingsController = ControllerState & {
 	selectedProfile: ConnectionProfile | undefined;
 	pendingDeletionProfile: ConnectionProfile | undefined;
 	refreshModelsDisabledReason: string | undefined;
@@ -165,272 +143,360 @@ export type ConnectionSettingsController = ControllerState & {
 	resetCredential: () => Promise<void>;
 };
 
+/**
+ * Owns the Connection Settings editor state. The former single patch-any-field
+ * store is split into focused slices — server catalog, editable Profile
+ * draft, selection and menus, and user-facing feedback — and the Profile
+ * command handlers share one runConnectionCommand failure path. The returned
+ * controller shape is unchanged for its callers.
+ */
 export function useConnectionSettingsController(): ConnectionSettingsController {
-	const [state, dispatch] = useReducer(reducer, initialState);
-	const patch = (next: Partial<ControllerState>) => dispatch({ type: "patch", patch: next });
+	// Catalog slice: the server-owned Connection Settings and Presets, plus
+	// the initial load flag.
+	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
+	const [presets, setPresets] = useState<ConnectionPreset[]>([]);
+	const [loading, setLoading] = useState(true);
 
-	useEffect(() => {
-		let cancelled = false;
+	// Editor-draft slice: the editable Profile draft and its credential,
+	// header, and test-model companions.
+	const [draft, setDraft] = useState<ConnectionProfileDraft>(emptyDraft);
+	const [credentialDraft, setCredentialDraft] = useState("");
+	const [headerEditorData, setHeaderEditorData] = useState<HeaderEditorData>({});
+	const [testModelId, setTestModelId] = useState("");
+	const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
+	const [headersExpanded, setHeadersExpanded] = useState(false);
+
+	// Selection slice: which Profile is open, pending deletion, or offered as
+	// a replacement, plus the menu visibility flags.
+	const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
+	const [replacementProfileId, setReplacementProfileId] = useState<number | null>(null);
+	const [pendingDeletionProfileId, setPendingDeletionProfileId] = useState<number | null>(null);
+	const [openProfileMenuId, setOpenProfileMenuId] = useState<number | null>(null);
+	const [presetChoicesOpen, setPresetChoicesOpen] = useState(false);
+
+	// Feedback slice: transient command outcomes surfaced to the user.
+	const [conflict, setConflict] = useState<ConnectionSettingsConflict | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [testPending, setTestPending] = useState(false);
+	const [discoveryPending, setDiscoveryPending] = useState(false);
+
+	useAsyncEffect((isCancelled) => {
 		void Promise.all([loadConnectionSettings(), loadConnectionPresets()])
-			.then(([settings, presets]) => {
-				if (cancelled) return;
-				const active = settings.profiles.find((profile) => profile.id === settings.activeProfileId);
-				const loaded: Partial<ControllerState> = { settings, presets };
+			.then(([loadedSettings, loadedPresets]) => {
+				if (isCancelled()) return;
+				const active = loadedSettings.profiles.find((profile) => profile.id === loadedSettings.activeProfileId);
+				setSettings(loadedSettings);
+				setPresets(loadedPresets);
 				if (active) {
-					Object.assign(loaded, {
-						selectedProfileId: active.id,
-						draft: copyDraft(active),
-						headerEditorData: headerEditorDataFor(active.headers),
-						headersExpanded: active.headers.length > 0,
-						testModelId: active.pinnedModels[0] ?? "",
-						replacementProfileId: settings.profiles.find((profile) => profile.id !== active.id)?.id ?? null,
-					});
+					setSelectedProfileId(active.id);
+					setDraft(copyDraft(active));
+					setHeaderEditorData(headerEditorDataFor(active.headers));
+					setHeadersExpanded(active.headers.length > 0);
+					setTestModelId(active.pinnedModels[0] ?? "");
+					setReplacementProfileId(loadedSettings.profiles.find((profile) => profile.id !== active.id)?.id ?? null);
 				}
-				patch(loaded);
 			})
 			.catch(() => {
-				if (!cancelled) patch({ error: "Connection Settings could not be loaded." });
+				if (!isCancelled()) setError("Connection Settings could not be loaded.");
 			})
 			.finally(() => {
-				if (!cancelled) patch({ loading: false });
+				if (!isCancelled()) setLoading(false);
 			});
-		return () => { cancelled = true; };
 	}, []);
 
-	const selectedProfile = state.settings?.profiles.find((profile) => profile.id === state.selectedProfileId);
-	const pendingDeletionProfile = state.settings?.profiles.find((profile) => profile.id === state.pendingDeletionProfileId);
-	const refreshModelsDisabledReason = state.selectedProfileId === null
+	const selectedProfile = settings?.profiles.find((profile) => profile.id === selectedProfileId);
+	const pendingDeletionProfile = settings?.profiles.find((profile) => profile.id === pendingDeletionProfileId);
+	const refreshModelsDisabledReason = selectedProfileId === null
 		? "Save this connection before refreshing."
-		: state.draft.modelsUrl.trim().length === 0
+		: draft.modelsUrl.trim().length === 0
 			? "Enter a Models URL before refreshing."
-			: selectedProfile?.modelsUrl.trim() !== state.draft.modelsUrl.trim()
+			: selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()
 				? "Save the Models URL before refreshing."
-				: state.discoveryPending
+				: discoveryPending
 					? "A model refresh is already in progress."
 					: undefined;
 	const resolvedRequestUrl = useMemo(() => {
-		if (state.draft.requestUrl.trim().length === 0) return "Not configured";
+		if (draft.requestUrl.trim().length === 0) return "Not configured";
 		try {
-			return resolveChatCompletionsRequestUrl(state.draft.requestUrl);
+			return resolveChatCompletionsRequestUrl(draft.requestUrl);
 		} catch (error) {
 			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
 		}
-	}, [state.draft.requestUrl]);
+	}, [draft.requestUrl]);
 
 	const preserveConflict = (result: ConnectionSettingsResult): boolean => {
-		if (!state.settings || result.outcome !== "conflict") return false;
+		if (!settings || result.outcome !== "conflict") return false;
 		const preserved = preserveConnectionDraftOnConflict({
-			settings: state.settings,
-			selectedProfileId: state.selectedProfileId,
-			draft: state.draft,
-			credentialDraft: state.credentialDraft,
+			settings,
+			selectedProfileId,
+			draft,
+			credentialDraft,
 			conflict: null,
 		}, result);
-		patch({
-			settings: preserved.settings,
-			draft: preserved.draft,
-			credentialDraft: preserved.credentialDraft,
-			conflict: preserved.conflict,
-		});
+		setSettings(preserved.settings);
+		setDraft(preserved.draft);
+		setCredentialDraft(preserved.credentialDraft);
+		setConflict(preserved.conflict);
 		return true;
 	};
 
-	const choosePreset = (preset: ConnectionPreset) => patch({
-		selectedProfileId: null,
-		draft: copyDraft(preset.profile),
-		credentialDraft: "",
-		headerEditorData: {},
-		testModelId: preset.profile.pinnedModels[0] ?? "",
-		testResult: null,
-		replacementProfileId: null,
-		pendingDeletionProfileId: null,
-		openProfileMenuId: null,
-		presetChoicesOpen: false,
-		headersExpanded: false,
-		conflict: null,
-		notice: `${preset.label} defaults copied into a new editable Profile draft.`,
-		error: null,
-	});
+	// Runs one Connection Settings command and owns the failure wording
+	// repeated by every Profile command handler: a conflict preserves the
+	// editor state via preserveConflict, an invalid outcome surfaces the
+	// server reason, and anything else reads as a missing Profile. Returns
+	// the applied result, or null after the error slice is set.
+	const runConnectionCommand = async (
+		command: () => Promise<ConnectionSettingsResult>,
+		conflictError: string,
+	): Promise<AppliedConnectionSettings | null> => {
+		const result = await command();
+		if (result.outcome === "applied") return result;
+		preserveConflict(result);
+		setError(
+			result.outcome === "conflict"
+				? conflictError
+				: result.outcome === "invalid"
+					? result.reason
+					: PROFILE_NOT_FOUND_ERROR,
+		);
+		return null;
+	};
 
-	const chooseProfile = (profile: ConnectionProfile) => patch({
-		selectedProfileId: profile.id,
-		draft: copyDraft(profile),
-		credentialDraft: "",
-		headerEditorData: headerEditorDataFor(profile.headers),
-		testModelId: profile.pinnedModels[0] ?? "",
-		testResult: null,
-		replacementProfileId: state.settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null,
-		pendingDeletionProfileId: null,
-		openProfileMenuId: null,
-		presetChoicesOpen: false,
-		headersExpanded: profile.headers.length > 0,
-		conflict: null,
-		notice: null,
-		error: null,
-	});
+	const choosePreset = (preset: ConnectionPreset) => {
+		setSelectedProfileId(null);
+		setDraft(copyDraft(preset.profile));
+		setCredentialDraft("");
+		setHeaderEditorData({});
+		setTestModelId(preset.profile.pinnedModels[0] ?? "");
+		setTestResult(null);
+		setReplacementProfileId(null);
+		setPendingDeletionProfileId(null);
+		setOpenProfileMenuId(null);
+		setPresetChoicesOpen(false);
+		setHeadersExpanded(false);
+		setConflict(null);
+		setNotice(`${preset.label} defaults copied into a new editable Profile draft.`);
+		setError(null);
+	};
+
+	const chooseProfile = (profile: ConnectionProfile) => {
+		setSelectedProfileId(profile.id);
+		setDraft(copyDraft(profile));
+		setCredentialDraft("");
+		setHeaderEditorData(headerEditorDataFor(profile.headers));
+		setTestModelId(profile.pinnedModels[0] ?? "");
+		setTestResult(null);
+		setReplacementProfileId(settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null);
+		setPendingDeletionProfileId(null);
+		setOpenProfileMenuId(null);
+		setPresetChoicesOpen(false);
+		setHeadersExpanded(profile.headers.length > 0);
+		setConflict(null);
+		setNotice(null);
+		setError(null);
+	};
 
 	const testDraft = async () => {
-		if (state.testModelId.trim().length === 0) {
-			patch({ error: "Enter a model ID before testing this Connection Profile." });
+		if (testModelId.trim().length === 0) {
+			setError("Enter a model ID before testing this Connection Profile.");
 			return;
 		}
-		patch({ testPending: true, testResult: null, notice: null, error: null });
+		setTestPending(true);
+		setTestResult(null);
+		setNotice(null);
+		setError(null);
 		try {
 			const request: TestConnectionDraftInput = {
-				profile: state.draft,
-				modelId: state.testModelId,
-				headers: headerOperationsFor(state.headerEditorData),
+				profile: draft,
+				modelId: testModelId,
+				headers: headerOperationsFor(headerEditorData),
 			};
-			if (state.selectedProfileId !== null) request.profileId = state.selectedProfileId;
+			if (selectedProfileId !== null) request.profileId = selectedProfileId;
 			const result = await testConnectionDraft(request);
-			patch({ testResult: result, ...(result.outcome === "success" ? { notice: result.message } : { error: result.outcome === "failure" ? result.message : result.reason }) });
+			setTestResult(result);
+			if (result.outcome === "success") setNotice(result.message);
+			else setError(result.outcome === "failure" ? result.message : result.reason);
 		} catch {
-			patch({ error: "Test Connection could not be completed." });
+			setError("Test Connection could not be completed.");
 		} finally {
-			patch({ testPending: false });
+			setTestPending(false);
 		}
 	};
 
 	const refreshModels = async () => {
-		if (state.selectedProfileId === null) { patch({ error: "Save this connection before refreshing its Models URL." }); return; }
-		if (state.draft.modelsUrl.trim().length === 0) { patch({ error: "Refresh requires an exact Models URL." }); return; }
-		if (selectedProfile?.modelsUrl.trim() !== state.draft.modelsUrl.trim()) { patch({ error: "Save the Models URL change before refreshing the catalog." }); return; }
-		patch({ discoveryPending: true, notice: null, error: null });
+		if (selectedProfileId === null) { setError("Save this connection before refreshing its Models URL."); return; }
+		if (draft.modelsUrl.trim().length === 0) { setError("Refresh requires an exact Models URL."); return; }
+		if (selectedProfile?.modelsUrl.trim() !== draft.modelsUrl.trim()) { setError("Save the Models URL change before refreshing the catalog."); return; }
+		setDiscoveryPending(true);
+		setNotice(null);
+		setError(null);
 		try {
-			const result = await refreshDiscoveryCatalog(state.selectedProfileId);
+			const result = await refreshDiscoveryCatalog(selectedProfileId);
 			if (result.outcome === "success") {
-				patch({
-					settings: state.settings === null ? null : {
-						...state.settings,
-						profiles: state.settings.profiles.map((profile) => profile.id === result.profile.id ? result.profile : profile),
-					},
-					notice: `Model catalog refreshed. ${result.profile.discoveryCatalog.length} model IDs are available for autocomplete.`,
+				setSettings(settings === null ? null : {
+					...settings,
+					profiles: settings.profiles.map((profile) => profile.id === result.profile.id ? result.profile : profile),
 				});
-			} else if (result.outcome === "failure") patch({ error: result.message });
-			else if (result.outcome === "invalid") patch({ error: result.reason });
+				setNotice(`Model catalog refreshed. ${result.profile.discoveryCatalog.length} model IDs are available for autocomplete.`);
+			} else if (result.outcome === "failure") setError(result.message);
+			else if (result.outcome === "invalid") setError(result.reason);
 			else if (result.outcome === "conflict") {
 				preserveConflict(result);
-				patch({ error: "Connection Settings changed while models were refreshing. Your draft is preserved." });
+				setError("Connection Settings changed while models were refreshing. Your draft is preserved.");
 			}
-			else patch({ error: "The selected Profile no longer exists." });
-		} catch { patch({ error: "Model catalog refresh could not be completed." }); }
-		finally { patch({ discoveryPending: false }); }
+			else setError(PROFILE_NOT_FOUND_ERROR);
+		} catch { setError("Model catalog refresh could not be completed."); }
+		finally { setDiscoveryPending(false); }
 	};
 
 	const applyDraft = async () => {
-		if (!state.settings) return;
-		patch({ notice: null, error: null });
+		if (settings === null) return;
+		setNotice(null);
+		setError(null);
 		let headers: ConnectionHeaderOperation[];
-		try { headers = headerOperationsFor(state.headerEditorData); }
-		catch { patch({ error: "Custom header drafts are invalid." }); return; }
-		const command: ConnectionSettingsCommand = state.selectedProfileId === null
-			? { type: "create-profile", expectedRevision: state.settings.revision, profile: state.draft, credential: state.credentialDraft.length > 0 ? state.credentialDraft : null, headers }
-			: { type: "apply-profile", expectedRevision: state.settings.revision, profileId: state.selectedProfileId, profile: state.draft, headers };
-		const result = await saveConnectionCommand(command);
-		if (result.outcome !== "applied") {
-			preserveConflict(result);
-			patch({ error: result.outcome === "conflict" ? "These settings changed elsewhere. Your unsaved draft is preserved." : result.outcome === "invalid" ? result.reason : "The selected Profile no longer exists." });
-			return;
-		}
-		const saved = result.settings.profiles.find((profile) =>
-			(state.selectedProfileId !== null && profile.id === state.selectedProfileId) ||
-			(state.selectedProfileId === null && profile.displayName === state.draft.displayName.trim().replace(/\s+/g, " ")),
+		try { headers = headerOperationsFor(headerEditorData); }
+		catch { setError("Custom header drafts are invalid."); return; }
+		const command: ConnectionSettingsCommand = selectedProfileId === null
+			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
+			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
+		const applied = await runConnectionCommand(
+			() => saveConnectionCommand(command),
+			APPLY_CONFLICT_ERROR,
 		);
-		const applied: Partial<ControllerState> = {
-			settings: result.settings,
-			conflict: null,
-			testResult: null,
-			notice: state.selectedProfileId !== null && state.credentialDraft.length > 0 ? "Profile changes saved. The credential draft is still unsaved." : "Changes saved. No provider request was made.",
-		};
+		if (applied === null) return;
+		const saved = applied.settings.profiles.find((profile) =>
+			(selectedProfileId !== null && profile.id === selectedProfileId) ||
+			(selectedProfileId === null && profile.displayName === draft.displayName.trim().replace(/\s+/g, " ")),
+		);
+		setSettings(applied.settings);
+		setConflict(null);
+		setTestResult(null);
+		setNotice(selectedProfileId !== null && credentialDraft.length > 0 ? "Profile changes saved. The credential draft is still unsaved." : "Changes saved. No provider request was made.");
 		if (saved) {
-			applied.selectedProfileId = saved.id;
-			applied.draft = copyDraft(saved);
-			applied.headerEditorData = headerEditorDataFor(saved.headers);
+			setSelectedProfileId(saved.id);
+			setDraft(copyDraft(saved));
+			setHeaderEditorData(headerEditorDataFor(saved.headers));
 		}
-		if (state.selectedProfileId === null) applied.credentialDraft = "";
-		patch(applied);
+		if (selectedProfileId === null) setCredentialDraft("");
 	};
 
 	const updateCredential = async () => {
-		if (!state.settings || state.selectedProfileId === null || state.credentialDraft.length === 0) return;
-		patch({ notice: null, error: null });
-		const result = await saveConnectionCommand({ type: "set-credential", expectedRevision: state.settings.revision, profileId: state.selectedProfileId, credential: state.credentialDraft });
-		if (result.outcome !== "applied") {
-			preserveConflict(result);
-			patch({ error: result.outcome === "conflict" ? "These settings changed elsewhere. Your credential draft is preserved." : result.outcome === "invalid" ? result.reason : "The selected Profile no longer exists." });
-			return;
-		}
-		patch({ settings: result.settings, credentialDraft: "", conflict: null, notice: "Credential updated." });
+		if (settings === null || selectedProfileId === null || credentialDraft.length === 0) return;
+		setNotice(null);
+		setError(null);
+		const applied = await runConnectionCommand(
+			() => saveConnectionCommand({ type: "set-credential", expectedRevision: settings.revision, profileId: selectedProfileId, credential: credentialDraft }),
+			CREDENTIAL_CONFLICT_ERROR,
+		);
+		if (applied === null) return;
+		setSettings(applied.settings);
+		setCredentialDraft("");
+		setConflict(null);
+		setNotice("Credential updated.");
 	};
 
 	const activateSelectedProfile = async () => {
-		if (!state.settings || state.selectedProfileId === null || state.selectedProfileId === state.settings.activeProfileId) return;
-		patch({ notice: null, error: null });
-		const result = await saveConnectionCommand({ type: "activate-profile", expectedRevision: state.settings.revision, profileId: state.selectedProfileId });
-		if (result.outcome !== "applied") {
-			preserveConflict(result);
-			patch({ error: result.outcome === "conflict" ? "These settings changed elsewhere. Your unsaved draft is preserved." : result.outcome === "not-found" ? "The selected Profile no longer exists." : result.reason });
-			return;
-		}
-		patch({ settings: result.settings, conflict: null, notice: "Connection set as active for new generations." });
+		if (settings === null || selectedProfileId === null || selectedProfileId === settings.activeProfileId) return;
+		setNotice(null);
+		setError(null);
+		const applied = await runConnectionCommand(
+			() => saveConnectionCommand({ type: "activate-profile", expectedRevision: settings.revision, profileId: selectedProfileId }),
+			APPLY_CONFLICT_ERROR,
+		);
+		if (applied === null) return;
+		setSettings(applied.settings);
+		setConflict(null);
+		setNotice("Connection set as active for new generations.");
 	};
 
-	const requestProfileDeletion = (profile: ConnectionProfile) => patch({
-		pendingDeletionProfileId: profile.id,
-		replacementProfileId: profile.id === state.settings?.activeProfileId ? state.settings.profiles.find((entry) => entry.id !== profile.id)?.id ?? null : null,
-		openProfileMenuId: null,
-		notice: null,
-		error: null,
-	});
+	const requestProfileDeletion = (profile: ConnectionProfile) => {
+		setPendingDeletionProfileId(profile.id);
+		setReplacementProfileId(profile.id === settings?.activeProfileId ? settings.profiles.find((entry) => entry.id !== profile.id)?.id ?? null : null);
+		setOpenProfileMenuId(null);
+		setNotice(null);
+		setError(null);
+	};
 
 	const deletePendingProfile = async () => {
-		if (!state.settings || state.pendingDeletionProfileId === null || !pendingDeletionProfile) return;
-		const deletingActive = pendingDeletionProfile.id === state.settings.activeProfileId;
-		const replacement = deletingActive && state.settings.profiles.length > 1 ? state.replacementProfileId : null;
-		if (deletingActive && state.settings.profiles.length > 1 && replacement === null) { patch({ error: "Choose a replacement Profile before deleting the active Profile." }); return; }
-		patch({ notice: null, error: null });
-		const result = await saveConnectionCommand({ type: "delete-profile", expectedRevision: state.settings.revision, profileId: pendingDeletionProfile.id, replacementProfileId: replacement });
-		if (result.outcome !== "applied") {
-			preserveConflict(result);
-			patch({ error: result.outcome === "conflict" ? "These settings changed elsewhere. Your unsaved draft is preserved." : result.outcome === "invalid" ? result.reason : "The selected Profile no longer exists." });
-			return;
+		if (settings === null || pendingDeletionProfileId === null || !pendingDeletionProfile) return;
+		const deletingActive = pendingDeletionProfile.id === settings.activeProfileId;
+		const replacement = deletingActive && settings.profiles.length > 1 ? replacementProfileId : null;
+		if (deletingActive && settings.profiles.length > 1 && replacement === null) { setError("Choose a replacement Profile before deleting the active Profile."); return; }
+		setNotice(null);
+		setError(null);
+		const applied = await runConnectionCommand(
+			() => saveConnectionCommand({ type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id, replacementProfileId: replacement }),
+			APPLY_CONFLICT_ERROR,
+		);
+		if (applied === null) return;
+		const nextProfile = applied.settings.profiles.find((profile) => profile.id === (replacement ?? applied.settings.activeProfileId));
+		setSettings(applied.settings);
+		setConflict(null);
+		setPendingDeletionProfileId(null);
+		setCredentialDraft("");
+		setNotice(`${pendingDeletionProfile.displayName} deleted.`);
+		if (nextProfile) {
+			setSelectedProfileId(nextProfile.id);
+			setDraft(copyDraft(nextProfile));
+			setHeaderEditorData(headerEditorDataFor(nextProfile.headers));
+			setReplacementProfileId(applied.settings.profiles.find((profile) => profile.id !== nextProfile.id)?.id ?? null);
+		} else {
+			setSelectedProfileId(null);
+			setDraft(copyDraft(emptyDraft));
+			setHeaderEditorData({});
+			setReplacementProfileId(null);
 		}
-		const nextProfile = result.settings.profiles.find((profile) => profile.id === (replacement ?? result.settings.activeProfileId));
-		patch({
-			settings: result.settings,
-			conflict: null,
-			pendingDeletionProfileId: null,
-			credentialDraft: "",
-			notice: `${pendingDeletionProfile.displayName} deleted.`,
-			...(nextProfile ? { selectedProfileId: nextProfile.id, draft: copyDraft(nextProfile), headerEditorData: headerEditorDataFor(nextProfile.headers), replacementProfileId: result.settings.profiles.find((profile) => profile.id !== nextProfile.id)?.id ?? null } : { selectedProfileId: null, draft: copyDraft(emptyDraft), headerEditorData: {}, replacementProfileId: null }),
-		});
 	};
 
 	const resetCredential = async () => {
-		if (!state.settings || state.selectedProfileId === null || !window.confirm("Reset this credential? This cannot be undone.")) return;
-		patch({ notice: null, error: null });
-		const result = await saveConnectionCommand({ type: "reset-credential", expectedRevision: state.settings.revision, profileId: state.selectedProfileId, confirmed: true });
-		if (result.outcome !== "applied") { patch({ error: result.outcome === "invalid" ? result.reason : "Credential reset failed." }); return; }
-		patch({ settings: result.settings, conflict: null, notice: "Credential reset." });
+		if (settings === null || selectedProfileId === null || !window.confirm("Reset this credential? This cannot be undone.")) return;
+		setNotice(null);
+		setError(null);
+		const result = await saveConnectionCommand({ type: "reset-credential", expectedRevision: settings.revision, profileId: selectedProfileId, confirmed: true });
+		// Reset deliberately skips preserveConflict: the credential draft is
+		// cleared either way, so a conflict reads as a plain failure here.
+		if (result.outcome !== "applied") { setError(result.outcome === "invalid" ? result.reason : "Credential reset failed."); return; }
+		setSettings(result.settings);
+		setConflict(null);
+		setNotice("Credential reset.");
 	};
 
 	return {
-		...state,
+		settings,
+		presets,
+		loading,
+		selectedProfileId,
+		draft,
+		credentialDraft,
+		headerEditorData,
+		testModelId,
+		testResult,
+		testPending,
+		discoveryPending,
+		replacementProfileId,
+		pendingDeletionProfileId,
+		openProfileMenuId,
+		presetChoicesOpen,
+		headersExpanded,
+		conflict,
+		notice,
+		error,
 		selectedProfile,
 		pendingDeletionProfile,
 		refreshModelsDisabledReason,
 		resolvedRequestUrl,
 		choosePreset,
 		chooseProfile,
-		setDraft: (draft) => patch({ draft }),
-		setCredentialDraft: (credentialDraft) => patch({ credentialDraft }),
-		setHeaderEditorData: (headerEditorData) => patch({ headerEditorData }),
-		setTestModelId: (testModelId) => patch({ testModelId }),
-		setHeadersExpanded: (headersExpanded) => patch({ headersExpanded }),
-		setPresetChoicesOpen: (presetChoicesOpen) => patch({ presetChoicesOpen }),
-		setOpenProfileMenuId: (openProfileMenuId) => patch({ openProfileMenuId }),
-		setReplacementProfileId: (replacementProfileId) => patch({ replacementProfileId }),
-		setPendingDeletionProfileId: (pendingDeletionProfileId) => patch({ pendingDeletionProfileId }),
+		setDraft,
+		setCredentialDraft,
+		setHeaderEditorData,
+		setTestModelId,
+		setHeadersExpanded,
+		setPresetChoicesOpen,
+		setOpenProfileMenuId,
+		setReplacementProfileId,
+		setPendingDeletionProfileId,
 		testDraft,
 		refreshModels,
 		applyDraft,

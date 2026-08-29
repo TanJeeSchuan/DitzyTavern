@@ -11,18 +11,8 @@ import {
 	displayedVariantId as getDisplayedVariantId,
 	visibleVariantContent,
 } from "../story";
+import { formatTimestamp } from "../lib/format";
 import { Portrait } from "./Portrait";
-
-const formatTimestamp = (value: string): string => {
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) {
-		return value;
-	}
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(date);
-};
 
 // The story renders one native Message from the paginated read model: the
 // immutable Author Stamp name, the persisted selected Variant, and the

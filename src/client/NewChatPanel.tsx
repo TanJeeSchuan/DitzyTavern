@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { type CharacterSummary, listCharacters } from "./character-library";
 import {
 	createNativeConversation,
@@ -7,6 +7,7 @@ import {
 	type SeatDraft,
 	type SeatPromptDraft,
 } from "./new-chat";
+import { useAsyncEffect } from "./lib/use-async";
 
 // Native New Chat setup: the human and model seats are configured side by
 // side, each either forking a library Character or authored ad hoc, and both
@@ -205,19 +206,13 @@ export function NewChatPanel({
 	const [pending, setPending] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 
-	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			try {
-				const summaries = await listCharacters();
-				if (!cancelled) setCharacters(summaries);
-			} catch {
-				if (!cancelled) setCharacters([]);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
+	useAsyncEffect(async (isCancelled) => {
+		try {
+			const summaries = await listCharacters();
+			if (!isCancelled()) setCharacters(summaries);
+		} catch {
+			if (!isCancelled()) setCharacters([]);
+		}
 	}, []);
 
 	const humanReady =

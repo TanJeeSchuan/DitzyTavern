@@ -8,6 +8,10 @@
 // state is left exactly as the user typed it.
 
 import type { SaveParticipantAsCharacterOutcome } from "./conversation";
+import {
+	CONVERSATION_CONFLICT_RELOAD_NOTICE,
+	LIBRARY_UNREACHABLE_NOTICE,
+} from "./lib/command-outcome";
 
 // The minimal reference the drawer needs to offer navigation into the new
 // Character Library entry. Internal identifiers are not displayed anywhere.
@@ -47,7 +51,7 @@ export const presentSaveParticipantOutcome = (
 			};
 		case "conflict":
 			return {
-				notice: "The Conversation changed elsewhere; the current Cast was loaded.",
+				notice: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 				savedCharacter: null,
 				reloadConversation: true,
 			};
@@ -65,7 +69,7 @@ export const presentSaveParticipantOutcome = (
 			};
 		default:
 			return {
-				notice: "The Library could not be reached.",
+				notice: LIBRARY_UNREACHABLE_NOTICE,
 				savedCharacter: null,
 				reloadConversation: false,
 			};

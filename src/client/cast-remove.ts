@@ -6,6 +6,10 @@
 // notice. No domain rule is reconstructed here.
 
 import type { CastParticipant, CommandOutcome } from "./conversation";
+import {
+	CONVERSATION_CONFLICT_RELOAD_NOTICE,
+	CONVERSATION_UNREACHABLE_NOTICE,
+} from "./lib/command-outcome";
 
 export interface RemovalConfirmationCopy {
 	// Dialog title, e.g. "Remove Juno Ashfeld?".
@@ -76,7 +80,7 @@ export const presentRemovalOutcome = (
 			return { notice: null, reloadConversation: false };
 		case "conflict":
 			return {
-				notice: "The Conversation changed elsewhere; the current Cast was loaded.",
+				notice: CONVERSATION_CONFLICT_RELOAD_NOTICE,
 				reloadConversation: true,
 			};
 		case "not-removable":
@@ -95,7 +99,7 @@ export const presentRemovalOutcome = (
 			return { notice: outcome.reason, reloadConversation: false };
 		default:
 			return {
-				notice: "The Conversation could not be reached.",
+				notice: CONVERSATION_UNREACHABLE_NOTICE,
 				reloadConversation: false,
 			};
 	}

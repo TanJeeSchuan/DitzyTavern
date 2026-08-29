@@ -1,12 +1,8 @@
 import type { ImportGroupDraft } from "../import-chat-flow";
+import { formatSize } from "../lib/format";
 
-export const sourceSize = (byteLength: number | null): string => {
-	if (byteLength === null) return "";
-	if (byteLength < 1024) return `${byteLength} B`;
-	const kilobytes = byteLength / 1024;
-	if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
-	return `${(kilobytes / 1024).toFixed(1)} MB`;
-};
+export const sourceSize = (byteLength: number | null): string =>
+	formatSize(byteLength, "");
 
 export const outcomeLabel = (
 	outcome: ImportGroupDraft["outcome"],

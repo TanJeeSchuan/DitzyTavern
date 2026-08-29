@@ -1,5 +1,5 @@
 import { CheckCircle2, Download, FileArchive, TriangleAlert } from "lucide-react";
-import { useEffect, useReducer, useState } from "react";
+import { useReducer, useState } from "react";
 import {
 	artifactAvailabilityLabel,
 	createChatInformationState,
@@ -12,6 +12,8 @@ import {
 	downloadImportedSourceInBrowser,
 	type ChatSourceDownloadOutcome,
 } from "./chat-history";
+import { useAsyncEffect } from "./lib/use-async";
+import { formatSize } from "./lib/format";
 import { PanelHeader } from "./PanelHeader";
 
 // Keep import origin in this on-demand panel. Do not add an Imported badge,
@@ -22,14 +24,6 @@ interface ChatInformationPanelProps {
 	chatTitle: string;
 	onClose: () => void;
 }
-
-const formatSize = (byteLength: number | null): string => {
-	if (byteLength === null) return "n/a";
-	if (byteLength < 1024) return `${byteLength} B`;
-	const kilobytes = byteLength / 1024;
-	if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
-	return `${(kilobytes / 1024).toFixed(1)} MB`;
-};
 
 export function ChatInformationPanel({
 	conversationId,
@@ -45,13 +39,12 @@ export function ChatInformationPanel({
 		{ status: "idle" } | { status: "downloading" } | ChatSourceDownloadOutcome
 	>({ status: "idle" });
 
-	useEffect(() => {
-		let cancelled = false;
+	useAsyncEffect((isCancelled) => {
 		dispatch({ type: "chat-opened" });
 		void chatHistoryTransport
 			.loadImportDetails(conversationId)
 			.then((outcome) => {
-				if (cancelled) return;
+				if (isCancelled()) return;
 				if (outcome.status === "available") {
 					dispatch({ type: "details-loaded", details: outcome.details });
 					return;
@@ -62,9 +55,6 @@ export function ChatInformationPanel({
 				}
 				dispatch({ type: "details-failed" });
 			});
-		return () => {
-			cancelled = true;
-		};
 	}, [conversationId]);
 
 	const runDownload = async () => {
@@ -165,7 +155,7 @@ function ImportDetailsSection({
 				</div>
 				<div>
 					<dt>Size</dt>
-					<dd>{formatSize(details.receipt.byteLength)}</dd>
+					<dd>{formatSize(details.receipt.byteLength, "n/a")}</dd>
 				</div>
 				{details.receipt.integrity !== null && (
 					<div>
