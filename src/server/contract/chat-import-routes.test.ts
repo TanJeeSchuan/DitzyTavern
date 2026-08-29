@@ -4,14 +4,15 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDatabase } from "../server/database/database";
-import { importSillyTavernChat } from "../server/sillytavern";
+import { openDatabase } from "../database/database";
+import { importSillyTavernChat } from "../sillytavern";
 import {
 	clearStagedImportRegistry,
 	createChatImportModule,
-} from "../server/sillytavern/staged";
-import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../server/sillytavern/fixtures";
-import { createChatImportRoutes, createConversationRoutes } from "./contract";
+} from "../sillytavern/staged";
+import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
+import { createChatImportRoutes } from "./chat-import";
+import { createConversationRoutes } from "./conversation";
 
 // Transport tests cover the typed upload/preview/discard contract only; the
 // domain matrix lives behind the deep SillyTavern Import module tests. Each

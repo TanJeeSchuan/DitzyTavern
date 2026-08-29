@@ -1,120 +1,105 @@
-import type { Database } from "bun:sqlite";
-import { Elysia, t } from "elysia";
-import {
-	CharacterNotFoundError,
-	InvalidCharacterCommandError,
-	InvalidCharacterDefinitionError,
-	type CharacterSnapshot,
-	StaleCharacterRevisionError,
-	withCharacterLibrary,
-} from "../../server/character-library";
+import { Type } from "@sinclair/typebox";
+import { numericWire } from "./wire";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
 // the deep module, never here.
 
-// Adapts the seam's immutable snapshot into the transport shape.
-export const toCharacterPayload = (character: CharacterSnapshot) => ({
-	...character,
-	openings: [...character.openings],
-});
-
-
-const characterLibrarySummary = t.Object({
-	id: t.Integer(),
-	name: t.String(),
-	revision: t.Integer(),
-	pinned: t.Boolean(),
-	preview: t.String(),
+const characterLibrarySummary = Type.Object({
+	id: Type.Integer(),
+	name: Type.String(),
+	revision: Type.Integer(),
+	pinned: Type.Boolean(),
+	preview: Type.String(),
 	// Global provenance reference count so pickers and lists present
 	// deletion impact without one detail request per row.
-	provenanceReferenceCount: t.Integer(),
+	provenanceReferenceCount: Type.Integer(),
 });
 
-const characterPrompt = t.Object({
-	systemInstruction: t.String(),
-	identity: t.String(),
-	scenario: t.String(),
-	exampleDialogue: t.String(),
-	postHistoryInstruction: t.String(),
+const characterPrompt = Type.Object({
+	systemInstruction: Type.String(),
+	identity: Type.String(),
+	scenario: Type.String(),
+	exampleDialogue: Type.String(),
+	postHistoryInstruction: Type.String(),
 });
 
-const characterDeletionMode = t.Union([
-	t.Literal("hard-delete"),
-	t.Literal("tombstone"),
+const characterDeletionMode = Type.Union([
+	Type.Literal("hard-delete"),
+	Type.Literal("tombstone"),
 ]);
 
 // Derived deletion impact presented with every authoritative read so the
 // confirmation flow can show the exact consequence before any command.
-const characterDeletionImpact = t.Object({
-	provenanceReferenceCount: t.Integer(),
+const characterDeletionImpact = Type.Object({
+	provenanceReferenceCount: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });
 
-export const characterSnapshot = t.Object({
-	id: t.Integer(),
-	name: t.String(),
-	revision: t.Integer(),
-	pinned: t.Boolean(),
+export const characterSnapshot = Type.Object({
+	id: Type.Integer(),
+	name: Type.String(),
+	revision: Type.Integer(),
+	pinned: Type.Boolean(),
 	prompt: characterPrompt,
-	openings: t.Array(t.String()),
+	openings: Type.Array(Type.String()),
 	deletionImpact: characterDeletionImpact,
 });
 
 // Outcome of a confirmed deletion: the mode is derived from the reference
 // count at command time, never guessed by the client.
-const characterDeletionResult = t.Object({
-	characterId: t.Integer(),
+const characterDeletionResult = Type.Object({
+	characterId: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });
 
-const createCommand = t.Object({
-	type: t.Literal("create"),
-	definition: t.Object({
-		name: t.String(),
+const createCommand = Type.Object({
+	type: Type.Literal("create"),
+	definition: Type.Object({
+		name: Type.String(),
 		prompt: characterPrompt,
-		openings: t.Array(t.String()),
+		openings: Type.Array(Type.String()),
 	}),
 });
 
-const renameCommand = t.Object({
-	type: t.Literal("rename"),
-	characterId: t.Integer(),
-	expectedRevision: t.Integer(),
-	name: t.String(),
+const renameCommand = Type.Object({
+	type: Type.Literal("rename"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	name: Type.String(),
 });
 
-const replacePromptCommand = t.Object({
-	type: t.Literal("replace-prompt"),
-	characterId: t.Integer(),
-	expectedRevision: t.Integer(),
+const replacePromptCommand = Type.Object({
+	type: Type.Literal("replace-prompt"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
 	prompt: characterPrompt,
 });
 
-const replaceOpeningsCommand = t.Object({
-	type: t.Literal("replace-openings"),
-	characterId: t.Integer(),
-	expectedRevision: t.Integer(),
-	openings: t.Array(t.String()),
+const replaceOpeningsCommand = Type.Object({
+	type: Type.Literal("replace-openings"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	openings: Type.Array(Type.String()),
 });
 
-const setPinnedCommand = t.Object({
-	type: t.Literal("set-pinned"),
-	characterId: t.Integer(),
-	expectedRevision: t.Integer(),
-	pinned: t.Boolean(),
+const setPinnedCommand = Type.Object({
+	type: Type.Literal("set-pinned"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	pinned: Type.Boolean(),
 });
 
 // Confirmed deletion. The expected revision guards against deleting a
 // Character whose impact the caller has not seen; the outcome derives the
 // deletion mode from the current reference count.
-const deleteCommand = t.Object({
-	type: t.Literal("delete"),
-	characterId: t.Integer(),
-	expectedRevision: t.Integer(),
+const deleteCommand = Type.Object({
+	type: Type.Literal("delete"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
 });
 
-const commandBodySchema = t.Union([
+export const commandBodySchema = Type.Union([
 	createCommand,
 	renameCommand,
 	replacePromptCommand,
@@ -123,110 +108,33 @@ const commandBodySchema = t.Union([
 	deleteCommand,
 ]);
 
-// Thin typed adapters over the Character Library seam. The database is
-// injected so tests can mount the same routes against a temporary store;
-// production passes undefined to use the default connection per request.
-export const createCharacterLibraryRoutes = (database: Database | undefined) =>
-	new Elysia()
-		.get(
-			"/api/characters",
-			() => ({
-				characters: withCharacterLibrary(database, (library) => library.list()),
-			}),
-			{
-				response: t.Object({ characters: t.Array(characterLibrarySummary) }),
-			},
-		)
-		.get(
-			"/api/characters/:id",
-			({ params, status }) => {
-				const character = withCharacterLibrary(database, (library) =>
-					library.get(params.id),
-				);
-				if (character === undefined) {
-					return status(404, { outcome: "not-found" as const });
-				}
-				return toCharacterPayload(character);
-			},
-			{
-				params: t.Object({ id: t.Numeric() }),
-				response: {
-					200: characterSnapshot,
-					404: t.Object({ outcome: t.Literal("not-found") }),
-				},
-			},
-		)
-		.post(
-			"/api/characters/commands",
-			({ body, status }) => {
-				try {
-					const outcome = withCharacterLibrary(database, (library) =>
-						library.execute(body),
-					);
-					// A confirmed deletion returns the typed result rather than a
-					// snapshot and neither stays readable; every other command
-					// returns the authoritative updated Character. DeletionMode is
-					// exclusive to the result, so the discriminant keeps the two
-					// applied payloads distinct.
-					if ("deletionMode" in outcome) {
-						return {
-							outcome: "applied" as const,
-							result: {
-								characterId: outcome.characterId,
-								deletionMode: outcome.deletionMode,
-							},
-						};
-					}
-					return {
-						outcome: "applied" as const,
-						character: toCharacterPayload(outcome),
-					};
-				} catch (error) {
-					if (error instanceof StaleCharacterRevisionError) {
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentCharacter: toCharacterPayload(error.currentCharacter),
-						});
-					}
-					if (error instanceof CharacterNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					if (
-						error instanceof InvalidCharacterDefinitionError ||
-						error instanceof InvalidCharacterCommandError
-					) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
-				}
-			},
-			{
-				body: commandBodySchema,
-				response: {
-					200: t.Union([
-						t.Object({
-							outcome: t.Literal("applied"),
-							character: characterSnapshot,
-						}),
-						t.Object({
-							outcome: t.Literal("applied"),
-							result: characterDeletionResult,
-						}),
-					]),
-					409: t.Object({
-						outcome: t.Literal("conflict"),
-						expectedRevision: t.Integer(),
-						actualRevision: t.Integer(),
-						currentCharacter: characterSnapshot,
-					}),
-					404: t.Object({ outcome: t.Literal("not-found") }),
-					422: t.Object({ outcome: t.Literal("invalid"), reason: t.String() }),
-				},
-			},
-		);
+// Route boundary schemas referenced by the Character Library adapter.
+export const characterIdParams = Type.Object({ id: numericWire });
 
+export const characterListResponse = Type.Object({
+	characters: Type.Array(characterLibrarySummary),
+});
+
+// A confirmed deletion returns the typed result rather than a snapshot and
+// neither stays readable; every other command returns the authoritative
+// updated Character. DeletionMode is exclusive to the result, so the
+// discriminant keeps the two applied payloads distinct.
+export const characterCommandApplied = Type.Union([
+	Type.Object({
+		outcome: Type.Literal("applied"),
+		character: characterSnapshot,
+	}),
+	Type.Object({
+		outcome: Type.Literal("applied"),
+		result: characterDeletionResult,
+	}),
+]);
+
+// Stale-revision conflict carrying the authoritative current Character so
+// the caller can recover without a follow-up read.
+export const characterConflict = Type.Object({
+	outcome: Type.Literal("conflict"),
+	expectedRevision: Type.Integer(),
+	actualRevision: Type.Integer(),
+	currentCharacter: characterSnapshot,
+});

@@ -1,5 +1,5 @@
 import { staticPlugin } from "@elysiajs/static";
-import { contract } from "../shared/contract";
+import { contract } from "./contract";
 import { openDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";

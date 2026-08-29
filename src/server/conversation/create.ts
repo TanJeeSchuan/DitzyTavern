@@ -18,8 +18,9 @@ import {
 	participantTable,
 } from "../database/schema";
 import { InvalidConversationCreationError } from "./errors";
-import { type ConversationDatabase, connectConversationDatabase } from "./internal";
+import { type ConversationDatabase } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
+import { runConversationTransaction } from "./commands/transaction";
 import type {
 	ConversationArtifactSeed,
 	ConversationCreationInput,
@@ -297,8 +298,7 @@ export function createConversation(
 	database: Database,
 	input: ConversationCreationInput,
 ): ConversationSnapshot {
-	const db = connectConversationDatabase(database);
-	const create = database.transaction(() => {
+	return runConversationTransaction(database, (db) => {
 		const seeds = input.participants ?? [];
 		seeds.forEach((seed, index) =>
 			validateDefinition(index + 1, seed.definition),
@@ -500,6 +500,4 @@ export function createConversation(
 		}
 		return snapshot;
 	});
-
-	return create.immediate();
 }

@@ -4,7 +4,7 @@ import {
 	CharacterNotFoundError,
 	InvalidCharacterDefinitionError,
 	StaleCharacterRevisionError,
-} from "../../server/character-library";
+} from "../character-library";
 import {
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
@@ -19,47 +19,57 @@ import {
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationGenerationSettings,
-} from "../../server/conversation";
-import { PromptBudgetExceededError } from "../../server/prompt-compiler";
-import type { ConnectionSettingsModuleOptions } from "../../server/connection-settings";
-import type { ModelFetch } from "../../server/model-client";
+} from "../conversation";
+import { PromptBudgetExceededError } from "../prompt-compiler";
+import type { ConnectionSettingsModuleOptions } from "../connection-settings";
+import type { ModelFetch } from "../model-client";
 import {
 	createGenerationCoordinator,
 	GenerationConfigurationError,
-} from "../../server/application/generation-coordinator";
-import { openDatabase, withDatabase } from "../../server/database/database";
+} from "../application/generation-coordinator";
+import { openDatabase, withDatabase } from "../database/database";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
 	defaultGenerationRuntime,
 	type GenerationRuntimeState,
 	saveParticipantAsCharacter,
-} from "../../server/workflows";
+} from "../workflows";
+import { toCharacterPayload } from "./character-library";
+import { toConversationSummary } from "./payload";
 import {
-	characterSnapshot,
-	toCharacterPayload,
-} from "./character-library";
-import {
-	characterConflict,
+	activeGenerationDetails,
+	addCharacterToCastBody,
+	castCharacterConflict,
+	characterAppliedResponse,
 	chatHistoryPage,
+	conversationAppliedResponse,
 	conversationCommandBody,
+	conversationCommandConflict,
 	conversationConflict,
 	conversationGenerationSettings,
-	continuationBody,
+	conversationIdParams,
 	conversationSummary,
-	activeGenerationDetails,
-	variantDetails,
+	continuationBody,
+	generationAccepted,
 	generationBody,
+	generationConflictResponse,
+	generationEventsQuery,
+	generationIdParams,
+	generationStopped,
+	generationsStopped,
+	historyPageQuery,
+	messageIdParams,
+	participantIdParams,
+	saveParticipantAsCharacterBody,
+	variantDetails,
+	variantIdParams,
+} from "../../shared/contract/conversation-schema";
+import {
 	invalidOutcome,
 	notFoundOutcome,
 	notPlayableOutcome,
-	notRemovableOutcome,
-	generationAccepted,
-	generationStopped,
-	generationsStopped,
-	staleConversationConflict,
-	toConversationSummary,
-} from "./conversation-schema";
+} from "../../shared/contract/outcomes";
 
 type GenerationRuntimeValue = ReturnType<ReturnType<typeof generationRuntimeFor>["get"]>;
 
@@ -184,6 +194,39 @@ function createGenerationSubscriptionResponse(
 	});
 }
 
+// Builds the typed stale-revision recovery shared by every Conversation
+// route: the authoritative summary is re-read and returned inside the 409
+// conflict payload, or a 404 when the Conversation disappeared in the
+// meantime. One helper keeps error mapping from drifting between the
+// command, fork, and save-as-Character workflow routes.
+const staleConversationConflict = (
+	database: Database | undefined,
+	conversationId: number,
+	error: StaleConversationRevisionError,
+):
+	| { outcome: "not-found" }
+	| {
+			outcome: "conflict";
+			expectedRevision: number;
+			actualRevision: number;
+			currentConversation: ReturnType<typeof toConversationSummary>;
+	  } => {
+	const current = withDatabase(database, (connection) =>
+		createConversationModule(connection).getSnapshot(conversationId),
+	);
+	if (current === undefined) {
+		// The Conversation disappeared between the conflict and the recovery
+		// read; never fabricate authoritative state.
+		return { outcome: "not-found" as const };
+	}
+	return {
+		outcome: "conflict" as const,
+		expectedRevision: error.expectedRevision,
+		actualRevision: error.actualRevision,
+		currentConversation: toConversationSummary(current),
+	};
+};
+
 // Thin typed adapters over the deep Conversation seam: snapshot reads,
 // revisioned command execution, and the explicit Character-to-Cast workflow
 // (which itself composes Character Library and Conversation capabilities in
@@ -194,7 +237,7 @@ export interface ConversationRouteOptions extends ConnectionSettingsModuleOption
 }
 
 type GenerationSsePayload =
-	| import("../../server/model-client").ModelClientEvent
+	| import("../model-client").ModelClientEvent
 	| { readonly outcome: "applied"; readonly generationId?: number; readonly latestEventId?: number }
 	| { readonly outcome: "failed"; readonly reason: string }
 	| { readonly outcome: "stopped"; readonly generationId: number }
@@ -250,7 +293,7 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
+				params: generationIdParams,
 				response: {
 					200: generationStopped,
 					404: notFoundOutcome,
@@ -291,7 +334,7 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				response: {
 					200: generationsStopped,
 					404: notFoundOutcome,
@@ -323,15 +366,12 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				body: continuationBody,
 				response: {
 					200: generationAccepted,
 					404: notFoundOutcome,
-					409: t.Union([
-						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
-						notPlayableOutcome,
-					]),
+					409: generationConflictResponse,
 					422: invalidOutcome,
 				},
 			},
@@ -349,7 +389,7 @@ export const createConversationRoutes = (
 				return details;
 			},
 			{
-				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
+				params: generationIdParams,
 				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
 			},
 		)
@@ -368,7 +408,7 @@ export const createConversationRoutes = (
 				return details;
 			},
 			{
-				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
+				params: generationIdParams,
 				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
 			},
 		)
@@ -386,7 +426,7 @@ export const createConversationRoutes = (
 				return details;
 			},
 			{
-				params: t.Object({ id: t.Numeric(), messageId: t.Numeric(), variantId: t.Numeric() }),
+				params: variantIdParams,
 				response: { 200: variantDetails, 404: notFoundOutcome },
 			},
 		)
@@ -402,7 +442,7 @@ export const createConversationRoutes = (
 				return toConversationSummary(conversation);
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				response: {
 					200: conversationSummary,
 					404: notFoundOutcome,
@@ -424,11 +464,8 @@ export const createConversationRoutes = (
 				return history;
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
-				query: t.Object({
-					page: t.Optional(t.Numeric()),
-					pageSize: t.Optional(t.Numeric()),
-				}),
+				params: conversationIdParams,
+				query: historyPageQuery,
 				response: {
 					200: chatHistoryPage,
 					404: notFoundOutcome,
@@ -447,7 +484,7 @@ export const createConversationRoutes = (
 				return toGenerationSettingsPayload(settings);
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				response: {
 					200: conversationGenerationSettings,
 					404: notFoundOutcome,
@@ -483,15 +520,12 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				body: generationBody,
 				response: {
-                                        200: generationAccepted,
+					200: generationAccepted,
 					404: notFoundOutcome,
-					409: t.Union([
-						t.Object({ outcome: t.Literal("conflict"), reason: t.String() }),
-						notPlayableOutcome,
-					]),
+					409: generationConflictResponse,
 					422: invalidOutcome,
 				},
 			},
@@ -516,52 +550,52 @@ export const createConversationRoutes = (
 				);
 			},
 			{
-				params: t.Object({ id: t.Numeric(), generationId: t.Numeric() }),
-				query: t.Object({ after: t.Optional(t.Numeric()) }),
+				params: generationIdParams,
+				query: generationEventsQuery,
 				response: t.Any(),
 			},
 		)
-                // A targeted Swipe creates one server-owned Provisional Variant
-                // on an existing Message. The request is only an observer;
-                // closing it never aborts the sibling provider attempt.
-                .post(
-                        "/api/conversations/:id/messages/:messageId/sibling/generations",
-                        async ({ params, status }) => {
-                                try {
-                                        const started = await generationCoordinator.startSiblingGeneration({
-                                                conversationId: params.id,
-                                                messageId: params.messageId,
-                                        });
-                                        const accepted = started.accepted;
-                                        return {
-                                                outcome: "accepted" as const,
-                                                generationId: accepted.generationId,
-                                                conversationId: params.id,
-                                                messageId: accepted.messageId,
-                                                variantId: accepted.provisionalVariantId,
-                                        };
-                                } catch (error) {
-                                        const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-						if (failure?.status === 404) return status(404, failure.body);
-						if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
-						if (failure?.status === 422) return status(422, failure.body);
-						throw error;
-                                }
-                        },
-                        {
-                                params: t.Object({ id: t.Numeric(), messageId: t.Numeric() }),
-                                response: {
-                                        200: generationAccepted,
-                                        404: notFoundOutcome,
-                                        409: notPlayableOutcome,
-                                        422: invalidOutcome,
-                                },
-                        },
-                )
-                // Revisioned Conversation commands remain separate from the
-                // server-owned Generation acceptance and event routes above.
-                .post(
-                        "/api/conversations/:id/commands",
+		// A targeted Swipe creates one server-owned Provisional Variant
+		// on an existing Message. The request is only an observer;
+		// closing it never aborts the sibling provider attempt.
+		.post(
+			"/api/conversations/:id/messages/:messageId/sibling/generations",
+			async ({ params, status }) => {
+				try {
+					const started = await generationCoordinator.startSiblingGeneration({
+						conversationId: params.id,
+						messageId: params.messageId,
+					});
+					const accepted = started.accepted;
+					return {
+						outcome: "accepted" as const,
+						generationId: accepted.generationId,
+						conversationId: params.id,
+						messageId: accepted.messageId,
+						variantId: accepted.provisionalVariantId,
+					};
+				} catch (error) {
+					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+					if (failure?.status === 404) return status(404, failure.body);
+					if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
+					if (failure?.status === 422) return status(422, failure.body);
+					throw error;
+				}
+			},
+			{
+				params: messageIdParams,
+				response: {
+					200: generationAccepted,
+					404: notFoundOutcome,
+					409: notPlayableOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		// Revisioned Conversation commands remain separate from the
+		// server-owned Generation acceptance and event routes above.
+		.post(
+			"/api/conversations/:id/commands",
 			({ params, body, status }) => {
 				try {
 					// SAFETY: Elysia validates the discriminated command shape at this
@@ -616,14 +650,11 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
+				params: conversationIdParams,
 				body: conversationCommandBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("applied"),
-						conversation: conversationSummary,
-					}),
-					409: t.Union([conversationConflict, notPlayableOutcome, notRemovableOutcome]),
+					200: conversationAppliedResponse,
+					409: conversationCommandConflict,
 					404: notFoundOutcome,
 					422: invalidOutcome,
 				},
@@ -681,18 +712,11 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric() }),
-				body: t.Object({
-					expectedConversationRevision: t.Integer(),
-					characterId: t.Integer(),
-					expectedCharacterRevision: t.Integer(),
-				}),
+				params: conversationIdParams,
+				body: addCharacterToCastBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("applied"),
-						conversation: conversationSummary,
-					}),
-					409: t.Union([characterConflict, conversationConflict]),
+					200: conversationAppliedResponse,
+					409: castCharacterConflict,
 					404: notFoundOutcome,
 					422: invalidOutcome,
 				},
@@ -742,15 +766,10 @@ export const createConversationRoutes = (
 				}
 			},
 			{
-				params: t.Object({ id: t.Numeric(), participantId: t.Numeric() }),
-				body: t.Object({
-					expectedConversationRevision: t.Integer(),
-				}),
+				params: participantIdParams,
+				body: saveParticipantAsCharacterBody,
 				response: {
-					200: t.Object({
-						outcome: t.Literal("applied"),
-						character: characterSnapshot,
-					}),
+					200: characterAppliedResponse,
 					409: conversationConflict,
 					404: notFoundOutcome,
 					422: invalidOutcome,

@@ -11,30 +11,25 @@
 // this boundary; they load only through the deliberate Import Details
 // operations below.
 
-// Payload types derive from the shared TypeBox contract so this client read
-// model can never drift from the server's typed responses. The hand-rolled
-// JSON guards further below stay deliberately: they are the transport seam
-// that validates real wire payloads at this boundary.
+// Payload types and wire validation both derive from the shared TypeBox
+// contract: every response is decoded at this boundary with Value.Decode so
+// a malformed payload can never masquerade as trusted history.
+import { Value } from "@sinclair/typebox/value";
 import type {
 	ChatHistoryAuthorStamp,
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryVariant,
 } from "../shared/contract/conversation-schema";
+import { chatHistoryPage } from "../shared/contract/conversation-schema";
 import type {
 	ChatImportDetails,
 	ChatImportDuplicateMatch,
 	ImportDetailsArtifact,
 	ImportDetailsArtifactAvailability,
 } from "../shared/contract/chat-import";
-import {
-	type JsonValue,
-	isBoolean,
-	isNumber,
-	isRow,
-	isString,
-	isStringArray,
-} from "./lib/json-guards";
+import { chatImportDetails } from "../shared/contract/chat-import";
+import { type JsonValue, isRow } from "./lib/json-guards";
 
 export type {
 	ChatHistoryAuthorStamp,
@@ -91,205 +86,24 @@ export interface ChatHistoryTransport {
 	downloadExactSource(conversationId: number): Promise<ChatSourceDownloadOutcome>;
 }
 
-// Parses and validates one history page at the I/O boundary. Any field
-// failing the typed contract discards the whole payload so a malformed
-// response can never masquerade as trusted history.
+// Validates and decodes one history page against the canonical shared
+// contract at the I/O boundary. Any field failing the typed contract
+// discards the whole payload so a malformed response can never masquerade
+// as trusted history.
 const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
-	if (!isRow(value) || !isNumber(value.conversationId)) return null;
-	if (!isString(value.name) || !isNumber(value.revision)) return null;
-	const page = value.page;
-	if (
-		!isRow(page) ||
-		!isNumber(page.index) ||
-		!isNumber(page.pageSize) ||
-		!isNumber(page.totalMessages) ||
-		!isNumber(page.totalPages) ||
-		!isBoolean(page.hasOlder) ||
-		!isBoolean(page.hasNewer)
-	) {
+	try {
+		return Value.Decode(chatHistoryPage, value);
+	} catch {
 		return null;
 	}
-	if (!Array.isArray(value.cast)) return null;
-	const cast: ChatHistoryPage["cast"] = [];
-	for (const raw of value.cast) {
-		if (!isRow(raw) || !isNumber(raw.id) || !isNumber(raw.position) || !isString(raw.name)) {
-			return null;
-		}
-		cast.push({ id: raw.id, position: raw.position, name: raw.name });
-	}
-	if (!Array.isArray(value.messages)) return null;
-	const messages: ChatHistoryMessage[] = [];
-	for (const rawMessage of value.messages) {
-		if (!isRow(rawMessage) || !isNumber(rawMessage.id)) return null;
-		if (!isNumber(rawMessage.position) || !isString(rawMessage.timestamp)) return null;
-		let author: ChatHistoryAuthorStamp | null = null;
-		const rawAuthor = rawMessage.author;
-		if (rawAuthor !== null) {
-			if (
-				!isRow(rawAuthor) ||
-				!isBoolean(rawAuthor.inCast) ||
-				(rawAuthor.participantId !== null && !isNumber(rawAuthor.participantId)) ||
-				(rawAuthor.capturedName !== null && !isString(rawAuthor.capturedName))
-			) {
-				return null;
-			}
-			author = {
-				participantId: rawAuthor.participantId,
-				capturedName: rawAuthor.capturedName,
-				inCast: rawAuthor.inCast,
-			};
-		}
-		const rawModelParticipantId = rawMessage.modelParticipantIdAtCreation;
-		if (
-			rawModelParticipantId !== undefined &&
-			rawModelParticipantId !== null &&
-			!isNumber(rawModelParticipantId)
-		) {
-			return null;
-		}
-		const rawContinuable = rawMessage.continuable;
-		if (rawContinuable !== undefined && !isBoolean(rawContinuable)) return null;
-		if (!Array.isArray(rawMessage.variants)) return null;
-		const variants: ChatHistoryVariant[] = [];
-		for (const rawVariant of rawMessage.variants) {
-			if (
-				!isRow(rawVariant) ||
-				!isNumber(rawVariant.id) ||
-				!isNumber(rawVariant.position) ||
-				!isString(rawVariant.content) ||
-				!isString(rawVariant.timestamp) ||
-				!isBoolean(rawVariant.selected)
-			) {
-				return null;
-			}
-			variants.push({
-				id: rawVariant.id,
-				position: rawVariant.position,
-				content: rawVariant.content,
-				timestamp: rawVariant.timestamp,
-				selected: rawVariant.selected,
-			});
-		}
-		messages.push({
-			id: rawMessage.id,
-			position: rawMessage.position,
-			timestamp: rawMessage.timestamp,
-			modelParticipantIdAtCreation: rawModelParticipantId,
-			continuable: rawContinuable,
-			author,
-			variants,
-		});
-	}
-	return {
-		conversationId: value.conversationId,
-		name: value.name,
-		revision: value.revision,
-		cast,
-		page: {
-			index: page.index,
-			pageSize: page.pageSize,
-			totalMessages: page.totalMessages,
-			totalPages: page.totalPages,
-			hasOlder: page.hasOlder,
-			hasNewer: page.hasNewer,
-		},
-		messages,
-	};
 };
 
 const parseImportDetails = (value: JsonValue): ChatImportDetails | null => {
-	if (!isRow(value) || !isNumber(value.conversationId) || !isString(value.title)) {
+	try {
+		return Value.Decode(chatImportDetails, value);
+	} catch {
 		return null;
 	}
-	const receipt = value.receipt;
-	const counts = isRow(receipt) ? receipt.counts : null;
-	if (
-		!isRow(receipt) ||
-		!isString(receipt.originalFilename) ||
-		!isString(receipt.sha256) ||
-		(receipt.byteLength !== null && !isNumber(receipt.byteLength)) ||
-		(receipt.integrity !== null && !isString(receipt.integrity)) ||
-		!isRow(counts) ||
-		!isNumber(counts.messages) ||
-		!isNumber(counts.variants) ||
-		!isStringArray(receipt.warnings) ||
-		!isString(receipt.importerVersion)
-	) {
-		return null;
-	}
-
-	const duplicates = value.duplicates;
-	const matchList = (entries: JsonValue): ChatImportDuplicateMatch[] | null => {
-		if (!Array.isArray(entries)) return null;
-		const matches: ChatImportDuplicateMatch[] = [];
-		for (const entry of entries) {
-			if (!isRow(entry) || !isNumber(entry.id) || !isString(entry.name)) return null;
-			matches.push({ id: entry.id, name: entry.name });
-		}
-		return matches;
-	};
-	if (!isRow(duplicates)) return null;
-	const exact = matchList(duplicates.exact);
-	const related = matchList(duplicates.related);
-	if (exact === null || related === null) return null;
-
-	let artifact: ImportDetailsArtifact | null = null;
-	const rawArtifact = value.artifact;
-	if (rawArtifact !== null) {
-		if (
-			!isRow(rawArtifact) ||
-			!isNumber(rawArtifact.chatId) ||
-			!isString(rawArtifact.namespace) ||
-			!isString(rawArtifact.key) ||
-			!isString(rawArtifact.relativePath) ||
-			!isString(rawArtifact.originalFilename) ||
-			!isString(rawArtifact.mediaType) ||
-			!isNumber(rawArtifact.byteLength) ||
-			!isString(rawArtifact.sha256)
-		) {
-			return null;
-		}
-		const availability = rawArtifact.availability;
-		let parsedAvailability: ImportDetailsArtifactAvailability;
-		if (isRow(availability) && availability.status === "available") {
-			parsedAvailability = { status: "available" };
-		} else if (
-			isRow(availability) &&
-			availability.status === "cleaned-up" &&
-			(availability.reason === "missing" || availability.reason === "corrupt")
-		) {
-			parsedAvailability = { status: "cleaned-up", reason: availability.reason };
-		} else {
-			return null;
-		}
-		artifact = {
-			chatId: rawArtifact.chatId,
-			namespace: rawArtifact.namespace,
-			key: rawArtifact.key,
-			relativePath: rawArtifact.relativePath,
-			originalFilename: rawArtifact.originalFilename,
-			mediaType: rawArtifact.mediaType,
-			byteLength: rawArtifact.byteLength,
-			sha256: rawArtifact.sha256,
-			availability: parsedAvailability,
-		};
-	}
-
-	return {
-		conversationId: value.conversationId,
-		title: value.title,
-		receipt: {
-			originalFilename: receipt.originalFilename,
-			sha256: receipt.sha256,
-			byteLength: receipt.byteLength === null ? null : receipt.byteLength,
-			integrity: receipt.integrity === null ? null : receipt.integrity,
-			counts: { messages: counts.messages, variants: counts.variants },
-			warnings: receipt.warnings,
-			importerVersion: receipt.importerVersion,
-		},
-		duplicates: { exact, related },
-		artifact,
-	};
 };
 
 const parseHistoryResponse = async (

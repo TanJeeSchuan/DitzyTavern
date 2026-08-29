@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../../server/database/database";
-import { createConnectionSettingsModule } from "../../server/connection-settings";
-import { createConversationModule } from "../../server/conversation";
+import { openDatabase } from "../database/database";
+import { createConnectionSettingsModule } from "../connection-settings";
+import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {

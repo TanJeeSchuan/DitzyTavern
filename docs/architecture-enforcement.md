@@ -27,11 +27,11 @@ shapes can represent different concepts.
 
 ## Existing violations
 
-There is no architectural baseline. Existing runtime imports under `src/shared`,
-hand-written decoders in migrated transports, and direct Conversation
-transactions fail `bun run lint`. CI stays red until the owning code is moved or
-derived from the canonical abstraction. This is intentional: the checks describe
-the required architecture, not only regressions added after this file.
+The four rules are fully enforced with no baseline violations: the Elysia
+route adapters live in `src/server/contract/**` and import every wire schema
+from `src/shared/contract/**`, the migrated client transports decode payloads
+with `Value.Decode` against the canonical schemas, and every Conversation
+write runs through `runConversationTransaction`. `bun run check` is green.
 
 ## Clone and dead-export checks
 

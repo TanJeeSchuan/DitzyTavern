@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { openDatabase } from "../../server/database/database";
-import { createConnectionSettingsModule } from "../../server/connection-settings";
+import { openDatabase } from "../database/database";
+import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	acceptConversationTailGeneration,
 	checkpointConversationTailGeneration,
 	createConversationModule,
-} from "../../server/conversation";
-import { recoverActiveGenerations } from "../../server/workflows";
+} from "../conversation";
+import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {

@@ -13,7 +13,7 @@ import {
 	InvalidConversationCommandError,
 } from "../errors";
 import { connectConversationDatabase } from "../internal";
-import { advanceConversationRevision } from "./transaction";
+import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
 	ConversationSnapshot,
@@ -175,8 +175,7 @@ const resolveConversationGeneration = (
 	input: ResolveGenerationInput,
 	mode: "tail" | "sibling",
 ): ConversationSnapshot => {
-	const resolve = database.transaction(() => {
-		const db = connectConversationDatabase(database);
+	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
 			throw new InvalidConversationCommandError(
@@ -219,7 +218,6 @@ const resolveConversationGeneration = (
 			.run();
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
-	return resolve.immediate();
 };
 
 // Resolving a sibling keeps the target Message and its original Author Stamp
@@ -239,8 +237,7 @@ const removeConversationGeneration = (
 	input: RemoveGenerationInput,
 	mode: "tail" | "sibling",
 ): ConversationSnapshot => {
-	const remove = database.transaction(() => {
-		const db = connectConversationDatabase(database);
+	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
 			throw new InvalidConversationCommandError(
@@ -298,7 +295,6 @@ const removeConversationGeneration = (
 			.run();
 		return advanceConversationRevision(db, input.conversationId);
 	});
-	return remove.immediate();
 };
 
 // An empty sibling failure removes only its provisional Variant. If that
@@ -380,8 +376,7 @@ export function checkpointConversationGeneration(
 		timestamp?: string;
 	},
 ): void {
-	const checkpoint = database.transaction(() => {
-		const db = connectConversationDatabase(database);
+	runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) return;
 		const currentEventId = active.checkpoint_event_id;
@@ -419,7 +414,6 @@ export function checkpointConversationGeneration(
 			)
 			.run();
 	});
-	checkpoint.immediate();
 }
 
 interface StoppedSiblingTarget {
@@ -570,8 +564,7 @@ export function stopConversationGeneration(
 	input: StopGenerationInput,
 ): ConversationSnapshot {
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const stop = database.transaction(() => {
-		const db = connectConversationDatabase(database);
+	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) {
 			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
@@ -590,7 +583,6 @@ export function stopConversationGeneration(
 			transition.durableOutput ? timestamp : undefined,
 		);
 	});
-	return stop.immediate();
 }
 
 /**
@@ -602,8 +594,7 @@ export function stopConversationGenerations(
 	database: Database,
 	input: StopGenerationsInput,
 ): StoppedGenerations {
-	const stop = database.transaction(() => {
-		const db = connectConversationDatabase(database);
+	return runConversationTransaction(database, (db) => {
 		const conversation = db
 			.select({ id: chatTable.id })
 			.from(chatTable)
@@ -638,5 +629,4 @@ export function stopConversationGenerations(
 			conversation: snapshot,
 		};
 	});
-	return stop.immediate();
 }

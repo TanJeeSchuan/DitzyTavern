@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../../server/database/database";
-import { createConversationModule } from "../../server/conversation";
-import { generationRuntimeFor, type GenerationRuntime } from "../../server/workflows/generation-runtime";
+import { openDatabase } from "../database/database";
+import { createConversationModule } from "../conversation";
+import { generationRuntimeFor, type GenerationRuntime } from "../workflows/generation-runtime";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {

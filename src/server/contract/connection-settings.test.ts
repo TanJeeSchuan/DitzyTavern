@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../../server/database/database";
+import { openDatabase } from "../database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
-import type { ModelFetch } from "../../server/model-client";
-import type { ConnectionProfileDraft } from "../../server/connection-settings";
+import type { ModelFetch } from "../model-client";
+import type { ConnectionProfileDraft } from "../connection-settings";
 
 const key = new Uint8Array(32).fill(11);
 

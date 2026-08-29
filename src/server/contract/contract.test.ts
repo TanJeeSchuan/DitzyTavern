@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../server/database/database";
+import { openDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	type CharacterDefinition,
 	type CharacterLibraryCommand,
-} from "../server/character-library";
-import { createConversationModule } from "../server/conversation";
-import type { ConversationAction } from "../server/conversation";
-import { createNativeConversation } from "../server/workflows";
+} from "../character-library";
+import { createConversationModule } from "../conversation";
+import type { ConversationAction } from "../conversation";
+import { createNativeConversation } from "../workflows";
 import {
 	createCharacterLibraryRoutes,
 	createConversationRoutes,
 	createNativeConversationRoutes,
-} from "./contract";
+} from "./index";
 
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",

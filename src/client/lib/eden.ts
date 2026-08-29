@@ -1,5 +1,5 @@
 import { treaty } from "@elysiajs/eden";
-import type { Contract } from "../../shared/contract";
+import type { Contract } from "../../server/contract";
 
 // Contracts expose timestamps as wire strings. Keep Eden from eagerly
 // converting ISO-looking JSON strings to Date instances so the client sees

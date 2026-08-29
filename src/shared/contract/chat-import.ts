@@ -1,91 +1,69 @@
-import type { Database } from "bun:sqlite";
-import { Elysia, t, type Static } from "elysia";
-import {
-	CharacterNotFoundError,
-	InvalidCharacterCommandError,
-	InvalidCharacterDefinitionError,
-} from "../../server/character-library";
-import { InvalidConversationCreationError } from "../../server/conversation";
-import {
-	StagedChatImportDuplicateConfirmationError,
-	StagedChatImportExpiredError,
-	StagedChatImportPlanError,
-	StagedChatImportTokenMismatchError,
-	StagedChatImportUnavailableError,
-	SillyTavernImportError,
-	withChatImport,
-	withChatImportDetails,
-} from "../../server/sillytavern";
-import {
-	conversationSummary,
-	invalidOutcome,
-	notFoundOutcome,
-	toConversationSummary,
-} from "./conversation-schema";
+import { Type, type Static } from "@sinclair/typebox";
+import { conversationSummary } from "./conversation-schema";
 
-const importSuggestion = t.Object({
-	characterId: t.Integer(),
-	name: t.String(),
-	match: t.Union([
-		t.Literal("exact"),
-		t.Literal("case-insensitive"),
-		t.Literal("fuzzy"),
+const importSuggestion = Type.Object({
+	characterId: Type.Integer(),
+	name: Type.String(),
+	match: Type.Union([
+		Type.Literal("exact"),
+		Type.Literal("case-insensitive"),
+		Type.Literal("fuzzy"),
 	]),
 	// The strongest suggestion is always pre-filled but unconfirmed; final
 	// review cannot pass until the user approves it.
-	confirmed: t.Boolean(),
+	confirmed: Type.Boolean(),
 });
 
 export type ChatImportSuggestion = Static<typeof importSuggestion>;
 
-const importGroup = t.Object({
+const importGroup = Type.Object({
 	// The verbatim captured author string; the empty string for blank names.
-	key: t.String(),
-	isBlank: t.Boolean(),
-	messagePositions: t.Array(t.Integer()),
+	key: Type.String(),
+	isBlank: Type.Boolean(),
+	messagePositions: Type.Array(Type.Integer()),
 	// Variant count of each retained Message, parallel to messagePositions.
-	messageVariantCounts: t.Array(t.Integer()),
-	messageCount: t.Integer(),
-	variantCount: t.Integer(),
+	messageVariantCounts: Type.Array(Type.Integer()),
+	messageCount: Type.Integer(),
+	variantCount: Type.Integer(),
 	// Proposed native Participant name, editable by the user.
-	participantNameDefault: t.String(),
-	suggestion: t.Nullable(importSuggestion),
+	participantNameDefault: Type.String(),
+	suggestion: Type.Union([Type.Null(), importSuggestion]),
 });
 
 export type ChatImportGroup = Static<typeof importGroup>;
 
-const importDuplicateMatch = t.Object({
-	id: t.Integer(),
-	name: t.String(),
+const importDuplicateMatch = Type.Object({
+	id: Type.Integer(),
+	name: Type.String(),
 });
 
 export type ChatImportDuplicateMatch = Static<typeof importDuplicateMatch>;
 
 // The staged preview contract mirrors the deep SillyTavern Import module's
 // public preview; routes only transport it.
-const chatImportPreview = t.Object({
-	title: t.String(),
-	originalFilename: t.String(),
-	sha256: t.String(),
-	byteLength: t.Integer(),
-	integrity: t.Nullable(t.String()),
-	counts: t.Object({
-		messages: t.Integer(),
-		variants: t.Integer(),
+const chatImportPreview = Type.Object({
+	title: Type.String(),
+	originalFilename: Type.String(),
+	sha256: Type.String(),
+	byteLength: Type.Integer(),
+	integrity: Type.Union([Type.Null(), Type.String()]),
+	counts: Type.Object({
+		messages: Type.Integer(),
+		variants: Type.Integer(),
 	}),
-	warnings: t.Array(t.String()),
-	groups: t.Array(importGroup),
-	duplicates: t.Object({
-		exact: t.Array(importDuplicateMatch),
-		related: t.Array(importDuplicateMatch),
+	warnings: Type.Array(Type.String()),
+	groups: Type.Array(importGroup),
+	duplicates: Type.Object({
+		exact: Type.Array(importDuplicateMatch),
+		related: Type.Array(importDuplicateMatch),
 	}),
 });
 
 export type ChatImportPreview = Static<typeof chatImportPreview>;
 
-const stagedOutcome = t.Object({
-	outcome: t.Literal("staged"),
-	token: t.String(),
+const stagedOutcome = Type.Object({
+	outcome: Type.Literal("staged"),
+	token: Type.String(),
 	preview: chatImportPreview,
 });
 
@@ -94,51 +72,51 @@ const stagedOutcome = t.Object({
 // name per Participant (derived from the selected Profile for forks).
 // The three resolution outcomes a resulting Participant may take. No skip,
 // source-role inference, or later re-assignment alternative exists.
-const importResolutionOutcome = t.Union([
-	t.Object({
-		type: t.Literal("fork"),
-		characterId: t.Integer(),
+const importResolutionOutcome = Type.Union([
+	Type.Object({
+		type: Type.Literal("fork"),
+		characterId: Type.Integer(),
 	}),
-	t.Object({ type: t.Literal("new-character") }),
-	t.Object({ type: t.Literal("chat-only") }),
+	Type.Object({ type: Type.Literal("new-character") }),
+	Type.Object({ type: Type.Literal("chat-only") }),
 ]);
 
 export type ImportResolutionOutcome = Static<typeof importResolutionOutcome>;
 
 // One resulting Participant of the user-confirmed resolution plan. Whole
 // Messages are referenced by their 1-based record positions.
-const importResolvedParticipant = t.Object({
-	name: t.String(),
+const importResolvedParticipant = Type.Object({
+	name: Type.String(),
 	outcome: importResolutionOutcome,
-	messagePositions: t.Array(t.Integer()),
+	messagePositions: Type.Array(Type.Integer()),
 });
 
 export type ChatImportResolvedParticipant = Static<typeof importResolvedParticipant>;
 
-const chatImportCommitBody = t.Object({
+export const chatImportCommitBody = Type.Object({
 	// The SHA-256 the client already knows from the preview; only the exact
 	// staged bytes that produced the preview may be committed.
-	sha256: t.String(),
-	title: t.String(),
+	sha256: Type.String(),
+	title: Type.String(),
 	// Explicit Import another copy confirmation, required for exact
 	// duplicates (matching raw-byte SHA-256); related-source matches stay
 	// advisory.
-	duplicateConfirmed: t.Boolean(),
-	participants: t.Array(importResolvedParticipant),
+	duplicateConfirmed: Type.Boolean(),
+	participants: Type.Array(importResolvedParticipant),
 });
 
 export type ChatImportCommitBody = Static<typeof chatImportCommitBody>;
 
 // Receipt participant outcome labels: existing Profile fork, new Profile
 // creation, or a complete Chat-only Participant.
-const importReceiptParticipant = t.Object({
-	name: t.String(),
-	outcome: t.Union([
-		t.Literal("fork"),
-		t.Literal("new-character"),
-		t.Literal("chat-only"),
+const importReceiptParticipant = Type.Object({
+	name: Type.String(),
+	outcome: Type.Union([
+		Type.Literal("fork"),
+		Type.Literal("new-character"),
+		Type.Literal("chat-only"),
 	]),
-	sourceCharacterId: t.Nullable(t.Integer()),
+	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 });
 
 export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipant>;
@@ -147,28 +125,28 @@ export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipan
 // returned too so the client can open the new Chat immediately without a
 // round trip, without ever shipping its Messages or provenance over the
 // wire.
-const chatImportReceipt = t.Object({
-	conversationId: t.Integer(),
-	title: t.String(),
-	originalFilename: t.String(),
-	sha256: t.String(),
-	byteLength: t.Integer(),
-	counts: t.Object({
-		messages: t.Integer(),
-		variants: t.Integer(),
+const chatImportReceipt = Type.Object({
+	conversationId: Type.Integer(),
+	title: Type.String(),
+	originalFilename: Type.String(),
+	sha256: Type.String(),
+	byteLength: Type.Integer(),
+	counts: Type.Object({
+		messages: Type.Integer(),
+		variants: Type.Integer(),
 	}),
-	participants: t.Array(importReceiptParticipant),
-	warnings: t.Array(t.String()),
-	duplicates: t.Object({
-		exact: t.Array(importDuplicateMatch),
-		related: t.Array(importDuplicateMatch),
+	participants: Type.Array(importReceiptParticipant),
+	warnings: Type.Array(Type.String()),
+	duplicates: Type.Object({
+		exact: Type.Array(importDuplicateMatch),
+		related: Type.Array(importDuplicateMatch),
 	}),
 });
 
 export type ChatImportReceipt = Static<typeof chatImportReceipt>;
 
-const commitOutcome = t.Object({
-	outcome: t.Literal("committed"),
+export const importCommittedResponse = Type.Object({
+	outcome: Type.Literal("committed"),
 	conversation: conversationSummary,
 	receipt: chatImportReceipt,
 });
@@ -176,25 +154,25 @@ const commitOutcome = t.Object({
 // Derived, never stored: whether the physical exact-source copy currently
 // satisfies the committed metadata. Missing or corrupt files report cleaned
 // up so provenance loss never makes the native Chat look corrupt.
-const importDetailsArtifactAvailability = t.Union([
-	t.Object({ status: t.Literal("available") }),
-	t.Object({
-		status: t.Literal("cleaned-up"),
-		reason: t.Union([t.Literal("missing"), t.Literal("corrupt")]),
+const importDetailsArtifactAvailability = Type.Union([
+	Type.Object({ status: Type.Literal("available") }),
+	Type.Object({
+		status: Type.Literal("cleaned-up"),
+		reason: Type.Union([Type.Literal("missing"), Type.Literal("corrupt")]),
 	}),
 ]);
 
 export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
-const importDetailsArtifact = t.Object({
-	chatId: t.Integer(),
-	namespace: t.String(),
-	key: t.String(),
-	relativePath: t.String(),
-	originalFilename: t.String(),
-	mediaType: t.String(),
-	byteLength: t.Integer(),
-	sha256: t.String(),
+const importDetailsArtifact = Type.Object({
+	chatId: Type.Integer(),
+	namespace: Type.String(),
+	key: Type.String(),
+	relativePath: Type.String(),
+	originalFilename: Type.String(),
+	mediaType: Type.String(),
+	byteLength: Type.Integer(),
+	sha256: Type.String(),
 	availability: importDetailsArtifactAvailability,
 });
 
@@ -205,288 +183,66 @@ export type ImportDetailsArtifact = Static<typeof importDetailsArtifact>;
 // Heavy provenance (archive text, reasoning, signatures, exact bytes) is
 // never part of this contract; exact bytes load only through the download
 // route.
-const chatImportDetails = t.Object({
-	conversationId: t.Integer(),
-	title: t.String(),
-	receipt: t.Object({
-		originalFilename: t.String(),
-		sha256: t.String(),
-		byteLength: t.Nullable(t.Integer()),
-		integrity: t.Nullable(t.String()),
-		counts: t.Object({
-			messages: t.Integer(),
-			variants: t.Integer(),
+export const chatImportDetails = Type.Object({
+	conversationId: Type.Integer(),
+	title: Type.String(),
+	receipt: Type.Object({
+		originalFilename: Type.String(),
+		sha256: Type.String(),
+		byteLength: Type.Union([Type.Null(), Type.Integer()]),
+		integrity: Type.Union([Type.Null(), Type.String()]),
+		counts: Type.Object({
+			messages: Type.Integer(),
+			variants: Type.Integer(),
 		}),
-		warnings: t.Array(t.String()),
-		importerVersion: t.String(),
+		warnings: Type.Array(Type.String()),
+		importerVersion: Type.String(),
 	}),
-	duplicates: t.Object({
-		exact: t.Array(importDuplicateMatch),
-		related: t.Array(importDuplicateMatch),
+	duplicates: Type.Object({
+		exact: Type.Array(importDuplicateMatch),
+		related: Type.Array(importDuplicateMatch),
 	}),
-	artifact: t.Nullable(importDetailsArtifact),
+	artifact: Type.Union([Type.Null(), importDetailsArtifact]),
 });
 
 export type ChatImportDetails = Static<typeof chatImportDetails>;
 
-// Thin typed adapters over the deep staged Chat import seam. The stage
-// route deliberately declares no body schema: Elysia must leave the raw
-// request stream untouched so the module can stream the uploaded bytes into
-// managed temporary storage exactly once instead of buffering the artifact.
-// The preview and discard routes stay tiny mappings of typed outcomes.
-export const createChatImportRoutes = (
-	database: Database | undefined,
-	artifactDirectory: string,
-) =>
-	new Elysia()
-		.post(
-			"/api/imports/chats/stage",
-			async ({ request, status }) => {
-				const originalFilename =
-					request.headers.get("x-import-filename") ?? "";
-				if (originalFilename === "") {
-					return status(422, {
-						outcome: "invalid" as const,
-						reason: "A file name is required with this upload.",
-					});
-				}
-				const body = request.body;
-				if (body === null) {
-					return status(422, {
-						outcome: "invalid" as const,
-						reason: "The upload body is empty.",
-					});
-				}
-				try {
-					const result = await withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.stageFile({
-								bytes: body,
-								originalFilename,
-							}),
-					);
-					return { outcome: "staged" as const, ...result };
-				} catch (error) {
-					if (error instanceof SillyTavernImportError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
-				}
-			},
-			{
-				response: {
-					200: stagedOutcome,
-					422: invalidOutcome,
-				},
-			},
-		)
-		.post(
-			"/api/imports/chats/:token/preview",
-			({ params, body, status }) => {
-				try {
-					const preview = withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.preview(params.token, body.sha256),
-					);
-					return { outcome: "available" as const, preview };
-				} catch (error) {
-					if (error instanceof StagedChatImportExpiredError) {
-						return status(410, { outcome: "expired" as const });
-					}
-					if (error instanceof StagedChatImportUnavailableError) {
-						return status(410, {
-							outcome: "unavailable" as const,
-							reason: error.reason,
-						});
-					}
-					if (error instanceof StagedChatImportTokenMismatchError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
-				}
-			},
-			{
-				params: t.Object({ token: t.String() }),
-				body: t.Object({ sha256: t.String() }),
-				response: {
-					200: t.Object({
-						outcome: t.Literal("available"),
-						preview: chatImportPreview,
-					}),
-					410: t.Union([
-						t.Object({ outcome: t.Literal("expired") }),
-						t.Object({
-							outcome: t.Literal("unavailable"),
-							reason: t.Union([
-								t.Literal("missing"),
-								t.Literal("corrupt"),
-							]),
-						}),
-					]),
-					422: invalidOutcome,
-				},
-			},
-		)
-		.post(
-			"/api/imports/chats/:token/commit",
-			({ params, body, status }) => {
-				try {
-					const result = withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.commit(params.token, {
-								sha256: body.sha256,
-								title: body.title,
-								duplicateConfirmed: body.duplicateConfirmed,
-								participants: body.participants,
-							}),
-					);
-					return {
-						outcome: "committed" as const,
-						conversation: toConversationSummary(result.conversation),
-						receipt: result.receipt,
-					};
-				} catch (error) {
-					if (error instanceof StagedChatImportExpiredError) {
-						return status(410, { outcome: "expired" as const });
-					}
-					if (error instanceof StagedChatImportUnavailableError) {
-						return status(410, {
-							outcome: "unavailable" as const,
-							reason: error.reason,
-						});
-					}
-					if (
-						error instanceof StagedChatImportTokenMismatchError ||
-						error instanceof StagedChatImportPlanError ||
-						error instanceof StagedChatImportDuplicateConfirmationError ||
-						error instanceof SillyTavernImportError ||
-						error instanceof CharacterNotFoundError ||
-						error instanceof InvalidCharacterDefinitionError ||
-						error instanceof InvalidCharacterCommandError ||
-						error instanceof InvalidConversationCreationError
-					) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
-					}
-					throw error;
-				}
-			},
-			{
-				params: t.Object({ token: t.String() }),
-				body: chatImportCommitBody,
-				response: {
-					200: commitOutcome,
-					410: t.Union([
-						t.Object({ outcome: t.Literal("expired") }),
-						t.Object({
-							outcome: t.Literal("unavailable"),
-							reason: t.Union([
-								t.Literal("missing"),
-								t.Literal("corrupt"),
-							]),
-						}),
-					]),
-					422: invalidOutcome,
-				},
-			},
-		)
-		.post(
-			"/api/imports/chats/:token/discard",
-			({ params }) => {
-				// Discard is idempotent: unknown and already-discarded handles
-				// report the same removed outcome without touching anything.
-				withChatImport(database, artifactDirectory, (chatImport) =>
-					chatImport.discard(params.token),
-				);
-				return { outcome: "discarded" as const };
-			},
-			{
-				params: t.Object({ token: t.String() }),
-				response: {
-					200: t.Object({ outcome: t.Literal("discarded") }),
-				},
-			},
-		)
-		.get(
-			"/api/conversations/:id/import-details",
-			({ params, status }) => {
-				const details = withChatImportDetails(
-					database,
-					artifactDirectory,
-					(importDetails) => importDetails.importDetails(params.id),
-				);
-				if (details === undefined) {
-					// Either the Chat is missing or it carries no import
-					// provenance; the client treats both as "no Import Details".
-					return status(404, { outcome: "not-found" as const });
-				}
-				return details;
-			},
-			{
-				params: t.Object({ id: t.Numeric() }),
-				response: {
-					200: chatImportDetails,
-					404: notFoundOutcome,
-				},
-			},
-		)
-		.get(
-			"/api/conversations/:id/import-source",
-			({ params, status }) => {
-				const result = withChatImportDetails(
-					database,
-					artifactDirectory,
-					(importDetails) =>
-						importDetails.downloadExactSource(params.id),
-				);
-				if (result === undefined) {
-					return status(404, { outcome: "not-found" as const });
-				}
-				if (result.status === "cleaned-up") {
-					// Missing or corrupt exact artifacts are described as cleaned
-					// up and disable only exact download; normal Chat reading and
-					// every Conversation command stay available.
-					return status(410, {
-						outcome: "cleaned-up" as const,
-						reason: result.reason,
-					});
-				}
-				// The exact managed bytes stream verbatim; only response metadata
-				// (media type and the sanitized original leaf filename) derives
-				// from the stored artifact.
-				return new Response(new Uint8Array(result.bytes), {
-					headers: {
-						"content-type": result.artifact.mediaType,
-						"content-disposition": result.contentDisposition,
-						"content-length": String(result.bytes.length),
-					},
-				});
-			},
-			{
-				params: t.Object({ id: t.Numeric() }),
-				response: {
-					404: notFoundOutcome,
-					410: t.Object({
-						outcome: t.Literal("cleaned-up"),
-						reason: t.Union([
-							t.Literal("missing"),
-							t.Literal("corrupt"),
-						]),
-					}),
-				},
-			},
-		);
+// Route boundary schemas referenced by the Chat Import adapter: the stage
+// route deliberately declares no body schema so Elysia leaves the raw
+// request stream untouched and the module can stream uploaded bytes into
+// managed temporary storage exactly once.
+
+export const importTokenParams = Type.Object({ token: Type.String() });
+
+export const importPreviewBody = Type.Object({ sha256: Type.String() });
+
+export const importStagedResponse = stagedOutcome;
+
+export const importPreviewResponse = Type.Object({
+	outcome: Type.Literal("available"),
+	preview: chatImportPreview,
+});
+
+// Expired and unavailable staged handles are both gone-state 410 outcomes.
+export const importGoneResponse = Type.Union([
+	Type.Object({ outcome: Type.Literal("expired") }),
+	Type.Object({
+		outcome: Type.Literal("unavailable"),
+		reason: Type.Union([
+			Type.Literal("missing"),
+			Type.Literal("corrupt"),
+		]),
+	}),
+]);
+
+export const importDiscardedResponse = Type.Object({
+	outcome: Type.Literal("discarded"),
+});
+
+export const importCleanedUpResponse = Type.Object({
+	outcome: Type.Literal("cleaned-up"),
+	reason: Type.Union([
+		Type.Literal("missing"),
+		Type.Literal("corrupt"),
+	]),
+});

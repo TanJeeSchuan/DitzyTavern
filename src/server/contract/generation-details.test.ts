@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../../server/database/database";
+import { openDatabase } from "../database/database";
 import {
 	cleanupRetainedGenerationInspections,
 	createConversationModule,
 	GENERATION_REPLAY_RETENTION_MS,
-} from "../../server/conversation";
+} from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
