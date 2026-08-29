@@ -167,9 +167,9 @@ const deriveRemovalEligibility = (
 };
 
 // Cheap existence probe for callers that only need to know whether the
-// Conversation row is present. readConversationSnapshot runs eight queries
-// to assemble the full snapshot, which is too costly to use as an
-// existence check.
+// Conversation row is present. readConversationSnapshot runs many queries
+// to assemble the full snapshot (cast, messages, variants, data, active
+// generations), which is too costly to use as an existence check.
 export function conversationExists(
 	db: ConversationDatabase,
 	conversationId: number,

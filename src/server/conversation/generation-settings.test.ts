@@ -138,7 +138,7 @@ describe("Conversation Generation Settings", () => {
 		expect(module.getGenerationSettings(conversation.id)?.safetyAllowance).toBe(500);
 	});
 
-	test("returns undefined for a nonexistent Conversation without reading settings", () => {
+	test("returns undefined for a nonexistent Conversation", () => {
 		const module = createConversationModule(database);
 
 		expect(module.getGenerationSettings(9999)).toBeUndefined();
