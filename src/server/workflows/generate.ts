@@ -13,64 +13,58 @@
 //
 // The transport is injected as a seam: this module stays independent of any
 // concrete provider, streaming protocol, or credentials.
+//
+// Capture/derivation lives in generate-capture.ts; the detached scaffolding
+// and provider-attempt tail live in generate-server-owned.ts. This module
+// owns the public workflow entry points and their input/result contracts.
 
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { activeGenerationTable } from "../database/schema";
 import {
 	createConversationModule,
-	ConversationNotPlayableError,
 	ConversationNotFoundError,
-	ContinuationUnavailableError,
-	deriveMessageSwipeEligibility,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
-	SiblingVariantUnavailableError,
-	type ConversationDataEntry,
 	type ConversationSnapshot,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
-	type ConversationJsonValue,
 } from "../conversation";
+import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
+import type { PromptHistoryEntry } from "../prompt-compiler";
+import type { ModelClient, ModelClientConnectionSnapshot } from "../model-client";
+import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import {
-	assertPromptBudget,
-	budgetPromptPlan,
-	compilePrompt,
-	type PromptHistoryEntry,
-	type PromptBudgetFailure,
-	type PromptBudgetResult,
-	type PromptPlan,
-	type GenerationIntent,
-	type TokenEstimator,
-} from "../prompt-compiler";
-import type { CastParticipantSnapshot } from "../conversation/types";
+	runAcceptedGeneration,
+	runGeneration,
+	terminalGenerationProvenance,
+	generationOutcomeData,
+	startServerOwnedGenerationFrom,
+	type GenerationAttemptInput,
+	type ServerOwnedGeneration,
+	type ServerOwnedGenerationCallbacks,
+} from "./generate-server-owned";
 import {
-	collectModelClientGeneration,
-	ModelClientGenerationError,
-	type ModelClientFailureKind,
-	type AssistantPrefill,
-	type ModelClientConnectionSnapshot,
-	type ModelClientEvent,
-	type ModelClientGenerationSettings,
-	type ModelClient,
-} from "../model-client";
-import {
-	createConnectionSettingsModule,
-	type ConnectionSettingsModuleOptions,
-} from "../connection-settings";
-import type { ConversationGenerationSettings } from "../conversation";
-import {
-	generationProvenanceCodec,
-	parseGenerationJson,
-	type GenerationProvenanceRecord,
-} from "../../shared/generation-provenance";
+	captureGeneration,
+	captureSendGeneration,
+	captureContinuationGeneration,
+	captureSiblingGeneration,
+	deriveGeneration,
+	createBudgetedPlan,
+	promptPlanJson,
+	generationSettingsJson,
+	connectionJson,
+	promptInspectionJson,
+	toModelClientGenerationSettings,
+	type ParticipantPreview,
+} from "./generate-capture";
 
-export interface ParticipantPreview {
-	id: number;
-	name: string;
-}
+export type {
+	GenerationAttemptInput,
+	ServerOwnedGenerationControl,
+	ServerOwnedGeneration,
+	ServerOwnedGenerationCallbacks,
+} from "./generate-server-owned";
+export type { ParticipantPreview } from "./generate-capture";
 
 // Read-only prompt inspection result. `playable: false` means the
 // Conversation cannot currently generate because the two distinct Control
@@ -96,41 +90,6 @@ export interface GenerationPromptInspection {
 	budgetFailure: PromptBudgetFailure | null;
 }
 
-export interface GenerationAttemptInput {
-	conversationId: number;
-	// The provider-neutral Model Client receives the compiled Prompt Plan and
-	// returns normalized asynchronous events. The workflow never calls a
-	// provider or interprets a provider request shape directly.
-	modelClient: ModelClient;
-	// HTTP adapters provide the same start-time capture used to construct the
-	// client. Direct workflow callers may omit it; the workflow resolves the
-	// current safe Profile identity itself, preserving the original fake-client
-	// seam used by domain tests.
-	connection?: ModelClientConnectionSnapshot | null;
-	connectionSettings?: ConnectionSettingsModuleOptions;
-	// The signal belongs to this one Generation. A cancelled attempt never
-	// changes the active Profile or another Conversation.
-	signal?: AbortSignal;
-	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
-	/** Flush process-local output before the workflow performs a terminal write. */
-	onBeforeTerminal?: () => void | Promise<void>;
-	// Tests and future calibration work may replace the default project-owned
-	// estimator without allowing a provider to influence budgeting policy.
-	tokenEstimator?: TokenEstimator;
-	// Optional explicit write time; defaults to the current wall clock.
-	timestamp?: string | undefined;
-}
-
-interface GenerationDerivation {
-	plan: PromptPlan;
-	history: readonly PromptHistoryEntry[];
-	historyRoles: readonly ("human" | "model" | null)[];
-	humanParticipant: ParticipantPreview;
-	modelParticipant: ParticipantPreview;
-	compile: (history: readonly PromptHistoryEntry[]) => PromptPlan;
-	protectedHistoryIndex?: number;
-}
-
 export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
 	// Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
@@ -149,82 +108,12 @@ export interface SendThroughProvisionalTailGenerationResult {
 	provisionalVariantId: number;
 }
 
-export interface ServerOwnedSendGeneration {
-	/** Resolves as soon as the provisional target is committed. */
-	readonly accepted: Promise<AcceptedTailGeneration>;
-	/** Resolves/rejects when the provider attempt and terminal commit finish. */
-	readonly result: Promise<SendThroughProvisionalTailGenerationResult>;
-	/** Cancellation owned by the generation, never by an observing request. */
-	readonly signal: AbortSignal;
-}
+export type ServerOwnedSendGeneration = ServerOwnedGeneration<
+	AcceptedTailGeneration,
+	SendThroughProvisionalTailGenerationResult
+>;
 
-export interface ServerOwnedSendGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedTailGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
-	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-}
-
-/** Provider cancellation handle passed only to the server-owned runtime seam. */
-export interface ServerOwnedGenerationControl {
-	readonly signal: AbortSignal;
-	stop(): void;
-}
-
-interface ServerOwnedGeneration<Accepted, Result> {
-	readonly accepted: Promise<Accepted>;
-	readonly result: Promise<Result>;
-	readonly signal: AbortSignal;
-}
-
-interface ServerOwnedGenerationCallbacks<Accepted> {
-	onAccepted?: (accepted: Accepted, control: ServerOwnedGenerationControl) => void | Promise<void>;
-	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-}
-
-/**
- * Detach one Generation from its observing request.
- *
- * Acceptance is exposed separately so an HTTP caller can return as soon as
- * the provisional target exists. The provider attempt remains owned by the
- * controller until its terminal result settles, regardless of request
- * disconnects.
- */
-function startServerOwnedGeneration<Accepted, Result>(
-	execute: (
-		signal: AbortSignal,
-		onAccepted: (accepted: Accepted) => void | Promise<void>,
-		onEvent: (event: ModelClientEvent) => void | Promise<void>,
-	) => Promise<Result>,
-	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
-): ServerOwnedGeneration<Accepted, Result> {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: Accepted) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<Accepted>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const result = execute(
-		controller.signal,
-		async (value) => {
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, {
-				signal: controller.signal,
-				stop: () => controller.abort(),
-			});
-		},
-		async (event) => {
-			await callbacks.onEvent?.(event);
-		},
-	);
-	void result.catch((error) => {
-		if (!accepted) {
-			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-		}
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
-}
+export type ServerOwnedSendGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedTailGeneration>;
 
 // Starts Send as a detached server-owned attempt. The caller receives an
 // acceptance promise separately from the terminal result and may attach zero
@@ -235,372 +124,12 @@ export function startServerOwnedSendGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 	callbacks: ServerOwnedSendGenerationCallbacks = {},
 ): ServerOwnedSendGeneration {
-	return startServerOwnedGeneration(
-		(signal, onAccepted, onEvent) => sendThroughProvisionalTailGeneration(database, {
-			...input,
-			signal,
-			onAccepted: async (value) => {
-				await input.onAccepted?.(value);
-				await onAccepted(value);
-			},
-			onEvent: async (event) => {
-				await input.onEvent?.(event);
-				await onEvent(event);
-			},
-		}),
+	return startServerOwnedGenerationFrom(
+		database,
+		input,
+		sendThroughProvisionalTailGeneration,
 		callbacks,
 	);
-}
-
-interface SelectedHistory {
-	entries: readonly PromptHistoryEntry[];
-	roles: readonly ("human" | "model" | null)[];
-}
-
-// Selected-history entries for prompt compilation, derived from each
-// Message's selected Variant and its immutable Author Stamp name.
-// `endExclusiveIndex` limits the entries to Messages strictly preceding a
-// targeted sibling Variant; omitted, the entire ordered snapshot counts, as
-// a Tail Generation uses.
-const selectedHistoryFrom = (
-	snapshot: ConversationSnapshot,
-	humanParticipantId: number,
-	modelParticipantId: number,
-	endExclusiveIndex?: number,
-	roleForMessage: (
-		message: ConversationSnapshot["messages"][number],
-	) => "human" | "model" | null = (message) =>
-		message.author?.participantId === humanParticipantId
-			? "human"
-			: message.author?.participantId === modelParticipantId
-				? "model"
-				: null,
-): SelectedHistory => {
-	const entries: PromptHistoryEntry[] = [];
-	const roles: ("human" | "model" | null)[] = [];
-
-	for (const message of snapshot.messages.slice(0, endExclusiveIndex)) {
-		const selected = message.variants.find((variant) => variant.selected);
-		if (selected === undefined) continue;
-
-		entries.push({
-			speakerName: message.author?.capturedName ?? null,
-			content: selected.content,
-		});
-		roles.push(roleForMessage(message));
-	}
-
-	return { entries, roles };
-};
-
-const deriveGeneration = (
-	snapshot: ConversationSnapshot,
-): GenerationDerivation | null => {
-	const human = snapshot.cast.find(
-		(participant) => participant.id === snapshot.control.humanParticipantId,
-	);
-	const model = snapshot.cast.find(
-		(participant) => participant.id === snapshot.control.modelParticipantId,
-	);
-	if (human === undefined || model === undefined || human.id === model.id) {
-		return null;
-	}
-
-	const selectedHistory = selectedHistoryFrom(snapshot, human.id, model.id);
-	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
-		human: toCompilerDefinition(human),
-		model: toCompilerDefinition(model),
-		history,
-	});
-	const plan = compile(selectedHistory.entries);
-
-	return {
-		plan,
-		history: selectedHistory.entries,
-		historyRoles: selectedHistory.roles,
-		humanParticipant: { id: human.id, name: human.name },
-		modelParticipant: { id: model.id, name: model.name },
-		compile,
-	};
-};
-
-const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
-	name: participant.name,
-	prompt: {
-		systemInstruction: participant.prompt.systemInstruction,
-		identity: participant.prompt.identity,
-		scenario: participant.prompt.scenario,
-		exampleDialogue: participant.prompt.exampleDialogue,
-		postHistoryInstruction: participant.prompt.postHistoryInstruction,
-	},
-});
-
-function captureGenerationSettings(
-	database: Database,
-	conversationId: number,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-): GenerationSettingsCapture {
-	const conversation = createConversationModule(database);
-	const settings = conversation.getGenerationSettings(conversationId);
-	if (settings === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-	const capturedConnection = connection === undefined
-		? resolveConnectionSnapshot(database, connectionSettingsOptions)
-		: connection;
-	const provenanceRecord: GenerationProvenanceRecord = {
-		connectionProfileId: capturedConnection?.profileId ?? null,
-		connectionSettingsRevision: capturedConnection?.settingsRevision ?? null,
-		modelBackend: capturedConnection?.backend ?? null,
-		adapter: capturedConnection?.adapter ?? null,
-		modelId: settings.modelId,
-		generationSettings: {
-			temperature: settings.temperature,
-			topP: settings.topP,
-			frequencyPenalty: settings.frequencyPenalty,
-			presencePenalty: settings.presencePenalty,
-			contextLimit: settings.contextLimit,
-			responseBudget: settings.responseBudget,
-			safetyAllowance: settings.safetyAllowance,
-			siblingGenerationLimit: settings.siblingGenerationLimit,
-			continuationStrategy: settings.continuationStrategy,
-			continuationInstruction: settings.continuationInstruction,
-			continuationPrefillSuffix: settings.continuationPrefillSuffix,
-		},
-		usage: null,
-		finishReason: null,
-		status: null,
-		interruptionCause: null,
-	};
-	const provenance = {
-		namespace: "generation",
-		key: "provenance",
-		value: generationProvenanceCodec.encode(provenanceRecord),
-	} satisfies ConversationDataEntry;
-	return { settings, connection: capturedConnection, provenance };
-}
-
-interface CapturedGeneration {
-	readonly promptPlan: PromptPlan;
-	readonly budget: PromptBudgetResult;
-	readonly historyRoles: readonly ("human" | "model" | null)[];
-	readonly humanParticipant: ParticipantPreview;
-	readonly author: {
-		readonly participantId: number;
-		readonly capturedName: string;
-	};
-	readonly control: {
-		readonly humanParticipantId: number;
-		readonly modelParticipantId: number;
-	};
-	readonly settings: ConversationGenerationSettings;
-	readonly connection: ModelClientConnectionSnapshot | null;
-	readonly provenance: ConversationDataEntry;
-}
-
-function captureGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-): CapturedGeneration {
-	const settingsCapture = captureGenerationSettings(
-		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-	);
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
-		throw new ConversationNotPlayableError(snapshot.id);
-	}
-	const budget = assertPromptBudget(
-		createBudgetedPlan(derivation, settingsCapture.settings, tokenEstimator),
-	);
-	return {
-		promptPlan: budget.plan,
-		budget,
-		historyRoles: budget.retainedHistoryRoles,
-		humanParticipant: derivation.humanParticipant,
-		author: {
-			participantId: derivation.modelParticipant.id,
-			capturedName: derivation.modelParticipant.name,
-		},
-		control: {
-			humanParticipantId: derivation.humanParticipant.id,
-			modelParticipantId: derivation.modelParticipant.id,
-		},
-		settings: settingsCapture.settings,
-		connection: settingsCapture.connection,
-		provenance: settingsCapture.provenance,
-	};
-}
-
-function resolveConnectionSnapshot(
-	database: Database,
-	options: ConnectionSettingsModuleOptions | undefined,
-): ModelClientConnectionSnapshot | null {
-	const settings = createConnectionSettingsModule(database, options).get();
-	if (settings.activeProfileId === null) return null;
-	const profile = settings.profiles.find(
-		(entry) => entry.id === settings.activeProfileId,
-	);
-	if (profile === undefined) return null;
-	return {
-		profileId: profile.id,
-		settingsRevision: settings.revision,
-		backend: "ai-sdk",
-		adapter: profile.adapter,
-	};
-}
-
-const toModelClientGenerationSettings = (
-	settings: ConversationGenerationSettings,
-): ModelClientGenerationSettings => ({
-	temperature: settings.temperature,
-	topP: settings.topP,
-	frequencyPenalty: settings.frequencyPenalty,
-	presencePenalty: settings.presencePenalty,
-	contextLimit: settings.contextLimit,
-	responseBudget: settings.responseBudget,
-	requestOverrides: settings.requestOverrides,
-});
-
-function createBudgetedPlan(
-	derivation: GenerationDerivation,
-	settings: ConversationGenerationSettings,
-	estimator?: TokenEstimator,
-): PromptBudgetResult {
-	return budgetPromptPlan({
-		plan: derivation.plan,
-		compile: derivation.compile,
-		history: derivation.history,
-		historyRoles: derivation.historyRoles,
-		contextLimit: settings.contextLimit,
-		responseBudget: settings.responseBudget,
-		safetyAllowance: settings.safetyAllowance,
-		estimator,
-		protectedHistoryIndex: derivation.protectedHistoryIndex,
-	});
-}
-
-type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
-
-interface GenerationOutcome {
-	content: string;
-	reasoning: string;
-	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
-	finishReason: "stop" | "length" | "other" | null;
-	status: GenerationOutcomeStatus;
-	interruptionCause: ModelClientFailureKind | null;
-	error: string | null;
-}
-
-// The transport has one failure policy for both current and sibling
-// generations: preserve visible output when a stream fails after producing it,
-// but leave zero-output failures to the caller. Keeping that policy here means
-// commit paths only decide which Conversation operation receives the outcome.
-async function runGeneration(
-	modelClient: ModelClient,
-	input: Parameters<typeof collectModelClientGeneration>[1],
-	onEvent: GenerationAttemptInput["onEvent"],
-): Promise<GenerationOutcome> {
-	try {
-		const result = await collectModelClientGeneration(modelClient, input, { onEvent });
-		return {
-			...result,
-			status: result.finishReason === "length" ? "length-limited" : "complete",
-			interruptionCause: null,
-			error: null,
-		};
-	} catch (error) {
-		if (!(error instanceof ModelClientGenerationError)) throw error;
-		const content = error.partial.content ?? "";
-		const reasoning = error.partial.reasoning ?? "";
-		if (content.length === 0 && reasoning.length === 0) throw error;
-
-		return {
-			content,
-			reasoning,
-			usage: error.partial.usage ?? null,
-			finishReason: null,
-			status: "interrupted",
-			interruptionCause: error.kind,
-			error: error.kind === "cancelled" ? null : error.message,
-		};
-	}
-}
-
-interface AcceptedGenerationLifecycle<TResult> {
-	/** Commit the normalized terminal outcome to the accepted target. */
-	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
-	/** Remove the accepted target after a zero-output or unexpected failure. */
-	remove(): void | Promise<void>;
-}
-
-/**
- * Run the common server-owned tail of a Generation.
- *
- * Send, Continue, and Sibling all differ at acceptance and at the final
- * Conversation operation, but their provider lifecycle is identical: collect
- * normalized output, remove an empty provisional target, and resolve a target
- * with visible output. Keeping that policy here makes those differences
- * explicit at the call sites instead of encoding three subtly drifting copies.
- */
-async function runAcceptedGeneration<TResult>(
-	input: GenerationAttemptInput,
-	request: Parameters<typeof collectModelClientGeneration>[1],
-	lifecycle: AcceptedGenerationLifecycle<TResult>,
-): Promise<TResult> {
-	let removed = false;
-	try {
-		const outcome = await runGeneration(input.modelClient, request, input.onEvent);
-		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-			await input.onBeforeTerminal?.();
-			await lifecycle.remove();
-			removed = true;
-			throw new ModelClientGenerationError(
-				"provider",
-				"Generation produced no usable output.",
-			);
-		}
-		await input.onBeforeTerminal?.();
-		return await lifecycle.resolve(outcome);
-	} catch (error) {
-		// runGeneration converts visible provider failures into an interrupted
-		// outcome. This cleanup path is therefore only for empty output and
-		// unexpected failures. A successful empty-output removal must not be
-		// attempted a second time after the synthetic provider error is thrown.
-		if (!removed) {
-			try {
-				await lifecycle.remove();
-			} catch {
-				// Preserve the provider or commit error; recovery can clean an orphan.
-			}
-		}
-		throw error;
-	}
-}
-
-function terminalGenerationProvenance(
-	base: ConversationDataEntry,
-	outcome: GenerationOutcome,
-): ConversationDataEntry {
-	return {
-		namespace: base.namespace,
-		key: base.key,
-		value: generationProvenanceCodec.encode(generationProvenanceCodec.project(
-			parseGenerationJson(base.value, null),
-			{
-				usage: outcome.usage === null ? null : normalizeUsage(outcome.usage),
-				finishReason: outcome.finishReason,
-				status: outcome.status,
-				interruptionCause: outcome.interruptionCause,
-			},
-		)),
-	};
 }
 
 // Compiles the Prompt Plan the server would send for a Tail Generation
@@ -723,145 +252,6 @@ export async function generateTerminalTailFixture(
 	});
 }
 
-interface SendGenerationCapture extends CapturedGeneration {
-	humanContent: string;
-	reuseHumanMessageId: number | undefined;
-}
-
-// Active Generation persistence stores only a closed JSON projection of the
-// provider-neutral captures. These explicit projections keep provider and
-// class instances out of the Conversation domain boundary.
-const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
-	const result = {
-		blocks: plan.blocks.map((block): ConversationJsonValue => block.kind === "identity"
-			? { kind: block.kind, role: block.role, content: block.content }
-			: block.kind === "history"
-				? { kind: block.kind, speakerName: block.speakerName, content: block.content }
-				: { kind: block.kind, content: block.content }),
-		warnings: plan.warnings.map((warning) => ({
-			block: warning.block,
-			macro: warning.macro,
-		})),
-	} satisfies ConversationJsonValue;
-	return plan.intent === undefined ? result : { ...result, intent: plan.intent };
-};
-
-const generationSettingsJson = (
-	settings: ModelClientGenerationSettings & {
-		readonly modelId?: string;
-		readonly siblingGenerationLimit?: number;
-		readonly continuationStrategy?: string | null;
-		readonly continuationInstruction?: string | null;
-		readonly continuationPrefillSuffix?: string | null;
-	},
-): ConversationJsonValue => ({
-	modelId: settings.modelId ?? null,
-	siblingGenerationLimit: settings.siblingGenerationLimit ?? null,
-	temperature: settings.temperature,
-	topP: settings.topP,
-	frequencyPenalty: settings.frequencyPenalty,
-	presencePenalty: settings.presencePenalty,
-	contextLimit: settings.contextLimit,
-	responseBudget: settings.responseBudget,
-	continuationStrategy: settings.continuationStrategy ?? null,
-	continuationInstruction: settings.continuationInstruction ?? null,
-	continuationPrefillSuffix: settings.continuationPrefillSuffix ?? null,
-	requestOverrides: settings.requestOverrides,
-});
-
-const connectionJson = (
-	connection: ModelClientConnectionSnapshot | null,
-): ConversationJsonValue => connection === null
-	? null
-	: {
-			profileId: connection.profileId,
-			settingsRevision: connection.settingsRevision,
-			backend: connection.backend,
-			adapter: connection.adapter,
-		};
-
-// Active inspection keeps the exact budget decision made at Generation
-// start, including the whole history entries omitted during preflight. It is
-// deliberately not copied into terminal Variant provenance.
-const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
-	tokenEstimate: budget.tokenEstimate,
-	responseBudget: budget.responseBudget,
-	safetyAllowance: budget.safetyAllowance,
-	contextLimit: budget.contextLimit,
-	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedHistory: budget.omittedHistory.map((entry) => ({
-		speakerName: entry.speakerName,
-		content: entry.content,
-	})),
-});
-
-// Build the candidate Prompt Plan without writing it. A retry reuses the
-// already accepted trailing human Message; a fresh Send appends the submitted
-// human writing to the selected narrative path before budgeting.
-function captureSendGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	content: string,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-): SendGenerationCapture {
-	const settingsCapture = captureGenerationSettings(
-		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-	);
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-
-	const latest = snapshot.messages.at(-1);
-	const latestSelected = latest?.variants.find((variant) => variant.selected);
-	const reuseHumanMessageId = latest !== undefined &&
-		latest.author?.participantId === derivation.humanParticipant.id &&
-		latestSelected?.content === content
-		? latest.id
-		: undefined;
-	const history = reuseHumanMessageId === undefined
-		? [...derivation.history, {
-			speakerName: derivation.humanParticipant.name,
-			content,
-		}]
-		: derivation.history;
-	const historyRoles = reuseHumanMessageId === undefined
-		? [...derivation.historyRoles, "human" as const]
-		: derivation.historyRoles;
-	const plan = derivation.compile(history);
-	const candidate: GenerationDerivation = {
-		...derivation,
-		plan,
-		history,
-		historyRoles,
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(candidate, settingsCapture.settings, tokenEstimator),
-	);
-	return {
-		promptPlan: budget.plan,
-		budget,
-		historyRoles: budget.retainedHistoryRoles,
-		humanParticipant: derivation.humanParticipant,
-		author: {
-			participantId: derivation.modelParticipant.id,
-			capturedName: derivation.modelParticipant.name,
-		},
-		control: {
-			humanParticipantId: derivation.humanParticipant.id,
-			modelParticipantId: derivation.modelParticipant.id,
-		},
-		settings: settingsCapture.settings,
-		connection: settingsCapture.connection,
-		provenance: settingsCapture.provenance,
-		humanContent: content,
-		reuseHumanMessageId,
-	};
-}
-
 // Send's accepted lifecycle is intentionally separate from the legacy
 // Generate wrapper. Preflight is entirely read-only; only after it succeeds
 // does the Conversation seam atomically create the human input, provisional
@@ -971,161 +361,12 @@ export interface ContinueGenerationResult {
 	provisionalVariantId: number;
 }
 
-export interface ServerOwnedContinuationGeneration {
-	readonly accepted: Promise<AcceptedContinuationGeneration>;
-	readonly result: Promise<ContinueGenerationResult>;
-	readonly signal: AbortSignal;
-}
+export type ServerOwnedContinuationGeneration = ServerOwnedGeneration<
+	AcceptedContinuationGeneration,
+	ContinueGenerationResult
+>;
 
-export interface ServerOwnedContinuationGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedContinuationGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
-	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-}
-
-interface ContinuationGenerationCapture extends CapturedGeneration {
-	precedingMessageId: number;
-	precedingVariantId: number;
-	intent: GenerationIntent;
-	assistantPrefill?: AssistantPrefill;
-}
-
-const isActiveGeneration = (database: Database, conversationId: number): boolean =>
-	drizzle(database)
-		.select({ id: activeGenerationTable.id })
-		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.chat_id, conversationId))
-		.get() !== undefined;
-
-function continuationHasUsableOutput(
-	variant: ConversationSnapshot["messages"][number]["variants"][number],
-): boolean {
-	if (variant.content.length > 0) return true;
-	return variant.data.some(
-		(entry) => entry.namespace === "generation" &&
-			entry.key === "reasoning" &&
-			entry.value.length > 0,
-	);
-}
-
-function captureContinuationGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-): ContinuationGenerationCapture {
-	if (isActiveGeneration(database, snapshot.id)) {
-		throw new ContinuationUnavailableError("active-generation");
-	}
-	if (!snapshot.playable) throw new ConversationNotPlayableError(snapshot.id);
-	const latest = snapshot.messages.at(-1);
-	const selected = latest?.variants.find((variant) => variant.selected);
-	const modelParticipantId = snapshot.control.modelParticipantId;
-	const latestWasModelAuthored = latest?.author?.participantId !== null &&
-		latest?.author?.participantId !== undefined &&
-		(modelParticipantId === latest.author.participantId ||
-			latest.historicalContext?.modelParticipantId === latest.author.participantId);
-	if (
-		latest === undefined ||
-		selected === undefined ||
-		modelParticipantId === null ||
-		!latestWasModelAuthored ||
-		!continuationHasUsableOutput(selected)
-	) {
-		throw new ContinuationUnavailableError("not-terminal-model-message");
-	}
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-	const settingsCapture = captureGenerationSettings(
-		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-	);
-	if (settingsCapture.settings.continuationStrategy !== "instruction") {
-		if (selected.content.length === 0) {
-			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-		}
-	}
-	const intent: GenerationIntent = settingsCapture.settings.continuationStrategy === "instruction"
-		? {
-			type: "continuation",
-			strategy: "instruction",
-			instruction: settingsCapture.settings.continuationInstruction,
-		}
-		: {
-			type: "continuation",
-			strategy: "assistant-prefill",
-			suffix: settingsCapture.settings.continuationPrefillSuffix,
-		};
-	const compile = (history: readonly PromptHistoryEntry[]) => ({
-		...derivation.compile(history),
-		intent,
-	});
-	// A prior model Message can have been authored by the Participant who held
-	// model Control at that time. Preserve that role in the continuation's
-	// provider input even when the current model Control has moved on.
-	const continuationHistory = selectedHistoryFrom(
-		snapshot,
-		derivation.humanParticipant.id,
-		derivation.modelParticipant.id,
-		undefined,
-		(message) => {
-			const authorId = message.author?.participantId;
-			if (
-				message.historicalContext?.modelParticipantId === authorId ||
-				authorId === derivation.modelParticipant.id
-			) {
-				return "model";
-			}
-			if (
-				message.historicalContext?.humanParticipantId === authorId ||
-				authorId === derivation.humanParticipant.id
-			) {
-				return "human";
-			}
-			return null;
-		},
-	);
-	const continuationDerivation: GenerationDerivation = {
-		...derivation,
-		historyRoles: continuationHistory.roles,
-		plan: compile(derivation.history),
-		compile,
-		protectedHistoryIndex: settingsCapture.settings.continuationStrategy === "assistant-prefill"
-			? continuationHistory.entries.length - 1
-			: undefined,
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(continuationDerivation, settingsCapture.settings, tokenEstimator),
-	);
-	return {
-		promptPlan: budget.plan,
-		budget,
-		historyRoles: budget.retainedHistoryRoles,
-		humanParticipant: derivation.humanParticipant,
-		author: {
-			participantId: derivation.modelParticipant.id,
-			capturedName: derivation.modelParticipant.name,
-		},
-		control: {
-			humanParticipantId: derivation.humanParticipant.id,
-			modelParticipantId: derivation.modelParticipant.id,
-		},
-		settings: settingsCapture.settings,
-		connection: settingsCapture.connection,
-		provenance: settingsCapture.provenance,
-		precedingMessageId: latest.id,
-		precedingVariantId: selected.id,
-		intent,
-		assistantPrefill: settingsCapture.settings.continuationStrategy === "assistant-prefill"
-			? {
-				prefix: selected.content,
-				suffix: settingsCapture.settings.continuationPrefillSuffix,
-			}
-			: undefined,
-	};
-}
+export type ServerOwnedContinuationGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedContinuationGeneration>;
 
 // Continue starts from the selected narrative path and persists an ordinary
 // model-authored Message. It shares the same normalized stream, terminal
@@ -1218,19 +459,10 @@ export function startServerOwnedContinuationGeneration(
 	input: ContinueGenerationInput,
 	callbacks: ServerOwnedContinuationGenerationCallbacks = {},
 ): ServerOwnedContinuationGeneration {
-	return startServerOwnedGeneration(
-		(signal, onAccepted, onEvent) => continueGeneration(database, {
-			...input,
-			signal,
-			onAccepted: async (value) => {
-				await input.onAccepted?.(value);
-				await onAccepted(value);
-			},
-			onEvent: async (event) => {
-				await input.onEvent?.(event);
-				await onEvent(event);
-			},
-		}),
+	return startServerOwnedGenerationFrom(
+		database,
+		input,
+		continueGeneration,
 		callbacks,
 	);
 }
@@ -1263,144 +495,12 @@ export interface SiblingGenerationResult {
 	provisionalVariantId: number;
 }
 
-export interface ServerOwnedSiblingGeneration {
-	readonly accepted: Promise<AcceptedSiblingGeneration>;
-	readonly result: Promise<SiblingGenerationResult>;
-	readonly signal: AbortSignal;
-}
+export type ServerOwnedSiblingGeneration = ServerOwnedGeneration<
+	AcceptedSiblingGeneration,
+	SiblingGenerationResult
+>;
 
-export interface ServerOwnedSiblingGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedSiblingGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
-	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
-}
-
-const deriveSiblingDerivation = (
-	snapshot: ConversationSnapshot,
-	messageId: number,
-) => {
-	const targetIndex = snapshot.messages.findIndex(
-		(message) => message.id === messageId,
-	);
-	const target = targetIndex === -1 ? undefined : snapshot.messages[targetIndex];
-	if (target === undefined) {
-		throw new InvalidConversationCommandError(
-			`Message ${messageId} does not belong to Conversation ${snapshot.id}.`,
-		);
-	}
-
-	// Same derived rule as the snapshot exposes: playable Conversation,
-	// captured historical pair, and both historical Participants still in
-	// the Cast with usable Definitions.
-	const eligibility = deriveMessageSwipeEligibility(
-		snapshot.playable,
-		target.historicalContext,
-		snapshot.cast.map((participant) => participant.id),
-	);
-	if (!eligibility.eligible) {
-		if (eligibility.reason === "conversation-not-playable") {
-			throw new ConversationNotPlayableError(snapshot.id);
-		}
-		// The discriminated eligibility narrows the remaining reasons to the
-		// two historical denials; no fallback reason is ever fabricated.
-		throw new SiblingVariantUnavailableError(eligibility.reason);
-	}
-
-	const context = target.historicalContext;
-	if (context === null) {
-		// Unreachable after the eligibility check; keeps the pair trusted.
-		throw new SiblingVariantUnavailableError("missing-historical-context");
-	}
-	const human = snapshot.cast.find(
-		(participant) => participant.id === context.humanParticipantId,
-	);
-	const model = snapshot.cast.find(
-		(participant) => participant.id === context.modelParticipantId,
-	);
-	if (human === undefined || model === undefined) {
-		throw new SiblingVariantUnavailableError(
-			"historical-participant-unavailable",
-		);
-	}
-
-	// Selected history strictly preceding the target Message. Excluding the
-	// target by construction also excludes all of its existing sibling
-	// Variants: an alternative never prompts on another alternative.
-	const selectedHistory = selectedHistoryFrom(
-		snapshot,
-		human.id,
-		model.id,
-		targetIndex,
-	);
-
-	// The historical pair's current Definitions and names, so a rename or
-	// Prompt edit before this generation starts contributes; the Message
-	// itself keeps displaying its captured author name.
-	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
-		human: toCompilerDefinition(human),
-		model: toCompilerDefinition(model),
-		history,
-	});
-	const plan = compile(selectedHistory.entries);
-
-	return {
-		plan,
-		history: selectedHistory.entries,
-		historyRoles: selectedHistory.roles,
-		humanParticipant: { id: human.id, name: human.name },
-		modelParticipant: { id: model.id, name: model.name },
-		compile,
-	};
-};
-
-interface SiblingGenerationCapture {
-	readonly promptPlan: PromptPlan;
-	readonly budget: PromptBudgetResult;
-	readonly historyRoles: readonly ("human" | "model" | null)[];
-	readonly humanParticipant: ParticipantPreview;
-	readonly modelParticipant: ParticipantPreview;
-	readonly humanParticipantId: number;
-	readonly modelParticipantId: number;
-	readonly priorVariantId: number | null;
-	readonly settings: ConversationGenerationSettings;
-	readonly connection: ModelClientConnectionSnapshot | null;
-	readonly provenance: ConversationDataEntry;
-}
-
-function captureSiblingGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	input: GenerateSiblingVariantInput,
-): SiblingGenerationCapture {
-	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
-	const settingsCapture = captureGenerationSettings(
-		database,
-		snapshot.id,
-		input.connection,
-		input.connectionSettings,
-	);
-	const siblingDerivation: GenerationDerivation = {
-		...derivation,
-		plan: { ...derivation.plan, intent: { type: "sibling" } },
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(siblingDerivation, settingsCapture.settings, input.tokenEstimator),
-	);
-	const target = snapshot.messages.find((message) => message.id === input.messageId);
-	const priorVariantId = target?.variants.find((variant) => variant.selected)?.id ?? null;
-	return {
-		promptPlan: budget.plan,
-		budget,
-		historyRoles: budget.retainedHistoryRoles,
-		humanParticipant: derivation.humanParticipant,
-		modelParticipant: derivation.modelParticipant,
-		humanParticipantId: derivation.humanParticipant.id,
-		modelParticipantId: derivation.modelParticipant.id,
-		priorVariantId,
-		settings: settingsCapture.settings,
-		connection: settingsCapture.connection,
-		provenance: settingsCapture.provenance,
-	};
-}
+export type ServerOwnedSiblingGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedSiblingGeneration>;
 
 // Targeted Swipe: generates a new sibling Variant for an existing native
 // Message using the historical Control pair captured when that Message was
@@ -1427,10 +527,10 @@ export async function generateSiblingVariant(
 		conversationId: input.conversationId,
 		messageId: input.messageId,
 		timestamp,
-		humanParticipantId: capture.humanParticipantId,
-		modelParticipantId: capture.modelParticipantId,
+		humanParticipantId: capture.control.humanParticipantId,
+		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
-		capturedModelName: capture.modelParticipant.name,
+		capturedModelName: capture.author.capturedName,
 		promptPlan: promptPlanJson(capture.promptPlan),
 		promptInspection: promptInspectionJson(capture.budget),
 		historyRoles: capture.historyRoles,
@@ -1483,19 +583,10 @@ export function startServerOwnedSiblingGeneration(
 	input: GenerateSiblingVariantInput,
 	callbacks: ServerOwnedSiblingGenerationCallbacks = {},
 ): ServerOwnedSiblingGeneration {
-	const started = startServerOwnedGeneration(
-		(signal, onAccepted, onEvent) => generateSiblingVariant(database, {
-			...input,
-			signal,
-			onAccepted: async (value) => {
-				await input.onAccepted?.(value);
-				await onAccepted(value);
-			},
-			onEvent: async (event) => {
-				await input.onEvent?.(event);
-				await onEvent(event);
-			},
-		}),
+	const started = startServerOwnedGenerationFrom(
+		database,
+		input,
+		generateSiblingVariant,
 		callbacks,
 	);
 	return {
@@ -1511,67 +602,4 @@ export function startServerOwnedSiblingGeneration(
 		}),
 		signal: started.signal,
 	};
-}
-
-function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {
-	const data: ConversationDataEntry[] = [];
-	if (input.status !== "complete") {
-		data.push({ namespace: "generation", key: "outcome", value: input.status });
-	}
-	if (input.reasoning.length > 0) {
-		data.push({ namespace: "generation", key: "reasoning", value: input.reasoning });
-	}
-	if (input.usage !== null) {
-		data.push({
-			namespace: "generation",
-			key: "usage",
-			value: JSON.stringify(normalizeUsage(input.usage)),
-		});
-	}
-	if (input.finishReason !== null) {
-		data.push({
-			namespace: "generation",
-			key: "finish",
-			value: JSON.stringify({
-				reason: input.finishReason,
-			}),
-		});
-	}
-	if (input.interruptionCause !== null) {
-		data.push({
-			namespace: "generation",
-			key: "interruption-cause",
-			value: input.interruptionCause,
-		});
-	}
-	if (input.error !== null) {
-		data.push({
-			namespace: "generation",
-			key: "error",
-			value: input.error.slice(0, 16_384),
-		});
-	}
-	return data;
-}
-
-function normalizeUsage(input: {
-	inputTokens?: number;
-	outputTokens?: number;
-	totalTokens?: number;
-}) {
-	const usage: Record<string, number> = {};
-	addUsage(usage, "inputTokens", input.inputTokens);
-	addUsage(usage, "outputTokens", input.outputTokens);
-	addUsage(usage, "totalTokens", input.totalTokens);
-	return usage;
-}
-
-function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
-	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
-}
-
-interface GenerationSettingsCapture {
-	settings: ConversationGenerationSettings;
-	connection: ModelClientConnectionSnapshot | null;
-	provenance: ConversationDataEntry;
 }

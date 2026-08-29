@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { activeGenerationTable, chatTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
@@ -25,19 +25,21 @@ import {
 	StaleConversationRevisionError,
 } from "./errors";
 import {
-	connectConversationDatabase,
 	isPlayable,
 	readControlAssignment,
 } from "./internal";
-import { readConversationSnapshot } from "./snapshot";
+import {
+	advanceConversationRevisionGuarded,
+	requireConversationSnapshot,
+	runConversationTransaction,
+} from "./commands/transaction";
 import type { ConversationCommand, ConversationSnapshot } from "./types";
 
 export function executeConversationCommand(
 	database: Database,
 	command: ConversationCommand,
 ): ConversationSnapshot {
-	const db = connectConversationDatabase(database);
-	const execute = database.transaction(() => {
+	return runConversationTransaction(database, (db) => {
 		const conversation = db
 			.select({ revision: chatTable.revision })
 			.from(chatTable)
@@ -128,30 +130,12 @@ export function executeConversationCommand(
 				break;
 		}
 
-		const advanced = db
-			.update(chatTable)
-			.set({ revision: sql`${chatTable.revision} + 1` })
-			.where(
-				and(
-					eq(chatTable.id, command.conversationId),
-					eq(chatTable.revision, command.expectedRevision),
-				),
-			)
-			.returning({ revision: chatTable.revision })
-			.get();
-		if (advanced === undefined) {
-			throw new StaleConversationRevisionError(
-				command.expectedRevision,
-				conversation.revision,
-			);
-		}
-
-		const snapshot = readConversationSnapshot(db, command.conversationId);
-		if (snapshot === undefined) {
-			throw new ConversationNotFoundError(command.conversationId);
-		}
-		return snapshot;
+		advanceConversationRevisionGuarded(
+			db,
+			command.conversationId,
+			command.expectedRevision,
+			conversation.revision,
+		);
+		return requireConversationSnapshot(db, command.conversationId);
 	});
-
-	return execute.immediate();
 }
