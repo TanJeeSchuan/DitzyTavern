@@ -1,4 +1,5 @@
 import { Type } from "@sinclair/typebox";
+import { participantPrompt } from "./prompt-schema";
 import { numericWire } from "./wire";
 
 // Typed transport schemas mirror the Character Library seam's public types.
@@ -14,14 +15,6 @@ const characterLibrarySummary = Type.Object({
 	// Global provenance reference count so pickers and lists present
 	// deletion impact without one detail request per row.
 	provenanceReferenceCount: Type.Integer(),
-});
-
-const characterPrompt = Type.Object({
-	systemInstruction: Type.String(),
-	identity: Type.String(),
-	scenario: Type.String(),
-	exampleDialogue: Type.String(),
-	postHistoryInstruction: Type.String(),
 });
 
 const characterDeletionMode = Type.Union([
@@ -41,7 +34,7 @@ export const characterSnapshot = Type.Object({
 	name: Type.String(),
 	revision: Type.Integer(),
 	pinned: Type.Boolean(),
-	prompt: characterPrompt,
+	prompt: participantPrompt,
 	openings: Type.Array(Type.String()),
 	deletionImpact: characterDeletionImpact,
 });
@@ -57,7 +50,7 @@ const createCommand = Type.Object({
 	type: Type.Literal("create"),
 	definition: Type.Object({
 		name: Type.String(),
-		prompt: characterPrompt,
+		prompt: participantPrompt,
 		openings: Type.Array(Type.String()),
 	}),
 });
@@ -73,7 +66,7 @@ const replacePromptCommand = Type.Object({
 	type: Type.Literal("replace-prompt"),
 	characterId: Type.Integer(),
 	expectedRevision: Type.Integer(),
-	prompt: characterPrompt,
+	prompt: participantPrompt,
 });
 
 const replaceOpeningsCommand = Type.Object({

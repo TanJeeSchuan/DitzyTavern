@@ -1,5 +1,6 @@
 import { Kind, Type, type Static } from "@sinclair/typebox";
 import { characterConflict, characterSnapshot } from "./character-library";
+import { participantPrompt } from "./prompt-schema";
 import {
 	invalidOutcome,
 	notFoundOutcome,
@@ -14,13 +15,9 @@ import type {
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../generation-provenance";
 
-export const participantPrompt = Type.Object({
-	systemInstruction: Type.String(),
-	identity: Type.String(),
-	scenario: Type.String(),
-	exampleDialogue: Type.String(),
-	postHistoryInstruction: Type.String(),
-});
+// Preserve the established contract export while keeping the schema owned by
+// the shared prompt module used by both Conversation and Character contracts.
+export { participantPrompt };
 
 const castParticipant = Type.Object({
 	id: Type.Integer(),

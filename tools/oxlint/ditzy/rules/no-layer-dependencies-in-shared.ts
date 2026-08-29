@@ -2,7 +2,7 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 
 import { isTestFile, repositoryPath } from "../path.ts";
 
-const isRuntimeImport = (source: string): boolean =>
+const isLayerDependency = (source: string): boolean =>
 	source === "elysia" ||
 	source.startsWith("bun:") ||
 	/(?:^|\/)server(?:\/|$)/.test(source) ||
@@ -13,16 +13,16 @@ const isRuntimeImport = (source: string): boolean =>
 const sourceText = (node: ESTree.ImportDeclaration): string | null =>
 	typeof node.source.value === "string" ? node.source.value : null;
 
-/** Prevent shared modules from acquiring runtime, server, or client dependencies. */
-export const noRuntimeImportsInSharedRule = defineRule({
+/** Keep shared production code independent of client, server, and runtime APIs. */
+export const noLayerDependenciesInSharedRule = defineRule({
 	meta: {
 		type: "problem",
 		docs: {
-			description: "Keep src/shared runtime-independent.",
+			description: "Keep src/shared independent of client, server, Elysia, and Bun APIs.",
 		},
 		messages: {
-			runtimeDependency:
-				"src/shared owns runtime-independent contracts and values. Move this adapter to src/server or src/client, then import the shared contract from that runtime layer.",
+			layerDependency:
+				"src/shared cannot depend on client, server, Elysia, or Bun APIs, including through type-only imports. Move the adapter or runtime type to its owning layer.",
 		},
 	},
 	createOnce(context) {
@@ -31,8 +31,8 @@ export const noRuntimeImportsInSharedRule = defineRule({
 				const path = repositoryPath(context.filename);
 				if (!path.startsWith("src/shared/") || isTestFile(path)) return;
 				const source = sourceText(node);
-				if (source === null || !isRuntimeImport(source)) return;
-				context.report({ node: node.source, messageId: "runtimeDependency" });
+				if (source === null || !isLayerDependency(source)) return;
+				context.report({ node: node.source, messageId: "layerDependency" });
 			},
 		};
 	},

@@ -224,50 +224,15 @@ export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;
 export type ConnectionTestResultPayload = Static<typeof testConnectionResult>;
 export type ConnectionDiscoveryResultPayload = Static<typeof discoveryResult>;
 
-export type ConnectionSettingsCommandPayload =
-	| {
-			type: "create-profile";
-			expectedRevision: number;
-			profile: ConnectionProfileDraftPayload;
-			credential?: string | null;
-			headers?: ConnectionHeaderOperationPayload[];
-	  }
-	| {
-			type: "apply-profile";
-			expectedRevision: number;
-			profileId: number;
-			profile: ConnectionProfileDraftPayload;
-			headers?: ConnectionHeaderOperationPayload[];
-	  }
-	| {
-			type: "set-credential";
-			expectedRevision: number;
-			profileId: number;
-			credential: string;
-	  }
-	| {
-			type: "reset-credential";
-			expectedRevision: number;
-			profileId: number;
-			confirmed: boolean;
-	  }
-	| {
-			type: "activate-profile";
-			expectedRevision: number;
-			profileId: number;
-	  }
-	| {
-			type: "delete-profile";
-			expectedRevision: number;
-			profileId: number;
-			replacementProfileId?: number | null;
-	  }
-	| {
-			type: "set-pinned-models";
-			expectedRevision: number;
-			profileId: number;
-			pinnedModels: string[];
-	  };
+type WithoutLegacyBackendOptions<T> = T extends unknown
+	? T extends { profile: infer Profile }
+		? Omit<T, "profile"> & { profile: Omit<Profile, "backendOptions"> }
+		: T
+	: never;
+
+export type ConnectionSettingsCommandPayload = WithoutLegacyBackendOptions<
+	Static<typeof commandBody>
+>;
 
 export type ConnectionTestDraftPayload = {
 	profileId?: number;
@@ -277,12 +242,7 @@ export type ConnectionTestDraftPayload = {
 };
 
 export type ConnectionSettingsCommandResultPayload =
-	| { outcome: "applied"; settings: ConnectionSettingsPayload }
-	| {
-			outcome: "conflict";
-			expectedRevision: number;
-			actualRevision: number;
-			currentSettings: ConnectionSettingsPayload;
-	  }
-	| { outcome: "invalid"; reason: string }
-	| { outcome: "not-found" };
+	| Static<typeof connectionSettingsApplied>
+	| Static<typeof connectionSettingsConflict>
+	| Static<typeof connectionInvalidResponse>
+	| Static<typeof connectionNotFoundResponse>;

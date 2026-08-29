@@ -1,9 +1,11 @@
 import { staticPlugin } from "@elysiajs/static";
+import { registerWireFormats } from "../shared/contract/wire-formats";
 import { contract } from "./contract";
 import { openDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
 
+registerWireFormats();
 initializeConnectionSecretKey();
 const database = openDatabase();
 // One process-start sweep resolves only abandoned local Active Generations;

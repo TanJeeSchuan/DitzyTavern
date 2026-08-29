@@ -1,12 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
 import { numericWire } from "./wire";
+import { registerWireFormats } from "./wire-formats";
 
-// Covers the wire coercion contract without importing the server runtime:
-// wire.ts registers its own string formats, so these semantics hold wherever
-// the shared contract is loaded.
 describe("numericWire", () => {
+	beforeAll(() => registerWireFormats());
+
 	test("accepts numbers and numeric strings", () => {
 		expect(Value.Check(numericWire, 5)).toBe(true);
 		expect(Value.Check(numericWire, "12")).toBe(true);

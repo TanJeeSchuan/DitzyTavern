@@ -20,14 +20,26 @@ tester.run("no-hand-written-wire-guards", noHandWrittenWireGuardsRule, {
 			filename: "src/client/form-validation.ts",
 			code: "const valid = isString(name) && isNumber(age) && isBoolean(active) && isRow(meta);",
 		},
+		{
+			filename: "src/client/transport/settings-transport.ts",
+			code: "const validateOptions = () => isString(name) && isNumber(age) && isBoolean(active) && isRow(meta);",
+		},
 	],
 	invalid: [
 		{
 			filename: "src/client/transport/settings-transport.ts",
 			code: `const parseSettings = (value: JsonValue) => {
 				if (!isRow(value) || !isString(value.modelId)) return null;
-				if (!isNumber(value.temperature) || !Array.isArray(value.stops)) return null;
+				if (!isNumber(value.temperature)) return null;
 				return value;
+			};`,
+			errors: [{ messageId: "handWrittenGuard" }],
+		},
+		{
+			filename: "src/client/chat-history.ts",
+			code: `const parseDownloadResponse = (value: JsonValue) => {
+				if (isRow(value) && value.outcome === "cleaned-up") return value.reason;
+				return null;
 			};`,
 			errors: [{ messageId: "handWrittenGuard" }],
 		},

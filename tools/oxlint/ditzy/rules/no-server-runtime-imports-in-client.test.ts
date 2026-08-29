@@ -20,6 +20,10 @@ tester.run(
 				code: "import type { Contract } from '../../server/contract';",
 			},
 			{
+				filename: "src/client/conversation.ts",
+				code: "import { type ConversationAction } from '../../server/conversation';",
+			},
+			{
 				filename: "src/client/lib/eden.ts",
 				code: "import { treaty } from '@elysiajs/eden';",
 			},
@@ -45,7 +49,7 @@ tester.run(
 			},
 			{
 				filename: "src/client/conversation.ts",
-				code: "import { type ConversationAction } from '../../server/conversation';",
+				code: "import { type ConversationAction, createConversationModule } from '../../server/conversation';",
 				errors: [{ messageId: "serverRuntimeDependency" }],
 			},
 			{

@@ -8,9 +8,7 @@ import {
 import {
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
-	SiblingVariantUnavailableError,
 	InvalidConversationCommandError,
-	ContinuationUnavailableError,
 	ParticipantNotFoundError,
 	ParticipantNotRemovableError,
 	createConversationModule,
@@ -20,19 +18,14 @@ import {
 	type ConversationAction,
 	type ConversationGenerationSettings,
 } from "../conversation";
-import { PromptBudgetExceededError } from "../prompt-compiler";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client";
-import {
-	createGenerationCoordinator,
-	GenerationConfigurationError,
-} from "../application/generation-coordinator";
+import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { openDatabase, withDatabase } from "../database/database";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
 	defaultGenerationRuntime,
-	type GenerationRuntimeState,
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
@@ -71,133 +64,19 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
+	generationAcceptanceResponse,
+} from "./generation-error-mapping";
+import { createGenerationSubscriptionResponse } from "./generation-sse";
+import {
 	invalidOutcome,
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
 
-type GenerationRuntimeValue = ReturnType<ReturnType<typeof generationRuntimeFor>["get"]>;
-
 const runtimeRegistryForRequest = (connection: Database, configuredDatabase: Database | undefined) =>
 	configuredDatabase === undefined ? defaultGenerationRuntime() : generationRuntimeFor(connection);
 
-type GenerationStartFailure =
-	| { readonly status: 404; readonly body: { readonly outcome: "not-found" } }
-	| { readonly status: 409; readonly body: { readonly outcome: "not-playable"; readonly reason: string } }
-	| { readonly status: 409; readonly body: { readonly outcome: "conflict"; readonly reason: string } }
-	| { readonly status: 422; readonly body: { readonly outcome: "invalid"; readonly reason: string } };
-
-/**
- * Map only errors that are part of the Generation acceptance contract. An
- * unexpected Error must reach the framework's 500 handling instead of being
- * presented as a client-correctable invalid request.
- */
-const generationStartFailure = (error: Error): GenerationStartFailure | undefined => {
-	if (error instanceof ConversationNotFoundError) {
-		return { status: 404, body: { outcome: "not-found" } };
-	}
-	if (error instanceof ConversationNotPlayableError) {
-		return { status: 409, body: { outcome: "not-playable", reason: error.message } };
-	}
-	if (error instanceof StaleConversationRevisionError) {
-		return { status: 409, body: { outcome: "conflict", reason: error.message } };
-	}
-	if (
-		error instanceof ContinuationUnavailableError ||
-		error instanceof GenerationConfigurationError ||
-		error instanceof InvalidConversationCommandError ||
-		error instanceof PromptBudgetExceededError ||
-		error instanceof SiblingVariantUnavailableError
-	) {
-		return { status: 422, body: { outcome: "invalid", reason: error.message } };
-	}
-	return undefined;
-};
-const activeGenerationPayload = (state: GenerationRuntimeState) => ({
-	outcome: "active-state" as const,
-	generationId: state.generationId,
-	conversationId: state.conversationId,
-	messageId: state.messageId,
-	variantId: state.variantId,
-	content: state.content,
-	reasoning: state.reasoning,
-	latestEventId: state.latestEventId,
-	status: state.status,
-	terminalReason: state.terminalReason,
-});
-
-const terminalGenerationFrame = (state: GenerationRuntimeState) =>
-	state.status === "complete"
-		? {
-			type: "complete",
-			data: {
-				outcome: "applied" as const,
-				generationId: state.generationId,
-				latestEventId: state.latestEventId,
-			},
-		}
-		: state.status === "stopped"
-			? {
-				type: "stopped",
-				data: { outcome: "stopped" as const, generationId: state.generationId },
-			}
-			: {
-				type: "error",
-				data: { outcome: "failed" as const, reason: state.terminalReason ?? "Generation failed." },
-			};
-
-function createGenerationSubscriptionResponse(
-	runtime: NonNullable<GenerationRuntimeValue>,
-	afterEventId: number,
-	request: Request,
-	onClosed?: () => void,
-): Response {
-	const encoder = new TextEncoder();
-	const frame = (type: string, data: GenerationSsePayload, eventId?: number) =>
-		`${eventId === undefined ? "" : `id: ${eventId}\n`}event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-	const stream = new ReadableStream<Uint8Array>({
-		start(controller) {
-			let closed = false;
-			let subscription: ReturnType<typeof runtime.subscribe> | undefined;
-			let removeStateListener: (() => void) | undefined;
-			const emit = (type: string, data: GenerationSsePayload, eventId?: number) => {
-				if (closed) return;
-				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* client disconnected */ }
-			};
-			const finish = (state: GenerationRuntimeState) => {
-				if (closed || state.status === "active") return;
-				subscription?.close();
-				removeStateListener?.();
-				const terminal = terminalGenerationFrame(state);
-				emit(terminal.type, terminal.data);
-				closed = true;
-				try { controller.close(); } catch { /* client disconnected */ }
-				onClosed?.();
-			};
-			subscription = runtime.subscribe(
-				afterEventId,
-				(envelope) => emit("generation", envelope.event, envelope.eventId),
-				(state) => emit("state", activeGenerationPayload(state)),
-			);
-			removeStateListener = runtime.onStateChange(finish);
-			finish(runtime.state);
-			request.signal.addEventListener("abort", () => {
-				if (closed) return;
-				closed = true;
-				subscription?.close();
-				removeStateListener?.();
-				onClosed?.();
-			}, { once: true });
-		},
-	});
-	return new Response(stream, {
-		headers: {
-		"content-type": "text/event-stream; charset=utf-8",
-		"cache-control": "no-cache, no-transform",
-		connection: "keep-alive",
-		},
-	});
-}
+type GenerationRuntimeValue = ReturnType<ReturnType<typeof runtimeRegistryForRequest>["get"]>;
 
 // Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
@@ -232,21 +111,6 @@ const staleConversationConflict = (
 	};
 };
 
-// Builds the typed accepted-generation body shared by the Send, Continue,
-// and Swipe acceptance routes.
-const acceptedGenerationBody = (
-	conversationId: number,
-	generationId: number,
-	messageId: number,
-	variantId: number,
-) => ({
-	outcome: "accepted" as const,
-	generationId,
-	conversationId,
-	messageId,
-	variantId,
-});
-
 // Maps a stale Conversation revision onto the typed recovery response: the
 // authoritative summary rides inside the 409, or a 404 when the Conversation
 // disappeared between the conflict and the recovery read.
@@ -278,24 +142,6 @@ export interface ConversationRouteOptions extends ConnectionSettingsModuleOption
 	readonly fetch?: ModelFetch;
 }
 
-type GenerationSsePayload =
-	| import("../model-client").ModelClientEvent
-	| { readonly outcome: "applied"; readonly generationId?: number; readonly latestEventId?: number }
-	| { readonly outcome: "failed"; readonly reason: string }
-	| { readonly outcome: "stopped"; readonly generationId: number }
-	| {
-			readonly outcome: "active-state";
-			readonly generationId: number;
-			readonly conversationId: number;
-			readonly messageId: number;
-			readonly variantId: number;
-			readonly content: string;
-			readonly reasoning: string;
-			readonly latestEventId: number;
-			readonly status: "active" | "complete" | "stopped" | "failed";
-			readonly terminalReason: string | null;
-		};
-
 export const createConversationRoutes = (
 	database: Database | undefined,
 	options: ConversationRouteOptions = {},
@@ -321,22 +167,18 @@ export const createConversationRoutes = (
 			params: { id: number };
 			body: { expectedRevision: number; content?: string };
 		}) => {
-			try {
-				const started = await start(params.id, body);
-				const accepted = started.accepted;
-				return acceptedGenerationBody(
-					params.id,
-					accepted.generationId,
-					accepted.modelMessageId,
-					accepted.provisionalVariantId,
-				);
-			} catch (error) {
-				const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-				if (failure?.status === 404) return status(404, failure.body);
-				if (failure?.status === 409) return status(409, failure.body);
-				if (failure?.status === 422) return status(422, failure.body);
-				throw error;
-			}
+			return generationAcceptanceResponse(
+				params.id,
+				() => start(params.id, body),
+				(accepted) => accepted.modelMessageId,
+				(failure) => {
+					switch (failure.status) {
+						case 404: return status(404, failure.body);
+						case 409: return status(409, failure.body);
+						case 422: return status(422, failure.body);
+					}
+				},
+			);
 		};
 
 	const readActiveGenerationDetailsRoute = ({ params }: {
@@ -594,27 +436,25 @@ export const createConversationRoutes = (
 		// closing it never aborts the sibling provider attempt.
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params, status }) => {
-				try {
-					const started = await generationCoordinator.startSiblingGeneration({
+			async ({ params }) =>
+				generationAcceptanceResponse(
+					params.id,
+					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
-					});
-				const accepted = started.accepted;
-				return acceptedGenerationBody(
-					params.id,
-					accepted.generationId,
-					accepted.messageId,
-					accepted.provisionalVariantId,
-				);
-			} catch (error) {
-				const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-				if (failure?.status === 404) return notFoundResponse();
-				if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
-				if (failure?.status === 422) return invalidResponse(failure.body.reason);
-				throw error;
-			}
-			},
+					}),
+					(accepted) => accepted.messageId,
+					(failure) => {
+						// Sibling starts have no revision input, so a stale-revision
+						// conflict remains an unexpected domain failure as before.
+						if (failure.status === 409) {
+							if (failure.body.outcome === "conflict") return undefined;
+							return status(409, failure.body);
+						}
+						if (failure.status === 404) return status(404, failure.body);
+						return status(422, failure.body);
+					},
+				),
 			{
 				params: messageIdParams,
 				response: {

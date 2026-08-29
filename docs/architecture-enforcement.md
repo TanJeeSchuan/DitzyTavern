@@ -2,35 +2,42 @@
 
 `bun run check` is the local and CI entrypoint for repository policy. It runs
 Oxlint, the custom rule tests, the whole-repository contract audit, both
-TypeScript projects, the Bun tests, and implementation clone detection.
+TypeScript projects, and the Bun tests. Clone detection is a separate advisory
+command.
 
 The `ditzy` Oxlint plugin owns five project rules:
 
 - `no-contract-definition-outside-contract` rejects TypeBox schema construction
   in client and server consumers. Canonical schemas belong in
   `src/shared/contract/**`.
-- `no-runtime-imports-in-shared` rejects new server, client, Elysia, and Bun
-  runtime imports from production files under `src/shared/**`.
+- `no-layer-dependencies-in-shared` rejects server, client, Elysia, and Bun
+  dependencies from production files under `src/shared/**`, including
+  type-only imports. Shared code remains independent of layer-specific APIs.
 - `no-server-runtime-imports-in-client` restricts client imports of server
   modules to type-only imports, keeping runtime dependencies behind the
   transport boundary.
-- `no-hand-written-wire-guards` rejects long property-by-property decoders in
-  migrated client transport modules. Schema-based decoding with `Value.Decode`
-  is the replacement.
+- `no-hand-written-wire-guards` rejects property-by-property decoders in
+  migrated client transport modules when a function guards an object with
+  `isRow` and then reads its fields by hand. Schema-based decoding with
+  `Value.Decode` is the replacement.
 - `no-manual-conversation-transaction` rejects direct Conversation transaction
   construction outside the `runConversationTransaction` owner.
 
-`scripts/check-contract-ownership.ts` uses the stable TypeScript 5.9 compiler
-API, installed under the `typescript5` alias because the application's
-TypeScript 7 package does not expose the classic compiler API. It fingerprints
-interfaces, object type aliases, TypeBox object schemas, and records
-`Static<typeof Schema>` derivations. New schemas owned by client or server are
-hard failures. Generic cross-layer shape matches are warnings because equal
-shapes can represent different concepts.
+The `no-contract-definition-outside-contract` Oxlint rule is the primary hard
+gate for schema ownership. `scripts/check-contract-ownership.ts` repeats a
+narrower `Type.Object` ownership check as a safety net, so that part can also
+fail `bun run check`. Its distinct job is advisory: it fingerprints interfaces,
+object type aliases, and TypeBox object schemas to warn about possible duplicate
+cross-layer shapes. Equal shapes can represent different concepts, so those
+matches never fail the command.
+
+The audit uses the stable TypeScript 5.9 compiler API through the `typescript5`
+alias because the application's TypeScript 7 package does not expose the
+classic compiler API.
 
 ## Existing violations
 
-The four rules are fully enforced with no baseline violations: the Elysia
+The five rules are fully enforced with no baseline violations: the Elysia
 route adapters live in `src/server/contract/**` and import every wire schema
 from `src/shared/contract/**`, the migrated client transports decode payloads
 with `Value.Decode` against the canonical schemas, and every Conversation

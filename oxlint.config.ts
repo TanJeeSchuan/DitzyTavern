@@ -38,8 +38,8 @@ export default defineConfig({
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
 		"ditzy/no-contract-definition-outside-contract": "error",
 		"ditzy/no-hand-written-wire-guards": "error",
+		"ditzy/no-layer-dependencies-in-shared": "error",
 		"ditzy/no-manual-conversation-transaction": "error",
 		"ditzy/no-server-runtime-imports-in-client": "error",
-		"ditzy/no-runtime-imports-in-shared": "error",
 	},
 });

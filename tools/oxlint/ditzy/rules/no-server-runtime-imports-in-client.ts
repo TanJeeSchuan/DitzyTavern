@@ -28,6 +28,14 @@ export const noServerRuntimeImportsInClientRule = defineRule({
 				const source = sourceText(node);
 				if (source === null || !isServerModule(source)) return;
 				if (node.importKind === "type") return;
+				if (
+					node.specifiers.length > 0 &&
+					node.specifiers.every(
+						(specifier) =>
+							specifier.type === "ImportSpecifier" && specifier.importKind === "type",
+					)
+				)
+					return;
 				context.report({ node: node.source, messageId: "serverRuntimeDependency" });
 			},
 		};

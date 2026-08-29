@@ -6,7 +6,6 @@ import {
 	InvalidCharacterDefinitionError,
 	StaleCharacterRevisionError,
 	withCharacterLibrary,
-	type CharacterSnapshot,
 } from "../character-library";
 import {
 	characterCommandApplied,
@@ -22,12 +21,12 @@ import {
 	notFoundResponse,
 	staleCharacterConflictResponse,
 } from "./payload";
+import { toCharacterPayload } from "./projections";
 
-// Adapts the seam's immutable snapshot into the transport shape.
-export const toCharacterPayload = (character: CharacterSnapshot) => ({
-	...character,
-	openings: [...character.openings],
-});
+// Keep this adapter export stable for sibling route adapters that use the
+// Character transport projection while the implementation lives below the
+// route-adapter layer.
+export { toCharacterPayload };
 
 // Thin typed adapters over the Character Library seam. The database is
 // injected so tests can mount the same routes against a temporary store;

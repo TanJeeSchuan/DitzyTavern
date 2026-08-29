@@ -28,8 +28,11 @@ import type {
 	ImportDetailsArtifact,
 	ImportDetailsArtifactAvailability,
 } from "../shared/contract/chat-import";
-import { chatImportDetails } from "../shared/contract/chat-import";
-import { type JsonValue, isRow } from "./lib/json-guards";
+import {
+	chatImportDetails,
+	importCleanedUpResponse,
+} from "../shared/contract/chat-import";
+import type { JsonValue } from "./lib/json-guards";
 
 export type {
 	ChatHistoryAuthorStamp,
@@ -134,13 +137,15 @@ const parseDownloadResponse = async (
 	if (response.status === 404) return { status: "not-found" };
 	if (response.status === 410) {
 		const value: JsonValue = await response.json().catch(() => ({}));
-		if (isRow(value) && value.outcome === "cleaned-up") {
+		try {
+			const cleaned = Value.Decode(importCleanedUpResponse, value);
 			return {
 				status: "cleaned-up",
-				reason: value.reason === "corrupt" ? "corrupt" : "missing",
+				reason: cleaned.reason,
 			};
+		} catch {
+			return { status: "cleaned-up", reason: "missing" };
 		}
-		return { status: "cleaned-up", reason: "missing" };
 	}
 	if (!response.ok) return { status: "network" };
 	const disposition = response.headers.get("content-disposition") ?? "";
