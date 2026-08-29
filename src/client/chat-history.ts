@@ -27,6 +27,14 @@ import type {
 	ImportDetailsArtifact,
 	ImportDetailsArtifactAvailability,
 } from "../shared/contract/chat-import";
+import {
+	type JsonValue,
+	isBoolean,
+	isNumber,
+	isRow,
+	isString,
+	isStringArray,
+} from "./lib/json-guards";
 
 export type {
 	ChatHistoryAuthorStamp,
@@ -82,15 +90,6 @@ export interface ChatHistoryTransport {
 	// filename. Cleaned-up is a typed outcome, never an exception.
 	downloadExactSource(conversationId: number): Promise<ChatSourceDownloadOutcome>;
 }
-
-import {
-	type JsonValue,
-	isBoolean,
-	isNumber,
-	isRow,
-	isString,
-	isStringArray,
-} from "./lib/json-guards";
 
 // Parses and validates one history page at the I/O boundary. Any field
 // failing the typed contract discards the whole payload so a malformed

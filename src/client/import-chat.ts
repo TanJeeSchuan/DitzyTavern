@@ -20,6 +20,14 @@ import type {
 	ChatImportSuggestion,
 	ImportResolutionOutcome,
 } from "../shared/contract/chat-import";
+import {
+	type JsonValue,
+	isBoolean,
+	isNumber,
+	isRow,
+	isString,
+	isStringArray,
+} from "./lib/json-guards";
 
 export type {
 	ChatImportDuplicateMatch,
@@ -85,15 +93,6 @@ export interface ChatImportTransport {
 	// removed. Idempotent.
 	discard(token: string): Promise<void>;
 }
-
-import {
-	type JsonValue,
-	isBoolean,
-	isNumber,
-	isRow,
-	isString,
-	isStringArray,
-} from "./lib/json-guards";
 
 // Parses and validates one preview payload at the I/O boundary. Any field
 // failing the typed contract discards the whole payload so a malformed
