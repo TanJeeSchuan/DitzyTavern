@@ -419,6 +419,7 @@ export interface ConversationCommand {
 
 export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
+	exists(conversationId: number): boolean;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
 	getGenerationSettings(
 		conversationId: number,

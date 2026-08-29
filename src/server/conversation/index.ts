@@ -141,6 +141,8 @@ export type {
 export function createConversationModule(database: Database): ConversationModule {
 	return {
 		create: (input) => createConversation(database, input),
+		exists: (conversationId) =>
+			conversationExists(connectConversationDatabase(database), conversationId),
 		getSnapshot: (conversationId) =>
 			readConversationSnapshot(
 				connectConversationDatabase(database),

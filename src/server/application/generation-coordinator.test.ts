@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
+import {
+	ConversationNotFoundError,
+	createConversationModule,
+} from "../conversation";
 import { openDatabase } from "../database/database";
 import { createGenerationCoordinator } from "./generation-coordinator";
 
@@ -82,5 +85,15 @@ describe("GenerationCoordinator", () => {
 		});
 		await sibling.result;
 		expect(sibling.runtime.state.status).toBe("complete");
+	});
+
+	test("rejects a missing conversation before resolving transport", async () => {
+		const coordinator = createGenerationCoordinator(database);
+
+		await expect(coordinator.startSendGeneration({
+			conversationId: 404,
+			expectedRevision: 0,
+			content: "Start the scene.",
+		})).rejects.toBeInstanceOf(ConversationNotFoundError);
 	});
 });

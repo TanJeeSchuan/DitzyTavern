@@ -222,7 +222,7 @@ export class GenerationCoordinator {
 		};
 
 		try {
-			if (createConversationModule(database).getSnapshot(input.conversationId) === undefined) {
+			if (!createConversationModule(database).exists(input.conversationId)) {
 				throw new ConversationNotFoundError(input.conversationId);
 			}
 			const transport = this.resolveTransport(database);

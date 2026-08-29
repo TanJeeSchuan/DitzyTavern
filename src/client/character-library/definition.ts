@@ -2,6 +2,7 @@ import type {
 	CharacterPrompt,
 	CharacterSnapshot,
 } from "../character-library";
+import { openingsToText } from "../lib/openings";
 
 export interface Drafts {
 	name: string;
@@ -23,12 +24,9 @@ export const emptyDrafts: Drafts = {
 	openingsText: "",
 };
 
-export const openingsToText = (openings: readonly string[]) =>
-	openings.join("\n");
-
 // The shared conversion keeps Character Library openings identical to Cast
 // openings (the trimming variant is the deliberate single behavior).
-export { openingsFromText } from "../lib/openings";
+export { openingsFromText, openingsToText } from "../lib/openings";
 
 export const draftsOf = (character: CharacterSnapshot): Drafts => ({
 	name: character.name,
