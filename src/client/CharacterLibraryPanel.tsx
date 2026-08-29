@@ -25,6 +25,7 @@ import {
 	openingsToText,
 	type Drafts,
 } from "./character-library/definition";
+import { LIBRARY_UNREACHABLE_NOTICE } from "./lib/command-outcome";
 import { useAsyncEffect } from "./lib/use-async";
 
 // The library handles listing, creation, editing, pinning, deletion, and
@@ -95,7 +96,7 @@ export function CharacterLibraryPanel({
 			setConflict(null);
 			setNotice(null);
 		} catch {
-			setNotice("The Library could not be reached.");
+			setNotice(LIBRARY_UNREACHABLE_NOTICE);
 		}
 	}, []);
 
@@ -172,7 +173,7 @@ export function CharacterLibraryPanel({
 						break;
 					}
 					default: {
-						setNotice("The Library could not be reached.");
+						setNotice(LIBRARY_UNREACHABLE_NOTICE);
 					}
 				}
 			} finally {
@@ -217,7 +218,7 @@ export function CharacterLibraryPanel({
 			} else if (outcome.status === "invalid") {
 				setNotice(outcome.reason);
 			} else if (outcome.status === "network") {
-				setNotice("The Library could not be reached.");
+				setNotice(LIBRARY_UNREACHABLE_NOTICE);
 			}
 		} finally {
 			setPendingAction(null);
