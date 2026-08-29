@@ -5,6 +5,8 @@ import {
 	acceptConversationTailGeneration,
 	acceptConversationContinuationGeneration,
 	acceptConversationSiblingGeneration,
+} from "./commands/accept-generation";
+import {
 	checkpointConversationGeneration,
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
@@ -47,6 +49,8 @@ export {
 	acceptConversationContinuationGeneration,
 	acceptConversationTailGeneration,
 	acceptConversationSiblingGeneration,
+} from "./commands/accept-generation";
+export {
 	checkpointConversationGeneration,
 	checkpointConversationSiblingGeneration,
 	checkpointConversationTailGeneration,

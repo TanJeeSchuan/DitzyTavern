@@ -1,20 +1,20 @@
 import type { Database } from "bun:sqlite";
-import { eq, max, sql } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import {
 	chatTable,
 	messageTable,
-	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
+import { requireParticipant } from "../internal";
 import {
-	connectConversationDatabase,
-	requireParticipant,
-} from "../internal";
-import { readConversationSnapshot } from "../snapshot";
+	advanceConversationRevision,
+	runConversationTransaction,
+} from "./transaction";
+import { persistTerminalVariantData } from "./active-generation";
 import type { CommitGenerationInput, ConversationSnapshot } from "../types";
 
 // Commits a finished current Generate. The generation workflow captured the
@@ -30,9 +30,7 @@ export function commitConversationGeneration(
 	database: Database,
 	input: CommitGenerationInput,
 ): ConversationSnapshot {
-	const commit = database.transaction(() => {
-		const db = connectConversationDatabase(database);
-
+	return runConversationTransaction(database, (db) => {
 		const conversation = db
 			.select({ id: chatTable.id })
 			.from(chatTable)
@@ -91,32 +89,11 @@ export function commitConversationGeneration(
 				"The generated Variant could not be persisted.",
 			);
 		}
-		const data = [
-			...(input.provenance === undefined ? [] : [input.provenance]),
-			...(input.data ?? []),
-		];
-		if (data.length > 0) {
-			db.insert(messageVariantDataTable)
-				.values(data.map((entry) => ({
-					message_variant_id: variant.id,
-					namespace: entry.namespace,
-					key: entry.key,
-					value: entry.value,
-				})))
-				.run();
-		}
+		persistTerminalVariantData(db, variant.id, {
+			provenance: input.provenance,
+			suppliedData: input.data ?? [],
+		});
 
-		db.update(chatTable)
-			.set({ revision: sql`${chatTable.revision} + 1` })
-			.where(eq(chatTable.id, input.conversationId))
-			.run();
-
-		const snapshot = readConversationSnapshot(db, input.conversationId);
-		if (snapshot === undefined) {
-			throw new ConversationNotFoundError(input.conversationId);
-		}
-		return snapshot;
+		return advanceConversationRevision(db, input.conversationId);
 	});
-
-	return commit.immediate();
 }
