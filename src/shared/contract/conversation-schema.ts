@@ -286,11 +286,17 @@ const chatHistoryVariant = t.Object({
 	selected: t.Boolean(),
 });
 
+export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
+
 const chatHistoryMessage = t.Object({
 	id: t.Integer(),
 	position: t.Integer(),
 	timestamp: t.String(),
+	// Historical model Control identity used to decide whether a terminal
+	// Message is eligible for Continue after Control changes.
 	modelParticipantIdAtCreation: t.Optional(t.Nullable(t.Integer())),
+	// Server-derived capability for the selected Variant. Reasoning remains
+	// private even when it makes a reasoning-only Message continuable.
 	continuable: t.Optional(t.Boolean()),
 	author: t.Nullable(
 		t.Object({
@@ -301,6 +307,8 @@ const chatHistoryMessage = t.Object({
 	),
 	variants: t.Array(chatHistoryVariant),
 });
+
+export type ChatHistoryMessage = Static<typeof chatHistoryMessage>;
 
 export const chatHistoryPage = t.Object({
 	conversationId: t.Integer(),
@@ -323,6 +331,13 @@ export const chatHistoryPage = t.Object({
 	}),
 	messages: t.Array(chatHistoryMessage),
 });
+
+export type ChatHistoryPage = Static<typeof chatHistoryPage>;
+
+// The author stamp is inline in the message schema; derive it so the
+// paginated history client can type Participant stamps without a duplicate
+// declaration.
+export type ChatHistoryAuthorStamp = NonNullable<ChatHistoryMessage["author"]>;
 
 // Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409

@@ -25,9 +25,9 @@ import type {
 	ImportResolutionOutcome,
 } from "./import-chat";
 
-// The editable Participant-name default for blank captured author groups,
-// mirroring the server seam's constant so the UI label never drifts.
-export const UNKNOWN_IMPORTED_AUTHOR_NAME = "Unknown imported author";
+// The editable Participant-name default for blank captured author groups;
+// the shared module keeps the client label identical to the server seam.
+export { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../shared/imported-author";
 
 export type ChatImportPhase =
 	| "choose"

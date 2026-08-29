@@ -23,8 +23,9 @@ export const emptyAdHocDraft: AdHocDraft = {
 export const openingsToText = (openings: readonly string[]) =>
 	openings.join("\n");
 
-export const openingsFromText = (text: string) =>
-	text.split("\n").map((line) => line.trimEnd());
+// The shared conversion keeps Cast openings identical to Character Library
+// openings (the trimming variant is the deliberate single behavior).
+export { openingsFromText } from "../lib/openings";
 
 export const promptFields: Array<{
 	key: keyof ParticipantPrompt;

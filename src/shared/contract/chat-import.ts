@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { Elysia, t } from "elysia";
+import { Elysia, t, type Static } from "elysia";
 import {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
@@ -36,22 +36,30 @@ const importSuggestion = t.Object({
 	confirmed: t.Boolean(),
 });
 
+export type ChatImportSuggestion = Static<typeof importSuggestion>;
+
 const importGroup = t.Object({
+	// The verbatim captured author string; the empty string for blank names.
 	key: t.String(),
 	isBlank: t.Boolean(),
 	messagePositions: t.Array(t.Integer()),
-	// Parallel per-Message Variant counts for inspection and split selection.
+	// Variant count of each retained Message, parallel to messagePositions.
 	messageVariantCounts: t.Array(t.Integer()),
 	messageCount: t.Integer(),
 	variantCount: t.Integer(),
+	// Proposed native Participant name, editable by the user.
 	participantNameDefault: t.String(),
 	suggestion: t.Nullable(importSuggestion),
 });
+
+export type ChatImportGroup = Static<typeof importGroup>;
 
 const importDuplicateMatch = t.Object({
 	id: t.Integer(),
 	name: t.String(),
 });
+
+export type ChatImportDuplicateMatch = Static<typeof importDuplicateMatch>;
 
 // The staged preview contract mirrors the deep SillyTavern Import module's
 // public preview; routes only transport it.
@@ -73,6 +81,8 @@ const chatImportPreview = t.Object({
 	}),
 });
 
+export type ChatImportPreview = Static<typeof chatImportPreview>;
+
 const stagedOutcome = t.Object({
 	outcome: t.Literal("staged"),
 	token: t.String(),
@@ -82,6 +92,8 @@ const stagedOutcome = t.Object({
 // User-confirmed resolution plan for the commit: three outcomes only, whole
 // Messages referenced by 1-based record positions, and a nonblank native
 // name per Participant (derived from the selected Profile for forks).
+// The three resolution outcomes a resulting Participant may take. No skip,
+// source-role inference, or later re-assignment alternative exists.
 const importResolutionOutcome = t.Union([
 	t.Object({
 		type: t.Literal("fork"),
@@ -91,11 +103,17 @@ const importResolutionOutcome = t.Union([
 	t.Object({ type: t.Literal("chat-only") }),
 ]);
 
+export type ImportResolutionOutcome = Static<typeof importResolutionOutcome>;
+
+// One resulting Participant of the user-confirmed resolution plan. Whole
+// Messages are referenced by their 1-based record positions.
 const importResolvedParticipant = t.Object({
 	name: t.String(),
 	outcome: importResolutionOutcome,
 	messagePositions: t.Array(t.Integer()),
 });
+
+export type ChatImportResolvedParticipant = Static<typeof importResolvedParticipant>;
 
 const chatImportCommitBody = t.Object({
 	// The SHA-256 the client already knows from the preview; only the exact
@@ -109,6 +127,8 @@ const chatImportCommitBody = t.Object({
 	participants: t.Array(importResolvedParticipant),
 });
 
+export type ChatImportCommitBody = Static<typeof chatImportCommitBody>;
+
 // Receipt participant outcome labels: existing Profile fork, new Profile
 // creation, or a complete Chat-only Participant.
 const importReceiptParticipant = t.Object({
@@ -120,6 +140,8 @@ const importReceiptParticipant = t.Object({
 	]),
 	sourceCharacterId: t.Nullable(t.Integer()),
 });
+
+export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipant>;
 
 // Compact post-commit receipt; the committed Conversation summary is
 // returned too so the client can open the new Chat immediately without a
@@ -143,6 +165,8 @@ const chatImportReceipt = t.Object({
 	}),
 });
 
+export type ChatImportReceipt = Static<typeof chatImportReceipt>;
+
 const commitOutcome = t.Object({
 	outcome: t.Literal("committed"),
 	conversation: conversationSummary,
@@ -160,6 +184,8 @@ const importDetailsArtifactAvailability = t.Union([
 	}),
 ]);
 
+export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
+
 const importDetailsArtifact = t.Object({
 	chatId: t.Integer(),
 	namespace: t.String(),
@@ -171,6 +197,8 @@ const importDetailsArtifact = t.Object({
 	sha256: t.String(),
 	availability: importDetailsArtifactAvailability,
 });
+
+export type ImportDetailsArtifact = Static<typeof importDetailsArtifact>;
 
 // The complete Import Details payload: the persisted receipt and source
 // identity, structured duplicate evidence, and exact-artifact availability.
@@ -198,6 +226,8 @@ const chatImportDetails = t.Object({
 	}),
 	artifact: t.Nullable(importDetailsArtifact),
 });
+
+export type ChatImportDetails = Static<typeof chatImportDetails>;
 
 // Thin typed adapters over the deep staged Chat import seam. The stage
 // route deliberately declares no body schema: Elysia must leave the raw
