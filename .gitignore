@@ -1,5 +1,6 @@
 node_modules
 dist
+.reports
 data
 .env
 .dsh-thread-statuses.json

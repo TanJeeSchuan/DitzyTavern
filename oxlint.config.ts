@@ -14,9 +14,11 @@ export default defineConfig({
 		".roo/**",
 		".windsurf/**",
 		"tools/oxlint/anti-slop/**",
+		"tools/oxlint/ditzy/**",
 	],
 	jsPlugins: [
 		{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+		{ name: "ditzy", specifier: "./tools/oxlint/ditzy/index.ts" },
 	],
 	rules: {
 		"anti-slop/no-chained-type-assertions": "error",
@@ -34,5 +36,9 @@ export default defineConfig({
 		"anti-slop/no-unsafe-dictionary-type": "error",
 		"anti-slop/no-widen-then-assert": "error",
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
+		"ditzy/no-contract-definition-outside-contract": "error",
+		"ditzy/no-hand-written-wire-guards": "error",
+		"ditzy/no-manual-conversation-transaction": "error",
+		"ditzy/no-runtime-imports-in-shared": "error",
 	},
 });

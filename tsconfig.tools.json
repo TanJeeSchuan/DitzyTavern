@@ -1,0 +1,12 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"types": ["bun", "node"]
+	},
+	"include": [
+		"scripts/check-contract-ownership.ts",
+		"tools/oxlint/ditzy/**/*.ts"
+	]
+}

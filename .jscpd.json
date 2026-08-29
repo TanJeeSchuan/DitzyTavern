@@ -1,0 +1,21 @@
+{
+	"minLines": 4,
+	"minTokens": 35,
+	"threshold": 3.3,
+	"reporters": ["console", "sarif"],
+	"output": ".reports/jscpd",
+	"ignore": [
+		"**/node_modules/**",
+		"**/dist/**",
+		"**/.reports/**",
+		"**/migrations/**",
+		"**/shared/contract/**",
+		"**/server/conversation/types.ts",
+		"**/server/database/schema.ts",
+		"**/*.css",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.snap",
+		"**/fixtures/**"
+	]
+}
