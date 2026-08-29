@@ -11,3 +11,6 @@ test_data/
 
 # Playwright CLI scratch artifacts
 .playwright-cli/
+
+# System atlas (scratch, not committed)
+.atlas/

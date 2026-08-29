@@ -1,0 +1,58 @@
+{
+  "recordedAt": "wave-1-complete",
+  "base": "31537ae",
+  "lanes": {
+    "fix/1-contract-types": {
+      "sha": "0853a4717d2211744e676e521a11ded1118e9a64",
+      "worktree": "D:/Projects/DitzyTavern-wt/a-contract-types",
+      "ticket": "fix-1-contract-types.md",
+      "status": "resolved",
+      "commits": ["467e607", "0853a47"],
+      "review": "approve, 0 blockers/majors",
+      "note": "disclosed deviation: src/server/sillytavern/import-projection.ts touched (mandated by brief; no other lane owns it)"
+    },
+    "fix/3-cheap-reads": {
+      "sha": "a6b9b69674282b7bf6ea258542aa3bc85e01ff3e",
+      "worktree": "D:/Projects/DitzyTavern-wt/c-cheap-reads",
+      "ticket": "fix-3-cheap-reads.md",
+      "status": "resolved",
+      "commits": ["f569177", "a6b9b69"],
+      "review": "0 blocking, merge clear"
+    },
+    "fix/5-dead-code": {
+      "sha": "be93c6818e9774cc0eef8ac8ab27d4dd3d55d461",
+      "worktree": "D:/Projects/DitzyTavern-wt/e-dead-code",
+      "ticket": "fix-5-dead-code.md",
+      "status": "resolved",
+      "commits": ["be93c68"],
+      "review": "0 blockers both axes"
+    },
+    "fix/2-generation-seams": {
+      "sha": "42f5cf1a45ff94894f97d1a44c33c5349783df7d",
+      "worktree": "D:/Projects/DitzyTavern-wt/b-generation-seams",
+      "ticket": "fix-2-generation-seams.md",
+      "status": "resolved",
+      "commits": ["42f5cf1"],
+      "review": "0 blockers; barrels export-identical; zero test edits"
+    },
+    "fix/4-client-shared": {
+      "sha": "66864b43cd8b4308c6ae0c45a4af2f76fdd436af",
+      "worktree": "D:/Projects/DitzyTavern-wt/d-client-shared",
+      "ticket": "fix-4-client-shared.md",
+      "status": "resolved",
+      "commits": ["5277531", "66864b4"],
+      "review": "approve-with-findings, 0 blockers; worst finding fixed in 66864b4",
+      "note": "disclosed deviation: workspace.ts touched (formatUpdatedAt swap mandated by TODO 7); fix 5 also edits this file"
+    },
+    "fix/6-migration-squash": {
+      "sha": "3ea700c8a60ee8ea2a9ed574217d4fd610d92b47",
+      "worktree": "D:/Projects/DitzyTavern-wt/f-migration-squash",
+      "ticket": "fix-6-migration-squash.md",
+      "status": "resolved",
+      "commits": ["3ea700c"],
+      "review": "approve, no code changes required",
+      "note": "backfill kept as hand-written 0001; main checkout pre-squash dev DB must be deleted before gates"
+    }
+  },
+  "mergeOrder": ["fix/3-cheap-reads", "fix/2-generation-seams", "fix/1-contract-types", "fix/4-client-shared", "fix/5-dead-code", "fix/6-migration-squash"]
+}
