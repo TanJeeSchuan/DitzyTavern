@@ -254,24 +254,6 @@
 	font-size: 0.72rem;
 }
 
-.import-suggest-tag {
-	flex: none;
-	padding: 0.22rem 0.55rem;
-	border: 1px solid var(--border);
-	border-radius: 999px;
-	background: var(--surface-raised);
-	color: var(--text-muted);
-	font-size: 0.68rem;
-	font-weight: 650;
-	letter-spacing: 0.02em;
-}
-
-.import-suggest-tag[data-approved="true"] {
-	border-color: color-mix(in oklch, var(--accent) 45%, var(--border));
-	background: var(--accent-soft);
-	color: var(--accent-foreground);
-}
-
 .import-suggestion {
 	display: flex;
 	align-items: center;

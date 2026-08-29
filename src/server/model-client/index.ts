@@ -36,7 +36,6 @@ export type {
 export {
 	resolveTestConnectionBackend,
 	testConnection,
-	testDeepSeekConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,
 	TEST_CONNECTION_TIMEOUT_MS,
