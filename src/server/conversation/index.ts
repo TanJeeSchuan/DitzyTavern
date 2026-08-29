@@ -17,7 +17,7 @@ import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
 import { connectConversationDatabase } from "./internal";
-import { readConversationSnapshot } from "./snapshot";
+import { conversationExists, readConversationSnapshot } from "./snapshot";
 import { readConversationData } from "./read-data";
 import {
 	readActiveGenerationDetails,
@@ -143,16 +143,10 @@ export function createConversationModule(database: Database): ConversationModule
 				conversationId,
 			),
 		getGenerationSettings: (conversationId) => {
-				const snapshot = readConversationSnapshot(
-					connectConversationDatabase(database),
-					conversationId,
-				);
-				if (snapshot === undefined) return undefined;
-		return readConversationGenerationSettings(
-					connectConversationDatabase(database),
-					conversationId,
-				);
-			},
+			const db = connectConversationDatabase(database);
+			if (!conversationExists(db, conversationId)) return undefined;
+			return readConversationGenerationSettings(db, conversationId);
+		},
 		readHistory: (conversationId, request) =>
 			readChatHistory(connectConversationDatabase(database), conversationId, request),
 		readConversationData: (conversationId, filter) =>
