@@ -166,6 +166,23 @@ const deriveRemovalEligibility = (
 	return byParticipant;
 };
 
+// Cheap existence probe for callers that only need to know whether the
+// Conversation row is present. readConversationSnapshot runs eight queries
+// to assemble the full snapshot, which is too costly to use as an
+// existence check.
+export function conversationExists(
+	db: ConversationDatabase,
+	conversationId: number,
+): boolean {
+	return (
+		db
+			.select({ id: chatTable.id })
+			.from(chatTable)
+			.where(eq(chatTable.id, conversationId))
+			.get() !== undefined
+	);
+}
+
 export function readConversationSnapshot(
 	db: ConversationDatabase,
 	conversationId: number,
