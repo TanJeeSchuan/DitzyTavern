@@ -1,5 +1,6 @@
 import { api } from "./lib/eden";
 import type { CharacterSnapshot } from "./character-library";
+import { commandOutcome } from "./lib/command-outcome";
 import type { EdenResponse } from "./lib/eden";
 import type {
 	ActiveGenerationDetails,
@@ -80,15 +81,12 @@ export async function applyConversationCommand(
 		action,
 	});
 	if (error) {
-		const payload = error.value;
-		if (payload.outcome === "conflict") {
-			return { status: "conflict", currentConversation: payload.currentConversation };
-		}
-		if (payload.outcome === "not-found") return { status: "not-found" };
-		if (payload.outcome === "not-playable") return { status: "not-playable", reason: payload.reason };
-		if (payload.outcome === "not-removable") return { status: "not-removable", reason: payload.reason };
-		if (payload.outcome === "invalid") return { status: "invalid", reason: payload.reason };
-		return { status: "network" };
+		return commandOutcome(error.value, {
+			conflict: (payload) => ({ status: "conflict", currentConversation: payload.currentConversation }),
+			"not-playable": (payload) => ({ status: "not-playable", reason: payload.reason }),
+			"not-removable": (payload) => ({ status: "not-removable", reason: payload.reason }),
+			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+		});
 	}
 	return { status: "applied", conversation: data.conversation };
 }
@@ -107,16 +105,15 @@ export async function addCharacterToCast(input: {
 			expectedCharacterRevision: input.expectedCharacterRevision,
 		});
 	if (error) {
-		const payload = error.value;
-		if (payload.outcome === "conflict") {
-			if ("currentConversation" in payload) {
-				return { status: "conflict", currentConversation: payload.currentConversation };
-			}
-			return { status: "conflict", currentCharacterName: payload.currentCharacter.name };
-		}
-		if (payload.outcome === "not-found") return { status: "not-found" };
-		if (payload.outcome === "invalid") return { status: "invalid", reason: payload.reason };
-		return { status: "network" };
+		return commandOutcome(error.value, {
+			conflict: (payload) => {
+				if ("currentConversation" in payload) {
+					return { status: "conflict", currentConversation: payload.currentConversation };
+				}
+				return { status: "conflict", currentCharacterName: payload.currentCharacter.name };
+			},
+			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+		});
 	}
 	return { status: "applied", conversation: data.conversation };
 }
@@ -138,13 +135,10 @@ export async function saveParticipantAsCharacter(input: {
 		.cast.participants({ participantId: input.participantId })
 		.characters.post({ expectedConversationRevision: input.expectedConversationRevision });
 	if (error) {
-		const payload = error.value;
-		if (payload.outcome === "conflict") {
-			return { status: "conflict", currentConversation: payload.currentConversation };
-		}
-		if (payload.outcome === "not-found") return { status: "not-found" };
-		if (payload.outcome === "invalid") return { status: "invalid", reason: payload.reason };
-		return { status: "network" };
+		return commandOutcome(error.value, {
+			conflict: (payload) => ({ status: "conflict", currentConversation: payload.currentConversation }),
+			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+		});
 	}
 	return { status: "applied", character: data.character };
 }

@@ -25,6 +25,8 @@ import {
 	openingsToText,
 	type Drafts,
 } from "./character-library/definition";
+import { LIBRARY_UNREACHABLE_NOTICE } from "./lib/command-outcome";
+import { useAsyncEffect } from "./lib/use-async";
 
 // The library handles listing, creation, editing, pinning, deletion, and
 // conflict recovery. Duplicate names use computed ordinals; database
@@ -52,18 +54,21 @@ export function CharacterLibraryPanel({
 	const [creating, setCreating] = useState(false);
 	const [createDraft, setCreateDraft] = useState<Drafts>(emptyDrafts);
 
-	const loadList = useCallback(async () => {
+	const loadList = useCallback(async (isCancelled?: () => boolean) => {
 		try {
-			setCharacters(await listCharacters());
+			const loaded = await listCharacters();
+			if (isCancelled?.()) return false;
+			setCharacters(loaded);
 			return true;
 		} catch {
+			if (isCancelled?.()) return false;
 			setCharacters(null);
 			return false;
 		}
 	}, []);
 
-	useEffect(() => {
-		void loadList();
+	useAsyncEffect((isCancelled) => {
+		void loadList(isCancelled);
 	}, [loadList]);
 
 	// Computed duplicate ordinals follow library order, so each repeated name
@@ -91,7 +96,7 @@ export function CharacterLibraryPanel({
 			setConflict(null);
 			setNotice(null);
 		} catch {
-			setNotice("The Library could not be reached.");
+			setNotice(LIBRARY_UNREACHABLE_NOTICE);
 		}
 	}, []);
 
@@ -168,7 +173,7 @@ export function CharacterLibraryPanel({
 						break;
 					}
 					default: {
-						setNotice("The Library could not be reached.");
+						setNotice(LIBRARY_UNREACHABLE_NOTICE);
 					}
 				}
 			} finally {
@@ -213,7 +218,7 @@ export function CharacterLibraryPanel({
 			} else if (outcome.status === "invalid") {
 				setNotice(outcome.reason);
 			} else if (outcome.status === "network") {
-				setNotice("The Library could not be reached.");
+				setNotice(LIBRARY_UNREACHABLE_NOTICE);
 			}
 		} finally {
 			setPendingAction(null);

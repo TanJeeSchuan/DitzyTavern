@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
 	loadActiveGenerationDetails,
 	loadVariantDetails,
@@ -9,6 +9,7 @@ import {
 	type GenerationProvenance,
 	type VariantDetails,
 } from "./conversation";
+import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
 export type GenerationDetailsTarget =
@@ -29,11 +30,10 @@ export function GenerationDetailsPanel({
 		| { status: "variant"; details: VariantDetails }
 	>({ status: "loading" });
 
-	useEffect(() => {
-		let cancelled = false;
+	useAsyncEffect((isCancelled) => {
 		setState({ status: "loading" });
 		const showError = (status: "not-found" | "network") => {
-			if (cancelled) return;
+			if (isCancelled()) return;
 			setState({
 				status: "error",
 				message: status === "not-found"
@@ -43,7 +43,7 @@ export function GenerationDetailsPanel({
 		};
 		if (target.type === "active") {
 			void loadActiveGenerationDetails(target.conversationId, target.generationId).then((outcome) => {
-				if (cancelled) return;
+				if (isCancelled()) return;
 				if (outcome.status === "available") {
 					setState({ status: "inspection", details: outcome.details });
 					return;
@@ -52,7 +52,7 @@ export function GenerationDetailsPanel({
 			});
 		} else {
 			void loadVariantDetails(target.conversationId, target.messageId, target.variantId).then((outcome) => {
-				if (cancelled) return;
+				if (isCancelled()) return;
 				if (outcome.status === "available") {
 					setState({ status: "variant", details: outcome.details });
 					return;
@@ -60,7 +60,6 @@ export function GenerationDetailsPanel({
 				showError(outcome.status);
 			});
 		}
-		return () => { cancelled = true; };
 	}, [target]);
 
 	return (

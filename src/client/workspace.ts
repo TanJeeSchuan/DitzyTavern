@@ -1,4 +1,5 @@
 import { api } from "./lib/eden";
+import { formatTimestamp } from "./lib/format";
 
 export type ThemePreference = "system" | "daylight" | "evening";
 
@@ -48,18 +49,6 @@ export interface WorkspaceClient {
 	loadActiveWorkspace(): Promise<Workspace>;
 }
 
-const formatUpdatedAt = (value: string) => {
-	const date = new Date(value);
-	if (Number.isNaN(date.getTime())) {
-		return value;
-	}
-
-	return new Intl.DateTimeFormat(undefined, {
-		dateStyle: "medium",
-		timeStyle: "short",
-	}).format(date);
-};
-
 export const workspaceClient: WorkspaceClient = {
 	async loadActiveWorkspace() {
 		const { data, error } = await api.api.workspace.get();
@@ -70,7 +59,7 @@ export const workspaceClient: WorkspaceClient = {
 		const chats = data.chats.map((chat) => ({
 			id: String(chat.id),
 			title: chat.name,
-			updatedAt: formatUpdatedAt(chat.lastMessageTime),
+			updatedAt: formatTimestamp(chat.lastMessageTime),
 		}));
 
 		return {
