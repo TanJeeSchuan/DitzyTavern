@@ -466,4 +466,49 @@ describe("staged SillyTavern chat import", () => {
 		expect(preview.groups[0]?.messageCount).toBe(12000);
 		expect(preview.groups[1]?.messageCount).toBe(12000);
 	});
+
+	test("cleans up backpressure listeners while streaming a large upload", async () => {
+		const records: unknown[] = [header];
+		for (let index = 0; index < 2000; index += 1) {
+			records.push({
+				...writer,
+				send_date: new Date(Date.UTC(2026, 0, 1, 0, 0, index % 60)).toISOString(),
+				mes: `Message ${index} ${"x".repeat(256)}`,
+			});
+		}
+		const bytes = Buffer.from(jsonl(records), "utf8");
+		let offset = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				if (offset >= bytes.length) {
+					controller.close();
+					return;
+				}
+				const end = Math.min(offset + 32_768, bytes.length);
+				controller.enqueue(bytes.subarray(offset, end));
+				offset = end;
+			},
+		});
+		const listenerWarnings: Error[] = [];
+		const captureWarning = (warning: Error) => {
+			if (
+				warning.name === "MaxListenersExceededWarning" &&
+				warning.stack?.includes("sillytavern\\staged.ts")
+			) {
+				listenerWarnings.push(warning);
+			}
+		};
+		process.on("warning", captureWarning);
+		try {
+			await module.stageFile({
+				bytes: stream,
+				originalFilename: "chunked-large.jsonl",
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		} finally {
+			process.off("warning", captureWarning);
+		}
+
+		expect(listenerWarnings).toEqual([]);
+	});
 });

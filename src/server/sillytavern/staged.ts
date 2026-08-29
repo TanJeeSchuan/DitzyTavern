@@ -110,8 +110,16 @@ const streamToStagedFile = (
 					resolveDrain();
 					return;
 				}
-				output.once("drain", resolveDrain);
-				output.once("error", rejectDrain);
+				const onDrain = () => {
+					output.off("error", onError);
+					resolveDrain();
+				};
+				const onError = (error: Error) => {
+					output.off("drain", onDrain);
+					rejectDrain(error);
+				};
+				output.once("drain", onDrain);
+				output.once("error", onError);
 			});
 		const pump = async () => {
 			try {
