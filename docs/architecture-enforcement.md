@@ -4,15 +4,18 @@
 Oxlint, the custom rule tests, the whole-repository contract audit, both
 TypeScript projects, the Bun tests, and implementation clone detection.
 
-The `ditzy` Oxlint plugin owns four project rules:
+The `ditzy` Oxlint plugin owns five project rules:
 
 - `no-contract-definition-outside-contract` rejects TypeBox schema construction
   in client and server consumers. Canonical schemas belong in
   `src/shared/contract/**`.
 - `no-runtime-imports-in-shared` rejects new server, client, Elysia, and Bun
   runtime imports from production files under `src/shared/**`.
+- `no-server-runtime-imports-in-client` restricts client imports of server
+  modules to type-only imports, keeping runtime dependencies behind the
+  transport boundary.
 - `no-hand-written-wire-guards` rejects long property-by-property decoders in
-  migrated client transport modules. Schema-based decoding with `Value.Check`
+  migrated client transport modules. Schema-based decoding with `Value.Decode`
   is the replacement.
 - `no-manual-conversation-transaction` rejects direct Conversation transaction
   construction outside the `runConversationTransaction` owner.
@@ -35,11 +38,17 @@ write runs through `runConversationTransaction`. `bun run check` is green.
 
 ## Clone and dead-export checks
 
-JSCPD covers implementation and TSX template code. Contract schemas, database
-schemas, CSS, tests, fixtures, snapshots, and migrations are excluded because
-clone detection is not the schema ownership mechanism. The initial 3.3 percent
-threshold sits just above the repository's 3.21 percent implementation baseline
-and still reports the known generation lifecycle and client command clones.
+JSCPD runs as an advisory report, not a gate: `bun run check:clones` writes a
+console and SARIF clone report, but the `check` pipeline does not run it and
+nothing fails on its output. Duplicated syntax is evidence, not a verdict —
+deciding whether a reported clone deserves an abstraction is a human review
+call, because DRY is about duplicated knowledge rather than duplicated syntax.
+There is no blanket percentage threshold; add a ratchet only if the report
+proves to catch high-value regressions over time.
+
+Contract schemas, database schemas, CSS, tests, fixtures, snapshots, and
+migrations are excluded from the report because clone detection is not the
+schema ownership mechanism.
 
 Knip was evaluated but is not part of `check`. With the current Bun test and
 barrel-export layout it reports 88 unused files and 176 unused exports, including

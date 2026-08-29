@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { Elysia } from "elysia";
+import { Elysia, status } from "elysia";
 import {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNotFoundError,
@@ -32,6 +32,14 @@ export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModule
 	readonly fetch?: import("../model-client").ModelFetch;
 	readonly testConnectionTimeoutMs?: number;
 }
+
+const staleSettingsResponse = (error: StaleConnectionSettingsRevisionError) =>
+	status(409, {
+		outcome: "conflict" as const,
+		expectedRevision: error.expectedRevision,
+		actualRevision: error.actualRevision,
+		currentSettings: toSettingsPayload(error.currentSettings),
+	});
 
 // Thin typed adapters over the Connection Settings seam; schemas stay in the
 // shared contract and this module only maps domain outcomes to responses.
@@ -104,12 +112,7 @@ export const createConnectionSettingsRoutes = (
 						return status(404, { outcome: "not-found" as const });
 					}
 					if (error instanceof StaleConnectionSettingsRevisionError) {
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentSettings: toSettingsPayload(error.currentSettings),
-						});
+						return staleSettingsResponse(error);
 					}
 					throw error;
 				}
@@ -203,12 +206,7 @@ export const createConnectionSettingsRoutes = (
 					return { outcome: "applied" as const, settings: toSettingsPayload(result) };
 				} catch (error) {
 					if (error instanceof StaleConnectionSettingsRevisionError) {
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentSettings: toSettingsPayload(error.currentSettings),
-						});
+						return staleSettingsResponse(error);
 					}
 					if (error instanceof ConnectionProfileNotFoundError) {
 						return status(404, { outcome: "not-found" as const });
@@ -240,21 +238,7 @@ function toSettingsPayload(snapshot: ConnectionSettingsSnapshot) {
 	return {
 		revision: snapshot.revision,
 		activeProfileId: snapshot.activeProfileId,
-		profiles: snapshot.profiles.map((entry) => ({
-			id: entry.id,
-			displayName: entry.displayName,
-			apiFormat: entry.apiFormat,
-			requestUrl: entry.requestUrl,
-			modelsUrl: entry.modelsUrl,
-			modelBackend: entry.modelBackend,
-			adapter: entry.adapter,
-			outputTokenRepresentation: entry.outputTokenRepresentation,
-			timeoutMs: entry.timeoutMs,
-			pinnedModels: [...entry.pinnedModels],
-			discoveryCatalog: [...entry.discoveryCatalog],
-			credentialConfigured: entry.credentialConfigured,
-			headers: [...entry.headers],
-		})),
+		profiles: snapshot.profiles.map(toProfilePayload),
 	};
 }
 

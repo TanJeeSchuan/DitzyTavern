@@ -17,6 +17,11 @@ import {
 	commandBodySchema,
 } from "../../shared/contract/character-library";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
+import {
+	invalidResponse,
+	notFoundResponse,
+	staleCharacterConflictResponse,
+} from "./payload";
 
 // Adapts the seam's immutable snapshot into the transport shape.
 export const toCharacterPayload = (character: CharacterSnapshot) => ({
@@ -57,7 +62,7 @@ export const createCharacterLibraryRoutes = (database: Database | undefined) =>
 		)
 		.post(
 			"/api/characters/commands",
-			({ body, status }) => {
+			({ body }) => {
 				try {
 					const outcome = withCharacterLibrary(database, (library) =>
 						library.execute(body),
@@ -77,24 +82,16 @@ export const createCharacterLibraryRoutes = (database: Database | undefined) =>
 					};
 				} catch (error) {
 					if (error instanceof StaleCharacterRevisionError) {
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentCharacter: toCharacterPayload(error.currentCharacter),
-						});
+						return staleCharacterConflictResponse(error);
 					}
 					if (error instanceof CharacterNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					if (
 						error instanceof InvalidCharacterDefinitionError ||
 						error instanceof InvalidCharacterCommandError
 					) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}

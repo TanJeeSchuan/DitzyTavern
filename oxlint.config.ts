@@ -39,6 +39,7 @@ export default defineConfig({
 		"ditzy/no-contract-definition-outside-contract": "error",
 		"ditzy/no-hand-written-wire-guards": "error",
 		"ditzy/no-manual-conversation-transaction": "error",
+		"ditzy/no-server-runtime-imports-in-client": "error",
 		"ditzy/no-runtime-imports-in-shared": "error",
 	},
 });

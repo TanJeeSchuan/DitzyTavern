@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { Elysia, t } from "elysia";
+import { Elysia, status, t } from "elysia";
 import {
 	CharacterNotFoundError,
 	InvalidCharacterDefinitionError,
@@ -36,7 +36,12 @@ import {
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
-import { toConversationSummary } from "./payload";
+import {
+	invalidResponse,
+	notFoundResponse,
+	staleCharacterConflictResponse,
+	toConversationSummary,
+} from "./payload";
 import {
 	activeGenerationDetails,
 	addCharacterToCastBody,
@@ -227,6 +232,43 @@ const staleConversationConflict = (
 	};
 };
 
+// Builds the typed accepted-generation body shared by the Send, Continue,
+// and Swipe acceptance routes.
+const acceptedGenerationBody = (
+	conversationId: number,
+	generationId: number,
+	messageId: number,
+	variantId: number,
+) => ({
+	outcome: "accepted" as const,
+	generationId,
+	conversationId,
+	messageId,
+	variantId,
+});
+
+// Maps a stale Conversation revision onto the typed recovery response: the
+// authoritative summary rides inside the 409, or a 404 when the Conversation
+// disappeared between the conflict and the recovery read.
+const staleConversationResponse = (
+	database: Database | undefined,
+	conversationId: number,
+	error: StaleConversationRevisionError,
+) => {
+	const conflict = staleConversationConflict(database, conversationId, error);
+	return conflict.outcome === "not-found"
+		? status(404, { outcome: "not-found" as const })
+		: status(409, conflict);
+};
+
+// Send and Continue share one acceptance response contract.
+const generationStartRouteResponse = {
+	200: generationAccepted,
+	404: notFoundOutcome,
+	409: generationConflictResponse,
+	422: invalidOutcome,
+};
+
 // Thin typed adapters over the deep Conversation seam: snapshot reads,
 // revisioned command execution, and the explicit Character-to-Cast workflow
 // (which itself composes Character Library and Conversation capabilities in
@@ -259,6 +301,62 @@ export const createConversationRoutes = (
 	options: ConversationRouteOptions = {},
 ) => {
 	const generationCoordinator = createGenerationCoordinator(database, options);
+
+	type GenerationAcceptanceStart = (
+		conversationId: number,
+		body: { expectedRevision: number; content?: string },
+	) => Promise<{
+		accepted: {
+			generationId: number;
+			modelMessageId: number;
+			provisionalVariantId: number;
+		};
+	}>;
+
+	// Send and Continue share one acceptance skeleton. Elysia validates the
+	// route-specific body schema before this handler, so `content` is present
+	// only for Send and the coordinator call receives exactly its own shape.
+	const generationAcceptanceRoute = (start: GenerationAcceptanceStart) =>
+		async ({ params, body }: {
+			params: { id: number };
+			body: { expectedRevision: number; content?: string };
+		}) => {
+			try {
+				const started = await start(params.id, body);
+				const accepted = started.accepted;
+				return acceptedGenerationBody(
+					params.id,
+					accepted.generationId,
+					accepted.modelMessageId,
+					accepted.provisionalVariantId,
+				);
+			} catch (error) {
+				const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+				if (failure?.status === 404) return status(404, failure.body);
+				if (failure?.status === 409) return status(409, failure.body);
+				if (failure?.status === 422) return status(422, failure.body);
+				throw error;
+			}
+		};
+
+	const readActiveGenerationDetailsRoute = ({ params }: {
+		params: { id: number; generationId: number };
+	}) => {
+		const details = withDatabase(database, (connection) =>
+			createConversationModule(connection).readActiveGenerationDetails(
+				params.id,
+				params.generationId,
+			),
+		);
+		if (details === undefined) return status(404, { outcome: "not-found" as const });
+		return details;
+	};
+
+	const activeGenerationDetailsRouteOptions = {
+		params: generationIdParams,
+		response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+	};
+
 	return new Elysia()
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
@@ -285,7 +383,7 @@ export const createConversationRoutes = (
 				} catch (error) {
 					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
 						runtime?.releaseStopRequest();
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					throw error;
 				} finally {
@@ -302,7 +400,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations/stop-all",
-			({ params, status }) => {
+			({ params }) => {
 				const connection = database ?? openDatabase();
 				try {
 					const registry = runtimeRegistryForRequest(connection, database);
@@ -326,7 +424,7 @@ export const createConversationRoutes = (
 					};
 				} catch (error) {
 					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					throw error;
 				} finally {
@@ -343,74 +441,29 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/continue/generations",
-			async ({ params, body, status }) => {
-				try {
-					const started = await generationCoordinator.startContinuationGeneration({
-						conversationId: params.id,
-						expectedRevision: body.expectedRevision,
-					});
-					const accepted = started.accepted;
-					return {
-						outcome: "accepted" as const,
-						generationId: accepted.generationId,
-						conversationId: params.id,
-						messageId: accepted.modelMessageId,
-						variantId: accepted.provisionalVariantId,
-					};
-				} catch (error) {
-					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-					if (failure?.status === 404) return status(404, failure.body);
-					if (failure?.status === 409) return status(409, failure.body);
-					if (failure?.status === 422) return status(422, failure.body);
-					throw error;
-				}
-			},
+			generationAcceptanceRoute((conversationId, body) =>
+				generationCoordinator.startContinuationGeneration({
+					conversationId,
+					expectedRevision: body.expectedRevision,
+				}),
+			),
 			{
 				params: conversationIdParams,
 				body: continuationBody,
-				response: {
-					200: generationAccepted,
-					404: notFoundOutcome,
-					409: generationConflictResponse,
-					422: invalidOutcome,
-				},
+				response: generationStartRouteResponse,
 			},
 		)
 		.get(
 			"/api/conversations/:id/generations/:generationId/inspection",
-			({ params, status }) => {
-				const details = withDatabase(database, (connection) =>
-					createConversationModule(connection).readActiveGenerationDetails(
-						params.id,
-						params.generationId,
-					),
-				);
-				if (details === undefined) return status(404, { outcome: "not-found" as const });
-				return details;
-			},
-			{
-				params: generationIdParams,
-				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
-			},
+			readActiveGenerationDetailsRoute,
+			activeGenerationDetailsRouteOptions,
 		)
 		// Details is a vocabulary-friendly alias used by Message/Generation
 		// panels; both paths share the same bounded read semantics.
 		.get(
 			"/api/conversations/:id/generations/:generationId/details",
-			({ params, status }) => {
-				const details = withDatabase(database, (connection) =>
-					createConversationModule(connection).readActiveGenerationDetails(
-						params.id,
-						params.generationId,
-					),
-				);
-				if (details === undefined) return status(404, { outcome: "not-found" as const });
-				return details;
-			},
-			{
-				params: generationIdParams,
-				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
-			},
+			readActiveGenerationDetailsRoute,
+			activeGenerationDetailsRouteOptions,
 		)
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
@@ -493,41 +546,22 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations",
-			async ({ params, body, status }) => {
-				if (body.expectedRevision === undefined || body.content === undefined) {
-					return status(422, { outcome: "invalid", reason: "Generation start requires content and an expected Conversation revision." });
+			generationAcceptanceRoute((conversationId, body) => {
+				if (body.content === undefined) {
+					throw new InvalidConversationCommandError(
+						"Generation start requires content and an expected Conversation revision.",
+					);
 				}
-				try {
-					const started = await generationCoordinator.startSendGeneration({
-						conversationId: params.id,
-						expectedRevision: body.expectedRevision,
-						content: body.content,
-					});
-					const accepted = started.accepted;
-					return {
-						outcome: "accepted" as const,
-						generationId: accepted.generationId,
-						conversationId: params.id,
-						messageId: accepted.modelMessageId,
-						variantId: accepted.provisionalVariantId,
-					};
-				} catch (error) {
-					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-					if (failure?.status === 404) return status(404, failure.body);
-					if (failure?.status === 409) return status(409, failure.body);
-					if (failure?.status === 422) return status(422, failure.body);
-					throw error;
-				}
-			},
+				return generationCoordinator.startSendGeneration({
+					conversationId,
+					expectedRevision: body.expectedRevision,
+					content: body.content,
+				});
+			}),
 			{
 				params: conversationIdParams,
 				body: generationBody,
-				response: {
-					200: generationAccepted,
-					404: notFoundOutcome,
-					409: generationConflictResponse,
-					422: invalidOutcome,
-				},
+				response: generationStartRouteResponse,
 			},
 		)
 		.get(
@@ -566,21 +600,20 @@ export const createConversationRoutes = (
 						conversationId: params.id,
 						messageId: params.messageId,
 					});
-					const accepted = started.accepted;
-					return {
-						outcome: "accepted" as const,
-						generationId: accepted.generationId,
-						conversationId: params.id,
-						messageId: accepted.messageId,
-						variantId: accepted.provisionalVariantId,
-					};
-				} catch (error) {
-					const failure = error instanceof Error ? generationStartFailure(error) : undefined;
-					if (failure?.status === 404) return status(404, failure.body);
-					if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
-					if (failure?.status === 422) return status(422, failure.body);
-					throw error;
-				}
+				const accepted = started.accepted;
+				return acceptedGenerationBody(
+					params.id,
+					accepted.generationId,
+					accepted.messageId,
+					accepted.provisionalVariantId,
+				);
+			} catch (error) {
+				const failure = error instanceof Error ? generationStartFailure(error) : undefined;
+				if (failure?.status === 404) return notFoundResponse();
+				if (failure?.status === 409 && failure.body.outcome === "not-playable") return status(409, failure.body);
+				if (failure?.status === 422) return invalidResponse(failure.body.reason);
+				throw error;
+			}
 			},
 			{
 				params: messageIdParams,
@@ -615,18 +648,10 @@ export const createConversationRoutes = (
 					};
 				} catch (error) {
 					if (error instanceof StaleConversationRevisionError) {
-						const conflict = staleConversationConflict(
-							database,
-							params.id,
-							error,
-						);
-						if (conflict.outcome === "not-found") {
-							return status(404, conflict);
-						}
-						return status(409, conflict);
+						return staleConversationResponse(database, params.id, error);
 					}
 					if (error instanceof ConversationNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					if (error instanceof ConversationNotPlayableError) {
 						return status(409, {
@@ -641,10 +666,7 @@ export const createConversationRoutes = (
 						});
 					}
 					if (error instanceof InvalidConversationCommandError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -662,7 +684,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/cast/characters",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					const conversation = withDatabase(database, (connection) =>
 						addCharacterToCast(connection, {
@@ -678,35 +700,19 @@ export const createConversationRoutes = (
 					};
 				} catch (error) {
 					if (error instanceof StaleCharacterRevisionError) {
-						return status(409, {
-							outcome: "conflict" as const,
-							expectedRevision: error.expectedRevision,
-							actualRevision: error.actualRevision,
-							currentCharacter: toCharacterPayload(error.currentCharacter),
-						});
+						return staleCharacterConflictResponse(error);
 					}
 					if (error instanceof StaleConversationRevisionError) {
-						const conflict = staleConversationConflict(
-							database,
-							params.id,
-							error,
-						);
-						if (conflict.outcome === "not-found") {
-							return status(404, conflict);
-						}
-						return status(409, conflict);
+						return staleConversationResponse(database, params.id, error);
 					}
 					if (
 						error instanceof ConversationNotFoundError ||
 						error instanceof CharacterNotFoundError
 					) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					if (error instanceof InvalidConversationCommandError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -724,7 +730,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/cast/participants/:participantId/characters",
-			({ params, body, status }) => {
+			({ params, body }) => {
 				try {
 					const { character } = withDatabase(database, (connection) =>
 						saveParticipantAsCharacter(connection, {
@@ -740,27 +746,16 @@ export const createConversationRoutes = (
 					};
 				} catch (error) {
 					if (error instanceof StaleConversationRevisionError) {
-						const conflict = staleConversationConflict(
-							database,
-							params.id,
-							error,
-						);
-						if (conflict.outcome === "not-found") {
-							return status(404, conflict);
-						}
-						return status(409, conflict);
+						return staleConversationResponse(database, params.id, error);
 					}
 					if (
 						error instanceof ConversationNotFoundError ||
 						error instanceof ParticipantNotFoundError
 					) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					if (error instanceof InvalidCharacterDefinitionError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}

@@ -16,7 +16,7 @@ import {
 	withChatImport,
 	withChatImportDetails,
 } from "../sillytavern";
-import { toConversationSummary } from "./payload";
+import { invalidResponse, toConversationSummary } from "./payload";
 import {
 	chatImportCommitBody,
 	chatImportDetails,
@@ -31,6 +31,18 @@ import {
 } from "../../shared/contract/chat-import";
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
+
+// Expired and unavailable staged handles are both gone-state 410 outcomes;
+// every staged route maps them identically before its own error vocabulary.
+const stagedGoneBody = (error: Error) => {
+	if (error instanceof StagedChatImportExpiredError) {
+		return { outcome: "expired" as const };
+	}
+	if (error instanceof StagedChatImportUnavailableError) {
+		return { outcome: "unavailable" as const, reason: error.reason };
+	}
+	return undefined;
+};
 
 // Thin typed adapters over the deep staged Chat import seam. The stage
 // route deliberately declares no body schema: Elysia must leave the raw
@@ -100,20 +112,10 @@ export const createChatImportRoutes = (
 					);
 					return { outcome: "available" as const, preview };
 				} catch (error) {
-					if (error instanceof StagedChatImportExpiredError) {
-						return status(410, { outcome: "expired" as const });
-					}
-					if (error instanceof StagedChatImportUnavailableError) {
-						return status(410, {
-							outcome: "unavailable" as const,
-							reason: error.reason,
-						});
-					}
+					const gone = error instanceof Error ? stagedGoneBody(error) : undefined;
+					if (gone !== undefined) return status(410, gone);
 					if (error instanceof StagedChatImportTokenMismatchError) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -149,15 +151,8 @@ export const createChatImportRoutes = (
 						receipt: result.receipt,
 					};
 				} catch (error) {
-					if (error instanceof StagedChatImportExpiredError) {
-						return status(410, { outcome: "expired" as const });
-					}
-					if (error instanceof StagedChatImportUnavailableError) {
-						return status(410, {
-							outcome: "unavailable" as const,
-							reason: error.reason,
-						});
-					}
+					const gone = error instanceof Error ? stagedGoneBody(error) : undefined;
+					if (gone !== undefined) return status(410, gone);
 					if (
 						error instanceof StagedChatImportTokenMismatchError ||
 						error instanceof StagedChatImportPlanError ||
@@ -168,10 +163,7 @@ export const createChatImportRoutes = (
 						error instanceof InvalidCharacterCommandError ||
 						error instanceof InvalidConversationCreationError
 					) {
-						return status(422, {
-							outcome: "invalid" as const,
-							reason: error.message,
-						});
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}

@@ -8,8 +8,12 @@ import {
 import { InvalidConversationCreationError } from "../conversation";
 import { withDatabase } from "../database/database";
 import { createNativeConversation } from "../workflows";
-import { toCharacterPayload } from "./character-library";
-import { toConversationSummary } from "./payload";
+import {
+	invalidResponse,
+	notFoundResponse,
+	staleCharacterConflictResponse,
+	toConversationSummary,
+} from "./payload";
 import { characterConflict } from "../../shared/contract/character-library";
 import {
 	nativeConversationBody,
@@ -20,7 +24,7 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 export const createNativeConversationRoutes = (database: Database | undefined) =>
 	new Elysia().post(
 		"/api/conversations/native",
-		({ body, status }) => {
+		({ body }) => {
 			try {
 				const conversation = withDatabase(database, (connection) =>
 					createNativeConversation(connection, {
@@ -35,24 +39,16 @@ export const createNativeConversationRoutes = (database: Database | undefined) =
 				};
 			} catch (error) {
 				if (error instanceof StaleCharacterRevisionError) {
-					return status(409, {
-						outcome: "conflict" as const,
-						expectedRevision: error.expectedRevision,
-						actualRevision: error.actualRevision,
-						currentCharacter: toCharacterPayload(error.currentCharacter),
-					});
+					return staleCharacterConflictResponse(error);
 				}
 				if (error instanceof CharacterNotFoundError) {
-					return status(404, { outcome: "not-found" as const });
+					return notFoundResponse();
 				}
 				if (
 					error instanceof InvalidCharacterDefinitionError ||
 					error instanceof InvalidConversationCreationError
 				) {
-					return status(422, {
-						outcome: "invalid" as const,
-						reason: error.message,
-					});
+					return invalidResponse(error.message);
 				}
 				throw error;
 			}

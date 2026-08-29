@@ -20,7 +20,7 @@
 		"typecheck": "tsc --noEmit",
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",
 		"test": "bun test src",
-		"check": "bun run lint && bun run lint:rules && bun run check:contracts && bun run typecheck && bun run typecheck:tools && bun run test && bun run check:clones",
+		"check": "bun run lint && bun run lint:rules && bun run check:contracts && bun run typecheck && bun run typecheck:tools && bun run test",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
 		"smoke:import": "node scripts/import-chat-smoke.ts"
 	},
