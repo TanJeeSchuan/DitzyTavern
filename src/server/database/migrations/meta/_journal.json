@@ -5,148 +5,15 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1787054222320,
-      "tag": "0000_marvelous_slipstream",
+      "when": 1787971467202,
+      "tag": "0000_heavy_hex",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "6",
-      "when": 1787062931706,
-      "tag": "0001_strong_sunset_bain",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1787237273553,
-      "tag": "0002_naive_night_thrasher",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1787298660993,
-      "tag": "0003_strange_the_executioner",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1787454164904,
-      "tag": "0004_stormy_moonstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1787457909252,
-      "tag": "0005_puzzling_rachel_grey",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1787457925628,
-      "tag": "0006_legal_lenny_balinger",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1787467181041,
-      "tag": "0007_legal_chronomancer",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1787502493500,
-      "tag": "0008_naive_daredevil",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1787672776676,
-      "tag": "0009_freezing_centennial",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1787676061417,
-      "tag": "0010_noisy_lifeguard",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1787677618823,
-      "tag": "0011_smiling_shiva",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1787681405058,
-      "tag": "0012_robust_raider",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1787681405059,
-      "tag": "0013_backfill_generation_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1787787615531,
-      "tag": "0014_talented_ultron",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
-      "when": 1787789508502,
-      "tag": "0015_legal_la_nuit",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "6",
-      "when": 1787791268166,
-      "tag": "0016_flimsy_thundra",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "6",
-      "when": 1787793267941,
-      "tag": "0017_huge_namorita",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "6",
-      "when": 1787793267942,
-      "tag": "0018_checkpoint_active_generation",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "6",
-      "when": 1787801425385,
-      "tag": "0019_pretty_newton_destine",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "6",
-      "when": 1787805566700,
-      "tag": "0020_mushy_deadpool",
+      "when": 1787971521538,
+      "tag": "0001_backfill_generation_settings",
       "breakpoints": true
     }
   ]
