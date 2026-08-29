@@ -26,7 +26,9 @@ export const emptyDrafts: Drafts = {
 export const openingsToText = (openings: readonly string[]) =>
 	openings.join("\n");
 
-export const openingsFromText = (text: string) => text.split("\n");
+// The shared conversion keeps Character Library openings identical to Cast
+// openings (the trimming variant is the deliberate single behavior).
+export { openingsFromText } from "../lib/openings";
 
 export const draftsOf = (character: CharacterSnapshot): Drafts => ({
 	name: character.name,

@@ -11,51 +11,35 @@
 // this boundary; they load only through the deliberate Import Details
 // operations below.
 
-export interface ChatHistoryAuthorStamp {
-	participantId: number | null;
-	capturedName: string | null;
-	// Whether the authoring Participant is still an active Cast member.
-	inCast: boolean;
-}
+// Payload types derive from the shared TypeBox contract so this client read
+// model can never drift from the server's typed responses. The hand-rolled
+// JSON guards further below stay deliberately: they are the transport seam
+// that validates real wire payloads at this boundary.
+import type {
+	ChatHistoryAuthorStamp,
+	ChatHistoryMessage,
+	ChatHistoryPage,
+	ChatHistoryVariant,
+} from "../shared/contract/conversation-schema";
+import type {
+	ChatImportDetails,
+	ChatImportDuplicateMatch,
+	ImportDetailsArtifact,
+	ImportDetailsArtifactAvailability,
+} from "../shared/contract/chat-import";
 
-export interface ChatHistoryVariant {
-	id: number;
-	position: number;
-	content: string;
-	timestamp: string;
-	selected: boolean;
-}
-
-export interface ChatHistoryMessage {
-	id: number;
-	position: number;
-	timestamp: string;
-	// Historical model Control identity used to decide whether a terminal
-	// Message is eligible for Continue after Control changes.
-	modelParticipantIdAtCreation?: number | null;
-	// Server-derived capability for the selected Variant. Reasoning remains
-	// private even when it makes a reasoning-only Message continuable.
-	continuable?: boolean;
-	author: ChatHistoryAuthorStamp | null;
-	variants: ChatHistoryVariant[];
-}
-
-export interface ChatHistoryPage {
-	conversationId: number;
-	name: string;
-	revision: number;
-	// Active Cast identity (stable id, position, current name) for rendering.
-	cast: { id: number; position: number; name: string }[];
-	page: {
-		index: number;
-		pageSize: number;
-		totalMessages: number;
-		totalPages: number;
-		hasOlder: boolean;
-		hasNewer: boolean;
-	};
-	messages: ChatHistoryMessage[];
-}
+export type {
+	ChatHistoryAuthorStamp,
+	ChatHistoryMessage,
+	ChatHistoryPage,
+	ChatHistoryVariant,
+};
+export type {
+	ChatImportDetails,
+	ChatImportDuplicateMatch,
+	ImportDetailsArtifact,
+	ImportDetailsArtifactAvailability,
+};
 
 export interface ChatHistoryPageRequest {
 	// 1-based page within the stable position-ordered chronology, counted
@@ -68,50 +52,6 @@ export type ChatHistoryOutcome =
 	| { status: "available"; page: ChatHistoryPage }
 	| { status: "not-found" }
 	| { status: "network" };
-
-// Derived, never stored: whether the physical exact-source copy currently
-// satisfies the committed metadata.
-export type ImportDetailsArtifactAvailability =
-	| { status: "available" }
-	| { status: "cleaned-up"; reason: "missing" | "corrupt" };
-
-export interface ImportDetailsArtifact {
-	chatId: number;
-	namespace: string;
-	key: string;
-	relativePath: string;
-	originalFilename: string;
-	mediaType: string;
-	byteLength: number;
-	sha256: string;
-	availability: ImportDetailsArtifactAvailability;
-}
-
-export interface ChatImportDuplicateMatch {
-	id: number;
-	name: string;
-}
-
-// The complete Import Details payload: the persisted receipt and source
-// identity, structured duplicate evidence, and exact-artifact availability.
-export interface ChatImportDetails {
-	conversationId: number;
-	title: string;
-	receipt: {
-		originalFilename: string;
-		sha256: string;
-		byteLength: number | null;
-		integrity: string | null;
-		counts: { messages: number; variants: number };
-		warnings: string[];
-		importerVersion: string;
-	};
-	duplicates: {
-		exact: ChatImportDuplicateMatch[];
-		related: ChatImportDuplicateMatch[];
-	};
-	artifact: ImportDetailsArtifact | null;
-}
 
 export type ChatImportDetailsOutcome =
 	| { status: "available"; details: ChatImportDetails }
@@ -143,30 +83,14 @@ export interface ChatHistoryTransport {
 	downloadExactSource(conversationId: number): Promise<ChatSourceDownloadOutcome>;
 }
 
-// JSON shape parsed at the fetch boundary. Only JSON scalars, arrays, and
-// plain objects can appear; constructor identity is therefore a sound
-// discriminator here.
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
-type JsonRow = { [key: string]: JsonValue };
-
-const isRow = (value: JsonValue): value is JsonRow =>
-	value !== null &&
-	value !== undefined &&
-	!Array.isArray(value) &&
-	value.constructor === Object;
-
-const isString = (value: JsonValue): value is string =>
-	value !== null && value !== undefined && value.constructor === String;
-
-const isNumber = (value: JsonValue): value is number =>
-	value !== null && value !== undefined && value.constructor === Number;
-
-const isBoolean = (value: JsonValue): value is boolean =>
-	value !== null && value !== undefined && value.constructor === Boolean;
-
-const isStringArray = (value: JsonValue): value is string[] =>
-	Array.isArray(value) && value.every(isString);
+import {
+	type JsonValue,
+	isBoolean,
+	isNumber,
+	isRow,
+	isString,
+	isStringArray,
+} from "./lib/json-guards";
 
 // Parses and validates one history page at the I/O boundary. Any field
 // failing the typed contract discards the whole payload so a malformed

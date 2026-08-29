@@ -30,12 +30,11 @@ import {
 	type SillyTavernImportReport,
 } from "./adapter/types";
 
-// Editable Participant-name default for blank captured author groups. The
-// exact blank source value stays untouched in preserved source data; this
-// name is the flow's proposed native Participant-name default. One constant
-// serves both import paths: the Default Import Policy resolves every blank
-// group to it, and the staged preview proposes it as the editable default.
-export const UNKNOWN_IMPORTED_AUTHOR_NAME = "Unknown imported author";
+// The blank captured author's proposed Participant-name default lives in
+// shared so the server projection and the client flow label cannot drift.
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../../shared/imported-author";
+
+export { UNKNOWN_IMPORTED_AUTHOR_NAME };
 
 // Imported Participants start with an empty typed Prompt and no openings:
 // the history itself is the preserved record, and no identity content is

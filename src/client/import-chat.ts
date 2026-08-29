@@ -5,50 +5,35 @@
 // flow. Outcomes mirror the server's typed results so the view can recover
 // from recoverable errors without re-uploading or losing its drafts.
 
-export type SuggestionMatchKind = "exact" | "case-insensitive" | "fuzzy";
+// Payload types derive from the shared TypeBox contract so this client
+// boundary can never drift from the server's typed responses. The
+// hand-rolled JSON guards further below stay deliberately: they are the
+// transport seam that validates real wire payloads at this boundary.
+import type {
+	ChatImportCommitBody,
+	ChatImportDuplicateMatch,
+	ChatImportGroup,
+	ChatImportPreview,
+	ChatImportReceipt,
+	ChatImportReceiptParticipant,
+	ChatImportResolvedParticipant,
+	ChatImportSuggestion,
+	ImportResolutionOutcome,
+} from "../shared/contract/chat-import";
 
-export interface ChatImportSuggestion {
-	characterId: number;
-	name: string;
-	match: SuggestionMatchKind;
-	// The strongest suggestion is always pre-filled but unconfirmed; final
-	// review cannot pass until the user approves it.
-	confirmed: boolean;
-}
+export type {
+	ChatImportDuplicateMatch,
+	ChatImportGroup,
+	ChatImportPreview,
+	ChatImportReceipt,
+	ChatImportReceiptParticipant,
+	ChatImportResolvedParticipant,
+	ChatImportSuggestion,
+	ImportResolutionOutcome,
+};
 
-export interface ChatImportGroup {
-	// The verbatim captured author string; the empty string for blank names.
-	key: string;
-	isBlank: boolean;
-	messagePositions: number[];
-	// Variant count of each retained Message, parallel to messagePositions.
-	messageVariantCounts: number[];
-	messageCount: number;
-	variantCount: number;
-	// Proposed native Participant name, editable by the user.
-	participantNameDefault: string;
-	suggestion: ChatImportSuggestion | null;
-}
-
-export interface ChatImportDuplicateMatch {
-	id: number;
-	name: string;
-}
-
-export interface ChatImportPreview {
-	title: string;
-	originalFilename: string;
-	sha256: string;
-	byteLength: number;
-	integrity: string | null;
-	counts: { messages: number; variants: number };
-	warnings: string[];
-	groups: ChatImportGroup[];
-	duplicates: {
-		exact: ChatImportDuplicateMatch[];
-		related: ChatImportDuplicateMatch[];
-	};
-}
+// The match kinds are the contract's closed literal union on the suggestion.
+export type SuggestionMatchKind = ChatImportSuggestion["match"];
 
 export type ChatImportStageOutcome =
 	| { status: "staged"; token: string; preview: ChatImportPreview }
@@ -63,51 +48,12 @@ export type ChatImportPreviewOutcome =
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
-// The three resolution outcomes a resulting Participant may take. No skip,
-// source-role inference, or later re-assignment alternative exists.
-export type ImportResolutionOutcome =
-	| { type: "fork"; characterId: number }
-	| { type: "new-character" }
-	| { type: "chat-only" };
+// The commit payload is the contract's commit body minus the SHA-256 the
+// transport itself already binds into every request.
+export type ChatImportCommitInput = Omit<ChatImportCommitBody, "sha256">;
 
-// One resulting Participant of the user-confirmed resolution plan. Whole
-// Messages are referenced by their 1-based record positions.
-export interface ChatImportResolvedParticipant {
-	name: string;
-	outcome: ImportResolutionOutcome;
-	messagePositions: number[];
-}
-
-export interface ChatImportCommitInput {
-	title: string;
-	duplicateConfirmed: boolean;
-	participants: ChatImportResolvedParticipant[];
-}
-
-export type ChatImportResolvedOutcome = "fork" | "new-character" | "chat-only";
-
-export interface ChatImportReceiptParticipant {
-	name: string;
-	outcome: ChatImportResolvedOutcome;
-	sourceCharacterId: number | null;
-}
-
-// Compact post-commit receipt returned by the transport and rendered by the
-// success step; the committed Chat is opened with the conversation id.
-export interface ChatImportReceipt {
-	conversationId: number;
-	title: string;
-	originalFilename: string;
-	sha256: string;
-	byteLength: number;
-	counts: { messages: number; variants: number };
-	participants: ChatImportReceiptParticipant[];
-	warnings: string[];
-	duplicates: {
-		exact: ChatImportDuplicateMatch[];
-		related: ChatImportDuplicateMatch[];
-	};
-}
+// The receipt's outcome labels are the contract's closed literal union.
+export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
 
 export type ChatImportCommitOutcome =
 	| { status: "committed"; conversationId: number; receipt: ChatImportReceipt }
@@ -140,29 +86,14 @@ export interface ChatImportTransport {
 	discard(token: string): Promise<void>;
 }
 
-// JSON shape parsed at the fetch boundary; response.json() can only resolve
-// to the JSON scalars, arrays, and plain objects modeled here.
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
-type JsonRow = { [key: string]: JsonValue };
-
-const isRow = (value: JsonValue): value is JsonRow =>
-	value !== null &&
-	value !== undefined &&
-	!Array.isArray(value) &&
-	value.constructor === Object;
-
-const isString = (value: JsonValue): value is string =>
-	value !== null && value !== undefined && value.constructor === String;
-
-const isNumber = (value: JsonValue): value is number =>
-	value !== null && value !== undefined && value.constructor === Number;
-
-const isBoolean = (value: JsonValue): value is boolean =>
-	value !== null && value !== undefined && value.constructor === Boolean;
-
-const isStringArray = (value: JsonValue): value is string[] =>
-	Array.isArray(value) && value.every(isString);
+import {
+	type JsonValue,
+	isBoolean,
+	isNumber,
+	isRow,
+	isString,
+	isStringArray,
+} from "./lib/json-guards";
 
 // Parses and validates one preview payload at the I/O boundary. Any field
 // failing the typed contract discards the whole payload so a malformed
