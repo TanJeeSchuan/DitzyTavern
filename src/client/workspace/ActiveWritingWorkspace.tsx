@@ -194,7 +194,6 @@ export function ActiveWritingWorkspace({
 			<main className="story-stage" aria-label="Active Chat" data-preview-mode={story.preview !== null}>
 				<StoryHeader
 					chat={session.activeChat}
-					isGenerating={generation.isGenerating}
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
 						if (story.preview !== null) return;
@@ -229,6 +228,10 @@ export function ActiveWritingWorkspace({
 							<StoryMessageView
 								key={message.id}
 								message={message}
+								generationActive={generation.activeGenerationTargets.some((target) =>
+									target.messageId === message.id &&
+									target.variantId === displayedVariantId(message, story.preview)
+								)}
 								displayedVariantId={story.preview?.messageId === message.id ? displayedVariantId(message, story.preview) : undefined}
 								mutationsDisabled={story.preview !== null}
 								previewDownstream={isPreviewDownstream(message, story.preview)}

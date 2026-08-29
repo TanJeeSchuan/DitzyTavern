@@ -11,7 +11,7 @@
 
 .story-header {
 	display: grid;
-	grid-template-columns: 1fr auto auto auto;
+	grid-template-columns: 1fr auto auto;
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
@@ -67,22 +67,6 @@
 
 .preview-indicator .secondary-button {
 	margin-left: auto;
-}
-
-.generation-state {
-	display: flex;
-	align-items: center;
-	gap: 0.42rem;
-	color: var(--text-muted);
-	font-size: 0.72rem;
-	font-weight: 620;
-}
-
-.generation-state span {
-	width: 0.46rem;
-	height: 0.46rem;
-	border-radius: 999px;
-	background: var(--accent);
 }
 
 .cast-control {
@@ -260,6 +244,27 @@
 	font-size: 0.82rem;
 	font-weight: 680;
 	letter-spacing: -0.012em;
+}
+
+.generation-sphere {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 0.32rem;
+	color: var(--text-muted);
+	font-size: 0.68rem;
+	font-weight: 620;
+}
+
+.generation-sphere svg {
+	display: block;
+	overflow: visible;
+	width: 1.75rem;
+	height: 1.75rem;
+}
+
+.prose p + .generation-sphere {
+	margin-top: 0.8rem;
 }
 
 .message-meta {
@@ -602,8 +607,18 @@
 	align-items: center;
 	gap: 0.4rem;
 	min-height: 2.2rem;
-	padding: 0 0.75rem;
-	font-size: 0.74rem;
+	padding: 0 0.68rem;
+	border-color: color-mix(in oklch, var(--border) 72%, transparent);
+	background: color-mix(in oklch, var(--surface-raised) 66%, transparent);
+	color: var(--text-muted);
+	font-size: 0.71rem;
+}
+
+.generation-controls .secondary-button:hover,
+.generation-controls .secondary-button:focus-visible {
+	border-color: var(--border-strong);
+	background: var(--surface-muted);
+	color: var(--foreground);
 }
 
 .generation-controls svg {
@@ -770,7 +785,4 @@
 		animation: skeleton-breathe 1.7s ease-in-out infinite;
 	}
 
-	.generation-state span {
-		animation: generation-pulse 1.25s ease-in-out infinite;
-	}
 }

@@ -12,6 +12,7 @@ import {
 	visibleVariantContent,
 } from "../story";
 import { formatTimestamp } from "../lib/format";
+import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 
 // The story renders one native Message from the paginated read model: the
@@ -23,6 +24,7 @@ export function StoryMessageView({
 	message,
 	displayedVariantId,
 	mutationsDisabled = false,
+	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
 	onMoveSwipe,
@@ -38,6 +40,7 @@ export function StoryMessageView({
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
+	generationActive?: boolean;
 	// Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
 	// or cancelled.
@@ -163,13 +166,15 @@ export function StoryMessageView({
 			) : (
 				<div
 					className="prose"
-					data-empty-variant={active?.empty === true}
+					data-empty-variant={active?.empty === true && !generationActive}
+					data-generation-active={generationActive}
 				>
-					{active !== undefined
+					{active !== undefined && !(generationActive && active.empty)
 						? visibleVariantContent(active)
 								.split("\n\n")
 								.map((paragraph, index) => <p key={index}>{paragraph}</p>)
 						: null}
+					{generationActive && <GenerationSphere authorName={authorName} />}
 				</div>
 			)}
 
