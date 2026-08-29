@@ -205,8 +205,7 @@
 	}
 
 	.chat-list-item:disabled,
-	.cast-member button:disabled,
-	.cast-panel-body > .secondary-button:disabled {
+	.cast-member button:disabled {
 		opacity: 0.68;
 	}
 }
@@ -250,21 +249,8 @@
 		padding: 2.2rem 1.15rem 12.5rem;
 	}
 
-	.chapter-opening {
-		gap: 0.7rem;
-		margin-bottom: 2.4rem;
-	}
-
-	.chapter-opening p {
-		font-size: 0.69rem;
-	}
-
 	.writer-message {
 		margin-bottom: 2.3rem;
-	}
-
-	.generated-message {
-		margin-bottom: 3rem;
 	}
 
 	.message-author {
@@ -286,10 +272,6 @@
 		grid-template-columns: 1fr auto;
 	}
 
-	.copy-confirmation {
-		display: none;
-	}
-
 	.composer {
 		left: 0.7rem;
 		right: 0.7rem;
@@ -298,17 +280,6 @@
 		gap: 0.4rem;
 		padding: 0.5rem;
 		border-radius: 1rem;
-	}
-
-	.identity-button {
-		grid-template-columns: auto auto;
-		min-height: 2.75rem;
-		padding: 0.25rem;
-	}
-
-	.identity-button > span:not(.portrait),
-	.identity-button > svg {
-		display: none;
 	}
 
 	.composer > textarea {
@@ -320,11 +291,6 @@
 	.send-button {
 		width: 2.75rem;
 		height: 2.75rem;
-	}
-
-	.identity-menu {
-		left: -0.3rem;
-		width: min(16.5rem, calc(100vw - 1.4rem));
 	}
 
 	.workspace-loading {
@@ -527,31 +493,6 @@
 	justify-content: center;
 	gap: 0.45rem;
 	width: 100%;
-}
-
-/* ---- Cast placeholder ---- */
-
-.cast-placeholder {
-	display: grid;
-	justify-items: center;
-	gap: 0.6rem;
-	padding: 1.4rem 0.9rem;
-	border: 1px dashed var(--border-strong);
-	border-radius: 0.9rem;
-	color: var(--text-muted);
-	text-align: center;
-}
-
-.cast-placeholder svg {
-	width: 1.4rem;
-	height: 1.4rem;
-	stroke-width: 1.6;
-}
-
-.cast-placeholder p {
-	margin: 0;
-	font-size: 0.8rem;
-	line-height: 1.5;
 }
 
 @media (max-width: 44rem) {

@@ -3,7 +3,6 @@ import type { ConnectionProfileDraft } from "../connection-settings/types";
 import {
 	resolveTestConnectionBackend,
 	testConnection,
-	testDeepSeekConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,
 	type TestConnectionResult,
@@ -110,7 +109,7 @@ describe("Model Test Connection", () => {
 
 	test("resolves Automatic to AI SDK before making one exact authenticated request", async () => {
 		let request: { url: string; init: RequestInit } | undefined;
-		const result = await testDeepSeekConnection({
+		const result = await testConnection({
 			profile,
 			modelId: "custom-model-id",
 			secrets: { credential: "stored-secret", headers: {} },
@@ -141,7 +140,7 @@ describe("Model Test Connection", () => {
 
 	test("does not retry authentication failures and never exposes the credential", async () => {
 		let calls = 0;
-		const result = await testDeepSeekConnection({
+		const result = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 			secrets: { credential: "secret-never-display", headers: {} },
@@ -162,7 +161,7 @@ describe("Model Test Connection", () => {
 
 	test("normalizes redirects and unavailable adapters without making a fallback request", async () => {
 		let calls = 0;
-		const redirected = await testDeepSeekConnection({
+		const redirected = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 			secrets: { credential: "secret", headers: {} },
@@ -175,7 +174,7 @@ describe("Model Test Connection", () => {
 		expect(redirected).toMatchObject({ outcome: "failure", kind: "redirect" });
 		expect(calls).toBe(1);
 
-		const unavailable = await testDeepSeekConnection({
+		const unavailable = await testConnection({
 			// SAFETY: this intentionally simulates a newer persisted adapter identifier
 			// that is outside the current closed adapter vocabulary.
 			profile: { ...profile, adapter: "future-adapter" as ConnectionProfileDraft["adapter"] },
@@ -186,7 +185,7 @@ describe("Model Test Connection", () => {
 	});
 
 	test("reports a successful HTTP response with an invalid provider body as malformed", async () => {
-		const result = await testDeepSeekConnection({
+		const result = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 			secrets: { credential: "secret", headers: {} },
@@ -202,7 +201,7 @@ describe("Model Test Connection", () => {
 
 	test("omits textual response bodies and summarizes binary upstream failures", async () => {
 		const longBody = "x".repeat(20_000);
-		const textual = await testDeepSeekConnection({
+		const textual = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 			secrets: { credential: "secret", headers: {} },
@@ -216,7 +215,7 @@ describe("Model Test Connection", () => {
 		expect(failureMessage(textual)).toContain("20000-byte response body");
 		expect(failureMessage(textual)).not.toContain("xxx");
 
-		const binary = await testDeepSeekConnection({
+		const binary = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 			secrets: { credential: "secret", headers: {} },
@@ -233,10 +232,10 @@ describe("Model Test Connection", () => {
 	});
 
 	test("requires a model ID and uses a bounded timeout", async () => {
-		const missingModel = await testDeepSeekConnection({ profile, modelId: "" });
+		const missingModel = await testConnection({ profile, modelId: "" });
 		expect(missingModel).toMatchObject({ outcome: "failure", kind: "endpoint" });
 
-		const timedOut = await testDeepSeekConnection({
+		const timedOut = await testConnection({
 			profile,
 			modelId: "deepseek-chat",
 		}, {

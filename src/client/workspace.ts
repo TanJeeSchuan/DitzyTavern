@@ -2,35 +2,6 @@ import { api } from "./lib/eden";
 
 export type ThemePreference = "system" | "daylight" | "evening";
 
-export type Swipe = {
-	id: string;
-	text: string;
-};
-
-export type WriterMessage = {
-	id: string;
-	type: "writer";
-	authorId: string;
-	text: string;
-	createdAt: string;
-};
-
-export type GeneratedMessage = {
-	id: string;
-	type: "generated";
-	authorId: string;
-	createdAt: string;
-	activeSwipe: number;
-	swipes: Swipe[];
-	generation: {
-		profile: string;
-		model: string;
-		prompt: string;
-	};
-};
-
-export type StoryMessage = WriterMessage | GeneratedMessage;
-
 export type ChatSummary = {
 	id: string;
 	title: string;
@@ -41,7 +12,6 @@ export type Workspace = {
 	activeChat: ChatSummary | null;
 	chats: ChatSummary[];
 	characters: { id: number; name: string }[];
-	messages: StoryMessage[];
 };
 
 export interface WorkspaceClient {
@@ -78,7 +48,6 @@ export const workspaceClient: WorkspaceClient = {
 				chats.find((chat) => chat.id === String(data.activeChatId)) ?? null,
 			chats,
 			characters: data.characters.map((character) => ({ ...character })),
-			messages: [],
 		};
 	},
 };

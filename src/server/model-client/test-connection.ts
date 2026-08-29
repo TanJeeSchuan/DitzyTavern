@@ -143,10 +143,6 @@ export async function testConnection(
 	}
 }
 
-// Compatibility alias for existing callers. New code uses the adapter-neutral
-// name because Test Connection is not DeepSeek-specific.
-export const testDeepSeekConnection = testConnection;
-
 interface ErrorContext {
 	timedOut: boolean;
 }
