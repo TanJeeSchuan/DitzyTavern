@@ -9,6 +9,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
+	type AcceptContinuationGenerationInput,
 } from ".";
 
 describe("Conversation module", () => {
@@ -411,20 +412,54 @@ describe("Conversation module", () => {
 		).toEqual(originalAuthor);
 	});
 
-	describe("commitGeneration", () => {
-		const capturedInput = (conversationId: number) => ({
-			conversationId,
-			timestamp: "2026-08-20T12:00:00Z",
-			content: "The lantern answers.",
-			authorParticipantId: modelId,
-			capturedAuthorName: "Maren",
-			humanParticipantId: humanId,
-			modelParticipantId: modelId,
-		});
+	// Terminal Generation persistence is exercised through the production
+	// Continuation lifecycle: acceptance creates the provisional model
+	// target, resolution commits its terminal Variant.
+	describe("Continuation acceptance and resolution", () => {
+		const accept = (
+			module: ReturnType<typeof createConversationModule>,
+			overrides: Partial<AcceptContinuationGenerationInput> = {},
+		) => {
+			const snapshot = module.getSnapshot(conversationId);
+			if (snapshot === undefined) throw new Error("Snapshot missing.");
+			const greeting = snapshot.messages[0];
+			const greetingVariant = greeting?.variants[0];
+			if (greeting === undefined || greetingVariant === undefined) {
+				throw new Error("Greeting missing.");
+			}
+			return module.acceptContinuationGeneration({
+				conversationId,
+				expectedRevision: snapshot.revision,
+				timestamp: "2026-08-20T12:00:00Z",
+				precedingMessageId: greeting.id,
+				precedingVariantId: greetingVariant.id,
+				humanParticipantId: humanId,
+				modelParticipantId: modelId,
+				capturedHumanName: "Writer",
+				capturedModelName: "Maren",
+				promptPlan: {},
+				historyRoles: [],
+				generationSettings: {},
+				connection: {},
+				...overrides,
+			});
+		};
 
-		test("persists the Message with the captured Author Stamp and historical pair", () => {
+		const resolve = (
+			module: ReturnType<typeof createConversationModule>,
+			generationId: number,
+		) =>
+			module.resolveTailGeneration({
+				conversationId,
+				generationId,
+				timestamp: "2026-08-20T12:00:00Z",
+				content: "The lantern answers.",
+			});
+
+		test("persists the terminal Message with the Author Stamp and historical pair through acceptance and resolution", () => {
 			const conversation = createConversationModule(database);
-			const committed = conversation.commitGeneration(capturedInput(conversationId));
+			const accepted = accept(conversation);
+			const committed = resolve(conversation, accepted.generationId);
 
 			const message = committed.messages.at(-1);
 			expect(message?.author).toEqual({
@@ -439,26 +474,32 @@ describe("Conversation module", () => {
 			expect(message?.variants).toEqual([
 				expect.objectContaining({ content: "The lantern answers.", selected: true }),
 			]);
-			expect(committed.revision).toBe(1);
-		});
-
-		test("requires the author to be the model Participant of the captured pair", () => {
-			expect(() =>
-				createConversationModule(database).commitGeneration({
-					...capturedInput(conversationId),
-					authorParticipantId: humanId,
-				}),
-			).toThrow(InvalidConversationCommandError);
-			expect(createConversationModule(database).getSnapshot(conversationId)?.revision).toBe(0);
+			// Acceptance and resolution each advance the revision exactly once.
+			expect(committed.revision).toBe(2);
 		});
 
 		test("requires distinct captured human and model Participants", () => {
+			const conversation = createConversationModule(database);
 			expect(() =>
-				createConversationModule(database).commitGeneration({
-					...capturedInput(conversationId),
-					humanParticipantId: modelId,
-				}),
+				accept(conversation, { humanParticipantId: modelId }),
 			).toThrow(InvalidConversationCommandError);
+			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
+		});
+
+		test("rejects a captured pair that is no longer authoritative", () => {
+			const conversation = createConversationModule(database);
+			expect(() =>
+				accept(conversation, { modelParticipantId: humanId }),
+			).toThrow(InvalidConversationCommandError);
+			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
+		});
+
+		test("rejects a captured model stamp that no longer matches the model Participant", () => {
+			const conversation = createConversationModule(database);
+			expect(() =>
+				accept(conversation, { capturedModelName: "Renamed Elsewhere" }),
+			).toThrow(InvalidConversationCommandError);
+			expect(conversation.getSnapshot(conversationId)?.revision).toBe(0);
 		});
 
 		test("rejects pairs referencing Participants outside the Conversation", () => {
@@ -471,20 +512,17 @@ describe("Conversation module", () => {
 				control: { human: 0, model: 1 },
 			});
 			const outsiderId = other.cast[0]?.id ?? 0;
+			const conversation = createConversationModule(database);
 
 			expect(() =>
-				createConversationModule(database).commitGeneration({
-					...capturedInput(conversationId),
-					humanParticipantId: outsiderId,
-				}),
+				accept(conversation, { humanParticipantId: outsiderId }),
 			).toThrow(InvalidConversationCommandError);
 		});
 
 		test("rejects a missing Conversation with the typed not-found result", () => {
+			const conversation = createConversationModule(database);
 			expect(() =>
-				createConversationModule(database).commitGeneration(
-					capturedInput(424242),
-				),
+				accept(conversation, { conversationId: 424242 }),
 			).toThrow(ConversationNotFoundError);
 		});
 	});

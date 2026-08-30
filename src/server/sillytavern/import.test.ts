@@ -39,6 +39,7 @@ import {
 import { createFakeModelClient } from "../model-client";
 import {
 	generateSiblingVariant,
+	sendThroughProvisionalTailGeneration,
 } from "../workflows";
 import { generateTerminalTailFixture } from "../workflows/generate";
 import {
@@ -763,17 +764,24 @@ describe("SillyTavern chat import", () => {
 		expect(completed.playable).toBe(true);
 
 		// A native Generate after completion is an ordinary native Message:
-		// immutable Author Stamp plus captured historical Control pair.
+		// immutable Author Stamp plus captured historical Control pair. The
+		// Send workflow composes the production Tail lifecycle: acceptance
+		// creates the human and provisional model Messages, resolution
+		// commits the terminal Variant.
 		const human = completed.cast[0];
 		const model = completed.cast[1];
 		expect(human).toBeDefined();
 		expect(model).toBeDefined();
-		const generated = await generateTerminalTailFixture(database, {
+		const { conversation: generated, modelMessageId } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId: completed.id,
+			expectedRevision: completed.revision,
+			content: "The lamp is lit again.",
 			timestamp: "2026-08-08T14:30:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers at last."),
 		});
-		const nativeMessage = generated.messages[1];
+		const nativeMessage = generated.messages.find(
+			(message) => message.id === modelMessageId,
+		);
 		expect(nativeMessage).toBeDefined();
 		expect(nativeMessage?.author).toEqual({
 			participantId: model?.id ?? null,
@@ -791,16 +799,19 @@ describe("SillyTavern chat import", () => {
 		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
 		const sibling = await generateSiblingVariant(database, {
 			conversationId: generated.id,
-			messageId: nativeMessage?.id ?? 0,
+			messageId: modelMessageId,
 			timestamp: "2026-08-08T14:31:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers differently."),
 		});
-		expect(sibling.messages[1]?.variants).toHaveLength(2);
-		expect(sibling.messages[1]?.variants[1]?.content).toBe(
+		const siblingTarget = sibling.messages.find(
+			(message) => message.id === modelMessageId,
+		);
+		expect(siblingTarget?.variants).toHaveLength(2);
+		expect(siblingTarget?.variants[1]?.content).toBe(
 			"The lamp answers differently.",
 		);
-		expect(sibling.messages[1]?.variants[1]?.selected).toBe(true);
-		expect(sibling.messages[1]?.author).toEqual(nativeMessage?.author);
+		expect(siblingTarget?.variants[1]?.selected).toBe(true);
+		expect(siblingTarget?.author).toEqual(nativeMessage?.author);
 		expect(sibling.control).toEqual(completed.control);
 		// Imported history still lacks fabricated context after completion.
 		expect(sibling.messages[0]?.historicalContext).toBeNull();

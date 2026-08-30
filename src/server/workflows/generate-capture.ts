@@ -242,29 +242,6 @@ const toCapturedGeneration = (
 	provenance: settingsCapture.provenance,
 });
 
-export function captureGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-): CapturedGeneration {
-	const settingsCapture = captureGenerationSettings(
-		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-	);
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
-		throw new ConversationNotPlayableError(snapshot.id);
-	}
-	const budget = assertPromptBudget(
-		createBudgetedPlan(derivation, settingsCapture.settings, tokenEstimator),
-	);
-	return toCapturedGeneration(derivation, settingsCapture, budget);
-}
-
 function resolveConnectionSnapshot(
 	database: Database,
 	options: ConnectionSettingsModuleOptions | undefined,

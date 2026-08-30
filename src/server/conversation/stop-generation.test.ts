@@ -35,7 +35,7 @@ describe("explicit Conversation Generation Stop", () => {
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: ["Original answer."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -81,7 +81,7 @@ describe("explicit Conversation Generation Stop", () => {
 		if (modelMessage === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
 
 		expect(stopped.activeGenerations).toEqual([]);
-		expect(stopped.messages).toHaveLength(2);
+		expect(stopped.messages).toHaveLength(3);
 		expect(variant.content).toBe("Partial answer.");
 		expect(variant.data).toEqual([
 			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
@@ -141,22 +141,16 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 
 		expect(stopped.activeGenerations).toEqual([]);
-		expect(stopped.messages).toHaveLength(1);
-		expect(stopped.messages[0]?.variants[0]?.content).toBe("Keep my input.");
+		expect(stopped.messages).toHaveLength(2);
+		expect(stopped.messages.at(-1)?.variants[0]?.content).toBe("Keep my input.");
 	});
 
+	// The sibling target is the configured opening Message: a native Message
+	// whose captured historical Control pair makes sibling acceptance
+	// eligible without any terminal-commit setup.
 	const acceptSibling = (input: ReturnType<typeof setup>) => {
-		const generated = input.module.commitGeneration({
-			conversationId: input.created.id,
-			timestamp: "2026-08-27T00:00:00.000Z",
-			content: "Original answer.",
-			authorParticipantId: input.modelId,
-			capturedAuthorName: input.modelName,
-			humanParticipantId: input.humanId,
-			modelParticipantId: input.modelId,
-		});
-		const target = generated.messages.at(-1);
-		if (target === undefined) throw new Error("Generated target missing.");
+		const target = input.created.messages[0];
+		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptConversationSiblingGeneration(database, {
 			conversationId: input.created.id,
 			messageId: target.id,
@@ -228,17 +222,8 @@ describe("explicit Conversation Generation Stop", () => {
 
 	test("stops every active Sibling target in one revisioned transition", () => {
 		const input = setup();
-		const generated = input.module.commitGeneration({
-			conversationId: input.created.id,
-			timestamp: "2026-08-27T00:00:00.000Z",
-			content: "Original answer.",
-			authorParticipantId: input.modelId,
-			capturedAuthorName: input.modelName,
-			humanParticipantId: input.humanId,
-			modelParticipantId: input.modelId,
-		});
-		const target = generated.messages.at(-1);
-		if (target === undefined) throw new Error("Generated target missing.");
+		const target = input.created.messages[0];
+		if (target === undefined) throw new Error("Opening target missing.");
 		const accept = (timestamp: string) => input.module.acceptSiblingGeneration({
 			conversationId: input.created.id,
 			messageId: target.id,
