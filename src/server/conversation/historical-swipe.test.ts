@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
 import { openDatabase } from "../database/database";
+import { createFakeModelClient } from "../model-client";
+import { generateTerminalTailFixture } from "../workflows/generate";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
@@ -58,24 +60,6 @@ const setup = (database: Database) => {
 	};
 };
 
-const commitFor = (
-	module: ConversationModule,
-	snapshot: ConversationSnapshot,
-	humanId: number,
-	modelId: number,
-	content: string,
-	timestamp = "2026-08-20T13:00:00Z",
-) =>
-	module.commitGeneration({
-		conversationId: snapshot.id,
-		timestamp,
-		content,
-		authorParticipantId: modelId,
-		capturedAuthorName: "Maren Voss",
-		humanParticipantId: humanId,
-		modelParticipantId: modelId,
-	});
-
 describe("Per-Message targeted Swipe eligibility", () => {
 	let database: Database;
 
@@ -86,8 +70,10 @@ describe("Per-Message targeted Swipe eligibility", () => {
 		database.close();
 	});
 
-	test("configured opening and generated Messages are eligible from their captured historical pair", () => {
-		const { module, snapshot, humanId, modelId } = setup(database);
+	// The generated Message comes from the production terminal fixture,
+	// which composes Continuation acceptance followed by resolution.
+	test("configured opening and generated Messages are eligible from their captured historical pair", async () => {
+		const { snapshot, humanId, modelId } = setup(database);
 
 		const greeting = snapshot.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
@@ -97,7 +83,10 @@ describe("Per-Message targeted Swipe eligibility", () => {
 		});
 		expect(greeting.swipe).toEqual({ eligible: true, reason: null });
 
-		const committed = commitFor(module, snapshot, humanId, modelId, "The fog answers.");
+		const committed = await generateTerminalTailFixture(database, {
+			conversationId: snapshot.id,
+			modelClient: createFakeModelClient(() => "The fog answers."),
+		});
 		const generated = committed.messages[1];
 		expect(generated?.swipe).toEqual({ eligible: true, reason: null });
 	});
@@ -245,7 +234,10 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	});
 });
 
-describe("commitSiblingVariant", () => {
+// Sibling Generation eligibility is enforced inside the production
+// acceptance seam, so every denial below exercises the same typed result a
+// workflow attempt would receive before any transport is contacted.
+describe("Sibling Generation acceptance and resolution", () => {
 	let database: Database;
 
 	beforeEach(() => {
@@ -262,15 +254,61 @@ describe("commitSiblingVariant", () => {
 		content: "Another lamp turn.",
 	});
 
+	const seats = (snapshot: ConversationSnapshot) => {
+		const humanId = snapshot.cast[0]?.id;
+		const modelId = snapshot.cast[1]?.id;
+		const modelName = snapshot.cast[1]?.name;
+		if (humanId === undefined || modelId === undefined || modelName === undefined) {
+			throw new Error("Control Participants missing.");
+		}
+		return { humanId, modelId, modelName };
+	};
+
+	const acceptSibling = (
+		module: ConversationModule,
+		input: ReturnType<typeof siblingInput>,
+		control: ReturnType<typeof seats>,
+	) =>
+		module.acceptSiblingGeneration({
+			...input,
+			humanParticipantId: control.humanId,
+			modelParticipantId: control.modelId,
+			capturedModelName: control.modelName,
+			promptPlan: {},
+			historyRoles: [],
+			generationSettings: {},
+			connection: {},
+		});
+
+	const resolveSibling = (
+		module: ConversationModule,
+		input: ReturnType<typeof siblingInput>,
+		generationId: number,
+	) =>
+		module.resolveSiblingGeneration({
+			conversationId: input.conversationId,
+			generationId,
+			timestamp: input.timestamp,
+			content: input.content,
+		});
+
 	test("appends a selected sibling Variant without touching Control, the Author Stamp, or the Message timestamp", () => {
-		const { module, snapshot, humanId, modelId } = setup(database);
+		const { module, snapshot } = setup(database);
 		const greeting = snapshot.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
 		const originalAuthor = greeting.author;
 		const originalControl = snapshot.control;
+		const control = seats(snapshot);
 
-		const committed = module.commitSiblingVariant(
+		const accepted = acceptSibling(
+			module,
 			siblingInput(snapshot.id, greeting.id),
+			control,
+		);
+		const committed = resolveSibling(
+			module,
+			siblingInput(snapshot.id, greeting.id),
+			accepted.generationId,
 		);
 
 		const message = committed.messages.find(
@@ -286,20 +324,22 @@ describe("commitSiblingVariant", () => {
 		expect(message?.variants[1]?.timestamp).toBe("2026-08-20T14:00:00Z");
 		expect(message?.author).toEqual(originalAuthor);
 		expect(message?.historicalContext).toEqual({
-			humanParticipantId: humanId,
-			modelParticipantId: modelId,
+			humanParticipantId: control.humanId,
+			modelParticipantId: control.modelId,
 		});
 		expect(committed.control).toEqual(originalControl);
 		expect(committed.messages.map((candidate) => candidate.id)).toEqual([
 			greeting.id,
 		]);
-		expect(committed.revision).toBe(1);
+		// Acceptance and resolution each advance the revision exactly once.
+		expect(committed.revision).toBe(2);
 	});
 
 	test("keeps appending native-order siblings under one stamp and leaves current Control untouched after seats change", () => {
-		const { module, snapshot, modelId } = setup(database);
+		const { module, snapshot } = setup(database);
 		const greeting = snapshot.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
+		const control = seats(snapshot);
 
 		const withJuno = module.execute({
 			conversationId: snapshot.id,
@@ -313,13 +353,27 @@ describe("commitSiblingVariant", () => {
 			action: { type: "assign-control", seat: "model", participantId: junoId },
 		});
 
-		const first = module.commitSiblingVariant(
+		const first = resolveSibling(
+			module,
 			siblingInput(snapshot.id, greeting.id),
+			acceptSibling(module, siblingInput(snapshot.id, greeting.id), control)
+				.generationId,
 		);
-		const second = module.commitSiblingVariant({
-			...siblingInput(snapshot.id, greeting.id),
-			content: "A third alternative.",
-		});
+		const second = resolveSibling(
+			module,
+			{
+				...siblingInput(snapshot.id, greeting.id),
+				content: "A third alternative.",
+			},
+			acceptSibling(
+				module,
+				{
+					...siblingInput(snapshot.id, greeting.id),
+					content: "A third alternative.",
+				},
+				control,
+			).generationId,
+		);
 
 		const message = second.messages.find(
 			(candidate) => candidate.id === greeting.id,
@@ -327,15 +381,16 @@ describe("commitSiblingVariant", () => {
 		expect(message?.variants.map((variant) => variant.position)).toEqual([1, 2, 3]);
 		expect(message?.variants[2]?.selected).toBe(true);
 		expect(message?.author).toEqual(greeting.author);
-		expect(message?.author?.participantId).toBe(modelId);
+		expect(message?.author?.participantId).toBe(control.modelId);
 		expect(first.control).toEqual(swapped.control);
 		expect(second.control).toEqual(swapped.control);
 	});
 
-	test("concurrent edits advancing the revision do not block the sibling commit", () => {
+	test("concurrent edits advancing the revision do not block sibling acceptance or resolution", () => {
 		const { module, snapshot } = setup(database);
 		const greeting = snapshot.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
+		const control = seats(snapshot);
 
 		const edited = module.execute({
 			conversationId: snapshot.id,
@@ -350,10 +405,14 @@ describe("commitSiblingVariant", () => {
 		});
 		expect(edited.revision).toBe(1);
 
-		const committed = module.commitSiblingVariant(
+		const committed = resolveSibling(
+			module,
 			siblingInput(snapshot.id, greeting.id),
+			acceptSibling(module, siblingInput(snapshot.id, greeting.id), control)
+				.generationId,
 		);
-		expect(committed.revision).toBe(2);
+		// The edit (1), the acceptance (2), and the resolution (3) each land.
+		expect(committed.revision).toBe(3);
 		expect(committed.data).toContainEqual({
 			namespace: "test",
 			key: "landed",
@@ -363,29 +422,24 @@ describe("commitSiblingVariant", () => {
 
 	test("rejects a missing Conversation and a Message outside the Conversation with typed results", () => {
 		const { module, snapshot } = setup(database);
+		const control = seats(snapshot);
 		expect(() =>
-			module.commitSiblingVariant(siblingInput(424242, 1)),
+			acceptSibling(module, siblingInput(424242, 1), control),
 		).toThrow(ConversationNotFoundError);
 
-		const other = module.create({
-			name: "Other Chat",
-			participants: [
-				{ definition: adHoc("A") },
-				{ definition: adHoc("B") },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const outsider = other.messages[0];
-		expect(outsider).toBeUndefined();
 		expect(() =>
-			module.commitSiblingVariant(siblingInput(snapshot.id, 424242)),
+			acceptSibling(module, siblingInput(snapshot.id, 424242), control),
 		).toThrow(InvalidConversationCommandError);
 	});
 
-	test("denies a direct sibling commit in an incomplete Conversation with the typed playability result", () => {
+	test("denies sibling acceptance in an incomplete Conversation with the typed playability result", () => {
 		const module = createConversationModule(database);
 		const incomplete = module.create({
 			name: "Incomplete Import",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{ definition: adHoc("Maren Voss") },
+			],
 			messages: [
 				{
 					timestamp: "2026-08-20T10:00:00Z",
@@ -401,18 +455,22 @@ describe("commitSiblingVariant", () => {
 		});
 		const message = incomplete.messages[0];
 		if (message === undefined) throw new Error("Message missing.");
+		const control = seats(incomplete);
 
-		// Even the raw server-side commit re-derives eligibility; an
-		// incomplete Conversation cannot gain a sibling by bypassing the
-		// workflow's pre-transport gate.
+		// Acceptance re-derives eligibility; an incomplete Conversation cannot
+		// gain a sibling by bypassing the workflow's pre-transport gate.
 		expect(() =>
-			module.commitSiblingVariant(siblingInput(incomplete.id, message.id)),
+			acceptSibling(
+				module,
+				siblingInput(incomplete.id, message.id),
+				control,
+			),
 		).toThrow(ConversationNotPlayableError);
 		expect(module.getSnapshot(incomplete.id)?.revision).toBe(0);
 		expect(module.getSnapshot(incomplete.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
-	test("denies a sibling for a Message without captured historical context", () => {
+	test("denies sibling acceptance for a Message without captured historical context", () => {
 		const module = createConversationModule(database);
 		const imported = module.create({
 			name: "Mixed Chat",
@@ -437,9 +495,10 @@ describe("commitSiblingVariant", () => {
 
 		const message = imported.messages[0];
 		if (message === undefined) throw new Error("Message missing.");
+		const control = seats(imported);
 
 		const denial = () =>
-			module.commitSiblingVariant(siblingInput(imported.id, message.id));
+			acceptSibling(module, siblingInput(imported.id, message.id), control);
 		try {
 			denial();
 			throw new Error("Expected the sibling to be denied.");
@@ -457,30 +516,30 @@ describe("commitSiblingVariant", () => {
 		expect(module.getSnapshot(imported.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
-	test("denies a sibling when a historical Participant no longer has a usable Definition", () => {
-		const { module, snapshot, modelId } = setup(database);
+	test("denies sibling acceptance when a historical Participant no longer has a usable Definition", () => {
+		const { module, snapshot } = setup(database);
 		const greeting = snapshot.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
+		const control = seats(snapshot);
 
 		const withJuno = module.execute({
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
 		});
-		const junoId = withJuno.cast[2]?.id ?? 0;
 		module.execute({
 			conversationId: snapshot.id,
 			expectedRevision: withJuno.revision,
-			action: { type: "assign-control", seat: "model", participantId: junoId },
+			action: { type: "assign-control", seat: "model", participantId: withJuno.cast[2]?.id ?? 0 },
 		});
 
 		drizzle(database)
 			.delete(participantPromptTable)
-			.where(eq(participantPromptTable.participant_id, modelId))
+			.where(eq(participantPromptTable.participant_id, control.modelId))
 			.run();
 
 		const denial = () =>
-			module.commitSiblingVariant(siblingInput(snapshot.id, greeting.id));
+			acceptSibling(module, siblingInput(snapshot.id, greeting.id), control);
 		try {
 			denial();
 			throw new Error("Expected the sibling to be denied.");

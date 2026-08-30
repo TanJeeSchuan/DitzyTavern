@@ -129,8 +129,8 @@ const terminalProvenance = (
  * Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
  * (unless the supplied entries already carry one), then the supplied
- * entries in order. Shared by resolve, stop, and the server-side commits so
- * the row order and the reasoning dedupe rule cannot drift.
+ * entries in order. Shared by resolve and stop so the row order and the
+ * reasoning dedupe rule cannot drift.
  */
 export const persistTerminalVariantData = (
 	db: ReturnType<typeof connectConversationDatabase>,

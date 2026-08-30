@@ -25,7 +25,7 @@ describe("Generation Stop terminal races", () => {
 			name: "Terminal race",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: ["Original."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -91,17 +91,10 @@ describe("Generation Stop terminal races", () => {
 
 	test("Stop All commits every target before settling provider runtimes", async () => {
 		const input = setup();
-		const generated = input.module.commitGeneration({
-			conversationId: input.conversation.id,
-			timestamp: "2026-08-27T00:00:00.000Z",
-			content: "Original.",
-			authorParticipantId: input.model.id,
-			capturedAuthorName: input.model.name,
-			humanParticipantId: input.human.id,
-			modelParticipantId: input.model.id,
-		});
-		const target = generated.messages.at(-1);
-		if (target === undefined) throw new Error("Generated target missing.");
+		// The sibling target is the configured opening Message, whose captured
+		// historical Control pair makes sibling acceptance eligible.
+		const target = input.conversation.messages[0];
+		if (target === undefined) throw new Error("Opening target missing.");
 		const acceptSibling = (timestamp: string) => input.module.acceptSiblingGeneration({
 			conversationId: input.conversation.id,
 			messageId: target.id,

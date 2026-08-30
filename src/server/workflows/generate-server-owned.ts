@@ -10,10 +10,6 @@ import {
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
-import {
-	generationProvenanceCodec,
-	parseGenerationJson,
-} from "../../shared/generation-provenance";
 
 // Detached server-owned Generation scaffolding: the attempt input shared by
 // every workflow, the accept/result handle detached from its observing
@@ -247,25 +243,6 @@ export async function runAcceptedGeneration<TResult>(
 		}
 		throw error;
 	}
-}
-
-export function terminalGenerationProvenance(
-	base: ConversationDataEntry,
-	outcome: GenerationOutcome,
-): ConversationDataEntry {
-	return {
-		namespace: base.namespace,
-		key: base.key,
-		value: generationProvenanceCodec.encode(generationProvenanceCodec.project(
-			parseGenerationJson(base.value, null),
-			{
-				usage: outcome.usage === null ? null : normalizeUsage(outcome.usage),
-				finishReason: outcome.finishReason,
-				status: outcome.status,
-				interruptionCause: outcome.interruptionCause,
-			},
-		)),
-	};
 }
 
 export function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {

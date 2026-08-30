@@ -457,9 +457,6 @@ export interface ConversationModule {
 		variantId: number,
 	): VariantDetails | undefined;
 	execute(command: ConversationCommand): ConversationSnapshot;
-	// Server-side commit of a finished current Generate; see
-	// CommitGenerationInput. Not a client-submitted command.
-	commitGeneration(input: CommitGenerationInput): ConversationSnapshot;
 	// Server-owned Send lifecycle. Acceptance creates the ordinary human
 	// Message and provisional model target in one revisioned transaction;
 	// terminal transitions resolve or remove only that target.
@@ -487,25 +484,6 @@ export interface ConversationModule {
 	removeSiblingGeneration(
 		input: RemoveSiblingGenerationInput,
 	): ConversationSnapshot;
-	// Server-side commit of a finished targeted Swipe (sibling Variant
-	// generation); see CommitSiblingVariantInput. Like commitGeneration, it
-	// captures at generation start and commits unguarded by the revision so
-	// legitimate concurrent edits land without rewriting the in-flight plan.
-	commitSiblingVariant(input: CommitSiblingVariantInput): ConversationSnapshot;
-}
-
-// Server-side commit of a finished targeted Swipe. The sibling workflow
-// captured the Prompt Plan from the target Message's historical pair at
-// generation start; this operation appends the returned content as a new
-// selected sibling Variant without touching current Control or the Message's
-// immutable Author Stamp.
-export interface CommitSiblingVariantInput {
-	conversationId: number;
-	messageId: number;
-	timestamp: string;
-	content: string;
-	provenance?: ConversationDataEntry | undefined;
-	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 export interface ActiveGenerationSnapshot {
@@ -721,22 +699,6 @@ export interface CheckpointGenerationInput {
 	reasoning?: string | undefined;
 	latestEventId?: number | undefined;
 	timestamp?: string | undefined;
-}
-
-// The generation workflow captures these values at generation start; the
-// module validates the pair against the Cast and persists the Message with
-// the immutable Author Stamp and historical Control pair exactly as
-// captured. The author is always the model Participant of the pair.
-export interface CommitGenerationInput {
-	conversationId: number;
-	timestamp: string;
-	content: string;
-	authorParticipantId: number;
-	capturedAuthorName: string;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	provenance?: ConversationDataEntry | undefined;
-	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 export interface ConversationCreationVariant {

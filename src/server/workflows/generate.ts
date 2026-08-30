@@ -35,8 +35,6 @@ import type { ModelClient, ModelClientConnectionSnapshot } from "../model-client
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import {
 	runAcceptedGeneration,
-	runGeneration,
-	terminalGenerationProvenance,
 	generationOutcomeData,
 	startServerOwnedGenerationFrom,
 	type GenerationAttemptInput,
@@ -44,7 +42,6 @@ import {
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
 import {
-	captureGeneration,
 	captureSendGeneration,
 	captureContinuationGeneration,
 	captureSiblingGeneration,
@@ -203,53 +200,26 @@ export function inspectGenerationPrompt(
 
 /**
  * Test-fixture seam for suites that need a terminal model Message without a
- * user Send. It deliberately bypasses Active Generation persistence and is
- * therefore absent from the public workflow barrel and every HTTP route.
- * Product code must use the server-owned Send, Continue, or Sibling starts.
+ * user Send. It composes the production Continuation lifecycle — acceptance
+ * followed by resolution — instead of a parallel commit path, so fixtures
+ * exercise the same Active Generation persistence, Author Stamp capture, and
+ * terminal rules every server-owned Generation uses. It is therefore absent
+ * from the public workflow barrel and every HTTP route. Product code must
+ * use the server-owned Send, Continue, or Sibling starts.
  */
 export async function generateTerminalTailFixture(
 	database: Database,
 	input: GenerationAttemptInput,
 ): Promise<ConversationSnapshot> {
-	const conversation = createConversationModule(database);
-
-	// Capture the complete provider-neutral Generation input before contacting
-	// the Model Client. The snapshot and all copied values belong to this one
-	// attempt, so later edits affect only later Generations.
-	const snapshot = conversation.getSnapshot(input.conversationId);
+	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	const capture = captureGeneration(
-		database,
-		snapshot,
-		input.connection,
-		input.connectionSettings,
-		input.tokenEstimator,
-	);
-
-	const outcome = await runGeneration(input.modelClient, {
-		promptPlan: capture.promptPlan,
-		historyRoles: capture.historyRoles,
-		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
-		connection: capture.connection,
-		signal: input.signal,
-	}, input.onEvent);
-
-	// Commit with the generation-start captures even if the Conversation
-	// moved on while the transport was working.
-	return conversation.commitGeneration({
-		conversationId: input.conversationId,
-		timestamp: input.timestamp ?? new Date().toISOString(),
-		content: outcome.content,
-		authorParticipantId: capture.author.participantId,
-		capturedAuthorName: capture.author.capturedName,
-		humanParticipantId: capture.control.humanParticipantId,
-		modelParticipantId: capture.control.modelParticipantId,
-		provenance: terminalGenerationProvenance(capture.provenance, outcome),
-		data: generationOutcomeData(outcome),
+	const result = await continueGeneration(database, {
+		...input,
+		expectedRevision: snapshot.revision,
 	});
+	return result.conversation;
 }
 
 // Send's accepted lifecycle is intentionally separate from the legacy

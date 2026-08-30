@@ -1,6 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { commitConversationSiblingVariant } from "./commands/commit-sibling-variant";
-import { commitConversationGeneration } from "./commands/commit-generation";
 import {
 	acceptConversationTailGeneration,
 	acceptConversationContinuationGeneration,
@@ -85,14 +83,12 @@ export type {
 	ChatHistoryPage,
 	ChatHistoryPageRequest,
 	ChatHistoryVariant,
-	CommitGenerationInput,
 	AcceptTailGenerationInput,
 	AcceptedTailGeneration,
 	AcceptContinuationGenerationInput,
 	AcceptedContinuationGeneration,
 	AcceptSiblingGenerationInput,
 	AcceptedSiblingGeneration,
-	CommitSiblingVariantInput,
 	ConversationAction,
 	ConversationArtifactSeed,
 	ConversationCapabilities,
@@ -175,7 +171,6 @@ export function createConversationModule(database: Database): ConversationModule
 				variantId,
 			),
 		execute: (command) => executeConversationCommand(database, command),
-		commitGeneration: (input) => commitConversationGeneration(database, input),
 		acceptTailGeneration: (input) =>
 			acceptConversationTailGeneration(database, input),
 	acceptContinuationGeneration: (input) =>
@@ -196,7 +191,5 @@ export function createConversationModule(database: Database): ConversationModule
 			resolveConversationSiblingGeneration(database, input),
 		removeSiblingGeneration: (input) =>
 			removeConversationSiblingGeneration(database, input),
-		commitSiblingVariant: (input) =>
-			commitConversationSiblingVariant(database, input),
 	};
 }

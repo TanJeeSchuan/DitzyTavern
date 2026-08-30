@@ -23,6 +23,7 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	generateSiblingVariant,
 	inspectGenerationPrompt,
+	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./generate";
 
@@ -138,8 +139,9 @@ describe("Generation capture and terminal fixture support", () => {
 	});
 
 	test("the terminal fixture creates a Message authored by the model seat at generation start", async () => {
-		const expectedPlan = inspectGenerationPrompt(database, conversationId).plan;
-		if (expectedPlan === null) {
+		const inspection = inspectGenerationPrompt(database, conversationId);
+		const expectedPlan = inspection.plan;
+		if (expectedPlan === null || inspection.continuationIntent === null) {
 			throw new Error("Expected a compiled plan for the playable Conversation.");
 		}
 		let receivedPlan: PromptPlan | undefined;
@@ -152,8 +154,9 @@ describe("Generation capture and terminal fixture support", () => {
 			}),
 		});
 
-		// The transport received exactly the plan inspection would compile.
-		expect(receivedPlan).toEqual(expectedPlan);
+		// The transport received exactly the plan inspection would compile,
+		// carrying the Continuation intent inspection exposes separately.
+		expect(receivedPlan).toEqual({ ...expectedPlan, intent: inspection.continuationIntent });
 
 		const message = committed.messages.at(-1);
 		expect(message?.author).toEqual({
@@ -172,14 +175,16 @@ describe("Generation capture and terminal fixture support", () => {
 			}),
 		]);
 		expect(committed.messages).toHaveLength(2);
-		expect(committed.revision).toBe(1);
+		// Acceptance and resolution each advance the revision exactly once.
+		expect(committed.revision).toBe(2);
 	});
 
 	test("the terminal fixture forwards normalized events and freezes the captured generation input", async () => {
 		const receivedEvents: unknown[] = [];
 		let receivedInput: ModelClientGenerationInput | undefined;
-		const expectedPlan = inspectGenerationPrompt(database, conversationId).plan;
-		if (expectedPlan === null) {
+		const inspection = inspectGenerationPrompt(database, conversationId);
+		const expectedPlan = inspection.plan;
+		if (expectedPlan === null || inspection.continuationIntent === null) {
 			throw new Error("Expected a compiled plan for the playable Conversation.");
 		}
 
@@ -199,7 +204,7 @@ describe("Generation capture and terminal fixture support", () => {
 			},
 		});
 
-		expect(receivedInput?.promptPlan).toEqual(expectedPlan);
+		expect(receivedInput?.promptPlan).toEqual({ ...expectedPlan, intent: inspection.continuationIntent });
 		expect(receivedInput?.generationSettings).toMatchObject({
 			contextLimit: 32_768,
 			responseBudget: 1_024,
@@ -340,7 +345,9 @@ describe("Generation capture and terminal fixture support", () => {
 
 		const after = createConversationModule(database).getSnapshot(conversationId);
 		expect(after?.messages).toEqual(snapshot.messages);
-		expect(after?.revision).toBe(snapshot.revision);
+		// Acceptance and terminal removal are both authoritative lifecycle
+		// transitions even though no durable Message remains.
+		expect(after?.revision).toBe(snapshot.revision + 2);
 	});
 
 	test("preserves visible partial work as interrupted when a stream fails", async () => {
@@ -382,7 +389,9 @@ describe("Generation capture and terminal fixture support", () => {
 
 		const after = createConversationModule(database).getSnapshot(conversationId);
 		expect(after?.messages).toEqual(before.messages);
-		expect(after?.revision).toBe(before.revision);
+		// Acceptance and terminal removal are both authoritative lifecycle
+		// transitions even though no durable Message remains.
+		expect(after?.revision).toBe(before.revision + 2);
 	});
 
 	test("treats cancellation as targeted and preserves already received output", async () => {
@@ -587,8 +596,9 @@ describe("Generation capture and terminal fixture support", () => {
 		release("Committed after the concurrent edit.");
 		const committed = await generation;
 
-		// The edit committed (revision 1) and the generation committed on top.
-		expect(committed.revision).toBe(2);
+		// The edit committed (revision 1), the acceptance reserved the target
+		// (revision 2), and the resolution committed on top (revision 3).
+		expect(committed.revision).toBe(3);
 		expect(committed.messages.at(-1)?.variants[0]?.content).toBe(
 			"Committed after the concurrent edit.",
 		);
@@ -774,7 +784,8 @@ describe("Generation capture and terminal fixture support", () => {
 			"first-model",
 			"second-model",
 		]);
-		expect(secondSettings.revision).toBe(3);
+		// One settings command plus two lifecycle transitions per fixture.
+		expect(secondSettings.revision).toBe(4);
 	});
 
 	test("reduces Tail history by whole Messages while protecting the latest human input", async () => {
@@ -789,16 +800,6 @@ describe("Generation capture and terminal fixture support", () => {
 				timestamp: "2026-08-20T12:01:00Z",
 				variantContents: ["Older model history."],
 				authorParticipantId: modelId,
-			},
-		});
-		current = conversation.execute({
-			conversationId,
-			expectedRevision: current.revision,
-			action: {
-				type: "create-message",
-				timestamp: "2026-08-20T12:02:00Z",
-				variantContents: ["Latest human input."],
-				authorParticipantId: humanId,
 			},
 		});
 		current = conversation.execute({
@@ -826,8 +827,10 @@ describe("Generation capture and terminal fixture support", () => {
 
 		const estimates = [200, 100];
 		let receivedPlan: PromptPlan | undefined;
-		const committed = await generateTerminalTailFixture(database, {
+		const { conversation: committed } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
+			expectedRevision: current.revision,
+			content: "Latest human input.",
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
@@ -846,16 +849,6 @@ describe("Generation capture and terminal fixture support", () => {
 		const conversation = createConversationModule(database);
 		let current = conversation.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
-		current = conversation.execute({
-			conversationId,
-			expectedRevision: current.revision,
-			action: {
-				type: "create-message",
-				timestamp: "2026-08-20T12:04:00Z",
-				variantContents: ["Protected human input."],
-				authorParticipantId: humanId,
-			},
-		});
 		current = conversation.execute({
 			conversationId,
 			expectedRevision: current.revision,
@@ -882,51 +875,55 @@ describe("Generation capture and terminal fixture support", () => {
 		if (before === undefined) throw new Error("Snapshot missing.");
 		let contacted = false;
 
-		await expect(generateTerminalTailFixture(database, {
-			conversationId,
-			modelClient: createFakeModelClient(() => {
-				contacted = true;
-				return "Must not be contacted.";
-			}),
-			tokenEstimator: createTokenEstimator(() => 20),
-		})).rejects.toBeInstanceOf(PromptBudgetExceededError);
+		let failure: PromptBudgetExceededError | undefined;
+		try {
+			await sendThroughProvisionalTailGeneration(database, {
+				conversationId,
+				expectedRevision: current.revision,
+				content: "Protected human input.",
+				modelClient: createFakeModelClient(() => {
+					contacted = true;
+					return "Must not be contacted.";
+				}),
+				tokenEstimator: createTokenEstimator(() => 20),
+			});
+		} catch (error) {
+			if (error instanceof PromptBudgetExceededError) failure = error;
+			else throw error;
+		}
+		if (failure === undefined) throw new Error("Expected a PromptBudgetExceededError.");
 
 		expect(contacted).toBe(false);
 		expect(conversation.getSnapshot(conversationId)).toEqual(before);
-		const inspection = inspectGenerationPrompt(database, conversationId, {
-			tokenEstimator: createTokenEstimator(() => 20),
-		});
-		expect(inspection.budgetFits).toBe(false);
-		expect(inspection.budgetFailure?.reason).toBe("protected-history-too-large");
-		expect(inspection.budgetFailure?.breakdown).toMatchObject({
+		// The protected element is the Send candidate's own human input.
+		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
+		expect(failure.breakdown).toMatchObject({
 			tokenEstimate: 20,
 			responseBudget: 1,
 			safetyAllowance: 5,
 			contextLimit: 25,
 		});
+		// Read-only inspection of the stored Conversation reports the same
+		// impossible budget without contacting anything.
+		const inspection = inspectGenerationPrompt(database, conversationId, {
+			tokenEstimator: createTokenEstimator(() => 20),
+		});
+		expect(inspection.budgetFits).toBe(false);
 	});
 
 	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
 		const conversation = createConversationModule(database);
-		let current = conversation.getSnapshot(conversationId);
-		if (current === undefined) throw new Error("Snapshot missing.");
-		current = conversation.execute({
+		const before = conversation.getSnapshot(conversationId);
+		if (before === undefined) throw new Error("Snapshot missing.");
+		// The Send composes the production Tail lifecycle: its accepted human
+		// Message precedes the generated target the sibling targets.
+		const { modelMessageId: targetId } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
-			expectedRevision: current.revision,
-			action: {
-				type: "create-message",
-				timestamp: "2026-08-20T12:01:00Z",
-				variantContents: ["Human context before target."],
-				authorParticipantId: humanId,
-			},
-		});
-		const target = await generateTerminalTailFixture(database, {
-			conversationId,
+			expectedRevision: before.revision,
+			content: "Human context before target.",
 			modelClient: fakeModelClient(() => "Target model output."),
 		});
-		const targetId = target.messages.at(-1)?.id;
-		if (targetId === undefined) throw new Error("Target Message missing.");
-		current = conversation.getSnapshot(conversationId);
+		let current = conversation.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
 		current = conversation.execute({
 			conversationId,
