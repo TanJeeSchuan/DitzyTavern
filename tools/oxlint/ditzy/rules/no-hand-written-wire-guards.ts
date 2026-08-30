@@ -2,12 +2,22 @@ import { defineRule, type ESTree } from "@oxlint/plugins";
 
 import { repositoryPath } from "../path.ts";
 
-const isMigratedTransport = (filename: string): boolean => {
-	const path = repositoryPath(filename);
-	return path === "src/client/chat-history.ts" ||
-		path.includes("/transport/") ||
-		/[-.]transport\.[cm]?[jt]sx?$/.test(path);
-};
+// Migrated transports are recognized by responsibility, not by a literal
+// filename list: a client file that owns a transport boundary contract
+// (an interface named *Transport) or that is organized as a transport
+// module (/transport/ directories or *.transport.* files) must decode
+// wire payloads through shared schemas. Everything else — flow reducers,
+// presentation helpers, form validation — keeps legitimate non-transport
+// validation.
+const isTransportSeamPath = (path: string): boolean =>
+	path.includes("/transport/") || /[-.]transport\.[cm]?[jt]sx?$/.test(path);
+
+const isClientPath = (path: string): boolean => path.startsWith("src/client/");
+
+const transportInterfaceName = (node: ESTree.Node): string | null =>
+	node.type === "TSInterfaceDeclaration" && node.id.name.endsWith("Transport")
+		? node.id.name
+		: null;
 
 const containingFunction = (node: ESTree.Node): ESTree.Node | null => {
 	let current: ESTree.Node | null = node.parent;
@@ -61,13 +71,22 @@ export const noHandWrittenWireGuardsRule = defineRule({
 			functions.set(owner, created);
 			return created;
 		};
+		// The interface scan runs while guards are collected; the file is
+		// judged once at program exit so declaration order never matters.
+		let transportInterfaceFound = false;
 
 		return {
 			before() {
 				functions.clear();
+				transportInterfaceFound = false;
+			},
+			TSInterfaceDeclaration(node) {
+				if (transportInterfaceName(node) === null) return;
+				if (isClientPath(repositoryPath(context.filename))) {
+					transportInterfaceFound = true;
+				}
 			},
 			CallExpression(node) {
-				if (!isMigratedTransport(context.filename)) return;
 				if (
 					node.callee.type !== "Identifier" ||
 					node.callee.name !== "isRow"
@@ -78,15 +97,18 @@ export const noHandWrittenWireGuardsRule = defineRule({
 				if (argument.type === "Identifier") state.rowGuardRoots.add(argument.name);
 			},
 			MemberExpression(node) {
-				if (!isMigratedTransport(context.filename)) return;
 				const state = functionState(node);
 				const root = rootIdentifier(node);
 				if (state !== null && root !== null) state.propertyReadRoots.add(root);
 			},
 			"Program:exit"() {
+				const path = repositoryPath(context.filename);
+				if (!(isClientPath(path) && isTransportSeamPath(path)) && !transportInterfaceFound) {
+					return;
+				}
 				for (const state of functions.values()) {
 					const readsGuardedRow = [...state.rowGuardRoots].some((root) =>
-						state.propertyReadRoots.has(root)
+						state.propertyReadRoots.has(root),
 					);
 					if (!readsGuardedRow) continue;
 					context.report({ node: state.node, messageId: "handWrittenGuard" });

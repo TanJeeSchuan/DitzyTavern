@@ -39,6 +39,25 @@ const importDuplicateMatch = Type.Object({
 
 export type ChatImportDuplicateMatch = Static<typeof importDuplicateMatch>;
 
+// Duplicate evidence: the classified Prior imports for one source, exact
+// (matching raw-byte SHA-256) or related (matching only the advisory
+// integrity). Shared by the preview, receipt, and Import Details payloads.
+export const duplicateEvidence = Type.Object({
+	exact: Type.Array(importDuplicateMatch),
+	related: Type.Array(importDuplicateMatch),
+});
+
+export type ChatImportDuplicateEvidence = Static<typeof duplicateEvidence>;
+
+// The two ways an Exact Source Artifact copy can be missing content;
+// missing or corrupt copies report cleaned up without affecting the Chat.
+export const cleanupReason = Type.Union([
+	Type.Literal("missing"),
+	Type.Literal("corrupt"),
+]);
+
+export type ImportCleanupReason = Static<typeof cleanupReason>;
+
 // The staged preview contract mirrors the deep SillyTavern Import module's
 // public preview; routes only transport it.
 const chatImportPreview = Type.Object({
@@ -53,10 +72,7 @@ const chatImportPreview = Type.Object({
 	}),
 	warnings: Type.Array(Type.String()),
 	groups: Type.Array(importGroup),
-	duplicates: Type.Object({
-		exact: Type.Array(importDuplicateMatch),
-		related: Type.Array(importDuplicateMatch),
-	}),
+	duplicates: duplicateEvidence,
 });
 
 export type ChatImportPreview = Static<typeof chatImportPreview>;
@@ -137,10 +153,7 @@ const chatImportReceipt = Type.Object({
 	}),
 	participants: Type.Array(importReceiptParticipant),
 	warnings: Type.Array(Type.String()),
-	duplicates: Type.Object({
-		exact: Type.Array(importDuplicateMatch),
-		related: Type.Array(importDuplicateMatch),
-	}),
+	duplicates: duplicateEvidence,
 });
 
 export type ChatImportReceipt = Static<typeof chatImportReceipt>;
@@ -158,7 +171,7 @@ const importDetailsArtifactAvailability = Type.Union([
 	Type.Object({ status: Type.Literal("available") }),
 	Type.Object({
 		status: Type.Literal("cleaned-up"),
-		reason: Type.Union([Type.Literal("missing"), Type.Literal("corrupt")]),
+		reason: cleanupReason,
 	}),
 ]);
 
@@ -198,10 +211,7 @@ export const chatImportDetails = Type.Object({
 		warnings: Type.Array(Type.String()),
 		importerVersion: Type.String(),
 	}),
-	duplicates: Type.Object({
-		exact: Type.Array(importDuplicateMatch),
-		related: Type.Array(importDuplicateMatch),
-	}),
+	duplicates: duplicateEvidence,
 	artifact: Type.Union([Type.Null(), importDetailsArtifact]),
 });
 
@@ -228,10 +238,7 @@ export const importGoneResponse = Type.Union([
 	Type.Object({ outcome: Type.Literal("expired") }),
 	Type.Object({
 		outcome: Type.Literal("unavailable"),
-		reason: Type.Union([
-			Type.Literal("missing"),
-			Type.Literal("corrupt"),
-		]),
+		reason: cleanupReason,
 	}),
 ]);
 
@@ -241,8 +248,5 @@ export const importDiscardedResponse = Type.Object({
 
 export const importCleanedUpResponse = Type.Object({
 	outcome: Type.Literal("cleaned-up"),
-	reason: Type.Union([
-		Type.Literal("missing"),
-		Type.Literal("corrupt"),
-	]),
+	reason: cleanupReason,
 });

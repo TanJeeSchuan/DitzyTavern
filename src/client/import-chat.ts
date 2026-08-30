@@ -5,10 +5,12 @@
 // flow. Outcomes mirror the server's typed results so the view can recover
 // from recoverable errors without re-uploading or losing its drafts.
 
-// Payload types derive from the shared TypeBox contract so this client
-// boundary can never drift from the server's typed responses. The
-// hand-rolled JSON guards further below stay deliberately: they are the
-// transport seam that validates real wire payloads at this boundary.
+// Payload types and wire validation both derive from the shared TypeBox
+// contract: every untrusted server response is decoded against the shared
+// schemas at this boundary so a malformed payload can never masquerade as
+// a trusted import result.
+import { Value } from "@sinclair/typebox/value";
+import type { StaticDecode, TSchema } from "@sinclair/typebox";
 import type {
 	ChatImportCommitBody,
 	ChatImportDuplicateMatch,
@@ -21,13 +23,13 @@ import type {
 	ImportResolutionOutcome,
 } from "../shared/contract/chat-import";
 import {
-	type JsonValue,
-	isBoolean,
-	isNumber,
-	isRow,
-	isString,
-	isStringArray,
-} from "./lib/json-guards";
+	importCommittedResponse,
+	importGoneResponse,
+	importPreviewResponse,
+	importStagedResponse,
+} from "../shared/contract/chat-import";
+import { invalidOutcome } from "../shared/contract/outcomes";
+import type { JsonValue } from "./lib/json-guards";
 
 export type {
 	ChatImportDuplicateMatch,
@@ -94,256 +96,87 @@ export interface ChatImportTransport {
 	discard(token: string): Promise<void>;
 }
 
-// Parses and validates one preview payload at the I/O boundary. Any field
-// failing the typed contract discards the whole payload so a malformed
-// response can never masquerade as a trusted preview.
-const parsePreview = (value: JsonValue): ChatImportPreview | null => {
-	if (!isRow(value)) return null;
-	const counts = value.counts;
-	if (!isRow(counts) || !isNumber(counts.messages) || !isNumber(counts.variants)) {
+// Wire decoding at the transport seam: every untrusted server response is
+// validated against the shared contract schemas before any typed outcome
+// leaves this boundary. Any field failing the typed contract — a missing
+// field, a malformed nested value, or an unexpected top-level shape —
+// fails the whole payload so a partial response can never enter the flow.
+
+// Decodes one wire payload against a shared contract schema, or null when
+// the payload does not satisfy the contract.
+const decode = <Schema extends TSchema>(
+	schema: Schema,
+	value: JsonValue,
+): StaticDecode<Schema> | null => {
+	try {
+		return Value.Decode(schema, value);
+	} catch {
 		return null;
 	}
-	const duplicates = value.duplicates;
-	if (!isRow(duplicates)) return null;
-	const matchList = (entries: JsonValue): ChatImportDuplicateMatch[] | null => {
-		if (!Array.isArray(entries)) return null;
-		const matches: ChatImportDuplicateMatch[] = [];
-		for (const entry of entries) {
-			if (!isRow(entry) || !isNumber(entry.id) || !isString(entry.name)) return null;
-			matches.push({ id: entry.id, name: entry.name });
-		}
-		return matches;
-	};
-	const exact = matchList(duplicates.exact);
-	const related = matchList(duplicates.related);
-	if (exact === null || related === null) return null;
+};
 
-	const groups: ChatImportGroup[] = [];
-	const rawGroups = value.groups;
-	if (!Array.isArray(rawGroups)) return null;
-	for (const rawGroup of rawGroups) {
-		if (!isRow(rawGroup) || !isString(rawGroup.key)) return null;
-		const positions = rawGroup.messagePositions;
-		const variantCounts = rawGroup.messageVariantCounts;
-		if (
-			!Array.isArray(positions) ||
-			!positions.every(isNumber) ||
-			!Array.isArray(variantCounts) ||
-			!variantCounts.every(isNumber) ||
-			variantCounts.length !== positions.length ||
-			!isBoolean(rawGroup.isBlank) ||
-			!isNumber(rawGroup.messageCount) ||
-			!isNumber(rawGroup.variantCount) ||
-			!isString(rawGroup.participantNameDefault)
-		) {
-			return null;
-		}
-		let suggestion: ChatImportSuggestion | null = null;
-		const rawSuggestion = rawGroup.suggestion;
-		if (rawSuggestion !== null) {
-			if (!isRow(rawSuggestion) || !isNumber(rawSuggestion.characterId)) return null;
-			const match = rawSuggestion.match;
-			if (
-				match !== "exact" &&
-				match !== "case-insensitive" &&
-				match !== "fuzzy"
-			) {
-				return null;
-			}
-			if (!isString(rawSuggestion.name) || !isBoolean(rawSuggestion.confirmed)) {
-				return null;
-			}
-			suggestion = {
-				characterId: rawSuggestion.characterId,
-				name: rawSuggestion.name,
-				match,
-				confirmed: rawSuggestion.confirmed,
-			};
-		}
-		groups.push({
-			key: rawGroup.key,
-			isBlank: rawGroup.isBlank,
-			messagePositions: positions.map((position) => position),
-			messageVariantCounts: variantCounts.map((count) => count),
-			messageCount: rawGroup.messageCount,
-			variantCount: rawGroup.variantCount,
-			participantNameDefault: rawGroup.participantNameDefault,
-			suggestion,
-		});
-	}
+const wireBody = async (response: Response): Promise<JsonValue> =>
+	await response.json().catch(() => null);
 
-	if (
-		!isString(value.title) ||
-		!isString(value.originalFilename) ||
-		!isString(value.sha256) ||
-		!isNumber(value.byteLength) ||
-		(value.integrity !== null && !isString(value.integrity)) ||
-		!isStringArray(value.warnings)
-	) {
-		return null;
-	}
-	return {
-		title: value.title,
-		originalFilename: value.originalFilename,
-		sha256: value.sha256,
-		byteLength: value.byteLength,
-		integrity: value.integrity === null ? null : value.integrity,
-		counts: { messages: counts.messages, variants: counts.variants },
-		warnings: value.warnings,
-		groups,
-		duplicates: { exact, related },
-	};
+// A typed invalid outcome keeps its contextual reason; an error body the
+// client cannot decode normalizes to the network outcome.
+const parseInvalidResponse = (
+	value: JsonValue,
+): Extract<ChatImportStageOutcome, { status: "invalid" | "network" }> => {
+	const invalid = decode(invalidOutcome, value);
+	return invalid === null
+		? { status: "network" }
+		: { status: "invalid", reason: invalid.reason };
+};
+
+// The gone-state outcome shared by preview and commit: expired and
+// unavailable handles both mean the staged flow is lost, so a gone body
+// the client cannot decode still falls back to the expired reselect
+// recovery.
+const parseGoneResponse = (value: JsonValue) => {
+	const gone = decode(importGoneResponse, value);
+	return gone === null || gone.outcome === "expired"
+		? { status: "expired" as const }
+		: { status: "unavailable" as const, reason: gone.reason };
 };
 
 const parseStageResponse = async (
 	response: Response,
 ): Promise<ChatImportStageOutcome> => {
-	const value: JsonValue = await response.json().catch(() => ({}));
-	if (!isRow(value)) return { status: "network" };
-	if (!response.ok) {
-		if (value.outcome === "invalid" && isString(value.reason)) {
-			return { status: "invalid", reason: value.reason };
-		}
-		return { status: "network" };
-	}
-	if (value.outcome !== "staged" || !isString(value.token)) {
-		return { status: "network" };
-	}
-	const preview = parsePreview(value.preview);
-	if (preview === null) return { status: "network" };
-	return { status: "staged", token: value.token, preview };
+	const value = await wireBody(response);
+	if (!response.ok) return parseInvalidResponse(value);
+	const staged = decode(importStagedResponse, value);
+	return staged === null
+		? { status: "network" }
+		: { status: "staged", token: staged.token, preview: staged.preview };
 };
 
 const parsePreviewResponse = async (
 	response: Response,
 ): Promise<ChatImportPreviewOutcome> => {
-	const value: JsonValue = await response.json().catch(() => ({}));
-	if (!isRow(value)) return { status: "network" };
-	if (response.status === 410) {
-		if (value.outcome === "unavailable") {
-			return {
-				status: "unavailable",
-				reason: value.reason === "corrupt" ? "corrupt" : "missing",
-			};
-		}
-		return { status: "expired" };
-	}
-	if (!response.ok) {
-		if (value.outcome === "invalid" && isString(value.reason)) {
-			return { status: "invalid", reason: value.reason };
-		}
-		return { status: "network" };
-	}
-	if (value.outcome !== "available") {
-		return { status: "network" };
-	}
-	const preview = parsePreview(value.preview);
-	if (preview === null) return { status: "network" };
-	return { status: "available", preview };
-};
-
-// Parses and validates one receipt payload at the I/O boundary, mirroring
-// the server's typed receipt so a malformed response can never masquerade
-// as a committed import.
-const parseReceipt = (value: JsonValue): ChatImportReceipt | null => {
-	if (!isRow(value)) return null;
-	const counts = value.counts;
-	if (!isRow(counts) || !isNumber(counts.messages) || !isNumber(counts.variants)) {
-		return null;
-	}
-	const duplicates = value.duplicates;
-	if (!isRow(duplicates)) return null;
-	const matchList = (entries: JsonValue): ChatImportDuplicateMatch[] | null => {
-		if (!Array.isArray(entries)) return null;
-		const matches: ChatImportDuplicateMatch[] = [];
-		for (const entry of entries) {
-			if (!isRow(entry) || !isNumber(entry.id) || !isString(entry.name)) return null;
-			matches.push({ id: entry.id, name: entry.name });
-		}
-		return matches;
-	};
-	const exact = matchList(duplicates.exact);
-	const related = matchList(duplicates.related);
-	if (exact === null || related === null) return null;
-
-	const participants: ChatImportReceiptParticipant[] = [];
-	const rawParticipants = value.participants;
-	if (!Array.isArray(rawParticipants)) return null;
-	for (const rawParticipant of rawParticipants) {
-		if (!isRow(rawParticipant) || !isString(rawParticipant.name)) return null;
-		const outcome = rawParticipant.outcome;
-		if (
-			outcome !== "fork" &&
-			outcome !== "new-character" &&
-			outcome !== "chat-only"
-		) {
-			return null;
-		}
-		if (
-			rawParticipant.sourceCharacterId !== null &&
-			!isNumber(rawParticipant.sourceCharacterId)
-		) {
-			return null;
-		}
-		participants.push({
-			name: rawParticipant.name,
-			outcome,
-			sourceCharacterId:
-				rawParticipant.sourceCharacterId === null
-					? null
-					: rawParticipant.sourceCharacterId,
-		});
-	}
-
-	if (
-		!isNumber(value.conversationId) ||
-		!isString(value.title) ||
-		!isString(value.originalFilename) ||
-		!isString(value.sha256) ||
-		!isNumber(value.byteLength) ||
-		!isStringArray(value.warnings)
-	) {
-		return null;
-	}
-	return {
-		conversationId: value.conversationId,
-		title: value.title,
-		originalFilename: value.originalFilename,
-		sha256: value.sha256,
-		byteLength: value.byteLength,
-		counts: { messages: counts.messages, variants: counts.variants },
-		participants,
-		warnings: value.warnings,
-		duplicates: { exact, related },
-	};
+	const value = await wireBody(response);
+	if (response.status === 410) return parseGoneResponse(value);
+	if (!response.ok) return parseInvalidResponse(value);
+	const available = decode(importPreviewResponse, value);
+	return available === null
+		? { status: "network" }
+		: { status: "available", preview: available.preview };
 };
 
 const parseCommitResponse = async (
 	response: Response,
 ): Promise<ChatImportCommitOutcome> => {
-	const value: JsonValue = await response.json().catch(() => ({}));
-	if (!isRow(value)) return { status: "network" };
-	if (response.status === 410) {
-		if (value.outcome === "unavailable") {
-			return {
-				status: "unavailable",
-				reason: value.reason === "corrupt" ? "corrupt" : "missing",
+	const value = await wireBody(response);
+	if (response.status === 410) return parseGoneResponse(value);
+	if (!response.ok) return parseInvalidResponse(value);
+	const committed = decode(importCommittedResponse, value);
+	return committed === null
+		? { status: "network" }
+		: {
+				status: "committed",
+				conversationId: committed.receipt.conversationId,
+				receipt: committed.receipt,
 			};
-		}
-		return { status: "expired" };
-	}
-	if (!response.ok) {
-		if (value.outcome === "invalid" && isString(value.reason)) {
-			return { status: "invalid", reason: value.reason };
-		}
-		return { status: "network" };
-	}
-	if (value.outcome !== "committed") {
-		return { status: "network" };
-	}
-	const receipt = parseReceipt(value.receipt);
-	if (receipt === null) return { status: "network" };
-	return { status: "committed", conversationId: receipt.conversationId, receipt };
 };
 
 export interface ChatImportTransportOptions {
