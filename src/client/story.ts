@@ -52,7 +52,6 @@ export interface StoryPreviewState {
 
 export interface PreviewSelectionRequest {
 	conversationId: number;
-	expectedRevision: number;
 	messageId: number;
 	variantId: number;
 }
@@ -438,9 +437,9 @@ export type PreviewConfirmationResult<Result> =
 	| { status: "sent"; result: Result };
 
 // A transport boundary for confirmation: no request is sent without the
-// matching client preview, and one ordinary revision-guarded command is sent
-// for a valid confirmation. The concrete Conversation transport stays
-// outside the pure story reducer.
+// matching client preview. The revision guard and outcome reconciliation
+// live in the Conversation command runner the caller composes into `send`;
+// the concrete Conversation transport stays outside the pure story reducer.
 export async function confirmPreviewSelection<Result>(
 	preview: StoryPreviewState | null,
 	request: PreviewSelectionRequest,

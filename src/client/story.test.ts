@@ -535,7 +535,6 @@ describe("story reading state", () => {
 		const requests: number[] = [];
 		const request = {
 			conversationId: 7,
-			expectedRevision: 3,
 			messageId: 1,
 			variantId: 11,
 		};

@@ -1,10 +1,6 @@
 import { useState } from "react";
-import { presentRemovalOutcome } from "../cast-remove";
 import {
-	presentSaveParticipantOutcome,
-	type SavedCharacterReference,
-} from "../cast-save";
-import {
+	CONVERSATION_CONFLICT_RELOAD_NOTICE,
 	CONVERSATION_UNREACHABLE_NOTICE,
 	LIBRARY_UNREACHABLE_NOTICE,
 } from "../lib/command-outcome";
@@ -15,7 +11,47 @@ import {
 	saveParticipantAsCharacter,
 	type ConversationSummary,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
+import type { CharacterSnapshot } from "../character-library";
 import { emptyAdHocDraft, openingsFromText, type AdHocDraft } from "./definition";
+
+// The minimal reference the drawer needs to offer navigation into the new
+// Character Library entry. Internal identifiers are not displayed anywhere.
+export interface SavedCharacterReference {
+	id: number;
+	name: string;
+}
+
+// The character-library add command's extra outcome: the conflict names the
+// changed Character instead of carrying a Conversation snapshot, so the
+// runner must not adopt or word it and forwards it untouched.
+type AddCharacterOperation = {
+	kind: "character-changed";
+	currentCharacterName?: string;
+};
+
+// The save-as-Character command's extra outcome: the success carries the new
+// Character while the Conversation itself stays untouched, so there is no
+// snapshot to adopt and the runner forwards it untouched.
+type SaveParticipantOperation = {
+	kind: "participant-saved";
+	character: CharacterSnapshot;
+};
+
+// Caller-owned wording for the add-ad-hoc command. The runner owns when each
+// notice is shown; the drawer owns what it says.
+const ADD_ADHOC_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the Cast was reloaded.",
+	notFound: CONVERSATION_UNREACHABLE_NOTICE,
+	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
+};
+
+// Caller-owned wording for the add-from-library command.
+const ADD_CHARACTER_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the authoritative Cast was reloaded.",
+	notFound: "That Character is no longer available.",
+	unreachable: LIBRARY_UNREACHABLE_NOTICE,
+};
 
 interface CastActionsOptions {
 	conversationId: number;
@@ -32,12 +68,12 @@ interface CastActionsOptions {
 
 /**
  * Owns the Cast drawer's four command handlers: remove, add from the
- * Library, add ad hoc, and save-as-Character. Each handler words its typed
- * outcomes through the cast-remove/cast-save presentation helpers and the
- * shared outcome notices, reloads the authoritative Conversation when the
- * presented state is stale, and reports failures through the drawer notice.
- * The drawer keeps its rendering state (picker, drafts, dialogs) and wires
- * these actions to its controls.
+ * Library, add ad hoc, and save-as-Character. Every handler sends through
+ * the Conversation command runner, so revision acquisition, exception
+ * normalization, snapshot adoption, and the standard notices live in one
+ * place; the drawer's typed callbacks keep the precise non-removable and
+ * character-library outcomes. Pending state, the ad-hoc draft, the removal
+ * dialog, and the save confirmation stay with the drawer.
  */
 export function useCastActions({
 	conversationId,
@@ -65,127 +101,145 @@ export function useCastActions({
 		}
 	};
 
-	const runCommand = async (
-		run: () => Promise<{ ok: boolean; message?: string }>,
-	) => {
-		setPending(true);
-		try {
-			const outcome = await run();
-			if (!outcome.ok && outcome.message) {
-				setNotice(outcome.message);
-			}
-		} finally {
-			setPending(false);
-		}
-	};
-
 	// Removes one unseated Participant after the confirmation dialog. The
 	// impact was already shown from the snapshot; the typed not-removable
 	// outcome covers the race where Control changed before the command
-	// landed, and the authoritative Cast is reloaded after it.
+	// landed.
 	const applyRemove = async (participant: {
 		id: number;
 		duplicateLabel: string;
 	}) => {
 		if (conversation === null) return;
 		setRemoveTargetId(null);
-		await runCommand(async () => {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				{ type: "remove-participant", participantId: participant.id },
-			);
-			const presentation = presentRemovalOutcome(
-				outcome,
-				participant.duplicateLabel,
-			);
-			if (presentation.reloadConversation) {
-				await refreshConversation();
-			}
-			if (outcome.status === "applied") {
-				onConversationChange(outcome.conversation);
-				setNotice(null);
-				return { ok: true };
-			}
-			if (presentation.notice !== null) {
-				return { ok: false, message: presentation.notice };
-			}
-			return { ok: true };
-		});
+		setPending(true);
+		try {
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversationId, expectedRevision, {
+						type: "remove-participant",
+						participantId: participant.id,
+					}),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
+				},
+				notices: {
+					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
+					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
+					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
+				},
+				callbacks: {
+					onApplied: () => setNotice(null),
+					// The seat was taken concurrently, so the presented Cast is
+					// stale: the precise wording is paired with an authoritative
+					// reload instead of the server reason.
+					onNotRemovable: () => {
+						setNotice(
+							`${participant.duplicateLabel} now holds a Control seat; reassign it before removing.`,
+						);
+						void refreshConversation();
+					},
+					onNotPlayable: (reason) => setNotice(reason),
+				},
+			});
+		} finally {
+			setPending(false);
+		}
 	};
 
-	const applyAddCharacter = async (characterId: number, expectedRevision: number) => {
+	const applyAddCharacter = async (characterId: number, expectedCharacterRevision: number) => {
 		if (conversation === null) return;
-		await runCommand(async () => {
-			const outcome = await addCharacterToCast({
-				conversationId,
-				expectedConversationRevision: conversation.revision,
-				characterId,
-				expectedCharacterRevision: expectedRevision,
-			});
-			switch (outcome.status) {
-				case "applied":
-					onConversationChange(outcome.conversation);
-					setNotice(null);
-					return { ok: true };
-				case "conflict":
-					if (outcome.currentConversation !== undefined) {
-						onConversationChange(outcome.currentConversation);
-						return {
-							ok: false,
-							message:
-								"The Conversation changed elsewhere; the authoritative Cast was reloaded.",
-						};
+		setPending(true);
+		try {
+			await runConversationCommand<AddCharacterOperation>({
+				revision: () => conversation.revision,
+				send: async (expectedRevision) => {
+					const outcome = await addCharacterToCast({
+						conversationId,
+						expectedConversationRevision: expectedRevision,
+						characterId,
+						expectedCharacterRevision,
+					});
+					if (outcome.status === "conflict") {
+						if (outcome.currentConversation === undefined) {
+							// A library conflict names the changed Character instead of
+							// carrying a Conversation snapshot: the runner must not
+							// adopt or word it, so it is forwarded as an operation
+							// outcome for the drawer's typed callback.
+							return {
+								status: "operation",
+								operation: {
+									kind: "character-changed",
+									currentCharacterName: outcome.currentCharacterName,
+								},
+							};
+						}
+						// A conversation conflict carries the authoritative snapshot.
+						return { status: "conflict", currentConversation: outcome.currentConversation };
 					}
-					await refreshConversation();
-					return {
-						ok: false,
-						message: `${outcome.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
-					};
-				case "not-found":
-					await refreshConversation();
-					return { ok: false, message: "That Character is no longer available." };
-				case "invalid":
-					return { ok: false, message: outcome.reason };
-				default:
-					return { ok: false, message: LIBRARY_UNREACHABLE_NOTICE };
-			}
-		});
+					return outcome;
+				},
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
+				},
+				notices: ADD_CHARACTER_NOTICES,
+				callbacks: {
+					onApplied: () => setNotice(null),
+					// This command family cannot produce these outcomes; the
+					// drawer still words them instead of flattening them.
+					onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
+					onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
+					onOperation: (operation) => {
+						if (operation.kind === "character-changed") {
+							void refreshConversation();
+							setNotice(
+								`${operation.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
+							);
+						}
+					},
+				},
+			});
+		} finally {
+			setPending(false);
+		}
 	};
 
 	const applyAddAdHoc = async () => {
 		if (conversation === null) return;
-		await runCommand(async () => {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				{
-					type: "add-participant",
-					definition: {
-						name: adHocDraft.name,
-						prompt: adHocDraft.prompt,
-						openings: openingsFromText(adHocDraft.openingsText),
-					},
+		setPending(true);
+		try {
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversationId, expectedRevision, {
+						type: "add-participant",
+						definition: {
+							name: adHocDraft.name,
+							prompt: adHocDraft.prompt,
+							openings: openingsFromText(adHocDraft.openingsText),
+						},
+					}),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
 				},
-			);
-			switch (outcome.status) {
-				case "applied":
-					onConversationChange(outcome.conversation);
-					setAdHocDraft(emptyAdHocDraft);
-					setNotice(null);
-					return { ok: true };
-				case "conflict":
-					onConversationChange(outcome.currentConversation);
-					return {
-						ok: false,
-						message: "The Conversation changed elsewhere; the Cast was reloaded.",
-					};
-				case "invalid":
-					return { ok: false, message: outcome.reason };
-				default:
-					return { ok: false, message: CONVERSATION_UNREACHABLE_NOTICE };
-			}
-		});
+				notices: ADD_ADHOC_NOTICES,
+				callbacks: {
+					onApplied: () => {
+						setAdHocDraft(emptyAdHocDraft);
+						setNotice(null);
+					},
+					// This command family cannot produce these outcomes; the
+					// drawer still words them instead of flattening them.
+					onNotPlayable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
+					onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
+				},
+			});
+		} finally {
+			setPending(false);
+		}
 	};
 
 	// Saves one active Participant as a new reusable Character. The command
@@ -200,30 +254,57 @@ export function useCastActions({
 	}) => {
 		if (conversation === null) return;
 		setSaveConfirmation(null);
-		await runCommand(async () => {
-			const outcome = await saveParticipantAsCharacter({
-				conversationId,
-				expectedConversationRevision: conversation.revision,
-				participantId: participant.id,
+		setPending(true);
+		try {
+			await runConversationCommand<SaveParticipantOperation>({
+				revision: () => conversation.revision,
+				send: async (expectedRevision) => {
+					const outcome = await saveParticipantAsCharacter({
+						conversationId,
+						expectedConversationRevision: expectedRevision,
+						participantId: participant.id,
+					});
+					// The save workflow leaves the Conversation untouched: the
+					// applied outcome carries the new Character and no snapshot
+					// to adopt, so it is forwarded as an operation outcome.
+					if (outcome.status === "applied") {
+						return {
+							status: "operation",
+							operation: { kind: "participant-saved", character: outcome.character },
+						};
+					}
+					return outcome;
+				},
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
+				},
+				notices: {
+					conflict: CONVERSATION_CONFLICT_RELOAD_NOTICE,
+					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
+					unreachable: LIBRARY_UNREACHABLE_NOTICE,
+				},
+				callbacks: {
+					// This command family cannot produce these outcomes; the
+					// server's precise reason is kept instead of a flattened class.
+					onNotPlayable: (reason) => setNotice(reason),
+					onNotRemovable: (reason) => setNotice(reason),
+					onOperation: (operation) => {
+						if (operation.kind === "participant-saved") {
+							setSaveConfirmation({
+								participantLabel: participant.duplicateLabel,
+								character: {
+									id: operation.character.id,
+									name: operation.character.name,
+								},
+							});
+						}
+					},
+				},
 			});
-			const presentation = presentSaveParticipantOutcome(
-				outcome,
-				participant.duplicateLabel,
-			);
-			if (presentation.savedCharacter !== null) {
-				setSaveConfirmation({
-					participantLabel: participant.duplicateLabel,
-					character: presentation.savedCharacter,
-				});
-			}
-			if (presentation.reloadConversation) {
-				await refreshConversation();
-			}
-			if (presentation.notice !== null) {
-				return { ok: false, message: presentation.notice };
-			}
-			return { ok: true };
-		});
+		} finally {
+			setPending(false);
+		}
 	};
 
 	return {

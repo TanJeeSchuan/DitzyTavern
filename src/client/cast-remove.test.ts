@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	presentRemovalOutcome,
-	removalConfirmationCopy,
-} from "./cast-remove";
-import type { CommandOutcome } from "./conversation";
+import { removalConfirmationCopy } from "./cast-remove";
 
 const seated = {
 	eligible: false,
@@ -56,63 +52,5 @@ describe("removalConfirmationCopy", () => {
 		expect(copy.title).toBe("Writer cannot be removed");
 		expect(copy.impact).toContain("Control seat");
 		expect(copy.confirmLabel).toBe("Close");
-	});
-});
-
-describe("presentRemovalOutcome", () => {
-	const applied: CommandOutcome = {
-		status: "applied",
-		// SAFETY: the presentation only branches on status, so the snapshot
-		// payload stays out of scope here.
-		conversation: undefined as never,
-	};
-
-	test("an applied removal needs no notice and no reload", () => {
-		expect(presentRemovalOutcome(applied, "Juno Ashfeld")).toEqual({
-			notice: null,
-			reloadConversation: false,
-		});
-	});
-
-	test("the typed not-removable outcome explains the seat and reloads", () => {
-		const presentation = presentRemovalOutcome(
-			{ status: "not-removable", reason: "control-assigned" },
-			"Juno Ashfeld",
-		);
-		expect(presentation.notice).toContain("Juno Ashfeld");
-		expect(presentation.notice).toContain("Control seat");
-		expect(presentation.reloadConversation).toBe(true);
-	});
-
-	test("conflicts and missing Participants reload the authoritative Cast", () => {
-		expect(
-			presentRemovalOutcome(
-				{
-					status: "conflict",
-					// SAFETY: the presentation only branches on status, so the
-					// authoritative snapshot payload stays out of scope here.
-					currentConversation: undefined as never,
-				},
-				"Juno Ashfeld",
-			).reloadConversation,
-		).toBe(true);
-		expect(
-			presentRemovalOutcome({ status: "not-found" }, "Juno Ashfeld"),
-		).toEqual({
-			notice: "Juno Ashfeld is no longer in this Cast.",
-			reloadConversation: true,
-		});
-	});
-
-	test("validation and network failures surface as notices", () => {
-		const invalid = presentRemovalOutcome(
-			{ status: "invalid", reason: "Nope" },
-			"Juno Ashfeld",
-		);
-		expect(invalid.notice).toBe("Nope");
-		expect(invalid.reloadConversation).toBe(false);
-		expect(presentRemovalOutcome({ status: "network" }, "Juno Ashfeld").notice).toBe(
-			"The Conversation could not be reached.",
-		);
 	});
 });

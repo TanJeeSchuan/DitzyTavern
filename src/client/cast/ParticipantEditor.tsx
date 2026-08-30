@@ -1,14 +1,24 @@
 import { useState } from "react";
 import {
 	applyConversationCommand,
+	type ConversationAction,
 	type ConversationSummary,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	emptyPrompt,
 	openingsFromText,
 	openingsToText,
 	promptFields,
 } from "./definition";
+
+// The wording this surface shows for each standard command failure; the
+// runner owns when each notice is shown, the editor owns what it says.
+const EDITOR_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the current state was loaded.",
+	notFound: "The Conversation could not be reached.",
+	unreachable: "The Conversation could not be reached.",
+};
 
 export function ParticipantEditor({
 	conversationId,
@@ -38,52 +48,50 @@ export function ParticipantEditor({
 	}
 
 	const apply = async (
-		action: Parameters<typeof applyConversationCommand>[2],
+		action: ConversationAction,
 		section: "name" | "prompt" | "openings",
 	) => {
 		setPending(true);
 		try {
-			const outcome = await applyConversationCommand(
-				conversationId,
-				conversation.revision,
-				action,
-			);
-			switch (outcome.status) {
-				case "applied": {
-					const applied = outcome.conversation;
-					onConversationChange(applied);
-					setDrafts((current) => ({
-						name:
-							section === "name"
-								? applied.cast.find((p) => p.id === participant.id)?.name ??
-									current.name
-								: current.name,
-						prompt:
-							section === "prompt"
-								? (applied.cast.find((p) => p.id === participant.id)?.prompt ??
-									current.prompt)
-								: current.prompt,
-						openingsText:
-							section === "openings"
-								? openingsToText(
-										applied.cast.find((p) => p.id === participant.id)?.openings ?? [],
-									)
-								: current.openingsText,
-					}));
-					onNotice(null);
-					break;
-				}
-				case "conflict": {
-					onConversationChange(outcome.currentConversation);
-					onNotice("The Conversation changed elsewhere; the current state was loaded.");
-					break;
-				}
-				case "invalid":
-					onNotice(outcome.reason);
-					break;
-				default:
-					onNotice("The Conversation could not be reached.");
-			}
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversationId, expectedRevision, action),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: onNotice,
+				},
+				notices: EDITOR_NOTICES,
+				callbacks: {
+					onApplied: (applied) => {
+						// Only the edited section re-syncs its draft from the
+						// authoritative snapshot; the other drafts stay as typed.
+						setDrafts((current) => ({
+							name:
+								section === "name"
+									? applied.cast.find((p) => p.id === participant.id)?.name ??
+										current.name
+									: current.name,
+							prompt:
+								section === "prompt"
+									? (applied.cast.find((p) => p.id === participant.id)?.prompt ??
+										current.prompt)
+									: current.prompt,
+							openingsText:
+								section === "openings"
+									? openingsToText(
+											applied.cast.find((p) => p.id === participant.id)?.openings ?? [],
+										)
+									: current.openingsText,
+						}));
+						onNotice(null);
+					},
+					// This command family cannot produce these outcomes; the
+					// server's precise reason is kept instead of a flattened class.
+					onNotPlayable: (reason) => onNotice(reason),
+					onNotRemovable: (reason) => onNotice(reason),
+				},
+			});
 		} finally {
 			setPending(false);
 		}

@@ -55,24 +55,44 @@ export interface ConversationCommandNotices {
 // untouched). `onNotPlayable` and `onNotRemovable` are required: those
 // Conversation-state outcomes keep their precise meaning, so every adopting
 // surface must decide their presentation instead of falling into a generic
-// failure branch.
-export interface ConversationCommandCallbacks {
+// failure branch. `onOperation` receives every `ConversationOperationOutcome`
+// the send seam returns, untouched: command families whose outcomes exceed
+// the common Conversation command set keep their extra outcomes through it.
+export interface ConversationCommandCallbacks<TOperation = never> {
 	onApplied?: (conversation: ConversationSummary) => void;
 	onConflict?: (currentConversation: ConversationSummary) => void;
 	onNotPlayable: (reason: string) => void;
 	onNotRemovable: (reason: string) => void;
+	onOperation?: (operation: TOperation) => void;
+}
+
+// An outcome the runner never interprets: no adoption, no notice, no
+// classification. Command families whose send results exceed the common
+// Conversation command set — for example a character-library conflict that
+// names the changed Character instead of carrying a Conversation snapshot,
+// or a success that carries a Character while the Conversation stays
+// untouched — wrap those extra outcomes in this shape at the send seam. The
+// runner forwards the wrapped value to the `onOperation` typed callback,
+// which alone decides its presentation and recovery.
+export interface ConversationOperationOutcome<TOperation> {
+	status: "operation";
+	operation: TOperation;
 }
 
 // One revisioned Conversation command execution: the revision source the
 // runner consults at send time, the command itself, the injected
 // reconciliation adapter, the surface-owned notice wording, and the typed
-// operation-specific callbacks.
-export interface ConversationCommandOptions {
+// operation-specific callbacks. The send seam returns the common Conversation
+// outcomes plus, when the command family carries them, operation outcomes
+// wrapped in `ConversationOperationOutcome`.
+export interface ConversationCommandOptions<TOperation = never> {
 	revision: ConversationRevisionSource;
-	send: (expectedRevision: number) => Promise<CommandOutcome>;
+	send: (
+		expectedRevision: number,
+	) => Promise<CommandOutcome | ConversationOperationOutcome<TOperation>>;
 	reconciliation: ConversationCommandReconciliation;
 	notices: ConversationCommandNotices;
-	callbacks: ConversationCommandCallbacks;
+	callbacks: ConversationCommandCallbacks<TOperation>;
 }
 
 /**
@@ -81,23 +101,29 @@ export interface ConversationCommandOptions {
  * exceptions to the network outcome, then handles the common typed outcomes
  * exhaustively: applied snapshot adoption plus `onApplied`, canonical
  * conflict reload plus `onConflict`, the invalid/not-found/network notices,
- * and the typed operation-specific callbacks for `not-playable` and
- * `not-removable`. Pending state, drafts, and success work stay with the
+ * the typed operation-specific callbacks for `not-playable` and
+ * `not-removable`, and untouched forwarding of operation outcomes to
+ * `onOperation`. Pending state, drafts, and success work stay with the
  * caller.
  */
-export async function runConversationCommand(options: ConversationCommandOptions): Promise<void> {
+export async function runConversationCommand<TOperation = never>(
+	options: ConversationCommandOptions<TOperation>,
+): Promise<void> {
 	const expectedRevision = options.revision();
 	if (expectedRevision === null) {
 		options.reconciliation.showNotice(CONVERSATION_REVISION_UNAVAILABLE_NOTICE);
 		return;
 	}
-	let outcome: CommandOutcome;
+	let outcome: CommandOutcome | ConversationOperationOutcome<TOperation>;
 	try {
 		outcome = await options.send(expectedRevision);
 	} catch {
 		outcome = { status: "network" };
 	}
 	switch (outcome.status) {
+		case "operation":
+			options.callbacks.onOperation?.(outcome.operation);
+			return;
 		case "applied":
 			options.reconciliation.adoptSnapshot(outcome.conversation);
 			options.callbacks.onApplied?.(outcome.conversation);
