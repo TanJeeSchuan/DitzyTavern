@@ -9,8 +9,6 @@
 // contract: every untrusted server response is decoded against the shared
 // schemas at this boundary so a malformed payload can never masquerade as
 // a trusted import result.
-import { Value } from "@sinclair/typebox/value";
-import type { StaticDecode, TSchema } from "@sinclair/typebox";
 import type {
 	ChatImportCommitBody,
 	ChatImportDuplicateMatch,
@@ -29,6 +27,7 @@ import {
 	importStagedResponse,
 } from "../shared/contract/chat-import";
 import { invalidOutcome } from "../shared/contract/outcomes";
+import { decodeWirePayload } from "./lib/wire-decode";
 import type { JsonValue } from "./lib/json-guards";
 
 export type {
@@ -102,19 +101,6 @@ export interface ChatImportTransport {
 // field, a malformed nested value, or an unexpected top-level shape —
 // fails the whole payload so a partial response can never enter the flow.
 
-// Decodes one wire payload against a shared contract schema, or null when
-// the payload does not satisfy the contract.
-const decode = <Schema extends TSchema>(
-	schema: Schema,
-	value: JsonValue,
-): StaticDecode<Schema> | null => {
-	try {
-		return Value.Decode(schema, value);
-	} catch {
-		return null;
-	}
-};
-
 const wireBody = async (response: Response): Promise<JsonValue> =>
 	await response.json().catch(() => null);
 
@@ -123,7 +109,7 @@ const wireBody = async (response: Response): Promise<JsonValue> =>
 const parseInvalidResponse = (
 	value: JsonValue,
 ): Extract<ChatImportStageOutcome, { status: "invalid" | "network" }> => {
-	const invalid = decode(invalidOutcome, value);
+	const invalid = decodeWirePayload(invalidOutcome, value);
 	return invalid === null
 		? { status: "network" }
 		: { status: "invalid", reason: invalid.reason };
@@ -134,7 +120,7 @@ const parseInvalidResponse = (
 // the client cannot decode still falls back to the expired reselect
 // recovery.
 const parseGoneResponse = (value: JsonValue) => {
-	const gone = decode(importGoneResponse, value);
+	const gone = decodeWirePayload(importGoneResponse, value);
 	return gone === null || gone.outcome === "expired"
 		? { status: "expired" as const }
 		: { status: "unavailable" as const, reason: gone.reason };
@@ -145,7 +131,7 @@ const parseStageResponse = async (
 ): Promise<ChatImportStageOutcome> => {
 	const value = await wireBody(response);
 	if (!response.ok) return parseInvalidResponse(value);
-	const staged = decode(importStagedResponse, value);
+	const staged = decodeWirePayload(importStagedResponse, value);
 	return staged === null
 		? { status: "network" }
 		: { status: "staged", token: staged.token, preview: staged.preview };
@@ -157,7 +143,7 @@ const parsePreviewResponse = async (
 	const value = await wireBody(response);
 	if (response.status === 410) return parseGoneResponse(value);
 	if (!response.ok) return parseInvalidResponse(value);
-	const available = decode(importPreviewResponse, value);
+	const available = decodeWirePayload(importPreviewResponse, value);
 	return available === null
 		? { status: "network" }
 		: { status: "available", preview: available.preview };
@@ -169,7 +155,7 @@ const parseCommitResponse = async (
 	const value = await wireBody(response);
 	if (response.status === 410) return parseGoneResponse(value);
 	if (!response.ok) return parseInvalidResponse(value);
-	const committed = decode(importCommittedResponse, value);
+	const committed = decodeWirePayload(importCommittedResponse, value);
 	return committed === null
 		? { status: "network" }
 		: {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { GenerationStreamDelta } from "./conversation-stream";
+import type { GenerationStreamDelta, GenerationStreamState } from "./conversation-stream";
 
 const originalFetch = globalThis.fetch;
 Object.defineProperty(globalThis, "window", {
@@ -33,7 +33,7 @@ describe("server-owned Generation client", () => {
 			"id: 1\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"Hel",
 			"lo\"}\n\nevent: generation\ndata: {\"type\":\"reasoning\",\"text\":\"plan\"}\n\n",
 			"id: 2\nevent: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n",
-			"event: complete\ndata: {\"outcome\":\"applied\"}\n\n",
+			"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":7,\"latestEventId\":2}\n\n",
 		];
 		let requestUrl = "";
 		installFetch(async (input) => {
@@ -105,7 +105,7 @@ describe("server-owned Generation client", () => {
 			"id: 1\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"A\"}\n\n" +
 			"id: 2\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"duplicate\"}\n\n" +
 			"id: 3\nevent: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n" +
-			"event: complete\ndata: {\"outcome\":\"applied\"}\n\n",
+			"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":7,\"latestEventId\":3}\n\n",
 			{ status: 200, headers: { "content-type": "text/event-stream" } },
 		));
 
@@ -148,5 +148,110 @@ describe("server-owned Generation client", () => {
 			"http://localhost/api/conversations/42/generations/7/stop",
 			"http://localhost/api/conversations/42/generations/stop-all",
 		]);
+	});
+
+	describe("shared schema decoding at the stream seam", () => {
+		test("decodes every normalized Generation event kind before the callback sees it", async () => {
+			const frames: GenerationStreamDelta[] = [
+				{ type: "content", text: "Hello" },
+				{ type: "reasoning", text: "Thinking." },
+				{ type: "usage", usage: { inputTokens: 4, totalTokens: 4 } },
+				{ type: "keepalive" },
+				{ type: "finished", finishReason: "length" },
+				{ type: "failed", kind: "inactivity", message: "The provider went quiet." },
+			];
+			const stream = frames
+				.map((frame, index) => `id: ${index + 1}\nevent: generation\ndata: ${JSON.stringify(frame)}\n\n`)
+				.join("") +
+				"event: error\ndata: {\"outcome\":\"failed\",\"reason\":\"The provider went quiet.\"}\n\n";
+			installFetch(async () => new Response(stream, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}));
+
+			const deltas: GenerationStreamDelta[] = [];
+			const result = await subscribeConversationGeneration(42, 7, {
+				onDelta: (delta) => deltas.push(delta),
+			});
+
+			expect(deltas).toEqual(frames);
+			expect(result).toEqual({ outcome: "failed", reason: "The provider went quiet." });
+		});
+
+		test("drops generation frames that fail the shared event schema", async () => {
+			const stream = [
+				"event: generation\ndata: {\"type\":\"content\"}\n\n",
+				"event: generation\ndata: {\"type\":\"usage\",\"usage\":{\"inputTokens\":\"4\"}}\n\n",
+				"event: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"STOP\"}\n\n",
+				"event: generation\ndata: {\"type\":\"failed\",\"kind\":\"mystery\",\"message\":\"x\"}\n\n",
+				"event: generation\ndata: {\"type\":\"content\",\"text\":\"Valid.\"}\n\n",
+			].join("");
+			installFetch(async () => new Response(stream, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}));
+
+			const deltas: GenerationStreamDelta[] = [];
+			const result = await subscribeConversationGeneration(42, 7, {
+				onDelta: (delta) => deltas.push(delta),
+			});
+
+			expect(deltas).toEqual([{ type: "content", text: "Valid." }]);
+			expect(result).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
+		});
+
+		test("decodes the authoritative state snapshot through the shared schema", async () => {
+			const state: GenerationStreamState = {
+				outcome: "active-state",
+				generationId: 7,
+				conversationId: 42,
+				messageId: 9,
+				variantId: 10,
+				content: "Checkpointed.",
+				reasoning: "",
+				latestEventId: 4,
+				status: "active",
+				terminalReason: null,
+			};
+			const stream =
+				"event: state\ndata: " + JSON.stringify(state) + "\n\n" +
+				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":\"7\"}\n\n";
+			installFetch(async () => new Response(stream, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}));
+
+			const states: GenerationStreamState[] = [];
+			const result = await subscribeConversationGeneration(42, 7, {
+				onDelta: () => {},
+				onState: (decoded) => states.push(decoded),
+			});
+
+			expect(states).toEqual([state]);
+			expect(result).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
+		});
+
+		test("decodes stopped and failure terminal frames through the shared schemas", async () => {
+			installFetch(async () => new Response(
+				"event: stopped\ndata: {\"outcome\":\"stopped\",\"generationId\":7}\n\n",
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			));
+			const stopped = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			expect(stopped).toEqual({ outcome: "stopped", generationId: 7 });
+
+			installFetch(async () => new Response(
+				"event: error\ndata: {\"outcome\":\"not-found\"}\n\n",
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			));
+			const notFound = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			expect(notFound).toEqual({ outcome: "not-found" });
+
+			installFetch(async () => new Response(
+				"event: error\ndata: {\"outcome\":\"expired\"}\n\n",
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			));
+			const unknownOutcome = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			expect(unknownOutcome).toEqual({ outcome: "failed", reason: "Generation ended without a terminal result." });
+		});
 	});
 });

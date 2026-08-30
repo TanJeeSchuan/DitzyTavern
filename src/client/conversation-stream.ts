@@ -1,5 +1,23 @@
 // The Conversation JSON routes use the typed Eden client. This module owns
 // the one deliberately manual protocol: the resumable Generation SSE stream.
+// SSE framing, comments, partial frames, HTTP status interpretation, and
+// network failure mapping stay owned here; every frame payload is decoded
+// against the shared Generation event vocabulary
+// (src/shared/contract/generation-events) before an application callback or
+// stream result sees it, so a malformed payload can never masquerade as a
+// trusted Generation event.
+
+import {
+	generationAppliedPayload,
+	generationEvent,
+	generationFailurePayload,
+	generationStatePayload,
+	generationStoppedPayload,
+	type GenerationEvent,
+	type GenerationStatePayload,
+} from "../shared/contract/generation-events";
+import type { JsonValue } from "./lib/json-guards";
+import { decodeWirePayload } from "./lib/wire-decode";
 
 export type GenerationStreamResult =
 	| { outcome: "applied" }
@@ -7,24 +25,11 @@ export type GenerationStreamResult =
 	| { outcome: "not-found" }
 	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string };
 
-export type GenerationStreamDelta =
-	| { type: "content"; text: string }
-	| { type: "reasoning"; text: string }
-	| { type: "usage"; usage: Record<string, number> }
-	| { type: "finished"; finishReason: "stop" | "length" | "other" }
-	| { type: "keepalive" };
-
-export interface GenerationStreamState {
-	generationId: number;
-	conversationId: number;
-	messageId: number;
-	variantId: number;
-	content: string;
-	reasoning: string;
-	latestEventId: number;
-	status: "active" | "complete" | "stopped" | "failed";
-	terminalReason: string | null;
-}
+// Stream deltas are the shared normalized Generation event union, and state
+// snapshots are the shared state payload: server production and client
+// consumption use one schema-owned vocabulary.
+export type GenerationStreamDelta = GenerationEvent;
+export type GenerationStreamState = GenerationStatePayload;
 
 // A GET subscription is deliberately separate from POST acceptance. Reloads
 // and navigation can reconnect with the last observed event position without
@@ -51,6 +56,18 @@ export async function subscribeConversationGeneration(
 	}
 	return consumeGenerationStream(response, input);
 }
+
+// The SSE data line is the transport's JSON parse target; the decoded value
+// is only trusted after a shared contract schema accepts it.
+const parseStreamPayload = (serialized: string): JsonValue | null => {
+	try {
+		// SAFETY: JSON.parse produces exactly the JsonValue vocabulary above; the
+		// value is still untrusted until the shared schema decode accepts it.
+		return JSON.parse(serialized) as JsonValue;
+	} catch {
+		return null;
+	}
+};
 
 async function consumeGenerationStream(
 	response: Response,
@@ -83,35 +100,41 @@ async function consumeGenerationStream(
 			if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
 		}
 		if (dataLines.length === 0 || malformedId) return;
-		const value = parseGenerationStreamObject(dataLines.join("\n"));
-		if (value === null) return;
-		const delta = eventType === "generation" ? parseGenerationStreamDelta(value) : null;
-		if (delta !== null) {
+		const payload = parseStreamPayload(dataLines.join("\n"));
+		if (payload === null) return;
+		if (eventType === "generation") {
+			const event = decodeWirePayload(generationEvent, payload);
+			if (event === null) return;
 			if (frameId !== undefined) {
 				if (frameId <= lastEventId) return;
 				lastEventId = frameId;
 			}
-			input.onDelta(delta);
+			input.onDelta(event);
 			return;
 		}
-		const state = eventType === "state" ? parseGenerationStreamState(value) : null;
-		if (state !== null) {
+		if (eventType === "state") {
+			const state = decodeWirePayload(generationStatePayload, payload);
+			if (state === null) return;
 			lastEventId = Math.max(lastEventId, state.latestEventId);
 			input.onState?.(state);
 			return;
 		}
-		const applied = eventType === "complete" ? parseGenerationApplied(value) : null;
-		if (applied !== null) {
-			result = applied;
+		if (eventType === "complete") {
+			if (decodeWirePayload(generationAppliedPayload, payload) !== null) result = { outcome: "applied" };
 			return;
 		}
-		const stopped = eventType === "stopped" ? parseGenerationStopped(value) : null;
-		if (stopped !== null) {
-			result = stopped;
+		if (eventType === "stopped") {
+			const stopped = decodeWirePayload(generationStoppedPayload, payload);
+			if (stopped !== null) result = { outcome: "stopped", generationId: stopped.generationId };
 			return;
 		}
-		const failure = eventType === "error" ? parseGenerationFailure(value) : null;
-		if (failure !== null) result = failure;
+		if (eventType === "error") {
+			const failure = decodeWirePayload(generationFailurePayload, payload);
+			if (failure === null) return;
+			result = failure.outcome === "not-found"
+				? { outcome: "not-found" }
+				: { outcome: failure.outcome, reason: failure.reason };
+		}
 	};
 	while (true) {
 		const next = await reader.read();
@@ -123,126 +146,4 @@ async function consumeGenerationStream(
 	}
 	if (pending.length > 0) consumeFrame(pending);
 	return result ?? { outcome: "failed", reason: "Generation ended without a terminal result." };
-}
-
-type GenerationStreamJsonValue =
-	| string
-	| number
-	| boolean
-	| null
-	| GenerationStreamJsonValue[]
-	| { readonly [key: string]: GenerationStreamJsonValue };
-
-type GenerationStreamJsonObject = {
-	readonly [key: string]: GenerationStreamJsonValue;
-};
-
-function parseGenerationStreamObject(serialized: string): GenerationStreamJsonObject | null {
-	let parsed: GenerationStreamJsonValue;
-	try {
-		// SAFETY: JSON.parse is followed by an object-tag check before this value
-		// crosses into the small SSE payload decoders below.
-		parsed = JSON.parse(serialized) as GenerationStreamJsonValue;
-	} catch {
-		return null;
-	}
-	return generationStreamJsonObject(parsed);
-}
-
-function parseGenerationStreamDelta(value: GenerationStreamJsonObject): GenerationStreamDelta | null {
-	const type = generationStreamJsonString(value.type);
-	if (type === "content" || type === "reasoning") {
-		const text = generationStreamJsonString(value.text);
-		return text === undefined ? null : { type, text };
-	}
-	if (type === "keepalive") return { type };
-	if (type === "usage") {
-		const usageObject = generationStreamJsonObject(value.usage);
-		if (usageObject === null) return null;
-		const usage: Record<string, number> = {};
-		for (const [key, candidate] of Object.entries(usageObject)) {
-			const number = generationStreamJsonNumber(candidate);
-			if (number !== undefined) usage[key] = number;
-		}
-		return { type, usage };
-	}
-	if (type !== "finished") return null;
-	const finishReason = generationStreamJsonString(value.finishReason);
-	if (finishReason !== "stop" && finishReason !== "length" && finishReason !== "other") return null;
-	return { type, finishReason };
-}
-
-function parseGenerationStreamState(value: GenerationStreamJsonObject): GenerationStreamState | null {
-	if (generationStreamJsonString(value.outcome) !== "active-state") return null;
-	const generationId = generationStreamJsonNumber(value.generationId);
-	const conversationId = generationStreamJsonNumber(value.conversationId);
-	const messageId = generationStreamJsonNumber(value.messageId);
-	const variantId = generationStreamJsonNumber(value.variantId);
-	const content = generationStreamJsonString(value.content);
-	const reasoning = generationStreamJsonString(value.reasoning);
-	const latestEventId = generationStreamJsonNumber(value.latestEventId);
-	const status = generationStreamJsonString(value.status);
-	const terminalReason = value.terminalReason === null
-		? null
-		: generationStreamJsonString(value.terminalReason);
-	if (
-		generationId === undefined || conversationId === undefined || messageId === undefined ||
-		variantId === undefined || content === undefined || reasoning === undefined ||
-		latestEventId === undefined || (status !== "active" && status !== "complete" && status !== "stopped" && status !== "failed") ||
-		terminalReason === undefined
-	) return null;
-	return {
-		generationId,
-		conversationId,
-		messageId,
-		variantId,
-		content,
-		reasoning,
-		latestEventId,
-		status,
-		terminalReason,
-	};
-}
-
-function parseGenerationApplied(
-	value: GenerationStreamJsonObject,
-): Extract<GenerationStreamResult, { outcome: "applied" }> | null {
-	if (generationStreamJsonString(value.outcome) !== "applied") return null;
-	return { outcome: "applied" };
-}
-
-function parseGenerationStopped(
-	value: GenerationStreamJsonObject,
-): Extract<GenerationStreamResult, { outcome: "stopped" }> | null {
-	if (generationStreamJsonString(value.outcome) !== "stopped") return null;
-	const generationId = generationStreamJsonNumber(value.generationId);
-	return generationId === undefined ? { outcome: "stopped" } : { outcome: "stopped", generationId };
-}
-
-function parseGenerationFailure(
-	value: GenerationStreamJsonObject,
-): Exclude<GenerationStreamResult, { outcome: "applied" }> | null {
-	const outcome = generationStreamJsonString(value.outcome);
-	if (outcome === "not-found") return { outcome };
-	if (outcome !== "not-playable" && outcome !== "failed" && outcome !== "invalid" && outcome !== "conflict") return null;
-	const reason = generationStreamJsonString(value.reason);
-	return reason === undefined ? null : { outcome, reason };
-}
-
-function generationStreamJsonObject(value: GenerationStreamJsonValue | undefined): GenerationStreamJsonObject | null {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// SAFETY: the object-tag check above establishes the JSON object shape before
-	// this named projection is used by the stream decoders.
-	return value as GenerationStreamJsonObject;
-}
-
-function generationStreamJsonString(value: GenerationStreamJsonValue | undefined): string | undefined {
-	if (Object.prototype.toString.call(value) !== "[object String]") return undefined;
-	return String(value);
-}
-
-function generationStreamJsonNumber(value: GenerationStreamJsonValue | undefined): number | undefined {
-	if (Object.prototype.toString.call(value) !== "[object Number]") return undefined;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : undefined;
 }

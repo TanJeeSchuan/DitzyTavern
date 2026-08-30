@@ -1,29 +1,28 @@
-import type { ModelClientEvent } from "../model-client";
+// Every SSE frame payload is a member of the shared Generation event
+// vocabulary: normalized events, state snapshots, and the terminal applied/
+// stopped/failure frames. The schemas in src/shared/contract/generation-events
+// own the shapes; this adapter only owns framing and delivery.
+import type {
+	GenerationAppliedPayload,
+	GenerationEvent,
+	GenerationFailurePayload,
+	GenerationStatePayload,
+	GenerationStoppedPayload,
+} from "../../shared/contract/generation-events";
 import type {
 	GenerationRuntime,
 	GenerationRuntimeState,
 } from "../workflows/generation-runtime";
 
 type GenerationSsePayload =
-	| ModelClientEvent
-	| { readonly outcome: "applied"; readonly generationId?: number; readonly latestEventId?: number }
-	| { readonly outcome: "failed"; readonly reason: string }
-	| { readonly outcome: "stopped"; readonly generationId: number }
-	| {
-			readonly outcome: "active-state";
-			readonly generationId: number;
-			readonly conversationId: number;
-			readonly messageId: number;
-			readonly variantId: number;
-			readonly content: string;
-			readonly reasoning: string;
-			readonly latestEventId: number;
-			readonly status: "active" | "complete" | "stopped" | "failed";
-			readonly terminalReason: string | null;
-		};
+	| GenerationEvent
+	| GenerationStatePayload
+	| GenerationAppliedPayload
+	| GenerationStoppedPayload
+	| GenerationFailurePayload;
 
-const activeGenerationPayload = (state: GenerationRuntimeState) => ({
-	outcome: "active-state" as const,
+const activeGenerationPayload = (state: GenerationRuntimeState): GenerationStatePayload => ({
+	outcome: "active-state",
 	generationId: state.generationId,
 	conversationId: state.conversationId,
 	messageId: state.messageId,
@@ -35,7 +34,12 @@ const activeGenerationPayload = (state: GenerationRuntimeState) => ({
 	terminalReason: state.terminalReason,
 });
 
-const terminalGenerationFrame = (state: GenerationRuntimeState) =>
+type GenerationTerminalFrame =
+	| { type: "complete"; data: GenerationAppliedPayload }
+	| { type: "stopped"; data: GenerationStoppedPayload }
+	| { type: "error"; data: GenerationFailurePayload };
+
+const terminalGenerationFrame = (state: GenerationRuntimeState): GenerationTerminalFrame =>
 	state.status === "complete"
 		? {
 			type: "complete",

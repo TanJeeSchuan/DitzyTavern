@@ -3,9 +3,24 @@
 // The Prompt Plan crosses this boundary as opaque application input. Provider
 // request shapes, credentials, and transport errors belong behind this seam;
 // Workflows only consume normalized events.
-
+//
+// Normalized events are the shared Generation event vocabulary
+// (src/shared/contract/generation-events): the same schema-owned union the
+// SSE seam publishes and every client decodes, so the Model Client, the
+// server, and the client can never drift into parallel shape declarations.
 import type { PromptPlan } from "../prompt-compiler";
 import type { GenerationRequestOverrides } from "../conversation/types";
+import type {
+	GenerationEvent,
+	GenerationFailureKind,
+	GenerationFinishReason,
+	GenerationUsage,
+} from "../../shared/contract/generation-events";
+
+export type ModelClientEvent = GenerationEvent;
+export type ModelClientUsage = GenerationUsage;
+export type ModelClientFinishReason = GenerationFinishReason;
+export type ModelClientFailureKind = GenerationFailureKind;
 
 export interface ModelClientGenerationInput {
 	promptPlan: PromptPlan;
@@ -56,32 +71,6 @@ export interface ModelClientConnectionSnapshot {
 	backend: string;
 	adapter: string;
 }
-
-export type ModelClientFinishReason = "stop" | "length" | "other";
-
-export interface ModelClientUsage {
-	readonly inputTokens?: number;
-	readonly outputTokens?: number;
-	readonly totalTokens?: number;
-}
-
-export type ModelClientFailureKind =
-	| "cancelled"
-	| "inactivity"
-	| "transport"
-	| "provider"
-	| "protocol";
-
-export type ModelClientEvent =
-	| { type: "content"; text: string }
-	| { type: "reasoning"; text: string }
-	| { type: "usage"; usage: ModelClientUsage }
-	| { type: "keepalive" }
-	| {
-			type: "finished";
-			finishReason: ModelClientFinishReason;
-	  }
-	| { type: "failed"; kind: ModelClientFailureKind; message: string };
 
 export interface ModelClient {
 	generate(input: ModelClientGenerationInput): AsyncIterable<ModelClientEvent>;
