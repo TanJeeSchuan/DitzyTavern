@@ -2,15 +2,29 @@ import type { Dispatch, SetStateAction } from "react";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
-	loadConversation,
 	type ConversationSummary,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
 	deriveRevisionWindow,
 	type StoryAction,
 	type StoryState,
 } from "../story";
+
+// The story stage has no command-notice surface: a failed command leaves the
+// reading view untouched and the next authoritative read converges it. The
+// runner still refuses to send without a revision and normalizes exceptions;
+// this surface's adapter simply chooses silence for the standard notices.
+const STORY_COMMAND_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the current state was loaded.",
+	notFound: "The Conversation no longer exists.",
+	unreachable: "The Conversation could not be reached.",
+};
+
+// The story's no-presentation decision for the precise Conversation-state
+// outcomes, made explicit so the runner never flattens them for this surface.
+const noPresentation = () => undefined;
 
 type StoryMessageActionsOptions = {
 	story: StoryState;
@@ -25,7 +39,9 @@ type StoryMessageActionsOptions = {
 /**
  * Coordinates user commands that mutate or preview a story Message. The
  * reducer owns immediate presentation state; this hook owns the server
- * command, revision recovery, and the UI transition into Preview mode.
+ * command, and the runner owns revision acquisition, exception
+ * normalization, and common reconciliation. The edit command keeps its
+ * operation-specific first-page history refresh.
  */
 export function useStoryMessageActions({
 	story,
@@ -92,23 +108,27 @@ export function useStoryMessageActions({
 		});
 		const conversationId = story.conversationId;
 		if (conversationId === null) return;
-		const expectedRevision = conversation.revision ?? story.revision ?? -1;
-		if (expectedRevision < 0) return;
 
-		const outcome = await applyConversationCommand(conversationId, expectedRevision, {
-			type: "select-variant",
-			messageId: selection.messageId,
-			variantId: selection.variantId,
+		await runConversationCommand({
+			revision: () => conversation.revision,
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
+					type: "select-variant",
+					messageId: selection.messageId,
+					variantId: selection.variantId,
+				}),
+			reconciliation: {
+				adoptSnapshot: setConversation,
+				showNotice: noPresentation,
+			},
+			notices: STORY_COMMAND_NOTICES,
+			// The optimistic reducer update already moved the local selection;
+			// the applied snapshot adoption is the only reconciliation needed.
+			callbacks: {
+				onNotPlayable: noPresentation,
+				onNotRemovable: noPresentation,
+			},
 		});
-		if (outcome.status === "applied") {
-			setConversation(outcome.conversation);
-			return;
-		}
-		if (outcome.status === "conflict") {
-			setConversation(outcome.currentConversation);
-		}
-		const fresh = await loadConversation(conversationId);
-		if (fresh !== null) setConversation(fresh);
 	};
 
 	const editStoryMessage = async (messageId: number, content: string) => {
@@ -118,32 +138,37 @@ export function useStoryMessageActions({
 		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
 		const conversationId = story.conversationId;
 		if (variantId === undefined || conversationId === null) return;
-		const expectedRevision = conversation?.revision ?? story.revision ?? -1;
-		if (expectedRevision < 0) return;
 
-		const outcome = await applyConversationCommand(conversationId, expectedRevision, {
-			type: "edit-variant",
-			messageId,
-			variantId,
-			content,
+		await runConversationCommand({
+			revision: () => conversation?.revision ?? story.revision,
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
+					type: "edit-variant",
+					messageId,
+					variantId,
+					content,
+				}),
+			reconciliation: {
+				adoptSnapshot: setConversation,
+				showNotice: noPresentation,
+			},
+			notices: STORY_COMMAND_NOTICES,
+			callbacks: {
+				onApplied: () => {
+					// Reload the first page so authoritative content replaces the
+					// local edit without drifting from the server's read model.
+					void chatHistoryTransport
+						.loadHistory(conversationId, { page: 1 })
+						.then((freshHistory) => {
+							if (freshHistory.status === "available") {
+								dispatchStory({ type: "first-page", page: freshHistory.page });
+							}
+						});
+				},
+				onNotPlayable: noPresentation,
+				onNotRemovable: noPresentation,
+			},
 		});
-		if (outcome.status === "applied") {
-			setConversation(outcome.conversation);
-			// Reload the first page so authoritative content replaces the local
-			// edit without drifting from the server's read model.
-			const freshHistory = await chatHistoryTransport.loadHistory(conversationId, {
-				page: 1,
-			});
-			if (freshHistory.status === "available") {
-				dispatchStory({ type: "first-page", page: freshHistory.page });
-			}
-			return;
-		}
-		if (outcome.status === "conflict") {
-			setConversation(outcome.currentConversation);
-		}
-		const fresh = await loadConversation(conversationId);
-		if (fresh !== null) setConversation(fresh);
 	};
 
 	return { changeSwipe, editStoryMessage };

@@ -186,4 +186,53 @@ describe("runConversationCommand", () => {
 		});
 		expect(events).toEqual(["send:7", "not-removable:This Participant is seated."]);
 	});
+
+	test("an operation outcome is forwarded untouched to the typed operation callback", async () => {
+		const events: string[] = [];
+		type SavedOperation = {
+			kind: "participant-saved";
+			character: { id: number; name: string };
+		};
+		const operation: SavedOperation = {
+			kind: "participant-saved",
+			character: { id: 3, name: "Juno Ashfeld" },
+		};
+		await runConversationCommand<{ kind: "participant-saved"; character: { id: number; name: string } }>({
+			revision: () => 7,
+			send: async (expectedRevision) => {
+				events.push(`send:${expectedRevision}`);
+				return { status: "operation", operation };
+			},
+			reconciliation: fakeReconciliation(events),
+			notices,
+			callbacks: {
+				onNotPlayable: () => events.push("unexpected-not-playable"),
+				onNotRemovable: () => events.push("unexpected-not-removable"),
+				onOperation: (forwarded) => {
+					events.push("operation-callback");
+					expect(forwarded).toBe(operation);
+				},
+			},
+		});
+		expect(events).toEqual(["send:7", "operation-callback"]);
+	});
+
+	test("an operation outcome triggers no adoption and no notice", async () => {
+		const events: string[] = [];
+		await runConversationCommand<{ kind: string }>({
+			revision: () => 7,
+			send: async (expectedRevision) => {
+				events.push(`send:${expectedRevision}`);
+				return { status: "operation", operation: { kind: "character-changed" } };
+			},
+			reconciliation: fakeReconciliation(events),
+			notices,
+			callbacks: {
+				onNotPlayable: () => events.push("unexpected-not-playable"),
+				onNotRemovable: () => events.push("unexpected-not-removable"),
+				onOperation: () => undefined,
+			},
+		});
+		expect(events).toEqual(["send:7"]);
+	});
 });

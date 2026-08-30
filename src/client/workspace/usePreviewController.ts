@@ -3,11 +3,22 @@ import {
 	applyConversationCommand,
 	type ConversationSummary,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	confirmPreviewSelection,
 	type StoryAction,
 	type StoryState,
 } from "../story";
+
+// The wording this surface shows for each standard command failure. Preview
+// mode stays local on conflict: the runner never touches the story's preview
+// state, so the notice only has to say what the writer still controls.
+const PREVIEW_NOTICES = {
+	conflict:
+		"The Conversation changed elsewhere. Preview remains local until you confirm or cancel it.",
+	notFound: "The Conversation no longer exists.",
+	unreachable: "The Conversation could not be reached.",
+};
 
 type PreviewControllerOptions = {
 	story: StoryState;
@@ -48,57 +59,47 @@ export function usePreviewController({
 		if (preview === null || conversationId === null || previewConfirmInFlightRef.current) {
 			return;
 		}
-		const expectedRevision = conversation?.revision ?? story.revision ?? -1;
-		if (expectedRevision < 0) {
-			setPreviewError("The Conversation revision is not available yet.");
-			return;
-		}
 
 		previewConfirmInFlightRef.current = true;
 		setPreviewPending(true);
 		setPreviewError(null);
-		const request = {
-			conversationId,
-			expectedRevision,
-			messageId: preview.messageId,
-			variantId: preview.variantId,
-		};
 		try {
-			const result = await confirmPreviewSelection(
+			// The transport boundary refuses to send without the matching
+			// client preview; the runner refuses to send without an
+			// authoritative revision and owns every outcome afterwards.
+			await confirmPreviewSelection(
 				preview,
-				request,
-				async (selection) =>
-					applyConversationCommand(selection.conversationId, selection.expectedRevision, {
-						type: "select-variant",
-						messageId: selection.messageId,
-						variantId: selection.variantId,
-					}),
+				{
+					conversationId,
+					messageId: preview.messageId,
+					variantId: preview.variantId,
+				},
+				async (selection) => {
+					await runConversationCommand({
+						revision: () => conversation?.revision ?? story.revision,
+						send: (expectedRevision) =>
+							applyConversationCommand(selection.conversationId, expectedRevision, {
+								type: "select-variant",
+								messageId: selection.messageId,
+								variantId: selection.variantId,
+							}),
+						reconciliation: {
+							adoptSnapshot: setConversation,
+							showNotice: setPreviewError,
+						},
+						notices: PREVIEW_NOTICES,
+						callbacks: {
+							// The runner adopted the applied snapshot; confirming ends
+							// the local Preview and moves the stored selection.
+							onApplied: () => dispatchStory({ type: "preview-confirmed" }),
+							// The server's precise reasons are shown as-is; nothing
+							// about this surface flattens them into a failure class.
+							onNotPlayable: setPreviewError,
+							onNotRemovable: setPreviewError,
+						},
+					});
+				},
 			);
-			if (result.status === "not-sent") return;
-			const outcome = result.result;
-			if (outcome.status === "applied") {
-				setConversation(outcome.conversation);
-				dispatchStory({ type: "preview-confirmed" });
-				return;
-			}
-			if (outcome.status === "conflict") {
-				setConversation(outcome.currentConversation);
-				setPreviewError(
-					"The Conversation changed elsewhere. Preview remains local until you confirm or cancel it.",
-				);
-				return;
-			}
-			if (outcome.status === "not-found") {
-				setPreviewError("The Conversation no longer exists.");
-				return;
-			}
-			setPreviewError(
-				outcome.status === "network"
-					? "The Conversation could not be reached."
-					: outcome.reason,
-			);
-		} catch {
-			setPreviewError("The Conversation could not be reached.");
 		} finally {
 			previewConfirmInFlightRef.current = false;
 			setPreviewPending(false);

@@ -1,15 +1,12 @@
 // Pure presentation helpers for the Cast drawer's Remove action.
 //
 // The server derives the removal impact (deletion mode and how many Messages
-// lose future sibling Variant generation) and words the typed outcomes; this
-// module only formats them for the confirmation dialog and the post-command
-// notice. No domain rule is reconstructed here.
+// lose future sibling Variant generation); this module words that snapshot-
+// derived impact for the confirmation dialog. The command's typed outcomes
+// are reconciled by the Conversation command runner plus the drawer's typed
+// callbacks, so no post-command outcome switch lives here.
 
-import type { CastParticipant, CommandOutcome } from "./conversation";
-import {
-	CONVERSATION_CONFLICT_RELOAD_NOTICE,
-	CONVERSATION_UNREACHABLE_NOTICE,
-} from "./lib/command-outcome";
+import type { CastParticipant } from "./conversation";
 
 export interface RemovalConfirmationCopy {
 	// Dialog title, e.g. "Remove Juno Ashfeld?".
@@ -57,50 +54,4 @@ export const removalConfirmationCopy = (
 		impact: `Removing ${participantLabel} permanently deletes it. No history refers to it, so nothing is retained.`,
 		confirmLabel: "Remove",
 	};
-};
-
-export interface RemovalOutcomePresentation {
-	// Ordinary drawer notice, or null when the removal applied cleanly.
-	notice: string | null;
-	// When true, the authoritative Conversation snapshot must be reloaded
-	// because the presented state is stale (conflict, not-removable after a
-	// Control change, or the Participant is gone).
-	reloadConversation: boolean;
-}
-
-// Words one remove-participant command outcome. The provided label is the
-// server-derived duplicate label of the targeted Participant, used only for
-// friendly failure text.
-export const presentRemovalOutcome = (
-	outcome: CommandOutcome,
-	participantLabel: string,
-): RemovalOutcomePresentation => {
-	switch (outcome.status) {
-		case "applied":
-			return { notice: null, reloadConversation: false };
-		case "conflict":
-			return {
-				notice: CONVERSATION_CONFLICT_RELOAD_NOTICE,
-				reloadConversation: true,
-			};
-		case "not-removable":
-			return {
-				notice: `${participantLabel} now holds a Control seat; reassign it before removing.`,
-				reloadConversation: true,
-			};
-		case "not-found":
-			return {
-				notice: `${participantLabel} is no longer in this Cast.`,
-				reloadConversation: true,
-			};
-		case "invalid":
-			return { notice: outcome.reason, reloadConversation: false };
-		case "not-playable":
-			return { notice: outcome.reason, reloadConversation: false };
-		default:
-			return {
-				notice: CONVERSATION_UNREACHABLE_NOTICE,
-				reloadConversation: false,
-			};
-	}
 };
