@@ -8,6 +8,7 @@ import {
 	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
 import {
 	budgetDraftsFromSettings,
 	makeEmptyBudgetDrafts,
@@ -26,6 +27,15 @@ import {
 	type SamplingField,
 } from "../generation-settings-draft";
 import { useAsyncEffect } from "../lib/use-async";
+
+// The Generation Settings save wording: each notice names what this surface
+// preserved or could not reach, while the runner owns when each notice is
+// shown.
+const SAVE_NOTICES = {
+	conflict: "These Generation Settings changed elsewhere. Your unsaved changes are preserved.",
+	notFound: "This Chat no longer exists.",
+	unreachable: "The Generation Settings could not be saved.",
+};
 
 type LoadStatus = "loading" | "ready" | "saving" | "load-error";
 
@@ -162,37 +172,41 @@ export function useGenerationSettingsDraft({
 			continuationPrefillSuffix: prefillSuffix,
 			requestOverrides: overridesValues,
 		};
-		const outcome = await applyConversationCommand(conversation.id, conversation.revision, {
-			type: "update-generation-settings",
-			settings: next,
+		const conversationId = conversation.id;
+		const showUnreachable = () => setProblem(SAVE_NOTICES.unreachable);
+		await runConversationCommand({
+			revision: () => conversation.revision,
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
+					type: "update-generation-settings",
+					settings: next,
+				}),
+			reconciliation: {
+				adoptSnapshot: onConversationChange,
+				showNotice: setProblem,
+			},
+			notices: SAVE_NOTICES,
+			callbacks: {
+				onApplied: () => {
+					setSettings(next);
+					setStrategy(next.continuationStrategy);
+					setPrefillSuffix(next.continuationPrefillSuffix);
+					setProblem(null);
+				},
+				onConflict: (current) => {
+					// Refresh the authoritative settings so a retry merges fresh
+					// values for fields the user did not edit; every local draft
+					// stays untouched.
+					void loadConversationGenerationSettings(current.id)
+						.then((fresh) => {
+							if (conversationIdRef.current === current.id) setSettings(fresh);
+						})
+						.catch(() => undefined);
+				},
+				onNotPlayable: showUnreachable,
+				onNotRemovable: showUnreachable,
+			},
 		});
-		if (outcome.status === "applied") {
-			setSettings(next);
-			setStrategy(next.continuationStrategy);
-			setPrefillSuffix(next.continuationPrefillSuffix);
-			onConversationChange(outcome.conversation);
-			setProblem(null);
-			setStatus("ready");
-			return;
-		}
-		if (outcome.status === "conflict") {
-			onConversationChange(outcome.currentConversation);
-			setProblem("These Generation Settings changed elsewhere. Your unsaved changes are preserved.");
-			// Refresh the authoritative settings so a retry merges fresh values for
-			// fields the user did not edit; every local draft stays untouched.
-			const conversationId = conversation.id;
-			void loadConversationGenerationSettings(conversationId)
-				.then((fresh) => {
-					if (conversationIdRef.current === conversationId) setSettings(fresh);
-				})
-				.catch(() => undefined);
-		} else if (outcome.status === "invalid") {
-			setProblem(outcome.reason);
-		} else if (outcome.status === "not-found") {
-			setProblem("This Chat no longer exists.");
-		} else {
-			setProblem("The Generation Settings could not be saved.");
-		}
 		setStatus("ready");
 	};
 

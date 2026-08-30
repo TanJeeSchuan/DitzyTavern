@@ -6,6 +6,7 @@ import {
 	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "./conversation";
+import { runConversationCommand } from "./conversation-command-runner";
 import {
 	loadConnectionSettings,
 	saveConnectionCommand,
@@ -13,6 +14,10 @@ import {
 } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
 import { modelSuggestions, commitModelId, togglePinnedModel } from "./model-selection";
+
+// The wording this surface shows whenever the model-selection command could
+// not be saved; the runner owns when each notice appears.
+const MODEL_SELECTION_UNAVAILABLE_NOTICE = "The model selection could not be saved.";
 
 export function ModelSelector({
 	conversation,
@@ -85,28 +90,35 @@ export function ModelSelector({
 		setPending(true);
 		setError(null);
 		setNotice(null);
+		const showUnreachable = () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE);
 		try {
-			const outcome = await applyConversationCommand(
-				conversation.id,
-				conversation.revision,
-				{ type: "update-generation-settings", settings: { ...generation, modelId: committed } },
-			);
-			if (outcome.status === "applied") {
-				setGeneration({ ...generation, modelId: committed });
-				onConversationChange(outcome.conversation);
-				setNotice(`Model set to ${committed}.`);
-				setQuery("");
-				setOpen(false);
-			} else if (outcome.status === "conflict") {
-				onConversationChange(outcome.currentConversation);
-				setError("This Conversation changed elsewhere. Its model settings were reloaded.");
-			} else if (outcome.status === "invalid") {
-				setError(outcome.reason);
-			} else {
-				setError("The model selection could not be saved.");
-			}
-		} catch {
-			setError("The model selection could not be saved.");
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversation.id, expectedRevision, {
+						type: "update-generation-settings",
+						settings: { ...generation, modelId: committed },
+					}),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setError,
+				},
+				notices: {
+					conflict: "This Conversation changed elsewhere. Its model settings were reloaded.",
+					notFound: MODEL_SELECTION_UNAVAILABLE_NOTICE,
+					unreachable: MODEL_SELECTION_UNAVAILABLE_NOTICE,
+				},
+				callbacks: {
+					onApplied: () => {
+						setGeneration({ ...generation, modelId: committed });
+						setNotice(`Model set to ${committed}.`);
+						setQuery("");
+						setOpen(false);
+					},
+					onNotPlayable: showUnreachable,
+					onNotRemovable: showUnreachable,
+				},
+			});
 		} finally {
 			setPending(false);
 		}

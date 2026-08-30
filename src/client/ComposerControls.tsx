@@ -4,6 +4,8 @@ import {
 	applyConversationCommand,
 	type ConversationSummary,
 } from "./conversation";
+import { runConversationCommand } from "./conversation-command-runner";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/command-outcome";
 import { ModelSelector } from "./ModelSelector";
 
 // Cast-only Control selectors on the composer toolbar: `Writing as` for the
@@ -53,28 +55,31 @@ export function ComposerControlSelectors({
 		}
 		setPending(true);
 		setNotice(null);
+		const showUnreachable = () => setNotice(CONVERSATION_UNREACHABLE_NOTICE);
 		try {
-			const outcome = await applyConversationCommand(
-				conversation.id,
-				conversation.revision,
-				{ type: "assign-control", seat, participantId },
-			);
-			switch (outcome.status) {
-				case "applied":
-					onConversationChange(outcome.conversation);
-					setLastChange(description.notice);
-					break;
-				case "conflict": {
-					onConversationChange(outcome.currentConversation);
-					setNotice("The Conversation changed elsewhere; the current seats were reloaded.");
-					break;
-				}
-				case "invalid":
-					setNotice(outcome.reason);
-					break;
-				default:
-					setNotice("The Conversation could not be reached.");
-			}
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversation.id, expectedRevision, {
+						type: "assign-control",
+						seat,
+						participantId,
+					}),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
+				},
+				notices: {
+					conflict: "The Conversation changed elsewhere; the current seats were reloaded.",
+					notFound: CONVERSATION_UNREACHABLE_NOTICE,
+					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
+				},
+				callbacks: {
+					onApplied: () => setLastChange(description.notice),
+					onNotPlayable: showUnreachable,
+					onNotRemovable: showUnreachable,
+				},
+			});
 		} finally {
 			setPending(false);
 		}
