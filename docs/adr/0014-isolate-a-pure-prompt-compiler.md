@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0032
+---
+
 # Isolate a pure Prompt Compiler module
 
 Prompt assembly lives in a pure, deep Prompt Compiler module whose principal interface compiles resolved Participant state and selected Conversation history into a provider-neutral Prompt Plan. The module owns named-block ordering, Example Dialogue, owner-relative macros, and future Prompt Manager behavior without depending on SQLite, HTTP, SSE, credentials, or provider roles. Budgeting and truncation remain future extensions of this seam.

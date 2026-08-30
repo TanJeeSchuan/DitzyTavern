@@ -56,6 +56,18 @@ _Avoid_: continue nudge, synthetic Message
 The Conversation-owned configuration a new Generation starts from: model selection, sampling parameters, budget fields, Continuation strategy, and Request Overrides. Endpoints, credentials, and transport details belong to Connection Profiles instead.
 _Avoid_: connection settings, generation config, Model Settings
 
+**Effective Generation Settings**:
+The Generation Settings that actually participate in one Generation attempt after its Generation intent determines which settings apply. They describe the attempt rather than merely copying the Conversation's configured values.
+_Avoid_: configuration snapshot, raw Generation Settings
+
+**Prompt Plan**:
+The provider-neutral, ordered writing context compiled for one Generation attempt, including its named prompt blocks, selected Conversation history, and Generation intent.
+_Avoid_: compiled prompt, provider messages, request payload
+
+**Generation Plan**:
+The complete application plan for one Generation attempt: its Prompt Plan, budget decision, and Effective Generation Settings.
+_Avoid_: Prompt Plan, model request, generation configuration
+
 **Request Overrides**:
 Extra request body fields owned by the Conversation and grouped by API Format namespace. Only the namespace matching the active Connection Profile's format is merged into each request; the other namespaces are kept editable and never transmitted. Overrides never replace structural request framing such as messages, stream behavior, or the managed output limit.
 _Avoid_: custom payload, raw request editing
