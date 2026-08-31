@@ -139,10 +139,10 @@ describe("DeepSeek production Model Client", () => {
 		const credential = "credential-never-returned";
 		const customHeaderValue = "custom-header-never-returned";
 		const errorBody = JSON.stringify({
-				error: {
+			error: {
 				message: `${"diagnostic ".repeat(2_000)} ${credential} ${customHeaderValue}`,
 			},
-			});
+		});
 		const client = createDeepSeekModelClient({
 			profile,
 			secrets: { credential, headers: { "x-routing": customHeaderValue } },
