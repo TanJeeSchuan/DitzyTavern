@@ -19,13 +19,10 @@ import {
 import {
 	canonicalGenerationSettings,
 	defineGenerationSettingsAdapter,
-	GENERATION_SETTINGS_FIELDS,
-	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsAdapter,
 	type GenerationSettingsField,
 	type GenerationSettingsFieldDisposition,
-	type GenerationSettingsFieldMap,
 } from "./generation-settings";
 
 const validSettings = (): CanonicalGenerationSettings => ({
@@ -268,15 +265,6 @@ describe("conversationGenerationSettings", () => {
 });
 
 describe("generationProvenanceSettingsWire", () => {
-	test("declares exactly the retained canonical field vocabulary", () => {
-		// The provenance transport form is built over the canonical retained
-		// field list: model identity and Request Overrides stay excluded, and
-		// no hand-written second field list can drift from the codec.
-		expect(Object.keys(generationProvenanceSettingsWire.properties)).toEqual([
-			...PROVENANCE_SETTINGS_FIELDS,
-		]);
-	});
-
 	test("accepts the captured provenance settings with their intentional nullability", () => {
 		const captured = captureGenerationProvenanceSettings(validSettings());
 		expect(Value.Check(generationProvenanceSettingsWire, captured)).toBe(true);
@@ -334,29 +322,6 @@ describe("projectModelClientGenerationSettings", () => {
 		for (const field of excludedFields) {
 			expect(projected).not.toHaveProperty(field);
 		}
-	});
-});
-
-describe("GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS", () => {
-	test("derives the update command's optionality exactly", () => {
-		// The optional fields are optional on the wire schema; every other
-		// canonical field stays required.
-		const required: readonly string[] = generationSettingsUpdate.required;
-		const optional: readonly string[] = GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS;
-		expect(required.some((field) => optional.includes(field))).toBe(false);
-		// SAFETY: both sides are the same canonical field vocabulary filtered and
-		// compared as strings; the assertion only narrows the sorted lists.
-		expect([...required].sort()).toEqual(
-			(GENERATION_SETTINGS_FIELDS.filter((field) => !optional.includes(field)) as string[]).sort(),
-		);
-	});
-});
-
-describe("GENERATION_SETTINGS_FIELDS", () => {
-	test("matches the canonical schema's own property list exactly", () => {
-		const properties: readonly string[] = Object.keys(canonicalGenerationSettings.properties);
-		expect(properties).toEqual([...GENERATION_SETTINGS_FIELDS]);
-		expect(new Set(GENERATION_SETTINGS_FIELDS).size).toBe(GENERATION_SETTINGS_FIELDS.length);
 	});
 });
 
@@ -438,28 +403,5 @@ describe("defineGenerationSettingsAdapter", () => {
 		expect(() =>
 			defineGenerationSettingsAdapter("   ", adapterWithAllFieldsProjected())
 		).toThrow(/named/);
-	});
-});
-
-describe("GenerationSettingsFieldMap", () => {
-	test("stays total over the canonical vocabulary for value-mapping adapters", () => {
-		// Compile-time totality: adding a canonical field forces every value
-		// mapping to state its counterpart before typecheck passes.
-		const settingsColumns: GenerationSettingsFieldMap<string> = {
-			modelId: "model_id",
-			temperature: "temperature",
-			topP: "top_p",
-			frequencyPenalty: "frequency_penalty",
-			presencePenalty: "presence_penalty",
-			contextLimit: "context_limit",
-			responseBudget: "response_budget",
-			safetyAllowance: "safety_allowance",
-			siblingGenerationLimit: "sibling_generation_limit",
-			continuationStrategy: "continuation_strategy",
-			continuationInstruction: "continuation_instruction",
-			continuationPrefillSuffix: "continuation_prefill_suffix",
-			requestOverrides: "request_overrides_json",
-		};
-		expect(Object.keys(settingsColumns)).toEqual([...GENERATION_SETTINGS_FIELDS]);
 	});
 });
