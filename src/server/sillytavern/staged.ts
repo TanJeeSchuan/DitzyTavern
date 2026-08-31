@@ -10,11 +10,15 @@
 // Participant, no Actor Profile, and no artifact metadata row; the previewed
 // source stays in session-bound staging until a later commit ticket.
 //
-// Staging is session-bound by construction: the registry holding staged
-// handles is a process-level in-memory map. A server restart naturally
-// expires every staged flow and requires file reselection; no durable
-// import draft or resume system is added. Discard (explicit cancellation)
-// removes only the uncommitted temporary staging bytes of that one flow.
+// Staging is session-bound by construction: staged handles and committed
+// receipts live in one process-level expiring session store. A server
+// restart naturally expires every staged flow and requires file reselection;
+// no durable import draft or resume system is added. Every session also
+// expires on its own after the documented TTL: a lazy sweep on every module
+// access plus an opportunistic periodic sweep evicts expired sessions and
+// deletes their staged files, so abandoned flows never pin memory or staging
+// bytes. Discard (explicit cancellation) removes only the uncommitted
+// temporary staging bytes of that one flow.
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -22,6 +26,7 @@ import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
 import { createCharacterLibraryModule } from "../character-library";
 import type { ParticipantDefinition } from "../conversation/types";
+import { createConversationModule } from "../conversation";
 import { withDatabase } from "../database/database";
 import { createImportedConversation } from "../workflows";
 import {
@@ -50,7 +55,6 @@ import { chatNameFromFilename } from "./import";
 import { buildPreview } from "./staged/preview";
 import type {
 	ChatImportCommitInput,
-	ChatImportCommitResult,
 	ChatImportModule,
 	ChatImportModuleOptions,
 	ChatImportReceipt,
@@ -60,21 +64,58 @@ import type {
 
 export * from "./staged/types";
 
-// Session-bound staging registry. Process-level so every request-scoped
+// One expiring import-session store. Process-level so every request-scoped
 // module instance shares the same handles, and a server restart clears it
-// wholesale (the expiry contract). Committed results are kept under their
-// consumed token so a retry after a lost response returns the original
-// successful result rather than creating another Chat.
-const stagedRegistry = new Map<string, StagedRecord>();
-const committedResults = new Map<string, ChatImportCommitResult>();
+// wholesale (the expiry contract). Both session phases live in this one
+// map, and every entry carries its own absolute expiry: the staged handle
+// from its staging time, and the compact committed receipt kept for
+// idempotent retry from its commit.
+type StagedImportSession =
+	| { phase: "staged"; expiresAt: number; record: StagedRecord }
+	| { phase: "committed"; expiresAt: number; receipt: ChatImportReceipt };
+
+const stagedImportSessions = new Map<string, StagedImportSession>();
+
+// An interactive staging flow (upload, resolve Participants, confirm, commit)
+// fits comfortably inside this window; anything older is abandoned work that
+// must not keep staged bytes or receipts alive.
+export const STAGED_IMPORT_SESSION_TTL_MS = 60 * 60 * 1000;
+
+// The scheduled sweep is the safety net for sessions whose tokens are never
+// touched again: lazy sweeps run only when some request arrives, so a flow
+// abandoned mid-resolution would otherwise keep its staged file forever.
+const STAGED_IMPORT_SWEEP_INTERVAL_MS = 60 * 1000;
+
+// Evicts every session past its expiry and deletes the staged file of each
+// evicted staged handle; an evicted committed receipt leaves nothing on
+// disk, so only the map entry goes. `now` is injectable for tests.
+export const sweepExpiredImportSessions = (now: number = Date.now()): void => {
+	for (const [token, session] of stagedImportSessions) {
+		if (session.expiresAt > now) continue;
+		if (session.phase === "staged") {
+			rmSync(session.record.stagedPath, { force: true });
+		}
+		stagedImportSessions.delete(token);
+	}
+};
+
+let sweepTimer: ReturnType<typeof setInterval> | undefined;
+const ensureScheduledImportSweep = (): void => {
+	if (sweepTimer !== undefined) return;
+	// Unref'd: the sweep must never keep a process (or a test run) alive.
+	sweepTimer = setInterval(
+		sweepExpiredImportSessions,
+		STAGED_IMPORT_SWEEP_INTERVAL_MS,
+	);
+	sweepTimer.unref();
+};
 
 // Simulates the restart expiry for tests: drops every staged handle and
-// every retained committed result without touching the already staged or
-// committed files (a real restart runs no cleanup either; orphaned files are
-// an accepted lifecycle tradeoff with no GC).
+// every retained committed receipt without touching the already staged or
+// committed files (a real restart runs no cleanup either; orphaned files
+// are an accepted lifecycle tradeoff with no GC).
 export const clearStagedImportRegistry = (): void => {
-	stagedRegistry.clear();
-	committedResults.clear();
+	stagedImportSessions.clear();
 };
 
 // Streams the uploaded bytes into one staging file while hashing them in
@@ -352,6 +393,8 @@ export function createChatImportModule(
 
 	return {
 		async stageFile({ bytes, originalFilename }) {
+			ensureScheduledImportSweep();
+			sweepExpiredImportSessions();
 			const filename = basename(originalFilename);
 			const stagedPath = join(stagingRoot, `${randomUUID()}.stage`);
 			let staged: { byteLength: number; sha256: string };
@@ -390,23 +433,29 @@ export function createChatImportModule(
 				inspection,
 			);
 			const token = randomUUID();
-			stagedRegistry.set(token, {
-				token,
-				originalFilename: filename,
-				byteLength: staged.byteLength,
-				sha256: staged.sha256,
-				integrity: inspection.report.source.integrity ?? null,
-				stagedPath,
-				preview,
+			stagedImportSessions.set(token, {
+				phase: "staged",
+				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
+				record: {
+					token,
+					originalFilename: filename,
+					byteLength: staged.byteLength,
+					sha256: staged.sha256,
+					integrity: inspection.report.source.integrity ?? null,
+					stagedPath,
+					preview,
+				},
 			});
 			return { token, preview };
 		},
 
 		preview(token, expectedSha256) {
-			const record = stagedRegistry.get(token);
-			if (record === undefined) {
+			sweepExpiredImportSessions();
+			const session = stagedImportSessions.get(token);
+			if (session === undefined || session.phase !== "staged") {
 				throw new StagedChatImportExpiredError();
 			}
+			const record = session.record;
 			if (expectedSha256 !== undefined && expectedSha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
@@ -418,13 +467,30 @@ export function createChatImportModule(
 		},
 
 		commit(token, input) {
-			const committed = committedResults.get(token);
-			if (committed !== undefined) return committed;
-
-			const record = stagedRegistry.get(token);
-			if (record === undefined) {
+			sweepExpiredImportSessions();
+			const session = stagedImportSessions.get(token);
+			// A consumed token is a committed token: its compact receipt serves
+			// the idempotent retry after a lost response. The authoritative
+			// Conversation snapshot is re-read through the Conversation seam
+			// instead of retaining the full result in memory.
+			if (session !== undefined && session.phase === "committed") {
+				const conversation = createConversationModule(database).getSnapshot(
+					session.receipt.conversationId,
+				);
+				if (conversation === undefined) {
+					// The committed Chat no longer exists, so the receipt can
+					// never be served again and is evicted with it.
+					stagedImportSessions.delete(token);
+					throw new Error(
+						`The Chat committed by this import (Conversation ${session.receipt.conversationId}) no longer exists.`,
+					);
+				}
+				return { conversation, receipt: session.receipt };
+			}
+			if (session === undefined || session.phase !== "staged") {
 				throw new StagedChatImportExpiredError();
 			}
+			const record = session.record;
 			if (input.sha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
@@ -515,21 +581,24 @@ export function createChatImportModule(
 					})),
 				},
 			};
-			const result: ChatImportCommitResult = { conversation, receipt };
-			// Consume the token once while retaining its successful result
-			// for idempotent retry.
-			committedResults.set(token, result);
-			stagedRegistry.delete(token);
-			return result;
+			// Consume the token once while retaining the compact receipt for
+			// idempotent retry within the same session lifetime.
+			stagedImportSessions.set(token, {
+				phase: "committed",
+				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
+				receipt,
+			});
+			return { conversation, receipt };
 		},
 
 		discard(token) {
-			const record = stagedRegistry.get(token);
-			if (record === undefined) return;
-			stagedRegistry.delete(token);
+			sweepExpiredImportSessions();
+			const session = stagedImportSessions.get(token);
+			if (session === undefined || session.phase !== "staged") return;
+			stagedImportSessions.delete(token);
 			// Removes only this flow's uncommitted temporary staging bytes;
 			// committed artifacts are never touched here.
-			rmSync(record.stagedPath, { force: true });
+			rmSync(session.record.stagedPath, { force: true });
 		},
 	};
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -13,8 +13,10 @@ import { openDatabase } from "../database/database";
 import { artifactTable, chatTable, participantTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
+	STAGED_IMPORT_SESSION_TTL_MS,
 	clearStagedImportRegistry,
 	createChatImportModule,
+	sweepExpiredImportSessions,
 	type ChatImportModule,
 } from "./staged";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
@@ -392,15 +394,73 @@ describe("staged SillyTavern chat import", () => {
 		);
 		expect(preview).toBeDefined();
 
-		// A restart clears the in-memory session registry; no durable import
-		// draft or resume system exists. Handles become expired and the
-		// staged file is simply never cleaned up (no GC is added).
+		// A restart clears the in-memory session store; no durable import
+		// draft or resume system exists. Handles become expired, and the
+		// now-unregistered staged file has no GC either (the TTL sweep only
+		// covers sessions the live process still tracks).
 		clearStagedImportRegistry();
 		expect(() => module.preview(token)).toThrow(StagedChatImportExpiredError);
 		expect(() => module.discard(token)).not.toThrow();
 		// The same module instance (and a fresh one) agree: no resume.
 		const freshModule = createChatImportModule(database, { artifactDirectory });
 		expect(() => freshModule.preview(token)).toThrow(
+			StagedChatImportExpiredError,
+		);
+	});
+
+	test("an expired staged session is evicted and its staged file deleted on the next access", async () => {
+		const realNow = Date.now();
+		const expired = await stageBytes(
+			Buffer.from(jsonl([header, writer]), "utf8"),
+			"expired.jsonl",
+		);
+		// The live session is staged half a TTL later, so it outlives the
+		// sweep that evicts the first one.
+		setSystemTime(realNow + STAGED_IMPORT_SESSION_TTL_MS / 2);
+		const live = await stageBytes(
+			Buffer.from(jsonl([header, rulership]), "utf8"),
+			"live.jsonl",
+		);
+		setSystemTime(realNow + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		expect(stagingFiles()).toHaveLength(2);
+
+		try {
+			// The lazy sweep on the next access evicts the expired session and
+			// deletes its staged file instead of serving the stale bytes.
+			expect(() => module.preview(expired.token)).toThrow(
+				StagedChatImportExpiredError,
+			);
+			// The session staged within the TTL keeps serving, and exactly its
+			// staging file remains.
+			expect(module.preview(live.token)).toBeDefined();
+			expect(stagingFiles()).toHaveLength(1);
+			// The commit path is equally expired and creates no domain record.
+			expect(() =>
+				module.commit(expired.token, {
+					sha256: expired.preview.sha256,
+					title: "Too late",
+					duplicateConfirmed: true,
+					participants: [],
+				}),
+			).toThrow(StagedChatImportExpiredError);
+			expect(drizzle(database).select().from(chatTable).all()).toEqual([]);
+		} finally {
+			setSystemTime(realNow);
+		}
+	});
+
+	test("the scheduled sweep evicts expired sessions and deletes their files without any token access", async () => {
+		const { token } = await stageBytes(
+			Buffer.from(jsonl([header, writer]), "utf8"),
+			"abandoned.jsonl",
+		);
+		expect(stagingFiles()).toHaveLength(1);
+
+		// The opportunistic periodic sweep runs without any request touching
+		// the token, so abandoned flows lose their staged bytes too.
+		sweepExpiredImportSessions(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		expect(stagingFiles()).toEqual([]);
+		expect(() => module.preview(token)).toThrow(
 			StagedChatImportExpiredError,
 		);
 	});

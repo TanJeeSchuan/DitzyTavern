@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import {
@@ -29,6 +29,7 @@ import {
 } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
+	STAGED_IMPORT_SESSION_TTL_MS,
 	clearStagedImportRegistry,
 	createChatImportModule,
 	type ChatImportCommitInput,
@@ -627,6 +628,33 @@ describe("staged SillyTavern chat import commit", () => {
 			variants: 1,
 			artifacts: 1,
 		});
+	});
+
+	test("a committed receipt serves retries only within its session lifetime without re-creating the Chat", async () => {
+		const staged = await stageText([header, writer]);
+		const plan: ChatImportCommitInput = {
+			sha256: staged.preview.sha256,
+			title: "Bounded retry",
+			duplicateConfirmed: true,
+			participants: [chatOnly("Writer", [1])],
+		};
+		const realNow = Date.now();
+		const first = commit(staged.token, staged.preview.sha256, plan);
+
+		// Past the session lifetime the compact receipt is evicted: the retry
+		// is expired and no second Chat is ever created for the token.
+		setSystemTime(realNow + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		try {
+			expect(() =>
+				commit(staged.token, staged.preview.sha256, plan),
+			).toThrow(StagedChatImportExpiredError);
+		} finally {
+			setSystemTime(realNow);
+		}
+		expect(rowCounts().chats).toBe(1);
+		expect(first.receipt.conversationId).toBe(
+			drizzle(database).select().from(chatTable).all()[0]?.id,
+		);
 	});
 
 	test("a failed domain creation leaves no Chat, Profile, Roster, Message, or Variant rows while the moved artifact may remain", async () => {
