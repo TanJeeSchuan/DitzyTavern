@@ -204,6 +204,16 @@ const verifyStagedBytes = (
 		: "corrupt";
 };
 
+// A staged handle whose bytes are missing or no longer match the binding
+// can serve neither a preview nor a commit; the typed unavailable error
+// names the reason.
+const assertStagedAvailable = (record: StagedRecord): void => {
+	const status = verifyStagedBytes(record);
+	if (status !== "available") {
+		throw new StagedChatImportUnavailableError(status);
+	}
+};
+
 // ---- Commit machinery ----
 
 interface ResolvedPlanParticipant {
@@ -440,10 +450,7 @@ export function createChatImportModule(
 			if (expectedSha256 !== undefined && expectedSha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
-			const status = verifyStagedBytes(record);
-			if (status !== "available") {
-				throw new StagedChatImportUnavailableError(status);
-			}
+			assertStagedAvailable(record);
 			return record.preview;
 		},
 
@@ -475,10 +482,7 @@ export function createChatImportModule(
 			if (input.sha256 !== record.sha256) {
 				throw new StagedChatImportTokenMismatchError();
 			}
-			const status = verifyStagedBytes(record);
-			if (status !== "available") {
-				throw new StagedChatImportUnavailableError(status);
-			}
+			assertStagedAvailable(record);
 
 			// Re-decode the exact staged bytes that produced the preview, so
 			// the committed Chat is always the previewed one. Awaiting no
