@@ -8,6 +8,7 @@ import {
 import {
 	cleanupRetainedGenerationInspections,
 	createConversationModule,
+	isSiblingGenerationRow,
 	type ConversationDataEntry,
 } from "../conversation";
 import {
@@ -30,18 +31,10 @@ interface ActiveRecoveryRow {
 	chatId: number;
 	checkpointContent: string;
 	checkpointReasoning: string;
-	generationIntent: string;
+	// Kept under the persisted column name so the row satisfies the canonical
+	// intent reader without re-parsing the JSON here.
+	generation_intent_json: string;
 }
-
-const isSibling = (intent: string): boolean => {
-	try {
-		// SAFETY: only the optional `type` discriminator is read from the
-		// provider-neutral JSON payload; malformed values are handled below.
-		return (JSON.parse(intent) as { readonly type?: unknown }).type === "sibling";
-	} catch {
-		return false;
-	}
-};
 
 const readActiveRows = (database: Database): ActiveRecoveryRow[] => drizzle(database)
 	.select({
@@ -49,7 +42,7 @@ const readActiveRows = (database: Database): ActiveRecoveryRow[] => drizzle(data
 		chatId: activeGenerationTable.chat_id,
 		checkpointContent: activeGenerationTable.checkpoint_content,
 		checkpointReasoning: activeGenerationTable.checkpoint_reasoning,
-		generationIntent: activeGenerationTable.generation_intent_json,
+		generation_intent_json: activeGenerationTable.generation_intent_json,
 	})
 	.from(activeGenerationTable)
 	.innerJoin(chatTable, eq(chatTable.id, activeGenerationTable.chat_id))
@@ -75,7 +68,7 @@ export function recoverActiveGenerations(
 	for (const row of rows) {
 		const content = row.checkpointContent;
 		const reasoning = row.checkpointReasoning;
-		const intent = isSibling(row.generationIntent) ? "sibling" : "tail";
+		const intent = isSiblingGenerationRow(row) ? "sibling" : "tail";
 		try {
 			if (content.length > 0 || reasoning.length > 0) {
 				const data: ConversationDataEntry[] = [

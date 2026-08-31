@@ -58,6 +58,9 @@ export {
 // Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";
+// Canonical persisted-intent reader shared by terminal commands and the
+// recovery sweep so the sibling discriminator cannot drift between them.
+export { isSiblingGenerationRow } from "./commands/active-generation";
 export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
