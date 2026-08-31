@@ -412,6 +412,16 @@ const updateGenerationSettingsAction = Type.Object({
 	settings: generationSettingsUpdate,
 });
 
+// The focused model-selection command: the composer's selector submits only
+// the model ID, and the Conversation module merges it into the stored
+// Generation Settings inside the command transaction. A model selection
+// therefore cannot carry — and cannot restore — any other editor's settings
+// fields the way a second full-object writer could.
+const setGenerationModelAction = Type.Object({
+	type: Type.Literal("set-generation-model"),
+	modelId: Type.String({ pattern: "\\S" }),
+});
+
 // Cast management command. The raw command appends an ad-hoc or already-
 // resolved local Definition only; Character-to-Cast forks flow through the
 // explicit workflow route, which checks both revisions and copies the
@@ -466,6 +476,7 @@ const conversationCommandAction = Type.Union([
 	putDataAction,
 	deleteDataAction,
 	updateGenerationSettingsAction,
+	setGenerationModelAction,
 	addParticipantAction,
 	renameParticipantAction,
 	replaceParticipantPromptAction,
