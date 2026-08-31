@@ -6,8 +6,7 @@ import {
 } from "./commands/accept-generation";
 import {
 	checkpointConversationGeneration,
-	removeConversationSiblingGeneration,
-	removeConversationTailGeneration,
+	removeConversationGeneration,
 	stopConversationGeneration,
 	stopConversationGenerations,
 	resolveConversationSiblingGeneration,
@@ -52,8 +51,7 @@ export {
 	checkpointConversationGeneration,
 	checkpointConversationSiblingGeneration,
 	checkpointConversationTailGeneration,
-	removeConversationSiblingGeneration,
-	removeConversationTailGeneration,
+	removeConversationGeneration,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
@@ -108,8 +106,7 @@ export type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
-	RemoveTailGenerationInput,
-	RemoveSiblingGenerationInput,
+	RemoveGenerationInput,
 	StopGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
@@ -179,15 +176,15 @@ export function createConversationModule(database: Database): ConversationModule
 			checkpointConversationGeneration(database, input),
 		resolveTailGeneration: (input) =>
 			resolveConversationTailGeneration(database, input),
-	removeTailGeneration: (input) =>
-			removeConversationTailGeneration(database, input),
 	stopGeneration: (input) =>
 		stopConversationGeneration(database, input),
 	stopGenerations: (input) =>
 		stopConversationGenerations(database, input),
 		resolveSiblingGeneration: (input) =>
 			resolveConversationSiblingGeneration(database, input),
-		removeSiblingGeneration: (input) =>
-			removeConversationSiblingGeneration(database, input),
+		// One canonical removal: the persisted Active Generation row decides
+		// between the Sibling Variant and Tail/Continuation Message mutations.
+		removeGeneration: (input) =>
+			removeConversationGeneration(database, input),
 	};
 }

@@ -103,16 +103,12 @@ export function recoverActiveGenerations(
 					});
 				}
 				interrupted += 1;
-			} else if (intent === "sibling") {
-				conversation.removeSiblingGeneration({
-					conversationId: row.chatId,
-					generationId: row.id,
-				});
-				removed += 1;
 			} else {
-				// Tail and Continuation use the same remove seam. The accepted human
-				// Message is nullable on Continuation and is never removed here.
-				conversation.removeTailGeneration({
+				// The canonical removal seam reads the persisted intent itself:
+				// Sibling attempts lose their provisional Variant, Tail and
+				// Continuation attempts their provisional Message. The accepted
+				// human Message of a Tail attempt is never removed here.
+				conversation.removeGeneration({
 					conversationId: row.chatId,
 					generationId: row.id,
 				});

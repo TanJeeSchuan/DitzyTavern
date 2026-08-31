@@ -308,7 +308,7 @@ export async function sendThroughProvisionalTailGeneration(
 		signal: input.signal,
 	}, {
 		remove: () => {
-			conversation.removeTailGeneration({
+			conversation.removeGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
@@ -407,7 +407,7 @@ export async function continueGeneration(
 		signal: input.signal,
 	}, {
 		remove: () => {
-			conversation.removeTailGeneration({
+			conversation.removeGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});
@@ -531,7 +531,7 @@ export async function generateSiblingVariant(
 		signal: input.signal,
 	}, {
 		remove: () => {
-			conversation.removeSiblingGeneration({
+			conversation.removeGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 			});

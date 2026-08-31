@@ -17,8 +17,7 @@ import { advanceConversationRevision, runConversationTransaction } from "./trans
 import type {
 	ConversationDataEntry,
 	ConversationSnapshot,
-	RemoveTailGenerationInput,
-	RemoveSiblingGenerationInput,
+	RemoveGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
 	StopGenerationInput,
@@ -229,25 +228,28 @@ export function resolveConversationSiblingGeneration(
 	return resolveConversationGeneration(database, input, "sibling");
 }
 
-type RemoveGenerationInput = RemoveTailGenerationInput | RemoveSiblingGenerationInput;
-
-/** Remove one accepted target while preserving sibling-selection semantics. */
-const removeConversationGeneration = (
+/**
+ * Remove one accepted target. The persisted Active Generation row is the
+ * sole authority for the mutation: a Sibling Generation loses only its
+ * provisional Variant (restoring the acceptance-time selection unless a
+ * later explicit selection took precedence), while a Tail or Continuation
+ * Generation is its own provisional Message and is removed whole. The
+ * caller never selects a mode, so a Sibling Generation ID cannot reach the
+ * Message-removal path and delete the Message owning every sibling Variant.
+ */
+export const removeConversationGeneration = (
 	database: Database,
 	input: RemoveGenerationInput,
-	mode: "tail" | "sibling",
 ): ConversationSnapshot => {
 	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
+		if (active === undefined) {
 			throw new InvalidConversationCommandError(
-				mode === "sibling"
-					? "The Sibling Generation is no longer available."
-					: "The Active Generation is no longer available.",
+				"The Active Generation is no longer available.",
 			);
 		}
 
-		if (mode === "sibling") {
+		if (isSiblingGenerationRow(active)) {
 			const variant = db
 				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
 				.from(messageVariantTable)
@@ -296,16 +298,6 @@ const removeConversationGeneration = (
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
-
-// An empty sibling failure removes only its provisional Variant. If that
-// Variant is still selected, restore the selection visible at acceptance;
-// an explicit selection made while it ran remains authoritative.
-export function removeConversationSiblingGeneration(
-	database: Database,
-	input: RemoveSiblingGenerationInput,
-): ConversationSnapshot {
-	return removeConversationGeneration(database, input, "sibling");
-}
 
 // Resolving replaces the provisional content and writes compact terminal
 // provenance before removing the Active Generation record. It advances the
@@ -541,16 +533,6 @@ function restoreStoppedSiblingSelection(
 			)
 			.run();
 	}
-}
-
-// A zero-output failure removes only the provisional model Message and its
-// Active Generation. The accepted human Message remains the latest authored
-// writing, ready for an identical Send to reuse it without duplication.
-export function removeConversationTailGeneration(
-	database: Database,
-	input: RemoveTailGenerationInput,
-): ConversationSnapshot {
-	return removeConversationGeneration(database, input, "tail");
 }
 
 // Explicit Stop uses the latest durable checkpoint as its terminal input. A

@@ -455,8 +455,8 @@ export interface ConversationModule {
 	resolveTailGeneration(
 		input: ResolveTailGenerationInput,
 	): ConversationSnapshot;
-	removeTailGeneration(
-		input: RemoveTailGenerationInput,
+	removeGeneration(
+		input: RemoveGenerationInput,
 	): ConversationSnapshot;
 	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
 	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
@@ -469,9 +469,6 @@ export interface ConversationModule {
 	): AcceptedSiblingGeneration;
 	resolveSiblingGeneration(
 		input: ResolveSiblingGenerationInput,
-	): ConversationSnapshot;
-	removeSiblingGeneration(
-		input: RemoveSiblingGenerationInput,
 	): ConversationSnapshot;
 }
 
@@ -580,7 +577,9 @@ export interface ResolveTailGenerationInput {
 	data?: readonly ConversationDataEntry[] | undefined;
 }
 
-export interface RemoveTailGenerationInput {
+// One canonical removal input. The Active Generation row's persisted intent
+// decides the mutation; the caller never selects one.
+export interface RemoveGenerationInput {
 	conversationId: number;
 	generationId: number;
 }
@@ -671,11 +670,6 @@ export interface ResolveSiblingGenerationInput {
 	content: string;
 	reasoning?: string | undefined;
 	data?: readonly ConversationDataEntry[] | undefined;
-}
-
-export interface RemoveSiblingGenerationInput {
-	conversationId: number;
-	generationId: number;
 }
 
 // Checkpointing is mutable execution state, not a Conversation edit. The
