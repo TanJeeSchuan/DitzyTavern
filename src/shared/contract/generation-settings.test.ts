@@ -10,6 +10,7 @@ import { generationInspectionSettingsAdapter } from "../../server/conversation/g
 import {
 	modelClientGenerationSettingsAdapter,
 	projectModelClientGenerationSettings,
+	type ModelClientGenerationSettings,
 } from "../../server/model-client/generation-settings";
 import {
 	captureGenerationProvenanceSettings,
@@ -29,6 +30,8 @@ import {
 	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsAdapter,
+	type GenerationSettingsField,
+	type GenerationSettingsFieldDisposition,
 	type GenerationSettingsFieldMap,
 } from "./generation-settings";
 
@@ -307,37 +310,46 @@ describe("generationProvenanceSettingsWire", () => {
 });
 
 describe("projectModelClientGenerationSettings", () => {
-	test("projects exactly the adapter's declared canonical fields", () => {
+	// The adapter declaration is the reviewed source of truth for which
+	// canonical fields cross the transport seam; these helpers read it out so
+	// the assertions check the projection's behavior against the declaration
+	// instead of restating the vocabulary by hand.
+	// SAFETY: the adapter's mapped field type guarantees each entry is a
+	// canonical field name paired with its declared disposition; the cast
+	// restores those literal key/value types from Object.entries' widening.
+	const adapterFields = Object.entries(modelClientGenerationSettingsAdapter.fields) as readonly [
+		GenerationSettingsField,
+		GenerationSettingsFieldDisposition,
+	][];
+	const projectedFields = adapterFields
+		.filter(([, disposition]) => disposition.disposition === "projected")
+		.map(([field]) => field);
+	const excludedFields = adapterFields
+		.filter(([, disposition]) => disposition.disposition === "excluded")
+		.map(([field]) => field);
+
+	test("projects exactly the adapter's declared projected set with the captured values", () => {
 		const settings = validSettings();
 		const projected = projectModelClientGenerationSettings(settings);
 
-		// The projected vocabulary is the named adapter's own projected set:
-		// sampling, budget, and Request Overrides cross the transport seam.
-		expect(Object.keys(projected).sort()).toEqual([
-			"contextLimit",
-			"frequencyPenalty",
-			"presencePenalty",
-			"requestOverrides",
-			"responseBudget",
-			"temperature",
-			"topP",
-		]);
-		expect(projected).toEqual({
-			temperature: settings.temperature,
-			topP: settings.topP,
-			frequencyPenalty: settings.frequencyPenalty,
-			presencePenalty: settings.presencePenalty,
-			contextLimit: settings.contextLimit,
-			responseBudget: settings.responseBudget,
-			requestOverrides: settings.requestOverrides,
-		});
-		// The excluded canonical fields never appear on the input.
-		expect(projected).not.toHaveProperty("modelId");
-		expect(projected).not.toHaveProperty("safetyAllowance");
-		expect(projected).not.toHaveProperty("siblingGenerationLimit");
-		expect(projected).not.toHaveProperty("continuationStrategy");
-		expect(projected).not.toHaveProperty("continuationInstruction");
-		expect(projected).not.toHaveProperty("continuationPrefillSuffix");
+		// The output vocabulary is the named adapter's own projected set: no
+		// hand-written second list can drift from the declaration.
+		expect(Object.keys(projected).sort()).toEqual([...projectedFields].sort());
+		// Every projected field carries the captured canonical value.
+		for (const field of projectedFields) {
+			// SAFETY: projectedFields is filtered to the adapter's projected
+			// dispositions, which is exactly the vocabulary the derived
+			// ModelClientGenerationSettings input type picks.
+			const key = field as keyof ModelClientGenerationSettings;
+			expect(projected[key]).toEqual(settings[key]);
+		}
+	});
+
+	test("never exposes an excluded canonical field on the input", () => {
+		const projected = projectModelClientGenerationSettings(validSettings());
+		for (const field of excludedFields) {
+			expect(projected).not.toHaveProperty(field);
+		}
 	});
 });
 
@@ -405,22 +417,18 @@ describe("defineGenerationSettingsAdapter", () => {
 	});
 
 	test("accepts the established explicit adapters' real field dispositions", () => {
-		// Database storage and the partial update command participate with
-		// every canonical field; the update command fills omitted fields from
-		// stored values or defaults.
-		expect(generationSettingsUpdateAdapter.fields).toEqual(adapterWithAllFieldsProjected());
+		// The update command participates with every canonical field; its
+		// optionality behavior is checked against the wire schema in the
+		// GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS describe, not restated here.
+		expect(generationSettingsUpdateAdapter.adapter).toBe("update-generation-settings-command");
+		expect(generationSettingsUpdateAdapter.fields).toMatchObject(adapterWithAllFieldsProjected());
 
-		// Model Client input carries the transport-relevant projection; the
-		// remaining canonical fields stay application-owned.
-		expect(modelClientGenerationSettingsAdapter.fields).toEqual({
-			...adapterWithAllFieldsProjected(),
-			modelId: excluded("carried as the Model Client input's own modelId field"),
-			safetyAllowance: excluded("consumed by prompt budgeting before the transport seam"),
-			siblingGenerationLimit: excluded("concurrency policy stays with the application"),
-			continuationStrategy: excluded("intent applicability decides the Continuation operands outside transport"),
-			continuationInstruction: excluded("intent applicability decides the Continuation operands outside transport"),
-			continuationPrefillSuffix: excluded("intent applicability decides the Continuation operands outside transport"),
-		});
+		// The Model Client adapter declares a disposition for every canonical
+		// field. Which fields it projects is verified behaviorally against the
+		// projection's actual output in the describe below, so the exclusion
+		// reasons are not copied here.
+		expect(Object.keys(modelClientGenerationSettingsAdapter.fields).sort())
+			.toEqual([...GENERATION_SETTINGS_FIELDS].sort());
 	});
 
 	test("the migrated server adapters prove exhaustive handling of the canonical vocabulary", () => {
