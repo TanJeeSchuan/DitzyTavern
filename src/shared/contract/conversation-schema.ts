@@ -276,15 +276,34 @@ const chatHistoryVariant = Type.Object({
 
 export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
 
+// Server-owned targeted Swipe eligibility (ADR-0003, ADR-0031): the
+// canonical server rule derives it from playability and the captured
+// historical Control pair. Discriminated on `eligible` so a reason can
+// never accompany an eligible Message (or vanish from an ineligible one).
+const messageSwipeEligibility = Type.Union([
+	Type.Object({ eligible: Type.Literal(true), reason: Type.Null() }),
+	Type.Object({
+		eligible: Type.Literal(false),
+		reason: Type.Union([
+			Type.Literal("conversation-not-playable"),
+			Type.Literal("missing-historical-context"),
+			Type.Literal("historical-participant-unavailable"),
+		]),
+	}),
+]);
+
 const chatHistoryMessage = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
 	timestamp: Type.String(),
 	// Historical model Control identity used to decide whether a terminal
 	// Message is eligible for Continue after Control changes.
-	modelParticipantIdAtCreation: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
-	// Server-derived capability for the selected Variant.
-	continuable: Type.Optional(Type.Boolean()),
+	modelParticipantIdAtCreation: Type.Union([Type.Null(), Type.Integer()]),
+	// Server-derived capabilities for the selected Variant and the captured
+	// historical Control pair. The server always emits them; a client never
+	// reconstructs them from optional hints.
+	continuable: Type.Boolean(),
+	swipe: messageSwipeEligibility,
 	author: Type.Union([Type.Null(), Type.Object({
 		participantId: Type.Union([Type.Null(), Type.Integer()]),
 		capturedName: Type.Union([Type.Null(), Type.String()]),

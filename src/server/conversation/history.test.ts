@@ -298,6 +298,73 @@ describe("Conversation paginated history", () => {
 		expect(JSON.stringify(page)).not.toContain("signature-abc");
 	});
 
+	test("derives the server-owned capability objects from the canonical rule", () => {
+		// A greeting Message captures the historical Control pair at creation,
+		// so the canonical rule marks it Swipe-eligible; explicit created
+		// Messages carry no pair and stay ineligible with the typed reason.
+		// The client never reconstructs either capability.
+		const chat = conversation.create({
+			name: "Capability History",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{
+					definition: {
+						name: "Maren Voss",
+						prompt: prompt(),
+						openings: ["Greetings from the model."],
+					},
+				},
+			],
+			control: { human: 0, model: 1 },
+		});
+
+		const page = conversation.readHistory(chat.id);
+		expect(page?.messages[0]?.swipe).toEqual({ eligible: true, reason: null });
+		expect(page?.messages[0]?.continuable).toBe(true);
+		expect(page?.messages[0]?.modelParticipantIdAtCreation).toBe(
+			chat.cast[1]?.id,
+		);
+
+		const unpaired = conversation.create({
+			name: "Unpaired History",
+			participants: [
+				{ definition: adHoc("Writer") },
+				{ definition: adHoc("Maren Voss") },
+			],
+			control: { human: 0, model: 1 },
+			messages: [messageInput("2026-01-01T00:00:00.000Z", ["Once"])],
+		});
+		const unpairedPage = conversation.readHistory(unpaired.id);
+		expect(unpairedPage?.messages[0]?.swipe).toEqual({
+			eligible: false,
+			reason: "missing-historical-context",
+		});
+		expect(unpairedPage?.messages[0]?.continuable).toBe(true);
+	});
+
+	test("marks the Swipe capability ineligible when the Conversation is not playable", () => {
+		// Without both Control seats nothing may run; the derived reason is
+		// the canonical conversation-not-playable block, and the empty selected
+		// Variant is not continuable.
+		const chat = conversation.create({
+			name: "Unplayable History",
+			participants: [{ definition: adHoc("Writer") }],
+			messages: [{
+				timestamp: "2026-01-01T00:00:00.000Z",
+				variants: [
+					{ content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+				],
+			}],
+		});
+
+		const page = conversation.readHistory(chat.id);
+		expect(page?.messages[0]?.swipe).toEqual({
+			eligible: false,
+			reason: "conversation-not-playable",
+		});
+		expect(page?.messages[0]?.continuable).toBe(false);
+	});
+
 	test("returns undefined for a missing Conversation", () => {
 		expect(conversation.readHistory(999999)).toBeUndefined();
 	});

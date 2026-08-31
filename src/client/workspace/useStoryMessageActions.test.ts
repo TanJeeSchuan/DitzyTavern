@@ -61,6 +61,9 @@ const firstPage = (authorParticipantId: number): ChatHistoryPage => ({
 		id: 10,
 		position: 1,
 		timestamp: "2026-01-01T00:00:00.000Z",
+		modelParticipantIdAtCreation: null,
+		continuable: true,
+		swipe: { eligible: true, reason: null },
 		author: { participantId: authorParticipantId, capturedName: "Author", inCast: true },
 		variants: [
 			{ id: 100, position: 1, content: "First", timestamp: "2026-01-01T00:00:00.000Z", selected: true },

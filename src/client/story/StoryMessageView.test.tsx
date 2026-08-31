@@ -9,6 +9,9 @@ const message = (reasoning: string): StoryMessage => ({
 	timestamp: "2026-01-01T00:00:00.000Z",
 	authorName: "Maren",
 	authorParticipantId: 2,
+	modelParticipantIdAtCreation: null,
+	continuable: true,
+	swipe: { eligible: true, reason: null },
 	inCast: true,
 	activeSwipe: 0,
 	swipes: [{

@@ -122,6 +122,9 @@ describe("Generation session wiring", () => {
 					id: 10,
 					position: 1,
 					timestamp: "2026-01-01T00:00:00.000Z",
+					modelParticipantIdAtCreation: 20,
+					continuable: true,
+					swipe: { eligible: true, reason: null },
 					author: { participantId: 20, capturedName: "Model", inCast: true },
 					variants: [
 						{ id: 100, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true },

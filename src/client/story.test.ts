@@ -42,11 +42,17 @@ const page = (
 });
 
 const message = (
-	overrides: Partial<ChatHistoryPage["messages"][number]> = {},
+	overrides: Partial<Omit<
+		ChatHistoryPage["messages"][number],
+		"modelParticipantIdAtCreation" | "continuable" | "swipe"
+	>> = {},
 ): ChatHistoryPage["messages"][number] => ({
 	id: 10,
 	position: 1,
 	timestamp: "2026-01-01T00:00:00.000Z",
+	modelParticipantIdAtCreation: null,
+	continuable: true,
+	swipe: { eligible: true, reason: null },
 	author: { participantId: 1, capturedName: "Writer", inCast: true },
 	variants: [
 		{ id: 100, position: 1, content: "Once", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
@@ -64,6 +70,11 @@ const storyMessage = (
 	timestamp: `2026-01-01T00:00:0${position}.000Z`,
 	authorName: authorParticipantId === 20 ? "Model" : "Writer",
 	authorParticipantId,
+	modelParticipantIdAtCreation: null,
+	continuable: true,
+	// Server-derived capability carried by history: eligible unless a test
+	// overrides it with the server's typed ineligibility.
+	swipe: { eligible: true, reason: null },
 	inCast: true,
 	activeSwipe: 0,
 	swipes: [
@@ -73,51 +84,69 @@ const storyMessage = (
 });
 
 describe("story reading state", () => {
-	test("offers New Swipe on an older eligible generated Message", () => {
-		const olderGenerated: StoryMessage = {
-			...storyMessage(10, 1, 20),
-			modelParticipantIdAtCreation: 20,
-		};
-		const newerGenerated: StoryMessage = {
-			...storyMessage(11, 2, 20),
-			modelParticipantIdAtCreation: 20,
-		};
-		const messages = [olderGenerated, newerGenerated];
+	test("offers New Swipe on a server-eligible Message and honors the active response position", () => {
+		const olderEligible: StoryMessage = storyMessage(10, 1, 20);
+		const newerEligible: StoryMessage = storyMessage(11, 2, 20);
+		const messages = [olderEligible, newerEligible];
 
-		expect(messages.at(-1)?.id).toBe(newerGenerated.id);
+		expect(messages.at(-1)?.id).toBe(newerEligible.id);
 		expect(canOfferSiblingGeneration({
-			message: olderGenerated,
+			message: olderEligible,
 			playable: true,
 			previewActive: false,
 			activeGenerationMessageIds: [],
 		})).toBe(true);
 		expect(canOfferSiblingGeneration({
-			message: olderGenerated,
+			message: olderEligible,
 			playable: true,
 			previewActive: false,
-			activeGenerationMessageIds: [olderGenerated.id],
+			activeGenerationMessageIds: [olderEligible.id],
 		})).toBe(true);
 		expect(canOfferSiblingGeneration({
-			message: olderGenerated,
+			message: olderEligible,
 			playable: true,
 			previewActive: false,
-			activeGenerationMessageIds: [newerGenerated.id],
+			activeGenerationMessageIds: [newerEligible.id],
 		})).toBe(false);
 		expect(canOfferSiblingGeneration({
-			message: olderGenerated,
+			message: olderEligible,
 			playable: true,
 			previewActive: true,
 			activeGenerationMessageIds: [],
 		})).toBe(false);
+		expect(canOfferSiblingGeneration({
+			message: olderEligible,
+			playable: false,
+			previewActive: false,
+			activeGenerationMessageIds: [],
+		})).toBe(false);
 	});
 
-	test("never falls back to the current Control assignment for rows without their historical identity", () => {
-		// The historical identity is the only authorship signal; a Message whose
-		// generation-time model identity is absent is not model-authored.
-		const olderRow = storyMessage(12, 1, 20);
-		expect(olderRow.modelParticipantIdAtCreation).toBeUndefined();
+	test("follows the server-derived Swipe eligibility instead of Message authorship", () => {
+		// Eligibility is the server's canonical historical-pair rule
+		// (ADR-0003), carried by history as a required capability object: an
+		// opening Message with a trustworthy captured pair is eligible even
+		// though it is not model-authored.
+		const opening = storyMessage(12, 1, 1);
 		expect(canOfferSiblingGeneration({
-			message: olderRow,
+			message: opening,
+			playable: true,
+			previewActive: false,
+			activeGenerationMessageIds: [],
+		})).toBe(true);
+	});
+
+	test("refuses a Message the server marked Swipe-ineligible", () => {
+		// The client never reconstructs eligibility: a captured generation-time
+		// identity is not the server's answer, so a model-authored Message
+		// whose historical pair is unavailable stays ineligible.
+		const unavailable: StoryMessage = {
+			...storyMessage(13, 1, 20),
+			modelParticipantIdAtCreation: 20,
+			swipe: { eligible: false, reason: "missing-historical-context" },
+		};
+		expect(canOfferSiblingGeneration({
+			message: unavailable,
 			playable: true,
 			previewActive: false,
 			activeGenerationMessageIds: [],

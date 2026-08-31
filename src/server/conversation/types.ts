@@ -282,9 +282,13 @@ export interface ChatHistoryMessage {
 	// The model Control captured when this Message was generated. This small
 	// capability hint lets a client keep Continue available after Control has
 	// moved to another Participant without exposing prompt or provenance data.
-	modelParticipantIdAtCreation?: number | null;
+	modelParticipantIdAtCreation: number | null;
 	// Derived from the selected Variant's visible text or Reasoning Content.
-	continuable?: boolean;
+	continuable: boolean;
+	// Derived, never stored: whether a new sibling Variant (targeted Swipe)
+	// may be generated for this Message, from the canonical historical-pair
+	// rule. The server always emits it; clients never reconstruct eligibility.
+	swipe: MessageSwipeEligibility;
 	// Variant order is preserved exactly as stored; empty and duplicate
 	// variants remain separate positions with their exact content.
 	variants: ChatHistoryVariant[];

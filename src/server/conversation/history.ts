@@ -20,7 +20,8 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import { type ConversationDatabase, readControlAssignment } from "./internal";
+import { deriveControlValidity, deriveMessageSwipeEligibility } from "./snapshot";
 import type {
 	AuthorStampSnapshot,
 	ChatHistoryMessage,
@@ -164,6 +165,15 @@ export function readChatHistory(
 		.all();
 	for (const participant of cast) castIds.add(participant.id);
 
+	// Playability is the single derived Control-validity rule, and the
+	// capability objects below flow through the canonical snapshot helpers,
+	// so the history seam can never disagree with the snapshot or the
+	// commands about sibling eligibility.
+	const playable = deriveControlValidity(
+		readControlAssignment(db, conversationId),
+		cast.map((participant) => participant.id),
+	).valid;
+
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
 		const author: AuthorStampSnapshot | null =
 			message.author_participant_id !== null || message.author_name !== null
@@ -175,6 +185,14 @@ export function readChatHistory(
 						inCast:
 							message.author_participant_id !== null &&
 							castIds.has(message.author_participant_id),
+					}
+				: null;
+		const historicalContext =
+			message.context_human_participant_id !== null &&
+			message.context_model_participant_id !== null
+				? {
+						humanParticipantId: message.context_human_participant_id,
+						modelParticipantId: message.context_model_participant_id,
 					}
 				: null;
 		return {
@@ -190,6 +208,13 @@ export function readChatHistory(
 					(selected.content.length > 0 ||
 						(continuationStrategy === "instruction" && (selected.reasoning?.length ?? 0) > 0));
 			})(),
+			// Server-derived targeted Swipe eligibility from the canonical rule
+			// (ADR-0003): the client never reconstructs it from hints.
+			swipe: deriveMessageSwipeEligibility(
+				playable,
+				historicalContext,
+				cast.map((participant) => participant.id),
+			),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
 		};
 	});

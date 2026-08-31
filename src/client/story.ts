@@ -10,7 +10,7 @@
 // Variant renders a presentation-only placeholder and its stored text is
 // never modified.
 
-import type { ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
+import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
 
 // A reading view of one Variant: the stored content plus whether the
 // presentation should show the exact-empty placeholder instead.
@@ -35,9 +35,13 @@ export interface StoryMessage {
 	authorParticipantId: number | null;
 	// Historical model Control identity, when the Message came from
 	// generation. It may differ from the current Conversation Control.
-	modelParticipantIdAtCreation?: number | null;
+	modelParticipantIdAtCreation: number | null;
 	// Server-derived capability for the selected Variant.
-	continuable?: boolean;
+	continuable: boolean;
+	// Server-derived targeted Swipe eligibility carried by history (ADR-0003):
+	// the canonical historical-pair rule decides, never client authorship
+	// reconstruction.
+	swipe: ChatHistoryMessage["swipe"];
 	// Whether the authoring Participant is still an active Cast member.
 	inCast: boolean;
 	// Index of the persisted selected Variant within `swipes`.
@@ -170,6 +174,7 @@ const toStoryMessage = (
 	authorParticipantId: message.author?.participantId ?? null,
 	modelParticipantIdAtCreation: message.modelParticipantIdAtCreation,
 	continuable: message.continuable,
+	swipe: message.swipe,
 	inCast: message.author?.inCast ?? false,
 	activeSwipe: Math.max(
 		0,
@@ -183,33 +188,34 @@ const toStoryMessage = (
 
 // A generated Message remains continuable when the current model Control has
 // moved to another Participant: the generation-time model identity is the
-// one authorship signal the client reads.
+// one authorship signal the client reads for Continue.
 export const isModelAuthoredMessage = (
 	message: Pick<StoryMessage, "authorParticipantId" | "modelParticipantIdAtCreation">,
 ): boolean =>
 	message.modelParticipantIdAtCreation !== null &&
-	message.modelParticipantIdAtCreation !== undefined &&
 	message.authorParticipantId === message.modelParticipantIdAtCreation;
 
-// New Swipe belongs to every generated Message the server stamped with its
-// generation-time model identity. When sibling attempts are already active,
-// the server permits parallel work only at that same response position, so
-// the client hides conflicting targets while leaving the active target
-// available for another parallel attempt.
+// New Swipe follows the server-derived eligibility carried by history: the
+// server owns the rule (playability and the captured historical Control
+// pair, ADR-0003), so the client never reconstructs it. The live summary's
+// playability still gates on the fresher read. When sibling attempts are
+// already active, the server permits parallel work only at that same
+// response position, so the client hides conflicting targets while leaving
+// the active target available for another parallel attempt.
 export const canOfferSiblingGeneration = ({
 	message,
 	playable,
 	previewActive,
 	activeGenerationMessageIds,
 }: {
-	message: Pick<StoryMessage, "id" | "authorParticipantId" | "modelParticipantIdAtCreation">;
+	message: Pick<StoryMessage, "id" | "swipe">;
 	playable: boolean;
 	previewActive: boolean;
 	activeGenerationMessageIds: readonly number[];
 }): boolean =>
 	playable &&
+	message.swipe.eligible &&
 	!previewActive &&
-	isModelAuthoredMessage(message) &&
 	activeGenerationMessageIds.every((messageId) => messageId === message.id);
 
 const prependUnique = (
