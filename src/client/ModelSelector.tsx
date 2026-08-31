@@ -1,12 +1,13 @@
 import { ChevronDown, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-	applyConversationCommand,
 	loadConversationGenerationSettings,
-	type ConversationGenerationSettings,
 	type ConversationSummary,
 } from "./conversation";
-import { runConversationCommand } from "./conversation-command-runner";
+import {
+	commitConversationModel,
+	MODEL_SELECTION_UNAVAILABLE_NOTICE,
+} from "./model-selection-command";
 import {
 	loadConnectionSettings,
 	saveConnectionCommand,
@@ -14,10 +15,6 @@ import {
 } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
 import { modelSuggestions, commitModelId, togglePinnedModel } from "./model-selection";
-
-// The wording this surface shows whenever the model-selection command could
-// not be saved; the runner owns when each notice appears.
-const MODEL_SELECTION_UNAVAILABLE_NOTICE = "The model selection could not be saved.";
 
 export function ModelSelector({
 	conversation,
@@ -28,7 +25,10 @@ export function ModelSelector({
 	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
-	const [generation, setGeneration] = useState<ConversationGenerationSettings | null>(null);
+	// The selector reads the current model ID for display and commits model
+	// selections through the focused set-generation-model command; it owns no
+	// Generation Settings snapshot and never writes the settings object.
+	const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
@@ -44,7 +44,7 @@ export function ModelSelector({
 		])
 			.then(([loadedGeneration, loadedSettings]) => {
 				if (isCancelled()) return;
-				setGeneration(loadedGeneration);
+				setSelectedModelId(loadedGeneration.modelId);
 				setSettings(loadedSettings);
 			})
 			.catch(() => {
@@ -79,10 +79,10 @@ export function ModelSelector({
 		});
 	}, [activeProfile, query]);
 
-	const updateGeneration = async (modelId: string) => {
+	const updateGeneration = async (submitted: string) => {
 		if (disabled) return;
-		const committed = commitModelId(modelId);
-		if (committed === null || generation === null || committed === generation.modelId) {
+		const committed = commitModelId(submitted);
+		if (committed === null || selectedModelId === null || committed === selectedModelId) {
 			if (committed !== null) setQuery("");
 			setOpen(false);
 			return;
@@ -92,32 +92,20 @@ export function ModelSelector({
 		setNotice(null);
 		const showUnreachable = () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE);
 		try {
-			await runConversationCommand({
-				revision: () => conversation.revision,
-				send: (expectedRevision) =>
-					applyConversationCommand(conversation.id, expectedRevision, {
-						type: "update-generation-settings",
-						settings: { ...generation, modelId: committed },
-					}),
+			await commitConversationModel({
+				conversation,
+				modelId: committed,
 				reconciliation: {
 					adoptSnapshot: onConversationChange,
 					showNotice: setError,
 				},
-				notices: {
-					conflict: "This Conversation changed elsewhere. Its model settings were reloaded.",
-					notFound: MODEL_SELECTION_UNAVAILABLE_NOTICE,
-					unreachable: MODEL_SELECTION_UNAVAILABLE_NOTICE,
+				onCommitted: () => {
+					setSelectedModelId(committed);
+					setNotice(`Model set to ${committed}.`);
+					setQuery("");
+					setOpen(false);
 				},
-				callbacks: {
-					onApplied: () => {
-						setGeneration({ ...generation, modelId: committed });
-						setNotice(`Model set to ${committed}.`);
-						setQuery("");
-						setOpen(false);
-					},
-					onNotPlayable: showUnreachable,
-					onNotRemovable: showUnreachable,
-				},
+				onUnavailable: showUnreachable,
 			});
 		} finally {
 			setPending(false);
@@ -156,7 +144,7 @@ export function ModelSelector({
 		}
 	};
 
-	if (generation === null) return null;
+	if (selectedModelId === null) return null;
 
 	return (
 		<div className="model-selector" ref={rootRef}>
@@ -174,7 +162,7 @@ export function ModelSelector({
 					void loadConnectionSettings().then(setSettings).catch(() => setError("Connection Settings could not be loaded."));
 				}}
 			>
-				<span>{generation.modelId}</span>
+				<span>{selectedModelId}</span>
 				<ChevronDown aria-hidden="true" />
 			</button>
 			{open && (
@@ -196,7 +184,7 @@ export function ModelSelector({
 					/>
 					<div className="model-selector-options" role="listbox" aria-label="Model choices">
 						{suggestions.map((modelId) => (
-							<div className="model-selector-option" key={modelId} role="option" aria-selected={modelId === generation.modelId}>
+							<div className="model-selector-option" key={modelId} role="option" aria-selected={modelId === selectedModelId}>
 								<button type="button" disabled={disabled || pending} onClick={() => void updateGeneration(modelId)}>{modelId}</button>
 								<button
 									type="button"

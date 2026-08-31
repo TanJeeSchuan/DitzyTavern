@@ -17,6 +17,7 @@ import {
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { selectVariant } from "./commands/select-variant";
+import { setGenerationModel } from "./commands/set-generation-model";
 import { updateGenerationSettings } from "./commands/update-generation-settings";
 import {
 	ConversationNotPlayableError,
@@ -127,6 +128,9 @@ export function executeConversationCommand(
 				break;
 			case "update-generation-settings":
 				updateGenerationSettings(db, input);
+				break;
+			case "set-generation-model":
+				setGenerationModel(db, input);
 				break;
 		}
 

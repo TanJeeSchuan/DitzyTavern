@@ -366,6 +366,10 @@ export type ConversationAction =
 			type: "update-generation-settings";
 			settings: ConversationGenerationSettingsInput;
 	  }
+	// The focused model-selection command: the client submits only the model
+	// ID and the handler merges it into the stored Generation Settings, so a
+	// model selection can never rewrite another editor's settings fields.
+	| { type: "set-generation-model"; modelId: string }
 	// Cast management: appends a new Participant with a complete local
 	// Definition (ad-hoc, or an already-resolved Character fork carrying
 	// immutable provenance). Appended at the next stable Cast position and
