@@ -3,7 +3,6 @@ import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
 	canonicalGenerationSettings,
-	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 } from "./generation-settings";
 import { participantPrompt } from "./prompt-schema";
 import {
@@ -395,17 +394,12 @@ const deleteDataAction = Type.Object({
 	key: Type.String(),
 });
 
-// The settings update command derives from the canonical declaration:
-// current clients submit the complete canonical object, while older callers
-// may omit the fields the Conversation module fills from stored values or
-// defaults. Only optionality differs, and the required/optional split is
-// the canonical GENERATION_SETTINGS_UPDATE_FIELD_POLICY vocabulary shared
-// with the server domain input; adding a canonical field fails the policy
-// until its update requiredness is stated.
-export const generationSettingsUpdate = Type.Composite([
-	Type.Omit(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS]),
-	Type.Partial(Type.Pick(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS])),
-]);
+// The settings update command carries the complete canonical declaration:
+// the server is authoritative (ADR-0002) and accepts no omitted client
+// fields. The Conversation module still fills defaults when it creates
+// settings server-side, but an update always states every field, so adding
+// a canonical field automatically participates in the update command.
+export const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
 
 const updateGenerationSettingsAction = Type.Object({
 	type: Type.Literal("update-generation-settings"),

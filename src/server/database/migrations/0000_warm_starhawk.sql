@@ -117,7 +117,6 @@ CREATE TABLE `connection_profile` (
 	`adapter` text NOT NULL,
 	`output_token_representation` text DEFAULT 'automatic' NOT NULL,
 	`timeout_ms` integer DEFAULT 120000,
-	`backend_options_json` text DEFAULT '{}' NOT NULL,
 	CONSTRAINT "connection_profile_timeout_nonnegative" CHECK("connection_profile"."timeout_ms" IS NULL OR "connection_profile"."timeout_ms" >= 0)
 );
 --> statement-breakpoint

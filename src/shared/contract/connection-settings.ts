@@ -12,13 +12,6 @@ const headerOperation = Type.Union([
 	Type.Object({ name: Type.String(), operation: Type.Literal("remove") }),
 ]);
 
-const backendOptionValue = Type.Union([
-	Type.String(),
-	Type.Number(),
-	Type.Boolean(),
-	Type.Null(),
-]);
-
 const profileDraft = Type.Object({
 	displayName: Type.String(),
 	apiFormat: Type.Union([
@@ -42,9 +35,6 @@ const profileDraft = Type.Object({
 	]),
 	timeoutMs: Type.Union([Type.Null(), Type.Integer()]),
 	pinnedModels: Type.Array(Type.String()),
-	// Legacy request payloads may still carry this field so the domain can reject
-	// non-empty values explicitly; it is omitted from every exported client type.
-	backendOptions: Type.Optional(Type.Record(Type.String(), backendOptionValue)),
 }, { additionalProperties: false });
 
 const profile = Type.Object({
@@ -216,7 +206,7 @@ export const connectionSettingsApplied = Type.Object({
 export const connectionInvalidResponse = invalidOutcome;
 export const connectionNotFoundResponse = notFoundOutcome;
 
-export type ConnectionProfileDraftPayload = Omit<Static<typeof profileDraft>, "backendOptions">;
+export type ConnectionProfileDraftPayload = Static<typeof profileDraft>;
 export type ConnectionProfilePayload = Static<typeof profile>;
 export type ConnectionSettingsPayload = Static<typeof settings>;
 export type ConnectionPresetPayload = Static<typeof preset>;
@@ -224,15 +214,7 @@ export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;
 export type ConnectionTestResultPayload = Static<typeof testConnectionResult>;
 export type ConnectionDiscoveryResultPayload = Static<typeof discoveryResult>;
 
-type WithoutLegacyBackendOptions<T> = T extends unknown
-	? T extends { profile: infer Profile }
-		? Omit<T, "profile"> & { profile: Omit<Profile, "backendOptions"> }
-		: T
-	: never;
-
-export type ConnectionSettingsCommandPayload = WithoutLegacyBackendOptions<
-	Static<typeof commandBody>
->;
+export type ConnectionSettingsCommandPayload = Static<typeof commandBody>;
 
 export type ConnectionTestDraftPayload = {
 	profileId?: number;

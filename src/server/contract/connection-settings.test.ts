@@ -19,13 +19,9 @@ const deepSeekProfile = {
 	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
 };
 
-type LegacyConnectionProfileDraft = ConnectionProfileDraft & {
-	backendOptions: Record<string, string | number | boolean | null>;
-};
-
 type ConnectionCommandPayload =
-	| { type: "create-profile"; expectedRevision: number; profile: ConnectionProfileDraft | LegacyConnectionProfileDraft; credential?: string | null }
-	| { type: "apply-profile"; expectedRevision: number; profileId: number; profile: ConnectionProfileDraft | LegacyConnectionProfileDraft }
+	| { type: "create-profile"; expectedRevision: number; profile: ConnectionProfileDraft; credential?: string | null }
+	| { type: "apply-profile"; expectedRevision: number; profileId: number; profile: ConnectionProfileDraft }
 	| { type: "set-credential"; expectedRevision: number; profileId: number; credential: string }
 	| { type: "reset-credential"; expectedRevision: number; profileId: number; confirmed: boolean }
 	| { type: "activate-profile"; expectedRevision: number; profileId: number }
@@ -114,19 +110,6 @@ describe("Connection Settings transport adapter", () => {
 		expect(body.outcome).toBe("invalid");
 		expect(body.reason).toContain("display name");
 
-		const settings = await get("/api/connection-settings");
-		expect((await settings.json()).revision).toBe(0);
-	});
-
-	test("rejects arbitrary Backend Options instead of persisting or echoing them", async () => {
-		const response = await post({
-			type: "create-profile",
-			expectedRevision: 0,
-			profile: { ...deepSeekProfile, backendOptions: { experimental: true } },
-		});
-
-		expect(response.status).toBe(422);
-		expect((await response.json()).outcome).toBe("invalid");
 		const settings = await get("/api/connection-settings");
 		expect((await settings.json()).revision).toBe(0);
 	});

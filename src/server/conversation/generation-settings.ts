@@ -108,17 +108,7 @@ export function updateConversationGenerationSettings(
 	conversationId: number,
 	input: ConversationGenerationSettingsInput,
 ): ConversationGenerationSettings {
-	// Commands normally submit the complete settings object, but retain a
-	// previously edited instruction when an older caller updates only sampling
-	// fields. This keeps Continuation settings durable across unrelated edits.
-	const existing = db
-		.select()
-		.from(conversationGenerationSettingsTable)
-		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
-		.get();
-	const normalized = normalizeGenerationSettings(
-		resolveGenerationSettingsDraft(input, existing),
-	);
+	const normalized = normalizeGenerationSettings(input);
 	db.insert(conversationGenerationSettingsTable)
 		.values({ chat_id: conversationId })
 		.onConflictDoNothing()
@@ -134,42 +124,6 @@ export function updateConversationGenerationSettings(
 	}
 	return readGenerationSettingsRow(updated);
 }
-
-// The submitted settings resolved into a full draft: every canonical field
-// is present, with the update-optional Continuation and budget fields filled
-// from the stored row or the established defaults. The draft's runtime
-// values are still untrusted; normalization below validates each one.
-type GenerationSettingsDraft = ConversationGenerationSettings;
-
-const resolveGenerationSettingsDraft = (
-	input: ConversationGenerationSettingsInput,
-	existing: SettingsRow | undefined,
-): GenerationSettingsDraft => ({
-	modelId: input.modelId,
-	temperature: input.temperature,
-	topP: input.topP,
-	frequencyPenalty: input.frequencyPenalty,
-	presencePenalty: input.presencePenalty,
-	contextLimit: input.contextLimit,
-	responseBudget: input.responseBudget,
-	safetyAllowance: input.safetyAllowance ?? DEFAULT_SAFETY_ALLOWANCE,
-	siblingGenerationLimit: input.siblingGenerationLimit ?? DEFAULT_SIBLING_GENERATION_LIMIT,
-	continuationStrategy: input.continuationStrategy
-		?? (existing === undefined
-			? undefined
-			: parseContinuationStrategy(existing.continuation_strategy))
-		?? "instruction",
-	continuationInstruction:
-		input.continuationInstruction ??
-		existing?.continuation_instruction ??
-		DEFAULT_CONTINUATION_INSTRUCTION,
-	continuationPrefillSuffix: input.continuationPrefillSuffix
-		?? (existing === undefined
-			? undefined
-			: parseContinuationPrefillSuffix(existing.continuation_prefill_suffix))
-		?? "",
-	requestOverrides: input.requestOverrides,
-});
 
 // Per-field normalization over the canonical vocabulary. Compile-locked:
 // adding a canonical field fails typecheck until its normalization is
@@ -242,7 +196,7 @@ const requirePositiveWholeNumber = (label: string, value: number): number => {
 };
 
 const normalizeGenerationSettings = (
-	draft: GenerationSettingsDraft,
+	draft: ConversationGenerationSettings,
 ): ConversationGenerationSettings => ({
 	modelId: normalizeSettingsField.modelId(draft.modelId),
 	temperature: normalizeSettingsField.temperature(draft.temperature),

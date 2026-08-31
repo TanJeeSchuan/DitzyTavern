@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "023eef04-f9be-47d5-b1e5-5c5c2a8f8b76",
+  "id": "98e4053f-4c6a-4d16-898d-fab2f3a0dfeb",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "active_generation": {
@@ -842,14 +842,6 @@
           "notNull": false,
           "autoincrement": false,
           "default": 120000
-        },
-        "backend_options_json": {
-          "name": "backend_options_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
         }
       },
       "indexes": {

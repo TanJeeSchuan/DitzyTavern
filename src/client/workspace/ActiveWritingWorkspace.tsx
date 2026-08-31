@@ -240,7 +240,7 @@ export function ActiveWritingWorkspace({
 									latestStoryMessage?.id === message.id &&
 									session.conversation?.playable === true &&
 									generation.activeGenerationTargets.length === 0 &&
-									isModelAuthoredMessage(message, session.conversation.control.modelParticipantId) &&
+									isModelAuthoredMessage(message) &&
 									message.continuable === true &&
 									!generation.isGenerating &&
 									story.preview === null

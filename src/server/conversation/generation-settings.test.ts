@@ -18,6 +18,33 @@ const prompt = {
 	postHistoryInstruction: "",
 };
 
+// An update command carries the complete canonical declaration: the server
+// accepts no omitted client fields. Overrides state only what one test's
+// assertion focuses on.
+const completeSettings = (
+	overrides: Partial<CanonicalGenerationSettings> = {},
+): CanonicalGenerationSettings => ({
+	modelId: "deepseek-chat",
+	temperature: null,
+	topP: null,
+	frequencyPenalty: null,
+	presencePenalty: null,
+	contextLimit: 4096,
+	responseBudget: 128,
+	safetyAllowance: 500,
+	siblingGenerationLimit: 4,
+	continuationStrategy: "instruction",
+	continuationInstruction:
+		"Continue the narrative naturally without repeating the previous text.",
+	continuationPrefillSuffix: "",
+	requestOverrides: {
+		"chat-completions": {},
+		responses: {},
+		"anthropic-messages": {},
+	},
+	...overrides,
+});
+
 describe("Conversation Generation Settings", () => {
 	let database: Database;
 
@@ -46,21 +73,7 @@ describe("Conversation Generation Settings", () => {
 			expectedRevision: conversation.revision,
 			action: {
 				type: "update-generation-settings",
-				settings: {
-					modelId: "deepseek-chat",
-					temperature: null,
-					topP: null,
-					frequencyPenalty: null,
-					presencePenalty: null,
-					contextLimit: 4096,
-					responseBudget: 128,
-					safetyAllowance: 777,
-					requestOverrides: {
-						"chat-completions": {},
-						responses: {},
-						"anthropic-messages": {},
-					},
-				},
+				settings: completeSettings({ safetyAllowance: 777 }),
 			},
 		});
 
@@ -84,21 +97,7 @@ describe("Conversation Generation Settings", () => {
 			expectedRevision: conversation.revision,
 			action: {
 				type: "update-generation-settings",
-				settings: {
-					modelId: "deepseek-chat",
-					temperature: null,
-					topP: null,
-					frequencyPenalty: null,
-					presencePenalty: null,
-					contextLimit: 4096,
-					responseBudget: 128,
-					siblingGenerationLimit: 2,
-					requestOverrides: {
-						"chat-completions": {},
-						responses: {},
-						"anthropic-messages": {},
-					},
-				},
+				settings: completeSettings({ siblingGenerationLimit: 2 }),
 			},
 		});
 		expect(module.getGenerationSettings(conversation.id)?.siblingGenerationLimit).toBe(2);
@@ -114,20 +113,7 @@ describe("Conversation Generation Settings", () => {
 			control: { human: 0, model: 1 },
 		});
 		const module = createConversationModule(database);
-		const settings = {
-			modelId: "deepseek-chat",
-			temperature: null,
-			topP: null,
-			frequencyPenalty: null,
-			presencePenalty: null,
-			contextLimit: 4096,
-			responseBudget: 128,
-			requestOverrides: {
-				"chat-completions": {},
-				responses: {},
-				"anthropic-messages": {},
-			},
-		};
+		const settings = completeSettings({ contextLimit: 4096, responseBudget: 128 });
 
 		for (const safetyAllowance of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
 			expect(() => module.execute({

@@ -12,7 +12,6 @@ const draft = {
 	outputTokenRepresentation: "automatic" as const,
 	timeoutMs: 30_000,
 	pinnedModels: ["local-model"],
-	backendOptions: { temperature: 0.2 },
 };
 
 const state: ConnectionSettingsEditorState = {

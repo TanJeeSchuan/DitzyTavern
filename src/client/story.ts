@@ -182,38 +182,34 @@ const toStoryMessage = (
 });
 
 // A generated Message remains continuable when the current model Control has
-// moved to another Participant. The historical identity is the authoritative
-// signal; the current assignment is retained as a fallback for older rows.
+// moved to another Participant: the generation-time model identity is the
+// one authorship signal the client reads.
 export const isModelAuthoredMessage = (
 	message: Pick<StoryMessage, "authorParticipantId" | "modelParticipantIdAtCreation">,
-	modelParticipantId: number | null,
 ): boolean =>
-	message.modelParticipantIdAtCreation !== undefined &&
 	message.modelParticipantIdAtCreation !== null &&
-	message.authorParticipantId === message.modelParticipantIdAtCreation
-		? true
-		: modelParticipantId !== null && message.authorParticipantId === modelParticipantId;
+	message.modelParticipantIdAtCreation !== undefined &&
+	message.authorParticipantId === message.modelParticipantIdAtCreation;
 
-// New Swipe belongs to every generated Message, including older history.
-// When sibling attempts are already active, the server permits parallel work
-// only at that same response position, so the client hides conflicting targets
-// while leaving the active target available for another parallel attempt.
+// New Swipe belongs to every generated Message the server stamped with its
+// generation-time model identity. When sibling attempts are already active,
+// the server permits parallel work only at that same response position, so
+// the client hides conflicting targets while leaving the active target
+// available for another parallel attempt.
 export const canOfferSiblingGeneration = ({
 	message,
 	playable,
 	previewActive,
-	modelParticipantId,
 	activeGenerationMessageIds,
 }: {
 	message: Pick<StoryMessage, "id" | "authorParticipantId" | "modelParticipantIdAtCreation">;
 	playable: boolean;
 	previewActive: boolean;
-	modelParticipantId: number | null;
 	activeGenerationMessageIds: readonly number[];
 }): boolean =>
 	playable &&
 	!previewActive &&
-	isModelAuthoredMessage(message, modelParticipantId) &&
+	isModelAuthoredMessage(message) &&
 	activeGenerationMessageIds.every((messageId) => messageId === message.id);
 
 const prependUnique = (

@@ -128,6 +128,11 @@ describe("Generation transport contract", () => {
 							contextLimit: 4096,
 							responseBudget: 32,
 							safetyAllowance: 321,
+							siblingGenerationLimit: 4,
+							continuationStrategy: "instruction",
+							continuationInstruction:
+								"Continue the narrative naturally without repeating the previous text.",
+							continuationPrefillSuffix: "",
 							requestOverrides: {
 								"chat-completions": {},
 								responses: {},

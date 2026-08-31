@@ -22,7 +22,6 @@ import {
 	ConnectionProfileNotFoundError,
 } from "./errors";
 import {
-	assertLegacyBackendOptions,
 	normalizeDiscoveryCatalog,
 } from "./validation";
 
@@ -77,7 +76,6 @@ export function readProfile(
 			headers.push({ name, configured: true });
 		}
 	}
-	assertLegacyBackendOptions(row.backend_options_json);
 	return {
 		id: row.id,
 		displayName: row.display_name,
@@ -139,9 +137,6 @@ export function toProfileRow(profile: ConnectionProfileDraft) {
 		adapter: profile.adapter,
 		output_token_representation: profile.outputTokenRepresentation,
 		timeout_ms: profile.timeoutMs,
-		// The column remains for on-disk compatibility with older databases.
-		// Backend Options are intentionally not part of the canonical domain.
-		backend_options_json: "{}",
 	};
 }
 

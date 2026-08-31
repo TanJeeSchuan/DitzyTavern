@@ -4,7 +4,6 @@ import type {
 } from "../../shared/generation-provenance";
 import type {
 	CanonicalGenerationSettings,
-	GenerationSettingsUpdateOptionalField,
 } from "../../shared/contract/generation-settings";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
@@ -48,17 +47,11 @@ export type GenerationRequestOverrides = Readonly<
 // from the canonical declaration it rides on.
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
-// Older callers may omit the newly introduced budget and Continuation
-// fields. The update input derives from the canonical declaration: every
-// canonical field participates, and exactly the canonical update-optional
-// vocabulary is optional — the same requiredness policy the wire schema
-// uses, so the wire and domain inputs cannot disagree about which fields
-// may be absent. The domain fills omitted fields from stored values or the
-// same defaults used for new rows.
-export type ConversationGenerationSettingsInput = Omit<
-	CanonicalGenerationSettings,
-	GenerationSettingsUpdateOptionalField
-> & Partial<Pick<CanonicalGenerationSettings, GenerationSettingsUpdateOptionalField>>;
+// The update input is the complete canonical declaration: the server is
+// authoritative and never accepts omitted client fields. The Conversation
+// module still fills defaults when it creates settings server-side, but an
+// update command always states every canonical field.
+export type ConversationGenerationSettingsInput = CanonicalGenerationSettings;
 
 // Narrowing for the on-demand Conversation data read. The filter is
 // vocabulary-free: namespace and key strings pass through uninterpreted, so

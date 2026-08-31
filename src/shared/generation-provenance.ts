@@ -300,7 +300,6 @@ export const decodeGenerationProvenanceRecord = (
 	if (value === null) return null;
 	const source = generationJsonObject(value);
 	if (source === null) return undefined;
-	const legacyFinish = generationJsonObject(source.finish);
 	return {
 		connectionProfileId: generationJsonNumber(source.connectionProfileId),
 		connectionSettingsRevision: generationJsonNumber(source.connectionSettingsRevision),
@@ -309,7 +308,7 @@ export const decodeGenerationProvenanceRecord = (
 		modelId: provenanceString(source.modelId),
 		generationSettings: provenanceSettings(source.generationSettings),
 		usage: generationUsage(source.usage),
-		finishReason: provenanceFinishReason(source.finishReason) ?? provenanceFinishReason(legacyFinish?.reason),
+		finishReason: provenanceFinishReason(source.finishReason),
 		status: provenanceStatus(source.status),
 		interruptionCause: provenanceString(source.interruptionCause),
 	};

@@ -547,6 +547,8 @@ describe("Historical sibling Variant generation", () => {
 					presencePenalty: null,
 					contextLimit: 32768,
 					responseBudget: 1024,
+					safetyAllowance: 500,
+					siblingGenerationLimit: 4,
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "Unused by a Sibling attempt.",
 					continuationPrefillSuffix: "\n",

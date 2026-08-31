@@ -89,28 +89,37 @@ describe("story reading state", () => {
 			message: olderGenerated,
 			playable: true,
 			previewActive: false,
-			modelParticipantId: 20,
 			activeGenerationMessageIds: [],
 		})).toBe(true);
 		expect(canOfferSiblingGeneration({
 			message: olderGenerated,
 			playable: true,
 			previewActive: false,
-			modelParticipantId: 20,
 			activeGenerationMessageIds: [olderGenerated.id],
 		})).toBe(true);
 		expect(canOfferSiblingGeneration({
 			message: olderGenerated,
 			playable: true,
 			previewActive: false,
-			modelParticipantId: 20,
 			activeGenerationMessageIds: [newerGenerated.id],
 		})).toBe(false);
 		expect(canOfferSiblingGeneration({
 			message: olderGenerated,
 			playable: true,
 			previewActive: true,
-			modelParticipantId: 20,
+			activeGenerationMessageIds: [],
+		})).toBe(false);
+	});
+
+	test("never falls back to the current Control assignment for rows without their historical identity", () => {
+		// The historical identity is the only authorship signal; a Message whose
+		// generation-time model identity is absent is not model-authored.
+		const olderRow = storyMessage(12, 1, 20);
+		expect(olderRow.modelParticipantIdAtCreation).toBeUndefined();
+		expect(canOfferSiblingGeneration({
+			message: olderRow,
+			playable: true,
+			previewActive: false,
 			activeGenerationMessageIds: [],
 		})).toBe(false);
 	});

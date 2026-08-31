@@ -278,7 +278,7 @@ export function useGenerationController({
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
-			!isModelAuthoredMessage(latest, conversation.control.modelParticipantId)
+			!isModelAuthoredMessage(latest)
 		) return;
 		const conversationId = conversation.id;
 		beginStart();
@@ -297,7 +297,6 @@ export function useGenerationController({
 				message: target,
 				playable: conversation.playable,
 				previewActive: story.preview !== null,
-				modelParticipantId: conversation.control.modelParticipantId,
 				activeGenerationMessageIds,
 			})
 		) return;
@@ -314,7 +313,6 @@ export function useGenerationController({
 			message,
 			playable: conversation.playable,
 			previewActive: story.preview !== null,
-			modelParticipantId: conversation.control.modelParticipantId,
 			activeGenerationMessageIds,
 		});
 

@@ -94,6 +94,19 @@ describe("generation provenance codec", () => {
 		expect(decodeGenerationProvenance(missingSettings)).toBeUndefined();
 	});
 
+	test("ignores the removed legacy embedded finish record", () => {
+		// Terminal finish reasons come only from the server-owned terminal
+		// metadata data entries; the embedded older-row `finish` object is no
+		// longer a fallback source for the decoded record.
+		const legacy = decodeGenerationProvenanceRecord({
+			connectionProfileId: 4,
+			generationSettings: {},
+			finish: { reason: "length" },
+			status: "complete",
+		});
+		expect(legacy?.finishReason).toBeNull();
+	});
+
 	test("captures every retained canonical settings field with its intentional nullability", () => {
 		// The capture consumes the plan's Effective Generation Settings: the
 		// nullable form where an inapplicable operand is already absent.

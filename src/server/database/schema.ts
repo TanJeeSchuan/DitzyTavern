@@ -463,7 +463,6 @@ export const connectionProfileTable = sqliteTable(
 		adapter: text().notNull(),
 		output_token_representation: text().notNull().default("automatic"),
 		timeout_ms: int().default(120000),
-		backend_options_json: text().notNull().default("{}"),
 	},
 	(table) => [
 		uniqueIndex("connection_profile_display_name_ci").on(

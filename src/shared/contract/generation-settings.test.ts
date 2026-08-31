@@ -15,8 +15,6 @@ import {
 import {
 	canonicalGenerationSettings,
 	GENERATION_SETTINGS_FIELDS,
-	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
-	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 	type CanonicalGenerationSettings,
 } from "./generation-settings";
 
@@ -40,14 +38,6 @@ const validSettings = (): CanonicalGenerationSettings => ({
 		"anthropic-messages": {},
 	},
 });
-
-// The update command's requiredness split, read directly from the policy so
-// the assertions check the schema against the policy instead of restating
-// it by hand.
-const updateOptionalFields = GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS;
-const updateRequiredFields = GENERATION_SETTINGS_FIELDS.filter(
-	(field) => GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "required",
-);
 
 // Removes one named field at runtime while keeping the fixture's named
 // domain type; Value.Check reads the result as untrusted input anyway.
@@ -207,23 +197,17 @@ describe("canonicalGenerationSettings", () => {
 });
 
 describe("generationSettingsUpdate", () => {
-	test("derives from the canonical declaration and accepts the complete settings", () => {
+	test("accepts the complete canonical settings", () => {
 		expect(Value.Check(generationSettingsUpdate, validSettings())).toBe(true);
 	});
 
-	test("accepts omitting each optional update field", () => {
-		for (const field of updateOptionalFields) {
-			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(true);
-		}
-	});
-
-	test("still requires every field the policy marks required", () => {
-		for (const field of updateRequiredFields) {
+	test("requires every canonical field: no optional older-caller fields remain", () => {
+		for (const field of GENERATION_SETTINGS_FIELDS) {
 			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(false);
 		}
 	});
 
-	test("rejects invalid present values even where omission is allowed", () => {
+	test("rejects invalid present values", () => {
 		const invalid: readonly unknown[] = [
 			{ ...validSettings(), temperature: 5 },
 			{ ...validSettings(), safetyAllowance: -1 },

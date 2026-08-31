@@ -7,12 +7,6 @@ import type {
 	ConnectionProfileSecretSnapshot,
 } from "./types";
 
-type LegacyBackendOptionValue = string | number | boolean | null;
-type LegacyBackendOptions = Readonly<Record<string, LegacyBackendOptionValue>>;
-export type LegacyConnectionProfileDraftInput = ConnectionProfileDraft & {
-	readonly backendOptions?: LegacyBackendOptions;
-};
-
 export function validateConnectionProfileDraft(
 	input: ConnectionProfileDraft,
 ): ConnectionProfileDraft {
@@ -44,18 +38,6 @@ export function validateConnectionProfileDraft(
 		);
 	}
 	const pinnedModels = normalizePinnedModels(input.pinnedModels);
-	// SAFETY: this legacy field is accepted only by the transport schema. The
-	// domain deliberately keeps it out of ConnectionProfileDraft, but direct
-	// callers still receive an explicit rejection instead of silently dropping it.
-	const legacyBackendOptions = (input as LegacyConnectionProfileDraftInput).backendOptions;
-	if (
-		legacyBackendOptions !== undefined &&
-		(!isPlainObject(legacyBackendOptions) || Object.keys(legacyBackendOptions).length > 0)
-	) {
-		throw new InvalidConnectionProfileError(
-			"Arbitrary Backend Options are not supported in version one.",
-		);
-	}
 	return {
 		displayName,
 		apiFormat: "chat-completions",
@@ -155,19 +137,6 @@ export function normalizeCredential(value: string | null | undefined): string | 
 	return value;
 }
 
-export function assertLegacyBackendOptions(value: string): void {
-	try {
-		// SAFETY: isPlainObject below verifies this parsed JSON is an object before
-		// Object.keys inspects it; primitive JSON values are rejected by that check.
-		const parsed = JSON.parse(value) as LegacyBackendOptions | null;
-		if (!isPlainObject(parsed) || Object.keys(parsed).length > 0) {
-			throw new Error("not an object");
-		}
-	} catch {
-		throw new InvalidConnectionProfileError("Stored Backend Options are invalid JSON.");
-	}
-}
-
 function validateUrl(value: string, label: string, allowBlank: boolean): string {
 	const normalized = value.trim();
 	if (normalized.length === 0) {
@@ -201,10 +170,6 @@ function compareModelIds(left: string, right: string): number {
 	if (left < right) return -1;
 	if (left > right) return 1;
 	return 0;
-}
-
-function isPlainObject(value: LegacyBackendOptions | null): value is LegacyBackendOptions {
-	return Object.prototype.toString.call(value) === "[object Object]";
 }
 
 const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
