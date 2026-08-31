@@ -4,6 +4,14 @@ There is `playwright-cli` installed
 
 For UI work, remember to refer to DESIGN.MD
 
+Do not preserve backward compatibility. Remove obsolete paths. Do not create compatibility layers, fallbacks, or mitigations.
+
+Exhaustive declarations should encode information. An exhaustive object whose values are all identical and that has no consumer is just a compiler-enforced attendance sheet. That is usually worth removing.
+
+## Code Standards
+- Tautological tests considered harmful.
+- During refactors, tests for **architectural** regressions are not needed, e.g. a set of hand-writen identical declarations being unified into a single declaration doesn't need a test to detect if it regressed into it's initial state
+
 ## Ticket implementation
 - Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
 
