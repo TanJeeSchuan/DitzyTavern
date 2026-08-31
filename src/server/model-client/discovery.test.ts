@@ -65,7 +65,10 @@ describe("Model discovery", () => {
 					expect(init?.redirect).toBe("error");
 					return new Response(JSON.stringify({ message: "provider unavailable" }), {
 						status: 503,
-						headers: { "content-type": "application/json" },
+						headers: {
+							"content-type": "application/json",
+							"content-length": "34",
+						},
 					});
 				},
 			},
@@ -85,7 +88,10 @@ describe("Model discovery", () => {
 			{
 				fetch: async () => new Response("x".repeat(20 * 1024), {
 					status: 503,
-					headers: { "content-type": "text/plain" },
+					headers: {
+						"content-type": "text/plain",
+						"content-length": "20480",
+					},
 				}),
 			},
 		);

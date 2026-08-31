@@ -138,17 +138,21 @@ describe("DeepSeek production Model Client", () => {
 	test("reports allow-listed provider diagnostics without leaking response content or Profile secrets", async () => {
 		const credential = "credential-never-returned";
 		const customHeaderValue = "custom-header-never-returned";
+		const errorBody = JSON.stringify({
+				error: {
+				message: `${"diagnostic ".repeat(2_000)} ${credential} ${customHeaderValue}`,
+			},
+			});
 		const client = createDeepSeekModelClient({
 			profile,
 			secrets: { credential, headers: { "x-routing": customHeaderValue } },
-			fetch: async () => new Response(
-				JSON.stringify({
-					error: {
-					message: `${"diagnostic ".repeat(2_000)} ${credential} ${customHeaderValue}`,
+			fetch: async () => new Response(errorBody, {
+				status: 401,
+				headers: {
+					"content-type": "application/json",
+					"content-length": String(new TextEncoder().encode(errorBody).byteLength),
 				},
-				}),
-				{ status: 401, headers: { "content-type": "application/json" } },
-			),
+			}),
 		});
 
 		try {
