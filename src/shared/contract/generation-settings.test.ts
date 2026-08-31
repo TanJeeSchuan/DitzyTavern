@@ -1,0 +1,402 @@
+import { describe, expect, test } from "bun:test";
+import { Value } from "@sinclair/typebox/value";
+
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
+import {
+	conversationGenerationSettings,
+	generationSettingsUpdate,
+} from "./conversation-schema";
+import {
+	canonicalGenerationSettings,
+	defineGenerationSettingsAdapter,
+	GENERATION_SETTINGS_FIELDS,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsAdapter,
+	type GenerationSettingsFieldMap,
+} from "./generation-settings";
+
+const validSettings = (): CanonicalGenerationSettings => ({
+	modelId: "deepseek-chat",
+	temperature: null,
+	topP: null,
+	frequencyPenalty: null,
+	presencePenalty: null,
+	contextLimit: 32768,
+	responseBudget: 1024,
+	safetyAllowance: 500,
+	siblingGenerationLimit: 4,
+	continuationStrategy: "instruction",
+	continuationInstruction:
+		"Continue the narrative naturally without repeating the previous text.",
+	continuationPrefillSuffix: "",
+	requestOverrides: {
+		"chat-completions": {},
+		responses: {},
+		"anthropic-messages": {},
+	},
+});
+
+// The fields the settings update command lets older callers omit; the
+// Conversation module fills them from stored values or defaults.
+const updateOptionalFields = [
+	"safetyAllowance",
+	"siblingGenerationLimit",
+	"continuationStrategy",
+	"continuationInstruction",
+	"continuationPrefillSuffix",
+] as const;
+
+// Removes one named field at runtime while keeping the fixture's named
+// domain type; Value.Check reads the result as untrusted input anyway.
+const withoutField = <K extends keyof CanonicalGenerationSettings>(
+	settings: CanonicalGenerationSettings,
+	field: K,
+): Omit<CanonicalGenerationSettings, K> => {
+	const { [field]: _omitted, ...rest } = settings;
+	return rest;
+};
+
+describe("canonicalGenerationSettings", () => {
+	test("accepts the default settings the server creates", () => {
+		expect(Value.Check(canonicalGenerationSettings, DEFAULT_CONVERSATION_GENERATION_SETTINGS)).toBe(true);
+	});
+
+	test("accepts every currently valid setting", () => {
+		const valid: readonly CanonicalGenerationSettings[] = [
+			validSettings(),
+			// Sampling boundaries: null means provider default, values are
+			// finite and within [-2, 2].
+			{ ...validSettings(), temperature: -2, topP: 0, frequencyPenalty: 2, presencePenalty: 1 },
+			{ ...validSettings(), temperature: 2, topP: 1, frequencyPenalty: -2, presencePenalty: -1 },
+			// Budget floors: every whole-number bound accepts its minimum and
+			// the Safety allowance also accepts zero.
+			{ ...validSettings(), contextLimit: 1, responseBudget: 1, safetyAllowance: 0, siblingGenerationLimit: 1 },
+			// A model ID and instruction may carry whitespace around real
+			// content; the owning domain trims, the declaration only requires
+			// non-blank values.
+			{ ...validSettings(), modelId: "  deepseek-chat  ", continuationInstruction: "  Keep writing.  " },
+			{ ...validSettings(), continuationStrategy: "assistant-prefill", continuationPrefillSuffix: "\n\n" },
+			{ ...validSettings(), continuationPrefillSuffix: " " },
+			{ ...validSettings(), continuationPrefillSuffix: "\n" },
+			// Request Overrides keep the full Generation JSON vocabulary in
+			// each API Format namespace.
+			{
+				...validSettings(),
+				requestOverrides: {
+					"chat-completions": { temperature: 1, stop: ["\n\nHuman:", "\n\nAssistant:"], nested: { deep: [true, null, 0] } },
+					responses: { max_output_tokens: 64, text: { verbosity: "low" } },
+					"anthropic-messages": { top_k: 3, metadata: null },
+				},
+			},
+		];
+		for (const settings of valid) {
+			expect(Value.Check(canonicalGenerationSettings, settings)).toBe(true);
+		}
+	});
+
+	test("rejects invalid model values", () => {
+		const withoutModelId = (({ modelId: _modelId, ...rest }: CanonicalGenerationSettings) => rest)(
+			validSettings(),
+		);
+		const invalid: readonly unknown[] = [
+			{ ...validSettings(), modelId: "" },
+			{ ...validSettings(), modelId: "   " },
+			{ ...validSettings(), modelId: "\t\n" },
+			{ ...validSettings(), modelId: 42 },
+			{ ...validSettings(), modelId: null },
+			withoutModelId,
+		];
+		for (const settings of invalid) {
+			expect(Value.Check(canonicalGenerationSettings, settings)).toBe(false);
+		}
+	});
+
+	test("rejects invalid sampling values", () => {
+		const invalidSampling: readonly unknown[] = [
+			2.5,
+			-2.5,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+			"0.5",
+			true,
+		];
+		for (const value of invalidSampling) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), temperature: value })).toBe(false);
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), topP: value })).toBe(false);
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), frequencyPenalty: value })).toBe(false);
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), presencePenalty: value })).toBe(false);
+		}
+	});
+
+	test("rejects invalid budget values", () => {
+		const nonPositive: readonly unknown[] = [0, -1, 1.5, Number.NaN, "4096", null];
+		for (const value of nonPositive) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), contextLimit: value })).toBe(false);
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), responseBudget: value })).toBe(false);
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), siblingGenerationLimit: value })).toBe(false);
+		}
+		// The Safety allowance is the only budget field that accepts zero.
+		const invalidSafety: readonly unknown[] = [-1, 0.5, Number.NaN, "500", null];
+		for (const value of invalidSafety) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), safetyAllowance: value })).toBe(false);
+		}
+	});
+
+	test("rejects invalid continuation values", () => {
+		const invalidStrategies: readonly unknown[] = [
+			"auto",
+			"Instruction",
+			"assistant prefill",
+			"",
+			null,
+			7,
+		];
+		for (const value of invalidStrategies) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), continuationStrategy: value })).toBe(false);
+		}
+		const invalidInstructions: readonly unknown[] = ["", "   ", "\t", 7, null];
+		for (const value of invalidInstructions) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), continuationInstruction: value })).toBe(false);
+		}
+		const invalidSuffixes: readonly unknown[] = ["\t", "\n ", "  ", " \n", "x", null, 7];
+		for (const value of invalidSuffixes) {
+			expect(Value.Check(canonicalGenerationSettings, { ...validSettings(), continuationPrefillSuffix: value })).toBe(false);
+		}
+	});
+
+	test("rejects invalid Request Overrides values", () => {
+		const base = validSettings();
+		const invalid: readonly unknown[] = [
+			{ ...base, requestOverrides: { responses: {}, "anthropic-messages": {} } },
+			{ ...base, requestOverrides: { "chat-completions": {}, "anthropic-messages": {} } },
+			{ ...base, requestOverrides: { "chat-completions": {}, responses: {} } },
+			{ ...base, requestOverrides: { ...base.requestOverrides, "chat-completions": "stop sequences" } },
+			{ ...base, requestOverrides: { ...base.requestOverrides, responses: 42 } },
+			{ ...base, requestOverrides: { ...base.requestOverrides, "anthropic-messages": null } },
+			{ ...base, requestOverrides: { ...base.requestOverrides, "anthropic-messages": ["not", "an", "object"] } },
+			"overrides",
+			42,
+			null,
+			withoutField(base, "requestOverrides"),
+		];
+		for (const settings of invalid) {
+			expect(Value.Check(canonicalGenerationSettings, settings)).toBe(false);
+		}
+	});
+
+	test("stays wire-tolerant toward excess properties", () => {
+		expect(Value.Check(canonicalGenerationSettings, {
+			...validSettings(),
+			futureField: "accepted like every other shared contract",
+		})).toBe(true);
+	});
+
+	test("decodes without normalizing values", () => {
+		// Normalization such as trimming a model ID belongs to the owning
+		// domain adapter; the canonical declaration is structural only.
+		const decoded = Value.Decode(canonicalGenerationSettings, {
+			...validSettings(),
+			modelId: "  padded-model  ",
+		});
+		expect(decoded.modelId).toBe("  padded-model  ");
+	});
+});
+
+describe("generationSettingsUpdate", () => {
+	test("derives from the canonical declaration and accepts the complete settings", () => {
+		expect(Value.Check(generationSettingsUpdate, validSettings())).toBe(true);
+	});
+
+	test("accepts omitting each optional update field", () => {
+		for (const field of updateOptionalFields) {
+			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(true);
+		}
+	});
+
+	test("still requires the core fields", () => {
+		const coreFields = [
+			"modelId",
+			"temperature",
+			"topP",
+			"frequencyPenalty",
+			"presencePenalty",
+			"contextLimit",
+			"responseBudget",
+			"requestOverrides",
+		] as const;
+		for (const field of coreFields) {
+			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(false);
+		}
+	});
+
+	test("rejects invalid present values even where omission is allowed", () => {
+		const invalid: readonly unknown[] = [
+			{ ...validSettings(), temperature: 5 },
+			{ ...validSettings(), safetyAllowance: -1 },
+			{ ...validSettings(), siblingGenerationLimit: 0 },
+			{ ...validSettings(), continuationInstruction: "   " },
+			{ ...validSettings(), continuationStrategy: "auto" },
+			{ ...validSettings(), continuationPrefillSuffix: "\n\n\n" },
+			{ ...validSettings(), requestOverrides: { ...validSettings().requestOverrides, responses: "no" } },
+		];
+		for (const settings of invalid) {
+			expect(Value.Check(generationSettingsUpdate, settings)).toBe(false);
+		}
+	});
+});
+
+describe("conversationGenerationSettings", () => {
+	test("declares exactly the canonical field vocabulary", () => {
+		// The public payload form derives from the canonical declaration as a
+		// deep clone: the transport schema is mutable HTTP-runtime property,
+		// while the canonical declaration stays pristine.
+		const properties = Object.keys(conversationGenerationSettings.properties);
+		expect(properties).toEqual([...GENERATION_SETTINGS_FIELDS]);
+		expect(conversationGenerationSettings.required).toEqual(canonicalGenerationSettings.required);
+	});
+
+	test("keeps the canonical validation semantics on the transport boundary", () => {
+		expect(Value.Check(conversationGenerationSettings, validSettings())).toBe(true);
+		expect(Value.Check(conversationGenerationSettings, { ...validSettings(), responseBudget: 0 })).toBe(false);
+		expect(Value.Check(conversationGenerationSettings, { ...validSettings(), continuationPrefillSuffix: "\t" })).toBe(false);
+	});
+});
+
+describe("GENERATION_SETTINGS_FIELDS", () => {
+	test("matches the canonical schema's own property list exactly", () => {
+		const properties: readonly string[] = Object.keys(canonicalGenerationSettings.properties);
+		expect(properties).toEqual([...GENERATION_SETTINGS_FIELDS]);
+		expect(new Set(GENERATION_SETTINGS_FIELDS).size).toBe(GENERATION_SETTINGS_FIELDS.length);
+	});
+});
+
+describe("defineGenerationSettingsAdapter", () => {
+	const projected = { disposition: "projected" } as const;
+	const excluded = (reason: string) => ({ disposition: "excluded", reason }) as const;
+
+	const adapterWithAllFieldsProjected = (): GenerationSettingsAdapter => ({
+		modelId: projected,
+		temperature: projected,
+		topP: projected,
+		frequencyPenalty: projected,
+		presencePenalty: projected,
+		contextLimit: projected,
+		responseBudget: projected,
+		safetyAllowance: projected,
+		siblingGenerationLimit: projected,
+		continuationStrategy: projected,
+		continuationInstruction: projected,
+		continuationPrefillSuffix: projected,
+		requestOverrides: projected,
+	});
+
+	const adapterWithExcludedField = (
+		field: keyof GenerationSettingsAdapter,
+		reason: string,
+	): GenerationSettingsAdapter => ({ ...adapterWithAllFieldsProjected(), [field]: excluded(reason) });
+
+	test("accepts an exhaustive disposition for every canonical field", () => {
+		const adapter = defineGenerationSettingsAdapter("persistence", adapterWithAllFieldsProjected());
+		expect(adapter.adapter).toBe("persistence");
+		expect(Object.keys(adapter.fields).sort()).toEqual([...GENERATION_SETTINGS_FIELDS].sort());
+	});
+
+	test("accepts the established explicit adapters' real field dispositions", () => {
+		// Database storage and the partial update command participate with
+		// every canonical field; the update command fills omitted fields from
+		// stored values or defaults.
+		defineGenerationSettingsAdapter("conversation-settings-row", adapterWithAllFieldsProjected());
+		defineGenerationSettingsAdapter("update-generation-settings-command", adapterWithAllFieldsProjected());
+
+		// Retained provenance settings project the sampling, budget, and
+		// Continuation fields with intentional nullability; model identity
+		// and Request Overrides live outside the settings projection.
+		defineGenerationSettingsAdapter("generation-provenance-settings", {
+			...adapterWithAllFieldsProjected(),
+			modelId: excluded("captured beside the connection identity at provenance top level"),
+			requestOverrides: excluded("provenance is a positive allow-list that never retains Request Overrides"),
+		});
+
+		// Model Client input carries the transport-relevant projection; the
+		// remaining canonical fields stay application-owned.
+		defineGenerationSettingsAdapter("model-client-generation-settings", {
+			...adapterWithAllFieldsProjected(),
+			modelId: excluded("carried as the Model Client input's own modelId field"),
+			safetyAllowance: excluded("consumed by budgeting before the transport seam"),
+			siblingGenerationLimit: excluded("concurrency policy stays with the application"),
+			continuationStrategy: excluded("intent applicability decides the Continuation operands outside transport"),
+			continuationInstruction: excluded("intent applicability decides the Continuation operands outside transport"),
+			continuationPrefillSuffix: excluded("intent applicability decides the Continuation operands outside transport"),
+		});
+	});
+
+	test("rejects declarations missing a canonical field", () => {
+		const { requestOverrides: _omitted, ...incomplete } = adapterWithAllFieldsProjected();
+		// SAFETY: the destructured declaration models one that predates a
+		// canonical field; the constructor must reject it at runtime.
+		expect(() =>
+			defineGenerationSettingsAdapter("incomplete", incomplete as GenerationSettingsAdapter)
+		).toThrow(/requestOverrides/);
+	});
+
+	test("rejects declarations naming unknown fields", () => {
+		const withUnknownField = {
+			...adapterWithAllFieldsProjected(),
+			mysteryField: projected,
+		};
+		expect(() =>
+			defineGenerationSettingsAdapter("unknown-field", withUnknownField)
+		).toThrow(/mysteryField/);
+	});
+
+	test("rejects unknown disposition tags", () => {
+		const badTag = {
+			...adapterWithAllFieldsProjected(),
+			modelId: { disposition: "mapped" },
+		};
+		// SAFETY: the widened tag models a dynamically built declaration that
+		// escaped the disposition vocabulary; the constructor must reject what
+		// the type system cannot express.
+		expect(() =>
+			defineGenerationSettingsAdapter("bad-tag", badTag as GenerationSettingsAdapter)
+		).toThrow(/modelId/);
+	});
+
+	test("rejects exclusions without a stated reason", () => {
+		for (const reason of ["", "   "]) {
+			expect(() =>
+				defineGenerationSettingsAdapter("empty-reason", adapterWithExcludedField("modelId", reason))
+			).toThrow(/without a stated reason/);
+		}
+	});
+
+	test("rejects an unnamed adapter", () => {
+		expect(() =>
+			defineGenerationSettingsAdapter("   ", adapterWithAllFieldsProjected())
+		).toThrow(/named/);
+	});
+});
+
+describe("GenerationSettingsFieldMap", () => {
+	test("stays total over the canonical vocabulary for value-mapping adapters", () => {
+		// Compile-time totality: adding a canonical field forces every value
+		// mapping to state its counterpart before typecheck passes.
+		const settingsColumns: GenerationSettingsFieldMap<string> = {
+			modelId: "model_id",
+			temperature: "temperature",
+			topP: "top_p",
+			frequencyPenalty: "frequency_penalty",
+			presencePenalty: "presence_penalty",
+			contextLimit: "context_limit",
+			responseBudget: "response_budget",
+			safetyAllowance: "safety_allowance",
+			siblingGenerationLimit: "sibling_generation_limit",
+			continuationStrategy: "continuation_strategy",
+			continuationInstruction: "continuation_instruction",
+			continuationPrefillSuffix: "continuation_prefill_suffix",
+			requestOverrides: "request_overrides_json",
+		};
+		expect(Object.keys(settingsColumns)).toEqual([...GENERATION_SETTINGS_FIELDS]);
+	});
+});
