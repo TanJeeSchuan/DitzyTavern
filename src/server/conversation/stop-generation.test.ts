@@ -7,9 +7,15 @@ import {
 	checkpointConversationSiblingGeneration,
 	checkpointConversationTailGeneration,
 	createConversationModule,
+} from ".";
+// The raw durable stop transitions are private implementation details of the
+// Conversation module; only these durable-transaction tests reach them
+// directly. Production stop flows compose them through the Generation
+// Coordinator's application interface.
+import {
 	stopConversationGeneration,
 	stopConversationGenerations,
-} from ".";
+} from "./commands/active-generation";
 import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {

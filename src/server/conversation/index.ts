@@ -54,8 +54,6 @@ export {
 	checkpointConversationTailGeneration,
 	removeConversationSiblingGeneration,
 	removeConversationTailGeneration,
-	stopConversationGeneration,
-	stopConversationGenerations,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
