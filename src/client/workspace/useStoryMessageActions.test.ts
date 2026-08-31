@@ -70,7 +70,19 @@ const firstPage = (authorParticipantId: number): ChatHistoryPage => ({
 	}],
 });
 
-type CommandMode = { kind: "applied" } | { kind: "conflict" } | { kind: "network" };
+// The concrete wire failure payloads the command route serves for a
+// select-variant that does not apply; the fake transport serves them verbatim.
+type FailureOutcomePayload =
+	| { outcome: "not-found" }
+	| { outcome: "invalid"; reason: string }
+	| { outcome: "not-playable"; reason: string }
+	| { outcome: "not-removable"; reason: string };
+
+type CommandMode =
+	| { kind: "applied" }
+	| { kind: "conflict" }
+	| { kind: "network" }
+	| { kind: "outcome"; status: number; payload: FailureOutcomePayload };
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -91,6 +103,9 @@ function createHarness(mode: CommandMode, authorParticipantId = 20) {
 		fetches.push({ method, url });
 		if (method === "POST" && url.endsWith("/api/conversations/1/commands")) {
 			if (mode.kind === "network") throw new TypeError("fetch failed");
+			if (mode.kind === "outcome") {
+				return Response.json(mode.payload, { status: mode.status });
+			}
 			// SAFETY: the test's own command posts serialize the typed command
 			// body to JSON, so parsing the recorded body restores that shape.
 			const body = JSON.parse(String(init?.body)) as RecordedCommand;
@@ -192,6 +207,35 @@ describe("optimistic Swipe reconciliation", () => {
 		await harness.swipe(10, 1);
 
 		expect(harness.activeVariantId()).toBe(100);
+	});
+
+	test("every other non-applied outcome leaves the story selection unmoved", async () => {
+		// The remaining typed command failures — with the server statuses the
+		// command route returns — never carry an applied selection, so the story
+		// read model must stay exactly as the Conversation state is.
+		const outcomes: {
+			status: number;
+			payload: FailureOutcomePayload;
+		}[] = [
+			{ status: 404, payload: { outcome: "not-found" } },
+			{ status: 422, payload: { outcome: "invalid", reason: "Unknown Variant." } },
+			{
+				status: 409,
+				payload: { outcome: "not-playable", reason: "The Conversation is not playable." },
+			},
+			{
+				status: 409,
+				payload: { outcome: "not-removable", reason: "This Variant is removable only through Remove." },
+			},
+		];
+		for (const outcome of outcomes) {
+			const harness = createHarness({ kind: "outcome", ...outcome });
+
+			await harness.swipe(10, 1);
+
+			expect(harness.activeVariantId()).toBe(100);
+			expect(harness.events).not.toContain("action:swipe-selected");
+		}
 	});
 
 	test("an applied Swipe moves the story only after the command succeeds", async () => {
