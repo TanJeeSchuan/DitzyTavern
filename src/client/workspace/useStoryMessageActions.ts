@@ -37,11 +37,13 @@ type StoryMessageActionsOptions = {
 };
 
 /**
- * Coordinates user commands that mutate or preview a story Message. The
- * reducer owns immediate presentation state; this hook owns the server
- * command, and the runner owns revision acquisition, exception
- * normalization, and common reconciliation. The edit command keeps its
- * operation-specific first-page history refresh.
+ * Coordinates user commands that mutate or preview a story Message. Preview
+ * state is immediate local presentation; a selected Variant moves the story
+ * read model only after the server applies the command, so a failed Swipe
+ * never diverges the two state owners. This hook owns the server command,
+ * and the runner owns revision acquisition, exception normalization, and
+ * common reconciliation. The edit command keeps its operation-specific
+ * first-page history refresh.
  */
 export function useStoryMessageActions({
 	story,
@@ -100,12 +102,6 @@ export function useStoryMessageActions({
 			return;
 		}
 
-		queueSwipeScroll(messageId);
-		dispatchStory({
-			type: "swipe-selected",
-			messageId: selection.messageId,
-			variantId: selection.variantId,
-		});
 		const conversationId = story.conversationId;
 		if (conversationId === null) return;
 
@@ -122,9 +118,18 @@ export function useStoryMessageActions({
 				showNotice: noPresentation,
 			},
 			notices: STORY_COMMAND_NOTICES,
-			// The optimistic reducer update already moved the local selection;
-			// the applied snapshot adoption is the only reconciliation needed.
+			// Update-after-success: the story read model moves only once the
+			// command applied, so a failed or conflicted Swipe leaves the story
+			// exactly as the Conversation state is — nothing to roll back.
 			callbacks: {
+				onApplied: () => {
+					queueSwipeScroll(selection.messageId);
+					dispatchStory({
+						type: "swipe-selected",
+						messageId: selection.messageId,
+						variantId: selection.variantId,
+					});
+				},
 				onNotPlayable: noPresentation,
 				onNotRemovable: noPresentation,
 			},
