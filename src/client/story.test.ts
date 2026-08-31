@@ -554,6 +554,55 @@ describe("story reading state", () => {
 	});
 });
 
+describe("streaming Provisional Variant content", () => {
+	const stateWithProvisional = () => {
+		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		state = reduceStory(state, {
+			type: "first-page",
+			page: page({
+				revision: 4,
+				messages: [message({
+					id: 10,
+					variants: [
+						{ id: 100, position: 1, content: "", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+					],
+				})],
+			}),
+		});
+		return state;
+	};
+
+	const variantContent = (state: ReturnType<typeof createStoryState>, variantId: number) =>
+		state.messages[0]?.swipes.find((variant) => variant.id === variantId);
+
+	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
+		let state = stateWithProvisional();
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Once upon " });
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "a time" });
+
+		const variant = variantContent(state, 100);
+		expect(variant?.content).toBe("Once upon a time");
+		expect(variant?.empty).toBe(false);
+	});
+
+	test("an authoritative Content replace overwrites the accumulated text", () => {
+		let state = stateWithProvisional();
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Stale tail" });
+		state = reduceStory(state, { type: "generation-content", messageId: 10, variantId: 100, content: "Authoritative" });
+
+		expect(variantContent(state, 100)?.content).toBe("Authoritative");
+	});
+
+	test("deltas ignore Variants and Messages that are not in the current read model", () => {
+		const state = stateWithProvisional();
+		const untouched = reduceStory(state, { type: "generation-content-delta", messageId: 999, variantId: 100, text: "x" });
+		const unknownVariant = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 999, text: "x" });
+
+		expect(variantContent(untouched, 100)?.content).toBe("");
+		expect(variantContent(unknownVariant, 100)?.content).toBe("");
+	});
+});
+
 type StoryStateForPreview = ReturnType<typeof createStoryState> & {
 	messages: StoryMessage[];
 };

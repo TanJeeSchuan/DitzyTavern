@@ -23,13 +23,46 @@ export type GenerationStreamResult =
 	| { outcome: "applied" }
 	| { outcome: "stopped"; generationId?: number }
 	| { outcome: "not-found" }
-	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string };
+	// A server-declared terminal failure: the error frame or typed error
+	// response carries the authoritative reason and the Generation is over.
+	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string }
+	// The subscription itself was interrupted (network drop, stream ended
+	// without a terminal frame, undecodable status response). The Generation
+	// may still be server-active; observers reconnect from their cursor.
+	| { outcome: "interrupted"; reason: string };
 
 // Stream deltas are the shared normalized Generation event union, and state
 // snapshots are the shared state payload: server production and client
 // consumption use one schema-owned vocabulary.
 export type GenerationStreamDelta = GenerationEvent;
 export type GenerationStreamState = GenerationStatePayload;
+
+// The session stream interface every Generation observation adapter
+// satisfies: the production SSE adapter below, and the fake adapters used by
+// the session runner and wiring tests. The adapter owns transport framing;
+// the session machine owns what the observations mean.
+export interface GenerationStreamObservation {
+	// The stream position the event was observed at; the session machine
+	// keeps it as the reconnection cursor.
+	eventId: number;
+	event: GenerationEvent;
+}
+
+export interface GenerationStreamSubscription {
+	conversationId: number;
+	generationId: number;
+	// Resume position: the latest event position the observer already
+	// processed. The server replays after it or answers with an
+	// authoritative state snapshot.
+	afterEventId: number;
+	signal: AbortSignal;
+	onEvent: (observation: GenerationStreamObservation) => void;
+	onState: (state: GenerationStreamState) => void;
+}
+
+export interface GenerationStreamAdapter {
+	subscribe(request: GenerationStreamSubscription): Promise<GenerationStreamResult>;
+}
 
 // A GET subscription is deliberately separate from POST acceptance. Reloads
 // and navigation can reconnect with the last observed event position without
@@ -40,7 +73,7 @@ export async function subscribeConversationGeneration(
 	input: {
 		afterEventId?: number;
 		signal?: AbortSignal;
-		onDelta: (event: GenerationStreamDelta) => void;
+		onDelta: (event: GenerationStreamDelta, eventId: number) => void;
 		onState?: (state: GenerationStreamState) => void;
 	},
 ): Promise<GenerationStreamResult> {
@@ -51,8 +84,20 @@ export async function subscribeConversationGeneration(
 		`/api/conversations/${conversationId}/generations/${generationId}/events${suffix}`,
 		{ method: "GET", signal: input.signal },
 	);
-	if (!response.ok || response.body === null) {
-		return { outcome: "failed", reason: "Generation subscription could not be opened." };
+	if (!response.ok) {
+		// The subscription never opened. A typed error response is a
+		// server-declared outcome (the Generation is not observable); anything
+		// else is an interruption the observer may recover from.
+		const declared = decodeWirePayload(generationFailurePayload, await response.json().catch(() => null));
+		if (declared !== null) {
+			return declared.outcome === "not-found"
+				? { outcome: "not-found" }
+				: { outcome: declared.outcome, reason: declared.reason };
+		}
+		return { outcome: "interrupted", reason: "Generation subscription could not be opened." };
+	}
+	if (response.body === null) {
+		return { outcome: "interrupted", reason: "Generation stream had no body." };
 	}
 	return consumeGenerationStream(response, input);
 }
@@ -72,13 +117,13 @@ const parseStreamPayload = (serialized: string): JsonValue | null => {
 async function consumeGenerationStream(
 	response: Response,
 	input: {
-		onDelta: (event: GenerationStreamDelta) => void;
+		onDelta: (event: GenerationStreamDelta, eventId: number) => void;
 		onState?: (state: GenerationStreamState) => void;
 	},
 ): Promise<GenerationStreamResult> {
 	const body = response.body;
 	if (body === null) {
-		return { outcome: "failed", reason: "Generation stream had no body." };
+		return { outcome: "interrupted", reason: "Generation stream had no body." };
 	}
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
@@ -105,11 +150,11 @@ async function consumeGenerationStream(
 		if (eventType === "generation") {
 			const event = decodeWirePayload(generationEvent, payload);
 			if (event === null) return;
-			if (frameId !== undefined) {
-				if (frameId <= lastEventId) return;
-				lastEventId = frameId;
-			}
-			input.onDelta(event);
+			// The route numbers every generation frame; a frame without a usable
+			// position cannot join the ordered stream the session machine tracks.
+			if (frameId === undefined || frameId <= lastEventId) return;
+			lastEventId = frameId;
+			input.onDelta(event, lastEventId);
 			return;
 		}
 		if (eventType === "state") {
@@ -145,5 +190,18 @@ async function consumeGenerationStream(
 		if (next.done) break;
 	}
 	if (pending.length > 0) consumeFrame(pending);
-	return result ?? { outcome: "failed", reason: "Generation ended without a terminal result." };
+	return result ?? { outcome: "interrupted", reason: "Generation ended without a terminal result." };
 }
+
+// The production adapter: session observation over the resumable SSE stream.
+// It contributes no session behavior of its own, so the fake adapters used in
+// tests and this adapter are interchangeable behind GenerationStreamAdapter.
+export const generationStreamAdapter: GenerationStreamAdapter = {
+	subscribe: (request) =>
+		subscribeConversationGeneration(request.conversationId, request.generationId, {
+			afterEventId: request.afterEventId,
+			signal: request.signal,
+			onDelta: (event, eventId) => request.onEvent({ eventId, event }),
+			onState: request.onState,
+		}),
+};

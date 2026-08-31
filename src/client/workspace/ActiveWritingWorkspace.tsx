@@ -106,7 +106,7 @@ export function ActiveWritingWorkspace({
 
 		dispatchStory({ type: "preview-cancelled" });
 		preview.clearPreviewError();
-		generation.resetForChatChange();
+		generation.conversationSwitched();
 		session.selectChat(chatId);
 		setChatInfoOpen(false);
 		setGenerationDetailsTarget(null);

@@ -103,6 +103,15 @@ export type StoryAction =
 			variantId: number;
 			content: string;
 		}
+	// A Content delta from an Active Generation's stream: it appends to the
+	// Provisional Variant's visible content, which the story read model
+	// accumulates. The authoritative replace and the page reads stay above.
+	| {
+			type: "generation-content-delta";
+			messageId: number;
+			variantId: number;
+			text: string;
+		}
 	| { type: "preview-started"; messageId: number; variantId: number }
 	// Swiping the already-previewed Message moves the local Preview to another
 	// Variant of the same Message without any server command.
@@ -250,6 +259,22 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 						swipes: message.swipes.map((variant) => variant.id !== action.variantId
 								? variant
 								: { ...variant, content: action.content, empty: action.content === "" }),
+						}),
+			};
+		case "generation-content-delta":
+			return {
+				...state,
+				messages: state.messages.map((message) => message.id !== action.messageId
+					? message
+					: {
+							...message,
+						swipes: message.swipes.map((variant) => variant.id !== action.variantId
+								? variant
+								: {
+									...variant,
+									content: variant.content + action.text,
+									empty: variant.content + action.text === "",
+								}),
 						}),
 			};
 		case "preview-started": {
