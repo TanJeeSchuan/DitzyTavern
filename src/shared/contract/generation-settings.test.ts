@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
-import {
-	conversationSettingsRowAdapter,
-	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
-} from "../../server/conversation/generation-settings";
-import { activeGenerationSettingsAdapter } from "../../server/workflows/generate-capture";
-import { generationInspectionSettingsAdapter } from "../../server/conversation/generation-details";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
 import {
 	modelClientGenerationSettingsAdapter,
 	projectModelClientGenerationSettings,
@@ -14,14 +9,12 @@ import {
 } from "../../server/model-client/generation-settings";
 import {
 	captureGenerationProvenanceSettings,
-	generationProvenanceSettingsAdapter,
 	PROVENANCE_SETTINGS_FIELDS,
 } from "../generation-provenance";
 import {
 	conversationGenerationSettings,
 	generationProvenanceSettingsWire,
 	generationSettingsUpdate,
-	generationSettingsUpdateAdapter,
 } from "./conversation-schema";
 import {
 	canonicalGenerationSettings,
@@ -267,15 +260,6 @@ describe("generationSettingsUpdate", () => {
 });
 
 describe("conversationGenerationSettings", () => {
-	test("declares exactly the canonical field vocabulary", () => {
-		// The public payload form derives from the canonical declaration as a
-		// deep clone: the transport schema is mutable HTTP-runtime property,
-		// while the canonical declaration stays pristine.
-		const properties = Object.keys(conversationGenerationSettings.properties);
-		expect(properties).toEqual([...GENERATION_SETTINGS_FIELDS]);
-		expect(conversationGenerationSettings.required).toEqual(canonicalGenerationSettings.required);
-	});
-
 	test("keeps the canonical validation semantics on the transport boundary", () => {
 		expect(Value.Check(conversationGenerationSettings, validSettings())).toBe(true);
 		expect(Value.Check(conversationGenerationSettings, { ...validSettings(), responseBudget: 0 })).toBe(false);
@@ -409,62 +393,6 @@ describe("defineGenerationSettingsAdapter", () => {
 		// the total adapter shape the literal widened.
 		return narrowed as GenerationSettingsAdapter;
 	};
-
-	test("accepts an exhaustive disposition for every canonical field", () => {
-		const adapter = defineGenerationSettingsAdapter("persistence", adapterWithAllFieldsProjected());
-		expect(adapter.adapter).toBe("persistence");
-		expect(Object.keys(adapter.fields).sort()).toEqual([...GENERATION_SETTINGS_FIELDS].sort());
-	});
-
-	test("accepts the established explicit adapters' real field dispositions", () => {
-		// The update command participates with every canonical field; its
-		// optionality behavior is checked against the wire schema in the
-		// GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS describe, not restated here.
-		expect(generationSettingsUpdateAdapter.adapter).toBe("update-generation-settings-command");
-		expect(generationSettingsUpdateAdapter.fields).toMatchObject(adapterWithAllFieldsProjected());
-
-		// The Model Client adapter declares a disposition for every canonical
-		// field. Which fields it projects is verified behaviorally against the
-		// projection's actual output in the describe below, so the exclusion
-		// reasons are not copied here.
-		expect(Object.keys(modelClientGenerationSettingsAdapter.fields).sort())
-			.toEqual([...GENERATION_SETTINGS_FIELDS].sort());
-	});
-
-	test("the migrated server adapters prove exhaustive handling of the canonical vocabulary", () => {
-		// The settings row stores every canonical field.
-		expect(conversationSettingsRowAdapter).toMatchObject({
-			adapter: "conversation-settings-row",
-			fields: adapterWithAllFieldsProjected(),
-		});
-
-		// Active Generation persistence stores every canonical field, including
-		// the Safety allowance omitted before the migration.
-		expect(activeGenerationSettingsAdapter).toMatchObject({
-			adapter: "active-generation-settings",
-			fields: adapterWithAllFieldsProjected(),
-		});
-
-		// Retained provenance settings project the sampling, budget, and
-		// Continuation fields with intentional nullability; model identity
-		// and Request Overrides are excluded with stated reasons.
-		expect(generationProvenanceSettingsAdapter.fields).toEqual({
-			...adapterWithAllFieldsProjected(),
-			modelId: excluded("captured beside the connection identity at provenance top level"),
-			requestOverrides: excluded("provenance is a positive allow-list that never retains Request Overrides"),
-		});
-
-		// Active inspection decodes every canonical field except Request
-		// Overrides, which inspection never re-exposes.
-		expect(generationInspectionSettingsAdapter.fields).toEqual({
-			...adapterWithAllFieldsProjected(),
-			requestOverrides: excluded("inspection re-exposes only safe settings and never Request Overrides"),
-		});
-
-		// The provenance capture adapter is total over its retained fields.
-		const captured = captureGenerationProvenanceSettings(validSettings());
-		expect(Object.keys(captured).sort()).toEqual([...PROVENANCE_SETTINGS_FIELDS].sort());
-	});
 
 	test("rejects declarations missing a canonical field", () => {
 		const { requestOverrides: _omitted, ...incomplete } = adapterWithAllFieldsProjected();

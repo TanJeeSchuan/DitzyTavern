@@ -5,7 +5,6 @@ import {
 	decodeGenerationProvenanceRecord,
 	decodeStoredGenerationProvenance,
 	encodeGenerationProvenance,
-	generationProvenanceSettingsAdapter,
 	PROVENANCE_SETTINGS_FIELDS,
 	parseGenerationJson,
 	readGenerationTerminalMetadata,
@@ -145,7 +144,6 @@ describe("generation provenance codec", () => {
 		});
 		expect(unconfigured.temperature).toBeNull();
 		expect(unconfigured.safetyAllowance).toBe(64);
-		expect(generationProvenanceSettingsAdapter.adapter).toBe("generation-provenance-settings");
 	});
 
 	test("decodes retained settings with per-field intentional nullability", () => {

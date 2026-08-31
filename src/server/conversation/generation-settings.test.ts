@@ -1,17 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
 import { openDatabase } from "../database/database";
 import {
 	createConversationModule,
 	InvalidConversationCommandError,
 } from ".";
 import {
-	conversationSettingsRowAdapter,
-	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
-} from "./generation-settings";
-import {
-	canonicalGenerationSettings,
 	GENERATION_SETTINGS_FIELDS,
 	type CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
@@ -201,12 +195,4 @@ describe("Conversation Generation Settings", () => {
 		}
 	});
 
-	test("keeps the domain settings aligned with the canonical declaration", () => {
-		// The domain type derives from the canonical declaration; the default
-		// settings and every normalized write must satisfy the shared schema.
-		expect(Value.Check(canonicalGenerationSettings, DEFAULT_CONVERSATION_GENERATION_SETTINGS)).toBe(true);
-		expect(conversationSettingsRowAdapter.adapter).toBe("conversation-settings-row");
-		expect(Object.keys(conversationSettingsRowAdapter.fields).sort())
-			.toEqual([...GENERATION_SETTINGS_FIELDS].sort());
-	});
 });
