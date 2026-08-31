@@ -3,7 +3,6 @@ import { conversationGenerationSettingsTable } from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
 import {
-	defineGenerationSettingsAdapter,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
 	type GenerationSettingsFieldMap,
@@ -47,26 +46,8 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 
 // Database storage participates with every canonical field: each one has a
 // settings-table column, and rows round-trip reads and writes field for
-// field. The named adapter proves the projection stays exhaustive when the
-// canonical vocabulary grows.
-export const conversationSettingsRowAdapter = defineGenerationSettingsAdapter(
-	"conversation-settings-row",
-	{
-		modelId: { disposition: "projected" },
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: { disposition: "projected" },
-		siblingGenerationLimit: { disposition: "projected" },
-		continuationStrategy: { disposition: "projected" },
-		continuationInstruction: { disposition: "projected" },
-		continuationPrefillSuffix: { disposition: "projected" },
-		requestOverrides: { disposition: "projected" },
-	},
-);
+// field. The column map below is the storage boundary's exhaustive
+// participation decision.
 
 type SettingsRow = typeof conversationGenerationSettingsTable.$inferSelect;
 

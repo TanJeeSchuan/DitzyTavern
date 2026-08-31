@@ -44,10 +44,7 @@ import {
 	generationProvenanceCodec,
 	type GenerationProvenanceRecord,
 } from "../../shared/generation-provenance";
-import {
-	defineGenerationSettingsAdapter,
-	type GenerationSettingsField,
-} from "../../shared/contract/generation-settings";
+import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 
 // Generation-start capture: from one authoritative Conversation snapshot and
 // the captured configuration this module derives the complete Generation Plan
@@ -292,27 +289,6 @@ export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
 export type PersistedGenerationSettings = {
 	readonly [K in GenerationSettingsField]: ConversationJsonValue;
 };
-
-// The named persistence dispositions: every canonical field is stored on the
-// Active Generation row.
-export const activeGenerationSettingsAdapter = defineGenerationSettingsAdapter(
-	"active-generation-settings",
-	{
-		modelId: { disposition: "projected" },
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: { disposition: "projected" },
-		siblingGenerationLimit: { disposition: "projected" },
-		continuationStrategy: { disposition: "projected" },
-		continuationInstruction: { disposition: "projected" },
-		continuationPrefillSuffix: { disposition: "projected" },
-		requestOverrides: { disposition: "projected" },
-	},
-);
 
 export const generationSettingsJson = (
 	effective: EffectiveGenerationSettings,

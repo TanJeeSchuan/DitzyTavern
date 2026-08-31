@@ -4,9 +4,10 @@ import type { GenerationJsonValue } from "../generation-provenance";
 // The one canonical runtime declaration of the Generation Settings
 // structure (ADR-0032): model selection, sampling parameters, budget
 // fields, the Continuation strategy group, and Request Overrides. Every
-// compatible schema form derives from this object, and every explicit
-// adapter — database storage, provenance, partial update commands, Model
-// Client input — must prove exhaustive handling of its field vocabulary.
+// compatible schema form derives from this object, and every consuming
+// boundary — database storage, update requiredness, provenance, Model
+// Client input, active inspection — must prove exhaustive handling of its
+// field vocabulary.
 //
 // Validation mirrors the Conversation module's settings domain: the schema
 // accepts every currently valid setting and rejects the invalid model,
@@ -65,21 +66,54 @@ export const canonicalGenerationSettings = Type.Object({
 export type CanonicalGenerationSettings = Static<typeof canonicalGenerationSettings>;
 export type GenerationSettingsField = keyof CanonicalGenerationSettings;
 
-// The settings update command's fillable fields: a caller may omit these and
-// the Conversation module fills them from stored values or established
-// defaults; every other canonical field is required on the update command.
-// The wire schema and the server domain input derive their optionality from
-// this one list, so the two cannot disagree about which fields may be absent.
-export const GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS = [
-	"safetyAllowance",
-	"siblingGenerationLimit",
-	"continuationStrategy",
-	"continuationInstruction",
-	"continuationPrefillSuffix",
-] as const satisfies readonly GenerationSettingsField[];
+// The settings update command's per-field requiredness policy. A canonical
+// field is either required on the update command or optional — optional
+// means a caller may omit it and the Conversation module fills it from
+// stored values or established defaults. Compile-locked to the canonical
+// vocabulary: adding a field fails typecheck until its update requiredness
+// is stated, so a new field can never silently become update-required. The
+// wire schema and the server domain input derive their optionality from
+// this one policy, so the two cannot disagree about which fields may be
+// absent.
+export type GenerationSettingsUpdateFieldPolicy = "required" | "optional";
 
-export type GenerationSettingsUpdateOptionalField =
-	(typeof GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS)[number];
+export const GENERATION_SETTINGS_UPDATE_FIELD_POLICY = {
+	modelId: "required",
+	temperature: "required",
+	topP: "required",
+	frequencyPenalty: "required",
+	presencePenalty: "required",
+	contextLimit: "required",
+	responseBudget: "required",
+	safetyAllowance: "optional",
+	siblingGenerationLimit: "optional",
+	continuationStrategy: "optional",
+	continuationInstruction: "optional",
+	continuationPrefillSuffix: "optional",
+	requestOverrides: "required",
+} as const satisfies GenerationSettingsFieldMap<GenerationSettingsUpdateFieldPolicy>;
+
+export type GenerationSettingsUpdateOptionalField = {
+	[K in GenerationSettingsField]: (typeof GENERATION_SETTINGS_UPDATE_FIELD_POLICY)[K] extends "optional"
+		? K
+		: never;
+}[GenerationSettingsField];
+
+// The update-optional vocabulary, derived from the policy map: the type
+// projection above and this runtime filter read the same map, so they
+// cannot drift from each other or from the canonical field list.
+// SAFETY: the policy map is satisfies-locked to be total over the canonical
+// field union, so its own keys are exactly the canonical fields; the cast
+// only restores those literal key types from Object.keys' widening.
+const generationSettingsPolicyKeys = Object.keys(
+	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
+) as GenerationSettingsField[];
+
+export const GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS =
+	generationSettingsPolicyKeys.filter(
+		(field): field is GenerationSettingsUpdateOptionalField =>
+			GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "optional",
+	);
 
 // The canonical field vocabulary, compile-locked to the schema's own keys:
 // adding or renaming a canonical field fails typecheck until this record
@@ -110,9 +144,9 @@ const generationSettingsFieldKeys = Object.keys(
 
 export const GENERATION_SETTINGS_FIELDS = generationSettingsFieldKeys;
 
-// Explicit adapters have genuinely different semantics — database rows,
-// nullable provenance records, partial update defaults, Model Client
-// input — and cannot derive mechanically from the canonical declaration.
+// Explicit adapters have genuinely different semantics — nullable
+// provenance records, Model Client transport input, safe inspection
+// display — and cannot derive mechanically from the canonical declaration.
 // Each adapter declares, per canonical field, whether it projects the field
 // onto its own shape or intentionally excludes it; the mapped type makes a
 // missing or unknown field a compile error.

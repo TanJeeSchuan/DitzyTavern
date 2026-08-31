@@ -3,7 +3,6 @@ import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
 	canonicalGenerationSettings,
-	defineGenerationSettingsAdapter,
 	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 } from "./generation-settings";
 import { participantPrompt } from "./prompt-schema";
@@ -396,33 +395,13 @@ const deleteDataAction = Type.Object({
 	key: Type.String(),
 });
 
-// The settings update command derives from the canonical declaration too:
+// The settings update command derives from the canonical declaration:
 // current clients submit the complete canonical object, while older callers
 // may omit the fields the Conversation module fills from stored values or
-// defaults. Only optionality differs, and the optional set is the canonical
-// GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS vocabulary shared with the
-// server domain input. Declaring every canonical field also stops the HTTP
-// runtime from silently dropping fields the canonical object carries but a
-// hand-written projection forgot.
-export const generationSettingsUpdateAdapter = defineGenerationSettingsAdapter(
-	"update-generation-settings-command",
-	{
-		modelId: { disposition: "projected" },
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: { disposition: "projected" },
-		siblingGenerationLimit: { disposition: "projected" },
-		continuationStrategy: { disposition: "projected" },
-		continuationInstruction: { disposition: "projected" },
-		continuationPrefillSuffix: { disposition: "projected" },
-		requestOverrides: { disposition: "projected" },
-	},
-);
-
+// defaults. Only optionality differs, and the required/optional split is
+// the canonical GENERATION_SETTINGS_UPDATE_FIELD_POLICY vocabulary shared
+// with the server domain input; adding a canonical field fails the policy
+// until its update requiredness is stated.
 export const generationSettingsUpdate = Type.Composite([
 	Type.Omit(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS]),
 	Type.Partial(Type.Pick(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS])),

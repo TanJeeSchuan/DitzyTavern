@@ -51,10 +51,10 @@ export type ContinuationPrefillSuffix = ConversationGenerationSettings["continua
 // Older callers may omit the newly introduced budget and Continuation
 // fields. The update input derives from the canonical declaration: every
 // canonical field participates, and exactly the canonical update-optional
-// vocabulary is optional — the same list the wire schema uses, so the wire
-// and domain inputs cannot disagree about which fields may be absent. The
-// domain fills omitted fields from stored values or the same defaults used
-// for new rows.
+// vocabulary is optional — the same requiredness policy the wire schema
+// uses, so the wire and domain inputs cannot disagree about which fields
+// may be absent. The domain fills omitted fields from stored values or the
+// same defaults used for new rows.
 export type ConversationGenerationSettingsInput = Omit<
 	CanonicalGenerationSettings,
 	GenerationSettingsUpdateOptionalField

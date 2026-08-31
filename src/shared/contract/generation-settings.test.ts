@@ -19,6 +19,7 @@ import {
 import {
 	canonicalGenerationSettings,
 	defineGenerationSettingsAdapter,
+	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsAdapter,
 	type GenerationSettingsField,
@@ -46,15 +47,21 @@ const validSettings = (): CanonicalGenerationSettings => ({
 	},
 });
 
-// The fields the settings update command lets older callers omit; the
-// Conversation module fills them from stored values or defaults.
-const updateOptionalFields = [
-	"safetyAllowance",
-	"siblingGenerationLimit",
-	"continuationStrategy",
-	"continuationInstruction",
-	"continuationPrefillSuffix",
-] as const;
+// The update command's requiredness split, read directly from the policy so
+// the assertions check the schema against the policy instead of restating
+// it by hand.
+// SAFETY: the policy map is satisfies-locked to the canonical field union,
+// so its keys are exactly the canonical fields; the cast only restores
+// those literal key types from Object.keys' widening.
+const policyFields = Object.keys(
+	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
+) as GenerationSettingsField[];
+const updateOptionalFields = policyFields.filter(
+	(field) => GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "optional",
+);
+const updateRequiredFields = policyFields.filter(
+	(field) => GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "required",
+);
 
 // Removes one named field at runtime while keeping the fixture's named
 // domain type; Value.Check reads the result as untrusted input anyway.
@@ -224,18 +231,8 @@ describe("generationSettingsUpdate", () => {
 		}
 	});
 
-	test("still requires the core fields", () => {
-		const coreFields = [
-			"modelId",
-			"temperature",
-			"topP",
-			"frequencyPenalty",
-			"presencePenalty",
-			"contextLimit",
-			"responseBudget",
-			"requestOverrides",
-		] as const;
-		for (const field of coreFields) {
+	test("still requires every field the policy marks required", () => {
+		for (const field of updateRequiredFields) {
 			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(false);
 		}
 	});
