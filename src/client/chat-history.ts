@@ -6,10 +6,9 @@
 //
 // The paginated read model is the normal Chat read: stable chronological
 // pages of native Messages with Participant identity, immutable Author
-// Stamp names, Variant order, and selected Variant state. Exact artifact
-// bytes, the canonical archive text, reasoning, and signatures never cross
-// this boundary; they load only through the deliberate Import Details
-// operations below.
+// Stamp names, Variant order, selected Variant state, and persisted Reasoning
+// Content. Exact artifact bytes, the canonical archive text, and signatures
+// stay behind deliberate detail operations.
 
 // Payload types and wire validation both derive from the shared TypeBox
 // contract: every response is decoded at this boundary with Value.Decode so

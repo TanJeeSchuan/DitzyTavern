@@ -63,6 +63,8 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 				void host.adapter.subscribe({
 					conversationId: effect.conversationId,
 					generationId: effect.generationId,
+					messageId: effect.messageId,
+					variantId: effect.variantId,
 					afterEventId: effect.afterEventId,
 					signal: controller.signal,
 					onEvent: (observation) => {

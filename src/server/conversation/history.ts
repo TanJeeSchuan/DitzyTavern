@@ -1,9 +1,9 @@
 // Paginated history read model: the normal Chat read seam for reading
 // native Messages. Pages serve stable position-ordered (chronological)
-// Messages with the lightweight Participant identity and selected Variant
-// state needed for rendering — and nothing heavier. Exact artifact bytes,
-// the canonical archive text, reasoning, signatures, generation IDs, and
-// other message/variant/Conversation-scoped provenance are excluded here
+// Messages with the lightweight Participant identity, selected Variant
+// state, and persisted Reasoning Content needed for rendering. Exact artifact
+// bytes, the canonical archive text, signatures, generation IDs, and other
+// message/variant/Conversation-scoped provenance are excluded here
 // and load only through deliberate detail operations.
 //
 // Imported Chats graduate into exactly this read model: their Messages use
@@ -107,40 +107,44 @@ export function readChatHistory(
 					)
 					.all();
 
-	const variantsByMessage = new Map<number, ChatHistoryVariant[]>();
-	for (const variant of variantRows) {
-		const variants = variantsByMessage.get(variant.message_id) ?? [];
-		variants.push({
-			id: variant.id,
-			position: variant.position,
-			content: variant.content,
-			timestamp: variant.timestamp,
-			selected: variant.selected,
-		});
-		variantsByMessage.set(variant.message_id, variants);
-	}
-	const selectedVariantIds = messageRows
-		.flatMap((message) =>
-			variantRows
-				.filter((variant) => variant.message_id === message.id && variant.selected)
-				.map((variant) => variant.id),
-		);
-	const reasoningVariantIds = new Set(
-		selectedVariantIds.length === 0
+	const reasoningByVariant = new Map<number, string>(
+		variantRows.length === 0
 			? []
 			: db
-					.select({ variantId: messageVariantDataTable.message_variant_id })
+					.select({
+						variantId: messageVariantDataTable.message_variant_id,
+						value: messageVariantDataTable.value,
+					})
 					.from(messageVariantDataTable)
 					.where(
 						and(
-							inArray(messageVariantDataTable.message_variant_id, selectedVariantIds),
+							inArray(
+								messageVariantDataTable.message_variant_id,
+								variantRows.map((variant) => variant.id),
+							),
 							eq(messageVariantDataTable.namespace, "generation"),
 							eq(messageVariantDataTable.key, "reasoning"),
 						),
 					)
 					.all()
-					.map((row) => row.variantId),
+					.map((row) => [row.variantId, row.value]),
 	);
+
+	const variantsByMessage = new Map<number, ChatHistoryVariant[]>();
+	for (const variant of variantRows) {
+		const variants = variantsByMessage.get(variant.message_id) ?? [];
+		const historyVariant: ChatHistoryVariant = {
+			id: variant.id,
+			position: variant.position,
+			content: variant.content,
+			timestamp: variant.timestamp,
+			selected: variant.selected,
+		};
+		const reasoning = reasoningByVariant.get(variant.id);
+		if (reasoning !== undefined) historyVariant.reasoning = reasoning;
+		variants.push(historyVariant);
+		variantsByMessage.set(variant.message_id, variants);
+	}
 
 	const castIds = new Set<number>();
 	const cast = db
@@ -184,7 +188,7 @@ export function readChatHistory(
 				const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
 				return selected !== undefined &&
 					(selected.content.length > 0 ||
-						(continuationStrategy === "instruction" && reasoningVariantIds.has(selected.id)));
+						(continuationStrategy === "instruction" && (selected.reasoning?.length ?? 0) > 0));
 			})(),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
 		};

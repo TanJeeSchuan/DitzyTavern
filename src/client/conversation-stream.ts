@@ -13,6 +13,9 @@ import {
 	generationFailurePayload,
 	generationStatePayload,
 	generationStoppedPayload,
+	generationSubscriptionFailurePayload,
+	matchesGenerationAttemptTarget,
+	type GenerationAttemptTarget,
 	type GenerationEvent,
 	type GenerationStatePayload,
 } from "../shared/contract/generation-events";
@@ -51,6 +54,8 @@ export interface GenerationStreamObservation {
 export interface GenerationStreamSubscription {
 	conversationId: number;
 	generationId: number;
+	messageId: number;
+	variantId: number;
 	// Resume position: the latest event position the observer already
 	// processed. The server replays after it or answers with an
 	// authoritative state snapshot.
@@ -71,6 +76,8 @@ export async function subscribeConversationGeneration(
 	conversationId: number,
 	generationId: number,
 	input: {
+		messageId: number;
+		variantId: number;
 		afterEventId?: number;
 		signal?: AbortSignal;
 		onDelta: (event: GenerationStreamDelta, eventId: number) => void;
@@ -88,7 +95,10 @@ export async function subscribeConversationGeneration(
 		// The subscription never opened. A typed error response is a
 		// server-declared outcome (the Generation is not observable); anything
 		// else is an interruption the observer may recover from.
-		const declared = decodeWirePayload(generationFailurePayload, await response.json().catch(() => null));
+		const declared = decodeWirePayload(
+			generationSubscriptionFailurePayload,
+			await response.json().catch(() => null),
+		);
 		if (declared !== null) {
 			return declared.outcome === "not-found"
 				? { outcome: "not-found" }
@@ -99,7 +109,10 @@ export async function subscribeConversationGeneration(
 	if (response.body === null) {
 		return { outcome: "interrupted", reason: "Generation stream had no body." };
 	}
-	return consumeGenerationStream(response, { ...input, conversationId, generationId });
+	return consumeGenerationStream(response, {
+		...input,
+		target: { conversationId, generationId, messageId: input.messageId, variantId: input.variantId },
+	});
 }
 
 // The SSE data line is the transport's JSON parse target; the decoded value
@@ -117,8 +130,7 @@ const parseStreamPayload = (serialized: string): JsonValue | null => {
 async function consumeGenerationStream(
 	response: Response,
 	input: {
-		conversationId: number;
-		generationId: number;
+		target: GenerationAttemptTarget;
 		onDelta: (event: GenerationStreamDelta, eventId: number) => void;
 		onState?: (state: GenerationStreamState) => void;
 	},
@@ -161,30 +173,28 @@ async function consumeGenerationStream(
 		}
 		if (eventType === "state") {
 			const state = decodeWirePayload(generationStatePayload, payload);
-			if (
-				state === null ||
-				state.conversationId !== input.conversationId ||
-				state.generationId !== input.generationId
-			) return;
+			if (state === null || !matchesGenerationAttemptTarget(input.target, state)) return;
 			lastEventId = Math.max(lastEventId, state.latestEventId);
 			input.onState?.(state);
 			return;
 		}
 		if (eventType === "complete") {
 			const applied = decodeWirePayload(generationAppliedPayload, payload);
-			if (applied?.generationId === input.generationId) result = { outcome: "applied" };
+			if (applied !== null && matchesGenerationAttemptTarget(input.target, applied)) {
+				result = { outcome: "applied" };
+			}
 			return;
 		}
 		if (eventType === "stopped") {
 			const stopped = decodeWirePayload(generationStoppedPayload, payload);
-			if (stopped?.generationId === input.generationId) {
+			if (stopped !== null && matchesGenerationAttemptTarget(input.target, stopped)) {
 				result = { outcome: "stopped", generationId: stopped.generationId };
 			}
 			return;
 		}
 		if (eventType === "error") {
 			const failure = decodeWirePayload(generationFailurePayload, payload);
-			if (failure === null) return;
+			if (failure === null || !matchesGenerationAttemptTarget(input.target, failure)) return;
 			result = failure.outcome === "not-found"
 				? { outcome: "not-found" }
 				: { outcome: failure.outcome, reason: failure.reason };
@@ -208,6 +218,8 @@ async function consumeGenerationStream(
 export const generationStreamAdapter: GenerationStreamAdapter = {
 	subscribe: (request) =>
 		subscribeConversationGeneration(request.conversationId, request.generationId, {
+			messageId: request.messageId,
+			variantId: request.variantId,
 			afterEventId: request.afterEventId,
 			signal: request.signal,
 			onDelta: (event, eventId) => request.onEvent({ eventId, event }),

@@ -208,6 +208,48 @@ describe("Conversation paginated history", () => {
 		expect(page?.messages[0]?.variants.length).toBe(3);
 	});
 
+	test("returns persisted Generation Reasoning Content in authoritative history", () => {
+		const chat = conversation.create({
+			name: "Reasoning History",
+			participants: [{ definition: adHoc("Writer") }],
+			messages: [{
+				timestamp: "2026-01-01T00:00:00.000Z",
+				variants: [
+					{
+						content: "Visible prose.",
+						timestamp: "2026-01-01T00:00:00.000Z",
+						selected: true,
+						data: [{
+							namespace: "generation",
+							key: "reasoning",
+							value: "Persisted thought.",
+						}],
+					},
+					{
+						content: "Alternative prose.",
+						timestamp: "2026-01-01T00:00:01.000Z",
+						selected: false,
+						data: [{
+							namespace: "generation",
+							key: "reasoning",
+							value: "Alternative thought.",
+						}],
+					},
+				],
+			}],
+		});
+
+		const page = conversation.readHistory(chat.id, { pageSize: 10 });
+			expect(page?.messages[0]?.variants[0]).toMatchObject({
+				content: "Visible prose.",
+				reasoning: "Persisted thought.",
+			});
+			expect(page?.messages[0]?.variants[1]).toMatchObject({
+				content: "Alternative prose.",
+				reasoning: "Alternative thought.",
+			});
+	});
+
 	test("excludes heavy provenance from ordinary reads: no message, variant, or Chat data", () => {
 		const chat = conversation.create({
 			name: "Lightweight",

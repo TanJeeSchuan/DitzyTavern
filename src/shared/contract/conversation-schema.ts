@@ -264,11 +264,13 @@ export type VariantDetails = Static<typeof variantDetails>;
 
 // Lightweight paginated history read contract: stable chronological pages
 // of native Messages with the Participant identity and selected Variant
-// state needed for rendering. Heavy provenance never crosses this contract.
+// state needed for rendering. Reasoning Content is included when present;
+// unrelated provenance never crosses this contract.
 const chatHistoryVariant = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
 	content: Type.String(),
+	reasoning: Type.Optional(Type.String()),
 	timestamp: Type.String(),
 	selected: Type.Boolean(),
 });
@@ -282,8 +284,7 @@ const chatHistoryMessage = Type.Object({
 	// Historical model Control identity used to decide whether a terminal
 	// Message is eligible for Continue after Control changes.
 	modelParticipantIdAtCreation: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
-	// Server-derived capability for the selected Variant. Reasoning remains
-	// private even when it makes a reasoning-only Message continuable.
+	// Server-derived capability for the selected Variant.
 	continuable: Type.Optional(Type.Boolean()),
 	author: Type.Union([Type.Null(), Type.Object({
 		participantId: Type.Union([Type.Null(), Type.Integer()]),

@@ -75,6 +75,13 @@ const validState = {
 	terminalReason: null,
 };
 
+const validTarget = {
+	conversationId: 42,
+	generationId: 7,
+	messageId: 9,
+	variantId: 10,
+};
+
 describe("generationStatePayload", () => {
 	test("accepts an active snapshot and a terminal snapshot", () => {
 		expect(Value.Check(generationStatePayload, validState)).toBe(true);
@@ -104,8 +111,8 @@ describe("generationStatePayload", () => {
 describe("generationAppliedPayload", () => {
 	test("accepts the applied terminal frame", () => {
 		expect(Value.Check(generationAppliedPayload, {
+			...validTarget,
 			outcome: "applied",
-			generationId: 7,
 			latestEventId: 5,
 		})).toBe(true);
 	});
@@ -126,8 +133,8 @@ describe("generationAppliedPayload", () => {
 describe("generationStoppedPayload", () => {
 	test("accepts the stopped terminal frame", () => {
 		expect(Value.Check(generationStoppedPayload, {
+			...validTarget,
 			outcome: "stopped",
-			generationId: 7,
 		})).toBe(true);
 	});
 
@@ -146,11 +153,11 @@ describe("generationStoppedPayload", () => {
 describe("generationFailurePayload", () => {
 	test("accepts every terminal failure outcome the stream defines", () => {
 		const valid: readonly unknown[] = [
-			{ outcome: "failed", reason: "Generation failed." },
-			{ outcome: "not-found" },
-			{ outcome: "not-playable", reason: "The Conversation is not playable." },
-			{ outcome: "invalid", reason: "The request was invalid." },
-			{ outcome: "conflict", reason: "The Conversation changed." },
+			{ ...validTarget, outcome: "failed", reason: "Generation failed." },
+			{ ...validTarget, outcome: "not-found" },
+			{ ...validTarget, outcome: "not-playable", reason: "The Conversation is not playable." },
+			{ ...validTarget, outcome: "invalid", reason: "The request was invalid." },
+			{ ...validTarget, outcome: "conflict", reason: "The Conversation changed." },
 		];
 		for (const payload of valid) {
 			expect(Value.Check(generationFailurePayload, payload)).toBe(true);

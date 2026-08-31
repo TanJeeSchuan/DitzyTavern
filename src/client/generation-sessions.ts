@@ -105,7 +105,14 @@ export type GenerationSessionStoryEffect =
 export type GenerationSessionEffect =
 	// Open or reopen this Generation's subscription from the given event
 	// position (0 for a fresh session, the session cursor for a reattachment).
-	| { kind: "subscribe"; conversationId: number; generationId: number; afterEventId: number }
+	| {
+			kind: "subscribe";
+			conversationId: number;
+			generationId: number;
+			messageId: number;
+			variantId: number;
+			afterEventId: number;
+	  }
 	// Close this Generation's local subscription. This is teardown only: the
 	// machine has no stop effect, so navigation and unsubscription can never
 	// cancel a server-owned Active Generation.
@@ -212,6 +219,8 @@ const reconcileTargets = (
 					kind: "subscribe",
 					conversationId: action.conversationId,
 					generationId: target.generationId,
+					messageId: target.messageId,
+					variantId: target.variantId,
 					afterEventId: existing.lastEventId,
 				});
 			}
@@ -234,6 +243,8 @@ const reconcileTargets = (
 			kind: "subscribe",
 			conversationId: action.conversationId,
 			generationId: target.generationId,
+			messageId: target.messageId,
+			variantId: target.variantId,
 			afterEventId: 0,
 		});
 	}

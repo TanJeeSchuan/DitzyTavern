@@ -18,9 +18,8 @@ export interface StoryVariant {
 	id: number;
 	position: number;
 	content: string;
-	// Ephemeral Reasoning Content observed for this generated Variant. It is
-	// kept separate from authored Content and retained across the terminal
-	// history refresh that replaces the rest of the story read model.
+	// Reasoning Content stays separate from authored Content. Active streams
+	// update it locally and authoritative history restores it after reload.
 	reasoning?: string;
 	// Presentation-only: true when the stored content is exactly empty. The
 	// placeholder substitutes rendering only; the stored text stays as-is.
@@ -156,7 +155,7 @@ const toStoryVariant = (
 	id: variant.id,
 	position: variant.position,
 	content: variant.content,
-	reasoning: prior?.reasoning ?? "",
+	reasoning: variant.reasoning ?? prior?.reasoning ?? "",
 	empty: variant.content === "",
 });
 

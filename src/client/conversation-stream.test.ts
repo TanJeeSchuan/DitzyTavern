@@ -16,6 +16,16 @@ const {
 } = await import("./conversation");
 const { generationStreamAdapter, subscribeConversationGeneration } = await import("./conversation-stream");
 
+const attemptTarget = {
+	conversationId: 42,
+	generationId: 7,
+	messageId: 9,
+	variantId: 10,
+} as const;
+
+const terminalPayload = <Payload extends object>(payload: Payload): string =>
+	JSON.stringify({ ...attemptTarget, ...payload });
+
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 const installFetch = (handler: FetchHandler): void => {
@@ -33,7 +43,7 @@ describe("server-owned Generation client", () => {
 			"id: 1\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"Hel",
 			"lo\"}\n\nid: 2\nevent: generation\ndata: {\"type\":\"reasoning\",\"text\":\"plan\"}\n\n",
 			"id: 3\nevent: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n",
-			"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":7,\"latestEventId\":3}\n\n",
+			`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 3 })}\n\n`,
 		];
 		let requestUrl = "";
 		installFetch(async (input) => {
@@ -48,6 +58,8 @@ describe("server-owned Generation client", () => {
 
 		const deltas: GenerationStreamDelta[] = [];
 		const result = await subscribeConversationGeneration(42, 7, {
+			messageId: 9,
+			variantId: 10,
 			onDelta: (delta) => deltas.push(delta),
 		});
 
@@ -67,7 +79,11 @@ describe("server-owned Generation client", () => {
 		));
 
 		const deltas: GenerationStreamDelta[] = [];
-		const result = await subscribeConversationGeneration(42, 7, { onDelta: (delta) => deltas.push(delta) });
+		const result = await subscribeConversationGeneration(42, 7, {
+			messageId: 9,
+			variantId: 10,
+			onDelta: (delta) => deltas.push(delta),
+		});
 		expect(deltas).toEqual([]);
 		expect(result).toEqual({ outcome: "interrupted", reason: "Generation ended without a terminal result." });
 	});
@@ -105,12 +121,16 @@ describe("server-owned Generation client", () => {
 			"id: 1\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"A\"}\n\n" +
 			"id: 2\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"duplicate\"}\n\n" +
 			"id: 3\nevent: generation\ndata: {\"type\":\"finished\",\"finishReason\":\"stop\"}\n\n" +
-			"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":7,\"latestEventId\":3}\n\n",
+			`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 3 })}\n\n`,
 			{ status: 200, headers: { "content-type": "text/event-stream" } },
 		));
 
 		const deltas: GenerationStreamDelta[] = [];
-		const result = await subscribeConversationGeneration(42, 7, { onDelta: (delta) => deltas.push(delta) });
+		const result = await subscribeConversationGeneration(42, 7, {
+			messageId: 9,
+			variantId: 10,
+			onDelta: (delta) => deltas.push(delta),
+		});
 		expect(deltas).toEqual([
 			{ type: "content", text: "B" },
 			{ type: "finished", finishReason: "stop" },
@@ -156,7 +176,7 @@ describe("server-owned Generation client", () => {
 			const stream =
 				"id: 4\nevent: generation\ndata: {\"type\":\"content\",\"text\":\"Resumed.\"}\n\n" +
 				"event: state\ndata: {\"outcome\":\"active-state\",\"generationId\":7,\"conversationId\":42,\"messageId\":9,\"variantId\":10,\"content\":\"Resumed.\",\"reasoning\":\"\",\"latestEventId\":5,\"status\":\"active\",\"terminalReason\":null}\n\n" +
-				"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":7,\"latestEventId\":5}\n\n";
+				`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 5 })}\n\n`;
 			installFetch(async (input) => {
 				requestUrl = String(input);
 				return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
@@ -167,6 +187,8 @@ describe("server-owned Generation client", () => {
 			const result = await generationStreamAdapter.subscribe({
 				conversationId: 42,
 				generationId: 7,
+				messageId: 9,
+				variantId: 10,
 				afterEventId: 3,
 				signal: new AbortController().signal,
 				onEvent: ({ eventId, event }) => {
@@ -192,6 +214,8 @@ describe("server-owned Generation client", () => {
 			const result = await generationStreamAdapter.subscribe({
 				conversationId: 42,
 				generationId: 7,
+				messageId: 9,
+				variantId: 10,
 				afterEventId: 0,
 				signal: new AbortController().signal,
 				onEvent: ({ eventId }) => observations.push(eventId),
@@ -210,6 +234,8 @@ describe("server-owned Generation client", () => {
 			const missing = await generationStreamAdapter.subscribe({
 				conversationId: 42,
 				generationId: 7,
+				messageId: 9,
+				variantId: 10,
 				afterEventId: 0,
 				signal: new AbortController().signal,
 				onEvent: () => {},
@@ -221,6 +247,8 @@ describe("server-owned Generation client", () => {
 			const unreachable = await generationStreamAdapter.subscribe({
 				conversationId: 42,
 				generationId: 7,
+				messageId: 9,
+				variantId: 10,
 				afterEventId: 0,
 				signal: new AbortController().signal,
 				onEvent: () => {},
@@ -243,7 +271,7 @@ describe("server-owned Generation client", () => {
 			const stream = frames
 				.map((frame, index) => `id: ${index + 1}\nevent: generation\ndata: ${JSON.stringify(frame)}\n\n`)
 				.join("") +
-				"event: error\ndata: {\"outcome\":\"failed\",\"reason\":\"The provider went quiet.\"}\n\n";
+				`event: error\ndata: ${terminalPayload({ outcome: "failed", reason: "The provider went quiet." })}\n\n`;
 			installFetch(async () => new Response(stream, {
 				status: 200,
 				headers: { "content-type": "text/event-stream" },
@@ -251,6 +279,8 @@ describe("server-owned Generation client", () => {
 
 			const deltas: GenerationStreamDelta[] = [];
 			const result = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
 				onDelta: (delta) => deltas.push(delta),
 			});
 
@@ -273,6 +303,8 @@ describe("server-owned Generation client", () => {
 
 			const deltas: GenerationStreamDelta[] = [];
 			const result = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
 				onDelta: (delta) => deltas.push(delta),
 			});
 
@@ -303,6 +335,8 @@ describe("server-owned Generation client", () => {
 
 			const states: GenerationStreamState[] = [];
 			const result = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
 				onDelta: () => {},
 				onState: (decoded) => states.push(decoded),
 			});
@@ -311,7 +345,7 @@ describe("server-owned Generation client", () => {
 			expect(result).toEqual({ outcome: "interrupted", reason: "Generation ended without a terminal result." });
 		});
 
-		test("rejects state and terminal frames for a different Generation", async () => {
+		test("rejects state and terminal frames for a different attempt target", async () => {
 			const foreignState: GenerationStreamState = {
 				outcome: "active-state",
 				generationId: 8,
@@ -324,48 +358,66 @@ describe("server-owned Generation client", () => {
 				status: "active",
 				terminalReason: null,
 			};
-			const stream =
-				`event: state\ndata: ${JSON.stringify(foreignState)}\n\n` +
-				"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":8,\"latestEventId\":4}\n\n" +
-				"event: stopped\ndata: {\"outcome\":\"stopped\",\"generationId\":8}\n\n";
-			installFetch(async () => new Response(stream, {
-				status: 200,
-				headers: { "content-type": "text/event-stream" },
-			}));
+			const foreignFrames = [
+				`event: state\ndata: ${JSON.stringify(foreignState)}\n\n`,
+				"event: complete\ndata: {\"outcome\":\"applied\",\"conversationId\":42,\"generationId\":7,\"messageId\":99,\"variantId\":10,\"latestEventId\":4}\n\n",
+				"event: stopped\ndata: {\"outcome\":\"stopped\",\"conversationId\":42,\"generationId\":7,\"messageId\":9,\"variantId\":99}\n\n",
+				"event: error\ndata: {\"outcome\":\"failed\",\"reason\":\"Wrong attempt.\",\"conversationId\":42,\"generationId\":8,\"messageId\":9,\"variantId\":10}\n\n",
+			];
+			for (const stream of foreignFrames) {
+				installFetch(async () => new Response(stream, {
+					status: 200,
+					headers: { "content-type": "text/event-stream" },
+				}));
 
-			const states: GenerationStreamState[] = [];
-			const result = await subscribeConversationGeneration(42, 7, {
-				onDelta: () => {},
-				onState: (state) => states.push(state),
-			});
+				const states: GenerationStreamState[] = [];
+				const result = await subscribeConversationGeneration(42, 7, {
+					messageId: 9,
+					variantId: 10,
+					onDelta: () => {},
+					onState: (state) => states.push(state),
+				});
 
-			expect(states).toEqual([]);
-			expect(result).toEqual({
-				outcome: "interrupted",
-				reason: "Generation ended without a terminal result.",
-			});
+				expect(states).toEqual([]);
+				expect(result).toEqual({
+					outcome: "interrupted",
+					reason: "Generation ended without a terminal result.",
+				});
+			}
 		});
 
 		test("decodes stopped and failure terminal frames through the shared schemas", async () => {
 			installFetch(async () => new Response(
-				"event: stopped\ndata: {\"outcome\":\"stopped\",\"generationId\":7}\n\n",
+				`event: stopped\ndata: ${terminalPayload({ outcome: "stopped" })}\n\n`,
 				{ status: 200, headers: { "content-type": "text/event-stream" } },
 			));
-			const stopped = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			const stopped = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
+				onDelta: () => {},
+			});
 			expect(stopped).toEqual({ outcome: "stopped", generationId: 7 });
 
 			installFetch(async () => new Response(
-				"event: error\ndata: {\"outcome\":\"not-found\"}\n\n",
+				`event: error\ndata: ${terminalPayload({ outcome: "not-found" })}\n\n`,
 				{ status: 200, headers: { "content-type": "text/event-stream" } },
 			));
-			const notFound = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			const notFound = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
+				onDelta: () => {},
+			});
 			expect(notFound).toEqual({ outcome: "not-found" });
 
 			installFetch(async () => new Response(
 				"event: error\ndata: {\"outcome\":\"expired\"}\n\n",
 				{ status: 200, headers: { "content-type": "text/event-stream" } },
 			));
-			const unknownOutcome = await subscribeConversationGeneration(42, 7, { onDelta: () => {} });
+			const unknownOutcome = await subscribeConversationGeneration(42, 7, {
+				messageId: 9,
+				variantId: 10,
+				onDelta: () => {},
+			});
 			expect(unknownOutcome).toEqual({ outcome: "interrupted", reason: "Generation ended without a terminal result." });
 		});
 	});

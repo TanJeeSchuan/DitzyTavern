@@ -60,8 +60,8 @@ describe("the Generation session collection", () => {
 		expect(state.sessions.get(7)?.lastEventId).toBe(0);
 		expect(state.sessions.get(7)?.stopPending).toBe(false);
 		expect(effects).toEqual([
-			{ kind: "subscribe", conversationId: 42, generationId: 7, afterEventId: 0 },
-			{ kind: "subscribe", conversationId: 42, generationId: 8, afterEventId: 0 },
+			{ kind: "subscribe", conversationId: 42, generationId: 7, messageId: 907, variantId: 9_007, afterEventId: 0 },
+			{ kind: "subscribe", conversationId: 42, generationId: 8, messageId: 908, variantId: 9_008, afterEventId: 0 },
 		]);
 		expect(hasActiveGenerationSessions(state)).toBe(true);
 	});
@@ -299,7 +299,7 @@ describe("the Generation session collection", () => {
 		const reattached = run(state, observed([7]));
 		state = reattached.state;
 		expect(reattached.effects).toEqual([
-			{ kind: "subscribe", conversationId: 42, generationId: 7, afterEventId: 3 },
+			{ kind: "subscribe", conversationId: 42, generationId: 7, messageId: 907, variantId: 9_007, afterEventId: 3 },
 		]);
 		expect(stateText(state, 7)?.phase).toBe("subscribing");
 		expect(stateText(state, 7)?.lastEventId).toBe(3);
@@ -443,8 +443,8 @@ describe("the Generation session collection", () => {
 		// Returning reattaches from each Generation's own cursor.
 		const returned = run(state, observed([7, 8]));
 		expect(returned.effects).toEqual([
-			{ kind: "subscribe", conversationId: 42, generationId: 7, afterEventId: 5 },
-			{ kind: "subscribe", conversationId: 42, generationId: 8, afterEventId: 0 },
+			{ kind: "subscribe", conversationId: 42, generationId: 7, messageId: 907, variantId: 9_007, afterEventId: 5 },
+			{ kind: "subscribe", conversationId: 42, generationId: 8, messageId: 908, variantId: 9_008, afterEventId: 0 },
 		]);
 	});
 

@@ -3,6 +3,7 @@
 // stopped/failure frames. The schemas in src/shared/contract/generation-events
 // own the shapes; this adapter only owns framing and delivery.
 import type {
+	GenerationAttemptTarget,
 	GenerationAppliedPayload,
 	GenerationEvent,
 	GenerationFailurePayload,
@@ -21,12 +22,16 @@ type GenerationSsePayload =
 	| GenerationStoppedPayload
 	| GenerationFailurePayload;
 
-const activeGenerationPayload = (state: GenerationRuntimeState): GenerationStatePayload => ({
-	outcome: "active-state",
+const generationAttemptTarget = (state: GenerationRuntimeState): GenerationAttemptTarget => ({
 	generationId: state.generationId,
 	conversationId: state.conversationId,
 	messageId: state.messageId,
 	variantId: state.variantId,
+});
+
+const activeGenerationPayload = (state: GenerationRuntimeState): GenerationStatePayload => ({
+	...generationAttemptTarget(state),
+	outcome: "active-state",
 	content: state.content,
 	reasoning: state.reasoning,
 	latestEventId: state.latestEventId,
@@ -44,19 +49,23 @@ const terminalGenerationFrame = (state: GenerationRuntimeState): GenerationTermi
 		? {
 			type: "complete",
 			data: {
+				...generationAttemptTarget(state),
 				outcome: "applied" as const,
-				generationId: state.generationId,
 				latestEventId: state.latestEventId,
 			},
 		}
 		: state.status === "stopped"
 			? {
 				type: "stopped",
-				data: { outcome: "stopped" as const, generationId: state.generationId },
+				data: { ...generationAttemptTarget(state), outcome: "stopped" as const },
 			}
 			: {
 				type: "error",
-				data: { outcome: "failed" as const, reason: state.terminalReason ?? "Generation failed." },
+				data: {
+					...generationAttemptTarget(state),
+					outcome: "failed" as const,
+					reason: state.terminalReason ?? "Generation failed.",
+				},
 			};
 
 export function createGenerationSubscriptionResponse(

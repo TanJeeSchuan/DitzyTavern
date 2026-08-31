@@ -262,14 +262,14 @@ export interface ConversationSnapshot {
 	data: ConversationDataEntry[];
 }
 
-// One lightweight Variant in a paginated history read. Heavy provenance
-// (generation IDs, reasoning, signatures, and other scoped data) is
-// deliberately absent: it loads only through deliberate detail operations,
-// never as part of ordinary Chat reading.
+// One lightweight Variant in a paginated history read. Reasoning Content is
+// part of the rendered response and therefore crosses this boundary when it
+// exists. Other provenance remains behind deliberate detail operations.
 export interface ChatHistoryVariant {
 	id: number;
 	position: number;
 	content: string;
+	reasoning?: string;
 	timestamp: string;
 	// The source-selected Swipe initializes the selected Variant at commit;
 	// afterwards this reflects the persisted native selection only.
@@ -290,8 +290,7 @@ export interface ChatHistoryMessage {
 	// capability hint lets a client keep Continue available after Control has
 	// moved to another Participant without exposing prompt or provenance data.
 	modelParticipantIdAtCreation?: number | null;
-	// Derived from the selected Variant's visible text or private reasoning;
-	// no reasoning payload crosses the ordinary history boundary.
+	// Derived from the selected Variant's visible text or Reasoning Content.
 	continuable?: boolean;
 	// Variant order is preserved exactly as stored; empty and duplicate
 	// variants remain separate positions with their exact content.
@@ -300,9 +299,9 @@ export interface ChatHistoryMessage {
 
 // The normal Chat read model for reading history: stable chronological
 // pages of native Messages with the lightweight Participant identity needed
-// for rendering. Exact artifact bytes, the canonical archive text,
-// reasoning, signatures, and other heavy provenance are excluded and only
-// load through deliberate detail operations.
+// for rendering. Persisted Reasoning Content is included with each Variant.
+// Exact artifact bytes, the canonical archive text, signatures, and other
+// heavy provenance load only through deliberate detail operations.
 export interface ChatHistoryPage {
 	conversationId: number;
 	name: string;

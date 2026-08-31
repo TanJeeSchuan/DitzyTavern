@@ -80,7 +80,12 @@ describe("Resumable generation transport", () => {
 		// response status immediately before reading its accepted identifier.
 		// SAFETY: this contract test controls the accepted response shape.
 		// SAFETY: this contract test controls the typed acceptance response.
-		const accepted = await acceptedResponse.json() as { generationId: number };
+		const accepted = await acceptedResponse.json() as {
+			conversationId: number;
+			generationId: number;
+			messageId: number;
+			variantId: number;
+		};
 		expect(acceptedResponse.status).toBe(200);
 		expect(accepted.generationId).toBeGreaterThan(0);
 		const acceptedRevision = createConversationModule(database).getSnapshot(conversation.id)?.revision;
@@ -94,6 +99,28 @@ describe("Resumable generation transport", () => {
 		expect(body).toContain("id: 1");
 		expect(body).toContain('"text":"Buffered."');
 		expect(body).toContain("event: complete");
+		const completeFrame = body
+			.split("\n\n")
+			.find((frame) => frame.split("\n").includes("event: complete"));
+		const completeDataLine = completeFrame
+			?.split("\n")
+			.find((line) => line.startsWith("data: "));
+		if (completeDataLine === undefined) throw new Error("Complete frame data missing.");
+		// SAFETY: the test controls the route and first locates its complete SSE frame.
+		const complete = JSON.parse(completeDataLine.slice("data: ".length)) as {
+			outcome: string;
+			conversationId: number;
+			generationId: number;
+			messageId: number;
+			variantId: number;
+		};
+		expect(complete).toEqual(expect.objectContaining({
+			outcome: "applied",
+			conversationId: accepted.conversationId,
+			generationId: accepted.generationId,
+			messageId: accepted.messageId,
+			variantId: accepted.variantId,
+		}));
 
 		const snapshot = createConversationModule(database).getSnapshot(conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);

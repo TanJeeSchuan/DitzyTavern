@@ -78,7 +78,7 @@ describe("Continuation Generation", () => {
 		]);
 	});
 
-	test("continues a reasoning-only terminal Variant while ordinary history excludes reasoning", async () => {
+	test("continues a reasoning-only terminal Variant without placing reasoning in prompt history", async () => {
 		const module = createConversationModule(database);
 		const before = module.getSnapshot(conversationId);
 		if (before === undefined) throw new Error("Missing Conversation.");

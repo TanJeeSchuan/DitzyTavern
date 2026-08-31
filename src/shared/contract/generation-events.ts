@@ -62,40 +62,62 @@ export const generationStreamStatus = Type.Union([
 
 export type GenerationStreamStatus = Static<typeof generationStreamStatus>;
 
+// Stable identity of one accepted Generation attempt and its Provisional
+// Variant. Every state or terminal frame carries the complete target so a
+// client observing concurrent attempts can reject a frame from another one.
+export const generationAttemptTarget = Type.Object({
+	conversationId: Type.Integer(),
+	generationId: Type.Integer(),
+	messageId: Type.Integer(),
+	variantId: Type.Integer(),
+});
+
+export type GenerationAttemptTarget = Static<typeof generationAttemptTarget>;
+
+export const matchesGenerationAttemptTarget = (
+	expected: GenerationAttemptTarget,
+	observed: GenerationAttemptTarget,
+): boolean =>
+	expected.conversationId === observed.conversationId &&
+	expected.generationId === observed.generationId &&
+	expected.messageId === observed.messageId &&
+	expected.variantId === observed.variantId;
+
 // The `state` frame payload: the authoritative accumulated snapshot the
 // server sends whenever a reconnecting client cannot replay from its event
 // position, and on every lifecycle change.
-export const generationStatePayload = Type.Object({
-	outcome: Type.Literal("active-state"),
-	generationId: Type.Integer(),
-	conversationId: Type.Integer(),
-	messageId: Type.Integer(),
-	variantId: Type.Integer(),
-	content: Type.String(),
-	reasoning: Type.String(),
-	latestEventId: Type.Integer(),
-	status: generationStreamStatus,
-	terminalReason: Type.Union([Type.Null(), Type.String()]),
-});
+export const generationStatePayload = Type.Composite([
+	generationAttemptTarget,
+	Type.Object({
+		outcome: Type.Literal("active-state"),
+		content: Type.String(),
+		reasoning: Type.String(),
+		latestEventId: Type.Integer(),
+		status: generationStreamStatus,
+		terminalReason: Type.Union([Type.Null(), Type.String()]),
+	}),
+]);
 
 export type GenerationStatePayload = Static<typeof generationStatePayload>;
 
 // The `complete` frame payload: the Generation committed durably and the
 // event position the terminal state covers.
-export const generationAppliedPayload = Type.Object({
-	outcome: Type.Literal("applied"),
-	generationId: Type.Integer(),
-	latestEventId: Type.Integer(),
-});
+export const generationAppliedPayload = Type.Composite([
+	generationAttemptTarget,
+	Type.Object({
+		outcome: Type.Literal("applied"),
+		latestEventId: Type.Integer(),
+	}),
+]);
 
 export type GenerationAppliedPayload = Static<typeof generationAppliedPayload>;
 
 // The `stopped` frame payload: the Generation was stopped by an explicit
 // command and is not a failure.
-export const generationStoppedPayload = Type.Object({
-	outcome: Type.Literal("stopped"),
-	generationId: Type.Integer(),
-});
+export const generationStoppedPayload = Type.Composite([
+	generationAttemptTarget,
+	Type.Object({ outcome: Type.Literal("stopped") }),
+]);
 
 export type GenerationStoppedPayload = Static<typeof generationStoppedPayload>;
 
@@ -103,12 +125,38 @@ export type GenerationStoppedPayload = Static<typeof generationStoppedPayload>;
 // reports. `failed` is the only outcome the subscription route emits today;
 // the remaining members are the shared Conversation outcome vocabulary so a
 // stream can report the same typed failures a start request reports.
+const failedGenerationOutcome = Type.Object({
+	outcome: Type.Literal("failed"),
+	reason: Type.String(),
+});
+const missingGenerationOutcome = Type.Object({ outcome: Type.Literal("not-found") });
+const unplayableGenerationOutcome = Type.Object({
+	outcome: Type.Literal("not-playable"),
+	reason: Type.String(),
+});
+const invalidGenerationOutcome = Type.Object({
+	outcome: Type.Literal("invalid"),
+	reason: Type.String(),
+});
+const conflictingGenerationOutcome = Type.Object({
+	outcome: Type.Literal("conflict"),
+	reason: Type.String(),
+});
+
+export const generationSubscriptionFailurePayload = Type.Union([
+	failedGenerationOutcome,
+	missingGenerationOutcome,
+	unplayableGenerationOutcome,
+	invalidGenerationOutcome,
+	conflictingGenerationOutcome,
+]);
+
 export const generationFailurePayload = Type.Union([
-	Type.Object({ outcome: Type.Literal("failed"), reason: Type.String() }),
-	Type.Object({ outcome: Type.Literal("not-found") }),
-	Type.Object({ outcome: Type.Literal("not-playable"), reason: Type.String() }),
-	Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() }),
-	Type.Object({ outcome: Type.Literal("conflict"), reason: Type.String() }),
+	Type.Composite([generationAttemptTarget, failedGenerationOutcome]),
+	Type.Composite([generationAttemptTarget, missingGenerationOutcome]),
+	Type.Composite([generationAttemptTarget, unplayableGenerationOutcome]),
+	Type.Composite([generationAttemptTarget, invalidGenerationOutcome]),
+	Type.Composite([generationAttemptTarget, conflictingGenerationOutcome]),
 ]);
 
 export type GenerationFailurePayload = Static<typeof generationFailurePayload>;
