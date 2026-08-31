@@ -3,21 +3,16 @@
 // carry safe identity, settings, usage, and terminal outcome metadata, but
 // never provider payloads, URLs, headers, credentials, or request overrides.
 
-import {
-	defineGenerationSettingsAdapter,
-	type CanonicalGenerationSettings,
-	type GenerationSettingsField,
+import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
+import type {
+	CanonicalGenerationSettings,
+	GenerationSettingsField,
 } from "./contract/generation-settings";
 
-export type GenerationJsonValue =
-	| string
-	| number
-	| boolean
-	| null
-	| readonly GenerationJsonValue[]
-	| Readonly<{ [key: string]: GenerationJsonValue }>;
-
-export type GenerationJsonObject = Readonly<{ [key: string]: GenerationJsonValue }>;
+// The generation-owned JSON vocabulary is declared in the shared leaf module
+// so the Generation Settings contract and this module can both import it
+// without an import cycle; it stays part of this module's public vocabulary.
+export type { GenerationJsonObject, GenerationJsonValue };
 
 export type GenerationProvenanceStatus = "complete" | "length-limited" | "interrupted";
 export type GenerationProvenanceFinishReason = "stop" | "length" | "other";
@@ -70,35 +65,6 @@ const provenanceSettingsFieldKeys = Object.keys(
 ) as readonly ProvenanceSettingsField[];
 
 export const PROVENANCE_SETTINGS_FIELDS = provenanceSettingsFieldKeys;
-
-// The named provenance dispositions over the full canonical vocabulary.
-// Retained provenance settings project the sampling, budget, and Continuation
-// fields with intentional nullability; model identity and Request Overrides
-// are excluded with stated reasons instead of being silently dropped.
-export const generationProvenanceSettingsAdapter = defineGenerationSettingsAdapter(
-	"generation-provenance-settings",
-	{
-		modelId: {
-			disposition: "excluded",
-			reason: "captured beside the connection identity at provenance top level",
-		},
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: { disposition: "projected" },
-		siblingGenerationLimit: { disposition: "projected" },
-		continuationStrategy: { disposition: "projected" },
-		continuationInstruction: { disposition: "projected" },
-		continuationPrefillSuffix: { disposition: "projected" },
-		requestOverrides: {
-			disposition: "excluded",
-			reason: "provenance is a positive allow-list that never retains Request Overrides",
-		},
-	},
-);
 
 // The retained value for each provenance field, captured from the plan's
 // Effective Generation Settings: the nullable form a Generation attempt

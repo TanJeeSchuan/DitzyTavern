@@ -11,7 +11,6 @@ export type { CollectedModelClientGeneration } from "./client";
 export { createFakeModelClient } from "./fake";
 export type { FakeModelClientReply } from "./fake";
 export {
-	modelClientGenerationSettingsAdapter,
 	projectModelClientGenerationSettings,
 } from "./generation-settings";
 export type {

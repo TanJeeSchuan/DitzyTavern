@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
-import {
-	modelClientGenerationSettingsAdapter,
-	projectModelClientGenerationSettings,
-	type ModelClientGenerationSettings,
-} from "../../server/model-client/generation-settings";
+import { projectModelClientGenerationSettings } from "../../server/model-client/generation-settings";
 import {
 	captureGenerationProvenanceSettings,
 	PROVENANCE_SETTINGS_FIELDS,
@@ -18,12 +14,10 @@ import {
 } from "./conversation-schema";
 import {
 	canonicalGenerationSettings,
-	defineGenerationSettingsAdapter,
+	GENERATION_SETTINGS_FIELDS,
 	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
+	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 	type CanonicalGenerationSettings,
-	type GenerationSettingsAdapter,
-	type GenerationSettingsField,
-	type GenerationSettingsFieldDisposition,
 } from "./generation-settings";
 
 const validSettings = (): CanonicalGenerationSettings => ({
@@ -50,16 +44,8 @@ const validSettings = (): CanonicalGenerationSettings => ({
 // The update command's requiredness split, read directly from the policy so
 // the assertions check the schema against the policy instead of restating
 // it by hand.
-// SAFETY: the policy map is satisfies-locked to the canonical field union,
-// so its keys are exactly the canonical fields; the cast only restores
-// those literal key types from Object.keys' widening.
-const policyFields = Object.keys(
-	GENERATION_SETTINGS_UPDATE_FIELD_POLICY,
-) as GenerationSettingsField[];
-const updateOptionalFields = policyFields.filter(
-	(field) => GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "optional",
-);
-const updateRequiredFields = policyFields.filter(
+const updateOptionalFields = GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS;
+const updateRequiredFields = GENERATION_SETTINGS_FIELDS.filter(
 	(field) => GENERATION_SETTINGS_UPDATE_FIELD_POLICY[field] === "required",
 );
 
@@ -279,126 +265,37 @@ describe("generationProvenanceSettingsWire", () => {
 });
 
 describe("projectModelClientGenerationSettings", () => {
-	// The adapter declaration is the reviewed source of truth for which
-	// canonical fields cross the transport seam; these helpers read it out so
-	// the assertions check the projection's behavior against the declaration
-	// instead of restating the vocabulary by hand.
-	// SAFETY: the adapter's mapped field type guarantees each entry is a
-	// canonical field name paired with its declared disposition; the cast
-	// restores those literal key/value types from Object.entries' widening.
-	const adapterFields = Object.entries(modelClientGenerationSettingsAdapter.fields) as readonly [
-		GenerationSettingsField,
-		GenerationSettingsFieldDisposition,
-	][];
-	const projectedFields = adapterFields
-		.filter(([, disposition]) => disposition.disposition === "projected")
-		.map(([field]) => field);
-	const excludedFields = adapterFields
-		.filter(([, disposition]) => disposition.disposition === "excluded")
-		.map(([field]) => field);
+	// The transport projection is a direct named declaration: these fields are
+	// the reviewed transport-seam vocabulary, and the assertions check the
+	// projection's behavior against them.
+	const projectedFields = [
+		"temperature",
+		"topP",
+		"frequencyPenalty",
+		"presencePenalty",
+		"contextLimit",
+		"responseBudget",
+		"requestOverrides",
+	] as const;
 
-	test("projects exactly the adapter's declared projected set with the captured values", () => {
+	test("projects exactly the transport fields with the captured values", () => {
 		const settings = validSettings();
 		const projected = projectModelClientGenerationSettings(settings);
 
-		// The output vocabulary is the named adapter's own projected set: no
-		// hand-written second list can drift from the declaration.
 		expect(Object.keys(projected).sort()).toEqual([...projectedFields].sort());
 		// Every projected field carries the captured canonical value.
 		for (const field of projectedFields) {
-			// SAFETY: projectedFields is filtered to the adapter's projected
-			// dispositions, which is exactly the vocabulary the derived
-			// ModelClientGenerationSettings input type picks.
-			const key = field as keyof ModelClientGenerationSettings;
-			expect(projected[key]).toEqual(settings[key]);
+			expect(projected[field]).toEqual(settings[field]);
 		}
 	});
 
-	test("never exposes an excluded canonical field on the input", () => {
+	test("never exposes an application-owned canonical field on the input", () => {
 		const projected = projectModelClientGenerationSettings(validSettings());
-		for (const field of excludedFields) {
-			expect(projected).not.toHaveProperty(field);
+		const projectedKeySet = new Set<string>(projectedFields);
+		for (const field of GENERATION_SETTINGS_FIELDS) {
+			if (!projectedKeySet.has(field)) {
+				expect(projected).not.toHaveProperty(field);
+			}
 		}
-	});
-});
-
-describe("defineGenerationSettingsAdapter", () => {
-	const projected = { disposition: "projected" } as const;
-	const excluded = (reason: string) => ({ disposition: "excluded", reason }) as const;
-
-	const adapterWithAllFieldsProjected = () => ({
-		modelId: projected,
-		temperature: projected,
-		topP: projected,
-		frequencyPenalty: projected,
-		presencePenalty: projected,
-		contextLimit: projected,
-		responseBudget: projected,
-		safetyAllowance: projected,
-		siblingGenerationLimit: projected,
-		continuationStrategy: projected,
-		continuationInstruction: projected,
-		continuationPrefillSuffix: projected,
-		requestOverrides: projected,
-	});
-
-	const adapterWithExcludedField = (
-		field: keyof GenerationSettingsAdapter,
-		reason: string,
-	): GenerationSettingsAdapter => {
-		const narrowed = {
-			...adapterWithAllFieldsProjected(),
-			[field]: excluded(reason),
-		};
-		// SAFETY: the spread keeps every canonical disposition and the computed
-		// key names exactly one declared adapter field; the cast only restores
-		// the total adapter shape the literal widened.
-		return narrowed as GenerationSettingsAdapter;
-	};
-
-	test("rejects declarations missing a canonical field", () => {
-		const { requestOverrides: _omitted, ...incomplete } = adapterWithAllFieldsProjected();
-		// SAFETY: the destructured declaration models one that predates a
-		// canonical field; the constructor must reject it at runtime.
-		expect(() =>
-			defineGenerationSettingsAdapter("incomplete", incomplete as GenerationSettingsAdapter)
-		).toThrow(/requestOverrides/);
-	});
-
-	test("rejects declarations naming unknown fields", () => {
-		const withUnknownField = {
-			...adapterWithAllFieldsProjected(),
-			mysteryField: projected,
-		};
-		expect(() =>
-			defineGenerationSettingsAdapter("unknown-field", withUnknownField)
-		).toThrow(/mysteryField/);
-	});
-
-	test("rejects unknown disposition tags", () => {
-		const badTag = {
-			...adapterWithAllFieldsProjected(),
-			modelId: { disposition: "mapped" },
-		};
-		// SAFETY: the widened tag models a dynamically built declaration that
-		// escaped the disposition vocabulary; the constructor must reject what
-		// the type system cannot express.
-		expect(() =>
-			defineGenerationSettingsAdapter("bad-tag", badTag as GenerationSettingsAdapter)
-		).toThrow(/modelId/);
-	});
-
-	test("rejects exclusions without a stated reason", () => {
-		for (const reason of ["", "   "]) {
-			expect(() =>
-				defineGenerationSettingsAdapter("empty-reason", adapterWithExcludedField("modelId", reason))
-			).toThrow(/without a stated reason/);
-		}
-	});
-
-	test("rejects an unnamed adapter", () => {
-		expect(() =>
-			defineGenerationSettingsAdapter("   ", adapterWithAllFieldsProjected())
-		).toThrow(/named/);
 	});
 });

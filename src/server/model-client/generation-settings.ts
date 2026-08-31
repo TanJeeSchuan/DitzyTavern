@@ -3,95 +3,29 @@
 // Generation Settings. The Generation Plan Compiler already decided intent
 // applicability and narrowed Request Overrides to the active API Format, so
 // this seam receives exactly the values DitzyTavern supplies to the selected
-// Model Client adapter. Every other canonical field stays application-owned
-// and is excluded with a stated reason instead of being silently dropped, so
-// adding a canonical field fails the adapter until its participation at the
-// transport boundary is decided.
+// Model Client adapter. The remaining canonical fields stay application-owned
+// and are never transmitted: model identity rides the Connection Profile
+// snapshot, budgeting inputs are consumed by prompt budgeting, concurrency
+// policy stays with the application, and the Generation Plan Compiler
+// resolves the Continuation operands outside transport.
 
-import {
-	defineGenerationSettingsAdapter,
-	type GenerationSettingsField,
-} from "../../shared/contract/generation-settings";
 import type { EffectiveGenerationSettings } from "../generation-plan";
 
-// The named Model Client dispositions over the full canonical vocabulary.
-export const modelClientGenerationSettingsAdapter = defineGenerationSettingsAdapter(
-	"model-client-generation-settings",
-	{
-		modelId: {
-			disposition: "excluded",
-			reason: "carried as the Model Client input's own modelId field",
-		},
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: {
-			disposition: "excluded",
-			reason: "consumed by prompt budgeting before the transport seam",
-		},
-		siblingGenerationLimit: {
-			disposition: "excluded",
-			reason: "concurrency policy stays with the application",
-		},
-		continuationStrategy: {
-			disposition: "excluded",
-			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
-		},
-		continuationInstruction: {
-			disposition: "excluded",
-			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
-		},
-		continuationPrefillSuffix: {
-			disposition: "excluded",
-			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
-		},
-		requestOverrides: {
-			disposition: "projected",
-			// The compiler already narrowed this value to the active API Format
-			// namespace; the adapter owns no applicability decision of its own.
-		},
-	},
-);
-
-// The projected canonical vocabulary, derived from the named adapter's own
-// dispositions: promoting an excluded field to projected adds it to the
-// input type, and a missing disposition fails the adapter first.
-type ProjectedModelClientSettingsField = {
-	[K in GenerationSettingsField]: (typeof modelClientGenerationSettingsAdapter)["fields"][K] extends {
-		readonly disposition: "projected";
-	}
-		? K
-		: never;
-}[GenerationSettingsField];
-
-// The Model Client's settings input: exactly the canonical fields the named
-// adapter projects, with the Effective values the attempt actually used —
-// Request Overrides arrive as the single active-API-Format namespace object.
+// The canonical fields that cross the transport seam, with the Effective
+// values the attempt actually used — Request Overrides arrive as the single
+// active-API-Format namespace object. Compile-locked to the Effective
+// Generation Settings declaration: an unknown or renamed field fails
+// typecheck here.
 export type ModelClientGenerationSettings = Pick<
 	EffectiveGenerationSettings,
-	ProjectedModelClientSettingsField
+	| "temperature"
+	| "topP"
+	| "frequencyPenalty"
+	| "presencePenalty"
+	| "contextLimit"
+	| "responseBudget"
+	| "requestOverrides"
 >;
-
-// The per-field projection. Compile-locked: adding a projected canonical
-// field fails typecheck until the projection states where it comes from.
-type ModelClientSettingsProjection = {
-	readonly [K in ProjectedModelClientSettingsField]: (
-		effective: EffectiveGenerationSettings,
-	) => EffectiveGenerationSettings[K];
-};
-
-const projectModelClientSettingsField: ModelClientSettingsProjection = {
-	temperature: (effective) => effective.temperature,
-	topP: (effective) => effective.topP,
-	frequencyPenalty: (effective) => effective.frequencyPenalty,
-	presencePenalty: (effective) => effective.presencePenalty,
-	contextLimit: (effective) => effective.contextLimit,
-	responseBudget: (effective) => effective.responseBudget,
-	requestOverrides: (effective) => effective.requestOverrides,
-};
 
 // The one named projection producing Model Client input from the attempt's
 // Effective Generation Settings. Send, Continue, and Sibling pass the
@@ -100,11 +34,11 @@ const projectModelClientSettingsField: ModelClientSettingsProjection = {
 export const projectModelClientGenerationSettings = (
 	effective: EffectiveGenerationSettings,
 ): ModelClientGenerationSettings => ({
-	temperature: projectModelClientSettingsField.temperature(effective),
-	topP: projectModelClientSettingsField.topP(effective),
-	frequencyPenalty: projectModelClientSettingsField.frequencyPenalty(effective),
-	presencePenalty: projectModelClientSettingsField.presencePenalty(effective),
-	contextLimit: projectModelClientSettingsField.contextLimit(effective),
-	responseBudget: projectModelClientSettingsField.responseBudget(effective),
-	requestOverrides: projectModelClientSettingsField.requestOverrides(effective),
+	temperature: effective.temperature,
+	topP: effective.topP,
+	frequencyPenalty: effective.frequencyPenalty,
+	presencePenalty: effective.presencePenalty,
+	contextLimit: effective.contextLimit,
+	responseBudget: effective.responseBudget,
+	requestOverrides: effective.requestOverrides,
 });

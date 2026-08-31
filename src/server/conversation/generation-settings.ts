@@ -5,7 +5,6 @@ import { InvalidConversationCommandError, ConversationNotFoundError } from "./er
 import {
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
-	type GenerationSettingsFieldMap,
 } from "../../shared/contract/generation-settings";
 import type {
 	ConversationGenerationSettings,
@@ -68,7 +67,7 @@ const settingsColumn = {
 	continuationInstruction: "continuation_instruction",
 	continuationPrefillSuffix: "continuation_prefill_suffix",
 	requestOverrides: "request_overrides_json",
-} as const satisfies GenerationSettingsFieldMap<keyof SettingsRow>;
+} as const satisfies Record<GenerationSettingsField, keyof SettingsRow>;
 
 // The persisted row values for each canonical field. Adding a canonical
 // field fails typecheck here before it can reach the database.

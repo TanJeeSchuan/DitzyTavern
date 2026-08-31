@@ -31,7 +31,6 @@ import {
 	parseGenerationJson,
 } from "../../shared/generation-provenance";
 import {
-	defineGenerationSettingsAdapter,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
@@ -79,30 +78,6 @@ type InspectionSettingsValue<T> = T extends string ? string | null : T | null;
 type SafeGenerationSettings = {
 	[K in InspectionSettingsField]: InspectionSettingsValue<CanonicalGenerationSettings[K]>;
 };
-
-// The named inspection dispositions: every canonical field except Request
-// Overrides participates in the safe display projection.
-export const generationInspectionSettingsAdapter = defineGenerationSettingsAdapter(
-	"generation-inspection-settings",
-	{
-		modelId: { disposition: "projected" },
-		temperature: { disposition: "projected" },
-		topP: { disposition: "projected" },
-		frequencyPenalty: { disposition: "projected" },
-		presencePenalty: { disposition: "projected" },
-		contextLimit: { disposition: "projected" },
-		responseBudget: { disposition: "projected" },
-		safetyAllowance: { disposition: "projected" },
-		siblingGenerationLimit: { disposition: "projected" },
-		continuationStrategy: { disposition: "projected" },
-		continuationInstruction: { disposition: "projected" },
-		continuationPrefillSuffix: { disposition: "projected" },
-		requestOverrides: {
-			disposition: "excluded",
-			reason: "inspection re-exposes only safe settings and never Request Overrides",
-		},
-	},
-);
 
 // The decoded value for each inspection field. Compile-locked: adding a
 // canonical field (outside the exclusion) fails typecheck until inspection
