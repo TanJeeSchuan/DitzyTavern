@@ -33,7 +33,6 @@ import {
 import {
 	type AssistantPrefill,
 	type ModelClientConnectionSnapshot,
-	type ModelClientGenerationSettings,
 } from "../model-client";
 import {
 	captureGenerationProvenanceSettings,
@@ -256,18 +255,6 @@ function resolveConnectionSnapshot(
 		adapter: profile.adapter,
 	};
 }
-
-export const toModelClientGenerationSettings = (
-	settings: ConversationGenerationSettings,
-): ModelClientGenerationSettings => ({
-	temperature: settings.temperature,
-	topP: settings.topP,
-	frequencyPenalty: settings.frequencyPenalty,
-	presencePenalty: settings.presencePenalty,
-	contextLimit: settings.contextLimit,
-	responseBudget: settings.responseBudget,
-	requestOverrides: settings.requestOverrides,
-});
 
 export function createBudgetedPlan(
 	derivation: GenerationDerivation,

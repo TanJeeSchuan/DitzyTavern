@@ -65,6 +65,22 @@ export const canonicalGenerationSettings = Type.Object({
 export type CanonicalGenerationSettings = Static<typeof canonicalGenerationSettings>;
 export type GenerationSettingsField = keyof CanonicalGenerationSettings;
 
+// The settings update command's fillable fields: a caller may omit these and
+// the Conversation module fills them from stored values or established
+// defaults; every other canonical field is required on the update command.
+// The wire schema and the server domain input derive their optionality from
+// this one list, so the two cannot disagree about which fields may be absent.
+export const GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS = [
+	"safetyAllowance",
+	"siblingGenerationLimit",
+	"continuationStrategy",
+	"continuationInstruction",
+	"continuationPrefillSuffix",
+] as const satisfies readonly GenerationSettingsField[];
+
+export type GenerationSettingsUpdateOptionalField =
+	(typeof GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS)[number];
+
 // The canonical field vocabulary, compile-locked to the schema's own keys:
 // adding or renaming a canonical field fails typecheck until this record
 // names it, and the focused test keeps the runtime list aligned with the
@@ -114,9 +130,9 @@ export type GenerationSettingsFieldMap<T> = {
 	readonly [K in GenerationSettingsField]: T;
 };
 
-export interface NamedGenerationSettingsAdapter {
+export interface NamedGenerationSettingsAdapter<T extends GenerationSettingsAdapter = GenerationSettingsAdapter> {
 	readonly adapter: string;
-	readonly fields: GenerationSettingsAdapter;
+	readonly fields: T;
 }
 
 // Constructs a named adapter declaration and re-proves completeness at
@@ -124,11 +140,13 @@ export interface NamedGenerationSettingsAdapter {
 // declarations; this check keeps cast, test-authored, or dynamically built
 // declarations honest. A declaration that misses a canonical field, names
 // an unknown one, or excludes a field without a stated reason is rejected
-// instead of silently accepted.
-export const defineGenerationSettingsAdapter = (
+// instead of silently accepted. The declared literal field dispositions are
+// preserved on the result so downstream types can derive their projected
+// vocabulary from the adapter's own decisions.
+export const defineGenerationSettingsAdapter = <T extends GenerationSettingsAdapter>(
 	adapter: string,
-	fields: GenerationSettingsAdapter,
-): NamedGenerationSettingsAdapter => {
+	fields: T,
+): NamedGenerationSettingsAdapter<T> => {
 	if (adapter.trim() === "") {
 		throw new Error("A Generation Settings adapter must be named.");
 	}

@@ -37,6 +37,8 @@ const settings = {
 			max_tokens: 900,
 			provider_extension: { enabled: true },
 		},
+		responses: {},
+		"anthropic-messages": {},
 	},
 };
 

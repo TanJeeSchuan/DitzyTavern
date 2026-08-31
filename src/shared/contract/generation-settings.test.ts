@@ -8,18 +8,25 @@ import {
 import { activeGenerationSettingsAdapter } from "../../server/workflows/generate-capture";
 import { generationInspectionSettingsAdapter } from "../../server/conversation/generation-details";
 import {
+	modelClientGenerationSettingsAdapter,
+	projectModelClientGenerationSettings,
+} from "../../server/model-client/generation-settings";
+import {
 	captureGenerationProvenanceSettings,
 	generationProvenanceSettingsAdapter,
 	PROVENANCE_SETTINGS_FIELDS,
 } from "../generation-provenance";
 import {
 	conversationGenerationSettings,
+	generationProvenanceSettingsWire,
 	generationSettingsUpdate,
+	generationSettingsUpdateAdapter,
 } from "./conversation-schema";
 import {
 	canonicalGenerationSettings,
 	defineGenerationSettingsAdapter,
 	GENERATION_SETTINGS_FIELDS,
+	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsAdapter,
 	type GenerationSettingsFieldMap,
@@ -273,6 +280,82 @@ describe("conversationGenerationSettings", () => {
 	});
 });
 
+describe("generationProvenanceSettingsWire", () => {
+	test("declares exactly the retained canonical field vocabulary", () => {
+		// The provenance transport form is built over the canonical retained
+		// field list: model identity and Request Overrides stay excluded, and
+		// no hand-written second field list can drift from the codec.
+		expect(Object.keys(generationProvenanceSettingsWire.properties)).toEqual([
+			...PROVENANCE_SETTINGS_FIELDS,
+		]);
+	});
+
+	test("accepts the captured provenance settings with their intentional nullability", () => {
+		const captured = captureGenerationProvenanceSettings(validSettings());
+		expect(Value.Check(generationProvenanceSettingsWire, captured)).toBe(true);
+		// Every retained field is nullable: an unconfigured value decodes as
+		// null rather than an accidental zero or empty string.
+		const allNull = Object.fromEntries(
+			PROVENANCE_SETTINGS_FIELDS.map((field) => [field, null]),
+		);
+		expect(Value.Check(generationProvenanceSettingsWire, allNull)).toBe(true);
+		// The wire kinds still reject wrong-typed values.
+		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, temperature: "not-a-number" })).toBe(false);
+		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, contextLimit: 2.5 })).toBe(false);
+		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, continuationStrategy: "auto" })).toBe(false);
+	});
+});
+
+describe("projectModelClientGenerationSettings", () => {
+	test("projects exactly the adapter's declared canonical fields", () => {
+		const settings = validSettings();
+		const projected = projectModelClientGenerationSettings(settings);
+
+		// The projected vocabulary is the named adapter's own projected set:
+		// sampling, budget, and Request Overrides cross the transport seam.
+		expect(Object.keys(projected).sort()).toEqual([
+			"contextLimit",
+			"frequencyPenalty",
+			"presencePenalty",
+			"requestOverrides",
+			"responseBudget",
+			"temperature",
+			"topP",
+		]);
+		expect(projected).toEqual({
+			temperature: settings.temperature,
+			topP: settings.topP,
+			frequencyPenalty: settings.frequencyPenalty,
+			presencePenalty: settings.presencePenalty,
+			contextLimit: settings.contextLimit,
+			responseBudget: settings.responseBudget,
+			requestOverrides: settings.requestOverrides,
+		});
+		// The excluded canonical fields never appear on the input.
+		expect(projected).not.toHaveProperty("modelId");
+		expect(projected).not.toHaveProperty("safetyAllowance");
+		expect(projected).not.toHaveProperty("siblingGenerationLimit");
+		expect(projected).not.toHaveProperty("continuationStrategy");
+		expect(projected).not.toHaveProperty("continuationInstruction");
+		expect(projected).not.toHaveProperty("continuationPrefillSuffix");
+	});
+});
+
+describe("GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS", () => {
+	test("derives the update command's optionality exactly", () => {
+		// The optional fields are optional on the wire schema; every other
+		// canonical field stays required.
+		const required: readonly string[] = generationSettingsUpdate.required;
+		const optional: readonly string[] = GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS;
+		expect(required.some((field) => optional.includes(field))).toBe(false);
+		// SAFETY: both sides are the same canonical field vocabulary filtered and
+		// compared as strings; the assertion only narrows the sorted lists.
+		expect([...required].sort()).toEqual(
+			(GENERATION_SETTINGS_FIELDS.filter((field) => !optional.includes(field)) as string[]).sort(),
+		);
+	});
+});
+
 describe("GENERATION_SETTINGS_FIELDS", () => {
 	test("matches the canonical schema's own property list exactly", () => {
 		const properties: readonly string[] = Object.keys(canonicalGenerationSettings.properties);
@@ -285,7 +368,7 @@ describe("defineGenerationSettingsAdapter", () => {
 	const projected = { disposition: "projected" } as const;
 	const excluded = (reason: string) => ({ disposition: "excluded", reason }) as const;
 
-	const adapterWithAllFieldsProjected = (): GenerationSettingsAdapter => ({
+	const adapterWithAllFieldsProjected = () => ({
 		modelId: projected,
 		temperature: projected,
 		topP: projected,
@@ -304,7 +387,16 @@ describe("defineGenerationSettingsAdapter", () => {
 	const adapterWithExcludedField = (
 		field: keyof GenerationSettingsAdapter,
 		reason: string,
-	): GenerationSettingsAdapter => ({ ...adapterWithAllFieldsProjected(), [field]: excluded(reason) });
+	): GenerationSettingsAdapter => {
+		const narrowed = {
+			...adapterWithAllFieldsProjected(),
+			[field]: excluded(reason),
+		};
+		// SAFETY: the spread keeps every canonical disposition and the computed
+		// key names exactly one declared adapter field; the cast only restores
+		// the total adapter shape the literal widened.
+		return narrowed as GenerationSettingsAdapter;
+	};
 
 	test("accepts an exhaustive disposition for every canonical field", () => {
 		const adapter = defineGenerationSettingsAdapter("persistence", adapterWithAllFieldsProjected());
@@ -316,14 +408,14 @@ describe("defineGenerationSettingsAdapter", () => {
 		// Database storage and the partial update command participate with
 		// every canonical field; the update command fills omitted fields from
 		// stored values or defaults.
-		defineGenerationSettingsAdapter("update-generation-settings-command", adapterWithAllFieldsProjected());
+		expect(generationSettingsUpdateAdapter.fields).toEqual(adapterWithAllFieldsProjected());
 
 		// Model Client input carries the transport-relevant projection; the
 		// remaining canonical fields stay application-owned.
-		defineGenerationSettingsAdapter("model-client-generation-settings", {
+		expect(modelClientGenerationSettingsAdapter.fields).toEqual({
 			...adapterWithAllFieldsProjected(),
 			modelId: excluded("carried as the Model Client input's own modelId field"),
-			safetyAllowance: excluded("consumed by budgeting before the transport seam"),
+			safetyAllowance: excluded("consumed by prompt budgeting before the transport seam"),
 			siblingGenerationLimit: excluded("concurrency policy stays with the application"),
 			continuationStrategy: excluded("intent applicability decides the Continuation operands outside transport"),
 			continuationInstruction: excluded("intent applicability decides the Continuation operands outside transport"),

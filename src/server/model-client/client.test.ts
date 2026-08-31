@@ -25,7 +25,11 @@ const testGenerationSettings = {
 	presencePenalty: null,
 	contextLimit: 100,
 	responseBudget: 16,
-	requestOverrides: {},
+	requestOverrides: {
+		"chat-completions": {},
+		responses: {},
+		"anthropic-messages": {},
+	},
 };
 
 describe("Model Client seam", () => {

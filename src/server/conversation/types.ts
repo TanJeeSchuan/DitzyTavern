@@ -2,7 +2,10 @@ import type {
 	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../../shared/generation-provenance";
-import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import type {
+	CanonicalGenerationSettings,
+	GenerationSettingsUpdateOptionalField,
+} from "../../shared/contract/generation-settings";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -45,18 +48,17 @@ export type GenerationRequestOverrides = Readonly<
 // from the canonical declaration it rides on.
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
-// Older clients may omit the newly introduced Safety allowance. The domain
-// fills that omission with the same 500-token default used for new rows.
+// Older callers may omit the newly introduced budget and Continuation
+// fields. The update input derives from the canonical declaration: every
+// canonical field participates, and exactly the canonical update-optional
+// vocabulary is optional — the same list the wire schema uses, so the wire
+// and domain inputs cannot disagree about which fields may be absent. The
+// domain fills omitted fields from stored values or the same defaults used
+// for new rows.
 export type ConversationGenerationSettingsInput = Omit<
-	ConversationGenerationSettings,
-	"safetyAllowance" | "siblingGenerationLimit" | "continuationStrategy" | "continuationInstruction" | "continuationPrefillSuffix"
-> & {
-	safetyAllowance?: number | undefined;
-	siblingGenerationLimit?: number | undefined;
-	continuationStrategy?: "instruction" | "assistant-prefill" | undefined;
-	continuationInstruction?: string | undefined;
-	continuationPrefillSuffix?: ContinuationPrefillSuffix | undefined;
-};
+	CanonicalGenerationSettings,
+	GenerationSettingsUpdateOptionalField
+> & Partial<Pick<CanonicalGenerationSettings, GenerationSettingsUpdateOptionalField>>;
 
 // Narrowing for the on-demand Conversation data read. The filter is
 // vocabulary-free: namespace and key strings pass through uninterpreted, so

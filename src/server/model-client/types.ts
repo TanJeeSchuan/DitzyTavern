@@ -9,13 +9,13 @@
 // SSE seam publishes and every client decodes, so the Model Client, the
 // server, and the client can never drift into parallel shape declarations.
 import type { PromptPlan } from "../prompt-compiler";
-import type { GenerationRequestOverrides } from "../conversation/types";
 import type {
 	GenerationEvent,
 	GenerationFailureKind,
 	GenerationFinishReason,
 	GenerationUsage,
 } from "../../shared/contract/generation-events";
+import type { ModelClientGenerationSettings } from "./generation-settings";
 
 export type ModelClientEvent = GenerationEvent;
 export type ModelClientUsage = GenerationUsage;
@@ -53,15 +53,10 @@ export type ModelFetch = (
 	init?: RequestInit,
 ) => Promise<Response>;
 
-export interface ModelClientGenerationSettings {
-	temperature: number | null;
-	topP: number | null;
-	frequencyPenalty: number | null;
-	presencePenalty: number | null;
-	contextLimit: number;
-	responseBudget: number;
-	requestOverrides: Readonly<Record<string, GenerationRequestOverrides>>;
-}
+// The Model Client settings input derives from the canonical Generation
+// Settings declaration through the named exhaustive projection in
+// ./generation-settings; this seam re-states no settings fields of its own.
+export type { ModelClientGenerationSettings };
 
 // Safe connection identity only. URLs, credentials, and custom header values
 // are intentionally absent so this shape is safe for events and provenance.

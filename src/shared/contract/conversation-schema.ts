@@ -1,7 +1,11 @@
-import { Kind, Type, type Static } from "@sinclair/typebox";
+import { Kind, Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
-import { canonicalGenerationSettings } from "./generation-settings";
+import {
+	canonicalGenerationSettings,
+	defineGenerationSettingsAdapter,
+	GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS,
+} from "./generation-settings";
 import { participantPrompt } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -15,6 +19,7 @@ import type {
 	GenerationJsonObject,
 	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
+	ProvenanceSettingsField,
 } from "../generation-provenance";
 
 // Preserve the established contract export while keeping the schema owned by
@@ -147,25 +152,46 @@ export const generationVariant = Type.Object({
 
 export type GenerationVariant = Static<typeof generationVariant>;
 
+// Provenance describes one historical attempt, so every retained settings
+// field widens to a nullable wire kind instead of reusing the capture-time
+// validation domain: a value a past or future version recorded must still
+// display, and a value that did not participate decodes as null rather than
+// an accidental zero or empty string. The satisfies lock makes a missing or
+// unknown canonical field a compile error, and the focused contract test
+// keeps the declared keys aligned with the canonical retained vocabulary.
+const provenanceSettingsWireSchemas = {
+	temperature: Type.Union([Type.Null(), Type.Number()]),
+	topP: Type.Union([Type.Null(), Type.Number()]),
+	frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
+	presencePenalty: Type.Union([Type.Null(), Type.Number()]),
+	contextLimit: Type.Union([Type.Null(), Type.Integer()]),
+	responseBudget: Type.Union([Type.Null(), Type.Integer()]),
+	safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
+	siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer()]),
+	continuationStrategy: Type.Union([
+		Type.Null(),
+		Type.Literal("instruction"),
+		Type.Literal("assistant-prefill"),
+	]),
+	continuationInstruction: Type.Union([Type.Null(), Type.String()]),
+	continuationPrefillSuffix: Type.Union([
+		Type.Null(),
+		Type.Literal(""),
+		Type.Literal(" "),
+		Type.Literal("\n"),
+		Type.Literal("\n\n"),
+	]),
+} as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
+
+export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
+
 const generationProvenance = Type.Union([Type.Null(), Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
 	modelBackend: Type.Union([Type.Null(), Type.String()]),
 	adapter: Type.Union([Type.Null(), Type.String()]),
 	modelId: Type.Union([Type.Null(), Type.String()]),
-	generationSettings: Type.Object({
-		temperature: Type.Union([Type.Null(), Type.Number()]),
-		topP: Type.Union([Type.Null(), Type.Number()]),
-		frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
-		presencePenalty: Type.Union([Type.Null(), Type.Number()]),
-		contextLimit: Type.Union([Type.Null(), Type.Integer()]),
-		responseBudget: Type.Union([Type.Null(), Type.Integer()]),
-		safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
-		siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer()]),
-		continuationStrategy: Type.Union([Type.Literal("instruction"), Type.Literal("assistant-prefill"), Type.Null()]),
-		continuationInstruction: Type.Union([Type.Null(), Type.String()]),
-		continuationPrefillSuffix: Type.Union([Type.Literal(""), Type.Literal(" "), Type.Literal("\n"), Type.Literal("\n\n"), Type.Null()]),
-	}),
+	generationSettings: generationProvenanceSettingsWire,
 	usage: Type.Union([Type.Null(), Type.Record(Type.String(), Type.Number())]),
 	finishReason: Type.Union([Type.Literal("stop"), Type.Literal("length"), Type.Literal("other"), Type.Null()]),
 	status: Type.Union([Type.Literal("complete"), Type.Literal("length-limited"), Type.Literal("interrupted")]),
@@ -372,20 +398,33 @@ const deleteDataAction = Type.Object({
 // The settings update command derives from the canonical declaration too:
 // current clients submit the complete canonical object, while older callers
 // may omit the fields the Conversation module fills from stored values or
-// defaults. Only optionality differs; validation never loosens. Declaring
-// every canonical field also stops the HTTP runtime from silently dropping
-// fields the canonical object carries but a hand-written projection forgot.
-const generationSettingsUpdateOptionalFields = [
-	"safetyAllowance",
-	"siblingGenerationLimit",
-	"continuationStrategy",
-	"continuationInstruction",
-	"continuationPrefillSuffix",
-] as const;
+// defaults. Only optionality differs, and the optional set is the canonical
+// GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS vocabulary shared with the
+// server domain input. Declaring every canonical field also stops the HTTP
+// runtime from silently dropping fields the canonical object carries but a
+// hand-written projection forgot.
+export const generationSettingsUpdateAdapter = defineGenerationSettingsAdapter(
+	"update-generation-settings-command",
+	{
+		modelId: { disposition: "projected" },
+		temperature: { disposition: "projected" },
+		topP: { disposition: "projected" },
+		frequencyPenalty: { disposition: "projected" },
+		presencePenalty: { disposition: "projected" },
+		contextLimit: { disposition: "projected" },
+		responseBudget: { disposition: "projected" },
+		safetyAllowance: { disposition: "projected" },
+		siblingGenerationLimit: { disposition: "projected" },
+		continuationStrategy: { disposition: "projected" },
+		continuationInstruction: { disposition: "projected" },
+		continuationPrefillSuffix: { disposition: "projected" },
+		requestOverrides: { disposition: "projected" },
+	},
+);
 
 export const generationSettingsUpdate = Type.Composite([
-	Type.Omit(canonicalGenerationSettings, [...generationSettingsUpdateOptionalFields]),
-	Type.Partial(Type.Pick(canonicalGenerationSettings, [...generationSettingsUpdateOptionalFields])),
+	Type.Omit(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS]),
+	Type.Partial(Type.Pick(canonicalGenerationSettings, [...GENERATION_SETTINGS_UPDATE_OPTIONAL_FIELDS])),
 ]);
 
 const updateGenerationSettingsAction = Type.Object({

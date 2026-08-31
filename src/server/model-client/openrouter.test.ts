@@ -29,7 +29,11 @@ const generationSettings = {
 	presencePenalty: null,
 	contextLimit: 32768,
 	responseBudget: 64,
-	requestOverrides: { "chat-completions": {} },
+	requestOverrides: {
+		"chat-completions": {},
+		responses: {},
+		"anthropic-messages": {},
+	},
 };
 
 interface CapturedBody {

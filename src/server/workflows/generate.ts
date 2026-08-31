@@ -32,6 +32,7 @@ import {
 import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
 import type { PromptHistoryEntry } from "../prompt-compiler";
 import type { ModelClient, ModelClientConnectionSnapshot } from "../model-client";
+import { projectModelClientGenerationSettings } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import {
 	runAcceptedGeneration,
@@ -51,7 +52,6 @@ import {
 	generationSettingsJson,
 	connectionJson,
 	promptInspectionJson,
-	toModelClientGenerationSettings,
 	type ParticipantPreview,
 } from "./generate-capture";
 
@@ -282,7 +282,7 @@ export async function sendThroughProvisionalTailGeneration(
 		promptPlan: capture.promptPlan,
 		historyRoles: capture.historyRoles,
 		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
+		generationSettings: projectModelClientGenerationSettings(capture.settings),
 		connection: capture.connection,
 		signal: input.signal,
 	}, {
@@ -380,7 +380,7 @@ export async function continueGeneration(
 		promptPlan: capture.promptPlan,
 		historyRoles: capture.historyRoles,
 		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
+		generationSettings: projectModelClientGenerationSettings(capture.settings),
 		assistantPrefill: capture.assistantPrefill,
 		connection: capture.connection,
 		signal: input.signal,
@@ -505,7 +505,7 @@ export async function generateSiblingVariant(
 		promptPlan: capture.promptPlan,
 		historyRoles: capture.historyRoles,
 		modelId: capture.settings.modelId,
-		generationSettings: toModelClientGenerationSettings(capture.settings),
+		generationSettings: projectModelClientGenerationSettings(capture.settings),
 		connection: capture.connection,
 		signal: input.signal,
 	}, {

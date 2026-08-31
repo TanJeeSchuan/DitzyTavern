@@ -25,7 +25,11 @@ const generationSettings = {
 	presencePenalty: null,
 	contextLimit: 32768,
 	responseBudget: 64,
-	requestOverrides: { "chat-completions": { custom_field: "kept" } },
+	requestOverrides: {
+		"chat-completions": { custom_field: "kept" },
+		responses: {},
+		"anthropic-messages": {},
+	},
 };
 
 interface CapturedBody {

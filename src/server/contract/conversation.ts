@@ -14,7 +14,6 @@ import {
 	createConversationModule,
 	StaleConversationRevisionError,
 	type ConversationAction,
-	type ConversationGenerationSettings,
 } from "../conversation";
 import {
 	createGenerationCoordinator,
@@ -336,7 +335,10 @@ export const createConversationRoutes = (
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
-				return toGenerationSettingsPayload(settings);
+				// The module read returns a fresh plain object in the canonical
+				// Generation Settings vocabulary; the response schema is the derived
+				// transport clone, so no field-by-field payload projection sits here.
+				return settings;
 			},
 			{
 				params: conversationIdParams,
@@ -572,27 +574,3 @@ export const createConversationRoutes = (
 			},
 		);
 };
-
-function toGenerationSettingsPayload(
-	settings: ConversationGenerationSettings,
-) {
-	return {
-		modelId: settings.modelId,
-		temperature: settings.temperature,
-		topP: settings.topP,
-		frequencyPenalty: settings.frequencyPenalty,
-		presencePenalty: settings.presencePenalty,
-		contextLimit: settings.contextLimit,
-				responseBudget: settings.responseBudget,
-				safetyAllowance: settings.safetyAllowance,
-				siblingGenerationLimit: settings.siblingGenerationLimit,
-				continuationStrategy: settings.continuationStrategy,
-				continuationInstruction: settings.continuationInstruction,
-				continuationPrefillSuffix: settings.continuationPrefillSuffix,
-		requestOverrides: {
-			"chat-completions": { ...settings.requestOverrides["chat-completions"] },
-			responses: { ...settings.requestOverrides.responses },
-			"anthropic-messages": { ...settings.requestOverrides["anthropic-messages"] },
-		},
-	};
-}
