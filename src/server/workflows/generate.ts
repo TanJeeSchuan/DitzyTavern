@@ -47,13 +47,19 @@ import {
 	captureContinuationGeneration,
 	captureSiblingGeneration,
 	deriveGeneration,
-	createBudgetedPlan,
 	promptPlanJson,
 	generationSettingsJson,
 	connectionJson,
 	promptInspectionJson,
+	resolveConnectionApiFormat,
+	toCompilerDefinition,
 	type ParticipantPreview,
 } from "./generate-capture";
+import {
+	compileGenerationPlan,
+	continuationIntentFor,
+	type EffectiveGenerationSettings,
+} from "../generation-plan";
 
 export type {
 	GenerationAttemptInput,
@@ -72,6 +78,10 @@ export interface GenerationPromptInspection {
 	humanParticipant: ParticipantPreview | null;
 	modelParticipant: ParticipantPreview | null;
 	plan: PromptPlan | null;
+	// The Effective Generation Settings a generation from the current captured
+	// state would use: an ordinary Tail attempt, so the Continuation group is
+	// absent and Request Overrides are narrowed to the active API Format.
+	effectiveSettings: EffectiveGenerationSettings | null;
 	// The selected Continue request intent is exposed separately from the
 	// ordinary Generate plan. Assistant prefill remains metadata here, never a
 	// synthetic Conversation history block.
@@ -135,7 +145,10 @@ export function startServerOwnedSendGeneration(
 export function inspectGenerationPrompt(
 	database: Database,
 	conversationId: number,
-	options: { readonly tokenEstimator?: TokenEstimator } = {},
+	options: {
+		readonly tokenEstimator?: TokenEstimator;
+		readonly connectionSettings?: ConnectionSettingsModuleOptions;
+	} = {},
 ): GenerationPromptInspection {
 	const snapshot = createConversationModule(database).getSnapshot(conversationId);
 	if (snapshot === undefined) {
@@ -150,6 +163,7 @@ export function inspectGenerationPrompt(
 			humanParticipant: null,
 			modelParticipant: null,
 			plan: null,
+			effectiveSettings: null,
 			continuationIntent: null,
 			tokenEstimate: null,
 			responseBudget: null,
@@ -166,35 +180,42 @@ export function inspectGenerationPrompt(
 	if (settings === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}
-	const budget = createBudgetedPlan(derivation, settings, options.tokenEstimator);
-	const continuationIntent: GenerationIntent = settings.continuationStrategy === "instruction"
-		? {
-			type: "continuation",
-			strategy: "instruction",
-			instruction: settings.continuationInstruction,
-		}
-		: {
-			type: "continuation",
-			strategy: "assistant-prefill",
-			suffix: settings.continuationPrefillSuffix,
-		};
+	// Inspection and execution compile through the one Generation Plan
+	// Compiler, so the same captured inputs cannot produce drifting plans.
+	// Like Send, the inspected attempt is an ordinary Tail Generation: the
+	// compiled plan carries no Continuation intent, and the impossible-budget
+	// failure is reported instead of thrown.
+	const plan = compileGenerationPlan({
+		human: toCompilerDefinition(derivation.human),
+		model: toCompilerDefinition(derivation.model),
+		history: derivation.history,
+		historyRoles: derivation.historyRoles,
+		settings,
+		// The safe Connection fact resolves before compilation so Request
+		// Overrides are narrowed exactly as an executed attempt would narrow
+		// them.
+		connection: resolveConnectionApiFormat(database, options.connectionSettings),
+		estimator: options.tokenEstimator,
+	});
+	const continuationIntent = continuationIntentFor(settings);
 
 	return {
 		conversationId,
 		playable: true,
-		humanParticipant: derivation.humanParticipant,
-		modelParticipant: derivation.modelParticipant,
-		plan: budget.plan,
+		humanParticipant: { id: derivation.human.id, name: derivation.human.name },
+		modelParticipant: { id: derivation.model.id, name: derivation.model.name },
+		plan: plan.promptPlan,
+		effectiveSettings: plan.effectiveSettings,
 		continuationIntent,
-		tokenEstimate: budget.tokenEstimate,
-		responseBudget: budget.responseBudget,
-		safetyAllowance: budget.safetyAllowance,
-		contextLimit: budget.contextLimit,
-		totalRequiredTokens: budget.totalRequiredTokens,
-		omittedHistory: budget.omittedHistory,
-		budgetFits: budget.fits,
+		tokenEstimate: plan.budget.tokenEstimate,
+		responseBudget: plan.budget.responseBudget,
+		safetyAllowance: plan.budget.safetyAllowance,
+		contextLimit: plan.budget.contextLimit,
+		totalRequiredTokens: plan.budget.totalRequiredTokens,
+		omittedHistory: plan.budget.omittedHistory,
+		budgetFits: plan.budget.fits,
 		tokenEstimateIsApproximate: true,
-		budgetFailure: budget.failure,
+		budgetFailure: plan.budget.failure,
 	};
 }
 
@@ -264,10 +285,10 @@ export async function sendThroughProvisionalTailGeneration(
 		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.promptPlan),
-		promptInspection: promptInspectionJson(capture.budget),
+		promptPlan: promptPlanJson(capture.plan.promptPlan),
+		promptInspection: promptInspectionJson(capture.plan.budget),
 		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.settings),
+		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		provenance: capture.provenance,
 	});
@@ -279,10 +300,10 @@ export async function sendThroughProvisionalTailGeneration(
 	}
 
 	const committed = await runAcceptedGeneration(input, {
-		promptPlan: capture.promptPlan,
+		promptPlan: capture.plan.promptPlan,
 		historyRoles: capture.historyRoles,
-		modelId: capture.settings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.settings),
+		modelId: capture.plan.effectiveSettings.modelId,
+		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
 		connection: capture.connection,
 		signal: input.signal,
 	}, {
@@ -363,10 +384,10 @@ export async function continueGeneration(
 		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.promptPlan),
-		promptInspection: promptInspectionJson(capture.budget),
+		promptPlan: promptPlanJson(capture.plan.promptPlan),
+		promptInspection: promptInspectionJson(capture.plan.budget),
 		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.settings),
+		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		generationIntent: capture.intent,
 		provenance: capture.provenance,
@@ -377,10 +398,10 @@ export async function continueGeneration(
 		// Acceptance is authoritative even when the observing caller disconnects.
 	}
 	const committed = await runAcceptedGeneration(input, {
-		promptPlan: capture.promptPlan,
+		promptPlan: capture.plan.promptPlan,
 		historyRoles: capture.historyRoles,
-		modelId: capture.settings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.settings),
+		modelId: capture.plan.effectiveSettings.modelId,
+		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
 		assistantPrefill: capture.assistantPrefill,
 		connection: capture.connection,
 		signal: input.signal,
@@ -487,10 +508,10 @@ export async function generateSiblingVariant(
 		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.promptPlan),
-		promptInspection: promptInspectionJson(capture.budget),
+		promptPlan: promptPlanJson(capture.plan.promptPlan),
+		promptInspection: promptInspectionJson(capture.plan.budget),
 		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.settings),
+		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		generationIntent: { type: "sibling" },
 		provenance: capture.provenance,
@@ -502,10 +523,10 @@ export async function generateSiblingVariant(
 		// the provider request is being started.
 	}
 	return runAcceptedGeneration(input, {
-		promptPlan: capture.promptPlan,
+		promptPlan: capture.plan.promptPlan,
 		historyRoles: capture.historyRoles,
-		modelId: capture.settings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.settings),
+		modelId: capture.plan.effectiveSettings.modelId,
+		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
 		connection: capture.connection,
 		signal: input.signal,
 	}, {

@@ -1,16 +1,18 @@
 // Model Client input is one exhaustive named projection of the canonical
-// Generation Settings (ADR-0032). The transport seam receives only the
-// settings that shape a provider request: the sampling values, the managed
-// output limit, and Request Overrides. Every other canonical field stays
-// application-owned and is excluded with a stated reason instead of being
-// silently dropped, so adding a canonical field fails the adapter until its
-// participation at the transport boundary is decided.
+// Generation Settings (ADR-0032), taken from the attempt's Effective
+// Generation Settings. The Generation Plan Compiler already decided intent
+// applicability and narrowed Request Overrides to the active API Format, so
+// this seam receives exactly the values DitzyTavern supplies to the selected
+// Model Client adapter. Every other canonical field stays application-owned
+// and is excluded with a stated reason instead of being silently dropped, so
+// adding a canonical field fails the adapter until its participation at the
+// transport boundary is decided.
 
 import {
 	defineGenerationSettingsAdapter,
-	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
+import type { EffectiveGenerationSettings } from "../generation-plan";
 
 // The named Model Client dispositions over the full canonical vocabulary.
 export const modelClientGenerationSettingsAdapter = defineGenerationSettingsAdapter(
@@ -36,17 +38,21 @@ export const modelClientGenerationSettingsAdapter = defineGenerationSettingsAdap
 		},
 		continuationStrategy: {
 			disposition: "excluded",
-			reason: "intent applicability decides the Continuation operands outside transport",
+			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
 		},
 		continuationInstruction: {
 			disposition: "excluded",
-			reason: "intent applicability decides the Continuation operands outside transport",
+			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
 		},
 		continuationPrefillSuffix: {
 			disposition: "excluded",
-			reason: "intent applicability decides the Continuation operands outside transport",
+			reason: "the Generation Plan Compiler resolves intent applicability outside transport",
 		},
-		requestOverrides: { disposition: "projected" },
+		requestOverrides: {
+			disposition: "projected",
+			// The compiler already narrowed this value to the active API Format
+			// namespace; the adapter owns no applicability decision of its own.
+		},
 	},
 );
 
@@ -62,9 +68,10 @@ type ProjectedModelClientSettingsField = {
 }[GenerationSettingsField];
 
 // The Model Client's settings input: exactly the canonical fields the named
-// adapter projects, exactly as the canonical declaration states them.
+// adapter projects, with the Effective values the attempt actually used —
+// Request Overrides arrive as the single active-API-Format namespace object.
 export type ModelClientGenerationSettings = Pick<
-	CanonicalGenerationSettings,
+	EffectiveGenerationSettings,
 	ProjectedModelClientSettingsField
 >;
 
@@ -72,32 +79,32 @@ export type ModelClientGenerationSettings = Pick<
 // field fails typecheck until the projection states where it comes from.
 type ModelClientSettingsProjection = {
 	readonly [K in ProjectedModelClientSettingsField]: (
-		settings: CanonicalGenerationSettings,
-	) => CanonicalGenerationSettings[K];
+		effective: EffectiveGenerationSettings,
+	) => EffectiveGenerationSettings[K];
 };
 
 const projectModelClientSettingsField: ModelClientSettingsProjection = {
-	temperature: (settings) => settings.temperature,
-	topP: (settings) => settings.topP,
-	frequencyPenalty: (settings) => settings.frequencyPenalty,
-	presencePenalty: (settings) => settings.presencePenalty,
-	contextLimit: (settings) => settings.contextLimit,
-	responseBudget: (settings) => settings.responseBudget,
-	requestOverrides: (settings) => settings.requestOverrides,
+	temperature: (effective) => effective.temperature,
+	topP: (effective) => effective.topP,
+	frequencyPenalty: (effective) => effective.frequencyPenalty,
+	presencePenalty: (effective) => effective.presencePenalty,
+	contextLimit: (effective) => effective.contextLimit,
+	responseBudget: (effective) => effective.responseBudget,
+	requestOverrides: (effective) => effective.requestOverrides,
 };
 
-// The one named projection producing Model Client input from the complete
-// canonical Generation Settings. Send, Continue, and Sibling pass their
-// captured settings object through this seam instead of rebuilding
-// anonymous field lists at each workflow.
+// The one named projection producing Model Client input from the attempt's
+// Effective Generation Settings. Send, Continue, and Sibling pass the
+// compiled Generation Plan's effective settings through this seam instead of
+// rebuilding anonymous field lists at each workflow.
 export const projectModelClientGenerationSettings = (
-	settings: CanonicalGenerationSettings,
+	effective: EffectiveGenerationSettings,
 ): ModelClientGenerationSettings => ({
-	temperature: projectModelClientSettingsField.temperature(settings),
-	topP: projectModelClientSettingsField.topP(settings),
-	frequencyPenalty: projectModelClientSettingsField.frequencyPenalty(settings),
-	presencePenalty: projectModelClientSettingsField.presencePenalty(settings),
-	contextLimit: projectModelClientSettingsField.contextLimit(settings),
-	responseBudget: projectModelClientSettingsField.responseBudget(settings),
-	requestOverrides: projectModelClientSettingsField.requestOverrides(settings),
+	temperature: projectModelClientSettingsField.temperature(effective),
+	topP: projectModelClientSettingsField.topP(effective),
+	frequencyPenalty: projectModelClientSettingsField.frequencyPenalty(effective),
+	presencePenalty: projectModelClientSettingsField.presencePenalty(effective),
+	contextLimit: projectModelClientSettingsField.contextLimit(effective),
+	responseBudget: projectModelClientSettingsField.responseBudget(effective),
+	requestOverrides: projectModelClientSettingsField.requestOverrides(effective),
 });

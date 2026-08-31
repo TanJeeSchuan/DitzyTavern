@@ -96,8 +96,9 @@ describe("generation provenance codec", () => {
 	});
 
 	test("captures every retained canonical settings field with its intentional nullability", () => {
+		// The capture consumes the plan's Effective Generation Settings: the
+		// nullable form where an inapplicable operand is already absent.
 		const configured = captureGenerationProvenanceSettings({
-			modelId: "capture-model",
 			temperature: 0.5,
 			topP: 0.9,
 			frequencyPenalty: -1,
@@ -107,9 +108,8 @@ describe("generation provenance codec", () => {
 			safetyAllowance: 64,
 			siblingGenerationLimit: 2,
 			continuationStrategy: "assistant-prefill",
-			continuationInstruction: "Keep the voice.",
+			continuationInstruction: null,
 			continuationPrefillSuffix: "\n",
-			requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
 		});
 
 		// Model identity and Request Overrides are excluded from the retained
@@ -125,13 +125,12 @@ describe("generation provenance codec", () => {
 			safetyAllowance: 64,
 			siblingGenerationLimit: 2,
 			continuationStrategy: "assistant-prefill",
-			continuationInstruction: "Keep the voice.",
+			continuationInstruction: null,
 			continuationPrefillSuffix: "\n",
 		});
 
 		// Unconfigured settings capture as null, never as zero or empty text.
 		const unconfigured = captureGenerationProvenanceSettings({
-			modelId: "capture-model",
 			temperature: null,
 			topP: null,
 			frequencyPenalty: null,
@@ -140,10 +139,9 @@ describe("generation provenance codec", () => {
 			responseBudget: 256,
 			safetyAllowance: 64,
 			siblingGenerationLimit: 2,
-			continuationStrategy: "assistant-prefill",
-			continuationInstruction: "Keep the voice.",
-			continuationPrefillSuffix: "\n",
-			requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
+			continuationStrategy: null,
+			continuationInstruction: null,
+			continuationPrefillSuffix: null,
 		});
 		expect(unconfigured.temperature).toBeNull();
 		expect(unconfigured.safetyAllowance).toBe(64);

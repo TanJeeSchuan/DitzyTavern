@@ -605,6 +605,7 @@ export class GenerationCoordinator {
 				settingsRevision: settings.revision,
 				backend: "ai-sdk",
 				adapter: profile.adapter,
+				apiFormat: profile.apiFormat,
 			},
 		};
 	}

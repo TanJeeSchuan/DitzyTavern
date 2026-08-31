@@ -13,7 +13,11 @@ import {
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import { createFakeModelClient } from "../model-client";
-import { generateSiblingVariant, startServerOwnedSiblingGeneration } from ".";
+import {
+	generateSiblingVariant,
+	sendThroughProvisionalTailGeneration,
+	startServerOwnedSiblingGeneration,
+} from ".";
 import { generateTerminalTailFixture } from "./generate";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
@@ -526,6 +530,62 @@ describe("Historical sibling Variant generation", () => {
 		// Acceptance and terminal removal are both authoritative lifecycle
 		// transitions even though no durable Variant remains.
 		expect(after?.revision).toBe(before.revision + 2);
+	});
+
+	test("records no applicable Continuation operand in sibling provenance", async () => {
+		const module = createConversationModule(database);
+		const configured = module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 32768,
+					responseBudget: 1024,
+					continuationStrategy: "assistant-prefill",
+					continuationInstruction: "Unused by a Sibling attempt.",
+					continuationPrefillSuffix: "\n",
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		const { modelMessageId: targetId } = await sendThroughProvisionalTailGeneration(
+			database,
+			{
+				conversationId: conversation.id,
+				expectedRevision: configured.revision,
+				content: "Human context before target.",
+				modelClient: fakeModelClient(() => "Target model output."),
+			},
+		);
+		const sibling = await generateSiblingVariant(database, {
+			conversationId: conversation.id,
+			messageId: targetId,
+			modelClient: fakeModelClient(() => "Sibling model output."),
+		});
+		const target = sibling.messages.find((message) => message.id === targetId);
+		const variant = target?.variants.at(-1);
+		if (target === undefined || variant === undefined) throw new Error("Variant missing.");
+		// A Sibling attempt never continues anything: the Continuation group is
+		// absent from its provenance even though the settings configured one.
+		expect(module.readVariantDetails(
+			conversation.id,
+			target.id,
+			variant.id,
+		)?.provenance?.generationSettings).toMatchObject({
+			continuationStrategy: null,
+			continuationInstruction: null,
+			continuationPrefillSuffix: null,
+		});
 	});
 
 	test("a sibling transport failure preserves visible partial output as interrupted", async () => {

@@ -17,14 +17,19 @@ import {
 import type { ConversationGenerationSettings } from "../conversation";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
-	assertPromptBudget,
-	budgetPromptPlan,
-	compilePrompt,
-	type PromptBudgetResult,
-	type PromptHistoryEntry,
-	type PromptPlan,
-	type GenerationIntent,
-	type TokenEstimator,
+	assertGenerationPlan,
+	compileGenerationPlan,
+	continuationIntentFor,
+	type EffectiveGenerationSettings,
+	type GenerationConnectionFacts,
+	type GenerationPlan,
+} from "../generation-plan";
+import type {
+	GenerationIntent,
+	PromptBudgetResult,
+	PromptHistoryEntry,
+	PromptPlan,
+	TokenEstimator,
 } from "../prompt-compiler";
 import {
 	createConnectionSettingsModule,
@@ -44,12 +49,12 @@ import {
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
 
-// Generation-start capture: from one authoritative Conversation snapshot this
-// module derives the provider-neutral Prompt Plan, the budgeted plan, the
-// captured participants and Control pair, and the settings/connection/
-// provenance records that every server-owned Generation persists at start.
-// The workflow entry points consume these captures; nothing here contacts a
-// transport or mutates Conversation state.
+// Generation-start capture: from one authoritative Conversation snapshot and
+// the captured configuration this module derives the complete Generation Plan
+// through the one Generation Plan Compiler, together with the captured
+// participants and Control pair and the provenance record every server-owned
+// Generation persists at start. The workflow entry points consume these
+// captures; nothing here contacts a transport or mutates Conversation state.
 
 export interface ParticipantPreview {
 	id: number;
@@ -57,13 +62,10 @@ export interface ParticipantPreview {
 }
 
 interface GenerationDerivation {
-	plan: PromptPlan;
+	human: CastParticipantSnapshot;
+	model: CastParticipantSnapshot;
 	history: readonly PromptHistoryEntry[];
 	historyRoles: readonly ("human" | "model" | null)[];
-	humanParticipant: ParticipantPreview;
-	modelParticipant: ParticipantPreview;
-	compile: (history: readonly PromptHistoryEntry[]) => PromptPlan;
-	protectedHistoryIndex?: number;
 }
 
 interface SelectedHistory {
@@ -121,24 +123,16 @@ export const deriveGeneration = (
 	}
 
 	const selectedHistory = selectedHistoryFrom(snapshot, human.id, model.id);
-	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
-		human: toCompilerDefinition(human),
-		model: toCompilerDefinition(model),
-		history,
-	});
-	const plan = compile(selectedHistory.entries);
 
 	return {
-		plan,
+		human,
+		model,
 		history: selectedHistory.entries,
 		historyRoles: selectedHistory.roles,
-		humanParticipant: { id: human.id, name: human.name },
-		modelParticipant: { id: model.id, name: model.name },
-		compile,
 	};
 };
 
-const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
+export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	name: participant.name,
 	prompt: {
 		systemInstruction: participant.prompt.systemInstruction,
@@ -149,18 +143,28 @@ const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	},
 });
 
-export interface GenerationSettingsCapture {
+// Safe Connection resolution for inspection: the active Profile's API Format
+// fact only, resolved before compilation so Request Overrides narrow exactly
+// as an executed attempt would narrow them.
+export const resolveConnectionApiFormat = (
+	database: Database,
+	options: ConnectionSettingsModuleOptions | undefined,
+): GenerationConnectionFacts | null => {
+	const connection = resolveConnectionSnapshot(database, options);
+	return connection === null ? null : { apiFormat: connection.apiFormat };
+};
+
+interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
 	connection: ModelClientConnectionSnapshot | null;
-	provenance: ConversationDataEntry;
 }
 
-function captureGenerationSettings(
+function captureConfiguration(
 	database: Database,
 	conversationId: number,
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-): GenerationSettingsCapture {
+): AttemptConfiguration {
 	const conversation = createConversationModule(database);
 	const settings = conversation.getGenerationSettings(conversationId);
 	if (settings === undefined) {
@@ -169,33 +173,39 @@ function captureGenerationSettings(
 	const capturedConnection = connection === undefined
 		? resolveConnectionSnapshot(database, connectionSettingsOptions)
 		: connection;
+	return { settings, connection: capturedConnection };
+}
+
+// The retained provenance record: safe connection identity, model identity,
+// and the attempt's Effective Generation Settings. The exhaustive provenance
+// capture adapter projects exactly the settings that participated — an
+// intent-inapplicable Continuation operand is already absent from the plan —
+// and Request Overrides are never retained.
+const generationProvenanceEntry = (
+	plan: GenerationPlan,
+	connection: ModelClientConnectionSnapshot | null,
+): ConversationDataEntry => {
 	const provenanceRecord: GenerationProvenanceRecord = {
-		connectionProfileId: capturedConnection?.profileId ?? null,
-		connectionSettingsRevision: capturedConnection?.settingsRevision ?? null,
-		modelBackend: capturedConnection?.backend ?? null,
-		adapter: capturedConnection?.adapter ?? null,
-		modelId: settings.modelId,
-		// The retained settings projection is the exhaustive provenance capture
-		// adapter: every canonical field it declares participates, with its
-		// intentional nullability, and model identity stays at the record's top
-		// level beside the connection identity.
-		generationSettings: captureGenerationProvenanceSettings(settings),
+		connectionProfileId: connection?.profileId ?? null,
+		connectionSettingsRevision: connection?.settingsRevision ?? null,
+		modelBackend: connection?.backend ?? null,
+		adapter: connection?.adapter ?? null,
+		modelId: plan.effectiveSettings.modelId,
+		generationSettings: captureGenerationProvenanceSettings(plan.effectiveSettings),
 		usage: null,
 		finishReason: null,
 		status: null,
 		interruptionCause: null,
 	};
-	const provenance = {
+	return {
 		namespace: "generation",
 		key: "provenance",
 		value: generationProvenanceCodec.encode(provenanceRecord),
 	} satisfies ConversationDataEntry;
-	return { settings, connection: capturedConnection, provenance };
-}
+};
 
 interface CapturedGeneration {
-	readonly promptPlan: PromptPlan;
-	readonly budget: PromptBudgetResult;
+	readonly plan: GenerationPlan;
 	readonly historyRoles: readonly ("human" | "model" | null)[];
 	readonly humanParticipant: ParticipantPreview;
 	readonly author: {
@@ -206,36 +216,33 @@ interface CapturedGeneration {
 		readonly humanParticipantId: number;
 		readonly modelParticipantId: number;
 	};
-	readonly settings: ConversationGenerationSettings;
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly provenance: ConversationDataEntry;
 }
 
 /**
  * Assemble the shared Generation-start capture every lifecycle builds: the
- * budgeted plan, the retained history roles, the Control pair, the model
- * author stamp, and the settings/connection/provenance captures.
+ * complete compiled Generation Plan, the retained history roles, the Control
+ * pair, the model author stamp, and the provenance capture.
  */
 const toCapturedGeneration = (
 	derivation: GenerationDerivation,
-	settingsCapture: GenerationSettingsCapture,
-	budget: PromptBudgetResult,
+	configuration: AttemptConfiguration,
+	plan: GenerationPlan,
 ): CapturedGeneration => ({
-	promptPlan: budget.plan,
-	budget,
-	historyRoles: budget.retainedHistoryRoles,
-	humanParticipant: derivation.humanParticipant,
+	plan,
+	historyRoles: plan.budget.retainedHistoryRoles,
+	humanParticipant: { id: derivation.human.id, name: derivation.human.name },
 	author: {
-		participantId: derivation.modelParticipant.id,
-		capturedName: derivation.modelParticipant.name,
+		participantId: derivation.model.id,
+		capturedName: derivation.model.name,
 	},
 	control: {
-		humanParticipantId: derivation.humanParticipant.id,
-		modelParticipantId: derivation.modelParticipant.id,
+		humanParticipantId: derivation.human.id,
+		modelParticipantId: derivation.model.id,
 	},
-	settings: settingsCapture.settings,
-	connection: settingsCapture.connection,
-	provenance: settingsCapture.provenance,
+	connection: configuration.connection,
+	provenance: generationProvenanceEntry(plan, configuration.connection),
 });
 
 function resolveConnectionSnapshot(
@@ -253,25 +260,8 @@ function resolveConnectionSnapshot(
 		settingsRevision: settings.revision,
 		backend: "ai-sdk",
 		adapter: profile.adapter,
+		apiFormat: profile.apiFormat,
 	};
-}
-
-export function createBudgetedPlan(
-	derivation: GenerationDerivation,
-	settings: ConversationGenerationSettings,
-	estimator?: TokenEstimator,
-): PromptBudgetResult {
-	return budgetPromptPlan({
-		plan: derivation.plan,
-		compile: derivation.compile,
-		history: derivation.history,
-		historyRoles: derivation.historyRoles,
-		contextLimit: settings.contextLimit,
-		responseBudget: settings.responseBudget,
-		safetyAllowance: settings.safetyAllowance,
-		estimator,
-		protectedHistoryIndex: derivation.protectedHistoryIndex,
-	});
 }
 
 // Active Generation persistence stores only a closed JSON projection of the
@@ -292,11 +282,13 @@ export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
 	return plan.intent === undefined ? result : { ...result, intent: plan.intent };
 };
 
-// Active Generation persistence stores the complete captured Generation
+// Active Generation persistence stores the attempt's Effective Generation
 // Settings for inspection. The projection is compile-locked to the canonical
 // vocabulary: adding a canonical field fails typecheck until persistence
 // states what it stores — the completeness gap that previously let the
-// Safety allowance silently disappear from active inspection.
+// Safety allowance silently disappear from active inspection. The stored
+// values describe the attempt: an intent-inapplicable Continuation operand
+// is stored as null, never as the configured-but-unused value.
 export type PersistedGenerationSettings = {
 	readonly [K in GenerationSettingsField]: ConversationJsonValue;
 };
@@ -323,21 +315,21 @@ export const activeGenerationSettingsAdapter = defineGenerationSettingsAdapter(
 );
 
 export const generationSettingsJson = (
-	settings: ConversationGenerationSettings,
+	effective: EffectiveGenerationSettings,
 ): PersistedGenerationSettings => ({
-	modelId: settings.modelId,
-	siblingGenerationLimit: settings.siblingGenerationLimit,
-	temperature: settings.temperature,
-	topP: settings.topP,
-	frequencyPenalty: settings.frequencyPenalty,
-	presencePenalty: settings.presencePenalty,
-	contextLimit: settings.contextLimit,
-	responseBudget: settings.responseBudget,
-	safetyAllowance: settings.safetyAllowance,
-	continuationStrategy: settings.continuationStrategy,
-	continuationInstruction: settings.continuationInstruction,
-	continuationPrefillSuffix: settings.continuationPrefillSuffix,
-	requestOverrides: settings.requestOverrides,
+	modelId: effective.modelId,
+	siblingGenerationLimit: effective.siblingGenerationLimit,
+	temperature: effective.temperature,
+	topP: effective.topP,
+	frequencyPenalty: effective.frequencyPenalty,
+	presencePenalty: effective.presencePenalty,
+	contextLimit: effective.contextLimit,
+	responseBudget: effective.responseBudget,
+	safetyAllowance: effective.safetyAllowance,
+	continuationStrategy: effective.continuationStrategy,
+	continuationInstruction: effective.continuationInstruction,
+	continuationPrefillSuffix: effective.continuationPrefillSuffix,
+	requestOverrides: effective.requestOverrides,
 });
 
 export const connectionJson = (
@@ -349,6 +341,7 @@ export const connectionJson = (
 			settingsRevision: connection.settingsRevision,
 			backend: connection.backend,
 			adapter: connection.adapter,
+			apiFormat: connection.apiFormat,
 		};
 
 // Active inspection keeps the exact budget decision made at Generation
@@ -382,7 +375,7 @@ export function captureSendGeneration(
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
 ): SendGenerationCapture {
-	const settingsCapture = captureGenerationSettings(
+	const configuration = captureConfiguration(
 		database,
 		snapshot.id,
 		connection,
@@ -394,31 +387,32 @@ export function captureSendGeneration(
 	const latest = snapshot.messages.at(-1);
 	const latestSelected = latest?.variants.find((variant) => variant.selected);
 	const reuseHumanMessageId = latest !== undefined &&
-		latest.author?.participantId === derivation.humanParticipant.id &&
+		latest.author?.participantId === derivation.human.id &&
 		latestSelected?.content === content
 		? latest.id
 		: undefined;
 	const history = reuseHumanMessageId === undefined
 		? [...derivation.history, {
-			speakerName: derivation.humanParticipant.name,
+			speakerName: derivation.human.name,
 			content,
 		}]
 		: derivation.history;
 	const historyRoles = reuseHumanMessageId === undefined
 		? [...derivation.historyRoles, "human" as const]
 		: derivation.historyRoles;
-	const plan = derivation.compile(history);
-	const candidate: GenerationDerivation = {
-		...derivation,
-		plan,
+	// An ordinary Tail Generation carries no Continuation intent, so the
+	// compiled plan has no applicable Continuation operand either.
+	const plan = assertGenerationPlan(compileGenerationPlan({
+		human: toCompilerDefinition(derivation.human),
+		model: toCompilerDefinition(derivation.model),
 		history,
 		historyRoles,
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(candidate, settingsCapture.settings, tokenEstimator),
-	);
+		settings: configuration.settings,
+		connection: configuration.connection,
+		estimator: tokenEstimator,
+	}));
 	return {
-		...toCapturedGeneration(derivation, settingsCapture, budget),
+		...toCapturedGeneration(derivation, configuration, plan),
 		humanContent: content,
 		reuseHumanMessageId,
 	};
@@ -478,78 +472,66 @@ export function captureContinuationGeneration(
 	}
 	const derivation = deriveGeneration(snapshot);
 	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-	const settingsCapture = captureGenerationSettings(
+	const configuration = captureConfiguration(
 		database,
 		snapshot.id,
 		connection,
 		connectionSettingsOptions,
 	);
-	if (settingsCapture.settings.continuationStrategy !== "instruction") {
+	if (configuration.settings.continuationStrategy !== "instruction") {
 		if (selected.content.length === 0) {
 			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
 		}
 	}
-	const intent: GenerationIntent = settingsCapture.settings.continuationStrategy === "instruction"
-		? {
-			type: "continuation",
-			strategy: "instruction",
-			instruction: settingsCapture.settings.continuationInstruction,
-		}
-		: {
-			type: "continuation",
-			strategy: "assistant-prefill",
-			suffix: settingsCapture.settings.continuationPrefillSuffix,
-		};
-	const compile = (history: readonly PromptHistoryEntry[]) => ({
-		...derivation.compile(history),
-		intent,
-	});
+	const intent = continuationIntentFor(configuration.settings);
 	// A prior model Message can have been authored by the Participant who held
 	// model Control at that time. Preserve that role in the continuation's
 	// provider input even when the current model Control has moved on.
 	const continuationHistory = selectedHistoryFrom(
 		snapshot,
-		derivation.humanParticipant.id,
-		derivation.modelParticipant.id,
+		derivation.human.id,
+		derivation.model.id,
 		undefined,
 		(message) => {
 			const authorId = message.author?.participantId;
 			if (
 				message.historicalContext?.modelParticipantId === authorId ||
-				authorId === derivation.modelParticipant.id
+				authorId === derivation.model.id
 			) {
 				return "model";
 			}
 			if (
 				message.historicalContext?.humanParticipantId === authorId ||
-				authorId === derivation.humanParticipant.id
+				authorId === derivation.human.id
 			) {
 				return "human";
 			}
 			return null;
 		},
 	);
-	const continuationDerivation: GenerationDerivation = {
-		...derivation,
+	// The compiler owns intent applicability: an assistant-prefill Continuation
+	// protects its prefixed model text, an instruction Continuation protects
+	// the latest human entry, and the effective settings retain exactly the
+	// applicable Continuation operand.
+	const plan = assertGenerationPlan(compileGenerationPlan({
+		human: toCompilerDefinition(derivation.human),
+		model: toCompilerDefinition(derivation.model),
+		history: continuationHistory.entries,
 		historyRoles: continuationHistory.roles,
-		plan: compile(derivation.history),
-		compile,
-		protectedHistoryIndex: settingsCapture.settings.continuationStrategy === "assistant-prefill"
-			? continuationHistory.entries.length - 1
-			: undefined,
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(continuationDerivation, settingsCapture.settings, tokenEstimator),
-	);
+		intent,
+		settings: configuration.settings,
+		connection: configuration.connection,
+		estimator: tokenEstimator,
+	}));
 	return {
-		...toCapturedGeneration(continuationDerivation, settingsCapture, budget),
+		...toCapturedGeneration(derivation, configuration, plan),
 		precedingMessageId: latest.id,
 		precedingVariantId: selected.id,
 		intent,
-		assistantPrefill: settingsCapture.settings.continuationStrategy === "assistant-prefill"
+		assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
 			? {
 				prefix: selected.content,
-				suffix: settingsCapture.settings.continuationPrefillSuffix,
+				suffix: configuration.settings.continuationPrefillSuffix,
 			}
 			: undefined,
 	};
@@ -616,20 +598,11 @@ const deriveSiblingDerivation = (
 	// The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
-	const compile = (history: readonly PromptHistoryEntry[]) => compilePrompt({
-		human: toCompilerDefinition(human),
-		model: toCompilerDefinition(model),
-		history,
-	});
-	const plan = compile(selectedHistory.entries);
-
 	return {
-		plan,
+		human,
+		model,
 		history: selectedHistory.entries,
 		historyRoles: selectedHistory.roles,
-		humanParticipant: { id: human.id, name: human.name },
-		modelParticipant: { id: model.id, name: model.name },
-		compile,
 	};
 };
 
@@ -648,23 +621,28 @@ export function captureSiblingGeneration(
 	},
 ): SiblingGenerationCapture {
 	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
-	const settingsCapture = captureGenerationSettings(
+	const configuration = captureConfiguration(
 		database,
 		snapshot.id,
 		input.connection,
 		input.connectionSettings,
 	);
-	const siblingDerivation: GenerationDerivation = {
-		...derivation,
-		plan: { ...derivation.plan, intent: { type: "sibling" } },
-	};
-	const budget = assertPromptBudget(
-		createBudgetedPlan(siblingDerivation, settingsCapture.settings, input.tokenEstimator),
-	);
+	// A Sibling Generation carries the sibling intent and no applicable
+	// Continuation operand.
+	const plan = assertGenerationPlan(compileGenerationPlan({
+		human: toCompilerDefinition(derivation.human),
+		model: toCompilerDefinition(derivation.model),
+		history: derivation.history,
+		historyRoles: derivation.historyRoles,
+		intent: { type: "sibling" },
+		settings: configuration.settings,
+		connection: configuration.connection,
+		estimator: input.tokenEstimator,
+	}));
 	const target = snapshot.messages.find((message) => message.id === input.messageId);
 	const priorVariantId = target?.variants.find((variant) => variant.selected)?.id ?? null;
 	return {
-		...toCapturedGeneration(siblingDerivation, settingsCapture, budget),
+		...toCapturedGeneration(derivation, configuration, plan),
 		priorVariantId,
 	};
 }

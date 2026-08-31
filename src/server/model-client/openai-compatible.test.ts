@@ -28,17 +28,15 @@ const settings = {
 	presencePenalty: null,
 	contextLimit: 100,
 	responseBudget: 42,
+	// The Model Client input receives the Request Overrides already narrowed
+	// to the active API Format namespace by the Generation Plan Compiler.
 	requestOverrides: {
-		"chat-completions": {
-			messages: [{ role: "system", content: "blocked" }],
-			model: "blocked",
-			stream: false,
-			n: 2,
-			max_tokens: 900,
-			provider_extension: { enabled: true },
-		},
-		responses: {},
-		"anthropic-messages": {},
+		messages: [{ role: "system", content: "blocked" }],
+		model: "blocked",
+		stream: false,
+		n: 2,
+		max_tokens: 900,
+		provider_extension: { enabled: true },
 	},
 };
 
@@ -193,10 +191,7 @@ describe("OpenAI Compatible Model Client", () => {
 				...settings,
 				requestOverrides: {
 					...settings.requestOverrides,
-					"chat-completions": {
-						...settings.requestOverrides["chat-completions"],
-						tools: [],
-					},
+					tools: [],
 				},
 			},
 		})).rejects.toMatchObject({

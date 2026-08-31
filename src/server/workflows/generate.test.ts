@@ -17,6 +17,7 @@ import {
 } from "../prompt-compiler";
 import {
 	createFakeModelClient,
+	projectModelClientGenerationSettings,
 	type ModelClientGenerationInput,
 } from "../model-client";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -714,6 +715,94 @@ describe("Generation capture and terminal fixture support", () => {
 		expect(provenance.value).not.toContain("credential-never-stored-in-provenance");
 		expect(provenance.value).not.toContain("api.deepseek.com");
 		expect(updatedConversation.revision).toBe(1);
+	});
+
+	test("supplies only the active API Format's Request Overrides and matches the inspected effective settings", async () => {
+		const key = new Uint8Array(32).fill(23);
+		const settingsModule = createConnectionSettingsModule(database, { masterKey: key });
+		settingsModule.createProfile({
+			expectedRevision: 0,
+			profile: {
+				displayName: "Chat Completions",
+				apiFormat: "chat-completions" as const,
+				requestUrl: "https://api.example.invalid/v1/",
+				modelsUrl: "https://api.example.invalid/models",
+				modelBackend: "automatic" as const,
+				adapter: "deepseek" as const,
+				outputTokenRepresentation: "automatic" as const,
+				timeoutMs: null,
+				pinnedModels: [],
+			},
+		});
+		const conversation = createConversationModule(database);
+		conversation.execute({
+			conversationId,
+			expectedRevision: 0,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "override-model",
+					temperature: 0.25,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 8192,
+					responseBudget: 128,
+					requestOverrides: {
+						"chat-completions": { logit_bias: { "50256": -100 } },
+						responses: { metadata: { workspace: "responses-only" } },
+						"anthropic-messages": { metadata: { workspace: "anthropic-only" } },
+					},
+				},
+			},
+		});
+
+		// Inspection resolves the same safe Connection fact before compilation.
+		const inspection = inspectGenerationPrompt(database, conversationId, {
+			connectionSettings: { masterKey: key },
+		});
+		if (inspection.effectiveSettings === null) throw new Error("Expected effective settings.");
+
+		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
+		const committed = await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: 1,
+			content: "Send with narrowed overrides.",
+			connectionSettings: { masterKey: key },
+			modelClient: createFakeModelClient((input) => {
+				receivedSettings = input.generationSettings;
+				return "Narrowed overrides output.";
+			}),
+		});
+
+		// Only the active API Format namespace reaches the Model Client input;
+		// the inactive namespaces stay editable and are never transmitted.
+		if (receivedSettings === undefined) throw new Error("Expected the Model Client input.");
+		expect(receivedSettings.requestOverrides).toEqual({ logit_bias: { "50256": -100 } });
+		// Inspection and execution produce equivalent plans from the same
+		// captured inputs.
+		expect(projectModelClientGenerationSettings(inspection.effectiveSettings))
+			.toEqual(receivedSettings);
+
+		const message = committed.conversation.messages.at(-1);
+		const variant = message?.variants[0];
+		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
+		const provenance = variant.data.find(
+			(entry) => entry.namespace === "generation" && entry.key === "provenance",
+		);
+		if (provenance === undefined) throw new Error("Generation provenance missing.");
+		// SAFETY: the provenance value was written by the workflow immediately
+		// above and this test reads only its retained settings projection.
+		const parsed = JSON.parse(provenance.value) as {
+			generationSettings: { continuationStrategy: string | null };
+		};
+		// A Tail attempt records no applicable Continuation strategy operand.
+		expect(parsed.generationSettings.continuationStrategy).toBeNull();
+		// Provenance is a positive allow-list: no Request Overrides namespace is
+		// retained at all.
+		expect(provenance.value).not.toContain("responses-only");
+		expect(provenance.value).not.toContain("anthropic-only");
+		expect(provenance.value).not.toContain("logit_bias");
 	});
 
 	test("stores independent safe settings provenance for sibling Variants", async () => {

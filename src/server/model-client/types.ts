@@ -9,6 +9,7 @@
 // SSE seam publishes and every client decodes, so the Model Client, the
 // server, and the client can never drift into parallel shape declarations.
 import type { PromptPlan } from "../prompt-compiler";
+import type { ConnectionApiFormat } from "../connection-settings/types";
 import type {
 	GenerationEvent,
 	GenerationFailureKind,
@@ -60,11 +61,14 @@ export type { ModelClientGenerationSettings };
 
 // Safe connection identity only. URLs, credentials, and custom header values
 // are intentionally absent so this shape is safe for events and provenance.
+// The API Format is a safe closed-literal fact: Generation Plan compilation
+// consumes it to select the applicable Request Overrides namespace.
 export interface ModelClientConnectionSnapshot {
 	profileId: number;
 	settingsRevision: number;
 	backend: string;
 	adapter: string;
+	apiFormat: ConnectionApiFormat;
 }
 
 export interface ModelClient {

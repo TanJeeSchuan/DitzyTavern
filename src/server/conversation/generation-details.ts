@@ -48,6 +48,7 @@ interface SafeConnection {
 	settingsRevision: number | null;
 	backend: string | null;
 	adapter: string | null;
+	apiFormat: string | null;
 }
 
 const safeConnection = (value: ConversationJsonValue): SafeConnection => {
@@ -57,6 +58,7 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 		settingsRevision: finiteInteger(source?.settingsRevision),
 		backend: nullableString(source?.backend),
 		adapter: nullableString(source?.adapter),
+		apiFormat: nullableString(source?.apiFormat),
 	};
 };
 

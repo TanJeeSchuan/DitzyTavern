@@ -25,11 +25,9 @@ const generationSettings = {
 	presencePenalty: null,
 	contextLimit: 32768,
 	responseBudget: 64,
-	requestOverrides: {
-		"chat-completions": { custom_field: "kept" },
-		responses: {},
-		"anthropic-messages": {},
-	},
+	// The Model Client input receives the Request Overrides already narrowed
+	// to the active API Format namespace by the Generation Plan Compiler.
+	requestOverrides: { custom_field: "kept" },
 };
 
 interface CapturedBody {

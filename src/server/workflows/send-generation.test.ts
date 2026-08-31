@@ -211,7 +211,7 @@ describe("Send through provisional Tail Generation", () => {
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
 
-	test("persists the complete captured settings so active inspection retains the Safety allowance", async () => {
+	test("persists the attempt's Effective Generation Settings so active inspection retains the Safety allowance", async () => {
 		const conversation = createConversationModule(database);
 		conversation.execute({
 			conversationId,
@@ -227,9 +227,12 @@ describe("Send through provisional Tail Generation", () => {
 					contextLimit: 8192,
 					responseBudget: 256,
 					safetyAllowance: 777,
+					continuationStrategy: "assistant-prefill",
+					continuationInstruction: "Never used by this Tail attempt.",
+					continuationPrefillSuffix: "\n",
 					requestOverrides: {
-						"chat-completions": {},
-						responses: {},
+						"chat-completions": { provider_extension: { enabled: true } },
+						responses: { metadata: { unused: true } },
 						"anthropic-messages": {},
 					},
 				},
@@ -254,9 +257,11 @@ describe("Send through provisional Tail Generation", () => {
 			},
 		});
 
-		// The workflow persisted the complete settings snapshot at acceptance;
-		// active inspection must decode the Safety allowance and every other
-		// canonical field instead of silently reporting it as absent.
+		// The workflow persisted the attempt's Effective Generation Settings at
+		// acceptance: every participating value is retained (including the
+		// Safety allowance), while the Continuation group has no applicable
+		// operand for a Tail attempt. Active inspection re-exposes only safe
+		// settings and never Request Overrides.
 		const details = createConversationModule(database).readActiveGenerationDetails(
 			conversationId,
 			generationId ?? -1,
@@ -271,10 +276,9 @@ describe("Send through provisional Tail Generation", () => {
 			responseBudget: 256,
 			safetyAllowance: 777,
 			siblingGenerationLimit: 4,
-			continuationStrategy: "instruction",
-			continuationInstruction:
-				"Continue the narrative naturally without repeating the previous text.",
-			continuationPrefillSuffix: "",
+			continuationStrategy: null,
+			continuationInstruction: null,
+			continuationPrefillSuffix: null,
 		});
 		expect(details?.budget.safetyAllowance).toBe(777);
 

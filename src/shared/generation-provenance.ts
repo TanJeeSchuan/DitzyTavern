@@ -100,43 +100,45 @@ export const generationProvenanceSettingsAdapter = defineGenerationSettingsAdapt
 	},
 );
 
-// The retained value for each provenance field, captured from validated
-// canonical settings. Compile-locked: adding a retained canonical field
-// fails typecheck until the capture states its value.
+// The retained value for each provenance field, captured from the plan's
+// Effective Generation Settings: the nullable form a Generation attempt
+// actually produces, where an intent-inapplicable Continuation operand is
+// already absent. Compile-locked: adding a retained canonical field fails
+// typecheck until the capture states its value.
 type ProvenanceSettingsCapture = {
 	readonly [K in ProvenanceSettingsField]: (
-		settings: CanonicalGenerationSettings,
-	) => CanonicalGenerationSettings[K];
+		effective: GenerationProvenanceSettings,
+	) => GenerationProvenanceSettings[K];
 };
 
 const captureProvenanceSettingsField: ProvenanceSettingsCapture = {
-	temperature: (settings) => settings.temperature,
-	topP: (settings) => settings.topP,
-	frequencyPenalty: (settings) => settings.frequencyPenalty,
-	presencePenalty: (settings) => settings.presencePenalty,
-	contextLimit: (settings) => settings.contextLimit,
-	responseBudget: (settings) => settings.responseBudget,
-	safetyAllowance: (settings) => settings.safetyAllowance,
-	siblingGenerationLimit: (settings) => settings.siblingGenerationLimit,
-	continuationStrategy: (settings) => settings.continuationStrategy,
-	continuationInstruction: (settings) => settings.continuationInstruction,
-	continuationPrefillSuffix: (settings) => settings.continuationPrefillSuffix,
+	temperature: (effective) => effective.temperature,
+	topP: (effective) => effective.topP,
+	frequencyPenalty: (effective) => effective.frequencyPenalty,
+	presencePenalty: (effective) => effective.presencePenalty,
+	contextLimit: (effective) => effective.contextLimit,
+	responseBudget: (effective) => effective.responseBudget,
+	safetyAllowance: (effective) => effective.safetyAllowance,
+	siblingGenerationLimit: (effective) => effective.siblingGenerationLimit,
+	continuationStrategy: (effective) => effective.continuationStrategy,
+	continuationInstruction: (effective) => effective.continuationInstruction,
+	continuationPrefillSuffix: (effective) => effective.continuationPrefillSuffix,
 };
 
 export const captureGenerationProvenanceSettings = (
-	settings: CanonicalGenerationSettings,
+	effective: GenerationProvenanceSettings,
 ): GenerationProvenanceSettings => ({
-	temperature: captureProvenanceSettingsField.temperature(settings),
-	topP: captureProvenanceSettingsField.topP(settings),
-	frequencyPenalty: captureProvenanceSettingsField.frequencyPenalty(settings),
-	presencePenalty: captureProvenanceSettingsField.presencePenalty(settings),
-	contextLimit: captureProvenanceSettingsField.contextLimit(settings),
-	responseBudget: captureProvenanceSettingsField.responseBudget(settings),
-	safetyAllowance: captureProvenanceSettingsField.safetyAllowance(settings),
-	siblingGenerationLimit: captureProvenanceSettingsField.siblingGenerationLimit(settings),
-	continuationStrategy: captureProvenanceSettingsField.continuationStrategy(settings),
-	continuationInstruction: captureProvenanceSettingsField.continuationInstruction(settings),
-	continuationPrefillSuffix: captureProvenanceSettingsField.continuationPrefillSuffix(settings),
+	temperature: captureProvenanceSettingsField.temperature(effective),
+	topP: captureProvenanceSettingsField.topP(effective),
+	frequencyPenalty: captureProvenanceSettingsField.frequencyPenalty(effective),
+	presencePenalty: captureProvenanceSettingsField.presencePenalty(effective),
+	contextLimit: captureProvenanceSettingsField.contextLimit(effective),
+	responseBudget: captureProvenanceSettingsField.responseBudget(effective),
+	safetyAllowance: captureProvenanceSettingsField.safetyAllowance(effective),
+	siblingGenerationLimit: captureProvenanceSettingsField.siblingGenerationLimit(effective),
+	continuationStrategy: captureProvenanceSettingsField.continuationStrategy(effective),
+	continuationInstruction: captureProvenanceSettingsField.continuationInstruction(effective),
+	continuationPrefillSuffix: captureProvenanceSettingsField.continuationPrefillSuffix(effective),
 });
 
 export type GenerationUsage = Record<string, number>;

@@ -241,6 +241,78 @@ describe("Continuation Generation", () => {
 		expect(result.conversation.messages[1]?.variants[0]?.content).toBe("A new continuation.");
 	});
 
+	test("retains only the applicable Continuation operand in provenance", async () => {
+		// The default instruction strategy: the instruction is used, the Prefill
+		// suffix never applies.
+		const before = createConversationModule(database).getSnapshot(conversationId);
+		if (before === undefined) throw new Error("Missing Conversation.");
+		const result = await continueGeneration(database, {
+			conversationId,
+			expectedRevision: before.revision,
+			modelClient: createFakeModelClient(() => "The next scene begins."),
+		});
+		const message = result.conversation.messages.at(-1);
+		const variant = message?.variants[0];
+		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
+		expect(createConversationModule(database).readVariantDetails(
+			conversationId,
+			message.id,
+			variant.id,
+		)?.provenance?.generationSettings).toMatchObject({
+			continuationStrategy: "instruction",
+			continuationInstruction:
+				"Continue the narrative naturally without repeating the previous text.",
+			continuationPrefillSuffix: null,
+		});
+	});
+
+	test("retains only the Prefill suffix for an assistant-prefill Continuation", async () => {
+		const module = createConversationModule(database);
+		const before = module.getSnapshot(conversationId);
+		if (before === undefined) throw new Error("Missing Conversation.");
+		const configured = module.execute({
+			conversationId,
+			expectedRevision: before.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "deepseek-chat",
+					temperature: null,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 32768,
+					responseBudget: 1024,
+					continuationStrategy: "assistant-prefill",
+					continuationInstruction: "This instruction is not applicable.",
+					continuationPrefillSuffix: "\n",
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+		const result = await continueGeneration(database, {
+			conversationId,
+			expectedRevision: configured.revision,
+			modelClient: createFakeModelClient(() => "A prefilled continuation."),
+		});
+		const message = result.conversation.messages.at(-1);
+		const variant = message?.variants[0];
+		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
+		expect(createConversationModule(database).readVariantDetails(
+			conversationId,
+			message.id,
+			variant.id,
+		)?.provenance?.generationSettings).toMatchObject({
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: null,
+			continuationPrefillSuffix: "\n",
+		});
+	});
+
 	test("rejects Assistant prefill for reasoning-only preceding Variants", async () => {
 		const module = createConversationModule(database);
 		const before = module.getSnapshot(conversationId);

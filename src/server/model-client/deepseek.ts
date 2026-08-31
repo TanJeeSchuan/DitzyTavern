@@ -4,6 +4,7 @@ import type {
 	ConnectionProfileSecretSnapshot,
 } from "../connection-settings/types";
 import type { GenerationRequestOverrides } from "../conversation/types";
+import type { GenerationJsonObject } from "../../shared/generation-provenance";
 import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
 import {
 	OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS,
@@ -153,7 +154,9 @@ async function* generateOpenAICompatibleStream(options: {
 		// SAFETY: the AI SDK serializes this request as a JSON object whose values
 		// are within the Conversation Request Override JSON domain.
 		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
-		const overrides = settings.requestOverrides["chat-completions"] ?? {};
+		// The Generation Plan Compiler narrowed the Request Overrides to the
+		// namespace of the API Format this adapter was constructed for.
+		const overrides = settings.requestOverrides;
 		validateChatCompletionsOverrides(overrides);
 		const requestBody = mergeChatCompletionsOverrides(
 			providerBody,
@@ -421,7 +424,9 @@ const UNSUPPORTED_CHAT_COMPLETIONS_FIELDS = new Set([
 	"input_audio",
 ]);
 
-function validateChatCompletionsOverrides(overrides: GenerationRequestOverrides): void {
+function validateChatCompletionsOverrides(
+	overrides: GenerationJsonObject,
+): void {
 	for (const key of Object.keys(overrides)) {
 		if (UNSUPPORTED_CHAT_COMPLETIONS_FIELDS.has(key)) {
 			throw new ModelClientTransportError(
@@ -434,7 +439,7 @@ function validateChatCompletionsOverrides(overrides: GenerationRequestOverrides)
 
 function mergeChatCompletionsOverrides(
 	providerBody: GenerationRequestOverrides,
-	overrides: GenerationRequestOverrides,
+	overrides: GenerationJsonObject,
 	outputTokenRepresentation: ConnectionProfile["outputTokenRepresentation"],
 	responseBudget: number,
 ): GenerationRequestOverrides {
