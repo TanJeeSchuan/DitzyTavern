@@ -464,7 +464,8 @@ describe("Conversation module", () => {
 			}),
 		).toThrow(InvalidConversationCommandError);
 
-		// Deletion of import provenance is equally out of reach.
+		// Deletion of import provenance is equally out of reach, in every
+		// scope.
 		expect(() =>
 			conversation.execute({
 				conversationId: imported.id,
@@ -477,6 +478,63 @@ describe("Conversation module", () => {
 				},
 			}),
 		).toThrow(InvalidConversationCommandError);
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "put-data",
+					scope: { type: "message", messageId: greeting.id },
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.authorName,
+					value: "Forged Author",
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "delete-data",
+					scope: { type: "message", messageId: greeting.id },
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.authorName,
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+		// The Canonical Source Archive is import-owned provenance too: no
+		// generic rewrite of the preserved source values.
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "put-data",
+					scope: { type: "conversation" },
+					namespace: ARCHIVE_NAMESPACE,
+					key: ARCHIVE_KEY,
+					value: '{"forged":true}',
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+
+		// The reservation is exact-match, not prefix-based: a namespace that
+		// merely extends an import-owned one stays generic.
+		const nearMiss = conversation.execute({
+			conversationId: imported.id,
+			expectedRevision: imported.revision,
+			action: {
+				type: "put-data",
+				scope: { type: "conversation" },
+				namespace: "import.sillytavernX",
+				key: "key",
+				value: "value",
+			},
+		});
+		// The successful generic write advances the revision; the rejected
+		// import-namespace attempts did not.
+		expect(nearMiss.revision).toBe(imported.revision + 1);
 
 		// The rejected commands left the persisted provenance intact and did
 		// not advance the revision, so the next ordinary command still
@@ -498,7 +556,7 @@ describe("Conversation module", () => {
 		]);
 		const afterRejections = conversation.execute({
 			conversationId: imported.id,
-			expectedRevision: imported.revision,
+			expectedRevision: nearMiss.revision,
 			action: {
 				type: "put-data",
 				scope: { type: "conversation" },
@@ -507,7 +565,7 @@ describe("Conversation module", () => {
 				value: "complete",
 			},
 		});
-		expect(afterRejections.revision).toBe(imported.revision + 1);
+		expect(afterRejections.revision).toBe(nearMiss.revision + 1);
 	});
 
 	test("keeps the greeting's Author Stamp across Variant selection and sibling creation", () => {

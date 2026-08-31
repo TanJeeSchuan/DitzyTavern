@@ -24,10 +24,14 @@ export const isImportOwnedDataNamespace = (namespace: string): boolean =>
 // The same reservation expressed as the wire pattern for the generic data
 // commands' namespace field: the transport rejects command bodies that
 // address import-owned namespaces before dispatch. The Conversation seam
-// enforces the identical reservation through the predicate above.
+// enforces the identical reservation through the predicate above; the
+// grouped alternation makes the exact-match exclusion explicit.
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export const genericDataNamespacePattern = `^(?!${[IMPORT_NAMESPACE, ARCHIVE_NAMESPACE]
+export const genericDataNamespacePattern = `^(?!(?:${[
+	IMPORT_NAMESPACE,
+	ARCHIVE_NAMESPACE,
+]
 	.map(escapeRegExp)
-	.join("|")}$)`;
+	.join("|")})$).*`;

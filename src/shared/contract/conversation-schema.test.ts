@@ -38,6 +38,17 @@ describe("generic data command namespaces", () => {
 		).toBe(true);
 	});
 
+	// The reservation is exact-match, not prefix-based: strings that merely
+	// contain or extend an import-owned namespace stay generic.
+	test("near-miss generic namespaces validate", () => {
+		expect(
+			Value.Check(conversationCommandBody, putData("import.sillytavernX")),
+		).toBe(true);
+		expect(Value.Check(conversationCommandBody, putData("archiveX"))).toBe(
+			true,
+		);
+	});
+
 	test("import-owned namespaces are not addressable", () => {
 		expect(
 			Value.Check(conversationCommandBody, putData(IMPORT_NAMESPACE)),
