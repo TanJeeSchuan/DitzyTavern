@@ -183,6 +183,71 @@ describe("Generation transport contract", () => {
 		expect(requestBody?.max_tokens).toBe(32);
 	});
 
+	test("persists the complete canonical settings the settings update command carries", async () => {
+		// The update command derives from the canonical declaration, so the
+		// complete settings object the settings panel submits — including the
+		// Sibling Generation limit — persists field for field instead of
+		// being silently dropped by the transport boundary.
+		const conversation = createConversationModule(database).create({
+			name: "Canonical Settings Update",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const app = createConversationRoutes(database, { masterKey: key });
+		const updated = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					action: {
+						type: "update-generation-settings",
+						settings: {
+							modelId: "deepseek-chat",
+							temperature: 0.7,
+							topP: null,
+							frequencyPenalty: null,
+							presencePenalty: null,
+							contextLimit: 4096,
+							responseBudget: 128,
+							safetyAllowance: 321,
+							siblingGenerationLimit: 2,
+							continuationStrategy: "assistant-prefill",
+							continuationInstruction: "Continue the scene.",
+							continuationPrefillSuffix: "\n",
+							requestOverrides: {
+								"chat-completions": {},
+								responses: {},
+								"anthropic-messages": {},
+							},
+						},
+					},
+				}),
+			}),
+		);
+		expect(updated.status).toBe(200);
+
+		const settings = await app.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}/generation-settings`),
+		);
+		expect(settings.status).toBe(200);
+		// SAFETY: this contract test controls the typed settings response.
+		expect(await settings.json()).toMatchObject({
+			modelId: "deepseek-chat",
+			temperature: 0.7,
+			contextLimit: 4096,
+			responseBudget: 128,
+			safetyAllowance: 321,
+			siblingGenerationLimit: 2,
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: "Continue the scene.",
+			continuationPrefillSuffix: "\n",
+		});
+	});
+
 	test("does not contact a provider when no active Profile exists", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Unconfigured Generation",

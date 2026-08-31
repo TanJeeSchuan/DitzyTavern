@@ -1,5 +1,7 @@
 import { Kind, Type, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
+import { canonicalGenerationSettings } from "./generation-settings";
 import { participantPrompt } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -80,7 +82,6 @@ const conversationCapabilities = Type.Object({
 // Eden's Static type exact and recursive instead of widening these fields to
 // `unknown`.
 const jsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
-const jsonObject = Type.Record(Type.String(), jsonValue);
 
 export type GenerationDetailsJsonValue = GenerationJsonValue;
 export type GenerationDetailsJsonObject = GenerationJsonObject;
@@ -119,33 +120,15 @@ export type ConversationControl = Static<typeof conversationControl>;
 export type ConversationControlValidity = Static<typeof conversationControlValidity>;
 export type ConversationSummary = Static<typeof conversationSummary>;
 
-export const conversationGenerationSettings = Type.Object({
-	modelId: Type.String(),
-	temperature: Type.Union([Type.Null(), Type.Number()]),
-	topP: Type.Union([Type.Null(), Type.Number()]),
-	frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
-	presencePenalty: Type.Union([Type.Null(), Type.Number()]),
-	contextLimit: Type.Integer(),
-	responseBudget: Type.Integer(),
-	safetyAllowance: Type.Integer(),
-	siblingGenerationLimit: Type.Integer(),
-	continuationStrategy: Type.Union([
-		Type.Literal("instruction"),
-		Type.Literal("assistant-prefill"),
-	]),
-	continuationInstruction: Type.String(),
-	continuationPrefillSuffix: Type.Union([
-		Type.Literal(""),
-		Type.Literal(" "),
-		Type.Literal("\n"),
-		Type.Literal("\n\n"),
-	]),
-	requestOverrides: Type.Object({
-		"chat-completions": jsonObject,
-		responses: jsonObject,
-		"anthropic-messages": jsonObject,
-	}),
-});
+// The public Generation Settings payload derives from the canonical
+// declaration (ADR-0032): the complete Conversation-owned settings shape
+// and its validation semantics. The transport owns a deep clone instead of
+// an alias because the HTTP runtime mutates response schemas in place — it
+// injects additionalProperties: false when it compiles a response
+// validator — and the canonical declaration must stay pristine for the
+// adapters that derive from it. The established export name stays for
+// every existing consumer.
+export const conversationGenerationSettings = Value.Clone(canonicalGenerationSettings);
 
 export type ConversationGenerationSettings = Static<typeof conversationGenerationSettings>;
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
@@ -386,36 +369,28 @@ const deleteDataAction = Type.Object({
 	key: Type.String(),
 });
 
-const generationSettings = Type.Object({
-	modelId: Type.String(),
-	temperature: Type.Union([Type.Null(), Type.Number()]),
-	topP: Type.Union([Type.Null(), Type.Number()]),
-	frequencyPenalty: Type.Union([Type.Null(), Type.Number()]),
-	presencePenalty: Type.Union([Type.Null(), Type.Number()]),
-	contextLimit: Type.Integer(),
-	responseBudget: Type.Integer(),
-	safetyAllowance: Type.Optional(Type.Integer()),
-	continuationStrategy: Type.Optional(Type.Union([
-		Type.Literal("instruction"),
-		Type.Literal("assistant-prefill"),
-	])),
-	continuationInstruction: Type.Optional(Type.String()),
-	continuationPrefillSuffix: Type.Optional(Type.Union([
-		Type.Literal(""),
-		Type.Literal(" "),
-		Type.Literal("\n"),
-		Type.Literal("\n\n"),
-	])),
-	requestOverrides: Type.Object({
-		"chat-completions": Type.Record(Type.String(), Type.Unknown()),
-		responses: Type.Record(Type.String(), Type.Unknown()),
-		"anthropic-messages": Type.Record(Type.String(), Type.Unknown()),
-	}),
-});
+// The settings update command derives from the canonical declaration too:
+// current clients submit the complete canonical object, while older callers
+// may omit the fields the Conversation module fills from stored values or
+// defaults. Only optionality differs; validation never loosens. Declaring
+// every canonical field also stops the HTTP runtime from silently dropping
+// fields the canonical object carries but a hand-written projection forgot.
+const generationSettingsUpdateOptionalFields = [
+	"safetyAllowance",
+	"siblingGenerationLimit",
+	"continuationStrategy",
+	"continuationInstruction",
+	"continuationPrefillSuffix",
+] as const;
+
+export const generationSettingsUpdate = Type.Composite([
+	Type.Omit(canonicalGenerationSettings, [...generationSettingsUpdateOptionalFields]),
+	Type.Partial(Type.Pick(canonicalGenerationSettings, [...generationSettingsUpdateOptionalFields])),
+]);
 
 const updateGenerationSettingsAction = Type.Object({
 	type: Type.Literal("update-generation-settings"),
-	settings: generationSettings,
+	settings: generationSettingsUpdate,
 });
 
 // Cast management command. The raw command appends an ad-hoc or already-
