@@ -109,7 +109,7 @@ describe("Generation Plan Compiler", () => {
 			contextLimit: 100_000,
 			responseBudget: 1024,
 			safetyAllowance: 500,
-			siblingGenerationLimit: 4,
+			siblingGenerationLimit: null,
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,
@@ -119,6 +119,15 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.budget.contextLimit).toBe(100_000);
 		expect(plan.budget.responseBudget).toBe(1024);
 		expect(plan.budget.safetyAllowance).toBe(500);
+	});
+
+	test("excludes the unused Sibling Generation limit from Effective Generation Settings", () => {
+		const plan = compile({
+			settings: configuredSettings({ siblingGenerationLimit: 9 }),
+			intent: { type: "sibling" },
+		});
+
+		expect(plan.effectiveSettings.siblingGenerationLimit).toBeNull();
 	});
 
 	test("compiles the Sibling plan with the sibling intent and no Continuation operand", () => {

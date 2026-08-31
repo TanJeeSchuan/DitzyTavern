@@ -164,18 +164,28 @@ export function StoryMessageView({
 					</div>
 				</div>
 			) : (
-				<div
-					className="prose"
-					data-empty-variant={active?.empty === true && !generationActive}
-					data-generation-active={generationActive}
-				>
-					{active !== undefined && !(generationActive && active.empty)
-						? visibleVariantContent(active)
+				<>
+					{active?.reasoning !== undefined && active.reasoning !== "" && (
+						<section className="reasoning-content" aria-label="Reasoning Content">
+							<strong>Reasoning</strong>
+							{active.reasoning
 								.split("\n\n")
-								.map((paragraph, index) => <p key={index}>{paragraph}</p>)
-						: null}
-					{generationActive && <GenerationSphere authorName={authorName} />}
-				</div>
+								.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+						</section>
+					)}
+					<div
+						className="prose"
+						data-empty-variant={active?.empty === true && !generationActive}
+						data-generation-active={generationActive}
+					>
+						{active !== undefined && !(generationActive && active.empty)
+							? visibleVariantContent(active)
+									.split("\n\n")
+									.map((paragraph, index) => <p key={index}>{paragraph}</p>)
+							: null}
+						{generationActive && <GenerationSphere authorName={authorName} />}
+					</div>
+				</>
 			)}
 
 			<footer className="message-actions">

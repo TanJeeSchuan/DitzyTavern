@@ -99,7 +99,7 @@ export async function subscribeConversationGeneration(
 	if (response.body === null) {
 		return { outcome: "interrupted", reason: "Generation stream had no body." };
 	}
-	return consumeGenerationStream(response, input);
+	return consumeGenerationStream(response, { ...input, conversationId, generationId });
 }
 
 // The SSE data line is the transport's JSON parse target; the decoded value
@@ -117,6 +117,8 @@ const parseStreamPayload = (serialized: string): JsonValue | null => {
 async function consumeGenerationStream(
 	response: Response,
 	input: {
+		conversationId: number;
+		generationId: number;
 		onDelta: (event: GenerationStreamDelta, eventId: number) => void;
 		onState?: (state: GenerationStreamState) => void;
 	},
@@ -159,18 +161,25 @@ async function consumeGenerationStream(
 		}
 		if (eventType === "state") {
 			const state = decodeWirePayload(generationStatePayload, payload);
-			if (state === null) return;
+			if (
+				state === null ||
+				state.conversationId !== input.conversationId ||
+				state.generationId !== input.generationId
+			) return;
 			lastEventId = Math.max(lastEventId, state.latestEventId);
 			input.onState?.(state);
 			return;
 		}
 		if (eventType === "complete") {
-			if (decodeWirePayload(generationAppliedPayload, payload) !== null) result = { outcome: "applied" };
+			const applied = decodeWirePayload(generationAppliedPayload, payload);
+			if (applied?.generationId === input.generationId) result = { outcome: "applied" };
 			return;
 		}
 		if (eventType === "stopped") {
 			const stopped = decodeWirePayload(generationStoppedPayload, payload);
-			if (stopped !== null) result = { outcome: "stopped", generationId: stopped.generationId };
+			if (stopped?.generationId === input.generationId) {
+				result = { outcome: "stopped", generationId: stopped.generationId };
+			}
 			return;
 		}
 		if (eventType === "error") {

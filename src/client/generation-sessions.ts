@@ -342,7 +342,13 @@ const observeState = (
 ): GenerationSessionsTransition => {
 	const session = observingSession(state, action.generationId);
 	// The snapshot must describe the session the transport opened it for.
-	if (session === null || action.state.conversationId !== session.conversationId) {
+	if (
+		session === null ||
+		action.state.conversationId !== session.conversationId ||
+		action.state.generationId !== session.generationId ||
+		action.state.messageId !== session.messageId ||
+		action.state.variantId !== session.variantId
+	) {
 		return unchanged(state);
 	}
 	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason);

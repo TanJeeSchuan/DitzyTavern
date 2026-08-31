@@ -311,6 +311,41 @@ describe("server-owned Generation client", () => {
 			expect(result).toEqual({ outcome: "interrupted", reason: "Generation ended without a terminal result." });
 		});
 
+		test("rejects state and terminal frames for a different Generation", async () => {
+			const foreignState: GenerationStreamState = {
+				outcome: "active-state",
+				generationId: 8,
+				conversationId: 42,
+				messageId: 9,
+				variantId: 10,
+				content: "Wrong attempt.",
+				reasoning: "Wrong reasoning.",
+				latestEventId: 4,
+				status: "active",
+				terminalReason: null,
+			};
+			const stream =
+				`event: state\ndata: ${JSON.stringify(foreignState)}\n\n` +
+				"event: complete\ndata: {\"outcome\":\"applied\",\"generationId\":8,\"latestEventId\":4}\n\n" +
+				"event: stopped\ndata: {\"outcome\":\"stopped\",\"generationId\":8}\n\n";
+			installFetch(async () => new Response(stream, {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}));
+
+			const states: GenerationStreamState[] = [];
+			const result = await subscribeConversationGeneration(42, 7, {
+				onDelta: () => {},
+				onState: (state) => states.push(state),
+			});
+
+			expect(states).toEqual([]);
+			expect(result).toEqual({
+				outcome: "interrupted",
+				reason: "Generation ended without a terminal result.",
+			});
+		});
+
 		test("decodes stopped and failure terminal frames through the shared schemas", async () => {
 			installFetch(async () => new Response(
 				"event: stopped\ndata: {\"outcome\":\"stopped\",\"generationId\":7}\n\n",

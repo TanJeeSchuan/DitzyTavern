@@ -492,12 +492,12 @@ describe("the Generation session collection", () => {
 		]);
 	});
 
-	test("a mismatched state snapshot is rejected", () => {
+	test("state snapshots with any mismatched target identity are rejected", () => {
 		const state = sessionOf(42, targetsFor(7));
-		const foreign = {
+		const matching = {
 			outcome: "active-state",
 			generationId: 7,
-			conversationId: 43,
+			conversationId: 42,
 			messageId: 907,
 			variantId: 9_007,
 			content: "x",
@@ -506,9 +506,17 @@ describe("the Generation session collection", () => {
 			status: "active",
 			terminalReason: null,
 		} as const;
-		const rejected = run(state, { type: "state-observed", generationId: 7, state: foreign });
-		expect(rejected.state).toBe(state);
-		expect(rejected.effects).toEqual([]);
+		const foreignStates = [
+			{ ...matching, conversationId: 43 },
+			{ ...matching, generationId: 8 },
+			{ ...matching, messageId: 908 },
+			{ ...matching, variantId: 9_008 },
+		];
+		for (const foreign of foreignStates) {
+			const rejected = run(state, { type: "state-observed", generationId: 7, state: foreign });
+			expect(rejected.state).toBe(state);
+			expect(rejected.effects).toEqual([]);
+		}
 	});
 
 	test("acknowledged errors clear every session error", () => {

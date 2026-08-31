@@ -593,6 +593,40 @@ describe("streaming Provisional Variant content", () => {
 		expect(variantContent(state, 100)?.content).toBe("Authoritative");
 	});
 
+	test("Reasoning Content streams separately and survives an authoritative history refresh", () => {
+		let state = stateWithProvisional();
+		state = reduceStory(state, {
+			type: "generation-reasoning-delta",
+			messageId: 10,
+			variantId: 100,
+			text: "First thought. ",
+		});
+		state = reduceStory(state, {
+			type: "generation-reasoning",
+			messageId: 10,
+			variantId: 100,
+			reasoning: "Authoritative thought.",
+		});
+
+		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
+
+		state = reduceStory(state, {
+			type: "first-page",
+			page: page({
+				revision: 5,
+				messages: [message({
+					id: 10,
+					variants: [
+						{ id: 100, position: 1, content: "Finished.", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+					],
+				})],
+			}),
+		});
+
+		expect(variantContent(state, 100)?.content).toBe("Finished.");
+		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
+	});
+
 	test("deltas ignore Variants and Messages that are not in the current read model", () => {
 		const state = stateWithProvisional();
 		const untouched = reduceStory(state, { type: "generation-content-delta", messageId: 999, variantId: 100, text: "x" });

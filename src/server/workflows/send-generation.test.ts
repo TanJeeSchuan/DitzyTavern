@@ -275,7 +275,7 @@ describe("Send through provisional Tail Generation", () => {
 			contextLimit: 8192,
 			responseBudget: 256,
 			safetyAllowance: 777,
-			siblingGenerationLimit: 4,
+			siblingGenerationLimit: null,
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,

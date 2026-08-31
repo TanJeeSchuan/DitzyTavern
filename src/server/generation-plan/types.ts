@@ -22,13 +22,14 @@ import type {
 
 // The value one canonical field takes in the Effective Generation Settings:
 // every field keeps its configured value except the three Continuation
-// fields, whose applicability the Generation intent decides (a field that
-// did not participate is absent — null — rather than copied), and Request
-// Overrides, which the compiler narrows to the active API Format namespace.
+// fields and the currently unenforced Sibling Generation limit. A value that
+// did not participate is null rather than copied. Request Overrides narrow
+// to the active API Format namespace.
 type EffectiveFieldValue<K extends GenerationSettingsField> = K extends
 	| "continuationStrategy"
 	| "continuationInstruction"
 	| "continuationPrefillSuffix"
+	| "siblingGenerationLimit"
 	? CanonicalGenerationSettings[K] | null
 	: K extends "requestOverrides"
 		? GenerationJsonObject

@@ -18,6 +18,10 @@ export interface StoryVariant {
 	id: number;
 	position: number;
 	content: string;
+	// Ephemeral Reasoning Content observed for this generated Variant. It is
+	// kept separate from authored Content and retained across the terminal
+	// history refresh that replaces the rest of the story read model.
+	reasoning?: string;
 	// Presentation-only: true when the stored content is exactly empty. The
 	// placeholder substitutes rendering only; the stored text stays as-is.
 	empty: boolean;
@@ -112,6 +116,18 @@ export type StoryAction =
 			variantId: number;
 			text: string;
 		}
+	| {
+			type: "generation-reasoning";
+			messageId: number;
+			variantId: number;
+			reasoning: string;
+		}
+	| {
+			type: "generation-reasoning-delta";
+			messageId: number;
+			variantId: number;
+			text: string;
+		}
 	| { type: "preview-started"; messageId: number; variantId: number }
 	// Swiping the already-previewed Message moves the local Preview to another
 	// Variant of the same Message without any server command.
@@ -133,14 +149,21 @@ export const createStoryState = (): StoryState => ({
 
 // An exact empty Variant is presented with a placeholder; whitespace-only
 // content is not empty and renders as stored.
-const toStoryVariant = (variant: ChatHistoryVariant): StoryVariant => ({
+const toStoryVariant = (
+	variant: ChatHistoryVariant,
+	prior?: StoryVariant,
+): StoryVariant => ({
 	id: variant.id,
 	position: variant.position,
 	content: variant.content,
+	reasoning: prior?.reasoning ?? "",
 	empty: variant.content === "",
 });
 
-const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMessage => ({
+const toStoryMessage = (
+	message: ChatHistoryPage["messages"][number],
+	prior?: StoryMessage,
+): StoryMessage => ({
 	id: message.id,
 	position: message.position,
 	timestamp: message.timestamp,
@@ -153,7 +176,10 @@ const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMess
 		0,
 		message.variants.findIndex((variant) => variant.selected),
 	),
-	swipes: message.variants.map(toStoryVariant),
+	swipes: message.variants.map((variant) => toStoryVariant(
+		variant,
+		prior?.swipes.find((entry) => entry.id === variant.id),
+	)),
 });
 
 // A generated Message remains continuable when the current model Control has
@@ -214,7 +240,10 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 				...state,
 				title: action.page.name,
 				revision: action.page.revision,
-				messages: action.page.messages.map(toStoryMessage),
+				messages: action.page.messages.map((message) => toStoryMessage(
+					message,
+					state.messages.find((entry) => entry.id === message.id),
+				)),
 				page: { ...action.page.page },
 				status: "ready",
 				preview: null,
@@ -224,7 +253,10 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			return {
 				...state,
 				revision: action.page.revision,
-				messages: prependUnique(state.messages, action.page.messages.map(toStoryMessage)),
+				messages: prependUnique(
+					state.messages,
+					action.page.messages.map((message) => toStoryMessage(message)),
+				),
 				page: { ...action.page.page },
 				status: "ready",
 			};
@@ -275,6 +307,30 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 									content: variant.content + action.text,
 									empty: variant.content + action.text === "",
 								}),
+						}),
+			};
+		case "generation-reasoning":
+			return {
+				...state,
+				messages: state.messages.map((message) => message.id !== action.messageId
+					? message
+					: {
+							...message,
+							swipes: message.swipes.map((variant) => variant.id !== action.variantId
+								? variant
+								: { ...variant, reasoning: action.reasoning }),
+						}),
+			};
+		case "generation-reasoning-delta":
+			return {
+				...state,
+				messages: state.messages.map((message) => message.id !== action.messageId
+					? message
+					: {
+							...message,
+							swipes: message.swipes.map((variant) => variant.id !== action.variantId
+								? variant
+								: { ...variant, reasoning: (variant.reasoning ?? "") + action.text }),
 						}),
 			};
 		case "preview-started": {

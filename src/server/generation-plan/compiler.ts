@@ -95,7 +95,10 @@ const effectiveGenerationSettings = (
 	contextLimit: settings.contextLimit,
 	responseBudget: settings.responseBudget,
 	safetyAllowance: settings.safetyAllowance,
-	siblingGenerationLimit: settings.siblingGenerationLimit,
+	// No production policy currently consumes this configured limit, and the
+	// Model Client projection excludes it. It therefore did not participate in
+	// this attempt and must not appear as an effective value.
+	siblingGenerationLimit: null,
 	...continuationOperands(intent),
 	// Only the namespace matching the active Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never

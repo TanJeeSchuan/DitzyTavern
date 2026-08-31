@@ -46,7 +46,7 @@ const observe = (generationIds: readonly number[]) =>
 	}) as const;
 
 describe("Generation session wiring", () => {
-	test("maps Content effects onto story actions and leaves Reasoning Content without a story destination", () => {
+	test("maps Content and Reasoning Content effects onto separate story actions", () => {
 		expect(generationSessionStoryAction(contentEffect("Hello"))).toEqual({
 			type: "generation-content-delta",
 			messageId: 10,
@@ -64,20 +64,28 @@ describe("Generation session wiring", () => {
 			variantId: 100,
 			content: "Authoritative",
 		});
-		// Reasoning Content stays active-only: it produces a separate machine
-		// effect, and the story boundary deliberately drops it.
 		expect(generationSessionStoryAction({
 			kind: "story-reasoning-delta",
 			messageId: 10,
 			variantId: 100,
-			text: "Private",
-		})).toBeNull();
+			text: "Plan",
+		})).toEqual({
+			type: "generation-reasoning-delta",
+			messageId: 10,
+			variantId: 100,
+			text: "Plan",
+		});
 		expect(generationSessionStoryAction({
 			kind: "story-reasoning-replace",
 			messageId: 10,
 			variantId: 100,
-			reasoning: "Private",
-		})).toBeNull();
+			reasoning: "Authoritative plan",
+		})).toEqual({
+			type: "generation-reasoning",
+			messageId: 10,
+			variantId: 100,
+			reasoning: "Authoritative plan",
+		});
 	});
 
 	test("the runner, the mapping, and the story reducer compose into visible streaming text", () => {
@@ -126,6 +134,7 @@ describe("Generation session wiring", () => {
 		}
 
 		expect(story.messages[0]?.swipes[0]?.content).toBe("Once upon a time");
+		expect(story.messages[0]?.swipes[0]?.reasoning).toBe("planning");
 	});
 });
 

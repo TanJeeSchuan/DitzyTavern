@@ -38,9 +38,8 @@ import {
 
 // Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
-// and authoritative snapshots replace it; Reasoning Content produces its own
-// separate effect but deliberately has no story destination, because
-// reasoning stays active-only and ordinary history never carries it.
+// and authoritative snapshots replace it. Reasoning Content follows a
+// separate action path so it remains visible without joining authored prose.
 export function generationSessionStoryAction(
 	effect: GenerationSessionStoryEffect,
 ): StoryAction | null {
@@ -60,8 +59,19 @@ export function generationSessionStoryAction(
 				content: effect.content,
 			};
 		case "story-reasoning-delta":
+			return {
+				type: "generation-reasoning-delta",
+				messageId: effect.messageId,
+				variantId: effect.variantId,
+				text: effect.text,
+			};
 		case "story-reasoning-replace":
-			return null;
+			return {
+				type: "generation-reasoning",
+				messageId: effect.messageId,
+				variantId: effect.variantId,
+				reasoning: effect.reasoning,
+			};
 	}
 }
 
