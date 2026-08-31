@@ -4,11 +4,16 @@ import {
 	checkpointConversationSiblingGeneration,
 	checkpointConversationTailGeneration,
 	ConversationNotFoundError,
+	InvalidConversationCommandError,
 	createConversationModule,
 	removeRetainedGenerationInspection,
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 	type AcceptedTailGeneration,
+	type ConversationSnapshot,
+	type StopGenerationInput,
+	type StopGenerationsInput,
+	type StoppedGenerations,
 } from "../conversation";
 import {
 	createConnectionSettingsModule,
@@ -26,6 +31,7 @@ import {
 	generationRuntimeFor,
 	type GenerationRuntime,
 	type GenerationRuntimeRegistry,
+	type GenerationRuntimeState,
 } from "../workflows";
 import {
 	startServerOwnedContinuationGeneration,
@@ -43,7 +49,114 @@ import {
 /** Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
+	/**
+	 * Composition seam for the durable Conversation stop transitions. Production
+	 * resolves the deep Conversation module; composed callers and tests may
+	 * substitute their own adapter.
+	 */
+	readonly conversationLifecycle?: GenerationConversationLifecycle;
+	/** Composition seam for the process runtime registry used by Stop and Stop All. */
+	readonly runtimeLifecycle?: GenerationRuntimeLifecycle;
 }
+
+/**
+ * The durable Conversation stop transitions the Coordinator composes with
+ * runtime mechanics. The deep Conversation module owns these atomic durable
+ * transitions and their database invariants; it never learns runtime mechanics.
+ */
+export interface GenerationConversationLifecycle {
+	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
+	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
+}
+
+/** The process runtime entry the Coordinator settles on Stop. */
+export interface GenerationRuntimeHandle {
+	readonly state: GenerationRuntimeState;
+	/** Aborts the provider attempt and flushes the latest runtime checkpoint. */
+	stop(): void;
+	/** Marks the runtime terminal after the durable Stop transition committed. */
+	markStopped(): void;
+	/** Returns terminal ownership to the provider after a losing Stop race. */
+	releaseStopRequest(): void;
+}
+
+/** The process runtime registry seam the Coordinator consults for Stop. */
+export interface GenerationRuntimeLifecycle {
+	get(generationId: number): GenerationRuntimeHandle | undefined;
+	/** Forces a checkpoint on every runtime of one Conversation without aborting. */
+	flushAll(conversationId: number): void;
+}
+
+/**
+ * Typed application outcome of stopping one server-owned Generation. These
+ * outcomes carry no HTTP terminology; transports map them onto their own
+ * response vocabulary.
+ */
+export type GenerationStopOutcome =
+	| {
+			/** The durable interrupted transition committed and the runtime settled. */
+			readonly outcome: "stopped";
+			readonly generationId: number;
+			readonly conversation: ConversationSnapshot;
+	  }
+	| {
+			/**
+			 * The Generation completed naturally while the Stop was in flight. The
+			 * losing Stop request was released, so the provider's own terminal
+			 * event settles the runtime and no interrupted transition was committed.
+			 */
+			readonly outcome: "already-terminal";
+			readonly generationId: number;
+	  }
+	| {
+			/** Nothing was stoppable: unknown target, or a Conversation that is gone. */
+			readonly outcome: "missing";
+			readonly generationId: number;
+	  }
+	| {
+			/**
+			 * The runtime entry for that Generation belongs to a different
+			 * Conversation than the one addressed. Nothing was stopped.
+			 */
+			readonly outcome: "conflict";
+			readonly generationId: number;
+	  }
+	| {
+			/**
+			 * The durable interrupted transition committed, but settling the
+			 * process runtime failed. The returned Conversation snapshot remains
+			 * the authoritative result of the Stop.
+			 */
+			readonly outcome: "incomplete-settlement";
+			readonly generationId: number;
+			readonly conversation: ConversationSnapshot;
+			readonly reason: string;
+	  };
+
+/** Typed application outcome of stopping every Active Generation of one Conversation. */
+export type GenerationStopAllOutcome =
+	| {
+			/** Every durable transition committed and its runtime settled. */
+			readonly outcome: "stopped";
+			readonly generationIds: readonly number[];
+			readonly conversation: ConversationSnapshot;
+	  }
+	| {
+			/** The Conversation is unknown or has no Active Generations to stop. */
+			readonly outcome: "missing";
+	  }
+	| {
+			/**
+			 * Every durable transition committed, but some corresponding runtime
+			 * entries could not be settled. The Conversation snapshot remains
+			 * authoritative; the unsettled runtime entries are listed by id.
+			 */
+			readonly outcome: "incomplete-settlement";
+			readonly generationIds: readonly number[];
+			readonly unsettled: readonly number[];
+			readonly conversation: ConversationSnapshot;
+			readonly reason: string;
+	  };
 
 /** A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
 export class GenerationConfigurationError extends Error {
@@ -207,6 +320,196 @@ export class GenerationCoordinator {
 		});
 	}
 
+	/**
+	 * Stop one server-owned Generation: request provider cancellation with a
+	 * forced final checkpoint, commit the durable interrupted transition, then
+	 * settle the process runtime. The typed outcome is the only application
+	 * result; transports map it onto their own response vocabulary.
+	 */
+	async stopGeneration(conversationId: number, generationId: number): Promise<GenerationStopOutcome> {
+		return this.withLifecycleConnection((database) => {
+			const runtimes = this.runtimeLifecycle();
+			const runtime = runtimes.get(generationId);
+			// The runtime registry knows which Conversation owns this Generation.
+			// A mismatch means the addressed Conversation has no such Generation;
+			// durable state is never consulted under another Conversation's name.
+			if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
+				return { outcome: "conflict", generationId } as const;
+			}
+			// Stop flushes the latest runtime checkpoint before aborting the
+			// provider, so the durable transition below observes every delta the
+			// runtime saw. A settlement failure here is reported after the durable
+			// transition commits: a runtime glitch must never lose a Stop intent.
+			const settlementFailure = this.requestRuntimeStop(runtime);
+			const conversation = this.conversationLifecycle(database);
+			try {
+				const snapshot = conversation.stopGeneration({ conversationId, generationId });
+				return this.settleStoppedGeneration(generationId, runtime, snapshot, settlementFailure);
+			} catch (error) {
+				if (error instanceof InvalidConversationCommandError) {
+					if (runtime === undefined) return { outcome: "missing", generationId } as const;
+					// The Active Generation vanished while this Stop was in flight:
+					// the natural-completion race. Release the Stop request so the
+					// provider's own terminal event settles the runtime.
+					runtime.releaseStopRequest();
+					return { outcome: "already-terminal", generationId } as const;
+				}
+				if (error instanceof ConversationNotFoundError) {
+					// The Conversation is gone; the provider attempt cannot durably
+					// commit either. Release the Stop request so the runtime still
+					// settles through its own terminal path.
+					runtime?.releaseStopRequest();
+					return { outcome: "missing", generationId } as const;
+				}
+				throw error;
+			}
+		});
+	}
+
+	/**
+	 * Stop every Active Generation of one Conversation: force checkpoints
+	 * without aborting, commit the durable interrupted transition for the
+	 * complete target set, and only then settle the corresponding runtimes.
+	 * The Conversation stays authoritative during races: runtimes are settled
+	 * exclusively for targets the durable transition actually committed.
+	 */
+	async stopAllGenerations(conversationId: number): Promise<GenerationStopAllOutcome> {
+		return this.withLifecycleConnection((database) => {
+			const runtimes = this.runtimeLifecycle();
+			// Forced checkpoints without aborting first. The durable transition
+			// below owns the complete target set; runtimes are settled only after
+			// its commit succeeds.
+			runtimes.flushAll(conversationId);
+			const conversation = this.conversationLifecycle(database);
+			try {
+				const stopped = conversation.stopGenerations({ conversationId });
+				const unsettled: number[] = [];
+				let reason: string | undefined;
+				for (const generationId of stopped.generationIds) {
+					const runtime = runtimes.get(generationId);
+					if (runtime?.state.conversationId !== conversationId) continue;
+					try {
+						runtime.stop();
+						runtime.markStopped();
+					} catch (error) {
+						unsettled.push(generationId);
+						reason ??= error instanceof Error
+							? error.message
+							: "The Generation runtime could not be settled.";
+					}
+				}
+				if (unsettled.length > 0) {
+					return {
+						outcome: "incomplete-settlement",
+						generationIds: stopped.generationIds,
+						unsettled,
+						conversation: stopped.conversation,
+						reason: reason ?? "The Generation runtime could not be settled.",
+					} as const;
+				}
+				return {
+					outcome: "stopped",
+					generationIds: stopped.generationIds,
+					conversation: stopped.conversation,
+				} as const;
+			} catch (error) {
+				if (
+					error instanceof ConversationNotFoundError ||
+					error instanceof InvalidConversationCommandError
+				) {
+					return { outcome: "missing" } as const;
+				}
+				throw error;
+			}
+		});
+	}
+
+	private requestRuntimeStop(runtime: GenerationRuntimeHandle | undefined): string | undefined {
+		if (runtime === undefined) return undefined;
+		try {
+			runtime.stop();
+			return undefined;
+		} catch (error) {
+			return error instanceof Error
+				? error.message
+				: "The Generation runtime could not be stopped.";
+		}
+	}
+
+	private settleStoppedGeneration(
+		generationId: number,
+		runtime: GenerationRuntimeHandle | undefined,
+		snapshot: ConversationSnapshot,
+		settlementFailure: string | undefined,
+	): GenerationStopOutcome {
+		if (runtime === undefined) {
+			return { outcome: "stopped", generationId, conversation: snapshot };
+		}
+		let failure = settlementFailure;
+		if (failure === undefined) {
+			try {
+				runtime.markStopped();
+				return { outcome: "stopped", generationId, conversation: snapshot };
+			} catch (error) {
+				failure = error instanceof Error
+					? error.message
+					: "The Generation runtime could not be settled.";
+			}
+		}
+		return {
+			outcome: "incomplete-settlement",
+			generationId,
+			conversation: snapshot,
+			reason: failure,
+		};
+	}
+
+	/**
+	 * Resolves the durable Conversation stop adapter: the composed seam when
+	 * provided, otherwise the deep Conversation module over the request or
+	 * configured database.
+	 */
+	private conversationLifecycle(database: Database | undefined): GenerationConversationLifecycle {
+		if (this.options.conversationLifecycle !== undefined) return this.options.conversationLifecycle;
+		if (database === undefined) {
+			throw new Error("Generation lifecycle operations require a Conversation adapter or database.");
+		}
+		return createConversationModule(database);
+	}
+
+	/**
+	 * Opens the short-lived request database only when neither a composed
+	 * Conversation adapter nor a configured database supplies one, and always
+	 * closes a connection it opened itself.
+	 */
+	private withLifecycleConnection<T>(run: (database: Database | undefined) => T): T {
+		if (this.options.conversationLifecycle !== undefined) return run(undefined);
+		if (this.configuredDatabase !== undefined) return run(this.configuredDatabase);
+		const database = openDatabase();
+		try {
+			return run(database);
+		} finally {
+			database.close();
+		}
+	}
+
+	/**
+	 * The process runtime registry that owns this server's Generation runtimes.
+	 * The same selection the start path uses, so Stop always settles runtimes
+	 * the Coordinator itself registered.
+	 */
+	private runtimeRegistry(): GenerationRuntimeRegistry {
+		return this.configuredDatabase === undefined
+			? defaultGenerationRuntime()
+			: generationRuntimeFor(this.configuredDatabase);
+	}
+
+	/** The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
+	private runtimeLifecycle(): GenerationRuntimeLifecycle {
+		if (this.options.runtimeLifecycle !== undefined) return this.options.runtimeLifecycle;
+		return this.runtimeRegistry();
+	}
+
 	private async startGeneration<
 		TAccepted extends GenerationAccepted,
 		TResult extends GenerationResult,
@@ -226,7 +529,7 @@ export class GenerationCoordinator {
 				throw new ConversationNotFoundError(input.conversationId);
 			}
 			const transport = this.resolveTransport(database);
-			const runtimeRegistry = this.runtimeRegistry(database);
+			const runtimeRegistry = this.runtimeRegistry();
 			let runtime: GenerationRuntime | undefined;
 			const started = input.start({
 				database,
@@ -279,12 +582,6 @@ export class GenerationCoordinator {
 
 	private openDatabase(): Database {
 		return this.configuredDatabase ?? openDatabase();
-	}
-
-	private runtimeRegistry(database: Database): GenerationRuntimeRegistry {
-		return this.configuredDatabase === undefined
-			? defaultGenerationRuntime()
-			: generationRuntimeFor(database);
 	}
 
 	private resolveTransport(database: Database): ResolvedGenerationTransport {

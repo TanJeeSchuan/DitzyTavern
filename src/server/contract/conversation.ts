@@ -12,15 +12,14 @@ import {
 	ParticipantNotFoundError,
 	ParticipantNotRemovableError,
 	createConversationModule,
-	stopConversationGeneration,
-	stopConversationGenerations,
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationGenerationSettings,
 } from "../conversation";
-import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import type { ModelFetch } from "../model-client";
-import { createGenerationCoordinator } from "../application/generation-coordinator";
+import {
+	createGenerationCoordinator,
+	type GenerationCoordinatorOptions,
+} from "../application/generation-coordinator";
 import { openDatabase, withDatabase } from "../database/database";
 import {
 	addCharacterToCast,
@@ -75,8 +74,6 @@ import {
 
 const runtimeRegistryForRequest = (connection: Database, configuredDatabase: Database | undefined) =>
 	configuredDatabase === undefined ? defaultGenerationRuntime() : generationRuntimeFor(connection);
-
-type GenerationRuntimeValue = ReturnType<ReturnType<typeof runtimeRegistryForRequest>["get"]>;
 
 // Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
@@ -133,14 +130,10 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
-// Thin typed adapters over the deep Conversation seam: snapshot reads,
-// revisioned command execution, and the explicit Character-to-Cast workflow
-// (which itself composes Character Library and Conversation capabilities in
-// one transaction). Routes never coordinate tables or reproduce domain
-// rules; they map typed outcomes to typed transport results.
-export interface ConversationRouteOptions extends ConnectionSettingsModuleOptions {
-	readonly fetch?: ModelFetch;
-}
+// Route options extend the Coordinator composition options, so transport
+// tests can inject the Coordinator's Conversation and runtime lifecycle seams
+// while production resolves the deep adapters itself.
+export interface ConversationRouteOptions extends GenerationCoordinatorOptions {}
 
 export const createConversationRoutes = (
 	database: Database | undefined,
@@ -202,35 +195,22 @@ export const createConversationRoutes = (
 	return new Elysia()
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
-			({ params, status }) => {
-				const connection = database ?? openDatabase();
-				let runtime: GenerationRuntimeValue;
-				try {
-					const registry = runtimeRegistryForRequest(connection, database);
-					runtime = registry.get(params.generationId);
-					if (runtime !== undefined && runtime.state.conversationId !== params.id) {
-						return status(404, { outcome: "not-found" as const });
-					}
-					runtime?.stop();
-					const conversation = stopConversationGeneration(connection, {
-						conversationId: params.id,
-						generationId: params.generationId,
-					});
-					runtime?.markStopped();
+			async ({ params }) => {
+				const outcome = await generationCoordinator.stopGeneration(params.id, params.generationId);
+				// Durable truth wins: a committed interrupted transition always
+				// returns the authoritative Conversation snapshot, even when the
+				// process runtime could not be settled.
+				if (outcome.outcome === "stopped" || outcome.outcome === "incomplete-settlement") {
 					return {
 						outcome: "stopped" as const,
-						generationId: params.generationId,
-						conversation: toConversationSummary(conversation),
+						generationId: outcome.generationId,
+						conversation: toConversationSummary(outcome.conversation),
 					};
-				} catch (error) {
-					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
-						runtime?.releaseStopRequest();
-						return notFoundResponse();
-					}
-					throw error;
-				} finally {
-					if (!database) connection.close();
 				}
+				// Missing, conflicting, and already-terminal targets share the
+				// not-found transport outcome: the addressed Conversation has no
+				// stoppable Generation at that id.
+				return notFoundResponse();
 			},
 			{
 				params: generationIdParams,
@@ -242,36 +222,16 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations/stop-all",
-			({ params }) => {
-				const connection = database ?? openDatabase();
-				try {
-					const registry = runtimeRegistryForRequest(connection, database);
-					// Checkpoint without aborting first. The Conversation transition below
-					// owns the complete target set; runtimes are settled only after its
-					// durable commit succeeds.
-					registry.flushAll(params.id);
-					const stopped = stopConversationGenerations(connection, {
-						conversationId: params.id,
-					});
-					for (const generationId of stopped.generationIds) {
-						const runtime = registry.get(generationId);
-						if (runtime?.state.conversationId !== params.id) continue;
-						runtime.stop();
-						runtime.markStopped();
-					}
+			async ({ params }) => {
+				const outcome = await generationCoordinator.stopAllGenerations(params.id);
+				if (outcome.outcome === "stopped" || outcome.outcome === "incomplete-settlement") {
 					return {
 						outcome: "stopped" as const,
-						generationIds: stopped.generationIds,
-						conversation: toConversationSummary(stopped.conversation),
+						generationIds: [...outcome.generationIds],
+						conversation: toConversationSummary(outcome.conversation),
 					};
-				} catch (error) {
-					if (error instanceof ConversationNotFoundError || error instanceof InvalidConversationCommandError) {
-						return notFoundResponse();
-					}
-					throw error;
-				} finally {
-					if (!database) connection.close();
 				}
+				return notFoundResponse();
 			},
 			{
 				params: conversationIdParams,
