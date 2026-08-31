@@ -13,22 +13,27 @@ export interface ProviderErrorSnapshot {
 	readonly bodyBytes: number;
 }
 
+/**
+ * Summarizes a failed provider response from its headers alone. The untrusted
+ * body is never read or buffered; the reported size comes from Content-Length
+ * when the provider declares one and is omitted otherwise.
+ */
 export async function snapshotProviderResponse(
 	response: Response,
 ): Promise<ProviderErrorSnapshot> {
 	const contentType = response.headers.get("content-type") ?? undefined;
-	let body: string | undefined;
-	let bodyBytes = 0;
-	try {
-		const bytes = new Uint8Array(await response.arrayBuffer());
-		bodyBytes = bytes.byteLength;
-		if (contentType === undefined || isTextualContentType(contentType)) {
-			body = new TextDecoder().decode(bytes);
-		}
-	} catch {
-		// The status remains actionable even when the provider body cannot be read.
-	}
-	return { status: response.status, contentType, body, bodyBytes };
+	return {
+		status: response.status,
+		contentType,
+		bodyBytes: declaredContentLength(response.headers),
+	};
+}
+
+function declaredContentLength(headers: Headers): number {
+	const value = headers.get("content-length");
+	if (value === null) return 0;
+	const trimmed = value.trim();
+	return /^\d+$/.test(trimmed) ? Number(trimmed) : 0;
 }
 
 export function snapshotProviderError(error: ProviderErrorLike): ProviderErrorSnapshot {
@@ -52,7 +57,8 @@ export function formatProviderError(
 ): string {
 	const prefix = subject === "models" ? "The Models endpoint" : "The provider";
 	if (snapshot.contentType !== undefined && !isTextualContentType(snapshot.contentType)) {
-		return `${prefix} returned HTTP ${snapshot.status ?? "an error"} with a binary response body (${snapshot.bodyBytes} bytes).`;
+		const size = snapshot.bodyBytes > 0 ? ` (${snapshot.bodyBytes} bytes)` : "";
+		return `${prefix} returned HTTP ${snapshot.status ?? "an error"} with a binary response body${size}.`;
 	}
 	const responseSize = snapshot.bodyBytes > 0 ? ` (${snapshot.bodyBytes}-byte response body)` : "";
 	return `${prefix} request failed${snapshot.status === undefined ? "" : ` with HTTP ${snapshot.status}`}${responseSize}.`;
