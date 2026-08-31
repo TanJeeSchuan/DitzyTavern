@@ -30,6 +30,11 @@ import {
 	generationJsonString,
 	parseGenerationJson,
 } from "../../shared/generation-provenance";
+import {
+	defineGenerationSettingsAdapter,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsField,
+} from "../../shared/contract/generation-settings";
 
 const isRecord = generationJsonObject;
 const parseJson = parseGenerationJson;
@@ -55,37 +60,89 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 	};
 };
 
-interface SafeGenerationSettings {
-	readonly [key: string]: ConversationJsonValue;
-	modelId: string | null;
-	temperature: number | null;
-	topP: number | null;
-	frequencyPenalty: number | null;
-	presencePenalty: number | null;
-	contextLimit: number | null;
-	responseBudget: number | null;
-	safetyAllowance: number | null;
-	siblingGenerationLimit: number | null;
-	continuationStrategy: string | null;
-	continuationInstruction: string | null;
-	continuationPrefillSuffix: string | null;
-}
+// Active inspection decodes the persisted Generation Settings into the safe
+// display projection over the canonical Generation Settings vocabulary
+// (ADR-0032). Every canonical field except Request Overrides participates —
+// inspection never re-exposes Request Overrides — and every participating
+// field decodes as null when the persisted value is absent or corrupt. The
+// Safety allowance participates like every other budget field, so the
+// formerly omitted value is retained instead of being decoded as absent.
+type InspectionSettingsField = Exclude<GenerationSettingsField, "requestOverrides">;
+
+// The persisted value is written from validated domain settings, so display
+// decoding keeps strings loose: a corrupt persisted value surfaces as its
+// raw string rather than being silently mistaken for a valid literal.
+type InspectionSettingsValue<T> = T extends string ? string | null : T | null;
+
+type SafeGenerationSettings = {
+	[K in InspectionSettingsField]: InspectionSettingsValue<CanonicalGenerationSettings[K]>;
+};
+
+// The named inspection dispositions: every canonical field except Request
+// Overrides participates in the safe display projection.
+export const generationInspectionSettingsAdapter = defineGenerationSettingsAdapter(
+	"generation-inspection-settings",
+	{
+		modelId: { disposition: "projected" },
+		temperature: { disposition: "projected" },
+		topP: { disposition: "projected" },
+		frequencyPenalty: { disposition: "projected" },
+		presencePenalty: { disposition: "projected" },
+		contextLimit: { disposition: "projected" },
+		responseBudget: { disposition: "projected" },
+		safetyAllowance: { disposition: "projected" },
+		siblingGenerationLimit: { disposition: "projected" },
+		continuationStrategy: { disposition: "projected" },
+		continuationInstruction: { disposition: "projected" },
+		continuationPrefillSuffix: { disposition: "projected" },
+		requestOverrides: {
+			disposition: "excluded",
+			reason: "inspection re-exposes only safe settings and never Request Overrides",
+		},
+	},
+);
+
+// The decoded value for each inspection field. Compile-locked: adding a
+// canonical field (outside the exclusion) fails typecheck until inspection
+// states how it decodes.
+type InspectionSettingsDecoder = {
+	readonly [K in InspectionSettingsField]: (
+		source: Record<string, ConversationJsonValue> | null,
+	) => InspectionSettingsValue<CanonicalGenerationSettings[K]>;
+};
+
+const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
+	modelId: (source) => nullableString(source?.modelId),
+	temperature: (source) => finiteNumber(source?.temperature),
+	topP: (source) => finiteNumber(source?.topP),
+	frequencyPenalty: (source) => finiteNumber(source?.frequencyPenalty),
+	presencePenalty: (source) => finiteNumber(source?.presencePenalty),
+	contextLimit: (source) => finiteInteger(source?.contextLimit),
+	responseBudget: (source) => finiteInteger(source?.responseBudget),
+	safetyAllowance: (source) => finiteInteger(source?.safetyAllowance),
+	siblingGenerationLimit: (source) => finiteInteger(source?.siblingGenerationLimit),
+	continuationStrategy: (source) => nullableString(source?.continuationStrategy),
+	continuationInstruction: (source) => nullableString(source?.continuationInstruction),
+	continuationPrefillSuffix: (source) => nullableString(source?.continuationPrefillSuffix),
+};
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
+	// SAFETY: a non-object source decodes as an empty record, and every field
+	// decoder then resolves its own intentional null.
 	const source = isRecord(value);
 	return {
-		modelId: nullableString(source?.modelId),
-		temperature: finiteNumber(source?.temperature),
-		topP: finiteNumber(source?.topP),
-		frequencyPenalty: finiteNumber(source?.frequencyPenalty),
-		presencePenalty: finiteNumber(source?.presencePenalty),
-		contextLimit: finiteInteger(source?.contextLimit),
-		responseBudget: finiteInteger(source?.responseBudget),
-		safetyAllowance: finiteInteger(source?.safetyAllowance),
-		siblingGenerationLimit: finiteInteger(source?.siblingGenerationLimit),
-		continuationStrategy: nullableString(source?.continuationStrategy),
-		continuationInstruction: nullableString(source?.continuationInstruction),
-		continuationPrefillSuffix: nullableString(source?.continuationPrefillSuffix),
+		modelId: inspectionSettingsFieldValue.modelId(source),
+		temperature: inspectionSettingsFieldValue.temperature(source),
+		topP: inspectionSettingsFieldValue.topP(source),
+		frequencyPenalty: inspectionSettingsFieldValue.frequencyPenalty(source),
+		presencePenalty: inspectionSettingsFieldValue.presencePenalty(source),
+		contextLimit: inspectionSettingsFieldValue.contextLimit(source),
+		responseBudget: inspectionSettingsFieldValue.responseBudget(source),
+		safetyAllowance: inspectionSettingsFieldValue.safetyAllowance(source),
+		siblingGenerationLimit: inspectionSettingsFieldValue.siblingGenerationLimit(source),
+		continuationStrategy: inspectionSettingsFieldValue.continuationStrategy(source),
+		continuationInstruction: inspectionSettingsFieldValue.continuationInstruction(source),
+		continuationPrefillSuffix: inspectionSettingsFieldValue.continuationPrefillSuffix(source),
 	};
 };
 

@@ -2,6 +2,12 @@ import { eq } from "drizzle-orm";
 import { conversationGenerationSettingsTable } from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
+import {
+	defineGenerationSettingsAdapter,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsField,
+	type GenerationSettingsFieldMap,
+} from "../../shared/contract/generation-settings";
 import type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
@@ -20,6 +26,9 @@ export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
 export const DEFAULT_CONTINUATION_INSTRUCTION =
 	"Continue the narrative naturally without repeating the previous text.";
 
+// The domain default derives from the canonical Generation Settings
+// declaration: adding a canonical field fails typecheck until the default
+// states its value, so the stored settings cannot silently omit a field.
 export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSettings = {
 	modelId: "deepseek-chat",
 	temperature: null,
@@ -35,6 +44,72 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	continuationPrefillSuffix: "",
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
+
+// Database storage participates with every canonical field: each one has a
+// settings-table column, and rows round-trip reads and writes field for
+// field. The named adapter proves the projection stays exhaustive when the
+// canonical vocabulary grows.
+export const conversationSettingsRowAdapter = defineGenerationSettingsAdapter(
+	"conversation-settings-row",
+	{
+		modelId: { disposition: "projected" },
+		temperature: { disposition: "projected" },
+		topP: { disposition: "projected" },
+		frequencyPenalty: { disposition: "projected" },
+		presencePenalty: { disposition: "projected" },
+		contextLimit: { disposition: "projected" },
+		responseBudget: { disposition: "projected" },
+		safetyAllowance: { disposition: "projected" },
+		siblingGenerationLimit: { disposition: "projected" },
+		continuationStrategy: { disposition: "projected" },
+		continuationInstruction: { disposition: "projected" },
+		continuationPrefillSuffix: { disposition: "projected" },
+		requestOverrides: { disposition: "projected" },
+	},
+);
+
+type SettingsRow = typeof conversationGenerationSettingsTable.$inferSelect;
+
+// The settings-table column for each canonical field. Compile-locked to the
+// canonical vocabulary: adding a field fails typecheck until its column is
+// named here, and the read and write paths below consume this map.
+const settingsColumn = {
+	modelId: "model_id",
+	temperature: "temperature",
+	topP: "top_p",
+	frequencyPenalty: "frequency_penalty",
+	presencePenalty: "presence_penalty",
+	contextLimit: "context_limit",
+	responseBudget: "response_budget",
+	safetyAllowance: "safety_allowance",
+	siblingGenerationLimit: "sibling_generation_limit",
+	continuationStrategy: "continuation_strategy",
+	continuationInstruction: "continuation_instruction",
+	continuationPrefillSuffix: "continuation_prefill_suffix",
+	requestOverrides: "request_overrides_json",
+} as const satisfies GenerationSettingsFieldMap<keyof SettingsRow>;
+
+// The persisted row values for each canonical field. Adding a canonical
+// field fails typecheck here before it can reach the database.
+type SettingsRowValues = {
+	[K in GenerationSettingsField as (typeof settingsColumn)[K]]: SettingsRow[(typeof settingsColumn)[K]];
+};
+
+const settingsRowValues = (settings: ConversationGenerationSettings): SettingsRowValues => ({
+	model_id: settings.modelId,
+	temperature: settings.temperature,
+	top_p: settings.topP,
+	frequency_penalty: settings.frequencyPenalty,
+	presence_penalty: settings.presencePenalty,
+	context_limit: settings.contextLimit,
+	response_budget: settings.responseBudget,
+	safety_allowance: settings.safetyAllowance,
+	sibling_generation_limit: settings.siblingGenerationLimit,
+	continuation_strategy: settings.continuationStrategy,
+	continuation_instruction: settings.continuationInstruction,
+	continuation_prefill_suffix: settings.continuationPrefillSuffix,
+	request_overrides_json: JSON.stringify(settings.requestOverrides),
+});
 
 export function readConversationGenerationSettings(
 	db: ConversationDatabase,
@@ -61,46 +136,16 @@ export function updateConversationGenerationSettings(
 		.from(conversationGenerationSettingsTable)
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
 		.get();
-	const normalized = validateGenerationSettings({
-		...input,
-		continuationStrategy:
-			input.continuationStrategy ??
-			(existing === undefined
-				? undefined
-				: parseContinuationStrategy(existing.continuation_strategy)) ??
-			"instruction",
-		continuationInstruction:
-			input.continuationInstruction ??
-			existing?.continuation_instruction ??
-			DEFAULT_CONTINUATION_INSTRUCTION,
-		continuationPrefillSuffix:
-			input.continuationPrefillSuffix ??
-			(existing === undefined
-				? undefined
-				: parseContinuationPrefillSuffix(existing.continuation_prefill_suffix)) ??
-			"",
-	});
+	const normalized = normalizeGenerationSettings(
+		resolveGenerationSettingsDraft(input, existing),
+	);
 	db.insert(conversationGenerationSettingsTable)
 		.values({ chat_id: conversationId })
 		.onConflictDoNothing()
 		.run();
 	const updated = db
 		.update(conversationGenerationSettingsTable)
-		.set({
-			model_id: normalized.modelId,
-			temperature: normalized.temperature,
-			top_p: normalized.topP,
-			frequency_penalty: normalized.frequencyPenalty,
-			presence_penalty: normalized.presencePenalty,
-		context_limit: normalized.contextLimit,
-		response_budget: normalized.responseBudget,
-		safety_allowance: normalized.safetyAllowance,
-		sibling_generation_limit: normalized.siblingGenerationLimit,
-		continuation_strategy: normalized.continuationStrategy,
-		continuation_instruction: normalized.continuationInstruction,
-		continuation_prefill_suffix: normalized.continuationPrefillSuffix,
-		request_overrides_json: JSON.stringify(normalized.requestOverrides),
-		})
+		.set(settingsRowValues(normalized))
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
 		.returning()
 		.get();
@@ -110,117 +155,179 @@ export function updateConversationGenerationSettings(
 	return readGenerationSettingsRow(updated);
 }
 
-function readGenerationSettingsRow(
-	row: typeof conversationGenerationSettingsTable.$inferSelect,
-): ConversationGenerationSettings {
-	if (
-		row.continuation_strategy !== "instruction" &&
-		row.continuation_strategy !== "assistant-prefill"
-	) {
-		throw new Error("Conversation Continuation strategy is corrupt.");
-	}
-	const continuationPrefillSuffix = parseContinuationPrefillSuffix(
-		row.continuation_prefill_suffix,
-	);
-	return {
-		modelId: row.model_id,
-		temperature: row.temperature,
-		topP: row.top_p,
-		frequencyPenalty: row.frequency_penalty,
-		presencePenalty: row.presence_penalty,
-		contextLimit: row.context_limit,
-		responseBudget: row.response_budget,
-		safetyAllowance: row.safety_allowance,
-		siblingGenerationLimit: row.sibling_generation_limit,
-		continuationStrategy: row.continuation_strategy,
-		continuationInstruction: row.continuation_instruction,
-		continuationPrefillSuffix,
-		requestOverrides: parseRequestOverrides(row.request_overrides_json),
-	};
-}
+// The submitted settings resolved into a full draft: every canonical field
+// is present, with the update-optional Continuation and budget fields filled
+// from the stored row or the established defaults. The draft's runtime
+// values are still untrusted; normalization below validates each one.
+type GenerationSettingsDraft = ConversationGenerationSettings;
 
-function validateGenerationSettings(
+const resolveGenerationSettingsDraft = (
 	input: ConversationGenerationSettingsInput,
-): ConversationGenerationSettings {
-	const modelId = input.modelId.trim();
-	if (modelId.length === 0) {
-		throw new InvalidConversationCommandError("A model ID is required.");
-	}
-	for (const [label, value] of [
-		["temperature", input.temperature],
-		["topP", input.topP],
-		["frequencyPenalty", input.frequencyPenalty],
-		["presencePenalty", input.presencePenalty],
-	] as const) {
-		if (value !== null && (!Number.isFinite(value) || value < -2 || value > 2)) {
+	existing: SettingsRow | undefined,
+): GenerationSettingsDraft => ({
+	modelId: input.modelId,
+	temperature: input.temperature,
+	topP: input.topP,
+	frequencyPenalty: input.frequencyPenalty,
+	presencePenalty: input.presencePenalty,
+	contextLimit: input.contextLimit,
+	responseBudget: input.responseBudget,
+	safetyAllowance: input.safetyAllowance ?? DEFAULT_SAFETY_ALLOWANCE,
+	siblingGenerationLimit: input.siblingGenerationLimit ?? DEFAULT_SIBLING_GENERATION_LIMIT,
+	continuationStrategy: input.continuationStrategy
+		?? (existing === undefined
+			? undefined
+			: parseContinuationStrategy(existing.continuation_strategy))
+		?? "instruction",
+	continuationInstruction:
+		input.continuationInstruction ??
+		existing?.continuation_instruction ??
+		DEFAULT_CONTINUATION_INSTRUCTION,
+	continuationPrefillSuffix: input.continuationPrefillSuffix
+		?? (existing === undefined
+			? undefined
+			: parseContinuationPrefillSuffix(existing.continuation_prefill_suffix))
+		?? "",
+	requestOverrides: input.requestOverrides,
+});
+
+// Per-field normalization over the canonical vocabulary. Compile-locked:
+// adding a canonical field fails typecheck until its normalization is
+// stated, so validation cannot silently skip a field. Error messages and
+// accepted values are the established domain semantics.
+type SettingsFieldNormalizer = {
+	readonly [K in GenerationSettingsField]: (
+		value: CanonicalGenerationSettings[K],
+	) => CanonicalGenerationSettings[K];
+};
+
+const normalizeSettingsField: SettingsFieldNormalizer = {
+	modelId: (value) => {
+		const modelId = value.trim();
+		if (modelId.length === 0) {
+			throw new InvalidConversationCommandError("A model ID is required.");
+		}
+		return modelId;
+	},
+	temperature: (value) => requireSampling("temperature", value),
+	topP: (value) => requireSampling("topP", value),
+	frequencyPenalty: (value) => requireSampling("frequencyPenalty", value),
+	presencePenalty: (value) => requireSampling("presencePenalty", value),
+	contextLimit: (value) => requirePositiveWholeNumber("Context limit", value),
+	responseBudget: (value) => requirePositiveWholeNumber("Response budget", value),
+	safetyAllowance: (value) => {
+		if (!Number.isInteger(value) || value < 0) {
 			throw new InvalidConversationCommandError(
-				`${label} must be null or a finite value between -2 and 2.`,
+				"Safety allowance must be a non-negative whole number.",
 			);
 		}
-	}
-	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
-		throw new InvalidConversationCommandError("Context limit must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
-		throw new InvalidConversationCommandError("Response budget must be a positive whole number.");
-	}
-	const safetyAllowance = input.safetyAllowance === undefined
-		? DEFAULT_SAFETY_ALLOWANCE
-		: input.safetyAllowance;
-	if (!Number.isInteger(safetyAllowance) || safetyAllowance < 0) {
+		return value;
+	},
+	siblingGenerationLimit: (value) =>
+		requirePositiveWholeNumber("Sibling Generation limit", value),
+	continuationStrategy: (value) => {
+		if (value !== "instruction" && value !== "assistant-prefill") {
+			throw new InvalidConversationCommandError(
+				"Continuation strategy must be instruction or assistant prefill.",
+			);
+		}
+		return value;
+	},
+	continuationInstruction: (value) => {
+		if (value.trim() === "") {
+			throw new InvalidConversationCommandError(
+				"Continuation instruction must not be blank.",
+			);
+		}
+		return value;
+	},
+	continuationPrefillSuffix: (value) => validateContinuationPrefillSuffix(value),
+	requestOverrides: (value) => cloneRequestOverrides(value),
+};
+
+const requireSampling = (label: string, value: number | null): number | null => {
+	if (value !== null && (!Number.isFinite(value) || value < -2 || value > 2)) {
 		throw new InvalidConversationCommandError(
-			"Safety allowance must be a non-negative whole number.",
+			`${label} must be null or a finite value between -2 and 2.`,
 		);
 	}
-	const siblingGenerationLimit = input.siblingGenerationLimit === undefined
-		? DEFAULT_SIBLING_GENERATION_LIMIT
-		: input.siblingGenerationLimit;
-	if (!Number.isInteger(siblingGenerationLimit) || siblingGenerationLimit <= 0) {
-		throw new InvalidConversationCommandError(
-			"Sibling Generation limit must be a positive whole number.",
-		);
+	return value;
+};
+
+const requirePositiveWholeNumber = (label: string, value: number): number => {
+	if (!Number.isInteger(value) || value <= 0) {
+		throw new InvalidConversationCommandError(`${label} must be a positive whole number.`);
 	}
-	const continuationStrategy = input.continuationStrategy ?? "instruction";
-	if (continuationStrategy !== "instruction" && continuationStrategy !== "assistant-prefill") {
-		throw new InvalidConversationCommandError(
-			"Continuation strategy must be instruction or assistant prefill.",
-		);
-	}
-	const continuationInstruction = input.continuationInstruction === undefined
-		? DEFAULT_CONTINUATION_INSTRUCTION
-		: input.continuationInstruction;
-	if (continuationInstruction.trim() === "") {
-		throw new InvalidConversationCommandError(
-			"Continuation instruction must not be blank.",
-		);
-	}
-	const continuationPrefillSuffix = validateContinuationPrefillSuffix(
-		input.continuationPrefillSuffix ?? "",
-	);
-	const requestOverrides = cloneRequestOverrides(input.requestOverrides);
-	return {
-		modelId,
-		temperature: input.temperature,
-		topP: input.topP,
-		frequencyPenalty: input.frequencyPenalty,
-		presencePenalty: input.presencePenalty,
-		contextLimit: input.contextLimit,
-		responseBudget: input.responseBudget,
-		safetyAllowance,
-		siblingGenerationLimit,
-		continuationStrategy,
-		continuationInstruction,
-		continuationPrefillSuffix,
-		requestOverrides,
-	};
-}
+	return value;
+};
+
+const normalizeGenerationSettings = (
+	draft: GenerationSettingsDraft,
+): ConversationGenerationSettings => ({
+	modelId: normalizeSettingsField.modelId(draft.modelId),
+	temperature: normalizeSettingsField.temperature(draft.temperature),
+	topP: normalizeSettingsField.topP(draft.topP),
+	frequencyPenalty: normalizeSettingsField.frequencyPenalty(draft.frequencyPenalty),
+	presencePenalty: normalizeSettingsField.presencePenalty(draft.presencePenalty),
+	contextLimit: normalizeSettingsField.contextLimit(draft.contextLimit),
+	responseBudget: normalizeSettingsField.responseBudget(draft.responseBudget),
+	safetyAllowance: normalizeSettingsField.safetyAllowance(draft.safetyAllowance),
+	siblingGenerationLimit: normalizeSettingsField.siblingGenerationLimit(draft.siblingGenerationLimit),
+	continuationStrategy: normalizeSettingsField.continuationStrategy(draft.continuationStrategy),
+	continuationInstruction: normalizeSettingsField.continuationInstruction(draft.continuationInstruction),
+	continuationPrefillSuffix: normalizeSettingsField.continuationPrefillSuffix(draft.continuationPrefillSuffix),
+	requestOverrides: normalizeSettingsField.requestOverrides(draft.requestOverrides),
+});
+
+// The row value for each canonical field, parsed back into the domain
+// vocabulary. Compile-locked to the canonical field map; corrupt persisted
+// values fail loudly instead of decoding as defaults.
+type SettingsFieldRowReader = {
+	readonly [K in GenerationSettingsField]: (row: SettingsRow) => CanonicalGenerationSettings[K];
+};
+
+const readSettingsFieldValue: SettingsFieldRowReader = {
+	modelId: (row) => row[settingsColumn.modelId],
+	temperature: (row) => row[settingsColumn.temperature],
+	topP: (row) => row[settingsColumn.topP],
+	frequencyPenalty: (row) => row[settingsColumn.frequencyPenalty],
+	presencePenalty: (row) => row[settingsColumn.presencePenalty],
+	contextLimit: (row) => row[settingsColumn.contextLimit],
+	responseBudget: (row) => row[settingsColumn.responseBudget],
+	safetyAllowance: (row) => row[settingsColumn.safetyAllowance],
+	siblingGenerationLimit: (row) => row[settingsColumn.siblingGenerationLimit],
+	continuationStrategy: (row) =>
+		parseContinuationStrategy(row[settingsColumn.continuationStrategy]),
+	continuationInstruction: (row) => row[settingsColumn.continuationInstruction],
+	continuationPrefillSuffix: (row) =>
+		parseContinuationPrefillSuffix(row[settingsColumn.continuationPrefillSuffix]),
+	requestOverrides: (row) => parseRequestOverrides(row[settingsColumn.requestOverrides]),
+};
+
+const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => ({
+	modelId: readSettingsFieldValue.modelId(row),
+	temperature: readSettingsFieldValue.temperature(row),
+	topP: readSettingsFieldValue.topP(row),
+	frequencyPenalty: readSettingsFieldValue.frequencyPenalty(row),
+	presencePenalty: readSettingsFieldValue.presencePenalty(row),
+	contextLimit: readSettingsFieldValue.contextLimit(row),
+	responseBudget: readSettingsFieldValue.responseBudget(row),
+	safetyAllowance: readSettingsFieldValue.safetyAllowance(row),
+	siblingGenerationLimit: readSettingsFieldValue.siblingGenerationLimit(row),
+	continuationStrategy: readSettingsFieldValue.continuationStrategy(row),
+	continuationInstruction: readSettingsFieldValue.continuationInstruction(row),
+	continuationPrefillSuffix: readSettingsFieldValue.continuationPrefillSuffix(row),
+	requestOverrides: readSettingsFieldValue.requestOverrides(row),
+});
 
 function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffix {
 	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;
 	throw new Error("Conversation Continuation prefill suffix is corrupt.");
 }
 
-function parseContinuationStrategy(value: string): "instruction" | "assistant-prefill" {
+function parseContinuationStrategy(
+	value: string,
+): ConversationGenerationSettings["continuationStrategy"] {
 	if (value === "instruction" || value === "assistant-prefill") return value;
 	throw new Error("Conversation Continuation strategy is corrupt.");
 }
@@ -236,9 +343,10 @@ function validateContinuationPrefillSuffix(
 
 function parseRequestOverrides(value: string): ConversationGenerationSettings["requestOverrides"] {
 	try {
-		// SAFETY: the persisted value is written only by validateGenerationSettings;
-		// cloneRequestOverrides verifies all three required format namespaces by
-		// forcing each value through JSON serialization before returning it.
+		// SAFETY: the persisted value is written only by settingsRowValues, from
+		// a cloneRequestOverrides-verified draft; parsing it restores the same
+		// closed JSON value domain, and cloneRequestOverrides re-verifies all
+		// three required format namespaces before returning it.
 		const parsed = JSON.parse(value) as ConversationGenerationSettings["requestOverrides"];
 		return cloneRequestOverrides(parsed);
 	} catch {

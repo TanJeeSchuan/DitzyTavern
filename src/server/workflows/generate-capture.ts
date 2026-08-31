@@ -36,9 +36,14 @@ import {
 	type ModelClientGenerationSettings,
 } from "../model-client";
 import {
+	captureGenerationProvenanceSettings,
 	generationProvenanceCodec,
 	type GenerationProvenanceRecord,
 } from "../../shared/generation-provenance";
+import {
+	defineGenerationSettingsAdapter,
+	type GenerationSettingsField,
+} from "../../shared/contract/generation-settings";
 
 // Generation-start capture: from one authoritative Conversation snapshot this
 // module derives the provider-neutral Prompt Plan, the budgeted plan, the
@@ -171,19 +176,11 @@ function captureGenerationSettings(
 		modelBackend: capturedConnection?.backend ?? null,
 		adapter: capturedConnection?.adapter ?? null,
 		modelId: settings.modelId,
-		generationSettings: {
-			temperature: settings.temperature,
-			topP: settings.topP,
-			frequencyPenalty: settings.frequencyPenalty,
-			presencePenalty: settings.presencePenalty,
-			contextLimit: settings.contextLimit,
-			responseBudget: settings.responseBudget,
-			safetyAllowance: settings.safetyAllowance,
-			siblingGenerationLimit: settings.siblingGenerationLimit,
-			continuationStrategy: settings.continuationStrategy,
-			continuationInstruction: settings.continuationInstruction,
-			continuationPrefillSuffix: settings.continuationPrefillSuffix,
-		},
+		// The retained settings projection is the exhaustive provenance capture
+		// adapter: every canonical field it declares participates, with its
+		// intentional nullability, and model identity stays at the record's top
+		// level beside the connection identity.
+		generationSettings: captureGenerationProvenanceSettings(settings),
 		usage: null,
 		finishReason: null,
 		status: null,
@@ -308,26 +305,51 @@ export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
 	return plan.intent === undefined ? result : { ...result, intent: plan.intent };
 };
 
-export const generationSettingsJson = (
-	settings: ModelClientGenerationSettings & {
-		readonly modelId?: string;
-		readonly siblingGenerationLimit?: number;
-		readonly continuationStrategy?: string | null;
-		readonly continuationInstruction?: string | null;
-		readonly continuationPrefillSuffix?: string | null;
+// Active Generation persistence stores the complete captured Generation
+// Settings for inspection. The projection is compile-locked to the canonical
+// vocabulary: adding a canonical field fails typecheck until persistence
+// states what it stores — the completeness gap that previously let the
+// Safety allowance silently disappear from active inspection.
+export type PersistedGenerationSettings = {
+	readonly [K in GenerationSettingsField]: ConversationJsonValue;
+};
+
+// The named persistence dispositions: every canonical field is stored on the
+// Active Generation row.
+export const activeGenerationSettingsAdapter = defineGenerationSettingsAdapter(
+	"active-generation-settings",
+	{
+		modelId: { disposition: "projected" },
+		temperature: { disposition: "projected" },
+		topP: { disposition: "projected" },
+		frequencyPenalty: { disposition: "projected" },
+		presencePenalty: { disposition: "projected" },
+		contextLimit: { disposition: "projected" },
+		responseBudget: { disposition: "projected" },
+		safetyAllowance: { disposition: "projected" },
+		siblingGenerationLimit: { disposition: "projected" },
+		continuationStrategy: { disposition: "projected" },
+		continuationInstruction: { disposition: "projected" },
+		continuationPrefillSuffix: { disposition: "projected" },
+		requestOverrides: { disposition: "projected" },
 	},
-): ConversationJsonValue => ({
-	modelId: settings.modelId ?? null,
-	siblingGenerationLimit: settings.siblingGenerationLimit ?? null,
+);
+
+export const generationSettingsJson = (
+	settings: ConversationGenerationSettings,
+): PersistedGenerationSettings => ({
+	modelId: settings.modelId,
+	siblingGenerationLimit: settings.siblingGenerationLimit,
 	temperature: settings.temperature,
 	topP: settings.topP,
 	frequencyPenalty: settings.frequencyPenalty,
 	presencePenalty: settings.presencePenalty,
 	contextLimit: settings.contextLimit,
 	responseBudget: settings.responseBudget,
-	continuationStrategy: settings.continuationStrategy ?? null,
-	continuationInstruction: settings.continuationInstruction ?? null,
-	continuationPrefillSuffix: settings.continuationPrefillSuffix ?? null,
+	safetyAllowance: settings.safetyAllowance,
+	continuationStrategy: settings.continuationStrategy,
+	continuationInstruction: settings.continuationInstruction,
+	continuationPrefillSuffix: settings.continuationPrefillSuffix,
 	requestOverrides: settings.requestOverrides,
 });
 

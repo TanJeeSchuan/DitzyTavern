@@ -8,7 +8,6 @@ import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import { createTokenEstimator } from "../prompt-compiler";
 import { sendThroughProvisionalTailGeneration } from ".";
-
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -210,5 +209,76 @@ describe("Send through provisional Tail Generation", () => {
 		expect(contacted).toBe(false);
 		expect(createConversationModule(database).getSnapshot(conversationId)?.messages).toHaveLength(0);
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
+	});
+
+	test("persists the complete captured settings so active inspection retains the Safety allowance", async () => {
+		const conversation = createConversationModule(database);
+		conversation.execute({
+			conversationId,
+			expectedRevision: 0,
+			action: {
+				type: "update-generation-settings",
+				settings: {
+					modelId: "inspection-model",
+					temperature: 0.5,
+					topP: null,
+					frequencyPenalty: null,
+					presencePenalty: null,
+					contextLimit: 8192,
+					responseBudget: 256,
+					safetyAllowance: 777,
+					requestOverrides: {
+						"chat-completions": {},
+						responses: {},
+						"anthropic-messages": {},
+					},
+				},
+			},
+		});
+
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let generationId: number | undefined;
+		const generation = sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: 1,
+			content: "Guide the scene.",
+			modelClient: createFakeModelClient(async () => {
+				await pending;
+				return "The scene shifts.";
+			}),
+			onAccepted: (accepted) => {
+				generationId = accepted.generationId;
+			},
+		});
+
+		// The workflow persisted the complete settings snapshot at acceptance;
+		// active inspection must decode the Safety allowance and every other
+		// canonical field instead of silently reporting it as absent.
+		const details = createConversationModule(database).readActiveGenerationDetails(
+			conversationId,
+			generationId ?? -1,
+		);
+		expect(details?.generationSettings).toMatchObject({
+			modelId: "inspection-model",
+			temperature: 0.5,
+			topP: null,
+			frequencyPenalty: null,
+			presencePenalty: null,
+			contextLimit: 8192,
+			responseBudget: 256,
+			safetyAllowance: 777,
+			siblingGenerationLimit: 4,
+			continuationStrategy: "instruction",
+			continuationInstruction:
+				"Continue the narrative naturally without repeating the previous text.",
+			continuationPrefillSuffix: "",
+		});
+		expect(details?.budget.safetyAllowance).toBe(777);
+
+		release();
+		await generation;
 	});
 });

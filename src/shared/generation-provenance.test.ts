@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+	captureGenerationProvenanceSettings,
 	decodeGenerationProvenance,
+	decodeGenerationProvenanceRecord,
 	decodeStoredGenerationProvenance,
 	encodeGenerationProvenance,
+	generationProvenanceSettingsAdapter,
+	PROVENANCE_SETTINGS_FIELDS,
 	parseGenerationJson,
 	readGenerationTerminalMetadata,
 } from "./generation-provenance";
@@ -89,5 +93,110 @@ describe("generation provenance codec", () => {
 			status: "complete",
 		}), null);
 		expect(decodeGenerationProvenance(missingSettings)).toBeUndefined();
+	});
+
+	test("captures every retained canonical settings field with its intentional nullability", () => {
+		const configured = captureGenerationProvenanceSettings({
+			modelId: "capture-model",
+			temperature: 0.5,
+			topP: 0.9,
+			frequencyPenalty: -1,
+			presencePenalty: 1.5,
+			contextLimit: 8192,
+			responseBudget: 256,
+			safetyAllowance: 64,
+			siblingGenerationLimit: 2,
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: "Keep the voice.",
+			continuationPrefillSuffix: "\n",
+			requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
+		});
+
+		// Model identity and Request Overrides are excluded from the retained
+		// settings projection; every other canonical field is captured.
+		expect(Object.keys(configured).sort()).toEqual([...PROVENANCE_SETTINGS_FIELDS].sort());
+		expect(configured).toEqual({
+			temperature: 0.5,
+			topP: 0.9,
+			frequencyPenalty: -1,
+			presencePenalty: 1.5,
+			contextLimit: 8192,
+			responseBudget: 256,
+			safetyAllowance: 64,
+			siblingGenerationLimit: 2,
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: "Keep the voice.",
+			continuationPrefillSuffix: "\n",
+		});
+
+		// Unconfigured settings capture as null, never as zero or empty text.
+		const unconfigured = captureGenerationProvenanceSettings({
+			modelId: "capture-model",
+			temperature: null,
+			topP: null,
+			frequencyPenalty: null,
+			presencePenalty: null,
+			contextLimit: 8192,
+			responseBudget: 256,
+			safetyAllowance: 64,
+			siblingGenerationLimit: 2,
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: "Keep the voice.",
+			continuationPrefillSuffix: "\n",
+			requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
+		});
+		expect(unconfigured.temperature).toBeNull();
+		expect(unconfigured.safetyAllowance).toBe(64);
+		expect(generationProvenanceSettingsAdapter.adapter).toBe("generation-provenance-settings");
+	});
+
+	test("decodes retained settings with per-field intentional nullability", () => {
+		const decoded = decodeGenerationProvenanceRecord({
+			generationSettings: {
+				temperature: "not-a-number",
+				topP: 0.9,
+				contextLimit: 2.5,
+				responseBudget: 256,
+				safetyAllowance: 0,
+				siblingGenerationLimit: 4.5,
+				continuationStrategy: "auto",
+				continuationInstruction: "Keep the voice.",
+				continuationPrefillSuffix: " ",
+				futureField: "ignored like every unknown wire field",
+			},
+		});
+
+		// Absent and corrupt values decode as null; the Safety allowance accepts
+		// zero; closed Continuation literals decode exactly.
+		expect(decoded?.generationSettings).toEqual({
+			temperature: null,
+			topP: 0.9,
+			frequencyPenalty: null,
+			presencePenalty: null,
+			contextLimit: null,
+			responseBudget: 256,
+			safetyAllowance: 0,
+			siblingGenerationLimit: null,
+			continuationStrategy: null,
+			continuationInstruction: "Keep the voice.",
+			continuationPrefillSuffix: " ",
+		});
+
+		// A wholly absent settings object decodes as the all-null projection —
+		// an absence no capture of validated settings could ever produce, which
+		// is exactly why the projection's nullability is explicit.
+		expect(decodeGenerationProvenanceRecord({})?.generationSettings).toEqual({
+			temperature: null,
+			topP: null,
+			frequencyPenalty: null,
+			presencePenalty: null,
+			contextLimit: null,
+			responseBudget: null,
+			safetyAllowance: null,
+			siblingGenerationLimit: null,
+			continuationStrategy: null,
+			continuationInstruction: null,
+			continuationPrefillSuffix: null,
+		});
 	});
 });

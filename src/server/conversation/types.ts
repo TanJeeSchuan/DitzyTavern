@@ -2,6 +2,7 @@ import type {
 	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../../shared/generation-provenance";
+import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -18,28 +19,14 @@ export interface ConversationDataEntry {
 // provider classes, credentials, or unserializable runtime values.
 export type ConversationJsonValue = GenerationJsonValue;
 
-// Conversation-local generation controls. Request Overrides retain separate
-// namespaces for each API Format so switching a global Connection Profile
-// never transmits settings authored for another wire format.
-export interface ConversationGenerationSettings {
-	modelId: string;
-	temperature: number | null;
-	topP: number | null;
-	frequencyPenalty: number | null;
-	presencePenalty: number | null;
-	contextLimit: number;
-	responseBudget: number;
-	safetyAllowance: number;
-	siblingGenerationLimit: number;
-	continuationStrategy: "instruction" | "assistant-prefill";
-	continuationInstruction: string;
-	continuationPrefillSuffix: ContinuationPrefillSuffix;
-	requestOverrides: Readonly<{
-		"chat-completions": GenerationRequestOverrides;
-		responses: GenerationRequestOverrides;
-		"anthropic-messages": GenerationRequestOverrides;
-	}>;
-}
+// Conversation-local generation controls derive from the canonical
+// Generation Settings declaration (ADR-0032) instead of restating its
+// fields: adding a canonical field changes the domain type, the defaults,
+// and the storage adapter together, so the copies cannot drift. Request
+// Overrides retain separate namespaces for each API Format so switching a
+// global Connection Profile never transmits settings authored for another
+// wire format.
+export type ConversationGenerationSettings = CanonicalGenerationSettings;
 
 export type GenerationRequestValue =
 	| string
@@ -54,8 +41,9 @@ export type GenerationRequestOverrides = Readonly<
 >;
 
 // Suffixes are intentionally a closed set. They are request-time formatting
-// choices, not authored Conversation content.
-export type ContinuationPrefillSuffix = "" | " " | "\n" | "\n\n";
+// choices, not authored Conversation content. The domain alias stays derived
+// from the canonical declaration it rides on.
+export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
 // Older clients may omit the newly introduced Safety allowance. The domain
 // fills that omission with the same 500-token default used for new rows.

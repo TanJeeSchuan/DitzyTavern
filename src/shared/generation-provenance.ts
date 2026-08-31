@@ -3,6 +3,12 @@
 // carry safe identity, settings, usage, and terminal outcome metadata, but
 // never provider payloads, URLs, headers, credentials, or request overrides.
 
+import {
+	defineGenerationSettingsAdapter,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsField,
+} from "./contract/generation-settings";
+
 export type GenerationJsonValue =
 	| string
 	| number
@@ -15,22 +21,123 @@ export type GenerationJsonObject = Readonly<{ [key: string]: GenerationJsonValue
 
 export type GenerationProvenanceStatus = "complete" | "length-limited" | "interrupted";
 export type GenerationProvenanceFinishReason = "stop" | "length" | "other";
-export type GenerationContinuationStrategy = "instruction" | "assistant-prefill";
-export type GenerationContinuationPrefillSuffix = "" | " " | "\n" | "\n\n";
 
-export interface GenerationProvenanceSettings {
-	temperature: number | null;
-	topP: number | null;
-	frequencyPenalty: number | null;
-	presencePenalty: number | null;
-	contextLimit: number | null;
-	responseBudget: number | null;
-	safetyAllowance: number | null;
-	siblingGenerationLimit: number | null;
-	continuationStrategy: GenerationContinuationStrategy | null;
-	continuationInstruction: string | null;
-	continuationPrefillSuffix: GenerationContinuationPrefillSuffix | null;
-}
+// The retained provenance settings derive from the canonical Generation
+// Settings declaration (ADR-0032): every canonical field except model
+// identity (captured beside the connection identity at provenance top
+// level) and Request Overrides (never retained — provenance is a positive
+// allow-list) participates, and every participating field is explicitly
+// nullable. A value DitzyTavern did not configure decodes as null, never as
+// an accidental zero or empty string.
+export type ProvenanceSettingsField = Exclude<
+	GenerationSettingsField,
+	"modelId" | "requestOverrides"
+>;
+
+export type GenerationProvenanceSettings = {
+	[K in ProvenanceSettingsField]: CanonicalGenerationSettings[K] | null;
+};
+
+export type GenerationContinuationStrategy = NonNullable<
+	GenerationProvenanceSettings["continuationStrategy"]
+>;
+export type GenerationContinuationPrefillSuffix = NonNullable<
+	GenerationProvenanceSettings["continuationPrefillSuffix"]
+>;
+
+// The canonical field vocabulary retained in provenance, compile-locked to
+// the derived projection: adding a canonical field (outside the two
+// exclusions) fails typecheck until the capture and decode adapters below
+// state how it participates.
+const provenanceSettingsFieldFlags = {
+	temperature: null,
+	topP: null,
+	frequencyPenalty: null,
+	presencePenalty: null,
+	contextLimit: null,
+	responseBudget: null,
+	safetyAllowance: null,
+	siblingGenerationLimit: null,
+	continuationStrategy: null,
+	continuationInstruction: null,
+	continuationPrefillSuffix: null,
+} as const satisfies Record<ProvenanceSettingsField, null>;
+
+// SAFETY: the satisfies lock proves the flag record's keys are exactly the
+// retained provenance field union, so this key list is the vocabulary.
+const provenanceSettingsFieldKeys = Object.keys(
+	provenanceSettingsFieldFlags,
+) as readonly ProvenanceSettingsField[];
+
+export const PROVENANCE_SETTINGS_FIELDS = provenanceSettingsFieldKeys;
+
+// The named provenance dispositions over the full canonical vocabulary.
+// Retained provenance settings project the sampling, budget, and Continuation
+// fields with intentional nullability; model identity and Request Overrides
+// are excluded with stated reasons instead of being silently dropped.
+export const generationProvenanceSettingsAdapter = defineGenerationSettingsAdapter(
+	"generation-provenance-settings",
+	{
+		modelId: {
+			disposition: "excluded",
+			reason: "captured beside the connection identity at provenance top level",
+		},
+		temperature: { disposition: "projected" },
+		topP: { disposition: "projected" },
+		frequencyPenalty: { disposition: "projected" },
+		presencePenalty: { disposition: "projected" },
+		contextLimit: { disposition: "projected" },
+		responseBudget: { disposition: "projected" },
+		safetyAllowance: { disposition: "projected" },
+		siblingGenerationLimit: { disposition: "projected" },
+		continuationStrategy: { disposition: "projected" },
+		continuationInstruction: { disposition: "projected" },
+		continuationPrefillSuffix: { disposition: "projected" },
+		requestOverrides: {
+			disposition: "excluded",
+			reason: "provenance is a positive allow-list that never retains Request Overrides",
+		},
+	},
+);
+
+// The retained value for each provenance field, captured from validated
+// canonical settings. Compile-locked: adding a retained canonical field
+// fails typecheck until the capture states its value.
+type ProvenanceSettingsCapture = {
+	readonly [K in ProvenanceSettingsField]: (
+		settings: CanonicalGenerationSettings,
+	) => CanonicalGenerationSettings[K];
+};
+
+const captureProvenanceSettingsField: ProvenanceSettingsCapture = {
+	temperature: (settings) => settings.temperature,
+	topP: (settings) => settings.topP,
+	frequencyPenalty: (settings) => settings.frequencyPenalty,
+	presencePenalty: (settings) => settings.presencePenalty,
+	contextLimit: (settings) => settings.contextLimit,
+	responseBudget: (settings) => settings.responseBudget,
+	safetyAllowance: (settings) => settings.safetyAllowance,
+	siblingGenerationLimit: (settings) => settings.siblingGenerationLimit,
+	continuationStrategy: (settings) => settings.continuationStrategy,
+	continuationInstruction: (settings) => settings.continuationInstruction,
+	continuationPrefillSuffix: (settings) => settings.continuationPrefillSuffix,
+};
+
+export const captureGenerationProvenanceSettings = (
+	settings: CanonicalGenerationSettings,
+): GenerationProvenanceSettings => ({
+	temperature: captureProvenanceSettingsField.temperature(settings),
+	topP: captureProvenanceSettingsField.topP(settings),
+	frequencyPenalty: captureProvenanceSettingsField.frequencyPenalty(settings),
+	presencePenalty: captureProvenanceSettingsField.presencePenalty(settings),
+	contextLimit: captureProvenanceSettingsField.contextLimit(settings),
+	responseBudget: captureProvenanceSettingsField.responseBudget(settings),
+	safetyAllowance: captureProvenanceSettingsField.safetyAllowance(settings),
+	siblingGenerationLimit: captureProvenanceSettingsField.siblingGenerationLimit(settings),
+	continuationStrategy: captureProvenanceSettingsField.continuationStrategy(settings),
+	continuationInstruction: captureProvenanceSettingsField.continuationInstruction(settings),
+	continuationPrefillSuffix: captureProvenanceSettingsField.continuationPrefillSuffix(settings),
+});
 
 export type GenerationUsage = Record<string, number>;
 
@@ -70,19 +177,7 @@ export interface GenerationTerminalMetadata {
 	interruptionCause?: string | null | undefined;
 }
 
-const emptyGenerationSettings = (): GenerationProvenanceSettings => ({
-	temperature: null,
-	topP: null,
-	frequencyPenalty: null,
-	presencePenalty: null,
-	contextLimit: null,
-	responseBudget: null,
-	safetyAllowance: null,
-	siblingGenerationLimit: null,
-	continuationStrategy: null,
-	continuationInstruction: null,
-	continuationPrefillSuffix: null,
-});
+const emptyGenerationSettings = (): GenerationProvenanceSettings => provenanceSettings(undefined);
 
 export const generationJsonObject = (
 	value: GenerationJsonValue | undefined,
@@ -143,29 +238,66 @@ const provenanceFinishReason = (
 ): GenerationProvenanceFinishReason | null =>
 	value === "stop" || value === "length" || value === "other" ? value : null;
 
+// Closed-literal decoding for the Continuation vocabulary: anything else —
+// including an absent value — decodes as null rather than being guessed.
+const closedProvenanceLiteral = <T extends string>(
+	value: GenerationJsonValue | undefined,
+	literals: readonly T[],
+): T | null => {
+	const text = provenanceString(value);
+	// SAFETY: membership in the closed literal list is checked before the
+	// string is returned as one of those literals.
+	return text !== null && (literals as readonly string[]).includes(text)
+		? (text as T)
+		: null;
+};
+
+// The provenance value for each retained settings field, decoded from
+// untrusted JSON. Compile-locked: adding a retained canonical field fails
+// typecheck until the decode states its nullability semantics.
+type ProvenanceSettingsDecoder = {
+	readonly [K in ProvenanceSettingsField]: (
+		source: GenerationJsonObject,
+	) => GenerationProvenanceSettings[K];
+};
+
+const decodeProvenanceSettingsField: ProvenanceSettingsDecoder = {
+	temperature: (source) => provenanceNumber(source.temperature),
+	topP: (source) => provenanceNumber(source.topP),
+	frequencyPenalty: (source) => provenanceNumber(source.frequencyPenalty),
+	presencePenalty: (source) => provenanceNumber(source.presencePenalty),
+	contextLimit: (source) => generationJsonInteger(source.contextLimit),
+	responseBudget: (source) => generationJsonInteger(source.responseBudget),
+	safetyAllowance: (source) => generationJsonInteger(source.safetyAllowance),
+	siblingGenerationLimit: (source) => generationJsonInteger(source.siblingGenerationLimit),
+	continuationStrategy: (source) =>
+		closedProvenanceLiteral(source.continuationStrategy, [
+			"instruction",
+			"assistant-prefill",
+		] as const),
+	continuationInstruction: (source) => provenanceString(source.continuationInstruction),
+	continuationPrefillSuffix: (source) =>
+		closedProvenanceLiteral(source.continuationPrefillSuffix, ["", " ", "\n", "\n\n"] as const),
+};
+
 const provenanceSettings = (
 	value: GenerationJsonValue | undefined,
 ): GenerationProvenanceSettings => {
-	const source = generationJsonObject(value);
-	if (source === null) return emptyGenerationSettings();
-	const strategy = provenanceString(source.continuationStrategy);
-	const suffix = provenanceString(source.continuationPrefillSuffix);
+	// SAFETY: a non-object source decodes as an empty record, and every field
+	// decoder then resolves its own intentional null.
+	const source = generationJsonObject(value) ?? {};
 	return {
-		temperature: provenanceNumber(source.temperature),
-		topP: provenanceNumber(source.topP),
-		frequencyPenalty: provenanceNumber(source.frequencyPenalty),
-		presencePenalty: provenanceNumber(source.presencePenalty),
-		contextLimit: generationJsonInteger(source.contextLimit),
-		responseBudget: generationJsonInteger(source.responseBudget),
-		safetyAllowance: generationJsonInteger(source.safetyAllowance),
-		siblingGenerationLimit: generationJsonInteger(source.siblingGenerationLimit),
-		continuationStrategy: strategy === "instruction" || strategy === "assistant-prefill"
-			? strategy
-			: null,
-		continuationInstruction: provenanceString(source.continuationInstruction),
-		continuationPrefillSuffix: suffix === "" || suffix === " " || suffix === "\n" || suffix === "\n\n"
-			? suffix
-			: null,
+		temperature: decodeProvenanceSettingsField.temperature(source),
+		topP: decodeProvenanceSettingsField.topP(source),
+		frequencyPenalty: decodeProvenanceSettingsField.frequencyPenalty(source),
+		presencePenalty: decodeProvenanceSettingsField.presencePenalty(source),
+		contextLimit: decodeProvenanceSettingsField.contextLimit(source),
+		responseBudget: decodeProvenanceSettingsField.responseBudget(source),
+		safetyAllowance: decodeProvenanceSettingsField.safetyAllowance(source),
+		siblingGenerationLimit: decodeProvenanceSettingsField.siblingGenerationLimit(source),
+		continuationStrategy: decodeProvenanceSettingsField.continuationStrategy(source),
+		continuationInstruction: decodeProvenanceSettingsField.continuationInstruction(source),
+		continuationPrefillSuffix: decodeProvenanceSettingsField.continuationPrefillSuffix(source),
 	};
 };
 

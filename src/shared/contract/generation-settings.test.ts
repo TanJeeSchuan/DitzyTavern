@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
+import {
+	conversationSettingsRowAdapter,
+	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
+} from "../../server/conversation/generation-settings";
+import { activeGenerationSettingsAdapter } from "../../server/workflows/generate-capture";
+import { generationInspectionSettingsAdapter } from "../../server/conversation/generation-details";
+import {
+	captureGenerationProvenanceSettings,
+	generationProvenanceSettingsAdapter,
+	PROVENANCE_SETTINGS_FIELDS,
+} from "../generation-provenance";
 import {
 	conversationGenerationSettings,
 	generationSettingsUpdate,
@@ -306,17 +316,7 @@ describe("defineGenerationSettingsAdapter", () => {
 		// Database storage and the partial update command participate with
 		// every canonical field; the update command fills omitted fields from
 		// stored values or defaults.
-		defineGenerationSettingsAdapter("conversation-settings-row", adapterWithAllFieldsProjected());
 		defineGenerationSettingsAdapter("update-generation-settings-command", adapterWithAllFieldsProjected());
-
-		// Retained provenance settings project the sampling, budget, and
-		// Continuation fields with intentional nullability; model identity
-		// and Request Overrides live outside the settings projection.
-		defineGenerationSettingsAdapter("generation-provenance-settings", {
-			...adapterWithAllFieldsProjected(),
-			modelId: excluded("captured beside the connection identity at provenance top level"),
-			requestOverrides: excluded("provenance is a positive allow-list that never retains Request Overrides"),
-		});
 
 		// Model Client input carries the transport-relevant projection; the
 		// remaining canonical fields stay application-owned.
@@ -329,6 +329,41 @@ describe("defineGenerationSettingsAdapter", () => {
 			continuationInstruction: excluded("intent applicability decides the Continuation operands outside transport"),
 			continuationPrefillSuffix: excluded("intent applicability decides the Continuation operands outside transport"),
 		});
+	});
+
+	test("the migrated server adapters prove exhaustive handling of the canonical vocabulary", () => {
+		// The settings row stores every canonical field.
+		expect(conversationSettingsRowAdapter).toMatchObject({
+			adapter: "conversation-settings-row",
+			fields: adapterWithAllFieldsProjected(),
+		});
+
+		// Active Generation persistence stores every canonical field, including
+		// the Safety allowance omitted before the migration.
+		expect(activeGenerationSettingsAdapter).toMatchObject({
+			adapter: "active-generation-settings",
+			fields: adapterWithAllFieldsProjected(),
+		});
+
+		// Retained provenance settings project the sampling, budget, and
+		// Continuation fields with intentional nullability; model identity
+		// and Request Overrides are excluded with stated reasons.
+		expect(generationProvenanceSettingsAdapter.fields).toEqual({
+			...adapterWithAllFieldsProjected(),
+			modelId: excluded("captured beside the connection identity at provenance top level"),
+			requestOverrides: excluded("provenance is a positive allow-list that never retains Request Overrides"),
+		});
+
+		// Active inspection decodes every canonical field except Request
+		// Overrides, which inspection never re-exposes.
+		expect(generationInspectionSettingsAdapter.fields).toEqual({
+			...adapterWithAllFieldsProjected(),
+			requestOverrides: excluded("inspection re-exposes only safe settings and never Request Overrides"),
+		});
+
+		// The provenance capture adapter is total over its retained fields.
+		const captured = captureGenerationProvenanceSettings(validSettings());
+		expect(Object.keys(captured).sort()).toEqual([...PROVENANCE_SETTINGS_FIELDS].sort());
 	});
 
 	test("rejects declarations missing a canonical field", () => {
