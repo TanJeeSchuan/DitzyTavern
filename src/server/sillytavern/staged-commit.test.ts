@@ -32,6 +32,7 @@ import {
 	STAGED_IMPORT_SESSION_TTL_MS,
 	clearStagedImportRegistry,
 	createChatImportModule,
+	sweepExpiredImportSessions,
 	type ChatImportCommitInput,
 	type ChatImportModule,
 } from "./staged";
@@ -120,13 +121,10 @@ describe("staged SillyTavern chat import commit", () => {
 		};
 	};
 
-	const committedArtifacts = () =>
-		readdirSync(artifactDirectory)
-			.filter((name) => name !== "staging")
-			.sort();
-
-	const stagingFiles = () =>
-		readdirSync(join(artifactDirectory, "staging")).sort();
+	// Every managed file is either a committed artifact claimed by its
+	// metadata row or staged bytes still bound to a live session; the
+	// expiring sweep collects the unclaimed ones.
+	const managedFiles = () => readdirSync(artifactDirectory).sort();
 
 	const rowCounts = () => {
 		const db = drizzle(database);
@@ -257,15 +255,15 @@ describe("staged SillyTavern chat import commit", () => {
 			sha256: preview.sha256,
 		});
 
-		// The exact staged bytes were moved into the managed artifact location
-		// and the staging copy is gone.
-		expect(committedArtifacts()).toHaveLength(1);
-		const copied = readFileSync(
+		// The immutable staged path became the final artifact path: the row
+		// claims the staged file in place, and no second copy exists.
+		expect(managedFiles()).toHaveLength(1);
+		expect(artifactRow[0]?.relative_path).toBe(managedFiles()[0]);
+		const claimed = readFileSync(
 			join(artifactDirectory, artifactRow[0]?.relative_path ?? ""),
 		);
-		expect(copied).toEqual(staged.bytes);
-		expect(sha256Of(copied)).toBe(preview.sha256);
-		expect(stagingFiles()).toEqual([]);
+		expect(claimed).toEqual(staged.bytes);
+		expect(sha256Of(claimed)).toBe(preview.sha256);
 	});
 
 	test("commits only the exact staged bytes: changed, missing, or expired staging state is rejected", async () => {
@@ -287,7 +285,7 @@ describe("staged SillyTavern chat import commit", () => {
 		).toThrow(StagedChatImportExpiredError);
 
 		// Altered staged bytes fail verification before any write.
-		const stagedPath = join(artifactDirectory, "staging", stagingFiles()[0] ?? "");
+		const stagedPath = join(artifactDirectory, managedFiles()[0] ?? "");
 		writeFileSync(stagedPath, Buffer.from("other bytes", "utf8"));
 		expect(() => commit(token, preview.sha256)).toThrow(
 			StagedChatImportUnavailableError,
@@ -657,14 +655,13 @@ describe("staged SillyTavern chat import commit", () => {
 		);
 	});
 
-	test("a failed domain creation leaves no Chat, Profile, Roster, Message, or Variant rows while the moved artifact may remain", async () => {
+	test("a failed database commit leaves no orphaned artifact: the unclaimed staged bytes are collected at expiry", async () => {
 		const staged = await stageText([header, writer]);
 		const { token, preview } = staged;
 
 		// Simulate an in-transaction domain failure after the Profile branch
 		// has written: the all-or-nothing operation must roll the new Profile
-		// back together with the Chat, while the already moved filesystem
-		// artifact may remain unused. The new-Character plan guarantees the
+		// back together with the Chat. The new-Character plan guarantees the
 		// Profile branch runs inside the same transaction as the Chat; Bun's
 		// nested transactions are savepoint-backed, so the inner Character
 		// creation rolls back with the failed Conversation creation.
@@ -712,14 +709,18 @@ describe("staged SillyTavern chat import commit", () => {
 				.where(eq(characterTable.name, "Maren Voss"))
 				.all(),
 		).toHaveLength(1);
-		// The already moved exact artifact file is the accepted lifecycle
-		// tradeoff: it remains on disk without any metadata row.
-		expect(committedArtifacts()).toHaveLength(1);
-		const orphaned = readFileSync(
-			join(artifactDirectory, committedArtifacts()[0] ?? ""),
-		);
-		expect(orphaned).toEqual(staged.bytes);
-		// The staging copy is gone, so the flow must reselect the file.
-		expect(stagingFiles()).toEqual([]);
+
+		// The commit never moved or copied the staged bytes: the immutable
+		// staged path is still the untouched upload, so the failed flow keeps
+		// serving its preview (and a corrected retry) from the same bytes.
+		expect(module.preview(token, preview.sha256)).toEqual(preview);
+		// The managed directory holds exactly the staged bytes and nothing
+		// pretending to be a separately finalized artifact.
+		expect(readdirSync(artifactDirectory)).toHaveLength(1);
+
+		// Past the session lifetime the expiring sweep collects the
+		// never-claimed staged path: no orphaned artifact remains.
+		sweepExpiredImportSessions(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		expect(readdirSync(artifactDirectory)).toEqual([]);
 	});
 });

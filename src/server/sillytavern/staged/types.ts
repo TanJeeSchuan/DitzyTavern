@@ -148,8 +148,9 @@ export interface ChatImportStageInput {
 }
 
 export interface ChatImportModuleOptions {
-	// Managed artifact root of the deployment; staged bytes live under its
-	// `staging/` subdirectory, separate from committed artifacts.
+	// Managed artifact root of the deployment; staged bytes live at their
+	// final unique managed path inside it, until the commit transaction
+	// claims the path or the expiring sweep collects it unclaimed.
 	artifactDirectory: string;
 }
 
@@ -164,16 +165,20 @@ export interface ChatImportModule {
 	// match the binding are both rejected without altering the flow.
 	preview(token: string, expectedSha256?: string): ChatImportPreview;
 	// Commits the user-confirmed resolution plan for one staged handle. Only
-	// the exact staged bytes that produced the preview are committed; the
-	// managed exact artifact is finalized before the database operation, and
-	// the Chat, requested new Profiles, Participants, Roster membership,
+	// the exact staged bytes that produced the preview are committed: the
+	// immutable staged managed path becomes the final artifact path, and the
+	// Chat, requested new Profiles, Participants, Roster membership,
 	// Author Stamps, Messages, Variants, canonical archive, report, and
 	// artifact metadata commit as one all-or-nothing SQLite operation through
-	// public domain seams. A token succeeds at most once: retrying after a
-	// lost response returns the original successful result instead of
-	// creating another Chat. Recoverable plan failures preserve the staged
-	// preview and resolution choices; failures after the artifact is
-	// finalized are non-recoverable and the flow must reselect the file.
+	// public domain seams, with the transaction claiming the staged path in
+	// place (the artifact metadata row references it; no file finalization
+	// precedes the database operation). A token succeeds at most once:
+	// retrying after a lost response returns the original successful result
+	// instead of creating another Chat. Recoverable plan failures preserve
+	// the staged preview and resolution choices; a database failure claims
+	// nothing on disk, so the still-staged bytes keep serving a corrected
+	// retry until the session expires, when the expiring sweep collects the
+	// never-claimed path.
 	commit(token: string, input: ChatImportCommitInput): ChatImportCommitResult;
 	// Explicit cancellation: removes the handle and deletes only that
 	// flow's uncommitted staging bytes. Idempotent; unknown tokens are a
@@ -188,6 +193,9 @@ export interface StagedRecord {
 	sha256: string;
 	integrity: string | null;
 	stagedPath: string;
+	// The managed relative path of the staged bytes: the final artifact
+	// path that the commit transaction claims in place.
+	relativePath: string;
 	preview: ChatImportPreview;
 }
 

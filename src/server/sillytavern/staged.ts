@@ -1,5 +1,5 @@
 // User-facing staged Chat import: choose one file, stream its bytes into
-// managed temporary staging storage exactly once, validate the complete
+// their final managed artifact path exactly once, validate the complete
 // source before any Participant resolution, and return a reviewable preview
 // bound to the exact byte length and SHA-256 that were uploaded.
 //
@@ -8,7 +8,7 @@
 // Character Library for name-only suggestions, and the prior-import
 // classifier for duplicate evidence). It creates no native Chat, no
 // Participant, no Actor Profile, and no artifact metadata row; the previewed
-// source stays in session-bound staging until a later commit ticket.
+// source stays session-bound at its managed path until commit.
 //
 // Staging is session-bound by construction: staged handles and committed
 // receipts live in one process-level expiring session store. A server
@@ -16,11 +16,18 @@
 // no durable import draft or resume system is added. Every session also
 // expires on its own after the documented TTL: a lazy sweep on every module
 // access plus an opportunistic periodic sweep evicts expired sessions and
-// deletes their staged files, so abandoned flows never pin memory or staging
-// bytes. Discard (explicit cancellation) removes only the uncommitted
-// temporary staging bytes of that one flow.
+// deletes their staged files, so abandoned flows never pin memory or
+// unclaimed artifact bytes. Discard (explicit cancellation) removes only
+// the uncommitted staged bytes of that one flow.
+//
+// Commit is atomic across filesystem and SQLite without a finalization step:
+// the immutable staged managed path becomes the final artifact path, and the
+// commit transaction claims it in place (the artifact metadata row
+// references it). A failed database operation claims nothing, so the still-
+// staged bytes keep serving a corrected retry until the session expires,
+// when the expiring sweep collects the never-claimed path.
 import { createHash, randomUUID } from "node:crypto";
-import { createWriteStream, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
@@ -118,10 +125,10 @@ export const clearStagedImportRegistry = (): void => {
 	stagedImportSessions.clear();
 };
 
-// Streams the uploaded bytes into one staging file while hashing them in
-// flight, so neither the HTTP boundary nor this module buffers the complete
-// artifact in memory. The pump handles reader failures (for example an
-// aborted upload) by discarding the partial staging file.
+// Streams the uploaded bytes into their staged managed path while hashing
+// them in flight, so neither the HTTP boundary nor this module buffers the
+// complete artifact in memory. The pump handles reader failures (for example
+// an aborted upload) by discarding the partial staged file.
 const streamToStagedFile = (
 	path: string,
 	bytes: ReadableStream<Uint8Array>,
@@ -346,57 +353,30 @@ const assignMessageOwners = (
 	return owners;
 };
 
-// A finalized managed copy: everything the exact artifact metadata row
-// needs, derived from the same staged bytes that produced the preview.
-interface FinalizedExactArtifact {
-	relativePath: string;
-	byteLength: number;
-	sha256: string;
-}
-
-// The exact staged bytes are moved into a unique managed relative path
-// after plan validation and before any database operation. A failure here
-// aborts with no Chat, Participant, Profile, Message, Variant, Roster,
-// Author Stamp, or artifact metadata row created. If the database commit
-// fails later, the already moved file may remain unused; no recovery
-// journal or garbage collector is added.
-const finalizeExactArtifact = (
-	artifactDirectory: string,
-	record: StagedRecord,
-): FinalizedExactArtifact => {
-	try {
-		const relativePath = uniqueManagedRelativePath(record.originalFilename);
-		// The staging root lives under the same managed artifact directory
-		// (created when the module was constructed), so this is a
-		// same-filesystem rename, not a copy.
-		renameSync(record.stagedPath, join(artifactDirectory, relativePath));
-		return {
-			relativePath,
-			byteLength: record.byteLength,
-			sha256: record.sha256,
-		};
-	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-		throw new SillyTavernImportError(
-			`Could not preserve the exact source artifact: ${detail}`,
-		);
-	}
-};
+// The exact staged bytes already sit at their unique managed path, and that
+// immutable staged path is the final artifact path: the commit transaction
+// claims it in place by referencing it from the artifact metadata row. No
+// file move, copy, or finalization precedes the database operation, so a
+// database failure claims nothing: the still-staged session keeps serving a
+// corrected retry from the same bytes, and the expiring sweep collects the
+// never-claimed path at expiry.
 
 export function createChatImportModule(
 	database: Database,
 	options: ChatImportModuleOptions,
 ): ChatImportModule {
 	const artifactDirectory = options.artifactDirectory;
-	const stagingRoot = join(artifactDirectory, "staging");
-	mkdirSync(stagingRoot, { recursive: true });
+	mkdirSync(artifactDirectory, { recursive: true });
 
 	return {
 		async stageFile({ bytes, originalFilename }) {
 			ensureScheduledImportSweep();
 			sweepExpiredImportSessions();
 			const filename = basename(originalFilename);
-			const stagedPath = join(stagingRoot, `${randomUUID()}.stage`);
+			// The upload lands directly at its final unique managed path; the
+			// commit transaction claims this exact path in place.
+			const relativePath = uniqueManagedRelativePath(filename);
+			const stagedPath = join(artifactDirectory, relativePath);
 			let staged: { byteLength: number; sha256: string };
 			try {
 				staged = await streamToStagedFile(stagedPath, bytes);
@@ -443,6 +423,7 @@ export function createChatImportModule(
 					sha256: staged.sha256,
 					integrity: inspection.report.source.integrity ?? null,
 					stagedPath,
+					relativePath,
 					preview,
 				},
 			});
@@ -517,14 +498,12 @@ export function createChatImportModule(
 			validateResolutionPlan(record, messageCount, input);
 			const resolved = resolvePlanParticipants(database, input);
 
-			// The managed exact artifact is finalized before the database
-			// operation; a failure here creates no database state.
-			const stored = finalizeExactArtifact(artifactDirectory, record);
-
 			// The confirmed Resolved Participant Plan through the shared
 			// Import Projection: ownership mapping, Definitions with
 			// provenance, derived Control, stamped Messages, and the final
-			// report and data entries all come from one seam.
+			// report and data entries all come from one seam. The artifact
+			// entry references the immutable staged path, so the transaction
+			// claims the staged bytes in place.
 			const resolution: ImportProjectionResolution = {
 				participants: resolved.map((entry) => ({
 					definition: entry.definition,
@@ -548,11 +527,11 @@ export function createChatImportModule(
 					{
 						namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
 						key: EXACT_SOURCE_ARTIFACT_KEY,
-						relativePath: stored.relativePath,
+						relativePath: record.relativePath,
 						originalFilename: record.originalFilename,
 						mediaType: mediaTypeFromFilename(record.originalFilename),
-						byteLength: stored.byteLength,
-						sha256: stored.sha256,
+						byteLength: record.byteLength,
+						sha256: record.sha256,
 					},
 				],
 			});

@@ -83,8 +83,7 @@ describe("staged SillyTavern chat import", () => {
 	const stageText = (records: unknown[], filename = "lantern-house.jsonl") =>
 		stageBytes(Buffer.from(jsonl(records), "utf8"), filename);
 
-	const stagingFiles = () =>
-		readdirSync(join(artifactDirectory, "staging")).sort();
+	const stagedFiles = () => readdirSync(artifactDirectory).sort();
 
 	const addCharacter = (overrides: Partial<CharacterDefinition>) =>
 		createCharacterLibraryModule(database).execute({
@@ -114,17 +113,17 @@ describe("staged SillyTavern chat import", () => {
 		expect(preview.integrity).toBe("9543f21f-8aab-42c8-92a4-1f6453d4b63c");
 		expect(preview.counts).toEqual({ messages: 3, variants: 3 });
 
-		// The uploaded bytes were streamed into managed temporary staging
-		// exactly once: one staging file carrying the exact bytes.
-		expect(stagingFiles()).toHaveLength(1);
-		const stagedPath = join(artifactDirectory, "staging", stagingFiles()[0] ?? "");
+		// The uploaded bytes were streamed into their final managed artifact
+		// path exactly once: one staged file carrying the exact bytes.
+		expect(stagedFiles()).toHaveLength(1);
+		const stagedPath = join(artifactDirectory, stagedFiles()[0] ?? "");
 		expect(readFileSync(stagedPath)).toEqual(bytes);
 
 		// Previewing never reopens the file, re-uploads, or writes anything:
-		// the staging directory is unchanged and no domain table row exists.
+		// the staged bytes are unchanged and no domain table row exists.
 		const refreshed = module.preview(token);
 		expect(refreshed).toEqual(preview);
-		expect(stagingFiles()).toHaveLength(1);
+		expect(stagedFiles()).toHaveLength(1);
 		expect(drizzle(database).select().from(chatTable).all()).toEqual([]);
 		expect(drizzle(database).select().from(participantTable).all()).toEqual([]);
 		expect(drizzle(database).select().from(artifactTable).all()).toEqual([]);
@@ -339,11 +338,11 @@ describe("staged SillyTavern chat import", () => {
 		);
 	});
 
-	test("reports cleaned-up staging bytes as unavailable instead of serving a broken preview", async () => {
+	test("reports cleaned-up staged bytes as unavailable instead of serving a broken preview", async () => {
 		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
 		const { token } = await stageBytes(bytes, "cleaned.jsonl");
 
-		const stagedPath = join(artifactDirectory, "staging", stagingFiles()[0] ?? "");
+		const stagedPath = join(artifactDirectory, stagedFiles()[0] ?? "");
 		writeFileSync(stagedPath, Buffer.from("different bytes", "utf8"));
 		expect(() => module.preview(token)).toThrow(
 			StagedChatImportUnavailableError,
@@ -379,9 +378,9 @@ describe("staged SillyTavern chat import", () => {
 		expect(() => module.preview(first.token)).toThrow(
 			StagedChatImportExpiredError,
 		);
-		// The other flow still previews, and exactly its staging file remains.
+		// The other flow still previews, and exactly its staged file remains.
 		expect(module.preview(second.token)).toBeDefined();
-		expect(stagingFiles()).toHaveLength(1);
+		expect(stagedFiles()).toHaveLength(1);
 		// Discard is idempotent for unknown handles.
 		expect(() => module.discard(first.token)).not.toThrow();
 		expect(() => module.discard("never-existed")).not.toThrow();
@@ -422,7 +421,7 @@ describe("staged SillyTavern chat import", () => {
 			"live.jsonl",
 		);
 		setSystemTime(realNow + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
-		expect(stagingFiles()).toHaveLength(2);
+		expect(stagedFiles()).toHaveLength(2);
 
 		try {
 			// The lazy sweep on the next access evicts the expired session and
@@ -431,9 +430,9 @@ describe("staged SillyTavern chat import", () => {
 				StagedChatImportExpiredError,
 			);
 			// The session staged within the TTL keeps serving, and exactly its
-			// staging file remains.
+			// staged file remains.
 			expect(module.preview(live.token)).toBeDefined();
-			expect(stagingFiles()).toHaveLength(1);
+			expect(stagedFiles()).toHaveLength(1);
 			// The commit path is equally expired and creates no domain record.
 			expect(() =>
 				module.commit(expired.token, {
@@ -454,12 +453,12 @@ describe("staged SillyTavern chat import", () => {
 			Buffer.from(jsonl([header, writer]), "utf8"),
 			"abandoned.jsonl",
 		);
-		expect(stagingFiles()).toHaveLength(1);
+		expect(stagedFiles()).toHaveLength(1);
 
 		// The opportunistic periodic sweep runs without any request touching
 		// the token, so abandoned flows lose their staged bytes too.
 		sweepExpiredImportSessions(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
-		expect(stagingFiles()).toEqual([]);
+		expect(stagedFiles()).toEqual([]);
 		expect(() => module.preview(token)).toThrow(
 			StagedChatImportExpiredError,
 		);
@@ -487,11 +486,11 @@ describe("staged SillyTavern chat import", () => {
 			]),
 		).rejects.toThrow(/has no string content/);
 
-		// A validation failure never leaves uncommitted staging bytes behind.
+		// A validation failure never leaves uncommitted staged bytes behind.
 		await expect(stageBytes(brokenLine)).rejects.toThrow(
 			SillyTavernImportError,
 		);
-		expect(stagingFiles()).toEqual([]);
+		expect(stagedFiles()).toEqual([]);
 	});
 
 	test("accepts any extension whose content validates as SillyTavern JSONL", async () => {
