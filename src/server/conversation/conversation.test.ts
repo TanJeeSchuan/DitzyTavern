@@ -4,6 +4,14 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "../database/database";
 import { conversationGenerationSettingsTable } from "../database/schema";
 import {
+	ARCHIVE_KEY,
+	ARCHIVE_NAMESPACE,
+	IMPORTER_VERSION,
+	IMPORT_KEYS,
+	IMPORT_NAMESPACE,
+	VARIANT_KEYS,
+} from "../sillytavern/adapter/types";
+import {
 	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
@@ -372,6 +380,134 @@ describe("Conversation module", () => {
 		expect(deleted.messages.map((candidate) => candidate.id)).not.toContain(
 			message.id,
 		);
+	});
+
+	// Import provenance is server-owned (ADR-0028): it is written through
+	// the creation seam exactly as the Import Projection writes it and can
+	// never be rewritten or removed through the generic data commands.
+	test("keeps import-owned provenance beyond generic data commands", () => {
+		const conversation = createConversationModule(database);
+		const reportJson = JSON.stringify({
+			importerVersion: IMPORTER_VERSION,
+			source: { filename: "chat.jsonl", sha256: "a".repeat(64) },
+			counts: { messages: 1, variants: 1 },
+			warnings: [],
+		});
+		const imported = conversation.create({
+			name: "Imported Conversation",
+			participants: [
+				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+				{
+					definition: {
+						name: "Maren",
+						prompt: emptyPrompt(),
+						openings: ["Greeting"],
+					},
+				},
+			],
+			control: { human: 0, model: 1 },
+			data: [
+				{
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.reportJson,
+					value: reportJson,
+				},
+				{
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.warnings,
+					value: "[]",
+				},
+				{
+					namespace: ARCHIVE_NAMESPACE,
+					key: ARCHIVE_KEY,
+					value: "{}",
+				},
+			],
+		});
+		const greeting = imported.messages[0];
+		const greetingVariant = greeting?.variants[0];
+		if (greeting === undefined || greetingVariant === undefined) {
+			throw new Error("Imported Conversation greeting missing.");
+		}
+
+		// A generic put-data addressing the import namespace is rejected, in
+		// every scope: the Conversation receipt, warnings, and the promoted
+		// per-Variant provenance are not client-writable.
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "put-data",
+					scope: { type: "conversation" },
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.warnings,
+					value: '["forged warning"]',
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "put-data",
+					scope: {
+						type: "variant",
+						messageId: greeting.id,
+						variantId: greetingVariant.id,
+					},
+					namespace: IMPORT_NAMESPACE,
+					key: VARIANT_KEYS.swipeIndex,
+					value: "7",
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+
+		// Deletion of import provenance is equally out of reach.
+		expect(() =>
+			conversation.execute({
+				conversationId: imported.id,
+				expectedRevision: imported.revision,
+				action: {
+					type: "delete-data",
+					scope: { type: "conversation" },
+					namespace: IMPORT_NAMESPACE,
+					key: IMPORT_KEYS.warnings,
+				},
+			}),
+		).toThrow(InvalidConversationCommandError);
+
+		// The rejected commands left the persisted provenance intact and did
+		// not advance the revision, so the next ordinary command still
+		// applies.
+		const provenance = conversation.readConversationData(imported.id, {
+			namespace: IMPORT_NAMESPACE,
+		});
+		expect(provenance?.entries).toEqual([
+			{
+				namespace: IMPORT_NAMESPACE,
+				key: IMPORT_KEYS.reportJson,
+				value: reportJson,
+			},
+			{
+				namespace: IMPORT_NAMESPACE,
+				key: IMPORT_KEYS.warnings,
+				value: "[]",
+			},
+		]);
+		const afterRejections = conversation.execute({
+			conversationId: imported.id,
+			expectedRevision: imported.revision,
+			action: {
+				type: "put-data",
+				scope: { type: "conversation" },
+				namespace: "test",
+				key: "outcome",
+				value: "complete",
+			},
+		});
+		expect(afterRejections.revision).toBe(imported.revision + 1);
 	});
 
 	test("keeps the greeting's Author Stamp across Variant selection and sibling creation", () => {

@@ -4,9 +4,17 @@ import type {
 	ConversationDataEntry,
 } from "../../conversation/types";
 
+import {
+	ARCHIVE_NAMESPACE,
+	IMPORT_NAMESPACE,
+} from "../../../shared/import-data";
+
 export const IMPORTER_VERSION = "0.2.0";
-export const IMPORT_NAMESPACE = "import.sillytavern";
-export const ARCHIVE_NAMESPACE = "archive";
+
+// The import-owned data namespaces are declared once in shared/import-data —
+// the Conversation data seam and the wire contract reserve them against the
+// generic data commands — and the adapter re-exports them as its vocabulary.
+export { ARCHIVE_NAMESPACE, IMPORT_NAMESPACE };
 export const ARCHIVE_KEY = "source";
 // Generic artifact identity of the exact preserved source bytes. The
 // artifact metadata row commits with the Conversation while the opaque

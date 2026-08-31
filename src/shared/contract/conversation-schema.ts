@@ -4,6 +4,7 @@ import { characterConflict, characterSnapshot } from "./character-library";
 import {
 	canonicalGenerationSettings,
 } from "./generation-settings";
+import { genericDataNamespacePattern } from "../import-data";
 import { participantPrompt } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -379,10 +380,15 @@ const deleteMessageAction = Type.Object({
 	messageId: Type.Integer(),
 });
 
+// Generic data namespaces exclude the import-owned namespaces
+// (shared/import-data): import provenance is written only by the import
+// projection at Conversation creation and can never be rewritten or deleted
+// through these commands (ADR-0028). The Conversation seam enforces the
+// same reservation for non-transport callers.
 const putDataAction = Type.Object({
 	type: Type.Literal("put-data"),
 	scope: dataScope,
-	namespace: Type.String(),
+	namespace: Type.String({ pattern: genericDataNamespacePattern }),
 	key: Type.String(),
 	value: Type.String(),
 });
@@ -390,7 +396,7 @@ const putDataAction = Type.Object({
 const deleteDataAction = Type.Object({
 	type: Type.Literal("delete-data"),
 	scope: dataScope,
-	namespace: Type.String(),
+	namespace: Type.String({ pattern: genericDataNamespacePattern }),
 	key: Type.String(),
 });
 

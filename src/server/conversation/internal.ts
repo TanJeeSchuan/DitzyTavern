@@ -8,6 +8,7 @@ import {
 	participantTable,
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
+import { isImportOwnedDataNamespace } from "../../shared/import-data";
 import {
 	InvalidConversationCommandError,
 } from "./errors";
@@ -193,6 +194,18 @@ export const hasRetainedParticipantReference = (
 		.where(eq(messageTable.chat_id, conversationId))
 		.all()
 		.some((message) => messageReferencesParticipant(message, participantId));
+
+// Generic data commands write only generic namespaces. The import-owned
+// namespaces hold server-owned provenance written by the import projection
+// at Conversation creation (ADR-0028); no generic write or delete may ever
+// address them, in any scope.
+export const requireGenericDataNamespace = (namespace: string): void => {
+	if (isImportOwnedDataNamespace(namespace)) {
+		throw new InvalidConversationCommandError(
+			`The ${namespace} namespace is import-owned provenance; generic data commands cannot address it.`,
+		);
+	}
+};
 
 export const requireMessage = (
 	db: ConversationDatabase,

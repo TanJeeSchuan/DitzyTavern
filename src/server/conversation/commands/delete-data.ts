@@ -1,7 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import { chatDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
 import type { ConversationDatabase } from "../internal";
-import { requireMessage, requireVariant } from "../internal";
+import {
+	requireGenericDataNamespace,
+	requireMessage,
+	requireVariant,
+} from "../internal";
 import type { ConversationDataScope } from "../types";
 
 export interface DeleteDataInput {
@@ -12,6 +16,9 @@ export interface DeleteDataInput {
 }
 
 export function deleteData(db: ConversationDatabase, input: DeleteDataInput) {
+	// Import provenance is server-owned (ADR-0028): the generic data seam
+	// cannot address the import-owned namespaces in any scope.
+	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":
 			db.delete(chatDataTable)

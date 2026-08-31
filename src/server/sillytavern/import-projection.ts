@@ -212,7 +212,10 @@ export interface ProjectedImport {
 
 // Conversation-scoped entries derived from the final report. They are built
 // by the projection after duplicate-warning composition so the persisted
-// warnings and report match the Conversation they are stored with.
+// warnings and report match the Conversation they are stored with. The
+// namespace is import-owned (shared/import-data): these entries commit
+// through the creation seam, and the generic put-data/delete-data commands
+// can never address them afterwards.
 export const importReportEntries = (
 	report: SillyTavernImportReport,
 ): ConversationDataEntry[] => [

@@ -1,7 +1,11 @@
 import { chatDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
 import type { ConversationDataScope } from "../types";
 import type { ConversationDatabase } from "../internal";
-import { requireMessage, requireVariant } from "../internal";
+import {
+	requireGenericDataNamespace,
+	requireMessage,
+	requireVariant,
+} from "../internal";
 
 export interface PutDataInput {
 	conversationId: number;
@@ -12,6 +16,9 @@ export interface PutDataInput {
 }
 
 export function putData(db: ConversationDatabase, input: PutDataInput) {
+	// Import provenance is server-owned (ADR-0028): the generic data seam
+	// cannot address the import-owned namespaces in any scope.
+	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":
 			db.insert(chatDataTable)
