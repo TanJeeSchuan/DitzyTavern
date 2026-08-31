@@ -188,7 +188,11 @@ const toStoryMessage = (
 
 // A generated Message remains continuable when the current model Control has
 // moved to another Participant: the generation-time model identity is the
-// one authorship signal the client reads for Continue.
+// one authorship signal the client reads for Continue. Intentional per Fix 8
+// scope: sibling eligibility is fully server-derived (swipe), while Continue
+// still combines the server capability `continuable` with this generation-time
+// authorship identity; deriving Continue eligibility fully server-side is a
+// separate product decision, not a Fix 8 gap.
 export const isModelAuthoredMessage = (
 	message: Pick<StoryMessage, "authorParticipantId" | "modelParticipantIdAtCreation">,
 ): boolean =>
