@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "../database/database";
+import { activeGenerationTable } from "../database/schema";
 import {
 	acceptConversationContinuationGeneration,
 	acceptConversationSiblingGeneration,
@@ -218,6 +221,27 @@ describe("canonical Conversation Generation removal", () => {
 				generationId: 999999,
 			})
 		).toThrow(InvalidConversationCommandError);
+	});
+
+	test("rejects malformed persisted Generation intent without Tail-style deletion", () => {
+		const input = setup();
+		const accepted = acceptSibling(input);
+		drizzle(database)
+			.update(activeGenerationTable)
+			.set({ generation_intent_json: "{}" })
+			.where(eq(activeGenerationTable.id, accepted.generationId))
+			.run();
+
+		expect(() => input.module.removeGeneration({
+			conversationId: input.created.id,
+			generationId: accepted.generationId,
+		})).toThrow("invalid persisted Generation intent");
+
+		const after = input.module.getSnapshot(input.created.id);
+		if (after === undefined) throw new Error("Snapshot missing.");
+		expect(after.messages).toHaveLength(1);
+		expect(after.messages[0]?.variants).toHaveLength(2);
+		expect(after.activeGenerations).toHaveLength(1);
 	});
 });
 

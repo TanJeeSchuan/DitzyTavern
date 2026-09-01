@@ -442,14 +442,15 @@ export function acceptConversationTailGeneration(
 			}
 		},
 		validate: (db, human) => {
-			let humanMessageId = input.reuseHumanMessageId;
-			if (humanMessageId !== undefined) {
-				const reused = requireMessage(db, input.conversationId, humanMessageId);
-				const latestPosition = db
-					.select({ value: max(messageTable.position) })
-					.from(messageTable)
-					.where(eq(messageTable.chat_id, input.conversationId))
-					.get()?.value;
+			const reused = input.reuseHumanMessageId === undefined
+				? undefined
+				: requireMessage(db, input.conversationId, input.reuseHumanMessageId);
+			const latestPosition = db
+				.select({ value: max(messageTable.position) })
+				.from(messageTable)
+				.where(eq(messageTable.chat_id, input.conversationId))
+				.get()?.value;
+			if (reused !== undefined) {
 				const selected = db
 					.select({ content: messageVariantTable.content })
 					.from(messageVariantTable)
@@ -470,46 +471,34 @@ export function acceptConversationTailGeneration(
 						"The unanswered human Message cannot be reused for this Send.",
 					);
 				}
-			} else {
-				const latestPosition = db
-					.select({ value: max(messageTable.position) })
-					.from(messageTable)
-					.where(eq(messageTable.chat_id, input.conversationId))
-					.get()?.value;
-				const insertedHuman = db
-					.insert(messageTable)
-					.values({
-						chat_id: input.conversationId,
-						position: (latestPosition ?? 0) + 1,
-						timestamp: input.timestamp,
-						author_participant_id: human.id,
-						author_name: human.name,
-					})
-					.returning({ id: messageTable.id })
-					.get();
-				if (insertedHuman === undefined) {
-					throw new InvalidConversationCommandError(
-						"The human Message could not be persisted.",
-					);
-				}
-				humanMessageId = insertedHuman.id;
-				db.insert(messageVariantTable)
-					.values({
-						message_id: insertedHuman.id,
-						position: 1,
-						content: input.humanContent,
-						timestamp: input.timestamp,
-						selected: true,
-					})
-					.run();
+				return { humanMessageId: reused.id };
 			}
-
-			if (humanMessageId === undefined) {
+			const insertedHuman = db
+				.insert(messageTable)
+				.values({
+					chat_id: input.conversationId,
+					position: (latestPosition ?? 0) + 1,
+					timestamp: input.timestamp,
+					author_participant_id: human.id,
+					author_name: human.name,
+				})
+				.returning({ id: messageTable.id })
+				.get();
+			if (insertedHuman === undefined) {
 				throw new InvalidConversationCommandError(
-					"The provisional model Message could not be persisted.",
+					"The human Message could not be persisted.",
 				);
 			}
-			return { humanMessageId };
+			db.insert(messageVariantTable)
+				.values({
+					message_id: insertedHuman.id,
+					position: 1,
+					content: input.humanContent,
+					timestamp: input.timestamp,
+					selected: true,
+				})
+				.run();
+			return { humanMessageId: insertedHuman.id };
 		},
 	});
 	return {

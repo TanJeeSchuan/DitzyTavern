@@ -5,7 +5,7 @@ import { openDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	acceptConversationTailGeneration,
-	checkpointConversationTailGeneration,
+	checkpointConversationGeneration,
 	createConversationModule,
 } from "../conversation";
 import { recoverActiveGenerations } from "../workflows";
@@ -394,7 +394,7 @@ describe("Resumable generation transport", () => {
 			generationSettings: {},
 			connection: {},
 		});
-		checkpointConversationTailGeneration(database, {
+		checkpointConversationGeneration(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
 			content: "Recovered checkpoint.",

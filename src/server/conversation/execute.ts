@@ -18,7 +18,7 @@ import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
-import { updateGenerationSettings } from "./commands/update-generation-settings";
+import { updateConversationGenerationSettings } from "./generation-settings";
 import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
@@ -128,7 +128,7 @@ export function executeConversationCommand(
 				deleteData(db, input);
 				break;
 			case "update-generation-settings":
-				updateGenerationSettings(db, input);
+				updateConversationGenerationSettings(db, input.conversationId, input.settings);
 				break;
 			case "set-generation-model":
 				setGenerationModel(db, input);

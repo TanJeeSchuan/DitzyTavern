@@ -50,7 +50,6 @@ export {
 export {
 	checkpointConversationGeneration,
 	checkpointConversationSiblingGeneration,
-	checkpointConversationTailGeneration,
 	removeConversationGeneration,
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,

@@ -5,7 +5,7 @@ import {
 	acceptConversationSiblingGeneration,
 	acceptConversationTailGeneration,
 	checkpointConversationSiblingGeneration,
-	checkpointConversationTailGeneration,
+	checkpointConversationGeneration,
 	createConversationModule,
 } from ".";
 // The raw durable stop transitions are private implementation details of the
@@ -69,7 +69,7 @@ describe("explicit Conversation Generation Stop", () => {
 	test("persists partial Tail output as an interrupted Variant", () => {
 		const input = setup();
 		const accepted = acceptTail(input);
-		checkpointConversationTailGeneration(database, {
+		checkpointConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Partial answer.",
@@ -108,7 +108,7 @@ describe("explicit Conversation Generation Stop", () => {
 	test("restart recovery retains its interruption cause on the recovered Variant", () => {
 		const input = setup();
 		const accepted = acceptTail(input);
-		checkpointConversationTailGeneration(database, {
+		checkpointConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Recovered partial answer.",

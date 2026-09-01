@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { openDatabase, withDatabase } from "../database/database";
 import {
 	checkpointConversationSiblingGeneration,
-	checkpointConversationTailGeneration,
+	checkpointConversationGeneration,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	createConversationModule,
@@ -262,7 +262,7 @@ export class GenerationCoordinator {
 				messageId: accepted.modelMessageId,
 				variantId: accepted.provisionalVariantId,
 			}),
-			checkpoint: (database, accepted, output) => checkpointConversationTailGeneration(database, {
+			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				...output,
@@ -286,7 +286,7 @@ export class GenerationCoordinator {
 				messageId: accepted.modelMessageId,
 				variantId: accepted.provisionalVariantId,
 			}),
-			checkpoint: (database, accepted, output) => checkpointConversationTailGeneration(database, {
+			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				...output,

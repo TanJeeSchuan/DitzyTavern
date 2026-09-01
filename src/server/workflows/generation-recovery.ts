@@ -68,8 +68,8 @@ export function recoverActiveGenerations(
 	for (const row of rows) {
 		const content = row.checkpointContent;
 		const reasoning = row.checkpointReasoning;
-		const intent = isSiblingGenerationRow(row) ? "sibling" : "tail";
 		try {
+			const intent = isSiblingGenerationRow(row) ? "sibling" : "tail";
 			if (content.length > 0 || reasoning.length > 0) {
 				const data = interruptedGenerationData(cause, reasoning);
 				if (intent === "sibling") {

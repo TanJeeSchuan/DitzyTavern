@@ -18,7 +18,10 @@ import {
 	participantTable,
 } from "../database/schema";
 import { InvalidConversationCreationError } from "./errors";
-import { type ConversationDatabase } from "./internal";
+import {
+	normalizeParticipantName,
+	type ConversationDatabase,
+} from "./internal";
 import { readConversationSnapshot } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -98,10 +101,6 @@ const insertArtifacts = (
 		)
 		.run();
 };
-
-// Names follow the shared Definition rules: surrounding whitespace removed
-// while case and Unicode are preserved; a nonblank result is required.
-export const normalizeParticipantName = (name: string) => name.trim();
 
 const validateDefinition = (
 	position: number,

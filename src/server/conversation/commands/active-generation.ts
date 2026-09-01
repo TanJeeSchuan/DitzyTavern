@@ -27,6 +27,7 @@ import type {
 import { GENERATION_REPLAY_RETENTION_MS } from "../generation-retention";
 import {
 	generationProvenanceCodec,
+	generationJsonObject,
 	parseGenerationJson,
 	readGenerationTerminalMetadata,
 } from "../../../shared/generation-provenance";
@@ -52,14 +53,25 @@ const readActiveGeneration = (
 	.get();
 
 export const isSiblingGenerationRow = (row: { generation_intent_json: string }): boolean => {
+	let parsed: ReturnType<typeof generationJsonObject>;
 	try {
-		// SAFETY: generation_intent_json is written only by the typed acceptance
-		// seams; malformed legacy values simply expose no sibling discriminator.
-		const parsed = JSON.parse(row.generation_intent_json) as { readonly type?: unknown };
-		return parsed.type === "sibling";
+		parsed = generationJsonObject(JSON.parse(row.generation_intent_json));
 	} catch {
-		return false;
+		throw new InvalidConversationCommandError(
+			"The Active Generation has invalid persisted Generation intent.",
+		);
 	}
+	if (
+		parsed === null ||
+		(parsed.type !== "tail" &&
+			parsed.type !== "continuation" &&
+			parsed.type !== "sibling")
+	) {
+		throw new InvalidConversationCommandError(
+			"The Active Generation has invalid persisted Generation intent.",
+		);
+	}
+	return parsed.type === "sibling";
 };
 
 type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
@@ -307,24 +319,6 @@ export function resolveConversationTailGeneration(
 	input: ResolveTailGenerationInput,
 ): ConversationSnapshot {
 	return resolveConversationGeneration(database, input, "tail");
-}
-
-// Checkpointing a Provisional Variant is deliberately revision-neutral. The
-// Active Generation already owns the accepted lifecycle transition; streaming
-// output is mutable execution state and must not make unrelated Conversation
-// commands conflict with one another.
-export function checkpointConversationTailGeneration(
-	database: Database,
-	input: {
-		conversationId: number;
-		generationId: number;
-		content: string;
-		reasoning?: string;
-		latestEventId?: number;
-		timestamp?: string;
-	},
-): void {
-	checkpointConversationGeneration(database, input);
 }
 
 // Sibling checkpoints share the same revision-neutral semantics as Tail
