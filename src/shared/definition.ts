@@ -1,19 +1,65 @@
 import type { PromptChannels } from "./contract/prompt-schema";
 
-// Shared Prompt presentation derivation. The server uses these rules to put
-// a short preview on Character Library list entries (so the Cast picker
+// Shared Prompt channel vocabulary and presentation derivation, safe for
+// client and server alike. This module is the single owner of the Prompt
+// channel metadata (exhaustive labels, editor order, derived field list) and
+// of the empty Prompt constructor. The server uses the presentation rules to
+// put a short preview on Character Library list entries (so the Cast picker
 // never needs one detail request per Character), and clients use the same
 // helpers for any local formatting.
 
+// Channel labels, exhaustive against the contract: adding a channel to
+// `promptChannels` without a label here is a compile error.
+export const promptChannelLabels = {
+	systemInstruction: "System Instruction",
+	identity: "Identity",
+	scenario: "Scenario",
+	exampleDialogue: "Example Dialogue",
+	postHistoryInstruction: "Post-History Instruction",
+} as const satisfies Record<keyof PromptChannels, string>;
+
+// The explicit editor order, in the stable authoring order shared by every
+// Prompt editor. `satisfies` keeps every entry a real contract key, and the
+// exhaustiveness assertion in the exported declaration below turns a
+// contract channel missing from this list into a type error naming the gap.
+const promptChannelOrderEntries = [
+	"systemInstruction",
+	"identity",
+	"scenario",
+	"exampleDialogue",
+	"postHistoryInstruction",
+] as const satisfies readonly (keyof PromptChannels)[];
+
+type UnorderedChannel = Exclude<keyof PromptChannels, (typeof promptChannelOrderEntries)[number]>;
+
+export const promptChannelOrder: UnorderedChannel extends never
+	? typeof promptChannelOrderEntries
+	: readonly [...typeof promptChannelOrderEntries, UnorderedChannel] = promptChannelOrderEntries;
+
+// The derived { key, label } field list, in the editor order above.
+export const promptChannelFields: ReadonlyArray<{
+	key: (typeof promptChannelOrder)[number];
+	label: string;
+}> = promptChannelOrder.map((channel) => ({
+	key: channel,
+	label: promptChannelLabels[channel],
+}));
+
+// The single empty Prompt constructor. A factory rather than a shared const,
+// so no caller can mutate a Prompt owned by another caller.
+export const emptyPromptChannels = (): PromptChannels => ({
+	systemInstruction: "",
+	identity: "",
+	scenario: "",
+	exampleDialogue: "",
+	postHistoryInstruction: "",
+});
+
 // First non-empty Prompt field in the agreed presentation order.
 export const firstPromptText = (prompt: PromptChannels): string =>
-	[
-		prompt.systemInstruction,
-		prompt.identity,
-		prompt.scenario,
-		prompt.exampleDialogue,
-		prompt.postHistoryInstruction,
-	].find((field) => field.trim() !== "") ?? "";
+	promptChannelOrder
+		.map((channel) => prompt[channel])
+		.find((field) => field.trim() !== "") ?? "";
 
 export const promptPreview = (value: string, maxLength = 140): string => {
 	const trimmed = value.trim();
