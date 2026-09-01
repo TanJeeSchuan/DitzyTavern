@@ -496,15 +496,15 @@ export const isPreviewDownstream = (
 	preview !== null && message.position > preview.targetPosition;
 
 // ==[HUMAN APPROVED]== Navigation is the one client action that may discard a local Preview. The
-// caller owns the confirmation dialog; this pure predicate keeps that policy
-// testable without a browser and avoids warning when the selected Chat did
-// not actually change.
+// caller owns the confirmation dialog and passes numeric Conversation ids;
+// this pure predicate keeps that policy testable without a browser and
+// avoids warning when the selected Chat did not actually change.
 export const previewNavigationNeedsConfirmation = (
 	preview: StoryPreviewState | null,
-	currentConversationId: string | number | null,
-	nextConversationId: string | number,
+	currentConversationId: number | null,
+	nextConversationId: number,
 ): boolean =>
-	preview !== null && String(currentConversationId) !== String(nextConversationId);
+	preview !== null && currentConversationId !== nextConversationId;
 
 export type PreviewConfirmationResult<Result> =
 	| { status: "not-sent" }

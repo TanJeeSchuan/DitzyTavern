@@ -99,8 +99,14 @@ export function ActiveWritingWorkspace({
 
 	const selectChat = (chatId: string) => {
 		if (preview.previewPending) return;
+		// ==[HUMAN APPROVED]== Workspace chat ids are wire strings; the story read model speaks
+		// numeric Conversation ids, so the coercion happens at this boundary.
 		if (
-			previewNavigationNeedsConfirmation(story.preview, session.activeChatId, chatId) &&
+			previewNavigationNeedsConfirmation(
+				story.preview,
+				Number(session.activeChatId),
+				Number(chatId),
+			) &&
 			!window.confirm("Discard Preview mode and open another Chat?")
 		) return;
 

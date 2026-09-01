@@ -61,6 +61,7 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
+	UnexpectedGenerationStartFailure,
 	generationAcceptanceResponse,
 } from "./generation-error-mapping";
 import { createGenerationSubscriptionResponse } from "./generation-sse";
@@ -155,18 +156,18 @@ export const createConversationRoutes = (
 			params: { id: number };
 			body: { expectedRevision: number; content?: string };
 		}) => {
-			return generationAcceptanceResponse(
-				params.id,
-				() => start(params.id, body),
-				(accepted) => accepted.modelMessageId,
-				(failure) => {
-					switch (failure.status) {
-						case 404: return status(404, failure.body);
-						case 409: return status(409, failure.body);
-						case 422: return status(422, failure.body);
-					}
-				},
-			);
+		return generationAcceptanceResponse(
+			params.id,
+			() => start(params.id, body),
+			(accepted) => accepted.modelMessageId,
+			(failure) => {
+				switch (failure.status) {
+					case 404: return status(404, failure.body);
+					case 409: return status(409, failure.body);
+					case 422: return status(422, failure.body);
+				}
+			},
+		);
 		};
 
 	const readActiveGenerationDetailsRoute = ({ params }: {
@@ -397,9 +398,11 @@ export const createConversationRoutes = (
 					(accepted) => accepted.messageId,
 					(failure) => {
 						// ==[HUMAN APPROVED]== Sibling starts have no revision input, so a stale-revision
-						// conflict remains an unexpected domain failure as before.
+						// conflict remains an unexpected domain failure: the responder
+						// refuses the mapping and the original error reaches the
+						// framework's 500 handling as before.
 						if (failure.status === 409) {
-							if (failure.body.outcome === "conflict") return undefined;
+							if (failure.body.outcome === "conflict") throw new UnexpectedGenerationStartFailure();
 							return status(409, failure.body);
 						}
 						if (failure.status === 404) return status(404, failure.body);

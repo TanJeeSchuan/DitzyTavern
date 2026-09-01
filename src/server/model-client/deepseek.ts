@@ -507,6 +507,10 @@ function monitorResponseActivity(
 				const frames = pending.split(/\r?\n\r?\n/);
 				pending = frames.pop() ?? "";
 				for (const frame of frames) {
+					// ==[HUMAN APPROVED]== SSE comment frames (for example provider keep-alive pings)
+					// are deliberate provider activity: they prove the connection is
+					// delivering bytes while no token is ready, so they reset the
+					// inactivity timer. Only true silence may abort the stream.
 					if (frame.split(/\r?\n/).some((line) => line.trimStart().startsWith(":"))) {
 						markActivity();
 						continue;

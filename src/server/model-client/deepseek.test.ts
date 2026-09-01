@@ -135,6 +135,49 @@ describe("DeepSeek production Model Client", () => {
 		}
 	});
 
+	test("keeps an inactive-looking stream alive while the provider sends SSE comment frames", async () => {
+		const encoder = new TextEncoder();
+		const commentFrame = ": keep-alive\n\n";
+		const dataFrame = (delta: { content?: string }, finishReason: string | null) =>
+			`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
+		const client = createDeepSeekModelClient({
+			profile: { ...profile, timeoutMs: 60 },
+			secrets: { credential: "secret", headers: {} },
+			fetch: async () => new Response(
+				new ReadableStream<Uint8Array>({
+					async start(controller) {
+						// Four keep-alive comments span 120 ms, twice the 60 ms
+						// inactivity timeout, before any content frame exists.
+						for (let index = 0; index < 4; index += 1) {
+							controller.enqueue(encoder.encode(commentFrame));
+							await Bun.sleep(30);
+						}
+						controller.enqueue(encoder.encode(dataFrame({ content: "Late." }, null)));
+						controller.enqueue(encoder.encode(dataFrame({}, "stop")));
+						controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+						controller.close();
+					},
+				}),
+				{ headers: { "content-type": "text/event-stream" } },
+			),
+		});
+
+		const events = [];
+		for await (const event of client.generate({
+			promptPlan: { blocks: [{ kind: "system-instruction", content: "Reply." }], warnings: [] },
+			historyRoles: [],
+			modelId: "custom-model",
+			generationSettings,
+		})) {
+			events.push(event);
+		}
+
+		expect(events).toEqual([
+			{ type: "content", text: "Late." },
+			{ type: "finished", finishReason: "stop" },
+		]);
+	});
+
 	test("reports allow-listed provider diagnostics without leaking response content or Profile secrets", async () => {
 		const credential = "credential-never-returned";
 		const customHeaderValue = "custom-header-never-returned";

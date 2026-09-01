@@ -6,7 +6,8 @@ import {
 	type ChatImportFlowState,
 	variantCountForGroup,
 } from "../import-chat-flow";
-import { outcomeLabel, sourceSize } from "./presentation";
+import { outcomeLabel } from "./presentation";
+import { SourceCard } from "./SourceCard";
 
 export function ReviewStep({
 	flow,
@@ -38,31 +39,7 @@ export function ReviewStep({
 				/>
 			</label>
 
-			<section className="import-source">
-				<h3>Source</h3>
-				<dl className="detail-list import-meta-list">
-					<div>
-						<dt>Original filename</dt>
-						<dd>{flow.handle?.originalFilename}</dd>
-					</div>
-					<div>
-						<dt>SHA-256</dt>
-						<dd className="import-sha">{flow.handle?.sha256}</dd>
-					</div>
-					<div>
-						<dt>Size</dt>
-						<dd>{sourceSize(flow.handle?.byteLength ?? null)}</dd>
-					</div>
-					<div>
-						<dt>Messages</dt>
-						<dd>{flow.counts?.messages ?? 0}</dd>
-					</div>
-					<div>
-						<dt>Variants</dt>
-						<dd>{flow.counts?.variants ?? 0}</dd>
-					</div>
-				</dl>
-			</section>
+			<SourceCard handle={flow.handle} counts={flow.counts} />
 
 			<section className="import-review-participants">
 				<h3>Participants</h3>

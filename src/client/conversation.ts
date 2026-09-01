@@ -1,4 +1,5 @@
 import { api } from "./lib/eden";
+import type { Static } from "@sinclair/typebox";
 import type { CharacterSnapshot } from "./character-library";
 import { commandOutcome } from "./lib/command-outcome";
 import type { EdenResponse } from "./lib/eden";
@@ -13,6 +14,7 @@ import type {
 	GenerationsStopped,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
+import { notFoundOutcome } from "../shared/contract/outcomes";
 
 export type {
 	ActiveGenerationDetails,
@@ -194,20 +196,11 @@ export type StartConversationGenerationResult = GenerationStartResponse;
 
 const startGenerationError = (
 	payload: Exclude<GenerationStartResponse, { outcome: "accepted" }>,
-	label: string,
 ): StartConversationGenerationResult => {
-	const operation = label === "" ? "Generation" : `${label} Generation`;
 	if (payload.outcome === "not-found") return { outcome: "not-found" };
-	if (payload.outcome === "conflict") {
-		return {
-			outcome: "conflict",
-			reason: payload.reason || "Generation start conflicted with a newer Conversation revision.",
-		};
-	}
-	if (payload.outcome === "not-playable") {
-		return { outcome: "not-playable", reason: payload.reason || "The Conversation is not playable." };
-	}
-	return { outcome: "invalid", reason: payload.reason || `${operation} could not be started.` };
+	if (payload.outcome === "conflict") return { outcome: "conflict", reason: payload.reason };
+	if (payload.outcome === "not-playable") return { outcome: "not-playable", reason: payload.reason };
+	return { outcome: "invalid", reason: payload.reason };
 };
 
 type GenerationStartError = Exclude<GenerationStartResponse, { outcome: "accepted" }>;
@@ -224,7 +217,7 @@ const postGenerationStart = async (
 	try {
 		const { data, error } = await request;
 		if (error) {
-			return startGenerationError(error.value, label);
+			return startGenerationError(error.value);
 		}
 		return data;
 	} catch {
@@ -271,14 +264,25 @@ export type StopConversationGenerationResult =
 	| { outcome: "not-found" }
 	| { outcome: "failed"; reason: string };
 
-type StopGenerationError = {
-	value: {
-		outcome?: string;
-		reason?: string;
-		type?: string;
-	};
-	status: number;
-};
+// ==[HUMAN APPROVED]== The stop routes declare only the shared typed not-found outcome as
+// an error response. Their remaining treaty error member is Elysia's default
+// request-validation body for a status the routes do not redeclare; the
+// client never triggers it, and neither member ever fabricates a server
+// reason.
+type StopGenerationError =
+	| { status: 404; value: Static<typeof notFoundOutcome> }
+	| {
+			status: 422;
+			value: {
+				type: "validation";
+				on: string;
+				summary?: string | undefined;
+				message?: string | undefined;
+				found?: unknown;
+				property?: string | undefined;
+				expected?: string | undefined;
+			};
+	  };
 type StopGenerationResponse = GenerationStopped | GenerationsStopped;
 type StopGenerationRequest = EdenResponse<StopGenerationResponse, StopGenerationError>;
 
@@ -289,12 +293,14 @@ const postGenerationStop = async (
 	try {
 		const { data, error } = await request;
 		if (error) {
-			if (error.status === 503) {
-				return { outcome: "failed", reason: all ? "Generations could not be stopped." : "Generation could not be stopped." };
-			}
-			return error.value.outcome === "not-found"
+			return error.status === 404
 				? { outcome: "not-found" }
-				: { outcome: "failed", reason: error.value.reason ?? "Generation could not be stopped." };
+				: {
+						outcome: "failed",
+						reason: all
+							? "Generations could not be stopped."
+							: "Generation could not be stopped.",
+					};
 		}
 		const result: StopConversationGenerationResult & { generationIds?: number[] } = { outcome: "stopped" };
 		if ("generationId" in data) result.generationId = data.generationId;

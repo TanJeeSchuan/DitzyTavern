@@ -15,9 +15,26 @@ type GenerationStartFailure =
 	| { readonly status: 409; readonly body: { readonly outcome: "conflict"; readonly reason: string } }
 	| { readonly status: 422; readonly body: { readonly outcome: "invalid"; readonly reason: string } };
 
+/**
+ * ==[HUMAN APPROVED]== The responder maps a recognized failure onto its transport response.
+ * The contract is total: a failure the route refuses to present to clients
+ * (for example a stale-revision conflict on a route without a revision
+ * input) is thrown as `UnexpectedGenerationStartFailure`, and the original
+ * domain error is rethrown in its place so the framework's own 500 handling
+ * stays intact.
+ */
 type GenerationStartFailureResponder<TResult> = (
 	failure: GenerationStartFailure,
-) => TResult | undefined;
+) => TResult;
+
+// ==[HUMAN APPROVED]== Marker thrown by a responder for a failure outside its transport
+// vocabulary; `generationAcceptanceResponse` never lets it reach a client.
+export class UnexpectedGenerationStartFailure extends Error {
+	constructor() {
+		super("The Generation start failure is outside the route's acceptance contract.");
+		this.name = "UnexpectedGenerationStartFailure";
+	}
+}
 
 /**
  * ==[HUMAN APPROVED]== Map only errors that are part of the Generation acceptance contract. An
@@ -49,9 +66,18 @@ const generationStartFailure = (error: Error): GenerationStartFailure | undefine
 function generationStartFailureResponse<TResult>(
 	error: Error,
 	respond: GenerationStartFailureResponder<TResult>,
-): TResult | undefined {
+): TResult {
 	const failure = generationStartFailure(error);
-	return failure === undefined ? undefined : respond(failure);
+	// ==[HUMAN APPROVED]== An error outside the acceptance contract is never shaped into a
+	// client-correctable response; the original error reaches the framework
+	// unchanged.
+	if (failure === undefined) throw error;
+	try {
+		return respond(failure);
+	} catch (thrown) {
+		if (thrown instanceof UnexpectedGenerationStartFailure) throw error;
+		throw thrown;
+	}
 }
 
 type AcceptedGenerationFields = {
@@ -93,8 +119,6 @@ export async function generationAcceptanceResponse<
 		};
 	} catch (error) {
 		if (!(error instanceof Error)) throw error;
-		const failureResponse = generationStartFailureResponse(error, respond);
-		if (failureResponse !== undefined) return failureResponse;
-		throw error;
+		return generationStartFailureResponse(error, respond);
 	}
 }
