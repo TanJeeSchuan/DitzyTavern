@@ -40,7 +40,6 @@ export async function fetchWithTimeout(
 	} finally {
 		clearTimeout(timeout);
 		callerSignal?.removeEventListener("abort", abortFromCaller);
-		controller.abort();
 	}
 }
 
