@@ -271,6 +271,62 @@ describe("the Generation session collection", () => {
 		}
 	});
 
+	test("a terminal frame wins an in-flight Stop and retires stale Stop state", () => {
+		let state = sessionOf(42, targetsFor(7));
+		state = run(state, { type: "stop-started", generationId: 7 }).state;
+
+		const terminalFrame = run(state, {
+			type: "subscription-settled",
+			generationId: 7,
+			result: { outcome: "applied" },
+		});
+		state = terminalFrame.state;
+		expect(stateText(state, 7)?.phase).toBe("terminal");
+		expect(stateText(state, 7)?.stopPending).toBe(false);
+		expect(hasPendingGenerationStop(state)).toBe(false);
+		expect(firstActiveGenerationSessionError(state)).toBeNull();
+
+		// The asynchronous Stop response is stale after the terminal frame and
+		// must not reintroduce a Stop error on the terminal session.
+		const lateStop = run(state, {
+			type: "stop-settled",
+			generationId: 7,
+			outcome: { outcome: "failed", reason: "Generation already finished." },
+		});
+		expect(lateStop.state).toBe(state);
+		expect(lateStop.effects).toEqual([]);
+		expect(firstActiveGenerationSessionError(lateStop.state)).toBeNull();
+	});
+
+	test("a terminal state snapshot also retires an in-flight Stop", () => {
+		let state = sessionOf(42, targetsFor(7));
+		state = run(state, { type: "stop-started", generationId: 7 }).state;
+
+		const terminalSnapshot = run(state, {
+			type: "state-observed",
+			generationId: 7,
+			state: {
+				outcome: "active-state",
+				generationId: 7,
+				conversationId: 42,
+				messageId: 907,
+				variantId: 9_007,
+				content: "Complete.",
+				reasoning: "",
+				latestEventId: 2,
+				status: "complete",
+				terminalReason: null,
+			},
+		});
+		expect(stateText(terminalSnapshot.state, 7)?.phase).toBe("terminal");
+		expect(stateText(terminalSnapshot.state, 7)?.stopPending).toBe(false);
+		expect(hasPendingGenerationStop(terminalSnapshot.state)).toBe(false);
+		expect(terminalSnapshot.effects).toContainEqual({
+			kind: "refresh-conversation",
+			conversationId: 42,
+		});
+	});
+
 	test("an interrupted subscription detaches with the error and reconnects from the latest processed event", () => {
 		let state = sessionOf(42, targetsFor(7));
 		for (let eventId = 1; eventId <= 3; eventId += 1) {

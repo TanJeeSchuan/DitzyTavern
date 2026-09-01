@@ -381,6 +381,10 @@ const observeState = (
 		...session,
 		phase: terminal === null ? "observing" : "terminal",
 		lastEventId: Math.max(session.lastEventId, action.state.latestEventId),
+		// A terminal snapshot wins any in-flight Stop request and supersedes
+		// stale subscription- or stop-level errors from before the terminal
+		// outcome was observed.
+		stopPending: terminal === null ? session.stopPending : false,
 		error: null,
 		reconnects: 0,
 		terminal,
@@ -404,7 +408,13 @@ const settleSubscription = (
 		action.result.outcome === "stopped" ||
 		action.result.outcome === "not-found"
 	) {
-		next = { ...session, phase: "terminal", terminal: { outcome: action.result.outcome } };
+		next = {
+			...session,
+			phase: "terminal",
+			stopPending: false,
+			error: null,
+			terminal: { outcome: action.result.outcome },
+		};
 	} else if (action.result.outcome === "interrupted") {
 		// The subscription was lost, not the Generation: detach with the error
 		// and ask for the authoritative snapshot, whose reconciliation
@@ -421,6 +431,8 @@ const settleSubscription = (
 		next = {
 			...session,
 			phase: "terminal",
+			stopPending: false,
+			error: null,
 			terminal: { outcome: "failed", reason: action.result.reason },
 		};
 	}
@@ -562,7 +574,11 @@ export const firstActiveGenerationSessionError = (
 	state: GenerationSessionsState,
 ): string | null => {
 	for (const session of state.sessions.values()) {
-		if (session.conversationId === state.activeConversationId && session.error !== null) {
+		if (
+			session.conversationId === state.activeConversationId &&
+			session.terminal === null &&
+			session.error !== null
+		) {
 			return session.error;
 		}
 	}
@@ -571,7 +587,11 @@ export const firstActiveGenerationSessionError = (
 
 export const hasPendingGenerationStop = (state: GenerationSessionsState): boolean => {
 	for (const session of state.sessions.values()) {
-		if (session.conversationId === state.activeConversationId && session.stopPending) return true;
+		if (
+			session.conversationId === state.activeConversationId &&
+			session.terminal === null &&
+			session.stopPending
+		) return true;
 	}
 	return false;
 };
