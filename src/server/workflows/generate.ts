@@ -227,30 +227,6 @@ export function inspectGenerationPrompt(
 	};
 }
 
-/**
- * ==[HUMAN APPROVED]== Test-fixture seam for suites that need a terminal model Message without a
- * user Send. It composes the production Continuation lifecycle — acceptance
- * followed by resolution — instead of a parallel commit path, so fixtures
- * exercise the same Active Generation persistence, Author Stamp capture, and
- * terminal rules every server-owned Generation uses. It is therefore absent
- * from the public workflow barrel and every HTTP route. Product code must
- * use the server-owned Send, Continue, or Sibling starts.
- */
-export async function generateTerminalTailFixture(
-	database: Database,
-	input: GenerationAttemptInput,
-): Promise<ConversationSnapshot> {
-	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
-	if (snapshot === undefined) {
-		throw new ConversationNotFoundError(input.conversationId);
-	}
-	const result = await continueGeneration(database, {
-		...input,
-		expectedRevision: snapshot.revision,
-	});
-	return result.conversation;
-}
-
 // ==[HUMAN APPROVED]== Send's accepted lifecycle is intentionally separate from the legacy
 // Generate wrapper. Preflight is entirely read-only; only after it succeeds
 // does the Conversation seam atomically create the human input, provisional

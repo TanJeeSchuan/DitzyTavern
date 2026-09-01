@@ -6,7 +6,7 @@ import { openDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration, inspectGenerationPrompt } from ".";
-import { generateTerminalTailFixture } from "./generate";
+import { generateTerminalTailFixture } from "./test-fixtures";
 
 const definition = (name: string): ParticipantDefinition => ({
 	name,

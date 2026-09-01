@@ -23,7 +23,7 @@ import {
 	inspectGenerationPrompt,
 	sendThroughProvisionalTailGeneration,
 } from ".";
-import { generateTerminalTailFixture } from "./generate";
+import { generateTerminalTailFixture } from "./test-fixtures";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},

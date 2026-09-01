@@ -32,7 +32,7 @@ import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
 } from "../workflows";
-import { generateTerminalTailFixture } from "../workflows/generate";
+import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,

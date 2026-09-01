@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
 import { openDatabase } from "../database/database";
 import { createFakeModelClient } from "../model-client";
-import { generateTerminalTailFixture } from "../workflows/generate";
+import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
 	createConversationModule,
 	ConversationNotFoundError,

@@ -18,7 +18,7 @@ import {
 	sendThroughProvisionalTailGeneration,
 	startServerOwnedSiblingGeneration,
 } from ".";
-import { generateTerminalTailFixture } from "./generate";
+import { generateTerminalTailFixture } from "./test-fixtures";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
