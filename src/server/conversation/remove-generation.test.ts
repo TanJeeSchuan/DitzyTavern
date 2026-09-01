@@ -175,6 +175,41 @@ describe("canonical Conversation Generation removal", () => {
 		expect(after.revision).toBe(selected.revision + 1);
 	});
 
+	test("blocks create-variant from deselecting an active Provisional Variant while selection remains available", () => {
+		const input = setup();
+		const target = input.created.messages[0];
+		const priorVariant = target?.variants[0];
+		if (target === undefined || priorVariant === undefined) throw new Error("Opening target missing.");
+		const accepted = acceptSibling(input);
+
+		expect(() =>
+			input.module.execute({
+				conversationId: input.created.id,
+				expectedRevision: accepted.conversation.revision,
+				action: {
+					type: "create-variant",
+					messageId: target.id,
+					content: "Should not displace the active target.",
+				},
+			}),
+		).toThrow(
+			"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation is active.",
+		);
+
+		const selected = input.module.execute({
+			conversationId: input.created.id,
+			expectedRevision: accepted.conversation.revision,
+			action: {
+				type: "select-variant",
+				messageId: target.id,
+				variantId: priorVariant.id,
+			},
+		});
+		expect(selected.messages[0]?.variants).toHaveLength(2);
+		expect(selected.messages[0]?.variants[0]?.selected).toBe(true);
+		expect(selected.activeGenerations).toEqual(accepted.conversation.activeGenerations);
+	});
+
 	test("removing an unknown Generation id is rejected", () => {
 		const input = setup();
 		expect(() =>

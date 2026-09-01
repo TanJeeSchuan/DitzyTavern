@@ -516,6 +516,30 @@ describe("Sibling Generation acceptance and resolution", () => {
 		expect(module.getSnapshot(imported.id)?.messages[0]?.variants).toHaveLength(1);
 	});
 
+	test("rejects a captured historical Control pair that does not match the target Message", () => {
+		const { module, snapshot, humanId, modelId } = setup(database);
+		const target = snapshot.messages[0];
+		if (target === undefined) throw new Error("Message missing.");
+
+		expect(() =>
+			module.acceptSiblingGeneration({
+				conversationId: snapshot.id,
+				messageId: target.id,
+				timestamp: "2026-08-20T14:00:00Z",
+				humanParticipantId: modelId,
+				modelParticipantId: humanId,
+				capturedModelName: "Writer",
+				promptPlan: {},
+				historyRoles: [],
+				generationSettings: {},
+				connection: {},
+			}),
+		).toThrow(
+			"The captured historical Control pair does not match the target Message.",
+		);
+		expect(module.getSnapshot(snapshot.id)?.revision).toBe(snapshot.revision);
+	});
+
 	test("denies sibling acceptance when a historical Participant no longer has a usable Definition", () => {
 		const { module, snapshot } = setup(database);
 		const greeting = snapshot.messages[0];

@@ -19,12 +19,14 @@ import {
 } from "../errors";
 import {
 	connectConversationDatabase,
-	isPlayable,
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
 } from "../internal";
-import { deriveMessageSwipeEligibility } from "../snapshot";
+import {
+	deriveControlValidity,
+	deriveMessageSwipeEligibility,
+} from "../snapshot";
 import {
 	advanceConversationRevision,
 	advanceConversationRevisionGuarded,
@@ -638,14 +640,9 @@ export function acceptConversationSiblingGeneration(
 			)
 			.all()
 			.map((participant) => participant.id);
-		const playable = isPlayable(control) &&
-			control.humanParticipantId !== control.modelParticipantId &&
-			control.humanParticipantId !== null &&
-			control.modelParticipantId !== null &&
-			castIds.includes(control.humanParticipantId) &&
-			castIds.includes(control.modelParticipantId);
+		const controlValidity = deriveControlValidity(control, castIds);
 		const eligibility = deriveMessageSwipeEligibility(
-			playable,
+			controlValidity.valid,
 			historicalContext,
 			castIds,
 		);
@@ -655,14 +652,14 @@ export function acceptConversationSiblingGeneration(
 			}
 			throw new SiblingVariantUnavailableError(eligibility.reason);
 		}
-		if (historicalContext === null) {
-			throw new SiblingVariantUnavailableError("missing-historical-context");
-		}
+		const historicalPair = historicalContext!;
 		if (
-			historicalContext.humanParticipantId !== input.humanParticipantId ||
-			historicalContext.modelParticipantId !== input.modelParticipantId
+			historicalPair.humanParticipantId !== input.humanParticipantId ||
+			historicalPair.modelParticipantId !== input.modelParticipantId
 		) {
-			throw new SiblingVariantUnavailableError("missing-historical-context");
+			throw new InvalidConversationCommandError(
+				"The captured historical Control pair does not match the target Message.",
+			);
 		}
 
 		const activeRows = db
@@ -672,7 +669,7 @@ export function acceptConversationSiblingGeneration(
 			.all();
 		if (activeRows.some((row) => !isSiblingGenerationRow({ generation_intent_json: row.intent }))) {
 			throw new InvalidConversationCommandError(
-				"A Sibling Generation cannot start while another response Generation is active.",
+				"A Sibling Generation cannot start while another Active Generation is active.",
 			);
 		}
 		if (activeRows.some((row) => row.messageId !== input.messageId)) {

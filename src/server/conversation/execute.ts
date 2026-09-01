@@ -63,10 +63,11 @@ export function executeConversationCommand(
 		if (
 			responsePositionIsActive &&
 			(command.action.type === "create-message" ||
+				command.action.type === "create-variant" ||
 				command.action.type === "assign-control")
 		) {
 			throw new InvalidConversationCommandError(
-				"A new Conversation turn or Control mutation is unavailable while a response Generation is active.",
+				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation is active.",
 			);
 		}
 
