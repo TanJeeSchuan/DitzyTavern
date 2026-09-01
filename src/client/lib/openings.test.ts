@@ -8,8 +8,8 @@ import { openingsFromText, openingsToText } from "./openings";
 // carriage returns never leak into stored openings, while leading
 // indentation and blank lines survive verbatim.
 describe("openingsFromText", () => {
-	test("splits lines and trims only their ends", () => {
-		expect(openingsFromText("Dawn shift\r\n  Night watch \n\nDusk")).toEqual([
+	test("trims trailing whitespace and carriage returns", () => {
+		expect(openingsFromText("Dawn shift  \r\n  Night watch\t\r\n\nDusk")).toEqual([
 			"Dawn shift",
 			"  Night watch",
 			"",

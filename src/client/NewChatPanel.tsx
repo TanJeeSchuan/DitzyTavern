@@ -7,6 +7,7 @@ import {
 	type SeatDraft,
 	type SeatPromptDraft,
 } from "./new-chat";
+import { openingsFromText } from "./lib/openings";
 import { useAsyncEffect } from "./lib/use-async";
 
 // Native New Chat setup: the human and model seats are configured side by
@@ -183,11 +184,7 @@ function OpeningsField({
 				rows={3}
 				value={openings.join("\n")}
 				onChange={(event) =>
-					onChange(
-						event.target.value === ""
-							? []
-							: event.target.value.split("\n"),
-					)
+					onChange(openingsFromText(event.target.value))
 				}
 			/>
 		</label>
