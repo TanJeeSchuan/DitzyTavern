@@ -67,14 +67,6 @@ export const headerEditorDataFor = (
 	return data;
 };
 
-export type ConnectionSettingsEditorState = {
-	readonly settings: ConnectionSettings;
-	readonly selectedProfileId: number | null;
-	readonly draft: ConnectionProfileDraft;
-	readonly credentialDraft: string;
-	readonly conflict: ConnectionSettingsConflict | null;
-};
-
 export type ConnectionSettingsControllerState = {
 	settings: ConnectionSettings | null;
 	presets: ConnectionPreset[];
@@ -307,13 +299,3 @@ export function reduceConnectionSettingsController(
 	}
 }
 
-export function preserveConnectionDraftOnConflict(
-	state: ConnectionSettingsEditorState,
-	conflict: ConnectionSettingsConflict,
-): ConnectionSettingsEditorState {
-	return {
-		...state,
-		settings: conflict.currentSettings,
-		conflict,
-	};
-}

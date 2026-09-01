@@ -50,7 +50,6 @@ export interface ChatHistoryPageRequest {
 	// 1-based page within the stable position-ordered chronology, counted
 	// backward from the newest Message (page 1 = latest window).
 	page?: number;
-	pageSize?: number;
 }
 
 export type ChatHistoryOutcome =
@@ -164,9 +163,6 @@ export interface ChatHistoryTransportOptions {
 	// Injectable request function for tests (for example one backed by
 	// a mocked Response).
 	fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-	// Whether downloads should run in the current environment. Tests pass a
-	// fetchImpl and never trigger browser navigation.
-	supportsDownload?: boolean;
 }
 
 export const createChatHistoryTransport = (
@@ -182,7 +178,6 @@ export const createChatHistoryTransport = (
 	const historyUrl = (conversationId: number, page?: ChatHistoryPageRequest) => {
 		const query = new URLSearchParams();
 		if (page?.page !== undefined) query.set("page", String(page.page));
-		if (page?.pageSize !== undefined) query.set("pageSize", String(page.pageSize));
 		const suffix = query.size > 0 ? `?${query.toString()}` : "";
 		return `${base}/api/conversations/${conversationId}/history${suffix}`;
 	};

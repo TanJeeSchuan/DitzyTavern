@@ -172,8 +172,6 @@ export async function loadActiveGenerationDetails(
 	}
 }
 
-export const loadActiveGenerationInspection = loadActiveGenerationDetails;
-
 export async function loadVariantDetails(
 	conversationId: number,
 	messageId: number,
@@ -191,8 +189,6 @@ export async function loadVariantDetails(
 		return { status: "network" };
 	}
 }
-
-export const loadGenerationVariantDetails = loadVariantDetails;
 
 export type StartConversationGenerationResult = GenerationStartResponse;
 

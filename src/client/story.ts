@@ -418,18 +418,6 @@ export const EMPTY_VARIANT_PLACEHOLDER = "(empty alternative)";
 export const visibleVariantContent = (variant: StoryVariant): string =>
 	variant.empty ? EMPTY_VARIANT_PLACEHOLDER : variant.content;
 
-// Moves a StoryMessage's active swipe within bounds, mirroring the swipe
-// controls' positional navigation. Applies after a local swipe command; the
-// underlying message is not mutated.
-export const moveActiveSwipe = (
-	message: StoryMessage,
-	direction: -1 | 1,
-): number =>
-	Math.min(
-		message.swipes.length - 1,
-		Math.max(0, message.activeSwipe + direction),
-	);
-
 // The Revision window is the latest two model-authored Messages plus the
 // human-authored Messages between them. It is derived from the story read
 // model and the current model Control assignment, never persisted locally.

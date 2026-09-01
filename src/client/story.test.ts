@@ -10,7 +10,6 @@ import {
 	displayedVariantId,
 	isPreviewDownstream,
 	previewNavigationNeedsConfirmation,
-	moveActiveSwipe,
 	reduceStory,
 	visibleVariantContent,
 	type StoryPreviewState,
@@ -309,42 +308,6 @@ describe("story reading state", () => {
 			EMPTY_VARIANT_PLACEHOLDER,
 		);
 		expect(swipes[2]?.content).toBe("");
-	});
-
-	test("positional swipe movement stays within the Variant range", () => {
-		const state = reduceStory(
-			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
-			{
-				type: "first-page",
-				page: page({
-					messages: [
-						message({
-							id: 10,
-							variants: [100, 101].map((id, index) => ({
-								id,
-								position: index + 1,
-								content: `Variant ${index + 1}`,
-								timestamp: "2026-01-01T00:00:00.000Z",
-								selected: index === 0,
-							})),
-						}),
-					],
-				}),
-			},
-		);
-		const messageState = state.messages[0];
-		expect(messageState).toBeDefined();
-		// SAFETY: the toBeDefined assertion above guarantees the first Message
-		// exists before casting it, and the fixture gave it exactly two
-		// Variants so index 1 stays in range.
-		const existing = messageState as StoryMessage;
-		expect(moveActiveSwipe(existing, 1)).toBe(1);
-		expect(moveActiveSwipe(existing, -1)).toBe(0);
-		// SAFETY: the fixture gave the Message exactly two Variants, so the
-		// last position with activeSwipe 1 is in range.
-		const last = { ...existing, activeSwipe: 1 };
-		expect(moveActiveSwipe(last, 1)).toBe(1);
-		expect(moveActiveSwipe(last, -1)).toBe(0);
 	});
 
 	test("opening a different Chat resets the accumulated history", () => {
