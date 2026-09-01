@@ -34,7 +34,7 @@ const prompt = (
 
 const adHoc = (
 	name: string,
-	openings: readonly string[] = [],
+	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition => ({
 	name,

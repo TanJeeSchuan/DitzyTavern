@@ -105,8 +105,8 @@ export const requireParticipantName = (name: string): string => {
 // ==[HUMAN APPROVED]== Openings are stored exactly as authored; only fully blank entries are
 // rejected, matching Character Library rules.
 export const requireParticipantOpenings = (
-	openings: readonly string[],
-): readonly string[] => {
+	openings: string[],
+): string[] => {
 	openings.forEach((opening, index) => {
 		if (opening.trim() === "") {
 			throw new InvalidConversationCommandError(

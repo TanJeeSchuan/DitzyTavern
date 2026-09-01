@@ -29,7 +29,7 @@ const emptyPrompt = () => ({
 
 const adHoc = (
 	name: string,
-	openings: readonly string[] = [],
+	openings: string[] = [],
 ): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
 
 const castFor = (snapshot: ConversationSnapshot) => snapshot.cast;

@@ -3,9 +3,22 @@ import type {
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../../shared/generation-provenance";
 import type {
+	ActiveGenerationDetails as SharedActiveGenerationDetails,
+	CapabilityAvailability as SharedCapabilityAvailability,
+	CastParticipant as SharedCastParticipant,
+	ChatHistoryMessage as SharedChatHistoryMessage,
+	ChatHistoryPage as SharedChatHistoryPage,
+	ChatHistoryVariant as SharedChatHistoryVariant,
+	ConversationAction as SharedConversationAction,
+	ConversationCapabilities as SharedConversationCapabilities,
+	ConversationControl as SharedConversationControl,
+	ConversationControlValidity as SharedConversationControlValidity,
+	ParticipantDefinition as SharedParticipantDefinition,
+	VariantDetails as SharedVariantDetails,
+} from "../../shared/contract/conversation-schema";
+import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
-import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -88,92 +101,57 @@ export interface ConversationArtifactSeed {
 	sha256: string;
 }
 
-// A complete Conversation-local identity Definition. Structurally identical
-// to a library Definition so application workflows can copy either direction
+// A complete Conversation-local identity Definition. Derived from the
+// canonical shared schema (ADR-0032) so it stays structurally identical to a
+// library Definition and application workflows can copy either direction
 // without translation, while this seam stays independent of the library.
-export interface ParticipantDefinition {
-	name: string;
-	prompt: PromptChannels;
-	openings: readonly string[];
-}
+export type ParticipantDefinition = SharedParticipantDefinition;
 
-export interface CastParticipantSnapshot {
-	id: number;
-	position: number;
-	name: string;
-	prompt: PromptChannels;
-	openings: readonly string[];
-	// Immutable provenance: the Character this Participant forked, if any.
-	sourceCharacterId: number | null;
-	// Derived display name of the provenance Character, from the Library
-	// row alone (never re-derived from Definitions or synchronization).
-	sourceCharacterName: string | null;
-	// Derived display label disambiguating duplicate names with ordinals;
-	// clients never recompute name identity from internal identifiers.
-	duplicateLabel: string;
-	// Derived removal eligibility and impact: seated Participants are
-	// protected, so only unseated Participants can be removed (removal itself
-	// is a separate confirmed action). For eligible Participants the derived
-	// deletion mode and affected-generation count power the confirmation
-	// presentation before any command is sent.
-	removal: ParticipantRemovalEligibility;
-}
+// The Cast Participant snapshot derives from the canonical wire schema
+// (ADR-0032): the transport projection and this seam share one declaration,
+// so a derived field added at the boundary automatically appears in the
+// snapshot. Its field semantics are documented on the canonical schema:
+// immutable Character provenance, derived duplicate labels, and derived
+// removal eligibility and impact.
+export type CastParticipantSnapshot = SharedCastParticipant;
 
 // Derived, never stored. A seated Participant is ineligible for removal
 // until Control changes; unseated Participants are eligible. The impact is
 // part of the same derived answer: deletion mode decides the confirmation
 // wording (hard delete versus tombstone) and affected-generation count
-// states how many Messages lose future sibling Variant generation.
-export type ParticipantRemovalBlockReason = "control-assigned";
+// states how many Messages lose future sibling Variant generation. All
+// three names stay derived from the canonical snapshot so the vocabulary
+// cannot drift.
+export type ParticipantRemovalEligibility = CastParticipantSnapshot["removal"];
 
-// Derived, never stored: whether removal hard-deletes the Participant or
-// reduces it to a nonrestorable tombstone because a Message still refers to
-// it. Null only for ineligible (seated) Participants.
-export type ParticipantDeletionMode = "hard-delete" | "tombstone";
+export type ParticipantRemovalBlockReason =
+	NonNullable<ParticipantRemovalEligibility["reason"]>;
 
-export interface ParticipantRemovalEligibility {
-	eligible: boolean;
-	reason: ParticipantRemovalBlockReason | null;
-	// Null while the Participant is seated (ineligible); derived otherwise.
-	deletionMode: ParticipantDeletionMode | null;
-	// Messages currently able to generate a new sibling Variant that would
-	// lose that ability when this Participant is removed. Zero for seated
-	// Participants and for unreferenced eligible ones.
-	affectedGenerationCount: number;
-}
+export type ParticipantDeletionMode =
+	NonNullable<ParticipantRemovalEligibility["deletionMode"]>;
 
 // Derived, never stored. A Conversation is playable only when two distinct
 // Cast Participants occupy the human and model seats; Control validity is
 // the same rule stated explicitly so clients do not reproduce it.
+// Control and its derived validity derive from the canonical wire schemas
+// (ADR-0032); the playability rule is stated once at the boundary and both
+// layers read the same shapes.
+export type ConversationControlSnapshot = SharedConversationControl;
+
+export type ConversationControlValidity = SharedConversationControlValidity;
+
 export type ControlValidityReason =
-	| "missing-seat"
-	| "seats-not-distinct"
-	| "seat-not-in-cast";
+	NonNullable<ConversationControlValidity["reason"]>;
 
-export interface ConversationControlValidity {
-	valid: boolean;
-	reason: ControlValidityReason | null;
-}
+// Derived, never stored. Play-gated capabilities derive from the canonical
+// wire schemas (ADR-0032) so a new capability or block reason changes both
+// layers together.
+export type CapabilityAvailability = SharedCapabilityAvailability;
 
-export interface ConversationControlSnapshot {
-	humanParticipantId: number | null;
-	modelParticipantId: number | null;
-}
+export type ConversationCapabilities = SharedConversationCapabilities;
 
-// Derived, never stored. A Conversation is playable only when two distinct
-// Cast Participants occupy the human and model seats.
-export interface ConversationCapabilities {
-	compose: CapabilityAvailability;
-	generate: CapabilityAvailability;
-	swipe: CapabilityAvailability;
-}
-
-export interface CapabilityAvailability {
-	available: boolean;
-	reason: CapabilityBlockReason | null;
-}
-
-export type CapabilityBlockReason = "conversation-not-playable";
+export type CapabilityBlockReason =
+	NonNullable<CapabilityAvailability["reason"]>;
 
 // Derived, never stored. Whether a new sibling Variant may be generated for
 // one Message. Conversation playability gates every play action; without a
@@ -231,6 +209,15 @@ export interface ConversationMessageSnapshot {
 	data: ConversationDataEntry[];
 }
 
+// ==[HUMAN APPROVED]== The full deep snapshot deliberately extends the shared conversationSummary
+// contract (divergence (b), ADR-0032 pattern): it adds the heavy `messages`
+// and `data` reads that the summary transport shape intentionally omits —
+// the story reads messages through the paginated history seam, heavy
+// provenance loads only through the Import Details operations, and a
+// 92-byte Cast command must not re-serialize the entire Chat archive across
+// the wire. Every shared header field (Cast, Control, validity, playability,
+// capabilities, active generations) derives from the canonical schemas, so
+// the two shapes cannot drift apart.
 export interface ConversationSnapshot {
 	id: number;
 	name: string;
@@ -248,70 +235,26 @@ export interface ConversationSnapshot {
 	data: ConversationDataEntry[];
 }
 
-// One lightweight Variant in a paginated history read. Reasoning Content is
-// part of the rendered response and therefore crosses this boundary when it
-// exists. Other provenance remains behind deliberate detail operations.
-export interface ChatHistoryVariant {
-	id: number;
-	position: number;
-	content: string;
-	reasoning?: string;
-	timestamp: string;
-	// The source-selected Swipe initializes the selected Variant at commit;
-	// afterwards this reflects the persisted native selection only.
-	selected: boolean;
-}
+// One lightweight Variant in a paginated history read. The history read
+// models derive from the canonical shared schemas (ADR-0032): the paginated
+// seam and the wire contract share one declaration, so a read-model field
+// added for rendering automatically participates in transport validation.
+// Reasoning Content is part of the rendered response and therefore crosses
+// this boundary when it exists; other provenance remains behind deliberate
+// detail operations.
+export type ChatHistoryVariant = SharedChatHistoryVariant;
 
 // Stable Participant identity needed to render one Message: the immutable
 // Author Stamp name plus the current active-Cast state. No prompts,
 // openings, provenance, or editable Definition content is included.
-export interface ChatHistoryMessage {
-	id: number;
-	position: number;
-	timestamp: string;
-	// Immutable Author Stamp created from the resolved Participant name at
-	// commit; no source Writer or role flag has any special treatment.
-	author: AuthorStampSnapshot | null;
-	// The model Control captured when this Message was generated. This small
-	// capability hint lets a client keep Continue available after Control has
-	// moved to another Participant without exposing prompt or provenance data.
-	modelParticipantIdAtCreation: number | null;
-	// Derived from the selected Variant's visible text or Reasoning Content.
-	continuable: boolean;
-	// Derived, never stored: whether a new sibling Variant (targeted Swipe)
-	// may be generated for this Message, from the canonical historical-pair
-	// rule. The server always emits it; clients never reconstruct eligibility.
-	swipe: MessageSwipeEligibility;
-	// Variant order is preserved exactly as stored; empty and duplicate
-	// variants remain separate positions with their exact content.
-	variants: ChatHistoryVariant[];
-}
+export type ChatHistoryMessage = SharedChatHistoryMessage;
 
 // The normal Chat read model for reading history: stable chronological
 // pages of native Messages with the lightweight Participant identity needed
 // for rendering. Persisted Reasoning Content is included with each Variant.
 // Exact artifact bytes, the canonical archive text, signatures, and other
 // heavy provenance load only through deliberate detail operations.
-export interface ChatHistoryPage {
-	conversationId: number;
-	name: string;
-	revision: number;
-	// Active Cast identity only (stable id, position, current name).
-	cast: { id: number; position: number; name: string }[];
-	// Stable chronological paging state: page 1 is the latest window of the
-	// position-ordered Message sequence; later pages reach further back into
-	// older history, never unstable or derived orderings.
-	page: {
-		// 1-based page number actually served, bounded to the available range.
-		index: number;
-		pageSize: number;
-		totalMessages: number;
-		totalPages: number;
-		hasOlder: boolean;
-		hasNewer: boolean;
-	};
-	messages: ChatHistoryMessage[];
-}
+export type ChatHistoryPage = SharedChatHistoryPage;
 
 export interface ChatHistoryPageRequest {
 	// 1-based page within the stable position-ordered chronology, counted
@@ -326,73 +269,21 @@ export type ConversationDataScope =
 	| { type: "message"; messageId: number }
 	| { type: "variant"; messageId: number; variantId: number };
 
+// The command vocabulary derives from the canonical wire union (ADR-0032):
+// a transport command added to the shared schema automatically becomes a
+// domain action, so the two vocabularies cannot drift. The one deliberate
+// extension (a): the domain add-participant action carries a server-only
+// `sourceCharacterId` that the wire schema deliberately omits — clients can
+// never forge or bypass provenance/revision rules at the transport
+// boundary; only server-owned fork workflows supply it inside the
+// transaction.
+type WireConversationAction = SharedConversationAction;
+
 export type ConversationAction =
-	| {
-			type: "create-message";
-			timestamp: string;
-			variantContents: readonly string[];
-			selectedVariantIndex?: number;
-			authorParticipantId: number;
-	  }
-	| { type: "create-variant"; messageId: number; content: string }
-	| { type: "select-variant"; messageId: number; variantId: number }
-	| { type: "edit-variant"; messageId: number; variantId: number; content: string }
-	| { type: "delete-variant"; messageId: number; variantId: number }
-	| { type: "delete-message"; messageId: number }
-	| {
-			type: "put-data";
-			scope: ConversationDataScope;
-			namespace: string;
-			key: string;
-			value: string;
-	  }
-	| {
-			type: "delete-data";
-			scope: ConversationDataScope;
-			namespace: string;
-			key: string;
-	  }
-	| {
-			type: "update-generation-settings";
-			settings: ConversationGenerationSettingsInput;
-	  }
-	// The focused model-selection command: the client submits only the model
-	// ID and the handler merges it into the stored Generation Settings, so a
-	// model selection can never rewrite another editor's settings fields.
-	| { type: "set-generation-model"; modelId: string }
-	// Cast management: appends a new Participant with a complete local
-	// Definition (ad-hoc, or an already-resolved Character fork carrying
-	// immutable provenance). Appended at the next stable Cast position and
-	// never inserts history.
-	| {
-			type: "add-participant";
-			definition: ParticipantDefinition;
+	| Exclude<WireConversationAction, { type: "add-participant" }>
+	| (Extract<WireConversationAction, { type: "add-participant" }> & {
 			sourceCharacterId?: number | undefined;
-	  }
-	// Local Definition edits with separate semantic Apply actions. Never
-	// touch the source Character, existing Messages, or their stamps.
-	| { type: "rename-participant"; participantId: number; name: string }
-	| {
-			type: "replace-participant-prompt";
-			participantId: number;
-			prompt: PromptChannels;
-	  }
-	| {
-			type: "replace-participant-openings";
-			participantId: number;
-			openings: readonly string[];
-	  }
-	// Assigns one Control seat to a Cast Participant. Selecting the opposite
-	// seat's occupant swaps both seats atomically; selecting an unseated
-	// Participant replaces only the chosen seat. Seats are never cleared.
-	| { type: "assign-control"; seat: "human" | "model"; participantId: number }
-	// Removes an unseated Participant after confirmation. Seated Participants
-	// are protected with the typed not-removable outcome. Removing an
-	// unreferenced Participant hard-deletes it; a Participant still referred
-	// to by Messages (Author Stamp or historical Control pair) is reduced to
-	// a nonrestorable tombstone and garbage-collected once its final
-	// reference disappears.
-	| { type: "remove-participant"; participantId: number };
+	  });
 
 export interface ConversationCommand {
 	conversationId: number;
@@ -473,60 +364,26 @@ export interface ActiveGenerationSnapshot {
 	startedAt: string;
 }
 
-// Deliberate, on-demand read of one server-owned Active Generation. The
-// captured plan and omitted history are intentionally absent from ordinary
-// Conversation snapshots and history pages; they exist only while the
-// active/replay lifecycle retains the generation row.
-export interface ActiveGenerationDetails {
-	conversationId: number;
-	generationId: number;
-	messageId: number;
-	variantId: number;
-	startedAt: string;
-	status: "active" | "complete" | "length-limited" | "interrupted";
-	intent: ConversationJsonValue;
-	participants: {
-		human: { id: number; name: string };
-		model: { id: number; name: string };
-	};
-	promptPlan: ConversationJsonValue;
-	historyRoles: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
-	budget: {
-		tokenEstimate: number | null;
-		responseBudget: number | null;
-		safetyAllowance: number | null;
-		contextLimit: number | null;
-		totalRequiredTokens: number | null;
-		omittedHistory: ConversationJsonValue;
-	};
-	checkpoint: {
-		content: string;
-		reasoning: string;
-		latestEventId: number;
-		checkpointedAt: string | null;
-	};
-}
+// Deliberate, on-demand read of one server-owned Active Generation. Derived
+// from the canonical shared schema (ADR-0032): the inspection contract and
+// the domain seam share one declaration, so an inspection field cannot
+// drift between transport validation and the deep read. The captured plan
+// and omitted history are intentionally absent from ordinary Conversation
+// snapshots and history pages; they exist only while the active/replay
+// lifecycle retains the generation row.
+export type ActiveGenerationDetails = SharedActiveGenerationDetails;
 
 // Compact terminal provenance is the only Generation detail that survives
 // Active Generation cleanup. It has a positive allow-list by design: no
 // request overrides, URLs, headers, credentials, or raw provider payloads.
 export type GenerationProvenance = SharedGenerationProvenance;
 
-// On-demand details for a terminal Variant. Reasoning and arbitrary data
-// rows remain outside this contract; Generation provenance is compact and
-// safe while the normal history read stays lightweight.
-export interface VariantDetails {
-	conversationId: number;
-	messageId: number;
-	variantId: number;
-	content: string;
-	timestamp: string;
-	author: AuthorStampSnapshot | null;
-	historicalContext: HistoricalControlSnapshot | null;
-	provenance: GenerationProvenance | null;
-}
+// On-demand details for a terminal Variant. Derived from the canonical
+// shared schema (ADR-0032) so the compact provenance contract cannot drift
+// between transport validation and the deep read. Reasoning and arbitrary
+// data rows remain outside this contract; Generation provenance is compact
+// and safe while the normal history read stays lightweight.
+export type VariantDetails = SharedVariantDetails;
 
 // Captured, provider-neutral input stored with an Active Generation. The
 // domain treats the plan/settings/connection values as opaque JSON so this

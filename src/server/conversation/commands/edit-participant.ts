@@ -27,7 +27,7 @@ export interface ReplaceParticipantPromptInput {
 export interface ReplaceParticipantOpeningsInput {
 	conversationId: number;
 	participantId: number;
-	openings: readonly string[];
+	openings: string[];
 }
 
 // ==[HUMAN APPROVED]== Separate semantic Apply actions for Participant Definition editing. Each

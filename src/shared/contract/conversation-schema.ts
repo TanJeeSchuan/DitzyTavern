@@ -76,6 +76,13 @@ const conversationCapabilities = Type.Object({
 	swipe: capabilityAvailability,
 });
 
+// Derived capability types share the same canonical declaration with the
+// Conversation domain seam (ADR-0032): the domain re-exports these Statics
+// instead of restating the shapes, so a new capability or block reason
+// cannot drift between transport and domain.
+export type CapabilityAvailability = Static<typeof capabilityAvailability>;
+export type ConversationCapabilities = Static<typeof conversationCapabilities>;
+
 // Provider request overrides and retained generation details are restricted
 // to the shared generation JSON vocabulary. The runtime schema stays open
 // like the previous opaque payload boundary, while the Unsafe generic keeps

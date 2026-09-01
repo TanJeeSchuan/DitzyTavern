@@ -12,7 +12,8 @@ export const characterLibrarySummary = Type.Object({
 	revision: Type.Integer(),
 	pinned: Type.Boolean(),
 	preview: Type.String(),
-	// Global provenance reference count so pickers and lists present
+	// ==[HUMAN APPROVED]== Global provenance reference count (active or tombstoned
+	// Participants forked from this Character), so pickers and lists present
 	// deletion impact without one detail request per row.
 	provenanceReferenceCount: Type.Integer(),
 });
@@ -22,7 +23,7 @@ export const characterDeletionMode = Type.Union([
 	Type.Literal("tombstone"),
 ]);
 
-// Derived deletion impact presented with every authoritative read so the
+// ==[HUMAN APPROVED]== Derived deletion impact presented with every authoritative read so the
 // confirmation flow can show the exact consequence before any command.
 export const characterDeletionImpact = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
