@@ -179,56 +179,15 @@ export function executeConversationCommand(
 		}
 
 		const input = { conversationId: command.conversationId, ...command.action };
-		switch (input.type) {
-			case "create-message":
-				conversationCommandPolicy["create-message"].handler(db, input);
-				break;
-			case "create-variant":
-				conversationCommandPolicy["create-variant"].handler(db, input);
-				break;
-			case "select-variant":
-				conversationCommandPolicy["select-variant"].handler(db, input);
-				break;
-			case "edit-variant":
-				conversationCommandPolicy["edit-variant"].handler(db, input);
-				break;
-			case "delete-variant":
-				conversationCommandPolicy["delete-variant"].handler(db, input);
-				break;
-			case "delete-message":
-				conversationCommandPolicy["delete-message"].handler(db, input);
-				break;
-			case "add-participant":
-				conversationCommandPolicy["add-participant"].handler(db, input);
-				break;
-			case "rename-participant":
-				conversationCommandPolicy["rename-participant"].handler(db, input);
-				break;
-			case "replace-participant-prompt":
-				conversationCommandPolicy["replace-participant-prompt"].handler(db, input);
-				break;
-			case "replace-participant-openings":
-				conversationCommandPolicy["replace-participant-openings"].handler(db, input);
-				break;
-			case "assign-control":
-				conversationCommandPolicy["assign-control"].handler(db, input);
-				break;
-			case "remove-participant":
-				conversationCommandPolicy["remove-participant"].handler(db, input);
-				break;
-			case "put-data":
-				conversationCommandPolicy["put-data"].handler(db, input);
-				break;
-			case "delete-data":
-				conversationCommandPolicy["delete-data"].handler(db, input);
-				break;
-			case "update-generation-settings":
-				conversationCommandPolicy["update-generation-settings"].handler(db, input);
-				break;
-			case "set-generation-model":
-				conversationCommandPolicy["set-generation-model"].handler(db, input);
-				break;
-		}
+		// ==[HUMAN APPROVED]== SAFETY: the `satisfies` clause on conversationCommandPolicy
+		// guarantees each entry's handler accepts exactly its own command's
+		// input shape, so indexing the table by input.type is sound; the cast
+		// only recovers that correlation for the compiler.
+		(
+			conversationCommandPolicy[input.type] as ConversationCommandPolicy<
+				typeof input.type
+			>
+		).handler(db, input);
 
 		advanceConversationRevisionGuarded(
 			db,

@@ -283,13 +283,17 @@ export interface InsertedParticipant {
 
 // ==[HUMAN APPROVED]== One Participant insertion: the active row, its complete local
 // Definition prompt, and its ordered openings. Shared by native creation and
-// the Cast append so the three written rows cannot drift.
+// the Cast append so the three written rows cannot drift. The caller picks
+// the error class for an insertion failure (creation maps it to 422, commands
+// to the command class) so both paths share the writes, not the transport
+// contract.
 export const insertParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
 	position: number,
 	definition: ParticipantDefinition,
 	sourceCharacterId: number | null,
+	errorClass: new (message: string) => Error = InvalidConversationCommandError,
 ): InsertedParticipant => {
 	const name = normalizeParticipantName(definition.name);
 	const inserted = db
@@ -303,7 +307,7 @@ export const insertParticipant = (
 		.returning({ id: participantTable.id })
 		.get();
 	if (inserted === undefined) {
-		throw new InvalidConversationCommandError(
+		throw new errorClass(
 			"Participant insertion did not return an identifier.",
 		);
 	}
@@ -350,7 +354,9 @@ export interface MessageControlContext {
 
 // ==[HUMAN APPROVED]== One Message insertion shared by creation, Compose, and the
 // provisional Generation targets: the returning id is required, so a failed
-// insert is an error instead of a silent undefined dereference.
+// insert is an error instead of a silent undefined dereference. The caller
+// picks the error class (creation maps it to 422, commands to the command
+// class) so both paths share the write, not the transport contract.
 export const insertMessage = (
 	db: ConversationDatabase,
 	values: {
@@ -360,6 +366,7 @@ export const insertMessage = (
 		author: MessageAuthorStamp | null;
 		context: MessageControlContext | null;
 	},
+	errorClass: new (message: string) => Error = InvalidConversationCommandError,
 ): number => {
 	const inserted = db
 		.insert(messageTable)
@@ -375,7 +382,7 @@ export const insertMessage = (
 		.returning({ id: messageTable.id })
 		.get();
 	if (inserted === undefined) {
-		throw new InvalidConversationCommandError(
+		throw new errorClass(
 			"The Message could not be persisted.",
 		);
 	}

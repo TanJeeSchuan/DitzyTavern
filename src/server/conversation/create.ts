@@ -324,7 +324,8 @@ export function createConversation(
 			.run();
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
-		// Participant identifiers.
+		// Participant identifiers. Insertion failures surface as the creation
+		// error class so the transport contracts map them to 422.
 		const insertedParticipants = seeds.map((seed, index) =>
 			insertParticipant(
 				db,
@@ -332,6 +333,7 @@ export function createConversation(
 				index + 1,
 				seed.definition,
 				seed.sourceCharacterId ?? null,
+				InvalidConversationCreationError,
 			),
 		);
 
@@ -386,15 +388,19 @@ export function createConversation(
 						}
 					: null;
 
-			const messageId = insertMessage(db, {
-				chatId: conversation.id,
-				position: messageIndex + 1,
-				timestamp: message.timestamp,
-				author: authorSeed
-					? { participantId: authorSeed.id, name: authorSeed.name }
-					: null,
-				context,
-			});
+			const messageId = insertMessage(
+				db,
+				{
+					chatId: conversation.id,
+					position: messageIndex + 1,
+					timestamp: message.timestamp,
+					author: authorSeed
+						? { participantId: authorSeed.id, name: authorSeed.name }
+						: null,
+					context,
+				},
+				InvalidConversationCreationError,
+			);
 
 			insertScopedData(
 				message.data,
