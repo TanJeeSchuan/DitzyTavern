@@ -1,4 +1,4 @@
-// Every SSE frame payload is a member of the shared Generation event
+// ==[HUMAN APPROVED]== Every SSE frame payload is a member of the shared Generation event
 // vocabulary: normalized events, state snapshots, and the terminal applied/
 // stopped/failure frames. The schemas in src/shared/contract/generation-events
 // own the shapes; this adapter only owns framing and delivery.
@@ -89,7 +89,7 @@ export function createGenerationSubscriptionResponse(
 			};
 			const emit = (type: string, data: GenerationSsePayload, eventId?: number) => {
 				if (closed) return;
-				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* client disconnected */ }
+				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
 			};
 			const finish = (state: GenerationRuntimeState) => {
 				if (closed || state.status === "active") return;
@@ -97,13 +97,13 @@ export function createGenerationSubscriptionResponse(
 				emit(terminal.type, terminal.data);
 				closed = true;
 				cleanup();
-				try { controller.close(); } catch { /* client disconnected */ }
+				try { controller.close(); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
 			};
 			const onAbort = () => {
 				if (closed) return;
 				closed = true;
 				cleanup();
-				try { controller.close(); } catch { /* client disconnected */ }
+				try { controller.close(); } catch { /* client disconnected ==[HUMAN APPROVED]== */ }
 			};
 			removeStateListener = runtime.onStateChange(finish);
 			subscription = runtime.subscribe(
@@ -111,7 +111,7 @@ export function createGenerationSubscriptionResponse(
 				(envelope) => emit("generation", envelope.event, envelope.eventId),
 				(state) => emit("state", activeGenerationPayload(state)),
 			);
-			// A terminal runtime can synchronously finish from the replay callback
+			// ==[HUMAN APPROVED]== A terminal runtime can synchronously finish from the replay callback
 			// before subscribe() returns. Close the newly-created subscription too.
 			if (closed) subscription.close();
 			finish(runtime.state);

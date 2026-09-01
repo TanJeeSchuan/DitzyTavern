@@ -3,7 +3,7 @@ import { commandOutcome } from "./lib/command-outcome";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { emptyPromptChannels } from "../shared/definition";
 
-// Typed client for the native New Chat workflow. Outcomes mirror the
+// Typed client for the native New Chat workflow. Outcomes mirror the ==[HUMAN APPROVED]==
 // server's typed results so setup problems (stale fork sources, invalid
 // Definitions) surface without losing the user's draft.
 

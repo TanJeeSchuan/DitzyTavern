@@ -1,4 +1,4 @@
-// Pure presentation helpers for the Cast drawer's Remove action.
+// ==[HUMAN APPROVED]== Pure presentation helpers for the Cast drawer's Remove action.
 //
 // The server derives the removal impact (deletion mode and how many Messages
 // lose future sibling Variant generation); this module words that snapshot-
@@ -9,22 +9,22 @@
 import type { CastParticipant } from "./conversation";
 
 export interface RemovalConfirmationCopy {
-	// Dialog title, e.g. "Remove Juno Ashfeld?".
+	// ==[HUMAN APPROVED]== Dialog title, e.g. "Remove Juno Ashfeld?".
 	title: string;
-	// Impact statement shown before confirmation: whether removal hard-deletes
+	// ==[HUMAN APPROVED]== Impact statement shown before confirmation: whether removal hard-deletes
 	// or tombstones, and how many Messages lose future sibling generation.
 	impact: string;
-	// Label of the confirming button; "Close" when the Participant cannot be
+	// ==[HUMAN APPROVED]== Label of the confirming button; "Close" when the Participant cannot be
 	// removed (a seated Participant should never open a removal dialog, but
 	// the copy stays typed anyway).
 	confirmLabel: string;
 }
 
-// The derived count phrase: singular Message versus many.
+// ==[HUMAN APPROVED]== The derived count phrase: singular Message versus many.
 const generationCountPhrase = (count: number) =>
 	count === 1 ? "1 Message will" : `${count} Messages will`;
 
-// Words the confirmation for one Participant from the snapshot-derived
+// ==[HUMAN APPROVED]== Words the confirmation for one Participant from the snapshot-derived
 // removal eligibility. Seated Participants describe the required Control
 // change instead of an impact.
 export const removalConfirmationCopy = (

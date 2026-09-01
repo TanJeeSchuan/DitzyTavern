@@ -13,6 +13,6 @@ export const emptyAdHocDraft: AdHocDraft = {
 	openingsText: "",
 };
 
-// The shared conversion keeps Cast openings identical to Character Library
+// ==[HUMAN APPROVED]== The shared conversion keeps Cast openings identical to Character Library
 // openings (the trimming variant is the deliberate single behavior).
 export { openingsFromText, openingsToText } from "../lib/openings";

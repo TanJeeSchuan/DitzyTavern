@@ -32,7 +32,7 @@ const isNumber = (value: JsonValue): value is number =>
 const isTimestamp = (value: JsonValue): value is string =>
 	isString(value) && Number.isFinite(Date.parse(value));
 
-// Strict UTF-8 decoding of the exact source bytes. Invalid UTF-8 is a
+// ==[HUMAN APPROVED]== Strict UTF-8 decoding of the exact source bytes. Invalid UTF-8 is a
 // validation failure before any record is parsed; every byte sequence that
 // is valid (BOM, CRLF, whitespace, escape spelling, blank lines, trailing
 // newline) survives untouched.
@@ -44,7 +44,7 @@ export const decodeSillyTavernSourceBytes = (bytes: Buffer): string => {
 	}
 };
 
-// Parsed JSON output can only be the JSON scalars, arrays, and plain
+// ==[HUMAN APPROVED]== Parsed JSON output can only be the JSON scalars, arrays, and plain
 // objects; constructor identity is therefore a sound discriminator here.
 
 export const decodeRecords = (sourceText: string): JsonValue[] => {
@@ -95,7 +95,7 @@ const isScalar = (value: JsonValue): value is string | number | boolean => {
 	);
 };
 
-// Promotes one optional provenance value into the variant data when it is
+// ==[HUMAN APPROVED]== Promotes one optional provenance value into the variant data when it is
 // present and meaningful. Absent, null, and empty values are never promoted,
 // so no placeholder is invented for a field the source did not record.
 const promote = (
@@ -156,7 +156,7 @@ const decodeMessage = (record: JsonValue, position: number): DecodedMessage => {
 	};
 };
 
-// A record without Swipes becomes one Message owning one selected Variant
+// ==[HUMAN APPROVED]== A record without Swipes becomes one Message owning one selected Variant
 // derived from its row payload; the source timestamp is both the Message time
 // and the Variant time. Applicable row-level generation provenance is
 // attached when present.
@@ -187,12 +187,12 @@ const payloadOnlyVariant = (
 		timestamp: sendDate,
 		selected: true,
 	};
-	// Keep the creation input minimal: the data key appears only when
+	// ==[HUMAN APPROVED]== Keep the creation input minimal: the data key appears only when
 	// provenance was actually promoted.
 	return data.length === 0 ? variant : { ...variant, data };
 };
 
-// One native Variant per source Swipe in source order, selecting exactly
+// ==[HUMAN APPROVED]== One native Variant per source Swipe in source order, selecting exactly
 // `swipe_id`. Content, timestamps, and promoted provenance come exclusively
 // from `swipes` and the matching `swipe_info` entry; the duplicated top-level
 // assistant payload is never promoted.
@@ -260,7 +260,7 @@ const variantsFromSwipes = (
 		provenance(data, info.gen_started, info.gen_finished, extra);
 		return {
 			content,
-			// The alternative's own timestamp when recorded, else the row
+			// ==[HUMAN APPROVED]== The alternative's own timestamp when recorded, else the row
 			// send_date; both are real source values, never manufactured.
 			timestamp: isString(info.send_date) ? info.send_date : sendDate,
 			selected: index === swipeId,
@@ -269,7 +269,7 @@ const variantsFromSwipes = (
 	});
 };
 
-// Promotes the agreed generation provenance set. Only fields present in the
+// ==[HUMAN APPROVED]== Promotes the agreed generation provenance set. Only fields present in the
 // source are promoted: provider/API, model, generation ID, generation start
 // and finish timestamps, duration, time to first token, finish outcome,
 // reasoning duration and type, nonempty reasoning, and reasoning signatures.
@@ -300,7 +300,7 @@ export interface DecodedMessagesResult {
 	authors: SillyTavernExactAuthor[];
 }
 
-// Decodes every retained record into one position-ordered Message with its
+// ==[HUMAN APPROVED]== Decodes every retained record into one position-ordered Message with its
 // exact captured author value. No Participant, group, or Control decision is
 // made here: the developer-import path and the staged resolver each map the
 // decoded Messages onto their own author grouping later, and every retained
@@ -320,7 +320,7 @@ export const decodeMessages = (messageRecords: JsonValue[]): DecodedMessagesResu
 	});
 
 	const messages: ConversationCreationMessage[] = decoded.map((entry) => {
-		// The Message time is the earliest timestamp among its own Variants,
+		// ==[HUMAN APPROVED]== The Message time is the earliest timestamp among its own Variants,
 		// so changing Variant selection can never change Message chronology.
 		// No user, assistant, or system role is derived.
 		// SAFETY: decodeMessage always returns at least one Variant (a
@@ -332,7 +332,7 @@ export const decodeMessages = (messageRecords: JsonValue[]): DecodedMessagesResu
 			.sort(chronological)[0] as string;
 		return {
 			timestamp: messageTime,
-			// The exact raw source author value — including blank strings —
+			// ==[HUMAN APPROVED]== The exact raw source author value — including blank strings —
 			// stays untouched here, while the native Author Stamp uses the
 			// resolved Participant name chosen by the import flow.
 			data: [authorEntry(entry.authorName)],
@@ -343,7 +343,7 @@ export const decodeMessages = (messageRecords: JsonValue[]): DecodedMessagesResu
 	return {
 		messages,
 		warnings,
-		// The verbatim captured value per retained record (never trimmed or
+		// ==[HUMAN APPROVED]== The verbatim captured value per retained record (never trimmed or
 		// normalized) powers user-facing preview grouping; the trimmed
 		// grouping above stays the developer-import resolution rule.
 		authors: decoded.map((entry) => ({

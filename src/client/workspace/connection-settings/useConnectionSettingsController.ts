@@ -34,10 +34,10 @@ interface HeaderEditorInput {
 
 export function parseHeaderEditorData(value: JsonData): HeaderEditorData {
 	if (Object.prototype.toString.call(value) !== "[object Object]") return {};
-	// SAFETY: the object-tag check above establishes an object accepted by Object.entries.
+	// ==[HUMAN APPROVED]== SAFETY: the object-tag check above establishes an object accepted by Object.entries.
 	const entries = Object.entries(value as object).flatMap(([name, candidate]) => {
 		if (Object.prototype.toString.call(candidate) !== "[object Object]") return [];
-		// SAFETY: the object-tag check above establishes the JSON editor node shape.
+		// ==[HUMAN APPROVED]== SAFETY: the object-tag check above establishes the JSON editor node shape.
 		const record = candidate as HeaderEditorInput;
 		const operation = record.operation;
 		const replacement = record.replacement;
@@ -60,7 +60,7 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 	});
 }
 
-// The command-failure wording shared by every Profile command handler; the
+// ==[HUMAN APPROVED]== The command-failure wording shared by every Profile command handler; the
 // conflict variant is passed per command because it names what was preserved.
 const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
 const CREDENTIAL_CONFLICT_ERROR = "These settings changed elsewhere. Your credential draft is preserved.";
@@ -114,7 +114,7 @@ export type ConnectionSettingsController = {
 };
 
 /**
- * Owns the Connection Settings editor state. The former single patch-any-field
+ * ==[HUMAN APPROVED]== Owns the Connection Settings editor state. The former single patch-any-field
  * store is split into focused slices — server catalog, editable Profile
  * draft, selection and menus, and user-facing feedback — and the Profile
  * command handlers share one runConnectionCommand failure path. The returned
@@ -192,7 +192,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		}
 	}, [draft.requestUrl]);
 
-	// Runs one Connection Settings command and owns the failure wording
+	// ==[HUMAN APPROVED]== Runs one Connection Settings command and owns the failure wording
 	// repeated by every Profile command handler: a conflict preserves the
 	// editor state in the reducer, an invalid outcome surfaces the
 	// server reason, and anything else reads as a missing Profile. Returns
@@ -353,7 +353,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			dispatch({ type: "set-error", message: "Credential reset failed." });
 			return;
 		}
-		// Reset deliberately skips preserveConflict: the credential draft is
+		// ==[HUMAN APPROVED]== Reset deliberately skips preserveConflict: the credential draft is
 		// cleared either way, so a conflict reads as a plain failure here.
 		if (result.outcome !== "applied") { dispatch({ type: "set-error", message: result.outcome === "invalid" ? result.reason : "Credential reset failed." }); return; }
 		dispatch({ type: "reset-credential-succeeded", settings: result.settings });

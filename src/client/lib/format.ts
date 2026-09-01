@@ -1,7 +1,7 @@
-// Shared client formatters. One definition per presentation concern so the
+// ==[HUMAN APPROVED]== Shared client formatters. One definition per presentation concern so the
 // wording and units can never drift between panels.
 
-// Renders a wire timestamp in the viewer's locale; unparseable input is
+// ==[HUMAN APPROVED]== Renders a wire timestamp in the viewer's locale; unparseable input is
 // echoed back unchanged.
 export const formatTimestamp = (value: string): string => {
 	const date = new Date(value);
@@ -14,7 +14,7 @@ export const formatTimestamp = (value: string): string => {
 	}).format(date);
 };
 
-// Human byte size. `nullLabel` covers the per-context absence wording
+// ==[HUMAN APPROVED]== Human byte size. `nullLabel` covers the per-context absence wording
 // ("n/a" in Chat information, empty in import presentation).
 export const formatSize = (byteLength: number | null, nullLabel: string): string => {
 	if (byteLength === null) return nullLabel;

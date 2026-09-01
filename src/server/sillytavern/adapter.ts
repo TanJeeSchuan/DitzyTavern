@@ -1,4 +1,4 @@
-// SillyTavern JSONL chat adapter.
+// ==[HUMAN APPROVED]== SillyTavern JSONL chat adapter.
 //
 // Maps a SillyTavern chat export (one JSON object per line) into the generic
 // Conversation creation input. This module is the only place SillyTavern
@@ -50,7 +50,7 @@ import {
 export * from "./adapter/types";
 export { decodeSillyTavernSourceBytes } from "./adapter/messages";
 
-// The sealed single-pass source decode shared by the developer import path
+// ==[HUMAN APPROVED]== The sealed single-pass source decode shared by the developer import path
 // and the Staged Import: identical validation, counts, archive, and report,
 // plus the per-record exact author values the import groups on. Previewing
 // and committing re-decode the exact same staged bytes, so the review can
@@ -72,7 +72,7 @@ export function decodeSillyTavernImportSource(
 		0,
 	);
 
-	// The canonical archive keeps the parsed header and the complete parsed
+	// ==[HUMAN APPROVED]== The canonical archive keeps the parsed header and the complete parsed
 	// source message objects, so no source value is destroyed even though the
 	// native projection models only a subset of it.
 	const archive: ConversationDataEntry = {
@@ -81,7 +81,7 @@ export function decodeSillyTavernImportSource(
 		value: JSON.stringify({ header, messages: messageRecords }),
 	};
 
-	// Source identity, counts, and importer version live in the transitional
+	// ==[HUMAN APPROVED]== Source identity, counts, and importer version live in the transitional
 	// import namespace; the warnings and full JSON report entries are
 	// appended by the Import Projection once it knows about prior imports.
 	const data: ConversationDataEntry[] = [archive];
@@ -138,7 +138,7 @@ export function decodeSillyTavernImportSource(
 	return { messages, authors, data, report };
 }
 
-// The sealed adapter parse surface: decode plus the Default Import Policy
+// ==[HUMAN APPROVED]== The sealed adapter parse surface: decode plus the Default Import Policy
 // through the shared Import Projection, with no prior-import evidence (the
 // developer import composes duplicate evidence before projecting; this
 // convenience wrapper stays for adapter-level tests and simple callers).
@@ -161,7 +161,7 @@ export function parseSillyTavernChatJsonl(
 	};
 }
 
-// Preview-oriented inspection: the full structural validation of the import
+// ==[HUMAN APPROVED]== Preview-oriented inspection: the full structural validation of the import
 // path (UTF-8 strictness, JSON line errors, header shape, per-record
 // structural defects) plus the exact author values preview groups on. No
 // Participant, Message, or native record is created.

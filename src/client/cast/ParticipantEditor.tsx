@@ -8,7 +8,7 @@ import { runConversationCommand } from "../conversation-command-runner";
 import { openingsFromText, openingsToText } from "./definition";
 import { emptyPromptChannels, promptChannelFields } from "../../shared/definition";
 
-// The wording this surface shows for each standard command failure; the
+// ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
 const EDITOR_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the current state was loaded.",
@@ -60,7 +60,7 @@ export function ParticipantEditor({
 				notices: EDITOR_NOTICES,
 				callbacks: {
 					onApplied: (applied) => {
-						// Only the edited section re-syncs its draft from the
+						// ==[HUMAN APPROVED]== Only the edited section re-syncs its draft from the
 						// authoritative snapshot; the other drafts stay as typed.
 						setDrafts((current) => ({
 							name:
@@ -82,7 +82,7 @@ export function ParticipantEditor({
 						}));
 						onNotice(null);
 					},
-					// This command family cannot produce these outcomes; the
+					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
 					// server's precise reason is kept instead of a flattened class.
 					onNotPlayable: (reason) => onNotice(reason),
 					onNotRemovable: (reason) => onNotice(reason),

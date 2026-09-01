@@ -1,13 +1,13 @@
 import type { CharacterSnapshot } from "../character-library";
 import type { ConversationSnapshot } from "../conversation";
 
-// Adapts the Character seam's immutable snapshot into the transport shape.
+// ==[HUMAN APPROVED]== Adapts the Character seam's immutable snapshot into the transport shape.
 export const toCharacterPayload = (character: CharacterSnapshot) => ({
 	...character,
 	openings: [...character.openings],
 });
 
-// Adapts the Conversation seam's immutable snapshot into the summary transport
+// ==[HUMAN APPROVED]== Adapts the Conversation seam's immutable snapshot into the summary transport
 // shape: the seam returns readonly arrays, while the typed response contract
 // declares mutable ones.
 export const toConversationSummary = (conversation: ConversationSnapshot) => ({

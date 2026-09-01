@@ -36,7 +36,7 @@ export function CharacterEditor({
 	onResolveConflict: (mode: "keep-draft" | "load-current") => void;
 }) {
 	// Deletion requires an explicit confirmation step that states whether the
-	// confirmed command will hard-delete or reduce the Character to a hidden
+	// ==[HUMAN APPROVED]== confirmed command will hard-delete or reduce the Character to a hidden
 	// tombstone, derived from the reference count presented on the snapshot.
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const deleteCopy = deletionConfirmationCopy(

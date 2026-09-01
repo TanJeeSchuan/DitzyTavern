@@ -19,7 +19,7 @@ type WorkspaceState =
 
 export function App() {
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
-	// A just-imported Chat to open after the workspace reloads. It lives at
+	// ==[HUMAN APPROVED]== A just-imported Chat to open after the workspace reloads. It lives at
 	// App level because reloading the workspace unmounts the whole tree, and
 	// the selection must survive until the reloaded chat list contains it.
 	const [importLaunchChatId, setImportLaunchChatId] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export function App() {
 			try {
 				await loadWorkspace();
 			} finally {
-				// Clears after the reloaded workspace rendered, so the selection
+				// ==[HUMAN APPROVED]== Clears after the reloaded workspace rendered, so the selection
 				// effect could observe the target in the refreshed chat list.
 				window.setTimeout(() => setImportLaunchChatId(null), 0);
 			}

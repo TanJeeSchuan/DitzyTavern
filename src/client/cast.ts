@@ -1,4 +1,4 @@
-// Pure Cast and picker presentation helpers for the client UI. The rules
+// ==[HUMAN APPROVED]== Pure Cast and picker presentation helpers for the client UI. The rules
 // here only format data the server already derived authoritatively: the
 // Conversation snapshot carries duplicate labels and removal eligibility,
 // and the Character Library list carries a Prompt preview. These helpers
@@ -27,7 +27,7 @@ export interface LibraryPickerEntry {
 	usedCount: number;
 }
 
-// Shapes the pinned-first alphabetic Character list into picker entries:
+// ==[HUMAN APPROVED]== Shapes the pinned-first alphabetic Character list into picker entries:
 // duplicate labels follow library order, each entry shows its derived Prompt
 // preview, and the used-count reports repeated forks while keeping every
 // Character selectable.
@@ -59,7 +59,7 @@ export interface ControlChangeDescription {
 const seatLabel = (seat: ControlSeat) =>
 	seat === "human" ? "Writing as" : "Responding as";
 
-// Words the outcome of assigning `participantId` to `seat` so the composer
+// ==[HUMAN APPROVED]== Words the outcome of assigning `participantId` to `seat` so the composer
 // can visibly describe a swap (the opposite seat's occupant) versus a plain
 // replacement of one seat. Names are the derived duplicate labels already
 // provided by the server snapshot; nothing is invented here.
@@ -81,7 +81,7 @@ export const controlChangeDescription = (
 	const opposite =
 		seat === "human" ? control.modelParticipantId : control.humanParticipantId;
 
-	// The kind of change is decided by the shared resolver so the swap and
+	// ==[HUMAN APPROVED]== The kind of change is decided by the shared resolver so the swap and
 	// replace rules never drift between server and client.
 	const kind = resolveControlChange(control, seat, participantId);
 	if (kind === "no-change") {

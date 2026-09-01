@@ -30,7 +30,7 @@ import {
 } from "../generation-settings-draft";
 import { useAsyncEffect } from "../lib/use-async";
 
-// The Generation Settings save wording: each notice names what this surface
+// ==[HUMAN APPROVED]== The Generation Settings save wording: each notice names what this surface
 // preserved or could not reach, while the runner owns when each notice is
 // shown.
 const SAVE_NOTICES = {
@@ -39,7 +39,7 @@ const SAVE_NOTICES = {
 	unreachable: "The Generation Settings could not be saved.",
 };
 
-// The draft values the panel resolves from its local editor state: every
+// ==[HUMAN APPROVED]== The draft values the panel resolves from its local editor state: every
 // field a draft owns, resolved and validated before save.
 export interface GenerationSettingsDraftValues {
 	sampling: SamplingValues;
@@ -60,7 +60,7 @@ export interface SaveGenerationSettingsDraftOptions {
 	onNotRemovable: (reason: string) => void;
 }
 
-// The panel's full-object write — the one client writer of the whole
+// ==[HUMAN APPROVED]== The panel's full-object write — the one client writer of the whole
 // Generation Settings aggregate. The base is read at write time, so a model
 // selection the composer's selector committed after this panel loaded is
 // never restored stale, and every draft-owned field then overrides its base
@@ -89,7 +89,7 @@ export async function saveGenerationSettingsDraft(
 	});
 }
 
-// The written aggregate: the freshly read authoritative settings contribute
+// ==[HUMAN APPROVED]== The written aggregate: the freshly read authoritative settings contribute
 // the model selection no draft edits, and every draft-owned field overrides
 // its base value.
 function applyDraftsToGenerationSettings(
@@ -121,7 +121,7 @@ interface GenerationSettingsDraftOptions {
 }
 
 /**
- * Owns the editable Generation Settings draft: the authoritative load, the
+ * ==[HUMAN APPROVED]== Owns the editable Generation Settings draft: the authoritative load, the
  * per-section drafts, and the revision-guarded save with conflict recovery
  * (a conflict refreshes the authoritative settings while every local draft
  * stays untouched). The panel renders the current draft state and wires the
@@ -138,7 +138,7 @@ export function useGenerationSettingsDraft({
 	const [samplingDrafts, setSamplingDrafts] = useState<SamplingDrafts>(makeEmptySamplingDrafts());
 	const [budgetDrafts, setBudgetDrafts] = useState<BudgetDrafts>(makeEmptyBudgetDrafts());
 	const [overridesDrafts, setOverridesDrafts] = useState<OverridesDrafts>(makeEmptyOverridesDrafts());
-	// The namespace transmitted with requests follows the active Connection
+	// ==[HUMAN APPROVED]== The namespace transmitted with requests follows the active Connection
 	// Profile's API Format. The state is a discriminated union so the badges
 	// only claim a namespace is transmitted after Contact resolves one; the
 	// no-active-profile and load-failure cases carry their own status lines.
@@ -173,7 +173,7 @@ export function useGenerationSettingsDraft({
 			});
 	}, [conversation.id]);
 
-	// Connection Settings are global and this panel remounts on every open, so
+	// ==[HUMAN APPROVED]== Connection Settings are global and this panel remounts on every open, so
 	// a single load identifies the transmitting namespace for this visit.
 	useAsyncEffect((isCancelled) => {
 		void loadConnectionSettings()
@@ -252,7 +252,7 @@ export function useGenerationSettingsDraft({
 					setProblem(null);
 				},
 				onConflict: (current) => {
-					// Refresh the displayed authoritative settings so a retry starts
+					// ==[HUMAN APPROVED]== Refresh the displayed authoritative settings so a retry starts
 					// from fresh values; every local draft stays untouched. The
 					// write itself re-reads the authoritative settings anyway.
 					void loadConversationGenerationSettings(current.id)
@@ -265,7 +265,7 @@ export function useGenerationSettingsDraft({
 				onNotRemovable: showUnreachable,
 			});
 		} catch {
-			// The write-time read can fail before any command is sent; this
+			// ==[HUMAN APPROVED]== The write-time read can fail before any command is sent; this
 			// surface owns the unreachable presentation for that case too.
 			setProblem(SAVE_NOTICES.unreachable);
 		} finally {

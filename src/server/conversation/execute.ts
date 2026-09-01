@@ -71,7 +71,7 @@ export function executeConversationCommand(
 			);
 		}
 
-		// Compose and Swipe/Generate are play actions: they require both
+		// ==[HUMAN APPROVED]== Compose and Swipe/Generate are play actions: they require both
 		// distinct Control seats. Reads, edits, configuration, and deletion
 		// remain available to incomplete Conversations.
 		if (

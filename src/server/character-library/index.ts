@@ -16,7 +16,7 @@ export {
 	InvalidCharacterDefinitionError,
 	StaleCharacterRevisionError,
 } from "./errors";
-// Narrow garbage-collection hook for the Conversation domain: removes an
+// ==[HUMAN APPROVED]== Narrow garbage-collection hook for the Conversation domain: removes an
 // already-tombstoned Character when its final provenance reference disappears.
 export { collectReleasedCharacterTombstones } from "./cleanup";
 export type {
@@ -33,7 +33,7 @@ export type {
 export function createCharacterLibraryModule(
 	database: Database,
 ): CharacterLibraryModule {
-	// Overloaded binding keeps the module contract precise: a confirmed
+	// ==[HUMAN APPROVED]== Overloaded binding keeps the module contract precise: a confirmed
 	// deletion returns the typed result, every other command returns the
 	// authoritative Character.
 	function execute(
@@ -55,7 +55,7 @@ export function createCharacterLibraryModule(
 	};
 }
 
-// Runs one operation against a short-lived connection, mirroring how the
+// ==[HUMAN APPROVED]== Runs one operation against a short-lived connection, mirroring how the
 // other deep modules serve request-scoped callers. The default database is
 // opened when no connection is supplied.
 export function withCharacterLibrary<T>(

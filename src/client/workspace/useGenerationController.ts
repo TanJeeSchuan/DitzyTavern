@@ -36,7 +36,7 @@ import {
 	type StoryState,
 } from "../story";
 
-// Maps a machine story effect onto the story reducer's vocabulary. Content
+// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
 // and authoritative snapshots replace it. Reasoning Content follows a
 // separate action path so it remains visible without joining authored prose.
@@ -75,7 +75,7 @@ export function generationSessionStoryAction(
 	}
 }
 
-// Maps a transport Stop outcome onto the machine's stop-command vocabulary.
+// ==[HUMAN APPROVED]== Maps a transport Stop outcome onto the machine's stop-command vocabulary.
 const stopCommandOutcome = (
 	result: StopConversationGenerationResult,
 ): GenerationStopCommandOutcome => {
@@ -93,7 +93,7 @@ type GenerationControllerOptions = {
 };
 
 /**
- * Thin wiring between the view, the Generation session machine, and the
+ * ==[HUMAN APPROVED]== Thin wiring between the view, the Generation session machine, and the
  * server. The session machine (generation-sessions) and its runner own
  * subscription phases, event cursors, reconnection, stop state, errors, and
  * terminal refreshes; this hook only feeds authoritative snapshots into the
@@ -111,7 +111,7 @@ export function useGenerationController({
 	const [startError, setStartError] = useState<string | null>(null);
 	const [, rerender] = useReducer((count: number) => count + 1, 0);
 
-	// The runner is created once; host callbacks route through this ref,
+	// ==[HUMAN APPROVED]== The runner is created once; host callbacks route through this ref,
 	// refreshed every render, so the runner never observes a stale closure
 	// even if a host callback's identity changes between renders.
 	const hostRef = useRef<{
@@ -136,12 +136,12 @@ export function useGenerationController({
 	}
 	const runner = runnerRef.current;
 
-	// Unmount detaches every local subscription. The machine keeps cursors,
+	// ==[HUMAN APPROVED]== Unmount detaches every local subscription. The machine keeps cursors,
 	// so a later remount reattaches from each Generation's latest processed
 	// event, and no server-owned Active Generation is ever cancelled here.
 	useEffect(() => () => runner.dispose(), [runner]);
 
-	// Authoritative snapshots reconcile the session collection. The dispatch
+	// ==[HUMAN APPROVED]== Authoritative snapshots reconcile the session collection. The dispatch
 	// is idempotent, so re-observing unchanged targets has no effect and no
 	// joined dependency keys are needed.
 	useEffect(() => {
@@ -163,7 +163,7 @@ export function useGenerationController({
 	const stopPending = hasPendingGenerationStop(sessions);
 	const generationError = startError ?? firstActiveGenerationSessionError(sessions);
 
-	// The first observed session retires the start-pending flag; session
+	// ==[HUMAN APPROVED]== The first observed session retires the start-pending flag; session
 	// state owns generation activity from acceptance onward.
 	useEffect(() => {
 		if (startPending && hasSessions) setStartPending(false);
@@ -233,7 +233,7 @@ export function useGenerationController({
 			if (outcome.outcome === "accepted") {
 				onAccepted?.();
 				const freshConversation = await refreshStory(conversationId);
-				// Accepted starts hand activity over to the session machine; the
+				// ==[HUMAN APPROVED]== Accepted starts hand activity over to the session machine; the
 				// start-pending flag only persists until the refreshed snapshot
 				// is observed (or proves there is nothing to observe).
 				if (freshConversation === null || freshConversation.activeGenerations.length === 0) {

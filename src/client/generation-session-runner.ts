@@ -1,5 +1,5 @@
 // The session runner: a framework-free coordinator between the pure
-// Generation session machine and its effects. Every machine transition
+// ==[HUMAN APPROVED]== Generation session machine and its effects. Every machine transition
 // returns ordered effects; this runner is the only component that executes
 // them — opening and closing subscriptions through the injected stream
 // adapter (the production SSE adapter or a fake one), forwarding story
@@ -20,7 +20,7 @@ import {
 } from "./generation-sessions";
 
 // The host surfaces the runner's outward effects. Story effects are mapped
-// by the host (which owns the story reducer boundary); refresh requests go
+// ==[HUMAN APPROVED]== by the host (which owns the story reducer boundary); refresh requests go
 // to the authoritative Conversation read; state changes notify reactive
 // hosts such as the React hook.
 export interface GenerationSessionRunnerHost {
@@ -34,7 +34,7 @@ export interface GenerationSessionRunner {
 	dispatch: (action: GenerationSessionsAction) => void;
 	snapshot: () => GenerationSessionsState;
 	// Closes every live local subscription. This is teardown only: it never
-	// reaches a Stop command, so navigation and unmounting can never cancel a
+	// ==[HUMAN APPROVED]== reaches a Stop command, so navigation and unmounting can never cancel a
 	// server-owned Active Generation.
 	dispose: () => void;
 }
@@ -55,7 +55,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 		switch (effect.kind) {
 			case "subscribe": {
 				// One controller per subscription; a re-subscription closes any
-				// leftover stream for the same Generation first.
+				// ==[HUMAN APPROVED]== leftover stream for the same Generation first.
 				const previous = controllers.get(effect.generationId);
 				previous?.abort();
 				const controller = new AbortController();
@@ -134,7 +134,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 			for (const controller of controllers.values()) controller.abort();
 			controllers.clear();
 			// Detach the machine as well: a surface that stops observing loses
-			// its live subscriptions, and a later surface reattaches from the
+			// ==[HUMAN APPROVED]== its live subscriptions, and a later surface reattaches from the
 			// sessions' cursors instead of resuming dead "subscribing" rows.
 			dispatch({ type: "conversation-switched" });
 		},

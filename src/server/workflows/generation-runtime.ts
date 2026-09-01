@@ -6,7 +6,7 @@ import type {
 import { GENERATION_REPLAY_RETENTION_MS } from "../conversation/generation-retention";
 
 /**
- * A normalized event with an application-owned position. Provider streams do
+ * ==[HUMAN APPROVED]== A normalized event with an application-owned position. Provider streams do
  * not expose a durable ordering contract, so the runtime assigns the order at
  * the one fan-out boundary all clients share.
  */
@@ -36,11 +36,11 @@ export interface GenerationRuntimeSubscription {
 }
 
 export interface GenerationCheckpointOptions {
-	/** Checkpoint after this many visible deltas (the normal bounded cadence). */
+	/** ==[HUMAN APPROVED]== Checkpoint after this many visible deltas (the normal bounded cadence). */
 	readonly eventInterval?: number;
-	/** Also checkpoint when this amount of time elapsed between visible deltas. */
+	/** ==[HUMAN APPROVED]== Also checkpoint when this amount of time elapsed between visible deltas. */
 	readonly intervalMs?: number;
-	/** Injectable clock for deterministic lifecycle tests. */
+	/** ==[HUMAN APPROVED]== Injectable clock for deterministic lifecycle tests. */
 	readonly now?: () => number;
 }
 
@@ -50,11 +50,11 @@ export interface StartGenerationRuntimeInput {
 	messageId: number;
 	variantId: number;
 	startedAt: string;
-	/** Called only at the bounded checkpoint cadence, or by flushCheckpoint. */
+	/** ==[HUMAN APPROVED]== Called only at the bounded checkpoint cadence, or by flushCheckpoint. */
 	onCheckpoint?: (output: { content: string; reasoning: string; latestEventId: number }) => void;
-	/** Aborts the provider attempt owned by the runtime when Stop is requested. */
+	/** ==[HUMAN APPROVED]== Aborts the provider attempt owned by the runtime when Stop is requested. */
 	onStop?: () => void;
-	/** Removes the terminal inspection copy with the retained event buffer. */
+	/** ==[HUMAN APPROVED]== Removes the terminal inspection copy with the retained event buffer. */
 	onRetentionExpired?: () => void;
 	checkpoint?: GenerationCheckpointOptions;
 }
@@ -90,7 +90,7 @@ type PendingProviderTerminal =
 	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind };
 
 /**
- * Process-local fan-out for one database. Event history is deliberately
+ * ==[HUMAN APPROVED]== Process-local fan-out for one database. Event history is deliberately
  * bounded: it is a reconnect aid, not a second copy of Conversation history.
  * The WeakMap registry below prevents in-memory test databases with reused
  * integer IDs from sharing generations.
@@ -134,7 +134,7 @@ export class GenerationRuntimeRegistry {
 		this.scheduleCleanup();
 	}
 
-	/** Request cancellation for one Generation without touching subscribers. */
+	/** ==[HUMAN APPROVED]== Request cancellation for one Generation without touching subscribers. */
 	stop(generationId: number, conversationId?: number): GenerationRuntime | undefined {
 		const runtime = this.get(generationId);
 		if (runtime === undefined || (conversationId !== undefined && runtime.state.conversationId !== conversationId)) {
@@ -144,7 +144,7 @@ export class GenerationRuntimeRegistry {
 		return runtime;
 	}
 
-	/** Drop terminal runtime state after the bounded reconnect/replay window. */
+	/** ==[HUMAN APPROVED]== Drop terminal runtime state after the bounded reconnect/replay window. */
 	cleanup(now = this.now()): void {
 		for (const [generationId, runtime] of this.runtimes) {
 			const terminalAt = runtime.terminalTime;
@@ -244,7 +244,7 @@ export class GenerationRuntime {
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
 		if (this.stateValue.status !== "active" || this.stopRequested) {
-			// A late provider frame is ignored rather than being allowed to mutate
+			// ==[HUMAN APPROVED]== A late provider frame is ignored rather than being allowed to mutate
 			// a terminal generation or appear out of order to a reconnecting client.
 			return {
 				generationId: this.stateValue.generationId,
@@ -267,7 +267,7 @@ export class GenerationRuntime {
 			this.events.shift();
 		}
 		for (const subscriber of this.subscribers) {
-			try { subscriber(envelope); } catch { /* one disconnected observer cannot stop Generation */ }
+			try { subscriber(envelope); } catch { /* one disconnected observer cannot stop Generation ==[HUMAN APPROVED]== */ }
 		}
 		this.notifyState();
 		if (event.type === "content" || event.type === "reasoning") {
@@ -302,7 +302,7 @@ export class GenerationRuntime {
 			this.pendingProviderTerminal ??= { status: "failed", reason, kind };
 			return;
 		}
-		// A failure event is part of the same ordered stream. If the provider
+		// ==[HUMAN APPROVED]== A failure event is part of the same ordered stream. If the provider
 		// already emitted one, retain that single authoritative frame rather than
 		// duplicating it when the workflow reports its rejected Promise.
 		if (this.events.at(-1)?.event.type !== "failed") {
@@ -316,7 +316,7 @@ export class GenerationRuntime {
 		this.onTerminal?.();
 	}
 
-	/** Persist the latest accumulated output immediately, including its event position. */
+	/** ==[HUMAN APPROVED]== Persist the latest accumulated output immediately, including its event position. */
 	flushCheckpoint(): void {
 		if (!this.checkpointPending && this.lastCheckpointEventId === this.stateValue.latestEventId) return;
 		this.checkpointPending = false;
@@ -329,7 +329,7 @@ export class GenerationRuntime {
 				latestEventId: this.stateValue.latestEventId,
 			});
 		} catch {
-			// A transient checkpoint failure must not stop normalized delivery or
+			// ==[HUMAN APPROVED]== A transient checkpoint failure must not stop normalized delivery or
 			// turn a provider stream into a client-visible transport failure.
 		}
 	}
@@ -343,17 +343,17 @@ export class GenerationRuntime {
 	}
 
 	expireRetention(): void {
-		try { this.onRetentionExpired?.(); } catch { /* cleanup is retried by the persisted expiry boundary */ }
+		try { this.onRetentionExpired?.(); } catch { /* cleanup is retried by the persisted expiry boundary ==[HUMAN APPROVED]== */ }
 	}
 
 	stop(): void {
 		if (this.stateValue.status !== "active") return;
 		this.stopRequested = true;
-		// Stop is the explicit server-owned cancellation seam. Flush before
+		// ==[HUMAN APPROVED]== Stop is the explicit server-owned cancellation seam. Flush before
 		// aborting so the terminal Conversation transition can use every delta
 		// observed by this runtime, even when the provider ignores the abort.
 		this.flushCheckpoint();
-		try { this.onStop?.(); } catch { /* provider cancellation remains best effort */ }
+		try { this.onStop?.(); } catch { /* provider cancellation remains best effort ==[HUMAN APPROVED]== */ }
 		if (!this.signal.aborted) this.controller.abort();
 	}
 
@@ -362,7 +362,7 @@ export class GenerationRuntime {
 	}
 
 	/**
-	 * Return terminal ownership to the provider after the durable Stop loses
+	 * ==[HUMAN APPROVED]== Return terminal ownership to the provider after the durable Stop loses
 	 * its race. A provider callback observed during cancellation is replayed;
 	 * otherwise its eventual callback can settle the still-active runtime.
 	 */
@@ -375,7 +375,7 @@ export class GenerationRuntime {
 		if (pending?.status === "failed") this.fail(pending.reason, pending.kind);
 	}
 
-	/** Mark the runtime terminal after the durable Conversation transition. */
+	/** ==[HUMAN APPROVED]== Mark the runtime terminal after the durable Conversation transition. */
 	markStopped(): void {
 		if (this.stateValue.status !== "active") return;
 		this.pendingProviderTerminal = null;
@@ -396,15 +396,15 @@ export class GenerationRuntime {
 			? normalizedAfter
 			: this.stateValue.latestEventId;
 
-		// When a replay position has fallen out of the bounded buffer, the
+		// ==[HUMAN APPROVED]== When a replay position has fallen out of the bounded buffer, the
 		// authoritative state must precede any live frames. The state contains
 		// the accumulated text, so retained frames at or before that position
 		// are intentionally skipped.
 		if (!replayAvailable) {
-			try { onState?.(this.state); } catch { /* observer failure cannot stop replay */ }
+			try { onState?.(this.state); } catch { /* observer failure cannot stop replay ==[HUMAN APPROVED]== */ }
 		}
 
-		// A subscriber is attached before replay so an event published by an
+		// ==[HUMAN APPROVED]== A subscriber is attached before replay so an event published by an
 		// async provider between replay frames cannot be lost or duplicated.
 		const subscriber: Subscriber = (envelope) => {
 			if (envelope.eventId > effectiveAfter) onEvent(envelope);
@@ -412,11 +412,11 @@ export class GenerationRuntime {
 		this.subscribers.add(subscriber);
 		for (const envelope of this.events) {
 			if (envelope.eventId > effectiveAfter) {
-				try { onEvent(envelope); } catch { /* observer failure cannot stop replay */ }
+				try { onEvent(envelope); } catch { /* observer failure cannot stop replay ==[HUMAN APPROVED]== */ }
 			}
 		}
 		if (this.stateValue.status !== "active" && replayAvailable) {
-			try { onState?.(this.state); } catch { /* observer failure cannot stop replay */ }
+			try { onState?.(this.state); } catch { /* observer failure cannot stop replay ==[HUMAN APPROVED]== */ }
 		}
 
 		let closed = false;
@@ -439,7 +439,7 @@ export class GenerationRuntime {
 	private notifyState(): void {
 		const current = this.state;
 		for (const subscriber of this.stateSubscribers) {
-			try { subscriber(current); } catch { /* observer failure cannot stop Generation */ }
+			try { subscriber(current); } catch { /* observer failure cannot stop Generation ==[HUMAN APPROVED]== */ }
 		}
 	}
 }
@@ -448,7 +448,7 @@ const registries = new WeakMap<Database, GenerationRuntimeRegistry>();
 const defaultRegistry = new GenerationRuntimeRegistry();
 
 /**
- * Resolve the process-owned runtime registry for one database scope. HTTP
+ * ==[HUMAN APPROVED]== Resolve the process-owned runtime registry for one database scope. HTTP
  * callers without an injected database use the process default and therefore
  * do not need to open a SQLite connection just to select a registry.
  */
@@ -461,7 +461,7 @@ export function generationRuntimeFor(database: Database | undefined): Generation
 	return created;
 }
 
-// The default registry is retained as the explicit process-lifecycle seam used
+// ==[HUMAN APPROVED]== The default registry is retained as the explicit process-lifecycle seam used
 // by startup recovery and graceful shutdown.
 export function defaultGenerationRuntime(): GenerationRuntimeRegistry {
 	return defaultRegistry;

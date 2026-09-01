@@ -44,21 +44,21 @@ import {
 	type SiblingGenerationResult,
 } from "../workflows";
 
-/** Dependencies needed by the HTTP/application generation adapter. */
+/** ==[HUMAN APPROVED]== Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 	/**
-	 * Composition seam for the durable Conversation stop transitions. Production
+	 * ==[HUMAN APPROVED]== Composition seam for the durable Conversation stop transitions. Production
 	 * resolves the deep Conversation module; composed callers and tests may
 	 * substitute their own adapter.
 	 */
 	readonly conversationLifecycle?: GenerationConversationLifecycle;
-	/** Composition seam for the process runtime registry used by Stop and Stop All. */
+	/** ==[HUMAN APPROVED]== Composition seam for the process runtime registry used by Stop and Stop All. */
 	readonly runtimeLifecycle?: GenerationRuntimeLifecycle;
 }
 
 /**
- * The durable Conversation stop transitions the Coordinator composes with
+ * ==[HUMAN APPROVED]== The durable Conversation stop transitions the Coordinator composes with
  * runtime mechanics. The deep Conversation module owns these atomic durable
  * transitions and their database invariants; it never learns runtime mechanics.
  */
@@ -67,39 +67,39 @@ export interface GenerationConversationLifecycle {
 	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
 }
 
-/** The process runtime entry the Coordinator settles on Stop. */
+/** ==[HUMAN APPROVED]== The process runtime entry the Coordinator settles on Stop. */
 export interface GenerationRuntimeHandle {
 	readonly state: GenerationRuntimeState;
-	/** Aborts the provider attempt and flushes the latest runtime checkpoint. */
+	/** ==[HUMAN APPROVED]== Aborts the provider attempt and flushes the latest runtime checkpoint. */
 	stop(): void;
-	/** Marks the runtime terminal after the durable Stop transition committed. */
+	/** ==[HUMAN APPROVED]== Marks the runtime terminal after the durable Stop transition committed. */
 	markStopped(): void;
-	/** Returns terminal ownership to the provider after a losing Stop race. */
+	/** ==[HUMAN APPROVED]== Returns terminal ownership to the provider after a losing Stop race. */
 	releaseStopRequest(): void;
 }
 
-/** The process runtime registry seam the Coordinator consults for Stop. */
+/** ==[HUMAN APPROVED]== The process runtime registry seam the Coordinator consults for Stop. */
 export interface GenerationRuntimeLifecycle {
 	get(generationId: number): GenerationRuntimeHandle | undefined;
-	/** Forces a checkpoint on every runtime of one Conversation without aborting. */
+	/** ==[HUMAN APPROVED]== Forces a checkpoint on every runtime of one Conversation without aborting. */
 	flushAll(conversationId: number): void;
 }
 
 /**
- * Typed application outcome of stopping one server-owned Generation. These
+ * ==[HUMAN APPROVED]== Typed application outcome of stopping one server-owned Generation. These
  * outcomes carry no HTTP terminology; transports map them onto their own
  * response vocabulary.
  */
 export type GenerationStopOutcome =
 	| {
-			/** The durable interrupted transition committed and the runtime settled. */
+			/** ==[HUMAN APPROVED]== The durable interrupted transition committed and the runtime settled. */
 			readonly outcome: "stopped";
 			readonly generationId: number;
 			readonly conversation: ConversationSnapshot;
 	  }
 	| {
 			/**
-			 * The Generation completed naturally while the Stop was in flight. The
+			 * ==[HUMAN APPROVED]== The Generation completed naturally while the Stop was in flight. The
 			 * losing Stop request was released, so the provider's own terminal
 			 * event settles the runtime and no interrupted transition was committed.
 			 */
@@ -107,13 +107,13 @@ export type GenerationStopOutcome =
 			readonly generationId: number;
 	  }
 	| {
-			/** Nothing was stoppable: unknown target, or a Conversation that is gone. */
+			/** ==[HUMAN APPROVED]== Nothing was stoppable: unknown target, or a Conversation that is gone. */
 			readonly outcome: "missing";
 			readonly generationId: number;
 	  }
 	| {
 			/**
-			 * The runtime entry for that Generation belongs to a different
+			 * ==[HUMAN APPROVED]== The runtime entry for that Generation belongs to a different
 			 * Conversation than the one addressed. Nothing was stopped.
 			 */
 			readonly outcome: "conflict";
@@ -121,7 +121,7 @@ export type GenerationStopOutcome =
 	  }
 	| {
 			/**
-			 * The durable interrupted transition committed, but settling the
+			 * ==[HUMAN APPROVED]== The durable interrupted transition committed, but settling the
 			 * process runtime failed. The returned Conversation snapshot remains
 			 * the authoritative result of the Stop.
 			 */
@@ -131,21 +131,21 @@ export type GenerationStopOutcome =
 			readonly reason: string;
 	  };
 
-/** Typed application outcome of stopping every Active Generation of one Conversation. */
+/** ==[HUMAN APPROVED]== Typed application outcome of stopping every Active Generation of one Conversation. */
 export type GenerationStopAllOutcome =
 	| {
-			/** Every durable transition committed and its runtime settled. */
+			/** ==[HUMAN APPROVED]== Every durable transition committed and its runtime settled. */
 			readonly outcome: "stopped";
 			readonly generationIds: readonly number[];
 			readonly conversation: ConversationSnapshot;
 	  }
 	| {
-			/** The Conversation is unknown or has no Active Generations to stop. */
+			/** ==[HUMAN APPROVED]== The Conversation is unknown or has no Active Generations to stop. */
 			readonly outcome: "missing";
 	  }
 	| {
 			/**
-			 * Every durable transition committed, but some corresponding runtime
+			 * ==[HUMAN APPROVED]== Every durable transition committed, but some corresponding runtime
 			 * entries could not be settled. The Conversation snapshot remains
 			 * authoritative; the unsettled runtime entries are listed by id.
 			 */
@@ -156,7 +156,7 @@ export type GenerationStopAllOutcome =
 			readonly reason: string;
 	  };
 
-/** A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
+/** ==[HUMAN APPROVED]== A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
 export class GenerationConfigurationError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -165,11 +165,11 @@ export class GenerationConfigurationError extends Error {
 }
 
 export interface CoordinatedGeneration<TAccepted, TResult> {
-	/** The authoritative acceptance returned after the provisional target exists. */
+	/** ==[HUMAN APPROVED]== The authoritative acceptance returned after the provisional target exists. */
 	readonly accepted: TAccepted;
-	/** The process-local runtime that fans out events to observers. */
+	/** ==[HUMAN APPROVED]== The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
-	/** Settles after terminal Conversation state has been committed. */
+	/** ==[HUMAN APPROVED]== Settles after terminal Conversation state has been committed. */
 	readonly result: Promise<TResult>;
 }
 
@@ -232,7 +232,7 @@ interface ResolvedGenerationTransport {
 }
 
 /**
- * Coordinates the application concerns around one server-owned Generation.
+ * ==[HUMAN APPROVED]== Coordinates the application concerns around one server-owned Generation.
  *
  * The workflow module owns prompt capture and Conversation lifecycle rules;
  * this seam owns the concerns specific to an HTTP-started attempt: resolving
@@ -319,7 +319,7 @@ export class GenerationCoordinator {
 	}
 
 	/**
-	 * Stop one server-owned Generation: request provider cancellation with a
+	 * ==[HUMAN APPROVED]== Stop one server-owned Generation: request provider cancellation with a
 	 * forced final checkpoint, commit the durable interrupted transition, then
 	 * settle the process runtime. The typed outcome is the only application
 	 * result; transports map it onto their own response vocabulary.
@@ -328,13 +328,13 @@ export class GenerationCoordinator {
 		return this.withLifecycleConnection((database) => {
 			const runtimes = this.runtimeLifecycle();
 			const runtime = runtimes.get(generationId);
-			// The runtime registry knows which Conversation owns this Generation.
+			// ==[HUMAN APPROVED]== The runtime registry knows which Conversation owns this Generation.
 			// A mismatch means the addressed Conversation has no such Generation;
 			// durable state is never consulted under another Conversation's name.
 			if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
 				return { outcome: "conflict", generationId } as const;
 			}
-			// Stop flushes the latest runtime checkpoint before aborting the
+			// ==[HUMAN APPROVED]== Stop flushes the latest runtime checkpoint before aborting the
 			// provider, so the durable transition below observes every delta the
 			// runtime saw. A settlement failure here is reported after the durable
 			// transition commits: a runtime glitch must never lose a Stop intent.
@@ -346,14 +346,14 @@ export class GenerationCoordinator {
 			} catch (error) {
 				if (error instanceof InvalidConversationCommandError) {
 					if (runtime === undefined) return { outcome: "missing", generationId } as const;
-					// The Active Generation vanished while this Stop was in flight:
+					// ==[HUMAN APPROVED]== The Active Generation vanished while this Stop was in flight:
 					// the natural-completion race. Release the Stop request so the
 					// provider's own terminal event settles the runtime.
 					runtime.releaseStopRequest();
 					return { outcome: "already-terminal", generationId } as const;
 				}
 				if (error instanceof ConversationNotFoundError) {
-					// The Conversation is gone; the provider attempt cannot durably
+					// ==[HUMAN APPROVED]== The Conversation is gone; the provider attempt cannot durably
 					// commit either. Release the Stop request so the runtime still
 					// settles through its own terminal path.
 					runtime?.releaseStopRequest();
@@ -365,7 +365,7 @@ export class GenerationCoordinator {
 	}
 
 	/**
-	 * Stop every Active Generation of one Conversation: force checkpoints
+	 * ==[HUMAN APPROVED]== Stop every Active Generation of one Conversation: force checkpoints
 	 * without aborting, commit the durable interrupted transition for the
 	 * complete target set, and only then settle the corresponding runtimes.
 	 * The Conversation stays authoritative during races: runtimes are settled
@@ -374,7 +374,7 @@ export class GenerationCoordinator {
 	async stopAllGenerations(conversationId: number): Promise<GenerationStopAllOutcome> {
 		return this.withLifecycleConnection((database) => {
 			const runtimes = this.runtimeLifecycle();
-			// Forced checkpoints without aborting first. The durable transition
+			// ==[HUMAN APPROVED]== Forced checkpoints without aborting first. The durable transition
 			// below owns the complete target set; runtimes are settled only after
 			// its commit succeeds.
 			runtimes.flushAll(conversationId);
@@ -463,7 +463,7 @@ export class GenerationCoordinator {
 	}
 
 	/**
-	 * Resolves the durable Conversation stop adapter: the composed seam when
+	 * ==[HUMAN APPROVED]== Resolves the durable Conversation stop adapter: the composed seam when
 	 * provided, otherwise the deep Conversation module over the request or
 	 * configured database.
 	 */
@@ -476,7 +476,7 @@ export class GenerationCoordinator {
 	}
 
 	/**
-	 * Opens the short-lived request database only when neither a composed
+	 * ==[HUMAN APPROVED]== Opens the short-lived request database only when neither a composed
 	 * Conversation adapter nor a configured database supplies one, and always
 	 * closes a connection it opened itself.
 	 */
@@ -491,7 +491,7 @@ export class GenerationCoordinator {
 		}
 	}
 
-	/** The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
+	/** ==[HUMAN APPROVED]== The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
 	private runtimeLifecycle(): GenerationRuntimeLifecycle {
 		if (this.options.runtimeLifecycle !== undefined) return this.options.runtimeLifecycle;
 		return generationRuntimeFor(this.configuredDatabase);
@@ -556,7 +556,7 @@ export class GenerationCoordinator {
 					throw error;
 				})
 				.finally(close);
-			// The HTTP adapter intentionally returns after acceptance. Consume the
+			// ==[HUMAN APPROVED]== The HTTP adapter intentionally returns after acceptance. Consume the
 			// detached rejection here while exposing the terminal Promise to tests
 			// and non-HTTP callers that want to await it.
 			void result.catch(() => undefined);

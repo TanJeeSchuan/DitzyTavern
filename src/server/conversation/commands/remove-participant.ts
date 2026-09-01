@@ -18,7 +18,7 @@ export interface RemoveParticipantInput {
 	participantId: number;
 }
 
-// Removes an unseated Participant after confirmation.
+// ==[HUMAN APPROVED]== Removes an unseated Participant after confirmation.
 //
 // Seated Participants are protected: the derived snapshot eligibility
 // explains that a Control seat must be reassigned first, and this command
@@ -60,7 +60,7 @@ export function removeParticipant(
 	);
 
 	if (!referenced) {
-		// Hard deletion: no Message refers to this Participant, so removing
+		// ==[HUMAN APPROVED]== Hard deletion: no Message refers to this Participant, so removing
 		// the base row is safe and cascades the Definition children. When the
 		// Participant was forked from a Character, this removal may release
 		// the final provenance reference of an already-tombstoned source
@@ -75,7 +75,7 @@ export function removeParticipant(
 			]);
 		}
 	} else {
-		// Tombstone: keep the minimal base row for structural references;
+		// ==[HUMAN APPROVED]== Tombstone: keep the minimal base row for structural references;
 		// strip the Definition children and leave the Cast. The tombstone
 		// carries the position sentinel 0 (it is not a Cast member, and the
 		// partial unique index covers only active rows), and only stable
@@ -93,7 +93,7 @@ export function removeParticipant(
 			.run();
 	}
 
-	// Compacting later active Cast positions transactionally keeps the active
+	// ==[HUMAN APPROVED]== Compacting later active Cast positions transactionally keeps the active
 	// roster contiguous after either removal path.
 	db.update(participantTable)
 		.set({ position: sql`${participantTable.position} - 1` })

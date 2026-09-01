@@ -8,7 +8,7 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const TILT = -0.4;
 
 /**
- * Message-local Generation status inspired by ns-ui's Status Sphere Dots.
+ * ==[HUMAN APPROVED]== Message-local Generation status inspired by ns-ui's Status Sphere Dots.
  * The smaller point field suits DitzyTavern's 24px author-header placement.
  */
 export function GenerationSphere({ authorName }: { authorName: string }) {

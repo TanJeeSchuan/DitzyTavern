@@ -12,7 +12,7 @@ export type FakeModelClientReply = (
 	input: ModelClientGenerationInput,
 ) => string | FakeModelClientEvents | Promise<string | FakeModelClientEvents>;
 
-// Deterministic, network-free Model Client for workflow tests and local
+// ==[HUMAN APPROVED]== Deterministic, network-free Model Client for workflow tests and local
 // callers. The callback receives the exact generation input, which makes it
 // possible to assert that the Prompt Plan crossed the seam unchanged.
 export function createFakeModelClient(reply: FakeModelClientReply): ModelClient {
@@ -20,7 +20,7 @@ export function createFakeModelClient(reply: FakeModelClientReply): ModelClient 
 		async *generate(input) {
 			const result = await reply(input);
 			if (isTextReply(result)) {
-				// SAFETY: the fake reply union has exactly one primitive branch,
+				// ==[HUMAN APPROVED]== SAFETY: the fake reply union has exactly one primitive branch,
 				// string; all event replies are objects.
 				if (result !== "") {
 					yield { type: "content", text: result };

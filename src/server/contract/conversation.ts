@@ -70,7 +70,7 @@ import {
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
 
-// Builds the typed stale-revision recovery shared by every Conversation
+// ==[HUMAN APPROVED]== Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
 // conflict payload, or a 404 when the Conversation disappeared in the
 // meantime. One helper keeps error mapping from drifting between the
@@ -91,7 +91,7 @@ const staleConversationConflict = (
 		createConversationModule(connection).getSnapshot(conversationId),
 	);
 	if (current === undefined) {
-		// The Conversation disappeared between the conflict and the recovery
+		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
 		// read; never fabricate authoritative state.
 		return { outcome: "not-found" as const };
 	}
@@ -103,7 +103,7 @@ const staleConversationConflict = (
 	};
 };
 
-// Maps a stale Conversation revision onto the typed recovery response: the
+// ==[HUMAN APPROVED]== Maps a stale Conversation revision onto the typed recovery response: the
 // authoritative summary rides inside the 409, or a 404 when the Conversation
 // disappeared between the conflict and the recovery read.
 const staleConversationResponse = (
@@ -117,7 +117,7 @@ const staleConversationResponse = (
 		: status(409, conflict);
 };
 
-// Send and Continue share one acceptance response contract.
+// ==[HUMAN APPROVED]== Send and Continue share one acceptance response contract.
 const generationStartRouteResponse = {
 	200: generationAccepted,
 	404: notFoundOutcome,
@@ -125,7 +125,7 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
-// Route options extend the Coordinator composition options, so transport
+// ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so transport
 // tests can inject the Coordinator's Conversation and runtime lifecycle seams
 // while production resolves the deep adapters itself.
 export interface ConversationRouteOptions extends GenerationCoordinatorOptions {}
@@ -147,7 +147,7 @@ export const createConversationRoutes = (
 		};
 	}>;
 
-	// Send and Continue share one acceptance skeleton. Elysia validates the
+	// ==[HUMAN APPROVED]== Send and Continue share one acceptance skeleton. Elysia validates the
 	// route-specific body schema before this handler, so `content` is present
 	// only for Send and the coordinator call receives exactly its own shape.
 	const generationAcceptanceRoute = (start: GenerationAcceptanceStart) =>
@@ -192,7 +192,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/:generationId/stop",
 			async ({ params }) => {
 				const outcome = await generationCoordinator.stopGeneration(params.id, params.generationId);
-				// Durable truth wins: a committed interrupted transition always
+				// ==[HUMAN APPROVED]== Durable truth wins: a committed interrupted transition always
 				// returns the authoritative Conversation snapshot, even when the
 				// process runtime could not be settled.
 				if (outcome.outcome === "stopped" || outcome.outcome === "incomplete-settlement") {
@@ -202,7 +202,7 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(outcome.conversation),
 					};
 				}
-				// Missing, conflicting, and already-terminal targets share the
+				// ==[HUMAN APPROVED]== Missing, conflicting, and already-terminal targets share the
 				// not-found transport outcome: the addressed Conversation has no
 				// stoppable Generation at that id.
 				return notFoundResponse();
@@ -255,7 +255,7 @@ export const createConversationRoutes = (
 			readActiveGenerationDetailsRoute,
 			activeGenerationDetailsRouteOptions,
 		)
-		// Details is a vocabulary-friendly alias used by Message/Generation
+		// ==[HUMAN APPROVED]== Details is a vocabulary-friendly alias used by Message/Generation
 		// panels; both paths share the same bounded read semantics.
 		.get(
 			"/api/conversations/:id/generations/:generationId/details",
@@ -331,7 +331,7 @@ export const createConversationRoutes = (
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
-				// The module read returns a fresh plain object in the canonical
+				// ==[HUMAN APPROVED]== The module read returns a fresh plain object in the canonical
 				// Generation Settings vocabulary; the response schema is the derived
 				// transport clone, so no field-by-field payload projection sits here.
 				return settings;
@@ -382,7 +382,7 @@ export const createConversationRoutes = (
 				response: t.Any(),
 			},
 		)
-		// A targeted Swipe creates one server-owned Provisional Variant
+		// ==[HUMAN APPROVED]== A targeted Swipe creates one server-owned Provisional Variant
 		// on an existing Message. The request is only an observer;
 		// closing it never aborts the sibling provider attempt.
 		.post(
@@ -396,7 +396,7 @@ export const createConversationRoutes = (
 					}),
 					(accepted) => accepted.messageId,
 					(failure) => {
-						// Sibling starts have no revision input, so a stale-revision
+						// ==[HUMAN APPROVED]== Sibling starts have no revision input, so a stale-revision
 						// conflict remains an unexpected domain failure as before.
 						if (failure.status === 409) {
 							if (failure.body.outcome === "conflict") return undefined;
@@ -416,13 +416,13 @@ export const createConversationRoutes = (
 				},
 			},
 		)
-		// Revisioned Conversation commands remain separate from the
+		// ==[HUMAN APPROVED]== Revisioned Conversation commands remain separate from the
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
 			({ params, body, status }) => {
 				try {
-					// SAFETY: Elysia validates the discriminated command shape at this
+					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;

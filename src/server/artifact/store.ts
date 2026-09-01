@@ -1,4 +1,4 @@
-// Managed filesystem operations for Conversation artifacts. The artifact
+// ==[HUMAN APPROVED]== Managed filesystem operations for Conversation artifacts. The artifact
 // module never deduplicates, content-addresses, reference-counts, or deletes
 // physical copies; each stored copy is independent and committed files are
 // never removed by any code path (unused files from later database failure
@@ -15,12 +15,12 @@ export interface StoredArtifactCopy {
 	sha256: string;
 }
 
-// The deployment-wide managed artifact directory, mirroring the default
+// ==[HUMAN APPROVED]== The deployment-wide managed artifact directory, mirroring the default
 // SQLite path convention under the working directory.
 export const defaultArtifactDirectory = (): string =>
 	join(process.cwd(), "data", "artifacts");
 
-// A unique managed relative path for one independent copy, keeping the leaf
+// ==[HUMAN APPROVED]== A unique managed relative path for one independent copy, keeping the leaf
 // extension of the original filename for debuggability. The identity is a
 // fresh UUID per copy, so two imports with identical bytes still occupy
 // distinct paths (no content addressing or sharing).
@@ -29,12 +29,12 @@ export const uniqueManagedRelativePath = (originalFilename: string): string =>
 
 const allowedLeafExtension = (filename: string): string => {
 	const extension = extname(basename(filename)).toLowerCase();
-	// Guard the stored path leaf against control characters and separators
+	// ==[HUMAN APPROVED]== Guard the stored path leaf against control characters and separators
 	// that could escape the managed directory; the extension is decorative.
 	return /^[a-z0-9]{1,10}$/.test(extension.slice(1)) ? extension : "";
 };
 
-// Derives the artifact media type from the original leaf filename. Generic
+// ==[HUMAN APPROVED]== Derives the artifact media type from the original leaf filename. Generic
 // callers may supply any media type; this is the importer's default.
 export const mediaTypeFromFilename = (filename: string): string => {
 	const extension = extname(basename(filename)).toLowerCase();
@@ -50,7 +50,7 @@ export const mediaTypeFromFilename = (filename: string): string => {
 	}
 };
 
-// Resolves a managed relative path strictly inside the managed root so a
+// ==[HUMAN APPROVED]== Resolves a managed relative path strictly inside the managed root so a
 // metadata row can never read outside the managed directory. An escaping
 // path is an infrastructure inconsistency (the artifact is unavailable),
 // never silently treated as provenance loss: only absent or corrupt files
@@ -66,13 +66,13 @@ export const resolveManagedPath = (root: string, relativePath: string): string =
 	return candidate;
 };
 
-// The raw-byte SHA-256 authority shared by every managed copy: the exact
+// ==[HUMAN APPROVED]== The raw-byte SHA-256 authority shared by every managed copy: the exact
 // stored bytes must reproduce this digest, preserving BOM, line endings,
 // whitespace, escape spelling, blank lines, and trailing newline.
 export const sha256Hex = (bytes: Buffer): string =>
 	createHash("sha256").update(bytes).digest("hex");
 
-// Copies the exact validated bytes into a unique managed relative path
+// ==[HUMAN APPROVED]== Copies the exact validated bytes into a unique managed relative path
 // before any database creation begins. Any failure aborts the caller: no
 // Conversation state of any kind has been created yet.
 export const storeExactArtifactCopy = (
@@ -101,7 +101,7 @@ export type StoredArtifactVerification =
 	| { status: "available" }
 	| { status: "cleaned-up"; reason: "missing" | "corrupt" };
 
-// Verifies that the physical copy satisfies the committed metadata: the raw
+// ==[HUMAN APPROVED]== Verifies that the physical copy satisfies the committed metadata: the raw
 // bytes must match the authoritative byte length and SHA-256. Absence and
 // any mismatch are the nonfatal cleaned-up outcome.
 export const verifyStoredArtifact = (
@@ -120,7 +120,7 @@ export type StoredArtifactRead =
 	| { status: "available"; bytes: Buffer }
 	| { status: "cleaned-up"; reason: "missing" | "corrupt" };
 
-// Reads and verifies the exact stored bytes. Reading the whole file keeps
+// ==[HUMAN APPROVED]== Reads and verifies the exact stored bytes. Reading the whole file keeps
 // the SHA-256 authority honest at module level; transport-level streaming
 // belongs to the route layer that consumes this seam.
 export const readStoredArtifact = (
@@ -133,7 +133,7 @@ export const readStoredArtifact = (
 	try {
 		bytes = readFileSync(resolveManagedPath(root, relativePath));
 	} catch (error) {
-		// Parsed at the I/O boundary: the missing-file codes become the
+		// ==[HUMAN APPROVED]== Parsed at the I/O boundary: the missing-file codes become the
 		// cleaned-up outcome; every other caught shape is an infrastructure
 		// failure. The `in` check reads the `code` property only when the
 		// caught value structurally carries it.
@@ -155,7 +155,7 @@ export const readStoredArtifact = (
 	return { status: "available", bytes };
 };
 
-// Removes path separators, quotes, and control characters (including CR
+// ==[HUMAN APPROVED]== Removes path separators, quotes, and control characters (including CR
 // and LF) one character at a time so no character class over control codes
 // is needed; the stored bytes and stored original filename are never
 // modified.

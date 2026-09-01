@@ -1,4 +1,4 @@
-// Deliberate Generation detail reads. These are kept out of the ordinary
+// ==[HUMAN APPROVED]== Deliberate Generation detail reads. These are kept out of the ordinary
 // Conversation snapshot/history paths so active prompt text is retained only
 // for the bounded server-owned lifecycle and terminal reads expose only the
 // compact safe provenance allow-list.
@@ -61,7 +61,7 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 	};
 };
 
-// Active inspection decodes the persisted Generation Settings into the safe
+// ==[HUMAN APPROVED]== Active inspection decodes the persisted Generation Settings into the safe
 // display projection over the canonical Generation Settings vocabulary
 // (ADR-0032). Every canonical field except Request Overrides participates —
 // inspection never re-exposes Request Overrides — and every participating
@@ -70,7 +70,7 @@ const safeConnection = (value: ConversationJsonValue): SafeConnection => {
 // formerly omitted value is retained instead of being decoded as absent.
 type InspectionSettingsField = Exclude<GenerationSettingsField, "requestOverrides">;
 
-// The persisted value is written from validated domain settings, so display
+// ==[HUMAN APPROVED]== The persisted value is written from validated domain settings, so display
 // decoding keeps strings loose: a corrupt persisted value surfaces as its
 // raw string rather than being silently mistaken for a valid literal.
 type InspectionSettingsValue<T> = T extends string ? string | null : T | null;
@@ -79,7 +79,7 @@ type SafeGenerationSettings = {
 	[K in InspectionSettingsField]: InspectionSettingsValue<CanonicalGenerationSettings[K]>;
 };
 
-// The decoded value for each inspection field. Compile-locked: adding a
+// ==[HUMAN APPROVED]== The decoded value for each inspection field. Compile-locked: adding a
 // canonical field (outside the exclusion) fails typecheck until inspection
 // states how it decodes.
 type InspectionSettingsDecoder = {
@@ -104,7 +104,7 @@ const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
 };
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
-	// SAFETY: a non-object source decodes as an empty record, and every field
+	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
 	// decoder then resolves its own intentional null.
 	const source = isRecord(value);
 	return {

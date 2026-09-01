@@ -21,6 +21,14 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 		// Directive-like comments are ignored by default.
 		"// oxlint-disable-next-line no-explicit-any",
 		"// eslint-disable-next-line no-console",
+		// Triple-slash reference directives are directives, not prose.
+		"/// <reference types=\"vite/client\" />",
+		// Adjacent line comments form one block; a marker anywhere in the
+		// block approves the whole block.
+		"// ==[HUMAN APPROVED]== lead\n// middle\n// tail",
+		"// lead\n// middle\n// tail ==[HUMAN APPROVED]==",
+		// A directive line inside a run blesses its block.
+		"// oxlint-disable-next-line no-console\n// prose follows the directive",
 		// Custom marker via options.
 		{
 			code: "// [APPROVED] note",
@@ -49,6 +57,26 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 		},
 		{
 			code: "// one\nconst x = 1;\n// two",
+			errors: [{ line: 1, messageId: "unapprovedComment" }, { line: 3, messageId: "unapprovedComment" }],
+		},
+		{
+			// An unmarked standalone run is ONE finding anchored at its first line.
+			code: "// lead\n// middle\n// tail\nconst x = 1;",
+			errors: [{ line: 1, messageId: "unapprovedComment" }],
+		},
+		{
+			// A trailing comment is its own block even next to an approved run.
+			code: "// ==[HUMAN APPROVED]== intro\nconst x = 1; // trailing note",
+			errors: [{ line: 2, messageId: "unapprovedComment" }],
+		},
+		{
+			// A standalone comment after a trailing one starts a new block.
+			code: "const x = 1; // note\n// unmarked prose",
+			errors: [{ line: 1, messageId: "unapprovedComment" }, { line: 2, messageId: "unapprovedComment" }],
+		},
+		{
+			// A blank line splits two blocks; each is reported.
+			code: "// a\n\n// b",
 			errors: [{ line: 1, messageId: "unapprovedComment" }, { line: 3, messageId: "unapprovedComment" }],
 		},
 		{

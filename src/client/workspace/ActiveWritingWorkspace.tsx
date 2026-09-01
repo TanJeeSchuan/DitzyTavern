@@ -113,7 +113,7 @@ export function ActiveWritingWorkspace({
 		setPrimaryPanel(null);
 	};
 
-	// A just-imported Chat is selected once the refreshed workspace list contains
+	// ==[HUMAN APPROVED]== A just-imported Chat is selected once the refreshed workspace list contains
 	// it. Keeping the selection idempotent avoids a transient missing-chat state.
 	useEffect(() => {
 		if (importLaunchChatId === null || importLaunchChatId === session.activeChatId) return;

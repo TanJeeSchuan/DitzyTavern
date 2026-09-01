@@ -30,7 +30,7 @@ export interface ReplaceParticipantOpeningsInput {
 	openings: readonly string[];
 }
 
-// Separate semantic Apply actions for Participant Definition editing. Each
+// ==[HUMAN APPROVED]== Separate semantic Apply actions for Participant Definition editing. Each
 // touches only the Participant's own local records: the source Character is
 // never modified, and existing Messages keep their captured Author Stamps
 // and historical Control context untouched.

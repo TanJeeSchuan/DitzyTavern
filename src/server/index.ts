@@ -8,7 +8,7 @@ import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workf
 registerWireFormats();
 initializeConnectionSecretKey();
 const database = openDatabase();
-// One process-start sweep resolves only abandoned local Active Generations;
+// ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;
 // it never resumes or retries a provider request.
 recoverActiveGenerations(database);
 

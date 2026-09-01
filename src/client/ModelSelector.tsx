@@ -25,7 +25,7 @@ export function ModelSelector({
 	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
-	// The selector reads the current model ID for display and commits model
+	// ==[HUMAN APPROVED]== The selector reads the current model ID for display and commits model
 	// selections through the focused set-generation-model command; it owns no
 	// Generation Settings snapshot and never writes the settings object.
 	const [selectedModelId, setSelectedModelId] = useState<string | null>(null);

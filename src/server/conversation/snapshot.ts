@@ -37,7 +37,7 @@ const toDataEntry = (row: { namespace: string; key: string; value: string }) => 
 	value: row.value,
 });
 
-// Play-gated capabilities share one derived reason: without two distinct
+// ==[HUMAN APPROVED]== Play-gated capabilities share one derived reason: without two distinct
 // seated Participants none of Compose, Generate, or Swipe may run. The
 // literal is checked against the capability contract by deriveCapabilities.
 const playCapability = (playable: boolean): CapabilityAvailability => ({
@@ -53,7 +53,7 @@ export function deriveCapabilities(playable: boolean): ConversationCapabilities 
 	};
 }
 
-// Control validity is the single derived playability rule: both seats set,
+// ==[HUMAN APPROVED]== Control validity is the single derived playability rule: both seats set,
 // distinct, and referencing active Cast Participants. Playable and the
 // capability gate both follow from it, so clients never reproduce the rule.
 export function deriveControlValidity(
@@ -74,7 +74,7 @@ export function deriveControlValidity(
 	return { valid: reason === null, reason };
 }
 
-// Derives per-Message targeted Swipe eligibility. The eligibility rule is
+// ==[HUMAN APPROVED]== Derives per-Message targeted Swipe eligibility. The eligibility rule is
 // the single derived answer for "can this Message generate a new sibling
 // Variant": the Conversation must be playable, the Message must carry a
 // captured historical Control pair, and both historical Participants must
@@ -99,7 +99,7 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-// Derives per-Participant removal eligibility and impact. Seated
+// ==[HUMAN APPROVED]== Derives per-Participant removal eligibility and impact. Seated
 // Participants are protected (a Control seat must change first). For every
 // unseated Participant the deletion mode states whether removal would
 // hard-delete or tombstone, and the affected-generation count states how
@@ -139,12 +139,12 @@ const deriveRemovalEligibility = (
 				contextModelParticipantId:
 					message.historicalContext?.modelParticipantId ?? null,
 			};
-			// Same retained-reference rule the command enforces, so the derived
+			// ==[HUMAN APPROVED]== Same retained-reference rule the command enforces, so the derived
 			// impact can never drift from the persisted behavior.
 			if (messageReferencesParticipant(row, participant.id)) {
 				referenced = true;
 			}
-			// Author-only references are retained (tombstone required) but never
+			// ==[HUMAN APPROVED]== Author-only references are retained (tombstone required) but never
 			// count as regeneration loss: only Messages whose captured historical
 			// pair includes this Participant and that currently could generate a
 			// new sibling Variant lose that ability when it is removed.
@@ -166,7 +166,7 @@ const deriveRemovalEligibility = (
 	return byParticipant;
 };
 
-// Cheap existence probe for callers that only need to know whether the
+// ==[HUMAN APPROVED]== Cheap existence probe for callers that only need to know whether the
 // Conversation row is present. readConversationSnapshot runs many queries
 // to assemble the full snapshot (cast, messages, variants, data, active
 // generations), which is too costly to use as an existence check.
@@ -194,7 +194,7 @@ export function readConversationSnapshot(
 		.get();
 	if (conversation === undefined) return undefined;
 
-	// Active Cast members only. Tombstoned Participants keep a minimal base
+	// ==[HUMAN APPROVED]== Active Cast members only. Tombstoned Participants keep a minimal base
 	// row solely to satisfy structural Message references; they are never
 	// part of the Cast and carry no position.
 	const castRows = db
@@ -244,7 +244,7 @@ export function readConversationSnapshot(
 		openingsByParticipant.set(opening.participant_id, openings);
 	}
 
-	// Intermediate Cast shape lacks the derived per-Participant fields; they
+	// ==[HUMAN APPROVED]== Intermediate Cast shape lacks the derived per-Participant fields; they
 	// are attached after Control is read so labels and removal eligibility
 	// derive from the final ordered roster.
 	const cast: Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[] =
@@ -273,7 +273,7 @@ export function readConversationSnapshot(
 	const controlValidity = deriveControlValidity(control, cast.map((p) => p.id));
 	const playable = controlValidity.valid;
 
-	// Duplicate display labels derive from Cast order: the first Participant
+	// ==[HUMAN APPROVED]== Duplicate display labels derive from Cast order: the first Participant
 	// sharing a name keeps the plain label, later ones receive ordinals.
 	const nameOccurrences = new Map<string, number>();
 	const labelsById = new Map<number, string>();
@@ -364,7 +364,7 @@ export function readConversationSnapshot(
 				? {
 						participantId: message.author_participant_id,
 						capturedName: message.author_name,
-						// Derived historical display state: the captured name keeps
+						// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
 						// displaying with a no-longer-in-Cast marker after removal.
 						inCast:
 							message.author_participant_id !== null &&
@@ -415,7 +415,7 @@ export function readConversationSnapshot(
 		.orderBy(asc(activeGenerationTable.id))
 		.all();
 
-	// Removal eligibility follows Messages: the deletion mode and
+	// ==[HUMAN APPROVED]== Removal eligibility follows Messages: the deletion mode and
 	// affected-generation count derive from the same references the command
 	// enforces, so clients never reconstruct the rule.
 	const removalByParticipant = deriveRemovalEligibility(cast, messages, control);

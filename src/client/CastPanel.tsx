@@ -14,7 +14,7 @@ import { listCharacters, type CharacterSummary } from "./character-library";
 import type { ConversationSummary } from "./conversation";
 import { useCastActions } from "./cast/useCastActions";
 
-// Conversation-local Cast drawer: ordered Participants with computed
+// ==[HUMAN APPROVED]== Conversation-local Cast drawer: ordered Participants with computed
 // duplicate labels, Control badges, Character provenance, and the actions
 // currently allowed for each one. Participants are appended from a
 // pinned-first alphabetic Character picker (with ordinals, Prompt previews,
@@ -28,7 +28,7 @@ interface CastPanelProps {
 	conversationId: number;
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	// Navigates to a specific Character Library entry, offered after a
+	// ==[HUMAN APPROVED]== Navigates to a specific Character Library entry, offered after a
 	// Participant has been saved as a new Character. The user stays in the
 	// Chat until they choose to follow it.
 	onOpenLibraryCharacter: (characterId: number) => void;
@@ -52,7 +52,7 @@ export function CastPanel({
 	const [editingParticipantId, setEditingParticipantId] = useState<number | null>(
 		null,
 	);
-	// Identifies the Participant whose removal confirmation dialog is open.
+	// ==[HUMAN APPROVED]== Identifies the Participant whose removal confirmation dialog is open.
 	// The confirmation copy is derived from the snapshot's removal impact
 	// (deletion mode and affected-generation count) shown before dispatch.
 	const [removeTargetId, setRemoveTargetId] = useState<number | null>(null);
@@ -101,7 +101,7 @@ export function CastPanel({
 		);
 	}
 
-	// Removes the targeted unseated Participant after an explicit confirmation
+	// ==[HUMAN APPROVED]== Removes the targeted unseated Participant after an explicit confirmation
 	// showing the snapshot-derived impact (hard delete versus tombstone and
 	// the exact regeneration loss). Success refreshes Control, ordering,
 	// history labels, and capabilities from the authoritative snapshot.

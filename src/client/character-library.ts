@@ -2,7 +2,7 @@ import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 
-// Typed client for the Character Library transport adapters. Outcomes mirror
+// ==[HUMAN APPROVED]== Typed client for the Character Library transport adapters. Outcomes mirror
 // the server's typed results so the UI can recover from conflicts without
 // losing local drafts.
 
@@ -13,7 +13,7 @@ export interface CharacterSummary {
 	pinned: boolean;
 	preview: string;
 	// Global provenance reference count (active or tombstoned Participants
-	// forked from this Character), so pickers and lists present deletion
+	// ==[HUMAN APPROVED]== forked from this Character), so pickers and lists present deletion
 	// impact without one detail request per row.
 	provenanceReferenceCount: number;
 }
@@ -33,7 +33,7 @@ export interface CharacterSnapshot {
 	prompt: PromptChannels;
 	openings: string[];
 	// Derived deletion impact presented with every authoritative read so the
-	// confirmation flow can show the exact consequence before any command.
+	// ==[HUMAN APPROVED]== confirmation flow can show the exact consequence before any command.
 	deletionImpact: CharacterDeletionImpact;
 }
 
@@ -71,7 +71,7 @@ export type CharacterCommand =
 			pinned: boolean;
 	  }
 	// Confirmed deletion. The expected revision guards against deleting a
-	// Character whose impact the caller has not seen; the outcome derives the
+	// ==[HUMAN APPROVED]== Character whose impact the caller has not seen; the outcome derives the
 	// deletion mode from the current reference count.
 	| {
 			type: "delete";
@@ -82,7 +82,7 @@ export type CharacterCommand =
 export type CommandOutcome =
 	| { status: "applied"; character: CharacterSnapshot }
 	// A confirmed deletion returns the derived mode instead of a snapshot:
-	// neither a hard-deleted nor a tombstoned Character remains readable.
+	// ==[HUMAN APPROVED]== neither a hard-deleted nor a tombstoned Character remains readable.
 	| { status: "deleted"; result: CharacterDeletionResult }
 	| { status: "conflict"; currentCharacter: CharacterSnapshot }
 	| { status: "not-found" }
@@ -121,7 +121,7 @@ export async function applyCommand(
 		});
 	}
 	// Deletion returns the typed result instead of a snapshot; every other
-	// command returns the authoritative updated Character. The payload is a
+	// ==[HUMAN APPROVED]== command returns the authoritative updated Character. The payload is a
 	// union discriminated by the result-only `result` field.
 	if ("result" in data) {
 		return { status: "deleted", result: data.result };

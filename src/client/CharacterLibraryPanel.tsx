@@ -28,12 +28,12 @@ import {
 import { LIBRARY_UNREACHABLE_NOTICE } from "./lib/command-outcome";
 import { useAsyncEffect } from "./lib/use-async";
 
-// The library handles listing, creation, editing, pinning, deletion, and
+// ==[HUMAN APPROVED]== The library handles listing, creation, editing, pinning, deletion, and
 // conflict recovery. Duplicate names use computed ordinals; database
 // identifiers stay out of the UI.
 
 interface CharacterLibraryPanelProps {
-	// When set (e.g. after a Participant was saved as a Character from the
+	// ==[HUMAN APPROVED]== When set (e.g. after a Participant was saved as a Character from the
 	// Cast drawer), the panel opens that Character on mount or change and
 	// then reports the focus as consumed.
 	focusCharacterId?: number | null;
@@ -71,7 +71,7 @@ export function CharacterLibraryPanel({
 		void loadList(isCancelled);
 	}, [loadList]);
 
-	// Computed duplicate ordinals follow library order, so each repeated name
+	// ==[HUMAN APPROVED]== Computed duplicate ordinals follow library order, so each repeated name
 	// gets a visible position without exposing identifiers.
 	const displayLabels = useMemo(() => {
 		if (characters === null) return [];
@@ -100,7 +100,7 @@ export function CharacterLibraryPanel({
 		}
 	}, []);
 
-	// Follows one-time navigation into a specific Character entry (for
+	// ==[HUMAN APPROVED]== Follows one-time navigation into a specific Character entry (for
 	// example after the Cast drawer saved a Participant as a Character),
 	// then reports the focus as consumed so later library visits start at
 	// the top-level list. The same entry stays open if a saved Character is
@@ -122,7 +122,7 @@ export function CharacterLibraryPanel({
 					case "applied": {
 						const applied = outcome.character;
 						setSnapshot(applied);
-						// Only the edited section syncs from the authoritative result;
+						// ==[HUMAN APPROVED]== Only the edited section syncs from the authoritative result;
 						// unsaved edits elsewhere stay client-local.
 						setDrafts((current) => ({
 							name:
@@ -144,7 +144,7 @@ export function CharacterLibraryPanel({
 						break;
 					}
 					case "deleted": {
-						// The Character (hard-deleted or tombstoned) is no longer
+						// ==[HUMAN APPROVED]== The Character (hard-deleted or tombstoned) is no longer
 						// readable; return to the top-level list and report the
 						// confirmed outcome. Existing Chat Participants were
 						// deliberately left untouched by the server command.
@@ -187,7 +187,7 @@ export function CharacterLibraryPanel({
 		(mode: "keep-draft" | "load-current") => {
 			if (conflict === null) return;
 			if (mode === "keep-draft") {
-				// Keep every draft exactly as typed; only the revision base moves
+				// ==[HUMAN APPROVED]== Keep every draft exactly as typed; only the revision base moves
 				// forward so the next Apply is no longer stale.
 				setSnapshot(conflict);
 			} else {

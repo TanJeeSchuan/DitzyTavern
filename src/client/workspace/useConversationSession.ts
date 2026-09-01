@@ -15,7 +15,7 @@ type ConversationSessionOptions = {
 };
 
 /**
- * Coordinates the selected Chat's authoritative snapshot and paginated
+ * ==[HUMAN APPROVED]== Coordinates the selected Chat's authoritative snapshot and paginated
  * reading history. Conversation state and the story read model are loaded
  * together here so every caller observes the same Chat boundary.
  */

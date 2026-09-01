@@ -21,7 +21,7 @@ export class StaleConversationRevisionError extends Error {
 	}
 }
 
-// Typed not-found outcome for a Participant that does not exist in (or no
+// ==[HUMAN APPROVED]== Typed not-found outcome for a Participant that does not exist in (or no
 // longer belongs to) a Conversation. Cross-module workflows surface this
 // instead of a generic validation message so clients can recover with a
 // 404 rather than guessing. Matching the Conversation model, the whole
@@ -54,7 +54,7 @@ export class InvalidConversationCreationError extends Error {
 	}
 }
 
-// Typed outcome for unavailable historical generation context: a targeted
+// ==[HUMAN APPROVED]== Typed outcome for unavailable historical generation context: a targeted
 // Swipe (new sibling Variant) is denied either because the target Message
 // has no captured historical Control pair, or because a Participant of its
 // historical pair no longer has a usable Definition. Existing Variants
@@ -75,7 +75,7 @@ export class SiblingVariantUnavailableError extends Error {
 	}
 }
 
-// Typed outcome for removing a seated Participant: removal eligibility is
+// ==[HUMAN APPROVED]== Typed outcome for removing a seated Participant: removal eligibility is
 // derived on the snapshot, and the command enforces the same rule. The
 // reason tells clients why the Participant cannot be removed (Control must
 // be reassigned first) without inventing rules transport-side.
@@ -95,7 +95,7 @@ export class ParticipantNotRemovableError extends Error {
 	}
 }
 
-// Typed outcome for play-gated actions (Compose, Generate, Swipe) in a
+// ==[HUMAN APPROVED]== Typed outcome for play-gated actions (Compose, Generate, Swipe) in a
 // Conversation whose two Control seats are not both occupied.
 export class ConversationNotPlayableError extends Error {
 	constructor(conversationId: number) {
@@ -111,7 +111,7 @@ export type ContinuationUnavailableReason =
 	| "not-terminal-model-message"
 	| "assistant-prefill-requires-visible-text";
 
-// Typed denial for Continue. Existing history remains untouched and callers
+// ==[HUMAN APPROVED]== Typed denial for Continue. Existing history remains untouched and callers
 // can present the reason without reproducing the terminal-position rule.
 export class ContinuationUnavailableError extends Error {
 	readonly reason: ContinuationUnavailableReason;

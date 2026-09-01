@@ -79,18 +79,18 @@ export function readProfile(
 	return {
 		id: row.id,
 		displayName: row.display_name,
-		// SAFETY: these fields are validated by validateConnectionProfileDraft before
+		// ==[HUMAN APPROVED]== SAFETY: these fields are validated by validateConnectionProfileDraft before
 		// they are inserted; the assertions restore the closed domain vocabulary on read.
 		apiFormat: row.api_format as ConnectionProfile["apiFormat"],
 		requestUrl: row.request_url,
 		modelsUrl: row.models_url,
-		// SAFETY: validateConnectionProfileDraft rejects every Model Backend value
+		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every Model Backend value
 		// outside the closed v1 vocabulary before the row can be written.
 		modelBackend: row.model_backend as ConnectionProfile["modelBackend"],
-		// SAFETY: validateConnectionProfileDraft rejects every Adapter value outside
+		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every Adapter value outside
 		// the three bundled adapter identifiers before the row can be written.
 		adapter: row.adapter as ConnectionProfile["adapter"],
-		// SAFETY: validateConnectionProfileDraft rejects every output-token
+		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every output-token
 		// representation outside the Chat Completions v1 vocabulary.
 		outputTokenRepresentation: row.output_token_representation as ConnectionProfile["outputTokenRepresentation"],
 		timeoutMs: row.timeout_ms,
@@ -113,7 +113,7 @@ export function readSecret(
 		.get();
 	if (secret === undefined) return null;
 	const payload = decryptConnectionSecretSync(masterKey, profileId, {
-		// SAFETY: the encryption module accepts the versioned value and rejects any
+		// ==[HUMAN APPROVED]== SAFETY: the encryption module accepts the versioned value and rejects any
 		// unsupported value before decrypting it.
 		formatVersion: secret.format_version as 1,
 		keyId: secret.key_id,

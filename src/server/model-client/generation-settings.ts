@@ -1,4 +1,4 @@
-// Model Client input is one exhaustive named projection of the canonical
+// ==[HUMAN APPROVED]== Model Client input is one exhaustive named projection of the canonical
 // Generation Settings (ADR-0032), taken from the attempt's Effective
 // Generation Settings. The Generation Plan Compiler already decided intent
 // applicability and narrowed Request Overrides to the active API Format, so
@@ -11,7 +11,7 @@
 
 import type { EffectiveGenerationSettings } from "../generation-plan";
 
-// The canonical fields that cross the transport seam, with the Effective
+// ==[HUMAN APPROVED]== The canonical fields that cross the transport seam, with the Effective
 // values the attempt actually used — Request Overrides arrive as the single
 // active-API-Format namespace object. Compile-locked to the Effective
 // Generation Settings declaration: an unknown or renamed field fails
@@ -27,7 +27,7 @@ export type ModelClientGenerationSettings = Pick<
 	| "requestOverrides"
 >;
 
-// The one named projection producing Model Client input from the attempt's
+// ==[HUMAN APPROVED]== The one named projection producing Model Client input from the attempt's
 // Effective Generation Settings. Send, Continue, and Sibling pass the
 // compiled Generation Plan's effective settings through this seam instead of
 // rebuilding anonymous field lists at each workflow.

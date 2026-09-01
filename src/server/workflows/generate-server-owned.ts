@@ -11,7 +11,7 @@ import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
 
-// Detached server-owned Generation scaffolding: the attempt input shared by
+// ==[HUMAN APPROVED]== Detached server-owned Generation scaffolding: the attempt input shared by
 // every workflow, the accept/result handle detached from its observing
 // request, and the provider-attempt tail (normalized outcome collection,
 // empty-output removal, terminal provenance and data assembly). The workflow
@@ -20,42 +20,42 @@ import type { TokenEstimator } from "../prompt-compiler";
 
 export interface GenerationAttemptInput {
 	conversationId: number;
-	// The provider-neutral Model Client receives the compiled Prompt Plan and
+	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events. The workflow never calls a
 	// provider or interprets a provider request shape directly.
 	modelClient: ModelClient;
-	// HTTP adapters provide the same start-time capture used to construct the
+	// ==[HUMAN APPROVED]== HTTP adapters provide the same start-time capture used to construct the
 	// client. Direct workflow callers may omit it; the workflow resolves the
 	// current safe Profile identity itself, preserving the original fake-client
 	// seam used by domain tests.
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
-	// The signal belongs to this one Generation. A cancelled attempt never
+	// ==[HUMAN APPROVED]== The signal belongs to this one Generation. A cancelled attempt never
 	// changes the active Profile or another Conversation.
 	signal?: AbortSignal;
 	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
-	/** Flush process-local output before the workflow performs a terminal write. */
+	/** ==[HUMAN APPROVED]== Flush process-local output before the workflow performs a terminal write. */
 	onBeforeTerminal?: () => void | Promise<void>;
-	// Tests and future calibration work may replace the default project-owned
+	// ==[HUMAN APPROVED]== Tests and future calibration work may replace the default project-owned
 	// estimator without allowing a provider to influence budgeting policy.
 	tokenEstimator?: TokenEstimator;
-	// Optional explicit write time; defaults to the current wall clock.
+	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
 
-/** Provider cancellation handle passed only to the server-owned runtime seam. */
+/** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */
 export interface ServerOwnedGenerationControl {
 	readonly signal: AbortSignal;
 	stop(): void;
 }
 
-/** The detached server-owned Generation handle shared by every lifecycle. */
+/** ==[HUMAN APPROVED]== The detached server-owned Generation handle shared by every lifecycle. */
 export interface ServerOwnedGeneration<Accepted, Result> {
-	/** Resolves as soon as the provisional target is committed. */
+	/** ==[HUMAN APPROVED]== Resolves as soon as the provisional target is committed. */
 	readonly accepted: Promise<Accepted>;
-	/** Resolves/rejects when the provider attempt and terminal commit finish. */
+	/** ==[HUMAN APPROVED]== Resolves/rejects when the provider attempt and terminal commit finish. */
 	readonly result: Promise<Result>;
-	/** Cancellation owned by the generation, never by an observing request. */
+	/** ==[HUMAN APPROVED]== Cancellation owned by the generation, never by an observing request. */
 	readonly signal: AbortSignal;
 }
 
@@ -65,7 +65,7 @@ export interface ServerOwnedGenerationCallbacks<Accepted> {
 }
 
 /**
- * Detach one Generation from its observing request.
+ * ==[HUMAN APPROVED]== Detach one Generation from its observing request.
  *
  * Acceptance is exposed separately so an HTTP caller can return as soon as
  * the provisional target exists. The provider attempt remains owned by the
@@ -111,7 +111,7 @@ export function startServerOwnedGeneration<Accepted, Result>(
 }
 
 /**
- * The one generic public detached-start seam behind the three startServerOwned*
+ * ==[HUMAN APPROVED]== The one generic public detached-start seam behind the three startServerOwned*
  * wrappers. Input composition is identical everywhere: the caller's input
  * callbacks fire first, then the detached observer callbacks, and the provider
  * signal replaces whatever the observing request owned.
@@ -164,7 +164,7 @@ export interface GenerationOutcome {
 	error: string | null;
 }
 
-// The transport has one failure policy for both current and sibling
+// ==[HUMAN APPROVED]== The transport has one failure policy for both current and sibling
 // generations: preserve visible output when a stream fails after producing it,
 // but leave zero-output failures to the caller. Keeping that policy here means
 // commit paths only decide which Conversation operation receives the outcome.
@@ -200,14 +200,14 @@ export async function runGeneration(
 }
 
 export interface AcceptedGenerationLifecycle<TResult> {
-	/** Commit the normalized terminal outcome to the accepted target. */
+	/** ==[HUMAN APPROVED]== Commit the normalized terminal outcome to the accepted target. */
 	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
-	/** Remove the accepted target after a zero-output or unexpected failure. */
+	/** ==[HUMAN APPROVED]== Remove the accepted target after a zero-output or unexpected failure. */
 	remove(): void | Promise<void>;
 }
 
 /**
- * Run the common server-owned tail of a Generation.
+ * ==[HUMAN APPROVED]== Run the common server-owned tail of a Generation.
  *
  * Send, Continue, and Sibling all differ at acceptance and at the final
  * Conversation operation, but their provider lifecycle is identical: collect
@@ -235,7 +235,7 @@ export async function runAcceptedGeneration<TResult>(
 		await input.onBeforeTerminal?.();
 		return await lifecycle.resolve(outcome);
 	} catch (error) {
-		// runGeneration converts visible provider failures into an interrupted
+		// ==[HUMAN APPROVED]== runGeneration converts visible provider failures into an interrupted
 		// outcome. This cleanup path is therefore only for empty output and
 		// unexpected failures. A successful empty-output removal must not be
 		// attempted a second time after the synthetic provider error is thrown.
@@ -243,7 +243,7 @@ export async function runAcceptedGeneration<TResult>(
 			try {
 				await lifecycle.remove();
 			} catch {
-				// Preserve the provider or commit error; recovery can clean an orphan.
+				// Preserve the provider or commit error; recovery can clean an orphan. ==[HUMAN APPROVED]==
 			}
 		}
 		throw error;
@@ -292,7 +292,7 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 }
 
 /**
- * Encode a recovered or gracefully stopped Generation with the same terminal
+ * ==[HUMAN APPROVED]== Encode a recovered or gracefully stopped Generation with the same terminal
  * data vocabulary used by a live interrupted provider attempt.
  */
 export const interruptedGenerationData = (

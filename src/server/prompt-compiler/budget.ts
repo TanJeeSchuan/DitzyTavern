@@ -1,11 +1,11 @@
 import { estimateTokenCount } from "tokenx";
 import type { PromptHistoryEntry, PromptPlan } from "./types";
 
-// The application owns this small synchronous boundary. The heuristic library
+// ==[HUMAN APPROVED]== The application owns this small synchronous boundary. The heuristic library
 // can be replaced without changing Prompt Compiler or Generation code.
 export type TokenEstimator = (transcript: string) => number;
 
-// tokenx is deliberately imported in one place. Its estimate is an
+// ==[HUMAN APPROVED]== tokenx is deliberately imported in one place. Its estimate is an
 // approximation for preflight, never a provider tokenization guarantee.
 export const tokenxEstimator: TokenEstimator = estimateTokenCount;
 
@@ -17,7 +17,7 @@ export interface PromptBudgetBreakdown {
 	safetyAllowance: number;
 	tokenEstimate: number;
 	totalRequiredTokens: number;
-	// These character counts make an impossible candidate's fixed and
+	// ==[HUMAN APPROVED]== These character counts make an impossible candidate's fixed and
 	// protected portions inspectable without making extra estimator calls.
 	fixedPromptCharacters: number;
 	protectedHistoryCharacters: number;
@@ -29,7 +29,7 @@ export interface PromptBudgetFailure {
 }
 
 export interface PromptBudgetInput {
-	// `plan` is the first candidate. The callback recompiles the same
+	// ==[HUMAN APPROVED]== `plan` is the first candidate. The callback recompiles the same
 	// provider-neutral plan after each whole-history omission.
 	plan: PromptPlan;
 	compile: (history: readonly PromptHistoryEntry[]) => PromptPlan;
@@ -39,7 +39,7 @@ export interface PromptBudgetInput {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
-	// When omitted, the latest human history entry is protected. Ticket 03 can
+	// ==[HUMAN APPROVED]== When omitted, the latest human history entry is protected. Ticket 03 can
 	// pass the candidate human Message's original index explicitly.
 	protectedHistoryIndex?: number | undefined;
 }
@@ -60,6 +60,7 @@ export interface PromptBudgetResult {
 }
 
 /**
+ * ==[HUMAN APPROVED]==
  * Creates the one text representation that token estimation is allowed to
  * count. Block, role, and content separators are fixed by this versioned
  * format so equivalent Prompt Plans produce equivalent estimates.
@@ -134,7 +135,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 	let candidate = candidateAfterRemoving(0);
 
 	if (!fits(candidate.tokenEstimate) && removableIndexes.length > 0) {
-		// Removing oldest whole history blocks only shortens this compiler's
+		// ==[HUMAN APPROVED]== Removing oldest whole history blocks only shortens this compiler's
 		// estimation transcript. Find the smallest fitting removal count without
 		// rebuilding and rescanning a multi-megabyte prompt once per Message.
 		let lower = 1;

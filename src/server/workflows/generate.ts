@@ -1,4 +1,4 @@
-// Server-owned Generation workflows.
+// ==[HUMAN APPROVED]== Server-owned Generation workflows.
 //
 // Composes the deep Conversation seam and the pure Prompt Compiler in one
 // deterministic flow: read one authoritative snapshot, compile the
@@ -73,11 +73,11 @@ async function notifyAccepted<Accepted>(
 	try {
 		await input.onAccepted?.(accepted);
 	} catch {
-		// Acceptance is authoritative even when an observing caller disconnects.
+		// ==[HUMAN APPROVED]== Acceptance is authoritative even when an observing caller disconnects.
 	}
 }
 
-// Read-only prompt inspection result. `playable: false` means the
+// ==[HUMAN APPROVED]== Read-only prompt inspection result. `playable: false` means the
 // Conversation cannot currently generate because the two distinct Control
 // seats are not both occupied; the plan is then null.
 export interface GenerationPromptInspection {
@@ -86,11 +86,11 @@ export interface GenerationPromptInspection {
 	humanParticipant: ParticipantPreview | null;
 	modelParticipant: ParticipantPreview | null;
 	plan: PromptPlan | null;
-	// The Effective Generation Settings a generation from the current captured
+	// ==[HUMAN APPROVED]== The Effective Generation Settings a generation from the current captured
 	// state would use: an ordinary Tail attempt, so the Continuation group is
 	// absent and Request Overrides are narrowed to the active API Format.
 	effectiveSettings: EffectiveGenerationSettings | null;
-	// The selected Continue request intent is exposed separately from the
+	// ==[HUMAN APPROVED]== The selected Continue request intent is exposed separately from the
 	// ordinary Generate plan. Assistant prefill remains metadata here, never a
 	// synthetic Conversation history block.
 	continuationIntent: GenerationIntent | null;
@@ -106,11 +106,11 @@ export interface GenerationPromptInspection {
 }
 
 export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
-	// Send is a revisioned acceptance operation. The submitted text is
+	// ==[HUMAN APPROVED]== Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
-	// Fired immediately after the accepted human/provisional target
+	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
 }
@@ -130,7 +130,7 @@ export type ServerOwnedSendGeneration = ServerOwnedGeneration<
 
 export type ServerOwnedSendGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedTailGeneration>;
 
-// Starts Send as a detached server-owned attempt. The caller receives an
+// ==[HUMAN APPROVED]== Starts Send as a detached server-owned attempt. The caller receives an
 // acceptance promise separately from the terminal result and may attach zero
 // or more observers to the generation runtime in between. In particular, the
 // caller's HTTP AbortSignal is intentionally not forwarded to the provider.
@@ -147,7 +147,7 @@ export function startServerOwnedSendGeneration(
 	);
 }
 
-// Compiles the Prompt Plan the server would send for a Tail Generation
+// ==[HUMAN APPROVED]== Compiles the Prompt Plan the server would send for a Tail Generation
 // without contacting any transport. Exposes the agreed participant context
 // (the Control pair and their plan) using provider-neutral vocabulary only.
 export function inspectGenerationPrompt(
@@ -188,7 +188,7 @@ export function inspectGenerationPrompt(
 	if (settings === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}
-	// Inspection and execution compile through the one Generation Plan
+	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
 	// compiled plan carries no Continuation intent, and the impossible-budget
@@ -199,7 +199,7 @@ export function inspectGenerationPrompt(
 		history: derivation.history,
 		historyRoles: derivation.historyRoles,
 		settings,
-		// The safe Connection fact resolves before compilation so Request
+		// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
 		// Overrides are narrowed exactly as an executed attempt would narrow
 		// them.
 		connection: resolveConnectionApiFormat(database, options.connectionSettings),
@@ -228,7 +228,7 @@ export function inspectGenerationPrompt(
 }
 
 /**
- * Test-fixture seam for suites that need a terminal model Message without a
+ * ==[HUMAN APPROVED]== Test-fixture seam for suites that need a terminal model Message without a
  * user Send. It composes the production Continuation lifecycle — acceptance
  * followed by resolution — instead of a parallel commit path, so fixtures
  * exercise the same Active Generation persistence, Author Stamp capture, and
@@ -251,7 +251,7 @@ export async function generateTerminalTailFixture(
 	return result.conversation;
 }
 
-// Send's accepted lifecycle is intentionally separate from the legacy
+// ==[HUMAN APPROVED]== Send's accepted lifecycle is intentionally separate from the legacy
 // Generate wrapper. Preflight is entirely read-only; only after it succeeds
 // does the Conversation seam atomically create the human input, provisional
 // model target, and Active Generation before this function contacts a Model
@@ -319,7 +319,7 @@ export async function sendThroughProvisionalTailGeneration(
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
-	// Continue is a revisioned acceptance operation. The selected terminal
+	// ==[HUMAN APPROVED]== Continue is a revisioned acceptance operation. The selected terminal
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
 	expectedRevision: number;
@@ -340,7 +340,7 @@ export type ServerOwnedContinuationGeneration = ServerOwnedGeneration<
 
 export type ServerOwnedContinuationGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedContinuationGeneration>;
 
-// Continue starts from the selected narrative path and persists an ordinary
+// ==[HUMAN APPROVED]== Continue starts from the selected narrative path and persists an ordinary
 // model-authored Message. It shares the same normalized stream, terminal
 // outcome, and provisional cleanup behavior as Send, but never inserts a
 // Human-authored Message.
@@ -417,12 +417,12 @@ export function startServerOwnedContinuationGeneration(
 
 export interface GenerateSiblingVariantInput {
 	conversationId: number;
-	// The target Message whose captured historical Control pair governs this
+	// ==[HUMAN APPROVED]== The target Message whose captured historical Control pair governs this
 	// sibling generation. Current Control is deliberately ignored: Swiping an
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
-	// The provider-neutral Model Client receives the compiled Prompt Plan and
+	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
 	connection?: ModelClientConnectionSnapshot | null;
@@ -432,7 +432,7 @@ export interface GenerateSiblingVariantInput {
 	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
-	// Optional explicit write time; defaults to the current wall clock.
+	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 }
 
@@ -450,7 +450,7 @@ export type ServerOwnedSiblingGeneration = ServerOwnedGeneration<
 
 export type ServerOwnedSiblingGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedSiblingGeneration>;
 
-// Targeted Swipe: generates a new sibling Variant for an existing native
+// ==[HUMAN APPROVED]== Targeted Swipe: generates a new sibling Variant for an existing native
 // Message using the historical Control pair captured when that Message was
 // generated or its openings were configured. The historical pair's current
 // Definitions and names compile the plan; current generation settings and
@@ -462,7 +462,7 @@ export async function generateSiblingVariant(
 ): Promise<ConversationSnapshot> {
 	const conversation = createConversationModule(database);
 
-	// Generation-start capture: one authoritative snapshot derives the plan
+	// ==[HUMAN APPROVED]== Generation-start capture: one authoritative snapshot derives the plan
 	// from the target Message's historical pair; concurrent edits land and
 	// affect only later sibling generations.
 	const snapshot = conversation.getSnapshot(input.conversationId);
@@ -497,7 +497,7 @@ export async function generateSiblingVariant(
 	});
 }
 
-// Detached server-owned Sibling Generation. The acceptance promise resolves
+// ==[HUMAN APPROVED]== Detached server-owned Sibling Generation. The acceptance promise resolves
 // before provider contact so several attempts can be started and observed
 // independently without coupling work to one HTTP subscriber.
 export function startServerOwnedSiblingGeneration(

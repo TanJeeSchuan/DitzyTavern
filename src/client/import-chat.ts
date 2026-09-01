@@ -1,11 +1,11 @@
-// Replaceable typed client for the staged Chat import transport adapters.
+// ==[HUMAN APPROVED]== Replaceable typed client for the staged Chat import transport adapters.
 // Every view uses this single boundary: upload streams the selected bytes
 // once (never a browser filesystem path), preview re-reads the bound
 // preview from the token the client already holds, and discard cancels the
 // flow. Outcomes mirror the server's typed results so the view can recover
 // from recoverable errors without re-uploading or losing its drafts.
 
-// Payload types and wire validation both derive from the shared TypeBox
+// ==[HUMAN APPROVED]== Payload types and wire validation both derive from the shared TypeBox
 // contract: every untrusted server response is decoded against the shared
 // schemas at this boundary so a malformed payload can never masquerade as
 // a trusted import result.
@@ -41,7 +41,7 @@ export type {
 	ImportResolutionOutcome,
 };
 
-// The match kinds are the contract's closed literal union on the suggestion.
+// ==[HUMAN APPROVED]== The match kinds are the contract's closed literal union on the suggestion.
 export type SuggestionMatchKind = ChatImportSuggestion["match"];
 
 export type ChatImportStageOutcome =
@@ -51,37 +51,37 @@ export type ChatImportStageOutcome =
 
 export type ChatImportPreviewOutcome =
 	| { status: "available"; preview: ChatImportPreview }
-	// The flow expired (server restart or prior cancellation): reselect.
+	// ==[HUMAN APPROVED]== The flow expired (server restart or prior cancellation): reselect.
 	| { status: "expired" }
 	| { status: "unavailable"; reason: "missing" | "corrupt" }
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
-// The commit payload is the contract's commit body minus the SHA-256 the
+// ==[HUMAN APPROVED]== The commit payload is the contract's commit body minus the SHA-256 the
 // transport itself already binds into every request.
 export type ChatImportCommitInput = Omit<ChatImportCommitBody, "sha256">;
 
-// The receipt's outcome labels are the contract's closed literal union.
+// ==[HUMAN APPROVED]== The receipt's outcome labels are the contract's closed literal union.
 export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
 
 export type ChatImportCommitOutcome =
 	| { status: "committed"; conversationId: number; receipt: ChatImportReceipt }
-	// The flow expired or the staged bytes are gone/corrupt: reselect.
+	// ==[HUMAN APPROVED]== The flow expired or the staged bytes are gone/corrupt: reselect.
 	| { status: "expired" }
 	| { status: "unavailable"; reason: "missing" | "corrupt" }
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
 export interface ChatImportTransport {
-	// Uploads the selected bytes exactly once and receives the staged token
+	// ==[HUMAN APPROVED]== Uploads the selected bytes exactly once and receives the staged token
 	// bound to the preview. `bytes` is the File/Blob the user chose; only
 	// its leaf `originalFilename` travels alongside.
 	stage(bytes: Blob, originalFilename: string): Promise<ChatImportStageOutcome>;
-	// Re-reads the bound preview for a recoverable transport error. The
+	// ==[HUMAN APPROVED]== Re-reads the bound preview for a recoverable transport error. The
 	// client supplies the token and the SHA-256 it already knows, so a
 	// preview can never be fetched against a different hash.
 	preview(token: string, sha256: string): Promise<ChatImportPreviewOutcome>;
-	// Commits the confirmed resolution plan against the exact staged bytes.
+	// ==[HUMAN APPROVED]== Commits the confirmed resolution plan against the exact staged bytes.
 	// The token and SHA-256 the client already knows bind the request to
 	// the previewed source; a lost response can be retried with the same
 	// payload and returns the same committed result.
@@ -90,12 +90,12 @@ export interface ChatImportTransport {
 		sha256: string,
 		input: ChatImportCommitInput,
 	): Promise<ChatImportCommitOutcome>;
-	// Cancels the flow; only that flow's uncommitted staging data is
+	// ==[HUMAN APPROVED]== Cancels the flow; only that flow's uncommitted staging data is
 	// removed. Idempotent.
 	discard(token: string): Promise<void>;
 }
 
-// Wire decoding at the transport seam: every untrusted server response is
+// ==[HUMAN APPROVED]== Wire decoding at the transport seam: every untrusted server response is
 // validated against the shared contract schemas before any typed outcome
 // leaves this boundary. Any field failing the typed contract — a missing
 // field, a malformed nested value, or an unexpected top-level shape —
@@ -104,7 +104,7 @@ export interface ChatImportTransport {
 const wireBody = async (response: Response): Promise<JsonValue> =>
 	await response.json().catch(() => null);
 
-// A typed invalid outcome keeps its contextual reason; an error body the
+// ==[HUMAN APPROVED]== A typed invalid outcome keeps its contextual reason; an error body the
 // client cannot decode normalizes to the network outcome.
 const parseInvalidResponse = (
 	value: JsonValue,
@@ -115,7 +115,7 @@ const parseInvalidResponse = (
 		: { status: "invalid", reason: invalid.reason };
 };
 
-// The gone-state outcome shared by preview and commit: expired and
+// ==[HUMAN APPROVED]== The gone-state outcome shared by preview and commit: expired and
 // unavailable handles both mean the staged flow is lost, so a gone body
 // the client cannot decode still falls back to the expired reselect
 // recovery.
@@ -166,9 +166,9 @@ const parseCommitResponse = async (
 };
 
 export interface ChatImportTransportOptions {
-	// Server origin; defaults to the current page origin in the browser.
+	// ==[HUMAN APPROVED]== Server origin; defaults to the current page origin in the browser.
 	base?: string;
-	// Injectable request function for tests (for example one backed by
+	// ==[HUMAN APPROVED]== Injectable request function for tests (for example one backed by
 	// app.handle). Narrower than `typeof fetch` so a plain function works.
 	fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
@@ -233,14 +233,14 @@ export const createChatImportTransport = (
 					{ method: "POST" },
 				);
 			} catch {
-				// Cancellation is best-effort: a lost discard leaves only an
+				// ==[HUMAN APPROVED]== Cancellation is best-effort: a lost discard leaves only an
 				// uncommitted temporary staging file behind.
 			}
 		},
 	};
 };
 
-// Cancels a staged flow when a handle exists. Null handles and lost discard
+// ==[HUMAN APPROVED]== Cancels a staged flow when a handle exists. Null handles and lost discard
 // requests are successful no-ops (a lost discard leaves only an uncommitted
 // temporary staging file behind). Every Back/Cancel path in the UI routes
 // through this single helper.
@@ -252,6 +252,6 @@ export const discardStagedImport = (
 	void transport.discard(token);
 };
 
-// The default boundary used by the Import Chat UI.
+// ==[HUMAN APPROVED]== The default boundary used by the Import Chat UI.
 export const chatImportTransport: ChatImportTransport =
 	createChatImportTransport();

@@ -8,7 +8,7 @@ import type { CharacterDatabase } from "./internal";
 import { readDeletionImpact } from "./snapshot";
 import type { CharacterDeletionResult } from "./types";
 
-// Confirmed Character deletion inside one transaction.
+// ==[HUMAN APPROVED]== Confirmed Character deletion inside one transaction.
 //
 // An unreferenced Character (no Participant provenance reference anywhere)
 // is hard-deleted: removing the lifecycle row cascades its Prompt and

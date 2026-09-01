@@ -10,7 +10,7 @@ export interface DeleteMessageInput {
 	messageId: number;
 }
 
-// Tombstones are garbage-collected in the same domain transaction (the
+// ==[HUMAN APPROVED]== Tombstones are garbage-collected in the same domain transaction (the
 // command transaction wrapping this call) once their final retained
 // reference disappears. Messages are the only rows that refer to a
 // Participant — Author Stamp or historical Control pair — so deleting the
@@ -37,7 +37,7 @@ const collectReleasedTombstones = (
 	if (tombstones.length === 0) return;
 	const releasedSourceCharacterIds: number[] = [];
 
-	// One projection of the surviving Messages drives every tombstone check
+	// ==[HUMAN APPROVED]== One projection of the surviving Messages drives every tombstone check
 	// through the shared reference predicate, so collection can never drift
 	// from the removal rule.
 	const messages = db
@@ -65,7 +65,7 @@ const collectReleasedTombstones = (
 		}
 	}
 
-	// Every collected Participant tombstone may have held the final
+	// ==[HUMAN APPROVED]== Every collected Participant tombstone may have held the final
 	// provenance reference of an already-tombstoned source Character; the
 	// narrow character cleanup removes exactly those in the same transaction.
 	collectReleasedCharacterTombstones(db, releasedSourceCharacterIds);

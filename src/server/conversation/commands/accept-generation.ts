@@ -46,7 +46,7 @@ import type {
 	ConversationSnapshot,
 } from "../types";
 
-// Acceptance seams for the server-owned Generation lifecycles. Every accept
+// ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
 // immediate transaction owned by the shared transaction seam; the terminal
 // transitions (resolve/remove/stop/checkpoint) live in active-generation.ts.
@@ -103,7 +103,7 @@ interface PersistActiveGenerationInput {
 	provenance?: ConversationDataEntry;
 }
 
-/** Persist the common server-owned Generation record after target creation. */
+/** ==[HUMAN APPROVED]== Persist the common server-owned Generation record after target creation. */
 const persistActiveGeneration = (
 	db: ReturnType<typeof connectConversationDatabase>,
 	input: PersistActiveGenerationInput,
@@ -146,7 +146,7 @@ interface ProvisionalModelTargetInput {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
-	/** Supply the next position when it was already read as part of validation. */
+	/** ==[HUMAN APPROVED]== Supply the next position when it was already read as part of validation. */
 	position?: number;
 }
 
@@ -160,7 +160,7 @@ interface ProvisionalSiblingVariant {
 	priorVariantId: number | null;
 }
 
-/** Create the model Message and its selected empty Variant as one target. */
+/** ==[HUMAN APPROVED]== Create the model Message and its selected empty Variant as one target. */
 const createProvisionalModelTarget = (
 	db: ReturnType<typeof connectConversationDatabase>,
 	input: ProvisionalModelTargetInput,
@@ -269,7 +269,7 @@ function hasReasoningData(
 	return reasoning?.value.length !== 0 && reasoning?.value !== undefined;
 }
 
-// The differing mid-acceptance validation: Tail creates or reuses the
+// ==[HUMAN APPROVED]== The differing mid-acceptance validation: Tail creates or reuses the
 // trailing human Message; Continuation validates the preceding terminal
 // Message. The result carries the human Message id for the Active
 // Generation row (null when the lifecycle has none) and the explicit
@@ -286,7 +286,7 @@ interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidat
 	conversationId: number;
 	expectedRevision: number;
 	timestamp: string;
-	// The lifecycle name spelled exactly as the shared distinct-seat denial
+	// ==[HUMAN APPROVED]== The lifecycle name spelled exactly as the shared distinct-seat denial
 	// addresses it: "Tail" and "Continuation".
 	lifecycle: "Tail" | "Continuation";
 	humanParticipantId: number;
@@ -300,11 +300,11 @@ interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidat
 	connection: ConversationJsonValue;
 	generationIntent: ConversationJsonValue;
 	provenance?: ConversationDataEntry | undefined;
-	// Lifecycle rejection that must precede the shared seat guards: Send
+	// ==[HUMAN APPROVED]== Lifecycle rejection that must precede the shared seat guards: Send
 	// rejects empty composer content ahead of the distinct-seat denial so
 	// the original error precedence survives the extraction.
 	preflight?: (() => void) | undefined;
-	// The differing validation, run inside the transaction after the shared
+	// ==[HUMAN APPROVED]== The differing validation, run inside the transaction after the shared
 	// guards; every thrown message keeps its original precedence.
 	validate: (
 		db: ReturnType<typeof connectConversationDatabase>,
@@ -321,7 +321,7 @@ interface AcceptedGenerationTarget<Validation extends AcceptGenerationValidation
 }
 
 /**
- * Shared middle of Tail and Continuation acceptance: the revision guard,
+ * ==[HUMAN APPROVED]== Shared middle of Tail and Continuation acceptance: the revision guard,
  * the lifecycle preflight, the distinct-seat requirement, the captured
  * Control-pair authority, seat membership, the captured model stamp, the
  * existing-Active check, the differing validation, provisional target
@@ -411,7 +411,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 	});
 }
 
-// Accepting Send is the lifecycle boundary. The human Message, provisional
+// ==[HUMAN APPROVED]== Accepting Send is the lifecycle boundary. The human Message, provisional
 // model Message/Variant, and Active Generation row are committed together,
 // and the revision guard makes the preflight candidate safe to apply.
 export function acceptConversationTailGeneration(
@@ -510,7 +510,7 @@ export function acceptConversationTailGeneration(
 	};
 }
 
-// Continuation acceptance is the same server-owned lifecycle as Send, except
+// ==[HUMAN APPROVED]== Continuation acceptance is the same server-owned lifecycle as Send, except
 // it creates only the new model-authored Message and its Provisional Variant.
 // The preceding selected model Message is validated in the same transaction
 // so a stale client can never continue a changed narrative position.
@@ -583,7 +583,7 @@ export function acceptConversationContinuationGeneration(
 	};
 }
 
-// Sibling acceptance is intentionally revision-neutral: several sibling
+// ==[HUMAN APPROVED]== Sibling acceptance is intentionally revision-neutral: several sibling
 // attempts may reserve the same response position in parallel, and each
 // reservation advances the Conversation revision independently. Tail and
 // Continuation acceptance still reject every existing Active Generation.

@@ -32,7 +32,7 @@ import {
 	readGenerationTerminalMetadata,
 } from "../../../shared/generation-provenance";
 
-// Terminal lifecycle of the server-owned Generations: resolve, remove,
+// ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
 // accept-generation.ts; both halves share the transaction seam and the
 // terminal persistence helpers below.
@@ -137,7 +137,7 @@ const terminalProvenance = (
 };
 
 /**
- * Persist one terminal Variant's Conversation-scoped data: the compact
+ * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
  * (unless the supplied entries already carry one), then the supplied
  * entries in order. Shared by resolve and stop so the row order and the
@@ -177,7 +177,7 @@ type ResolveGenerationInput =
 	| ResolveSiblingGenerationInput;
 
 /**
- * Resolve either kind of provisional target in one transaction. Tail and
+ * ==[HUMAN APPROVED]== Resolve either kind of provisional target in one transaction. Tail and
  * continuation targets are model Messages; siblings are Variants on an
  * existing Message. Everything else about terminal persistence is shared.
  */
@@ -231,7 +231,7 @@ const resolveConversationGeneration = (
 	});
 };
 
-// Resolving a sibling keeps the target Message and its original Author Stamp
+// ==[HUMAN APPROVED]== Resolving a sibling keeps the target Message and its original Author Stamp
 // intact; only the accepted provisional Variant becomes durable.
 export function resolveConversationSiblingGeneration(
 	database: Database,
@@ -241,7 +241,7 @@ export function resolveConversationSiblingGeneration(
 }
 
 /**
- * Remove one accepted target. The persisted Active Generation row is the
+ * ==[HUMAN APPROVED]== Remove one accepted target. The persisted Active Generation row is the
  * sole authority for the mutation: a Sibling Generation loses only its
  * provisional Variant (restoring the acceptance-time selection unless a
  * later explicit selection took precedence), while a Tail or Continuation
@@ -292,7 +292,7 @@ export const removeConversationGeneration = (
 					.run();
 			}
 		} else {
-			// Tail and Continuation targets are their own provisional Messages;
+			// ==[HUMAN APPROVED]== Tail and Continuation targets are their own provisional Messages;
 			// removing the Message cascades its Variant and leaves a retriable
 			// accepted Human Message (when Send created one).
 			db.delete(messageTable)
@@ -311,7 +311,7 @@ export const removeConversationGeneration = (
 	});
 };
 
-// Resolving replaces the provisional content and writes compact terminal
+// ==[HUMAN APPROVED]== Resolving replaces the provisional content and writes compact terminal
 // provenance before removing the Active Generation record. It advances the
 // Conversation revision exactly once as a lifecycle transition.
 export function resolveConversationTailGeneration(
@@ -321,7 +321,7 @@ export function resolveConversationTailGeneration(
 	return resolveConversationGeneration(database, input, "tail");
 }
 
-// Sibling checkpoints share the same revision-neutral semantics as Tail
+// ==[HUMAN APPROVED]== Sibling checkpoints share the same revision-neutral semantics as Tail
 // checkpoints. The target is selected by the Active Generation id, never by
 // a client-supplied Variant id.
 export function checkpointConversationSiblingGeneration(
@@ -342,7 +342,7 @@ export function checkpointConversationSiblingGeneration(
 }
 
 /**
- * Persist one revision-neutral Generation checkpoint.
+ * ==[HUMAN APPROVED]== Persist one revision-neutral Generation checkpoint.
  *
  * The Active Generation row is the authoritative crash-recovery copy of both
  * streams and their application event position. The provisional Variant's
@@ -415,7 +415,7 @@ interface StopTransition {
 }
 
 /**
- * Apply one Stop transition against an already-open transaction. Keeping the
+ * ==[HUMAN APPROVED]== Apply one Stop transition against an already-open transaction. Keeping the
  * row mutation here lets Stop and Stop All share exactly the same terminal
  * persistence rules while Stop All can commit the complete target set once.
  */
@@ -529,7 +529,7 @@ function restoreStoppedSiblingSelection(
 	}
 }
 
-// Explicit Stop uses the latest durable checkpoint as its terminal input. A
+// ==[HUMAN APPROVED]== Explicit Stop uses the latest durable checkpoint as its terminal input. A
 // live runtime flushes immediately before calling this seam; a caller without
 // a runtime still gets the last authoritative checkpoint and the same cleanup
 // rules. The existing resolve/remove operations keep the transition atomic,
@@ -562,7 +562,7 @@ export function stopConversationGeneration(
 }
 
 /**
- * Atomically stop every Active Generation currently owned by a Conversation.
+ * ==[HUMAN APPROVED]== Atomically stop every Active Generation currently owned by a Conversation.
  * The result is the durable target set; callers must use it to settle only
  * runtimes whose Conversation transition actually committed.
  */

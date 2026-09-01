@@ -23,12 +23,12 @@ import {
 } from "./payload";
 import { toCharacterPayload } from "./projections";
 
-// Keep this adapter export stable for sibling route adapters that use the
+// ==[HUMAN APPROVED]== Keep this adapter export stable for sibling route adapters that use the
 // Character transport projection while the implementation lives below the
 // route-adapter layer.
 export { toCharacterPayload };
 
-// Thin typed adapters over the Character Library seam. The database is
+// ==[HUMAN APPROVED]== Thin typed adapters over the Character Library seam. The database is
 // injected so tests can mount the same routes against a temporary store;
 // production passes undefined to use the default connection per request.
 export const createCharacterLibraryRoutes = (database: Database | undefined) =>

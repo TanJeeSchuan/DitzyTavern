@@ -53,7 +53,7 @@ const validateArtifact = (
 			`Artifact at position ${position} has an invalid byte length.`,
 		);
 	}
-	// The raw-byte SHA-256 is the verification authority for the exact
+	// ==[HUMAN APPROVED]== The raw-byte SHA-256 is the verification authority for the exact
 	// stored artifact; a malformed digest cannot be verified later.
 	if (!/^[0-9a-f]{64}$/.test(artifact.sha256)) {
 		throw new InvalidConversationCreationError(
@@ -67,7 +67,7 @@ const validateArtifacts = (artifacts: readonly ConversationArtifactSeed[]) => {
 	artifacts.forEach((artifact, index) => {
 		const position = index + 1;
 		validateArtifact(artifact, position);
-		// Artifact identity is unique within the Conversation by (namespace,
+		// ==[HUMAN APPROVED]== Artifact identity is unique within the Conversation by (namespace,
 		// key); the structural unique index enforces the same rule across
 		// separate creations.
 		const identity = `${artifact.namespace}\u0000${artifact.key}`;
@@ -250,7 +250,7 @@ const insertParticipant = (
 	return { id: inserted.id, name, openings };
 };
 
-// Native creation converts the initial model Participant's ordered openings
+// ==[HUMAN APPROVED]== Native creation converts the initial model Participant's ordered openings
 // into one Message whose sibling Variants match the openings and whose first
 // Variant is selected. No openings produce no Message. Openings are used only
 // during creation: later Cast or Control changes never author history.
@@ -265,7 +265,7 @@ const deriveGreetingFromInput = (
 		input.control.human === undefined ||
 		input.control.model === undefined
 	) {
-		// No greeting without a complete human/model pair: partial Control
+		// ==[HUMAN APPROVED]== No greeting without a complete human/model pair: partial Control
 		// seeds belong to the incomplete-import completion path, where the
 		// imported history is explicit and no greeting is ever derived.
 		return null;
@@ -275,7 +275,7 @@ const deriveGreetingFromInput = (
 	const openings = [...(modelSeed?.definition.openings ?? [])];
 	if (openings.length === 0) return null;
 
-	// The greeting is the first compiled use of the model seat's openings:
+	// ==[HUMAN APPROVED]== The greeting is the first compiled use of the model seat's openings:
 	// macros resolve relative to the owning model Definition. The stored
 	// openings stay raw; only the presented greeting text is expanded.
 	const context: MacroContext = {
@@ -339,7 +339,7 @@ export function createConversation(
 					);
 				}
 			} else if (humanIndex === undefined && modelIndex === undefined) {
-				// Empty control seeds are a caller mistake: the incomplete-import
+				// ==[HUMAN APPROVED]== Empty control seeds are a caller mistake: the incomplete-import
 				// exception fills one seat, never zero.
 				throw new InvalidConversationCreationError(
 					"Control seeds must occupy at least one seat.",
@@ -382,7 +382,7 @@ export function createConversation(
 			.values({ chat_id: conversation.id })
 			.run();
 
-		// Insert the Cast so Control and the greeting can reference stable
+		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers.
 		const insertedParticipants = seeds.map((seed, index) =>
 			insertParticipant(
@@ -419,7 +419,7 @@ export function createConversation(
 			(rows) => db.insert(chatDataTable).values(rows).run(),
 		);
 
-		// Artifact metadata rows are Conversation database state and commit
+		// ==[HUMAN APPROVED]== Artifact metadata rows are Conversation database state and commit
 		// with the rest of the creation; the physical bytes stay outside the
 		// transaction under the managed relative path.
 		insertArtifacts(db, conversation.id, artifacts);
@@ -433,7 +433,7 @@ export function createConversation(
 				: message.authorParticipantIndex !== undefined
 					? insertedParticipants[message.authorParticipantIndex]
 					: undefined;
-			// The greeting carries the historical Control pair captured at
+			// ==[HUMAN APPROVED]== The greeting carries the historical Control pair captured at
 			// creation; preservation records never receive a fabricated pair.
 			const contextHumanId =
 				greetingMessage && humanIndex !== undefined

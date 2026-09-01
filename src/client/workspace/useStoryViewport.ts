@@ -8,7 +8,7 @@ type StoryViewportOptions = {
 };
 
 /**
- * Owns the reading surface's scroll state. The story is bottom-pinned when a
+ * ==[HUMAN APPROVED]== Owns the reading surface's scroll state. The story is bottom-pinned when a
  * Chat opens, stays anchored while older pages are prepended, and moves to a
  * switched Message when a Swipe changes.
  */

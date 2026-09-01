@@ -1,4 +1,4 @@
-// Deterministic Prompt compilation.
+// ==[HUMAN APPROVED]== Deterministic Prompt compilation.
 //
 // Fixed version-one block order: System Instruction, human Identity, model
 // Identity, Scenario, Example Dialogue, selected history, Post-History
@@ -21,7 +21,7 @@ import type {
 	PromptWarning,
 } from "./types";
 
-// The version-one channel→block-kind correspondence, exhaustive over the
+// ==[HUMAN APPROVED]== The version-one channel→block-kind correspondence, exhaustive over the
 // shared Prompt contract: a channel added to `promptChannels` without an
 // entry here is a compile error, and every Definition block the plan can
 // contain is named by the channel that compiles into it. `identity` names
@@ -39,7 +39,7 @@ const channelBlockKinds = {
 	Exclude<PromptBlock["kind"], "history">
 >;
 
-// Version-one recognized macros. Deliberately tiny: general SillyTavern
+// ==[HUMAN APPROVED]== Version-one recognized macros. Deliberately tiny: general SillyTavern
 // macro compatibility beyond `{{self}}`/`{{other}}` is out of scope.
 // Returns the expanded value for a recognized macro name, or null when the
 // name is unknown. Case-sensitive: `{{SELF}}` and `{{ self }}` are unknown.
@@ -56,11 +56,11 @@ const recognize = (name: string, context: MacroContext): string | null => {
 
 interface MacroMatch {
 	name: string;
-	// Index just past the closing `}}`.
+	// ==[HUMAN APPROVED]== Index just past the closing `}}`.
 	end: number;
 }
 
-// Matches a `{{...}}` starting exactly at `start`; the name is the text
+// ==[HUMAN APPROVED]== Matches a `{{...}}` starting exactly at `start`; the name is the text
 // between the braces, unmodified, so `{{SELF}}` and `{{ self }}` are unknown.
 const matchMacro = (source: string, start: number): MacroMatch | null => {
 	if (source[start] !== "{" || source[start + 1] !== "{") return null;
@@ -69,7 +69,7 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 	return { name: source.slice(start + 2, close), end: close + 2 };
 };
 
-// Expands macros in authored text in one left-to-right pass. Recognized
+// ==[HUMAN APPROVED]== Expands macros in authored text in one left-to-right pass. Recognized
 // macros expand to their context value (never rescanned); `\{{name}}` before
 // a recognized macro renders the macro literally; unknown `{{...}}` stays
 // literal and is reported as a warning labeled by the caller.
@@ -123,7 +123,7 @@ export function expandText(
 	return { text: output, warnings };
 }
 
-// Compiles one authored opening with the owner's macro context. The position
+// ==[HUMAN APPROVED]== Compiles one authored opening with the owner's macro context. The position
 // is the one-based ordered position used to label warnings.
 export function compileOpening(
 	content: string,

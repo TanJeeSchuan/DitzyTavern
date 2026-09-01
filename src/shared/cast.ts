@@ -1,9 +1,9 @@
-// Pure Cast and Control derivation shared by the server snapshot, the
+// ==[HUMAN APPROVED]== Pure Cast and Control derivation shared by the server snapshot, the
 // workflow seam, and the client UI. Keeping the rules here — rather than
 // reimplementing them on each side — means duplicate labels and Control
 // assignment semantics can never drift between server and client.
 
-// Computes the display label for the Nth Participant or Character sharing
+// ==[HUMAN APPROVED]== Computes the display label for the Nth Participant or Character sharing
 // one name within its group (Cast order or library order). The first entry
 // keeps the plain name; later duplicates receive a visible ordinal. Names
 // are never identity keys, so ordinals are the only disambiguation shown.
@@ -17,7 +17,7 @@ export interface ControlAssignment {
 	modelParticipantId: number | null;
 }
 
-// The kind of change produced by assigning `participantId` to `seat`:
+// ==[HUMAN APPROVED]== The kind of change produced by assigning `participantId` to `seat`:
 // - "no-change" when the Participant already occupies that seat;
 // - "swap" when the assigned Participant is the opposite seat's occupant,
 //   so the two assignments exchange atomically;

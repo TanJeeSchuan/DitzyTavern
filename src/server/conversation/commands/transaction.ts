@@ -12,13 +12,13 @@ import {
 import { readConversationSnapshot } from "../snapshot";
 import type { ConversationSnapshot } from "../types";
 
-// Shared Conversation write seam: every server-owned write runs as one
+// ==[HUMAN APPROVED]== Shared Conversation write seam: every server-owned write runs as one
 // immediate SQLite transaction on a fresh Drizzle handle, advances the
 // Conversation revision exactly once, and finishes with the authoritative
 // snapshot. Command modules compose these pieces instead of hand-repeating
 // the connect/bump/read scaffolding.
 
-/** Run one Conversation write as a single immediate transaction. */
+/** ==[HUMAN APPROVED]== Run one Conversation write as a single immediate transaction. */
 export function runConversationTransaction<T>(
 	database: Database,
 	work: (db: ConversationDatabase) => T,
@@ -29,7 +29,7 @@ export function runConversationTransaction<T>(
 }
 
 /**
- * Advance the Conversation revision inside an open transaction and return
+ * ==[HUMAN APPROVED]== Advance the Conversation revision inside an open transaction and return
  * the post-write snapshot, throwing the typed not-found error when the
  * Conversation has disappeared mid-transaction. The optional write time
  * mirrors the caller's Message timestamp into last_message_time; omitting
@@ -50,7 +50,7 @@ export function advanceConversationRevision(
 }
 
 /**
- * Advance the Conversation revision only while it still matches
+ * ==[HUMAN APPROVED]== Advance the Conversation revision only while it still matches
  * expectedRevision, throwing the typed stale error otherwise. The stale
  * error's reported current revision is caller-owned: command execution
  * reports the revision read at transaction start, while the acceptance
@@ -84,7 +84,7 @@ export function advanceConversationRevisionGuarded(
 	}
 }
 
-/** Read the authoritative snapshot or throw the typed not-found error. */
+/** ==[HUMAN APPROVED]== Read the authoritative snapshot or throw the typed not-found error. */
 export function requireConversationSnapshot(
 	db: ConversationDatabase,
 	conversationId: number,

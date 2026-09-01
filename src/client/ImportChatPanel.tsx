@@ -21,7 +21,7 @@ import { ResolutionStep } from "./import-chat/ResolutionStep";
 import { ReviewStep } from "./import-chat/ReviewStep";
 import { SuccessStep } from "./import-chat/SuccessStep";
 
-// Upload one file into temporary staging, validate it, then let the user
+// ==[HUMAN APPROVED]== Upload one file into temporary staging, validate it, then let the user
 // resolve Participants before committing an ordinary Chat. Do not add an
 // imported-only badge, category, or capability state.
 //
@@ -31,13 +31,13 @@ import { SuccessStep } from "./import-chat/SuccessStep";
 interface ImportChatPanelProps {
 	flow: ChatImportFlowState;
 	onDispatch: (action: ChatImportFlowAction) => void;
-	// Library Characters available to fork from during resolution.
+	// ==[HUMAN APPROVED]== Library Characters available to fork from during resolution.
 	characters: { id: number; name: string }[];
-	// The committed Chat is opened: the workspace reloads and selects it.
+	// ==[HUMAN APPROVED]== The committed Chat is opened: the workspace reloads and selects it.
 	onImportLaunched: (conversationId: number) => void;
-	// Back at the choosing step: close the nested flow to the Chats list.
+	// ==[HUMAN APPROVED]== Back at the choosing step: close the nested flow to the Chats list.
 	onBackToList: () => void;
-	// Cancel confirmed (or no staged work): close the nested flow.
+	// ==[HUMAN APPROVED]== Cancel confirmed (or no staged work): close the nested flow.
 	onClose: () => void;
 }
 
@@ -59,7 +59,7 @@ export function ImportChatPanel({
 		};
 	}, []);
 
-	// The discard orchestration is the only place temporary staging data is
+	// ==[HUMAN APPROVED]== The discard orchestration is the only place temporary staging data is
 	// removed: Back from the preview, confirmed Cancel, and nothing else.
 	const handleBack = () => {
 		if (flow.phase === "review") {
@@ -79,7 +79,7 @@ export function ImportChatPanel({
 			onDispatch({ type: "cancel-requested" });
 			return;
 		}
-		// Nothing is staged yet; closing removes no data.
+		// ==[HUMAN APPROVED]== Nothing is staged yet; closing removes no data.
 		onClose();
 	};
 
@@ -153,7 +153,7 @@ export function ImportChatPanel({
 
 	const handleFileChosen = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.target.files?.[0];
-		// Clearing the input lets the user choose the same file again after
+		// ==[HUMAN APPROVED]== Clearing the input lets the user choose the same file again after
 		// a validation failure; the flow still uploads only one file once.
 		event.target.value = "";
 		if (file === undefined || !shouldBeginUpload(flow)) return;

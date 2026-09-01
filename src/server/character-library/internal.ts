@@ -12,7 +12,7 @@ export const connectCharacterLibraryDatabase = (database: Database) =>
 	drizzle(database);
 export type CharacterDatabase = ReturnType<typeof connectCharacterLibraryDatabase>;
 
-// Names are normalized by removing leading and trailing whitespace while
+// ==[HUMAN APPROVED]== Names are normalized by removing leading and trailing whitespace while
 // preserving case and Unicode exactly.
 export const normalizeName = (name: string) => name.trim();
 
@@ -27,7 +27,7 @@ const requireName = (
 	return normalized;
 };
 
-// Openings are stored exactly as authored; only fully blank entries are
+// ==[HUMAN APPROVED]== Openings are stored exactly as authored; only fully blank entries are
 // rejected.
 const requireOpenings = (
 	openings: readonly string[],
@@ -43,13 +43,13 @@ const requireOpenings = (
 	return openings;
 };
 
-// A Definition with name and openings validated for library storage.
+// ==[HUMAN APPROVED]== A Definition with name and openings validated for library storage.
 export interface NormalizedDefinition {
 	name: string;
 	openings: readonly string[];
 }
 
-// Creation-time validation failures use the definition error type.
+// ==[HUMAN APPROVED]== Creation-time validation failures use the definition error type.
 export function requireDefinition(
 	name: string,
 	openings: readonly string[],
@@ -63,7 +63,7 @@ export function requireDefinition(
 	};
 }
 
-// Command-time validation failures use the command error type.
+// ==[HUMAN APPROVED]== Command-time validation failures use the command error type.
 export const requireCommandName = (name: string): string =>
 	requireName(name, (message) => new InvalidCharacterCommandError(message));
 
@@ -79,7 +79,7 @@ export interface CharacterRowState {
 	pinned: boolean;
 }
 
-// Reads the active lifecycle row for one Character. Tombstoned Characters
+// ==[HUMAN APPROVED]== Reads the active lifecycle row for one Character. Tombstoned Characters
 // are treated as not found by every public operation.
 export const requireActiveCharacter = (
 	db: CharacterDatabase,

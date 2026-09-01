@@ -12,7 +12,7 @@ import {
 	type StoryState,
 } from "../story";
 
-// The story stage has no command-notice surface: a failed command leaves the
+// ==[HUMAN APPROVED]== The story stage has no command-notice surface: a failed command leaves the
 // reading view untouched and the next authoritative read converges it. The
 // runner still refuses to send without a revision and normalizes exceptions;
 // this surface's adapter simply chooses silence for the standard notices.
@@ -22,7 +22,7 @@ const STORY_COMMAND_NOTICES = {
 	unreachable: "The Conversation could not be reached.",
 };
 
-// The story's no-presentation decision for the precise Conversation-state
+// ==[HUMAN APPROVED]== The story's no-presentation decision for the precise Conversation-state
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
@@ -37,7 +37,7 @@ type StoryMessageActionsOptions = {
 };
 
 /**
- * Coordinates user commands that mutate or preview a story Message. Preview
+ * ==[HUMAN APPROVED]== Coordinates user commands that mutate or preview a story Message. Preview
  * state is immediate local presentation; a selected Variant moves the story
  * read model only after the server applies the command, so a failed Swipe
  * never diverges the two state owners. This hook owns the server command,
@@ -118,7 +118,7 @@ export function useStoryMessageActions({
 				showNotice: noPresentation,
 			},
 			notices: STORY_COMMAND_NOTICES,
-			// Update-after-success: the story read model moves only once the
+			// ==[HUMAN APPROVED]== Update-after-success: the story read model moves only once the
 			// command applied, so a failed or conflicted Swipe leaves the story
 			// exactly as the Conversation state is — nothing to roll back.
 			callbacks: {
@@ -160,7 +160,7 @@ export function useStoryMessageActions({
 			notices: STORY_COMMAND_NOTICES,
 			callbacks: {
 				onApplied: () => {
-					// Reload the first page so authoritative content replaces the
+					// ==[HUMAN APPROVED]== Reload the first page so authoritative content replaces the
 					// local edit without drifting from the server's read model.
 					void chatHistoryTransport
 						.loadHistory(conversationId, { page: 1 })

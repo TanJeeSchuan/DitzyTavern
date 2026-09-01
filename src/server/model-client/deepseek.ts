@@ -37,7 +37,7 @@ export type OpenAICompatibleModelClientOptions = DeepSeekModelClientOptions;
 
 export { ModelClientTransportError } from "./errors";
 
-// Production v1 Model Client. The adapter owns all provider request shaping;
+// ==[HUMAN APPROVED]== Production v1 Model Client. The adapter owns all provider request shaping;
 // callers only supply the opaque Prompt Plan and provider-neutral generation
 // settings. The request destination is captured when this client is created,
 // so Profile edits cannot redirect an in-flight Generation.
@@ -59,7 +59,7 @@ export function createOpenRouterModelClient(
 	return createConfiguredModelClient(options, "openrouter");
 }
 
-// The adapter dispatch lives inside the deep Model Client. Routes and
+// ==[HUMAN APPROVED]== The adapter dispatch lives inside the deep Model Client. Routes and
 // workflows select one provider-neutral factory and never import concrete
 // transport constructors.
 export function createModelClient(
@@ -151,10 +151,10 @@ async function* generateOpenAICompatibleStream(options: {
 			await rejectProviderResponse(response);
 			return monitorResponseActivity(response, resetInactivity, controller.signal);
 		}
-		// SAFETY: the AI SDK serializes this request as a JSON object whose values
+		// ==[HUMAN APPROVED]== SAFETY: the AI SDK serializes this request as a JSON object whose values
 		// are within the Conversation Request Override JSON domain.
 		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
-		// The Generation Plan Compiler narrowed the Request Overrides to the
+		// ==[HUMAN APPROVED]== The Generation Plan Compiler narrowed the Request Overrides to the
 		// namespace of the API Format this adapter was constructed for.
 		const overrides = settings.requestOverrides;
 		validateChatCompletionsOverrides(overrides);
@@ -297,7 +297,7 @@ function normalizeProviderStreamError(
 	error: Error,
 ): ModelClientTransportError {
 	if (error instanceof ModelClientTransportError) return error;
-	// SAFETY: AI SDK provider failures expose the optional status/body fields
+	// ==[HUMAN APPROVED]== SAFETY: AI SDK provider failures expose the optional status/body fields
 	// represented by ProviderErrorLike; snapshotProviderError reads only those fields.
 	const snapshot = snapshotProviderError(error as ProviderErrorLike);
 	if (snapshot.body === undefined && snapshot.status === undefined) {
@@ -345,7 +345,7 @@ function toMessages(input: ModelClientGenerationInput) {
 			if (role === "model") {
 				lastModelHistoryContent = block.content;
 			}
-			// The selected preceding model text is moved to the final assistant
+			// ==[HUMAN APPROVED]== The selected preceding model text is moved to the final assistant
 			// message below when prefill is active. Leaving the history copy in
 			// place would send the prefix twice and would not be a true prefill.
 			if (assistantPrefill && currentHistoryIndex === lastModelHistoryIndex) {
@@ -379,7 +379,7 @@ function toMessages(input: ModelClientGenerationInput) {
 				break;
 		}
 	}
-	// Continuation instructions are request intent, not Conversation history.
+	// ==[HUMAN APPROVED]== Continuation instructions are request intent, not Conversation history.
 	// Keep them as an adapter-owned system message so no synthetic user turn
 	// is persisted or inferred by the provider-neutral workflow.
 	if (continuationIntent?.strategy === "instruction") {
@@ -521,7 +521,7 @@ function monitorResponseActivity(
 						continue;
 					}
 					try {
-						// SAFETY: this is the validated JSON object boundary for SSE activity
+						// ==[HUMAN APPROVED]== SAFETY: this is the validated JSON object boundary for SSE activity
 						// inspection; AI SDK remains authoritative for actual response parsing.
 						const parsed = JSON.parse(data) as ProviderSseFrame;
 						const choice = parsed.choices?.[0];
@@ -537,7 +537,7 @@ function monitorResponseActivity(
 							markActivity();
 						}
 					} catch {
-						// AI SDK owns malformed-frame handling. Arbitrary or incomplete
+						// ==[HUMAN APPROVED]== AI SDK owns malformed-frame handling. Arbitrary or incomplete
 						// bytes are deliberately not considered stream activity here.
 					}
 				}

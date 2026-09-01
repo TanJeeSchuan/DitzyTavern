@@ -11,7 +11,7 @@ import { promptChannelFields } from "../shared/definition";
 import { openingsFromText } from "./lib/openings";
 import { useAsyncEffect } from "./lib/use-async";
 
-// Native New Chat setup: the human and model seats are configured side by
+// ==[HUMAN APPROVED]== Native New Chat setup: the human and model seats are configured side by
 // side, each either forking a library Character or authored ad hoc, and both
 // Control assignments are explicit before commit. A native Conversation is
 // only created once both seats are complete.

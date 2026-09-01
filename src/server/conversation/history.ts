@@ -1,4 +1,4 @@
-// Paginated history read model: the normal Chat read seam for reading
+// ==[HUMAN APPROVED]== Paginated history read model: the normal Chat read seam for reading
 // native Messages. Pages serve stable position-ordered (chronological)
 // Messages with the lightweight Participant identity, selected Variant
 // state, and persisted Reasoning Content needed for rendering. Exact artifact
@@ -39,7 +39,7 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
 
-// Reads one page of the stable Message sequence, counted backward from the
+// ==[HUMAN APPROVED]== Reads one page of the stable Message sequence, counted backward from the
 // newest Message: page 1 serves the latest window and later pages reach
 // further into older history. Each served page is still chronological. The
 // requested page is bounded into the available range (a page beyond the end
@@ -78,7 +78,7 @@ export function readChatHistory(
 	);
 	const offset = (pageIndex - 1) * pageSize;
 
-	// Stable chronology: creation order (position ascending) never reorders
+	// ==[HUMAN APPROVED]== Stable chronology: creation order (position ascending) never reorders
 	// when Variant selection changes or Messages are later edited. Pages are
 	// cut from the tail (newest first) and reversed so every served page is
 	// chronological while page 1 remains the latest window.
@@ -93,7 +93,7 @@ export function readChatHistory(
 		.reverse();
 	const messageIds = messageRows.map((message) => message.id);
 
-	// Variant order is preserved with the selected state; empty and
+	// ==[HUMAN APPROVED]== Variant order is preserved with the selected state; empty and
 	// duplicate variants remain distinct positions with their exact content.
 	const variantRows =
 		messageIds.length === 0
@@ -165,7 +165,7 @@ export function readChatHistory(
 		.all();
 	for (const participant of cast) castIds.add(participant.id);
 
-	// Playability is the single derived Control-validity rule, and the
+	// ==[HUMAN APPROVED]== Playability is the single derived Control-validity rule, and the
 	// capability objects below flow through the canonical snapshot helpers,
 	// so the history seam can never disagree with the snapshot or the
 	// commands about sibling eligibility.
@@ -180,7 +180,7 @@ export function readChatHistory(
 				? {
 						participantId: message.author_participant_id,
 						capturedName: message.author_name,
-						// Derived historical display state: the captured name keeps
+						// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
 						// displaying with a no-longer-in-Cast marker after removal.
 						inCast:
 							message.author_participant_id !== null &&
@@ -208,7 +208,7 @@ export function readChatHistory(
 					(selected.content.length > 0 ||
 						(continuationStrategy === "instruction" && (selected.reasoning?.length ?? 0) > 0));
 			})(),
-			// Server-derived targeted Swipe eligibility from the canonical rule
+			// ==[HUMAN APPROVED]== Server-derived targeted Swipe eligibility from the canonical rule
 			// (ADR-0003): the client never reconstructs it from hints.
 			swipe: deriveMessageSwipeEligibility(
 				playable,

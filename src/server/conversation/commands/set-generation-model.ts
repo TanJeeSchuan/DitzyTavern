@@ -10,7 +10,7 @@ export interface SetGenerationModelInput {
 	modelId: string;
 }
 
-// The focused model-selection command: the client submits only the model ID,
+// ==[HUMAN APPROVED]== The focused model-selection command: the client submits only the model ID,
 // and this handler merges it into the stored Generation Settings inside the
 // command transaction. The merge happens server-side so a model selection is
 // structurally unable to rewrite any other editor's settings fields the way

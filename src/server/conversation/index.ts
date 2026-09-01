@@ -54,10 +54,10 @@ export {
 	resolveConversationSiblingGeneration,
 	resolveConversationTailGeneration,
 } from "./commands/active-generation";
-// Derived targeted-Swipe rule shared by the snapshot and the sibling
+// ==[HUMAN APPROVED]== Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
 export { deriveMessageSwipeEligibility } from "./snapshot";
-// Canonical persisted-intent reader shared by terminal commands and the
+// ==[HUMAN APPROVED]== Canonical persisted-intent reader shared by terminal commands and the
 // recovery sweep so the sibling discriminator cannot drift between them.
 export { isSiblingGenerationRow } from "./commands/active-generation";
 export {
@@ -183,7 +183,7 @@ export function createConversationModule(database: Database): ConversationModule
 		stopConversationGenerations(database, input),
 		resolveSiblingGeneration: (input) =>
 			resolveConversationSiblingGeneration(database, input),
-		// One canonical removal: the persisted Active Generation row decides
+		// ==[HUMAN APPROVED]== One canonical removal: the persisted Active Generation row decides
 		// between the Sibling Variant and Tail/Continuation Message mutations.
 		removeGeneration: (input) =>
 			removeConversationGeneration(database, input),

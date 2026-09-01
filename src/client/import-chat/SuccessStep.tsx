@@ -2,8 +2,6 @@ import { Check } from "lucide-react";
 import type { ChatImportReceipt } from "../import-chat";
 import { sourceSize } from "./presentation";
 
-// ---- Success receipt ----
-
 export function SuccessStep({
 	receipt,
 	onOpen,

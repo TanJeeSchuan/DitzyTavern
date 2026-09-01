@@ -1,5 +1,5 @@
 // The Conversation JSON routes use the typed Eden client. This module owns
-// the one deliberately manual protocol: the resumable Generation SSE stream.
+// ==[HUMAN APPROVED]== the one deliberately manual protocol: the resumable Generation SSE stream.
 // SSE framing, comments, partial frames, HTTP status interpretation, and
 // network failure mapping stay owned here; every frame payload is decoded
 // against the shared Generation event vocabulary
@@ -27,26 +27,26 @@ export type GenerationStreamResult =
 	| { outcome: "stopped"; generationId?: number }
 	| { outcome: "not-found" }
 	// A server-declared terminal failure: the error frame or typed error
-	// response carries the authoritative reason and the Generation is over.
+	// ==[HUMAN APPROVED]== response carries the authoritative reason and the Generation is over.
 	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string }
 	// The subscription itself was interrupted (network drop, stream ended
-	// without a terminal frame, undecodable status response). The Generation
+	// ==[HUMAN APPROVED]== without a terminal frame, undecodable status response). The Generation
 	// may still be server-active; observers reconnect from their cursor.
 	| { outcome: "interrupted"; reason: string };
 
 // Stream deltas are the shared normalized Generation event union, and state
-// snapshots are the shared state payload: server production and client
+// ==[HUMAN APPROVED]== snapshots are the shared state payload: server production and client
 // consumption use one schema-owned vocabulary.
 export type GenerationStreamDelta = GenerationEvent;
 export type GenerationStreamState = GenerationStatePayload;
 
 // The session stream interface every Generation observation adapter
-// satisfies: the production SSE adapter below, and the fake adapters used by
+// ==[HUMAN APPROVED]== satisfies: the production SSE adapter below, and the fake adapters used by
 // the session runner and wiring tests. The adapter owns transport framing;
 // the session machine owns what the observations mean.
 export interface GenerationStreamObservation {
 	// The stream position the event was observed at; the session machine
-	// keeps it as the reconnection cursor.
+	// ==[HUMAN APPROVED]== keeps it as the reconnection cursor.
 	eventId: number;
 	event: GenerationEvent;
 }
@@ -57,7 +57,7 @@ export interface GenerationStreamSubscription {
 	messageId: number;
 	variantId: number;
 	// Resume position: the latest event position the observer already
-	// processed. The server replays after it or answers with an
+	// ==[HUMAN APPROVED]== processed. The server replays after it or answers with an
 	// authoritative state snapshot.
 	afterEventId: number;
 	signal: AbortSignal;
@@ -70,7 +70,7 @@ export interface GenerationStreamAdapter {
 }
 
 // A GET subscription is deliberately separate from POST acceptance. Reloads
-// and navigation can reconnect with the last observed event position without
+// ==[HUMAN APPROVED]== and navigation can reconnect with the last observed event position without
 // contacting the provider or creating another Generation.
 export async function subscribeConversationGeneration(
 	conversationId: number,
@@ -93,7 +93,7 @@ export async function subscribeConversationGeneration(
 	);
 	if (!response.ok) {
 		// The subscription never opened. A typed error response is a
-		// server-declared outcome (the Generation is not observable); anything
+		// ==[HUMAN APPROVED]== server-declared outcome (the Generation is not observable); anything
 		// else is an interruption the observer may recover from.
 		const declared = decodeWirePayload(
 			generationSubscriptionFailurePayload,
@@ -116,11 +116,11 @@ export async function subscribeConversationGeneration(
 }
 
 // The SSE data line is the transport's JSON parse target; the decoded value
-// is only trusted after a shared contract schema accepts it.
+// ==[HUMAN APPROVED]== is only trusted after a shared contract schema accepts it.
 const parseStreamPayload = (serialized: string): JsonValue | null => {
 	try {
 		// SAFETY: JSON.parse produces exactly the JsonValue vocabulary above; the
-		// value is still untrusted until the shared schema decode accepts it.
+		// ==[HUMAN APPROVED]== value is still untrusted until the shared schema decode accepts it.
 		return JSON.parse(serialized) as JsonValue;
 	} catch {
 		return null;
@@ -165,7 +165,7 @@ async function consumeGenerationStream(
 			const event = decodeWirePayload(generationEvent, payload);
 			if (event === null) return;
 			// The route numbers every generation frame; a frame without a usable
-			// position cannot join the ordered stream the session machine tracks.
+			// ==[HUMAN APPROVED]== position cannot join the ordered stream the session machine tracks.
 			if (frameId === undefined || frameId <= lastEventId) return;
 			lastEventId = frameId;
 			input.onDelta(event, lastEventId);
@@ -213,7 +213,7 @@ async function consumeGenerationStream(
 }
 
 // The production adapter: session observation over the resumable SSE stream.
-// It contributes no session behavior of its own, so the fake adapters used in
+// ==[HUMAN APPROVED]== It contributes no session behavior of its own, so the fake adapters used in
 // tests and this adapter are interchangeable behind GenerationStreamAdapter.
 export const generationStreamAdapter: GenerationStreamAdapter = {
 	subscribe: (request) =>

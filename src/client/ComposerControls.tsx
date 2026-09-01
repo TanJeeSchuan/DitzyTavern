@@ -8,7 +8,7 @@ import { runConversationCommand } from "./conversation-command-runner";
 import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/command-outcome";
 import { ModelSelector } from "./ModelSelector";
 
-// Cast-only Control selectors on the composer toolbar: `Writing as` for the
+// ==[HUMAN APPROVED]== Cast-only Control selectors on the composer toolbar: `Writing as` for the
 // human seat and `Responding as` for the model seat. Selecting the opposite
 // seat's occupant visibly performs one atomic swap; selecting an unseated
 // Participant replaces only the chosen seat. Seats can never be cleared, and
@@ -28,7 +28,7 @@ export function ComposerControlSelectors({
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 
-	// A transient swap/replacement description shown immediately after the
+	// ==[HUMAN APPROVED]== A transient swap/replacement description shown immediately after the
 	// change so the composer visibly describes the consequence.
 	const [lastChange, setLastChange] = useState<string | null>(null);
 

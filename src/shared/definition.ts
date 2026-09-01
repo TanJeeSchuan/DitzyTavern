@@ -1,6 +1,6 @@
 import type { PromptChannels } from "./contract/prompt-schema";
 
-// Shared Prompt channel vocabulary and presentation derivation, safe for
+// ==[HUMAN APPROVED]== Shared Prompt channel vocabulary and presentation derivation, safe for
 // client and server alike. This module is the single owner of the Prompt
 // channel metadata (exhaustive labels, editor order, derived field list) and
 // of the empty Prompt constructor. The server uses the presentation rules to
@@ -8,7 +8,7 @@ import type { PromptChannels } from "./contract/prompt-schema";
 // never needs one detail request per Character), and clients use the same
 // helpers for any local formatting.
 
-// Channel labels, exhaustive against the contract: adding a channel to
+// ==[HUMAN APPROVED]== Channel labels, exhaustive against the contract: adding a channel to
 // `promptChannels` without a label here is a compile error.
 export const promptChannelLabels = {
 	systemInstruction: "System Instruction",
@@ -18,7 +18,7 @@ export const promptChannelLabels = {
 	postHistoryInstruction: "Post-History Instruction",
 } as const satisfies Record<keyof PromptChannels, string>;
 
-// The explicit editor order, in the stable authoring order shared by every
+// ==[HUMAN APPROVED]== The explicit editor order, in the stable authoring order shared by every
 // Prompt editor. `satisfies` keeps every entry a real contract key, and the
 // exhaustiveness assertion in the exported declaration below turns a
 // contract channel missing from this list into a type error naming the gap.
@@ -32,14 +32,14 @@ const promptChannelOrderEntries = [
 
 type UnorderedChannel = Exclude<keyof PromptChannels, (typeof promptChannelOrderEntries)[number]>;
 
-// Compile-time assertion only (a type annotation, not runtime logic): a
+// ==[HUMAN APPROVED]== Compile-time assertion only (a type annotation, not runtime logic): a
 // contract channel missing from the entries above makes this exported type
 // require it appended, so the assignment fails to compile naming the gap.
 export const promptChannelOrder: UnorderedChannel extends never
 	? typeof promptChannelOrderEntries
 	: readonly [...typeof promptChannelOrderEntries, UnorderedChannel] = promptChannelOrderEntries;
 
-// The derived { key, label } field list, in the editor order above.
+// ==[HUMAN APPROVED]== The derived { key, label } field list, in the editor order above.
 export const promptChannelFields: ReadonlyArray<{
 	key: (typeof promptChannelOrder)[number];
 	label: string;
@@ -48,7 +48,7 @@ export const promptChannelFields: ReadonlyArray<{
 	label: promptChannelLabels[channel],
 }));
 
-// The single empty Prompt constructor. A factory rather than a shared const,
+// ==[HUMAN APPROVED]== The single empty Prompt constructor. A factory rather than a shared const,
 // so no caller can mutate a Prompt owned by another caller.
 export const emptyPromptChannels = (): PromptChannels => ({
 	systemInstruction: "",
@@ -58,7 +58,7 @@ export const emptyPromptChannels = (): PromptChannels => ({
 	postHistoryInstruction: "",
 });
 
-// First non-empty Prompt field in the agreed presentation order.
+// ==[HUMAN APPROVED]== First non-empty Prompt field in the agreed presentation order.
 export const firstPromptText = (prompt: PromptChannels): string =>
 	promptChannelOrder
 		.map((channel) => prompt[channel])

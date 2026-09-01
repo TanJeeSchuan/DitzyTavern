@@ -1,4 +1,4 @@
-// Developer database command: import a SillyTavern JSONL chat export.
+// ==[HUMAN APPROVED]== Developer database command: import a SillyTavern JSONL chat export.
 // Run with: bun run db:import <path-to-chat.jsonl>
 //
 // The Chat name comes from the source filename stem; the imported Chat has

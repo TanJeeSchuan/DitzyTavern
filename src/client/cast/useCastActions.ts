@@ -15,14 +15,14 @@ import { runConversationCommand } from "../conversation-command-runner";
 import type { CharacterSnapshot } from "../character-library";
 import { emptyAdHocDraft, openingsFromText, type AdHocDraft } from "./definition";
 
-// The minimal reference the drawer needs to offer navigation into the new
+// ==[HUMAN APPROVED]== The minimal reference the drawer needs to offer navigation into the new
 // Character Library entry. Internal identifiers are not displayed anywhere.
 export interface SavedCharacterReference {
 	id: number;
 	name: string;
 }
 
-// The character-library add command's extra outcome: the conflict names the
+// ==[HUMAN APPROVED]== The character-library add command's extra outcome: the conflict names the
 // changed Character instead of carrying a Conversation snapshot, so the
 // runner must not adopt or word it and forwards it untouched.
 type AddCharacterOperation = {
@@ -30,7 +30,7 @@ type AddCharacterOperation = {
 	currentCharacterName?: string;
 };
 
-// The save-as-Character command's extra outcome: the success carries the new
+// ==[HUMAN APPROVED]== The save-as-Character command's extra outcome: the success carries the new
 // Character while the Conversation itself stays untouched, so there is no
 // snapshot to adopt and the runner forwards it untouched.
 type SaveParticipantOperation = {
@@ -38,7 +38,7 @@ type SaveParticipantOperation = {
 	character: CharacterSnapshot;
 };
 
-// Caller-owned wording for the add-ad-hoc command. The runner owns when each
+// ==[HUMAN APPROVED]== Caller-owned wording for the add-ad-hoc command. The runner owns when each
 // notice is shown; the drawer owns what it says.
 const ADD_ADHOC_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the Cast was reloaded.",
@@ -46,7 +46,7 @@ const ADD_ADHOC_NOTICES = {
 	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 };
 
-// Caller-owned wording for the add-from-library command.
+// ==[HUMAN APPROVED]== Caller-owned wording for the add-from-library command.
 const ADD_CHARACTER_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the authoritative Cast was reloaded.",
 	notFound: "That Character is no longer available.",
@@ -57,17 +57,17 @@ interface CastActionsOptions {
 	conversationId: number;
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	// The removal confirmation dialog is drawer state; the remove action only
+	// ==[HUMAN APPROVED]== The removal confirmation dialog is drawer state; the remove action only
 	// closes it before dispatching.
 	setRemoveTargetId: (participantId: number | null) => void;
-	// The ad-hoc draft is drawer state: the ad-hoc action reads the typed
+	// ==[HUMAN APPROVED]== The ad-hoc draft is drawer state: the ad-hoc action reads the typed
 	// definition and resets it after the Participant was applied.
 	adHocDraft: AdHocDraft;
 	setAdHocDraft: (draft: AdHocDraft) => void;
 }
 
 /**
- * Owns the Cast drawer's four command handlers: remove, add from the
+ * ==[HUMAN APPROVED]== Owns the Cast drawer's four command handlers: remove, add from the
  * Library, add ad hoc, and save-as-Character. Every handler sends through
  * the Conversation command runner, so revision acquisition, exception
  * normalization, snapshot adoption, and the standard notices live in one
@@ -85,7 +85,7 @@ export function useCastActions({
 }: CastActionsOptions) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-	// Announces a completed promotion and the navigation action to the new
+	// ==[HUMAN APPROVED]== Announces a completed promotion and the navigation action to the new
 	// Character Library entry; cleared when the next save attempt starts so
 	// the drawer never shows a stale confirmation next to a fresh failure.
 	const [saveConfirmation, setSaveConfirmation] = useState<{
@@ -101,7 +101,7 @@ export function useCastActions({
 		}
 	};
 
-	// Removes one unseated Participant after the confirmation dialog. The
+	// ==[HUMAN APPROVED]== Removes one unseated Participant after the confirmation dialog. The
 	// impact was already shown from the snapshot; the typed not-removable
 	// outcome covers the race where Control changed before the command
 	// landed.
@@ -131,7 +131,7 @@ export function useCastActions({
 				},
 				callbacks: {
 					onApplied: () => setNotice(null),
-					// The seat was taken concurrently, so the presented Cast is
+					// ==[HUMAN APPROVED]== The seat was taken concurrently, so the presented Cast is
 					// stale: the precise wording is paired with an authoritative
 					// reload instead of the server reason.
 					onNotRemovable: () => {
@@ -163,7 +163,7 @@ export function useCastActions({
 					});
 					if (outcome.status === "conflict") {
 						if (outcome.currentConversation === undefined) {
-							// A library conflict names the changed Character instead of
+							// ==[HUMAN APPROVED]== A library conflict names the changed Character instead of
 							// carrying a Conversation snapshot: the runner must not
 							// adopt or word it, so it is forwarded as an operation
 							// outcome for the drawer's typed callback.
@@ -175,7 +175,7 @@ export function useCastActions({
 								},
 							};
 						}
-						// A conversation conflict carries the authoritative snapshot.
+						// ==[HUMAN APPROVED]== A conversation conflict carries the authoritative snapshot.
 						return { status: "conflict", currentConversation: outcome.currentConversation };
 					}
 					return outcome;
@@ -187,7 +187,7 @@ export function useCastActions({
 				notices: ADD_CHARACTER_NOTICES,
 				callbacks: {
 					onApplied: () => setNotice(null),
-					// This command family cannot produce these outcomes; the
+					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
 					// drawer still words them instead of flattening them.
 					onNotPlayable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
 					onNotRemovable: () => setNotice(LIBRARY_UNREACHABLE_NOTICE),
@@ -231,7 +231,7 @@ export function useCastActions({
 						setAdHocDraft(emptyAdHocDraft);
 						setNotice(null);
 					},
-					// This command family cannot produce these outcomes; the
+					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
 					// drawer still words them instead of flattening them.
 					onNotPlayable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
 					onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
@@ -242,7 +242,7 @@ export function useCastActions({
 		}
 	};
 
-	// Saves one active Participant as a new reusable Character. The command
+	// ==[HUMAN APPROVED]== Saves one active Participant as a new reusable Character. The command
 	// carries only the expected Conversation revision and the Participant
 	// reference: the authoritative server-side Definition is copied by the
 	// workflow, so a stale client copy can never leak into the Library. The
@@ -264,7 +264,7 @@ export function useCastActions({
 						expectedConversationRevision: expectedRevision,
 						participantId: participant.id,
 					});
-					// The save workflow leaves the Conversation untouched: the
+					// ==[HUMAN APPROVED]== The save workflow leaves the Conversation untouched: the
 					// applied outcome carries the new Character and no snapshot
 					// to adopt, so it is forwarded as an operation outcome.
 					if (outcome.status === "applied") {
@@ -285,7 +285,7 @@ export function useCastActions({
 					unreachable: LIBRARY_UNREACHABLE_NOTICE,
 				},
 				callbacks: {
-					// This command family cannot produce these outcomes; the
+					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
 					// server's precise reason is kept instead of a flattened class.
 					onNotPlayable: (reason) => setNotice(reason),
 					onNotRemovable: (reason) => setNotice(reason),

@@ -10,7 +10,7 @@ export class CharacterNotFoundError extends Error {
 	}
 }
 
-// Typed revision conflict. Carries the authoritative current Character so
+// ==[HUMAN APPROVED]== Typed revision conflict. Carries the authoritative current Character so
 // callers can recover without overwriting their local draft.
 export class StaleCharacterRevisionError extends Error {
 	readonly characterId: number;

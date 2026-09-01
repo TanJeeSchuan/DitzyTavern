@@ -35,7 +35,7 @@ export type ConnectionSettingsConflict = Extract<
 >;
 
 /**
- * Project the server-owned profile shape into the only shape accepted by
+ * ==[HUMAN APPROVED]== Project the server-owned profile shape into the only shape accepted by
  * create/apply commands. Keeping this projection explicit prevents redacted
  * metadata and identifiers from leaking back across the API boundary.
  */

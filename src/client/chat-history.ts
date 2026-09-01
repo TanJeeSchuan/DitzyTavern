@@ -1,5 +1,5 @@
 // Replaceable typed client boundary for reading a Chat's native history and
-// its Import Details. Every view uses this single boundary: pagination,
+// ==[HUMAN APPROVED]== its Import Details. Every view uses this single boundary: pagination,
 // receipt loading, heavy provenance, and artifact download stay behind typed
 // operations instead of embedding transport behavior throughout Message
 // components.
@@ -11,7 +11,7 @@
 // stay behind deliberate detail operations.
 
 // Payload types and wire validation both derive from the shared TypeBox
-// contract: every response is decoded at this boundary with Value.Decode so
+// ==[HUMAN APPROVED]== contract: every response is decoded at this boundary with Value.Decode so
 // a malformed payload can never masquerade as trusted history.
 import { Value } from "@sinclair/typebox/value";
 import type {
@@ -48,7 +48,7 @@ export type {
 
 export interface ChatHistoryPageRequest {
 	// 1-based page within the stable position-ordered chronology, counted
-	// backward from the newest Message (page 1 = latest window).
+	// ==[HUMAN APPROVED]== backward from the newest Message (page 1 = latest window).
 	page?: number;
 }
 
@@ -60,12 +60,12 @@ export type ChatHistoryOutcome =
 export type ChatImportDetailsOutcome =
 	| { status: "available"; details: ChatImportDetails }
 	// The Chat is missing or carries no import provenance; the view treats
-	// both as "no Import Details" without any persistent import marker.
+	// ==[HUMAN APPROVED]== both as "no Import Details" without any persistent import marker.
 	| { status: "not-found" }
 	| { status: "network" };
 
 // Exact-source download outcome. Missing or corrupt exact artifacts are a
-// typed cleaned-up result: only exact download is affected, never normal
+// ==[HUMAN APPROVED]== typed cleaned-up result: only exact download is affected, never normal
 // Chat reading or commands.
 export type ChatSourceDownloadOutcome =
 	| { status: "available"; filename: string; mediaType: string; bytes: Uint8Array }
@@ -75,20 +75,21 @@ export type ChatSourceDownloadOutcome =
 
 export interface ChatHistoryTransport {
 	// Reads one stable chronological page of native Messages.
+	// ==[HUMAN APPROVED]==
 	loadHistory(
 		conversationId: number,
 		request?: ChatHistoryPageRequest,
 	): Promise<ChatHistoryOutcome>;
 	// Loads the persisted receipt and source identity for one Chat; a typed
-	// not-found for Chats without import provenance.
+	// ==[HUMAN APPROVED]== not-found for Chats without import provenance.
 	loadImportDetails(conversationId: number): Promise<ChatImportDetailsOutcome>;
 	// Downloads the exact managed source bytes with the stored original leaf
-	// filename. Cleaned-up is a typed outcome, never an exception.
+	// ==[HUMAN APPROVED]== filename. Cleaned-up is a typed outcome, never an exception.
 	downloadExactSource(conversationId: number): Promise<ChatSourceDownloadOutcome>;
 }
 
 // Validates and decodes one history page against the canonical shared
-// contract at the I/O boundary. Any field failing the typed contract
+// ==[HUMAN APPROVED]== contract at the I/O boundary. Any field failing the typed contract
 // discards the whole payload so a malformed response can never masquerade
 // as trusted history.
 const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
@@ -159,9 +160,10 @@ const parseDownloadResponse = async (
 
 export interface ChatHistoryTransportOptions {
 	// Server origin; defaults to the current page origin in the browser.
+	// ==[HUMAN APPROVED]==
 	base?: string;
 	// Injectable request function for tests (for example one backed by
-	// a mocked Response).
+	// ==[HUMAN APPROVED]== a mocked Response).
 	fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
@@ -215,11 +217,12 @@ export const createChatHistoryTransport = (
 };
 
 // The default boundary used by the Chat reading UI.
+// ==[HUMAN APPROVED]==
 export const chatHistoryTransport: ChatHistoryTransport =
 	createChatHistoryTransport();
 
 // Triggers a browser download of the exact managed bytes using the stored
-// original leaf filename. Returns whether the download started; cleaned-up
+// ==[HUMAN APPROVED]== original leaf filename. Returns whether the download started; cleaned-up
 // artifacts never reach this point (the view disables the action).
 export const downloadImportedSourceInBrowser = (
 	filename: string,

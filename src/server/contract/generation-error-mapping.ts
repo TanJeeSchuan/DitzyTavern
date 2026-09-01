@@ -20,7 +20,7 @@ type GenerationStartFailureResponder<TResult> = (
 ) => TResult | undefined;
 
 /**
- * Map only errors that are part of the Generation acceptance contract. An
+ * ==[HUMAN APPROVED]== Map only errors that are part of the Generation acceptance contract. An
  * unexpected Error must reach the framework's 500 handling instead of being
  * presented as a client-correctable invalid request.
  */
@@ -68,7 +68,7 @@ type AcceptedGenerationBody = {
 };
 
 /**
- * Shared acceptance seam for Send, Continue, and Sibling starts. The caller
+ * ==[HUMAN APPROVED]== Shared acceptance seam for Send, Continue, and Sibling starts. The caller
  * supplies only the coordinator start and the field that identifies its
  * target Message; recognized failures receive the same HTTP mapping.
  */

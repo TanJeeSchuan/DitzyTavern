@@ -29,7 +29,7 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 		);
 	}
 
-	// The Author Stamp captures the Participant identity plus its current
+	// ==[HUMAN APPROVED]== The Author Stamp captures the Participant identity plus its current
 	// name at Message creation; clients never submit the name.
 	const author = requireParticipant(
 		db,

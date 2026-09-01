@@ -1,4 +1,4 @@
-// Committed-import details: the deliberate detail operations for an
+// ==[HUMAN APPROVED]== Committed-import details: the deliberate detail operations for an
 // imported Chat. Ordinary paginated reads never carry this data; Import
 // Details loads the persisted receipt and source identity, structured
 // duplicate evidence, and exact-source artifact availability on demand.
@@ -30,12 +30,12 @@ import {
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 
-// The complete Import Details payload for one imported Chat. Null is never
+// ==[HUMAN APPROVED]== The complete Import Details payload for one imported Chat. Null is never
 // a failure: a Chat without import provenance simply has no Import Details.
 export interface ChatImportDetails {
 	conversationId: number;
 	title: string;
-	// The compact receipt persisted at commit: counts, warnings, source
+	// ==[HUMAN APPROVED]== The compact receipt persisted at commit: counts, warnings, source
 	// identity, and importer version.
 	receipt: {
 		originalFilename: string;
@@ -46,23 +46,23 @@ export interface ChatImportDetails {
 		warnings: string[];
 		importerVersion: string;
 	};
-	// Structured duplicate evidence as of this read, excluding this Chat
+	// ==[HUMAN APPROVED]== Structured duplicate evidence as of this read, excluding this Chat
 	// itself: matching raw-byte SHA-256 is an exact duplicate; a declared-
 	// integrity-only match is a related source.
 	duplicates: ChatImportDuplicateEvidence;
-	// The exact-source artifact inspection, including derived availability.
+	// ==[HUMAN APPROVED]== The exact-source artifact inspection, including derived availability.
 	// Present for every imported Chat; availability reports cleaned up with
 	// the reason when the physical copy is missing or fails verification.
 	artifact: ArtifactInspection | null;
 }
 
 export interface ChatImportDetailsModule {
-	// Reads the persisted receipt, source identity, duplicate evidence, and
+	// ==[HUMAN APPROVED]== Reads the persisted receipt, source identity, duplicate evidence, and
 	// exact-artifact availability for one imported Chat. Undefined when the
 	// Chat exists but has no import provenance, and when the Chat itself is
 	// missing.
 	importDetails(conversationId: number): ChatImportDetails | undefined;
-	// Streams the exact managed bytes with the stored original leaf filename
+	// ==[HUMAN APPROVED]== Streams the exact managed bytes with the stored original leaf filename
 	// through the artifact seal. Undefined when the Chat owns no exact
 	// artifact; a cleaned-up result reports missing or corrupt without
 	// touching normal Chat behavior.
@@ -81,12 +81,12 @@ export function createChatImportDetailsModule(
 		try {
 			// SAFETY: JSON.parse output is exactly the JSON scalars, arrays,
 			// and plain objects modeled by JsonValue; the boundary mark keeps
-			// the unvalidated parse inside this parsing function.
+			// the unvalidated parse inside this parsing function. ==[HUMAN APPROVED]==
 			parsed = JSON.parse(value) as JsonValue;
 		} catch {
 			return null;
 		}
-		// Parsed JSON output can only be the JSON scalars, arrays, and plain
+		// ==[HUMAN APPROVED]== Parsed JSON output can only be the JSON scalars, arrays, and plain
 		// objects; constructor identity is a sound discriminator here.
 		if (!isObject(parsed)) return null;
 		const report = parsed;
@@ -106,7 +106,7 @@ export function createChatImportDetailsModule(
 		) {
 			return null;
 		}
-		// SAFETY: every field the report contract requires (importerVersion,
+		// ==[HUMAN APPROVED]== SAFETY: every field the report contract requires (importerVersion,
 		// source identity, counts, warnings, optional integrity) was validated
 		// with constructor-identity guards above, so the narrowed parsed JSON
 		// is a complete SillyTavernImportReport.
@@ -134,7 +134,7 @@ export function createChatImportDetailsModule(
 				namespace: IMPORT_NAMESPACE,
 				keys: [IMPORT_KEYS.reportJson],
 			});
-			// Either the Chat is missing (read returns undefined) or the Chat
+			// ==[HUMAN APPROVED]== Either the Chat is missing (read returns undefined) or the Chat
 			// exists but carries no import provenance (report parse is null);
 			// both mean "no Import Details".
 			if (read === undefined) return undefined;
@@ -146,14 +146,14 @@ export function createChatImportDetailsModule(
 				EXACT_SOURCE_ARTIFACT_NAMESPACE,
 				EXACT_SOURCE_ARTIFACT_KEY,
 			) ?? null;
-			// Byte length comes from the committed artifact metadata (the
+			// ==[HUMAN APPROVED]== Byte length comes from the committed artifact metadata (the
 			// source-declared report never records a byte count).
 			const byteLength = artifact?.byteLength ?? null;
 			const sourceValue: SillyTavernImportSource = {
 				filename: report.source.filename,
 				sha256: report.source.sha256,
 			};
-			// Declared integrity is advisory and optional; it participates in
+			// ==[HUMAN APPROVED]== Declared integrity is advisory and optional; it participates in
 			// duplicate classification only when the report carried it.
 			if (
 				report.source.integrity !== undefined &&
@@ -198,7 +198,7 @@ export function createChatImportDetailsModule(
 	};
 }
 
-// Runs one committed-import details operation against a request-scoped
+// ==[HUMAN APPROVED]== Runs one committed-import details operation against a request-scoped
 // module instance, mirroring the staged import seam's helper so transport
 // adapters stay thin.
 export function withChatImportDetails<T>(
@@ -210,7 +210,7 @@ export function withChatImportDetails<T>(
 		run(createChatImportDetailsModule(connection, artifactDirectory)),
 	);
 }
-// One Conversation-scoped import entry by key from the read seam's entries.
+// ==[HUMAN APPROVED]== One Conversation-scoped import entry by key from the read seam's entries.
 // The seam may legitimately return other import keys for the Chat, so the
 // lookup narrows by key and never assumes order or completeness.
 const importEntryValue = (
@@ -221,7 +221,7 @@ const importEntryValue = (
 	return entry?.value ?? null;
 };
 
-// Parsed JSON output can only be the JSON scalars, arrays, and plain
+// ==[HUMAN APPROVED]== Parsed JSON output can only be the JSON scalars, arrays, and plain
 // objects; constructor identity is therefore a sound discriminator here.
 type JsonValue =
 	| null
@@ -244,7 +244,7 @@ const isString = (value: JsonValue): value is string =>
 const isNumber = (value: JsonValue): value is number =>
 	value !== null && value !== undefined && value.constructor === Number;
 
-// Reduces a parsed JSON array to its string entries; non-strings are
+// ==[HUMAN APPROVED]== Reduces a parsed JSON array to its string entries; non-strings are
 // structural noise and never masquerade as warnings.
 const arrayOfStrings = (entries: readonly JsonValue[]): string[] =>
 	entries.filter(

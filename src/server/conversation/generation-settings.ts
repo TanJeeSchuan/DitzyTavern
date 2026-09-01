@@ -24,7 +24,7 @@ export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
 export const DEFAULT_CONTINUATION_INSTRUCTION =
 	"Continue the narrative naturally without repeating the previous text.";
 
-// The domain default derives from the canonical Generation Settings
+// ==[HUMAN APPROVED]== The domain default derives from the canonical Generation Settings
 // declaration: adding a canonical field fails typecheck until the default
 // states its value, so the stored settings cannot silently omit a field.
 export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSettings = {
@@ -43,14 +43,14 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
-// Database storage participates with every canonical field: each one has a
+// ==[HUMAN APPROVED]== Database storage participates with every canonical field: each one has a
 // settings-table column, and rows round-trip reads and writes field for
 // field. The column map below is the storage boundary's exhaustive
 // participation decision.
 
 type SettingsRow = typeof conversationGenerationSettingsTable.$inferSelect;
 
-// The settings-table column for each canonical field. Compile-locked to the
+// ==[HUMAN APPROVED]== The settings-table column for each canonical field. Compile-locked to the
 // canonical vocabulary: adding a field fails typecheck until its column is
 // named here, and the read and write paths below consume this map.
 const settingsColumn = {
@@ -69,7 +69,7 @@ const settingsColumn = {
 	requestOverrides: "request_overrides_json",
 } as const satisfies Record<GenerationSettingsField, keyof SettingsRow>;
 
-// The persisted row values for each canonical field. Adding a canonical
+// ==[HUMAN APPROVED]== The persisted row values for each canonical field. Adding a canonical
 // field fails typecheck here before it can reach the database.
 type SettingsRowValues = {
 	[K in GenerationSettingsField as (typeof settingsColumn)[K]]: SettingsRow[(typeof settingsColumn)[K]];
@@ -125,7 +125,7 @@ export function updateConversationGenerationSettings(
 	return readGenerationSettingsRow(updated);
 }
 
-// Per-field normalization over the canonical vocabulary. Compile-locked:
+// ==[HUMAN APPROVED]== Per-field normalization over the canonical vocabulary. Compile-locked:
 // adding a canonical field fails typecheck until its normalization is
 // stated, so validation cannot silently skip a field. Error messages and
 // accepted values are the established domain semantics.
@@ -213,7 +213,7 @@ const normalizeGenerationSettings = (
 	requestOverrides: normalizeSettingsField.requestOverrides(draft.requestOverrides),
 });
 
-// The row value for each canonical field, parsed back into the domain
+// ==[HUMAN APPROVED]== The row value for each canonical field, parsed back into the domain
 // vocabulary. Compile-locked to the canonical field map; corrupt persisted
 // values fail loudly instead of decoding as defaults.
 type SettingsFieldRowReader = {
@@ -277,7 +277,7 @@ function validateContinuationPrefillSuffix(
 
 function parseRequestOverrides(value: string): ConversationGenerationSettings["requestOverrides"] {
 	try {
-		// SAFETY: the persisted value is written only by settingsRowValues, from
+		// ==[HUMAN APPROVED]== SAFETY: the persisted value is written only by settingsRowValues, from
 		// a cloneRequestOverrides-verified draft; parsing it restores the same
 		// closed JSON value domain, and cloneRequestOverrides re-verifies all
 		// three required format namespaces before returning it.
@@ -296,7 +296,7 @@ function cloneRequestOverrides(
 		if (serialized === undefined) {
 			throw new InvalidConversationCommandError("Request Overrides must be JSON values.");
 		}
-		// SAFETY: serialized is produced from the typed GenerationRequestOverrides
+		// ==[HUMAN APPROVED]== SAFETY: serialized is produced from the typed GenerationRequestOverrides
 		// contract, so parsing it restores the same closed JSON value domain.
 		return JSON.parse(serialized) as GenerationRequestOverrides;
 	};

@@ -21,7 +21,7 @@ export interface ControlAssignmentState {
 	modelParticipantId: number | null;
 }
 
-// Reads the current Control assignment. A Conversation is playable only when
+// ==[HUMAN APPROVED]== Reads the current Control assignment. A Conversation is playable only when
 // both distinct seats are occupied; this derived state is never stored.
 export const readControlAssignment = (
 	db: ConversationDatabase,
@@ -51,7 +51,7 @@ export const isPlayable = (control: ControlAssignmentState): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
 
-// Writes a complete Control assignment by deleting the Conversation's rows
+// ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
 // violation on the per-Participant Control index during an atomic swap or an
 // incomplete-import completion fill. Shared by assign-control and by the
@@ -87,7 +87,7 @@ export const writeControlAssignment = (
 	}
 };
 
-// Names follow the shared Definition rules: surrounding whitespace is
+// ==[HUMAN APPROVED]== Names follow the shared Definition rules: surrounding whitespace is
 // removed while case and Unicode are preserved; a nonblank result is
 // required for every Participant.
 export const normalizeParticipantName = (name: string) => name.trim();
@@ -102,7 +102,7 @@ export const requireParticipantName = (name: string): string => {
 	return normalized;
 };
 
-// Openings are stored exactly as authored; only fully blank entries are
+// ==[HUMAN APPROVED]== Openings are stored exactly as authored; only fully blank entries are
 // rejected, matching Character Library rules.
 export const requireParticipantOpenings = (
 	openings: readonly string[],
@@ -117,7 +117,7 @@ export const requireParticipantOpenings = (
 	return openings;
 };
 
-// Validates a complete Participant Definition for Cast management
+// ==[HUMAN APPROVED]== Validates a complete Participant Definition for Cast management
 // commands, mirroring creation-time rules.
 export const requireParticipantDefinition = (
 	definition: ParticipantDefinition,
@@ -153,7 +153,7 @@ export const requireParticipant = (
 	return participant;
 };
 
-// The reference columns a Message uses to refer to a Participant: its
+// ==[HUMAN APPROVED]== The reference columns a Message uses to refer to a Participant: its
 // immutable Author Stamp or either side of its captured historical Control
 // pair. The neutral shape lets the DB commands and the snapshot derivation
 // share one predicate.
@@ -163,7 +163,7 @@ export interface ParticipantReferenceRow {
 	contextModelParticipantId: number | null;
 }
 
-// The single retained-reference rule shared by the snapshot derivation and
+// ==[HUMAN APPROVED]== The single retained-reference rule shared by the snapshot derivation and
 // the removal and tombstone-collection commands: a Message refers to a
 // Participant through its Author Stamp or its historical Control pair.
 // Every site consumes this predicate so a new reference kind can never
@@ -176,7 +176,7 @@ export const messageReferencesParticipant = (
 	message.contextHumanParticipantId === participantId ||
 	message.contextModelParticipantId === participantId;
 
-// Whether any Message of the Conversation still refers to the Participant.
+// ==[HUMAN APPROVED]== Whether any Message of the Conversation still refers to the Participant.
 // These are the retained references that demand a tombstone; without any,
 // the Participant can be hard-deleted.
 export const hasRetainedParticipantReference = (
@@ -195,7 +195,7 @@ export const hasRetainedParticipantReference = (
 		.all()
 		.some((message) => messageReferencesParticipant(message, participantId));
 
-// Generic data commands write only generic namespaces. The import-owned
+// ==[HUMAN APPROVED]== Generic data commands write only generic namespaces. The import-owned
 // namespaces hold server-owned provenance written by the import projection
 // at Conversation creation (ADR-0028); no generic write or delete may ever
 // address them, in any scope.

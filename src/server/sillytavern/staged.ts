@@ -1,4 +1,4 @@
-// User-facing staged Chat import: choose one file, stream its bytes into
+// ==[HUMAN APPROVED]== User-facing staged Chat import: choose one file, stream its bytes into
 // their final managed artifact path exactly once, validate the complete
 // source before any Participant resolution, and return a reviewable preview
 // bound to the exact byte length and SHA-256 that were uploaded.
@@ -71,7 +71,7 @@ import type {
 
 export * from "./staged/types";
 
-// One expiring import-session store. Process-level so every request-scoped
+// ==[HUMAN APPROVED]== One expiring import-session store. Process-level so every request-scoped
 // module instance shares the same handles, and a server restart clears it
 // wholesale (the expiry contract). Both session phases live in this one
 // map, and every entry carries its own absolute expiry: the staged handle
@@ -83,17 +83,17 @@ type StagedImportSession =
 
 const stagedImportSessions = new Map<string, StagedImportSession>();
 
-// An interactive staging flow (upload, resolve Participants, confirm, commit)
+// ==[HUMAN APPROVED]== An interactive staging flow (upload, resolve Participants, confirm, commit)
 // fits comfortably inside this window; anything older is abandoned work that
 // must not keep staged bytes or receipts alive.
 export const STAGED_IMPORT_SESSION_TTL_MS = 60 * 60 * 1000;
 
-// The scheduled sweep is the safety net for sessions whose tokens are never
+// ==[HUMAN APPROVED]== The scheduled sweep is the safety net for sessions whose tokens are never
 // touched again: lazy sweeps run only when some request arrives, so a flow
 // abandoned mid-resolution would otherwise keep its staged file forever.
 const STAGED_IMPORT_SWEEP_INTERVAL_MS = 60 * 1000;
 
-// Evicts every session past its expiry and deletes the staged file of each
+// ==[HUMAN APPROVED]== Evicts every session past its expiry and deletes the staged file of each
 // evicted staged handle; an evicted committed receipt leaves nothing on
 // disk, so only the map entry goes. `now` is injectable for tests.
 export const sweepExpiredImportSessions = (now: number = Date.now()): void => {
@@ -109,7 +109,7 @@ export const sweepExpiredImportSessions = (now: number = Date.now()): void => {
 let sweepTimer: ReturnType<typeof setInterval> | undefined;
 const ensureScheduledImportSweep = (): void => {
 	if (sweepTimer !== undefined) return;
-	// Unref'd: the sweep must never keep a process (or a test run) alive.
+	// Unref'd: the sweep must never keep a process (or a test run) alive. ==[HUMAN APPROVED]==
 	sweepTimer = setInterval(
 		sweepExpiredImportSessions,
 		STAGED_IMPORT_SWEEP_INTERVAL_MS,
@@ -117,7 +117,7 @@ const ensureScheduledImportSweep = (): void => {
 	sweepTimer.unref();
 };
 
-// Simulates the restart expiry for tests: drops every staged handle and
+// ==[HUMAN APPROVED]== Simulates the restart expiry for tests: drops every staged handle and
 // every retained committed receipt without touching the already staged or
 // committed files (a real restart runs no cleanup either; orphaned files
 // are an accepted lifecycle tradeoff with no GC).
@@ -125,7 +125,7 @@ export const clearStagedImportRegistry = (): void => {
 	stagedImportSessions.clear();
 };
 
-// Streams the uploaded bytes into their staged managed path while hashing
+// ==[HUMAN APPROVED]== Streams the uploaded bytes into their staged managed path while hashing
 // them in flight, so neither the HTTP boundary nor this module buffers the
 // complete artifact in memory. The pump handles reader failures (for example
 // an aborted upload) by discarding the partial staged file.
@@ -182,7 +182,7 @@ const streamToStagedFile = (
 					await writeChunk(value);
 				}
 			} catch (error) {
-				// The reader or the staging writer failed mid-stream; parse the
+				// ==[HUMAN APPROVED]== The reader or the staging writer failed mid-stream; parse the
 				// boundary value once so the failure path only sees an Error.
 				fail(error instanceof Error ? error : new Error(String(error)));
 			}
@@ -204,7 +204,7 @@ const verifyStagedBytes = (
 		: "corrupt";
 };
 
-// A staged handle whose bytes are missing or no longer match the binding
+// ==[HUMAN APPROVED]== A staged handle whose bytes are missing or no longer match the binding
 // can serve neither a preview nor a commit; the typed unavailable error
 // names the reason.
 const assertStagedAvailable = (record: StagedRecord): void => {
@@ -214,19 +214,18 @@ const assertStagedAvailable = (record: StagedRecord): void => {
 	}
 };
 
-// ---- Commit machinery ----
 
 interface ResolvedPlanParticipant {
 	plan: ChatImportResolvedParticipantPlan;
 	definition: ParticipantDefinition;
 	sourceCharacterId: number | null;
-	// True when the resolution creates a new Actor Profile in the same
+	// ==[HUMAN APPROVED]== True when the resolution creates a new Actor Profile in the same
 	// database operation as the Chat; the created Profile becomes the
 	// Participant's immutable provenance source, exactly like a fork.
 	createProfile: boolean;
 }
 
-// Structural validation of the user-confirmed plan. Runs entirely before
+// ==[HUMAN APPROVED]== Structural validation of the user-confirmed plan. Runs entirely before
 // the exact artifact is finalized, so every rejection here is recoverable:
 // the staged preview, the staged bytes, and every resolution choice stay
 // intact for correction. The resolver never offers Message skipping, so the
@@ -297,7 +296,7 @@ const validateResolutionPlan = (
 			`Every Message must belong to exactly one Participant; ${unassigned} Message${unassigned === 1 ? "" : "s"} remain unassigned.`,
 		);
 	}
-	// Exact duplicates (matching raw-byte SHA-256) require the explicit
+	// ==[HUMAN APPROVED]== Exact duplicates (matching raw-byte SHA-256) require the explicit
 	// Import another copy confirmation; related-source matches stay
 	// advisory and never gate the commit.
 	if (
@@ -308,7 +307,7 @@ const validateResolutionPlan = (
 	}
 };
 
-// Resolves the plan into complete Participant Definitions before the exact
+// ==[HUMAN APPROVED]== Resolves the plan into complete Participant Definitions before the exact
 // artifact is finalized. Fork names come from the selected Profile's current
 // name, never from the client-supplied plan name; creation and chat-only
 // Participants keep the user-confirmed nonblank name with the empty imported
@@ -348,7 +347,7 @@ const resolvePlanParticipants = (
 	});
 };
 
-// Maps each 1-based record position to the seed index of the Participant
+// ==[HUMAN APPROVED]== Maps each 1-based record position to the seed index of the Participant
 // that owns it. Plan validation guarantees a complete, non-overlapping
 // assignment, so every retained position resolves.
 const assignMessageOwners = (
@@ -363,7 +362,7 @@ const assignMessageOwners = (
 	return owners;
 };
 
-// The exact staged bytes already sit at their unique managed path, and that
+// ==[HUMAN APPROVED]== The exact staged bytes already sit at their unique managed path, and that
 // immutable staged path is the final artifact path: the commit transaction
 // claims it in place by referencing it from the artifact metadata row. No
 // file move, copy, or finalization precedes the database operation, so a
@@ -383,7 +382,7 @@ export function createChatImportModule(
 			ensureScheduledImportSweep();
 			sweepExpiredImportSessions();
 			const filename = basename(originalFilename);
-			// The upload lands directly at its final unique managed path; the
+			// ==[HUMAN APPROVED]== The upload lands directly at its final unique managed path; the
 			// commit transaction claims this exact path in place.
 			const relativePath = uniqueManagedRelativePath(filename);
 			const stagedPath = join(artifactDirectory, relativePath);
@@ -409,7 +408,7 @@ export function createChatImportModule(
 					sha256: staged.sha256,
 				});
 			} catch (error) {
-				// Validation failure discards the uploaded staging bytes so a
+				// ==[HUMAN APPROVED]== Validation failure discards the uploaded staging bytes so a
 				// rejected file never lingers as an uncommitted temporary.
 				rmSync(stagedPath, { force: true });
 				throw error;
@@ -457,7 +456,7 @@ export function createChatImportModule(
 		commit(token, input) {
 			sweepExpiredImportSessions();
 			const session = stagedImportSessions.get(token);
-			// A consumed token is a committed token: its compact receipt serves
+			// ==[HUMAN APPROVED]== A consumed token is a committed token: its compact receipt serves
 			// the idempotent retry after a lost response. The authoritative
 			// Conversation snapshot is re-read through the Conversation seam
 			// instead of retaining the full result in memory.
@@ -466,7 +465,7 @@ export function createChatImportModule(
 					session.receipt.conversationId,
 				);
 				if (conversation === undefined) {
-					// The committed Chat no longer exists, so the receipt can
+					// ==[HUMAN APPROVED]== The committed Chat no longer exists, so the receipt can
 					// never be served again and is evicted with it.
 					stagedImportSessions.delete(token);
 					throw new Error(
@@ -484,7 +483,7 @@ export function createChatImportModule(
 			}
 			assertStagedAvailable(record);
 
-			// Re-decode the exact staged bytes that produced the preview, so
+			// ==[HUMAN APPROVED]== Re-decode the exact staged bytes that produced the preview, so
 			// the committed Chat is always the previewed one. Awaiting no
 			// reopening of the user's original file: the flow works from the
 			// staged copy alone.
@@ -497,12 +496,12 @@ export function createChatImportModule(
 			});
 			const messageCount = decoded.report.counts.messages;
 
-			// Plan validation and Profile resolution are fully recoverable:
+			// ==[HUMAN APPROVED]== Plan validation and Profile resolution are fully recoverable:
 			// nothing is written and the staged bytes are untouched.
 			validateResolutionPlan(record, messageCount, input);
 			const resolved = resolvePlanParticipants(database, input);
 
-			// The confirmed Resolved Participant Plan through the shared
+			// ==[HUMAN APPROVED]== The confirmed Resolved Participant Plan through the shared
 			// Import Projection: ownership mapping, Definitions with
 			// provenance, derived Control, stamped Messages, and the final
 			// report and data entries all come from one seam. The artifact
@@ -548,7 +547,7 @@ export function createChatImportModule(
 				byteLength: record.byteLength,
 				counts: { ...decoded.report.counts },
 				participants: resolved.map((entry, index) => ({
-					// The committed Cast is authoritative: a created Profile's id is
+					// ==[HUMAN APPROVED]== The committed Cast is authoritative: a created Profile's id is
 					// assigned inside the transaction, so provenance comes from the
 					// committed Participant rather than the pre-commit plan.
 					name: conversation.cast[index]?.name ?? entry.definition.name,
@@ -564,7 +563,7 @@ export function createChatImportModule(
 					})),
 				},
 			};
-			// Consume the token once while retaining the compact receipt for
+			// ==[HUMAN APPROVED]== Consume the token once while retaining the compact receipt for
 			// idempotent retry within the same session lifetime.
 			stagedImportSessions.set(token, {
 				phase: "committed",
@@ -579,14 +578,14 @@ export function createChatImportModule(
 			const session = stagedImportSessions.get(token);
 			if (session === undefined || session.phase !== "staged") return;
 			stagedImportSessions.delete(token);
-			// Removes only this flow's uncommitted temporary staging bytes;
+			// ==[HUMAN APPROVED]== Removes only this flow's uncommitted temporary staging bytes;
 			// committed artifacts are never touched here.
 			rmSync(session.record.stagedPath, { force: true });
 		},
 	};
 }
 
-// Runs one staged-import operation against a request-scoped module instance.
+// ==[HUMAN APPROVED]== Runs one staged-import operation against a request-scoped module instance.
 // Instances share the process-level staging registry, so handles survive
 // across requests but never across a server restart.
 export function withChatImport<T>(

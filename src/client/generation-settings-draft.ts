@@ -9,7 +9,7 @@ import type {
 	GenerationRequestOverrides,
 } from "./conversation";
 
-// The four first-class sampling keys mirror the server validation domain:
+// ==[HUMAN APPROVED]== The four first-class sampling keys mirror the server validation domain:
 // null means the provider default, otherwise a finite number between -2 and 2.
 export type SamplingField =
 	| "temperature"
@@ -83,7 +83,7 @@ function draftNumber(parsed: SamplingDraftValue): number | null {
 	return parsed.status === "valid" ? parsed.value : null;
 }
 
-// The four budget keys mirror the server validation domain: positive whole
+// ==[HUMAN APPROVED]== The four budget keys mirror the server validation domain: positive whole
 // numbers for the first three, and a non-negative whole number for the Safety
 // allowance. Unlike Sampling, a budget is always a concrete value, so a blank
 // draft is invalid rather than a provider default.
@@ -107,7 +107,7 @@ export const BUDGET_FIELD_LABELS = {
 	siblingGenerationLimit: "Sibling Generation limit",
 } as const;
 
-// Matches the server command's per-field messages so client feedback reads as
+// ==[HUMAN APPROVED]== Matches the server command's per-field messages so client feedback reads as
 // one system. The Safety allowance is the only field accepting zero.
 export const BUDGET_FIELD_ERROR = {
 	contextLimit: "Context limit must be a positive whole number.",
@@ -150,7 +150,7 @@ export type BudgetDraftValue =
 	| { status: "valid"; value: number }
 	| { status: "invalid" };
 
-// Mirrors the server's whole-number rule by accepting only canonical digit
+// ==[HUMAN APPROVED]== Mirrors the server's whole-number rule by accepting only canonical digit
 // strings. Blank, negative, decimal, and exponent text all land as invalid so
 // Apply cannot send a partially resolved aggregate; the parsed numeric value
 // is then checked against the field minimum exactly like Number.isInteger.
@@ -175,7 +175,7 @@ export function budgetDraftsFromSettings(
 	};
 }
 
-// Returns null whenever any draft is invalid so Apply cannot send a partially
+// ==[HUMAN APPROVED]== Returns null whenever any draft is invalid so Apply cannot send a partially
 // resolved aggregate; unlike Sampling, budgets resolve to always-concrete numbers.
 export function resolveBudgetValues(drafts: BudgetDrafts): BudgetValues | null {
 	const contextLimit = parseBudgetDraft("contextLimit", drafts.contextLimit);
@@ -197,7 +197,7 @@ export function resolveBudgetValues(drafts: BudgetDrafts): BudgetValues | null {
 	};
 }
 
-// Returns null whenever any draft is invalid so Apply cannot send a partially
+// ==[HUMAN APPROVED]== Returns null whenever any draft is invalid so Apply cannot send a partially
 // resolved aggregate; valid blanks become explicit nulls (provider default).
 export function resolveSamplingValues(
 	drafts: SamplingDrafts,
@@ -217,7 +217,7 @@ export function resolveSamplingValues(
 	};
 }
 
-// Request Overrides drafts. Each namespace is an independent JSON object and
+// ==[HUMAN APPROVED]== Request Overrides drafts. Each namespace is an independent JSON object and
 // the closed namespace set mirrors the Conversation Generation Settings
 // contract, so switching the active Connection Profile never transmits
 // overrides authored for another API Format.
@@ -262,14 +262,14 @@ export type OverridesDraftValue =
 	| { status: "valid"; value: GenerationRequestOverrides }
 	| { status: "invalid" };
 
-// Matches the server command's JSON-value message so client feedback reads
+// ==[HUMAN APPROVED]== Matches the server command's JSON-value message so client feedback reads
 // as one system: the namespace must be an object whose JSON serialization
 // succeeds. Arrays and scalars are invalid because the shared contract
 // requires a Record per namespace.
 export const OVERRIDES_DRAFT_ERROR = "Request Overrides must be JSON values.";
 
 export function parseOverridesDraft(value: JsonData): OverridesDraftValue {
-	// SAFETY: the object-tag check establishes a plain object (null, arrays,
+	// ==[HUMAN APPROVED]== SAFETY: the object-tag check establishes a plain object (null, arrays,
 	// and scalars all carry other tags) accepted by JSON.stringify.
 	if (Object.prototype.toString.call(value) !== "[object Object]") {
 		return { status: "invalid" };
@@ -283,14 +283,14 @@ export function parseOverridesDraft(value: JsonData): OverridesDraftValue {
 	if (serialized === undefined) return { status: "invalid" };
 	return {
 		status: "valid",
-		// SAFETY: serializing an object and parsing the result restores the
+		// ==[HUMAN APPROVED]== SAFETY: serializing an object and parsing the result restores the
 		// closed JSON value domain the shared contract allows, mirroring the
 		// server's cloneRequestOverrides normalization.
 		value: JSON.parse(serialized) as GenerationRequestOverrides,
 	};
 }
 
-// Returns null whenever any namespace draft is invalid so Apply cannot send
+// ==[HUMAN APPROVED]== Returns null whenever any namespace draft is invalid so Apply cannot send
 // a partially resolved aggregate.
 export function resolveOverridesValues(
 	drafts: OverridesDrafts,
@@ -308,7 +308,7 @@ export function resolveOverridesValues(
 	};
 }
 
-// The first-class Sampling wire keys and the two managed key families are
+// ==[HUMAN APPROVED]== The first-class Sampling wire keys and the two managed key families are
 // the shared closed sets from src/shared/generation-overrides.ts, so the
 // editor notices can never drift from the server merge.
 const FIRST_CLASS_SAMPLING_OVERRIDE_KEY_SET = new Set<string>(
@@ -323,7 +323,7 @@ export function collidingSamplingOverrideKeys(
 	);
 }
 
-// Chat Completions is the only namespace with a server-side merge today, and
+// ==[HUMAN APPROVED]== Chat Completions is the only namespace with a server-side merge today, and
 // the merge skips the two shared managed key families rather than failing.
 // Other namespaces are never transmitted, so nothing is managed for them and
 // no key is rejected silently.

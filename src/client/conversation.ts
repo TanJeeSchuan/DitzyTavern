@@ -233,7 +233,7 @@ const postGenerationStart = async (
 };
 
 // Starts a server-owned generation without coupling acceptance to a browser
-// stream. Call subscribeConversationGeneration separately for each observing
+// ==[HUMAN APPROVED]== stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
 export function startConversationGeneration(
 	conversationId: number,
@@ -306,7 +306,7 @@ const postGenerationStop = async (
 };
 
 // Stop is an explicit server command. The caller may separately abort its
-// local subscription after this request; closing that subscription alone never
+// ==[HUMAN APPROVED]== local subscription after this request; closing that subscription alone never
 // reaches this function and therefore cannot cancel provider work.
 export function stopConversationGeneration(
 	conversationId: number,

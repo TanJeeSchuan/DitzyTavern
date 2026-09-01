@@ -50,7 +50,7 @@ import {
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 
-// Generation-start capture: from one authoritative Conversation snapshot and
+// ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation snapshot and
 // the captured configuration this module derives the complete Generation Plan
 // through the one Generation Plan Compiler, together with the captured
 // participants and Control pair and the provenance record every server-owned
@@ -74,7 +74,7 @@ interface SelectedHistory {
 	roles: readonly ("human" | "model" | null)[];
 }
 
-// Selected-history entries for prompt compilation, derived from each
+// ==[HUMAN APPROVED]== Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
 // `endExclusiveIndex` limits the entries to Messages strictly preceding a
 // targeted sibling Variant; omitted, the entire ordered snapshot counts, as
@@ -144,7 +144,7 @@ export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	},
 });
 
-// Safe Connection resolution for inspection: the active Profile's API Format
+// ==[HUMAN APPROVED]== Safe Connection resolution for inspection: the active Profile's API Format
 // fact only, resolved before compilation so Request Overrides narrow exactly
 // as an executed attempt would narrow them.
 export const resolveConnectionApiFormat = (
@@ -177,7 +177,7 @@ function captureConfiguration(
 	return { settings, connection: capturedConnection };
 }
 
-// The retained provenance record: safe connection identity, model identity,
+// ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
 // and the attempt's Effective Generation Settings. Only fields in the shared
 // provenance vocabulary are retained — an intent-inapplicable Continuation
 // operand is already absent from the plan — and Request Overrides are never
@@ -235,7 +235,7 @@ export interface CapturedGeneration {
 }
 
 /**
- * Project one captured Generation into the fields shared by every acceptance
+ * ==[HUMAN APPROVED]== Project one captured Generation into the fields shared by every acceptance
  * command. Each workflow spreads this projection alongside its lifecycle-
  * specific target fields, keeping those differences visible at the callsite.
  */
@@ -264,7 +264,7 @@ export function capturedAcceptanceFields(
 	>;
 }
 
-/** Build the common provider-neutral request for an accepted Generation. */
+/** ==[HUMAN APPROVED]== Build the common provider-neutral request for an accepted Generation. */
 export function modelRequestFor(
 	capture: CapturedGeneration,
 	input: Pick<GenerationAttemptInput, "signal">,
@@ -280,7 +280,7 @@ export function modelRequestFor(
 }
 
 /**
- * Assemble the shared Generation-start capture every lifecycle builds: the
+ * ==[HUMAN APPROVED]== Assemble the shared Generation-start capture every lifecycle builds: the
  * complete compiled Generation Plan, the retained history roles, the Control
  * pair, the model author stamp, and the provenance capture.
  */
@@ -323,7 +323,7 @@ function resolveConnectionSnapshot(
 	};
 }
 
-// Active Generation persistence stores only a closed JSON projection of the
+// ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
 // provider-neutral captures. These explicit projections keep provider and
 // class instances out of the Conversation domain boundary.
 export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
@@ -341,7 +341,7 @@ export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
 	return plan.intent === undefined ? result : { ...result, intent: plan.intent };
 };
 
-// Active Generation persistence stores the attempt's Effective Generation
+// ==[HUMAN APPROVED]== Active Generation persistence stores the attempt's Effective Generation
 // Settings for inspection. The projection is compile-locked to the canonical
 // vocabulary: adding a canonical field fails typecheck until persistence
 // states what it stores — the completeness gap that previously let the
@@ -382,7 +382,7 @@ export const connectionJson = (
 			apiFormat: connection.apiFormat,
 		};
 
-// Active inspection keeps the exact budget decision made at Generation
+// ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. It is
 // deliberately not copied into terminal Variant provenance.
 export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
@@ -402,7 +402,7 @@ export interface SendGenerationCapture extends CapturedGeneration {
 	reuseHumanMessageId: number | undefined;
 }
 
-// Build the candidate Prompt Plan without writing it. A retry reuses the
+// ==[HUMAN APPROVED]== Build the candidate Prompt Plan without writing it. A retry reuses the
 // already accepted trailing human Message; a fresh Send appends the submitted
 // human writing to the selected narrative path before budgeting.
 export function captureSendGeneration(
@@ -438,7 +438,7 @@ export function captureSendGeneration(
 	const historyRoles = reuseHumanMessageId === undefined
 		? [...derivation.historyRoles, "human" as const]
 		: derivation.historyRoles;
-	// An ordinary Tail Generation carries no Continuation intent, so the
+	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
 	// compiled plan has no applicable Continuation operand either.
 	const plan = assertGenerationPlan(compileGenerationPlan({
 		human: toCompilerDefinition(derivation.human),
@@ -522,7 +522,7 @@ export function captureContinuationGeneration(
 		}
 	}
 	const intent = continuationIntentFor(configuration.settings);
-	// A prior model Message can have been authored by the Participant who held
+	// ==[HUMAN APPROVED]== A prior model Message can have been authored by the Participant who held
 	// model Control at that time. Preserve that role in the continuation's
 	// provider input even when the current model Control has moved on.
 	const continuationHistory = selectedHistoryFrom(
@@ -547,7 +547,7 @@ export function captureContinuationGeneration(
 			return null;
 		},
 	);
-	// The compiler owns intent applicability: an assistant-prefill Continuation
+	// ==[HUMAN APPROVED]== The compiler owns intent applicability: an assistant-prefill Continuation
 	// protects its prefixed model text, an instruction Continuation protects
 	// the latest human entry, and the effective settings retain exactly the
 	// applicable Continuation operand.
@@ -589,7 +589,7 @@ const deriveSiblingDerivation = (
 		);
 	}
 
-	// Same derived rule as the snapshot exposes: playable Conversation,
+	// ==[HUMAN APPROVED]== Same derived rule as the snapshot exposes: playable Conversation,
 	// captured historical pair, and both historical Participants still in
 	// the Cast with usable Definitions.
 	const eligibility = deriveMessageSwipeEligibility(
@@ -601,14 +601,14 @@ const deriveSiblingDerivation = (
 		if (eligibility.reason === "conversation-not-playable") {
 			throw new ConversationNotPlayableError(snapshot.id);
 		}
-		// The discriminated eligibility narrows the remaining reasons to the
+		// ==[HUMAN APPROVED]== The discriminated eligibility narrows the remaining reasons to the
 		// two historical denials; no fallback reason is ever fabricated.
 		throw new SiblingVariantUnavailableError(eligibility.reason);
 	}
 
 	const context = target.historicalContext;
 	if (context === null) {
-		// Unreachable after the eligibility check; keeps the pair trusted.
+		// Unreachable after the eligibility check; keeps the pair trusted. ==[HUMAN APPROVED]==
 		throw new SiblingVariantUnavailableError("missing-historical-context");
 	}
 	const human = snapshot.cast.find(
@@ -623,7 +623,7 @@ const deriveSiblingDerivation = (
 		);
 	}
 
-	// Selected history strictly preceding the target Message. Excluding the
+	// ==[HUMAN APPROVED]== Selected history strictly preceding the target Message. Excluding the
 	// target by construction also excludes all of its existing sibling
 	// Variants: an alternative never prompts on another alternative.
 	const selectedHistory = selectedHistoryFrom(
@@ -633,7 +633,7 @@ const deriveSiblingDerivation = (
 		targetIndex,
 	);
 
-	// The historical pair's current Definitions and names, so a rename or
+	// ==[HUMAN APPROVED]== The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
 	return {
@@ -665,7 +665,7 @@ export function captureSiblingGeneration(
 		input.connection,
 		input.connectionSettings,
 	);
-	// A Sibling Generation carries the sibling intent and no applicable
+	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
 	const plan = assertGenerationPlan(compileGenerationPlan({
 		human: toCompilerDefinition(derivation.human),

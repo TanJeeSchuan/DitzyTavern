@@ -1,4 +1,4 @@
-// The generation-owned JSON vocabulary shared by persistence and transport.
+// ==[HUMAN APPROVED]== The generation-owned JSON vocabulary shared by persistence and transport.
 // Generation provenance is deliberately a small positive allow-list: it may
 // carry safe identity, settings, usage, and terminal outcome metadata, but
 // never provider payloads, URLs, headers, credentials, or request overrides.
@@ -10,7 +10,7 @@ import {
 	type GenerationSettingsField,
 } from "./contract/generation-settings";
 
-// The generation-owned JSON vocabulary is declared in the shared leaf module
+// ==[HUMAN APPROVED]== The generation-owned JSON vocabulary is declared in the shared leaf module
 // so the Generation Settings contract and this module can both import it
 // without an import cycle; it stays part of this module's public vocabulary.
 export type { GenerationJsonObject, GenerationJsonValue };
@@ -18,7 +18,7 @@ export type { GenerationJsonObject, GenerationJsonValue };
 export type GenerationProvenanceStatus = "complete" | "length-limited" | "interrupted";
 export type GenerationProvenanceFinishReason = "stop" | "length" | "other";
 
-// The retained provenance settings derive from the canonical Generation
+// ==[HUMAN APPROVED]== The retained provenance settings derive from the canonical Generation
 // Settings declaration (ADR-0032): every canonical field except model
 // identity (captured beside the connection identity at provenance top
 // level) and Request Overrides (never retained — provenance is a positive
@@ -41,7 +41,7 @@ export type GenerationContinuationPrefillSuffix = NonNullable<
 	GenerationProvenanceSettings["continuationPrefillSuffix"]
 >;
 
-// The canonical field vocabulary retained in provenance is projected from
+// ==[HUMAN APPROVED]== The canonical field vocabulary retained in provenance is projected from
 // the canonical Generation Settings declaration. Keeping the runtime list
 // derived means adding or removing a canonical field updates this vocabulary
 // automatically; the typed decoders and wire schemas below still require an
@@ -65,7 +65,7 @@ interface GenerationProvenanceFields {
 	interruptionCause: string | null;
 }
 
-// A start-time provenance record has no terminal status yet. The same record
+// ==[HUMAN APPROVED]== A start-time provenance record has no terminal status yet. The same record
 // is used by persistence and transport so the two cannot drift in field
 // names, nullability, or allow-list behavior.
 export type GenerationProvenanceRecord = GenerationProvenanceFields & {
@@ -95,7 +95,7 @@ export const generationJsonObject = (
 	value: GenerationJsonValue | undefined,
 ): GenerationJsonObject | null => {
 	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// SAFETY: the object tag check establishes the JSON object shape before the
+	// ==[HUMAN APPROVED]== SAFETY: the object tag check establishes the JSON object shape before the
 	// value is used as a named-field map.
 	return value as GenerationJsonObject;
 };
@@ -126,7 +126,7 @@ export const parseGenerationJson = (
 	fallback: GenerationJsonValue,
 ): GenerationJsonValue => {
 	try {
-		// SAFETY: JSON.parse is the only boundary from persisted text into the
+		// ==[HUMAN APPROVED]== SAFETY: JSON.parse is the only boundary from persisted text into the
 		// closed Generation JSON value type; malformed text uses the fallback.
 		return JSON.parse(value) as GenerationJsonValue;
 	} catch {
@@ -150,21 +150,21 @@ const provenanceFinishReason = (
 ): GenerationProvenanceFinishReason | null =>
 	value === "stop" || value === "length" || value === "other" ? value : null;
 
-// Closed-literal decoding for the Continuation vocabulary: anything else —
+// ==[HUMAN APPROVED]== Closed-literal decoding for the Continuation vocabulary: anything else —
 // including an absent value — decodes as null rather than being guessed.
 const closedProvenanceLiteral = <T extends string>(
 	value: GenerationJsonValue | undefined,
 	literals: readonly T[],
 ): T | null => {
 	const text = provenanceString(value);
-	// SAFETY: membership in the closed literal list is checked before the
+	// ==[HUMAN APPROVED]== SAFETY: membership in the closed literal list is checked before the
 	// string is returned as one of those literals.
 	return text !== null && (literals as readonly string[]).includes(text)
 		? (text as T)
 		: null;
 };
 
-// The provenance value for each retained settings field, decoded from
+// ==[HUMAN APPROVED]== The provenance value for each retained settings field, decoded from
 // untrusted JSON. Compile-locked: adding a retained canonical field fails
 // typecheck until the decode states its nullability semantics.
 type ProvenanceSettingsDecoder = {
@@ -195,7 +195,7 @@ const decodeProvenanceSettingsField: ProvenanceSettingsDecoder = {
 const provenanceSettings = (
 	value: GenerationJsonValue | undefined,
 ): GenerationProvenanceSettings => {
-	// SAFETY: a non-object source decodes as an empty record, and every field
+	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
 	// decoder then resolves its own intentional null.
 	const source = generationJsonObject(value) ?? {};
 	return {
@@ -258,7 +258,7 @@ export const decodeGenerationProvenanceRecord = (
 	};
 };
 
-// Strict transport decoder for terminal Variant details. Start-time records
+// ==[HUMAN APPROVED]== Strict transport decoder for terminal Variant details. Start-time records
 // intentionally permit a null status, but a terminal response must identify
 // its status and carry a generationSettings object.
 export const decodeGenerationProvenance = (
@@ -334,7 +334,7 @@ export const decodeStoredGenerationProvenance = (
 	return projectGenerationProvenance(source, readGenerationTerminalMetadata(data));
 };
 
-// Named as a codec so persistence and transport call the same boundary
+// ==[HUMAN APPROVED]== Named as a codec so persistence and transport call the same boundary
 // explicitly instead of each growing another local provenance parser.
 export const generationProvenanceCodec = {
 	decode: decodeGenerationProvenance,

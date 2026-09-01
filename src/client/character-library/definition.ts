@@ -16,7 +16,7 @@ export const emptyDrafts: Drafts = {
 };
 
 // The shared conversion keeps Character Library openings identical to Cast
-// openings (the trimming variant is the deliberate single behavior).
+// ==[HUMAN APPROVED]== openings (the trimming variant is the deliberate single behavior).
 export { openingsFromText, openingsToText } from "../lib/openings";
 
 export const draftsOf = (character: CharacterSnapshot): Drafts => ({

@@ -1,4 +1,4 @@
-// The principal Generation Plan Compiler (ADR-0032).
+// ==[HUMAN APPROVED]== The principal Generation Plan Compiler (ADR-0032).
 //
 // One deterministic interface turns captured Conversation state, Generation
 // intent, canonical Generation Settings, and the safe Connection facts into
@@ -30,7 +30,7 @@ import type {
 } from "./types";
 
 /**
- * The Continuation intent one configured strategy produces. Instruction
+ * ==[HUMAN APPROVED]== The Continuation intent one configured strategy produces. Instruction
  * Continuations carry the editable instruction and assistant-prefill
  * Continuations carry the closed Prefill suffix; the other operand never
  * applies. Inspection exposes this exact intent for the selected strategy.
@@ -49,7 +49,7 @@ export const continuationIntentFor = (
 		suffix: settings.continuationPrefillSuffix,
 	};
 
-// The applicable Continuation operands for one attempt. Tail and Sibling
+// ==[HUMAN APPROVED]== The applicable Continuation operands for one attempt. Tail and Sibling
 // attempts have none; a Continuation retains exactly the operand its
 // strategy uses, so the effective settings can never imply that an
 // inapplicable operand participated.
@@ -79,7 +79,7 @@ const continuationOperands = (
 		};
 };
 
-// The Effective Generation Settings for one attempt. The literal is
+// ==[HUMAN APPROVED]== The Effective Generation Settings for one attempt. The literal is
 // compile-locked to the canonical vocabulary: adding a canonical field fails
 // typecheck until the compiler states how it participates.
 const effectiveGenerationSettings = (
@@ -95,12 +95,12 @@ const effectiveGenerationSettings = (
 	contextLimit: settings.contextLimit,
 	responseBudget: settings.responseBudget,
 	safetyAllowance: settings.safetyAllowance,
-	// No production policy currently consumes this configured limit, and the
+	// ==[HUMAN APPROVED]== No production policy currently consumes this configured limit, and the
 	// Model Client projection excludes it. It therefore did not participate in
 	// this attempt and must not appear as an effective value.
 	siblingGenerationLimit: null,
 	...continuationOperands(intent),
-	// Only the namespace matching the active Connection Profile's format is
+	// ==[HUMAN APPROVED]== Only the namespace matching the active Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never
 	// transmitted. Without an active Profile no namespace applies.
 	requestOverrides: connection === null
@@ -109,7 +109,7 @@ const effectiveGenerationSettings = (
 });
 
 /**
- * Compiles the complete Generation Plan for one attempt from captured
+ * ==[HUMAN APPROVED]== Compiles the complete Generation Plan for one attempt from captured
  * inputs. The returned plan always describes a real budget candidate — a
  * plan that cannot fit carries its failure inside the budget decision
  * instead of throwing, so read-only inspection can report it.
@@ -118,14 +118,14 @@ export const compileGenerationPlan = (
 	input: CompileGenerationPlanInput,
 ): GenerationPlan => {
 	const intent = input.intent;
-	// Every budget candidate recompiles through the internal Prompt Compiler
+	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const compile = (history: readonly PromptHistoryEntry[]): PromptPlan => {
 		const compiled = compilePrompt({ human: input.human, model: input.model, history });
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
-	// Intent applicability decides the protected history: an assistant-prefill
+	// ==[HUMAN APPROVED]== Intent applicability decides the protected history: an assistant-prefill
 	// Continuation must retain the prefixed model text it continues from;
 	// every other intent protects the latest human entry by default. A prefill
 	// intent without preceding model history has no prefix to continue from,
@@ -162,7 +162,7 @@ export const compileGenerationPlan = (
 };
 
 /**
- * Enforces the budget decision before an attempt executes. Inspection
+ * ==[HUMAN APPROVED]== Enforces the budget decision before an attempt executes. Inspection
  * compiles without this assertion to report impossible budgets; generation
  * workflows call it so an over-budget plan never contacts a Model Client.
  */

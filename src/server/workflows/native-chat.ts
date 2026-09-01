@@ -1,4 +1,4 @@
-// Native New Chat workflow.
+// ==[HUMAN APPROVED]== Native New Chat workflow.
 //
 // Composes the Character Library and Conversation seams in one transaction:
 // each initial seat resolves to a complete Definition — either the

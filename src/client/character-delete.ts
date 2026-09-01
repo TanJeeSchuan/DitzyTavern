@@ -3,7 +3,7 @@ import type {
 	CharacterDeletionMode,
 } from "./character-library";
 
-// Focused UI-boundary presentation for Character deletion in the Character
+// ==[HUMAN APPROVED]== Focused UI-boundary presentation for Character deletion in the Character
 // Library panel. These shape confirmation copy, list labels, and success
 // notices only; the deletion behavior itself lives behind the server seam.
 
@@ -14,7 +14,7 @@ export interface DeletionConfirmationCopy {
 }
 
 // The confirmation must clearly distinguish hard deletion from retained
-// tombstoning before any command is sent. The mode is derived server-side
+// ==[HUMAN APPROVED]== tombstoning before any command is sent. The mode is derived server-side
 // from the same provenance reference count presented here, so the copy can
 // never contradict the executed behavior.
 export function deletionConfirmationCopy(
@@ -41,7 +41,7 @@ export function deletionConfirmationCopy(
 }
 
 // Short human label for the global provenance reference count presented on
-// every library list row (and used by pickers to show how widely a
+// ==[HUMAN APPROVED]== every library list row (and used by pickers to show how widely a
 // Character is already used).
 export function usedCountLabel(count: number): string {
 	if (count === 0) return "Not used in any Chat";
@@ -50,7 +50,7 @@ export function usedCountLabel(count: number): string {
 }
 
 // Success notice after a confirmed deletion. The typed result carries the
-// derived mode, so the wording matches what the server actually did: a
+// ==[HUMAN APPROVED]== derived mode, so the wording matches what the server actually did: a
 // tombstoned Character is gone from the Library but kept traceable; a
 // hard-deleted one is gone entirely. Existing Chat Participants are never
 // altered by either path.

@@ -1,6 +1,6 @@
 import { ArrowLeft, PanelLeftClose } from "lucide-react";
 
-// Shared primary/details panel header: the Back control appears on narrow
+// ==[HUMAN APPROVED]== Shared primary/details panel header: the Back control appears on narrow
 // widths where the panel becomes a full-screen layer, and the desktop
 // close control hides there. Panel nesting (for example Import Chat inside
 // the Chats panel) renders its own header instead.

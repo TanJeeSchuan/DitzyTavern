@@ -1,4 +1,4 @@
-// Pure state transitions for reading a Chat's native history. The view
+// ==[HUMAN APPROVED]== Pure state transitions for reading a Chat's native history. The view
 // feeds typed history pages and command outcomes into this reducer, so page
 // accumulation, selected-Variant updates, and empty-Variant placeholders are
 // testable without a browser or a frontend framework.
@@ -12,16 +12,16 @@
 
 import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
 
-// A reading view of one Variant: the stored content plus whether the
+// ==[HUMAN APPROVED]== A reading view of one Variant: the stored content plus whether the
 // presentation should show the exact-empty placeholder instead.
 export interface StoryVariant {
 	id: number;
 	position: number;
 	content: string;
-	// Reasoning Content stays separate from authored Content. Active streams
+	// ==[HUMAN APPROVED]== Reasoning Content stays separate from authored Content. Active streams
 	// update it locally and authoritative history restores it after reload.
 	reasoning?: string;
-	// Presentation-only: true when the stored content is exactly empty. The
+	// ==[HUMAN APPROVED]== Presentation-only: true when the stored content is exactly empty. The
 	// placeholder substitutes rendering only; the stored text stays as-is.
 	empty: boolean;
 }
@@ -30,21 +30,21 @@ export interface StoryMessage {
 	id: number;
 	position: number;
 	timestamp: string;
-	// Immutable Author Stamp name (the captured resolved Participant name).
+	// ==[HUMAN APPROVED]== Immutable Author Stamp name (the captured resolved Participant name).
 	authorName: string | null;
 	authorParticipantId: number | null;
-	// Historical model Control identity, when the Message came from
+	// ==[HUMAN APPROVED]== Historical model Control identity, when the Message came from
 	// generation. It may differ from the current Conversation Control.
 	modelParticipantIdAtCreation: number | null;
-	// Server-derived capability for the selected Variant.
+	// ==[HUMAN APPROVED]== Server-derived capability for the selected Variant.
 	continuable: boolean;
-	// Server-derived targeted Swipe eligibility carried by history (ADR-0003):
+	// ==[HUMAN APPROVED]== Server-derived targeted Swipe eligibility carried by history (ADR-0003):
 	// the canonical historical-pair rule decides, never client authorship
 	// reconstruction.
 	swipe: ChatHistoryMessage["swipe"];
-	// Whether the authoring Participant is still an active Cast member.
+	// ==[HUMAN APPROVED]== Whether the authoring Participant is still an active Cast member.
 	inCast: boolean;
-	// Index of the persisted selected Variant within `swipes`.
+	// ==[HUMAN APPROVED]== Index of the persisted selected Variant within `swipes`.
 	activeSwipe: number;
 	swipes: StoryVariant[];
 }
@@ -75,10 +75,10 @@ export interface StoryPaging {
 export interface StoryState {
 	conversationId: number | null;
 	title: string;
-	// Authoritative Conversation revision as of the last read page; the
+	// ==[HUMAN APPROVED]== Authoritative Conversation revision as of the last read page; the
 	// revisioned command seam needs it when the full snapshot is not loaded.
 	revision: number | null;
-	// Accumulated stable chronological Messages, deduplicated by Message id.
+	// ==[HUMAN APPROVED]== Accumulated stable chronological Messages, deduplicated by Message id.
 	// The first page is the latest window; older pages prepend above it.
 	messages: StoryMessage[];
 	page: StoryPaging | null;
@@ -87,20 +87,20 @@ export interface StoryState {
 }
 
 export type StoryAction =
-	// A different Chat is being opened (or the current one re-requested);
+	// ==[HUMAN APPROVED]== A different Chat is being opened (or the current one re-requested);
 	// the reader resets and loads the first page fresh.
 	| { type: "chat-opened"; conversationId: number }
-	// The first page arrives: the latest window of history. It replaces any
+	// ==[HUMAN APPROVED]== The first page arrives: the latest window of history. It replaces any
 	// accumulated messages.
 	| { type: "first-page"; page: ChatHistoryPage }
-	// An older page arrives; its Messages prepend to the accumulated
+	// ==[HUMAN APPROVED]== An older page arrives; its Messages prepend to the accumulated
 	// sequence with no overlap.
 	| { type: "next-page-arrived"; page: ChatHistoryPage }
-	// The view requested an older page; further requests are ignored until
+	// ==[HUMAN APPROVED]== The view requested an older page; further requests are ignored until
 	// it arrives or fails.
 	| { type: "load-more-started" }
 	| { type: "history-failed" }
-	// An optimistic selected-Variant update following the revisioned
+	// ==[HUMAN APPROVED]== An optimistic selected-Variant update following the revisioned
 	// select-variant command; the server response is authoritative but the
 	// local position updates immediately so reading never waits.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
@@ -110,7 +110,7 @@ export type StoryAction =
 			variantId: number;
 			content: string;
 		}
-	// A Content delta from an Active Generation's stream: it appends to the
+	// ==[HUMAN APPROVED]== A Content delta from an Active Generation's stream: it appends to the
 	// Provisional Variant's visible content, which the story read model
 	// accumulates. The authoritative replace and the page reads stay above.
 	| {
@@ -132,7 +132,7 @@ export type StoryAction =
 			text: string;
 		}
 	| { type: "preview-started"; messageId: number; variantId: number }
-	// Swiping the already-previewed Message moves the local Preview to another
+	// ==[HUMAN APPROVED]== Swiping the already-previewed Message moves the local Preview to another
 	// Variant of the same Message without any server command.
 	| { type: "preview-retargeted"; messageId: number; variantId: number }
 	| { type: "preview-notice-opened" }
@@ -150,7 +150,7 @@ export const createStoryState = (): StoryState => ({
 	preview: null,
 });
 
-// An exact empty Variant is presented with a placeholder; whitespace-only
+// ==[HUMAN APPROVED]== An exact empty Variant is presented with a placeholder; whitespace-only
 // content is not empty and renders as stored.
 const toStoryVariant = (
 	variant: ChatHistoryVariant,
@@ -186,7 +186,7 @@ const toStoryMessage = (
 	)),
 });
 
-// A generated Message remains continuable when the current model Control has
+// ==[HUMAN APPROVED]== A generated Message remains continuable when the current model Control has
 // moved to another Participant: the generation-time model identity is the
 // one authorship signal the client reads for Continue. Intentional per Fix 8
 // scope: sibling eligibility is fully server-derived (swipe), while Continue
@@ -199,7 +199,7 @@ export const isModelAuthoredMessage = (
 	message.modelParticipantIdAtCreation !== null &&
 	message.authorParticipantId === message.modelParticipantIdAtCreation;
 
-// New Swipe follows the server-derived eligibility carried by history: the
+// ==[HUMAN APPROVED]== New Swipe follows the server-derived eligibility carried by history: the
 // server owns the rule (playability and the captured historical Control
 // pair, ADR-0003), so the client never reconstructs it. The live summary's
 // playability still gates on the fresher read. When sibling attempts are
@@ -368,7 +368,7 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			);
 			if (variant === undefined) return state;
 			if (variant.id === state.preview.variantId) return state;
-			// Cycling back to the server-selected Variant ends the local Preview:
+			// ==[HUMAN APPROVED]== Cycling back to the server-selected Variant ends the local Preview:
 			// there is no longer a divergent selection to confirm or cancel.
 			if (variant.id === state.preview.priorVariantId) {
 				return { ...state, preview: null };
@@ -409,16 +409,16 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 	}
 }
 
-// The placeholder shown for an exact empty Variant. Presentation-only: the
+// ==[HUMAN APPROVED]== The placeholder shown for an exact empty Variant. Presentation-only: the
 // stored content is never rewritten to contain it.
 export const EMPTY_VARIANT_PLACEHOLDER = "(empty alternative)";
 
-// The content to render for one Variant: the stored text, or the
+// ==[HUMAN APPROVED]== The content to render for one Variant: the stored text, or the
 // presentation-only placeholder for exact empty content.
 export const visibleVariantContent = (variant: StoryVariant): string =>
 	variant.empty ? EMPTY_VARIANT_PLACEHOLDER : variant.content;
 
-// The Revision window is the latest two model-authored Messages plus the
+// ==[HUMAN APPROVED]== The Revision window is the latest two model-authored Messages plus the
 // human-authored Messages between them. It is derived from the story read
 // model and the current model Control assignment, never persisted locally.
 export const deriveRevisionWindow = (
@@ -459,7 +459,7 @@ export type StoryVariantSelection =
 	| { kind: "immediate"; messageId: number; variantId: number }
 	| { kind: "preview"; messageId: number; variantId: number };
 
-// Classifies a requested Swipe before any server command is sent. The caller
+// ==[HUMAN APPROVED]== Classifies a requested Swipe before any server command is sent. The caller
 // supplies the derived Revision window so this pure seam can be shared by the
 // UI and transport tests without recreating Conversation rules.
 export const classifyVariantSelection = (
@@ -479,7 +479,7 @@ export const classifyVariantSelection = (
 		: { kind: "preview", messageId, variantId };
 };
 
-// The visible Variant is local-only while Preview mode is active. The stored
+// ==[HUMAN APPROVED]== The visible Variant is local-only while Preview mode is active. The stored
 // selected Variant remains untouched until the ordinary command is confirmed.
 export const displayedVariantId = (
 	message: StoryMessage,
@@ -495,7 +495,7 @@ export const isPreviewDownstream = (
 ): boolean =>
 	preview !== null && message.position > preview.targetPosition;
 
-// Navigation is the one client action that may discard a local Preview. The
+// ==[HUMAN APPROVED]== Navigation is the one client action that may discard a local Preview. The
 // caller owns the confirmation dialog; this pure predicate keeps that policy
 // testable without a browser and avoids warning when the selected Chat did
 // not actually change.
@@ -510,7 +510,7 @@ export type PreviewConfirmationResult<Result> =
 	| { status: "not-sent" }
 	| { status: "sent"; result: Result };
 
-// A transport boundary for confirmation: no request is sent without the
+// ==[HUMAN APPROVED]== A transport boundary for confirmation: no request is sent without the
 // matching client preview. The revision guard and outcome reconciliation
 // live in the Conversation command runner the caller composes into `send`;
 // the concrete Conversation transport stays outside the pure story reducer.

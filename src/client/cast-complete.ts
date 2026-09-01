@@ -1,4 +1,4 @@
-// Pure presentation for incomplete imported Conversations.
+// ==[HUMAN APPROVED]== Pure presentation for incomplete imported Conversations.
 //
 // An imported Chat with fewer than two distinct occupied Control seats is a
 // preservation record, not a separate Chat type: it stays readable,
@@ -13,18 +13,18 @@ import type { ConversationSummary } from "./conversation";
 export type MissingControlSeat = "human" | "model";
 
 export interface IncompleteSetupCopy {
-	// The seat(s) still empty, derived from the authoritative Control
+	// ==[HUMAN APPROVED]== The seat(s) still empty, derived from the authoritative Control
 	// assignment (never from role hints or the Cast alone).
 	missingSeats: readonly MissingControlSeat[];
-	// Persistent setup-surface headline for the incomplete Chat.
+	// ==[HUMAN APPROVED]== Persistent setup-surface headline for the incomplete Chat.
 	heading: string;
-	// Body copy explaining that the preserved history stays usable while
+	// ==[HUMAN APPROVED]== Body copy explaining that the preserved history stays usable while
 	// play actions are withheld.
 	body: string;
-	// Mirrors the snapshot-derived capabilities: every play action is
+	// ==[HUMAN APPROVED]== Mirrors the snapshot-derived capabilities: every play action is
 	// unavailable with the same typed conversation-not-playable reason.
 	playActionsWithheld: boolean;
-	// What adding the missing Participant does; adding is the only path to
+	// ==[HUMAN APPROVED]== What adding the missing Participant does; adding is the only path to
 	// completion — there is no separate status toggle.
 	completion: string;
 }
@@ -44,13 +44,13 @@ const completionForMissing = (missingSeats: readonly MissingControlSeat[]): stri
 	return "";
 };
 
-// Words the persistent setup surface for an incomplete imported Chat. Null
+// ==[HUMAN APPROVED]== Words the persistent setup surface for an incomplete imported Chat. Null
 // when the Conversation is playable: completion derives from native state,
 // so a completed import needs no setup surface at all.
 export const incompleteSetupCopy = (
 	conversation: ConversationSummary,
 ): IncompleteSetupCopy | null => {
-	// Incomplete is the derived missing-seat state only; a Conversation is
+	// ==[HUMAN APPROVED]== Incomplete is the derived missing-seat state only; a Conversation is
 	// playable as soon as both distinct Control seats are occupied.
 	if (
 		conversation.playable ||

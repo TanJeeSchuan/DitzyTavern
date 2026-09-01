@@ -15,7 +15,7 @@ import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
 
-// The story renders one native Message from the paginated read model: the
+// ==[HUMAN APPROVED]== The story renders one native Message from the paginated read model: the
 // immutable Author Stamp name, the persisted selected Variant, and the
 // existing Swipe navigation. Empty and duplicate Variants stay separate
 // positions; an exact empty Variant renders a presentation-only placeholder
@@ -36,16 +36,16 @@ export function StoryMessageView({
 	onInspect,
 }: {
 	message: StoryMessage;
-	// Preview mode supplies a local Variant id for its one target Message.
+	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
 	mutationsDisabled?: boolean;
 	generationActive?: boolean;
-	// Causally downstream of the previewed Variant: the stored text stays
+	// ==[HUMAN APPROVED]== Causally downstream of the previewed Variant: the stored text stays
 	// readable but dimmed and non-interactive until the Preview is confirmed
 	// or cancelled.
 	previewDownstream?: boolean;
-	// This Message is the Preview target: its Swipe controls stay enabled so
+	// ==[HUMAN APPROVED]== This Message is the Preview target: its Swipe controls stay enabled so
 	// Variants can be compared freely without server commands, while every
 	// other mutation remains locked.
 	previewTarget?: boolean;

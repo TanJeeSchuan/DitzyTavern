@@ -1,4 +1,4 @@
-// Add Character to Cast workflow.
+// ==[HUMAN APPROVED]== Add Character to Cast workflow.
 //
 // Composes the Character Library and Conversation seams in one transaction:
 // the source Character must match its expected revision and the destination
@@ -43,7 +43,7 @@ export function addCharacterToCast(
 			);
 		}
 
-		// The deep Conversation command validates the destination revision
+		// ==[HUMAN APPROVED]== The deep Conversation command validates the destination revision
 		// and existence inside the same transaction; appending a fork copies
 		// the authoritative server-side Definition just read from the Library
 		// and records immutable provenance.

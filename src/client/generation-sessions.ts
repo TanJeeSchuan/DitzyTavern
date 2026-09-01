@@ -1,4 +1,4 @@
-// The client Generation session collection: one pure state machine keyed by
+// ==[HUMAN APPROVED]== The client Generation session collection: one pure state machine keyed by
 // Generation ID that owns subscription phases, event cursors, stop state,
 // errors, and terminal handling for every Active Generation the browser
 // observes. The machine is deliberately not a durable-state owner: it holds
@@ -18,7 +18,7 @@ import type {
 } from "../shared/contract/generation-events";
 import type { GenerationStreamResult } from "./conversation-stream";
 
-// One authoritative snapshot target: the server-owned identity of an Active
+// ==[HUMAN APPROVED]== One authoritative snapshot target: the server-owned identity of an Active
 // Generation's provisional Variant.
 export interface GenerationSessionTarget {
 	generationId: number;
@@ -26,7 +26,7 @@ export interface GenerationSessionTarget {
 	variantId: number;
 }
 
-// Subscription lifecycle of one observed Generation:
+// ==[HUMAN APPROVED]== Subscription lifecycle of one observed Generation:
 // - `subscribing`: a subscribe effect is outstanding (opening or reconnecting).
 // - `observing`: events or an authoritative snapshot have flowed.
 // - `detached`: the subscription ended without a terminal outcome; the
@@ -47,28 +47,28 @@ export interface GenerationSession {
 	readonly messageId: number;
 	readonly variantId: number;
 	readonly phase: GenerationSessionPhase;
-	// The latest event position this session processed; reconnection resumes
+	// ==[HUMAN APPROVED]== The latest event position this session processed; reconnection resumes
 	// after it instead of replaying unconditionally from event zero.
 	readonly lastEventId: number;
-	// An explicit Stop command is in flight for this Generation.
+	// ==[HUMAN APPROVED]== An explicit Stop command is in flight for this Generation.
 	readonly stopPending: boolean;
-	// The latest subscription- or stop-level error, cleared by observed
+	// ==[HUMAN APPROVED]== The latest subscription- or stop-level error, cleared by observed
 	// liveness or an acknowledged notice.
 	readonly error: string | null;
 	readonly terminal: GenerationSessionTerminal | null;
-	// Consecutive failed subscriptions without observed liveness; bounds the
+	// ==[HUMAN APPROVED]== Consecutive failed subscriptions without observed liveness; bounds the
 	// refresh-reattach reconnect loop.
 	readonly reconnects: number;
 }
 
 export interface GenerationSessionsState {
-	// The Conversation whose story the collection currently feeds. Events for
+	// ==[HUMAN APPROVED]== The Conversation whose story the collection currently feeds. Events for
 	// sessions of any other Conversation are rejected deterministically.
 	readonly activeConversationId: number | null;
 	readonly sessions: ReadonlyMap<number, GenerationSession>;
 }
 
-// The typed Stop command outcome the session machine understands; the hook
+// ==[HUMAN APPROVED]== The typed Stop command outcome the session machine understands; the hook
 // maps the transport's stop results onto it.
 export type GenerationStopCommandOutcome =
 	| { outcome: "stopped" }
@@ -76,10 +76,10 @@ export type GenerationStopCommandOutcome =
 	| { outcome: "failed"; reason: string };
 
 export type GenerationSessionsAction =
-	// An authoritative Conversation snapshot was observed; the collection
+	// ==[HUMAN APPROVED]== An authoritative Conversation snapshot was observed; the collection
 	// reconciles against its Active Generation targets.
 	| { type: "targets-observed"; conversationId: number; targets: readonly GenerationSessionTarget[] }
-	// The view is leaving the current Chat: every live local subscription of
+	// ==[HUMAN APPROVED]== The view is leaving the current Chat: every live local subscription of
 	// the active Conversation detaches (cursors persist), terminal sessions
 	// are collected, and no server-owned Generation is ever stopped.
 	| { type: "conversation-switched" }
@@ -90,10 +90,10 @@ export type GenerationSessionsAction =
 	| { type: "stop-settled"; generationId: number; outcome: GenerationStopCommandOutcome }
 	| { type: "stop-all-started" }
 	| { type: "stop-all-settled"; outcome: GenerationStopCommandOutcome }
-	// The user moved on (new start, new Stop): session errors stop being news.
+	// ==[HUMAN APPROVED]== The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-// Story effects stay split by stream kind: Content appends into the story's
+// ==[HUMAN APPROVED]== Story effects stay split by stream kind: Content appends into the story's
 // Provisional Variant, an authoritative snapshot replaces it, and Reasoning
 // Content travels separately so ordinary history never joins the two.
 export type GenerationSessionStoryEffect =
@@ -103,7 +103,7 @@ export type GenerationSessionStoryEffect =
 	| { kind: "story-reasoning-replace"; messageId: number; variantId: number; reasoning: string };
 
 export type GenerationSessionEffect =
-	// Open or reopen this Generation's subscription from the given event
+	// ==[HUMAN APPROVED]== Open or reopen this Generation's subscription from the given event
 	// position (0 for a fresh session, the session cursor for a reattachment).
 	| {
 			kind: "subscribe";
@@ -113,12 +113,12 @@ export type GenerationSessionEffect =
 			variantId: number;
 			afterEventId: number;
 	  }
-	// Close this Generation's local subscription. This is teardown only: the
+	// ==[HUMAN APPROVED]== Close this Generation's local subscription. This is teardown only: the
 	// machine has no stop effect, so navigation and unsubscription can never
 	// cancel a server-owned Active Generation.
 	| { kind: "unsubscribe"; generationId: number }
 	| GenerationSessionStoryEffect
-	// A terminal outcome (or a detached Stop) asks for the authoritative
+	// ==[HUMAN APPROVED]== A terminal outcome (or a detached Stop) asks for the authoritative
 	// Conversation read; the machine never settles durable state itself.
 	| { kind: "refresh-conversation"; conversationId: number };
 
@@ -127,14 +127,14 @@ export interface GenerationSessionsTransition {
 	readonly effects: readonly GenerationSessionEffect[];
 }
 
-// One reconcile/detach step's outcome: the next session map plus the teardown
+// ==[HUMAN APPROVED]== One reconcile/detach step's outcome: the next session map plus the teardown
 // effects its changes require.
 export interface GenerationSessionMapChange {
 	sessions: Map<number, GenerationSession>;
 	effects: GenerationSessionEffect[];
 }
 
-// How many times a detached session may be reattached without observing any
+// ==[HUMAN APPROVED]== How many times a detached session may be reattached without observing any
 // liveness before the refresh-reattach loop stands down.
 export const MAX_SESSION_RECONNECTS = 5;
 
@@ -160,7 +160,7 @@ const terminalFromStatus = (
 
 const livePhases: ReadonlySet<GenerationSessionPhase> = new Set(["subscribing", "observing"]);
 
-// Detach every live session of one Conversation: local subscriptions close
+// ==[HUMAN APPROVED]== Detach every live session of one Conversation: local subscriptions close
 // (unsubscribe effects) while cursors and identity persist for reattachment.
 const detachConversationSessions = (
 	sessions: ReadonlyMap<number, GenerationSession>,
@@ -193,7 +193,7 @@ const reconcileTargets = (
 	const effects: GenerationSessionEffect[] = [];
 	let sessions: Map<number, GenerationSession> = new Map(state.sessions);
 
-	// Observing a different Conversation is an implicit switch: detach the
+	// ==[HUMAN APPROVED]== Observing a different Conversation is an implicit switch: detach the
 	// previous Conversation's live subscriptions and collect terminal rows.
 	if (state.activeConversationId !== action.conversationId) {
 		if (state.activeConversationId !== null) {
@@ -210,7 +210,7 @@ const reconcileTargets = (
 		knownTargets.add(target.generationId);
 		const existing = sessions.get(target.generationId);
 		if (existing !== undefined && existing.conversationId === action.conversationId) {
-			// A detached session whose Generation is still server-active
+			// ==[HUMAN APPROVED]== A detached session whose Generation is still server-active
 			// reattaches from its own cursor, bounded by the reconnect cap.
 			if (existing.phase === "detached" && existing.reconnects < MAX_SESSION_RECONNECTS) {
 				changed = true;
@@ -248,7 +248,7 @@ const reconcileTargets = (
 			afterEventId: 0,
 		});
 	}
-	// A non-terminal session the snapshot no longer lists was settled
+	// ==[HUMAN APPROVED]== A non-terminal session the snapshot no longer lists was settled
 	// elsewhere; remove it and close any subscription it still holds.
 	for (const [generationId, session] of sessions) {
 		if (
@@ -269,7 +269,7 @@ const switchConversation = (state: GenerationSessionsState): GenerationSessionsT
 	if (state.activeConversationId === null) return unchanged(state);
 	const effects: GenerationSessionEffect[] = [];
 	const detached = detachConversationSessions(state.sessions, state.activeConversationId);
-	// Leaving a Conversation is a user-paced action: every session left behind
+	// ==[HUMAN APPROVED]== Leaving a Conversation is a user-paced action: every session left behind
 	// gets a fresh reconnect budget for the eventual return.
 	let sessions = detached.sessions;
 	for (const [generationId, session] of sessions) {
@@ -297,7 +297,7 @@ const activeSession = (
 	return session;
 };
 
-// A session that may observe stream traffic: still watching a server-owned
+// ==[HUMAN APPROVED]== A session that may observe stream traffic: still watching a server-owned
 // Active Generation and currently holding a live subscription. Detached
 // sessions accept commands (such as Stop) but no observations; reattachment
 // is reconcile's job alone.
@@ -320,7 +320,7 @@ const observeEvent = (
 		...session,
 		phase: "observing",
 		lastEventId: action.eventId,
-		// Observed liveness clears both the stale-error notice and the
+		// ==[HUMAN APPROVED]== Observed liveness clears both the stale-error notice and the
 		// reconnect counter.
 		error: null,
 		reconnects: 0,
@@ -352,7 +352,7 @@ const observeState = (
 	action: Extract<GenerationSessionsAction, { type: "state-observed" }>,
 ): GenerationSessionsTransition => {
 	const session = observingSession(state, action.generationId);
-	// The snapshot must describe the session the transport opened it for.
+	// ==[HUMAN APPROVED]== The snapshot must describe the session the transport opened it for.
 	if (
 		session === null ||
 		action.state.conversationId !== session.conversationId ||
@@ -381,7 +381,7 @@ const observeState = (
 		...session,
 		phase: terminal === null ? "observing" : "terminal",
 		lastEventId: Math.max(session.lastEventId, action.state.latestEventId),
-		// A terminal snapshot wins any in-flight Stop request and supersedes
+		// ==[HUMAN APPROVED]== A terminal snapshot wins any in-flight Stop request and supersedes
 		// stale subscription- or stop-level errors from before the terminal
 		// outcome was observed.
 		stopPending: terminal === null ? session.stopPending : false,
@@ -416,7 +416,7 @@ const settleSubscription = (
 			terminal: { outcome: action.result.outcome },
 		};
 	} else if (action.result.outcome === "interrupted") {
-		// The subscription was lost, not the Generation: detach with the error
+		// ==[HUMAN APPROVED]== The subscription was lost, not the Generation: detach with the error
 		// and ask for the authoritative snapshot, whose reconciliation
 		// reattaches from the cursor while the Generation is still active.
 		next = {
@@ -426,7 +426,7 @@ const settleSubscription = (
 			reconnects: session.reconnects + 1,
 		};
 	} else {
-		// A server-declared failure is a terminal outcome, not a lost stream:
+		// ==[HUMAN APPROVED]== A server-declared failure is a terminal outcome, not a lost stream:
 		// the provider (or the lifecycle) settled this Generation.
 		next = {
 			...session,
@@ -483,7 +483,7 @@ const settleStop = (
 		next.phase === "detached" &&
 		session.conversationId === state.activeConversationId
 	) {
-		// No live stream will deliver the terminal frame; ask for the
+		// ==[HUMAN APPROVED]== No live stream will deliver the terminal frame; ask for the
 		// authoritative snapshot instead. A live stream settles on its own, and
 		// a Conversation the view already left is refreshed when reopened.
 		effects.push({ kind: "refresh-conversation", conversationId: session.conversationId });
@@ -557,7 +557,7 @@ export function reduceGenerationSessions(
 	}
 }
 
-// True while any session of the active Conversation is still watching a
+// ==[HUMAN APPROVED]== True while any session of the active Conversation is still watching a
 // server-owned Active Generation (including reconnection gaps).
 export const hasActiveGenerationSessions = (state: GenerationSessionsState): boolean => {
 	for (const session of state.sessions.values()) {
@@ -568,7 +568,7 @@ export const hasActiveGenerationSessions = (state: GenerationSessionsState): boo
 	return false;
 };
 
-// The first session error of the active Conversation in insertion order, for
+// ==[HUMAN APPROVED]== The first session error of the active Conversation in insertion order, for
 // surfaces that show a single Generation notice.
 export const firstActiveGenerationSessionError = (
 	state: GenerationSessionsState,

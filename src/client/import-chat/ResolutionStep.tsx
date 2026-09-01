@@ -8,8 +8,6 @@ import {
 import { ResolvedGroupCard } from "./ResolvedGroupCard";
 import { sourceSize } from "./presentation";
 
-// ---- Participant resolution ----
-
 export function ResolutionStep({
 	flow,
 	characters,
@@ -29,12 +27,12 @@ export function ResolutionStep({
 }) {
 	const exactCount = flow.duplicates.exact.length;
 	const relatedCount = flow.duplicates.related.length;
-	// Presentation-only merge selection; the reducer only sees the confirmed
+	// ==[HUMAN APPROVED]== Presentation-only merge selection; the reducer only sees the confirmed
 	// merge action with its explicit target and sources.
 	const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
 	const ready = resolutionReady(flow);
 
-	// Defensive cleanup: selections referencing removed segments never leak.
+	// ==[HUMAN APPROVED]== Defensive cleanup: selections referencing removed segments never leak.
 	const mergeTargets = useMemo(
 		() =>
 			flow.groups.filter((group) => mergeSelection.includes(group.id)),

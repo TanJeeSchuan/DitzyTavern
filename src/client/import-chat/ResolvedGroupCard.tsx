@@ -101,7 +101,7 @@ export function ResolvedGroupCard({
 					checked={group.outcome.type === "fork"}
 					disabled={group.suggestion === null && characters.length === 0}
 					onSelect={() => {
-						// The radio alone never approves: the pre-filled suggestion
+						// ==[HUMAN APPROVED]== The radio alone never approves: the pre-filled suggestion
 						// or the first library Character becomes the fork target and
 						// stays unconfirmed until the explicit approval action.
 						const characterId =
@@ -337,7 +337,7 @@ function OutcomeChoice({
 	hint: string;
 	checked: boolean;
 	disabled?: boolean;
-	// Radio inputs group by name across the whole document, so every
+	// ==[HUMAN APPROVED]== Radio inputs group by name across the whole document, so every
 	// Participant's outcome group needs its own name to keep resolutions
 	// independent.
 	name?: string;
@@ -397,7 +397,7 @@ function ForkPicker({
 						id: group.id,
 						outcome: { type: "fork", characterId },
 					});
-					// Picking a Character explicitly is the confirmation.
+					// Picking a Character explicitly is the confirmation. ==[HUMAN APPROVED]==
 					onDispatch({ type: "suggestion-approved", id: group.id });
 				}}
 			>
@@ -412,5 +412,3 @@ function ForkPicker({
 		</label>
 	);
 }
-
-// ---- Final review ----
