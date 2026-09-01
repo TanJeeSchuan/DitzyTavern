@@ -3,8 +3,6 @@ import { asc, eq } from "drizzle-orm";
 import {
 	connectionProfileDiscoveryModelTable,
 	connectionProfileTable,
-	connectionSecretTable,
-	connectionSettingsTable,
 } from "../database/schema";
 import {
 	getConnectionSecretKey,
@@ -23,16 +21,20 @@ import {
 } from "./presets";
 import {
 	advanceRevision,
+	advanceRevisionWithActiveProfile,
 	connect,
 	ensureProfileNameAvailable,
 	ensureSettingsRow,
 	readProfile,
 	readSecret,
 	requireProfile,
-	SETTINGS_ROW_ID,
 	toProfileRow,
 	writePinnedModels,
 	writeSecretState,
+} from "./persistence";
+import type {
+	ConnectionProfileRow,
+	ConnectionSettingsDb,
 } from "./persistence";
 import {
 	applyConnectionHeaderOperations,
@@ -55,6 +57,17 @@ import type {
 	ResetConnectionCredentialInput,
 	SetConnectionCredentialInput,
 } from "./types";
+
+type ConnectionSettingsRow = ReturnType<typeof ensureSettingsRow>;
+
+interface RevisionedWriteTx {
+	readonly db: ConnectionSettingsDb;
+	readonly settings: ConnectionSettingsRow;
+}
+
+interface RevisionedProfileWriteTx extends RevisionedWriteTx {
+	readonly profile: ConnectionProfileRow;
+}
 
 export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
@@ -110,178 +123,176 @@ export function createConnectionSettingsModule(
 		};
 	};
 
+	function revisionedWrite(
+		input: {
+			readonly expectedRevision: number;
+			readonly mutate: (tx: RevisionedWriteTx) => void;
+		},
+	): ConnectionSettingsSnapshot {
+		const write = database.transaction(() => {
+			const db = connect(database);
+			const settings = ensureSettingsRow(db);
+			requireRevision(read, settings.revision, input.expectedRevision);
+			input.mutate({ db, settings });
+			return read();
+		});
+		return write.immediate();
+	}
+
+	function revisionedProfileWrite(
+		input: {
+			readonly expectedRevision: number;
+			readonly profileId: number;
+			readonly mutate: (tx: RevisionedProfileWriteTx) => void;
+		},
+	): ConnectionSettingsSnapshot {
+		return revisionedWrite({
+			expectedRevision: input.expectedRevision,
+			mutate: (tx) => {
+				const profile = requireProfile(tx.db, input.profileId);
+				input.mutate({ ...tx, profile });
+			},
+		});
+	}
+
+	const writeCredentialKeepingHeaders = (
+		tx: RevisionedProfileWriteTx,
+		credential: string | null,
+	): void => {
+		const currentSecret = readSecret(tx.db, tx.profile.id, getKey());
+		writeSecretState(tx.db, tx.profile.id, {
+			credential,
+			headers: currentSecret?.headers ?? {},
+		}, getKey());
+	};
+
 	const createProfile = (input: CreateConnectionProfileInput) => {
 		const profile = validateConnectionProfileDraft(input.profile);
 		const credential = normalizeCredential(input.credential);
 		const headerOperations = validateHeaderOperations(input.headers ?? []);
-		const create = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			ensureProfileNameAvailable(db, profile.displayName);
+		return revisionedWrite({
+			expectedRevision: input.expectedRevision,
+			mutate: ({ db, settings }) => {
+				ensureProfileNameAvailable(db, profile.displayName);
 
-			const inserted = db
-				.insert(connectionProfileTable)
-				.values(toProfileRow(profile))
-				.returning({ id: connectionProfileTable.id })
-				.get();
-			if (inserted === undefined) {
-				throw new Error("Connection Profile creation did not return an identifier.");
-			}
+				const inserted = db
+					.insert(connectionProfileTable)
+					.values(toProfileRow(profile))
+					.returning({ id: connectionProfileTable.id })
+					.get();
+				if (inserted === undefined) {
+					throw new Error("Connection Profile creation did not return an identifier.");
+				}
 
-			writePinnedModels(db, inserted.id, profile.pinnedModels);
-			writeSecretState(db, inserted.id, {
-				credential,
-				headers: applyHeaderOperations({}, headerOperations),
-			}, getKey());
+				writePinnedModels(db, inserted.id, profile.pinnedModels);
+				writeSecretState(db, inserted.id, {
+					credential,
+					headers: applyHeaderOperations({}, headerOperations),
+				}, getKey());
 
-			db.update(connectionSettingsTable)
-				.set({
-					revision: settings.revision + 1,
-					active_profile_id: settings.active_profile_id ?? inserted.id,
-				})
-				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
-				.run();
-			return read();
+				advanceRevisionWithActiveProfile(
+					db,
+					settings.revision,
+					settings.active_profile_id ?? inserted.id,
+				);
+			},
 		});
-		return create.immediate();
 	};
 
 	const applyProfile = (input: ApplyConnectionProfileInput) => {
 		const profile = validateConnectionProfileDraft(input.profile);
 		const headerOperations = validateHeaderOperations(input.headers ?? []);
-		const apply = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			const current = db
-				.select()
-				.from(connectionProfileTable)
-				.where(eq(connectionProfileTable.id, input.profileId))
-				.get();
-			if (current === undefined) {
-				throw new ConnectionProfileNotFoundError(input.profileId);
-			}
-			ensureProfileNameAvailable(db, profile.displayName, input.profileId);
-			const currentSecret = readSecret(db, input.profileId, getKey());
-			const modelsUrlChanged = current.models_url !== profile.modelsUrl;
+		return revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: ({ db, profile: current, settings }) => {
+				ensureProfileNameAvailable(db, profile.displayName, input.profileId);
+				const currentSecret = readSecret(db, input.profileId, getKey());
+				const modelsUrlChanged = current.models_url !== profile.modelsUrl;
 
-			db.update(connectionProfileTable)
-				.set(toProfileRow(profile))
-				.where(eq(connectionProfileTable.id, input.profileId))
-				.run();
-			writePinnedModels(db, input.profileId, profile.pinnedModels);
-			if (modelsUrlChanged) {
-				db.delete(connectionProfileDiscoveryModelTable)
-					.where(eq(connectionProfileDiscoveryModelTable.profile_id, input.profileId))
+				db.update(connectionProfileTable)
+					.set(toProfileRow(profile))
+					.where(eq(connectionProfileTable.id, input.profileId))
 					.run();
-			}
-			writeSecretState(db, input.profileId, {
-				credential: currentSecret?.credential ?? null,
-				headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
-			}, getKey());
-			db.update(connectionSettingsTable)
-				.set({ revision: settings.revision + 1 })
-				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
-				.run();
-			return read();
-		});
-		return apply.immediate();
-	};
-
-	const activateProfile = (input: ActivateConnectionProfileInput) => {
-		const activate = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			requireProfile(db, input.profileId);
-
-			if (settings.active_profile_id === input.profileId) return read();
-
-			db.update(connectionSettingsTable)
-				.set({
-					revision: settings.revision + 1,
-					active_profile_id: input.profileId,
-				})
-				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
-				.run();
-			return read();
-		});
-		return activate.immediate();
-	};
-
-	const deleteProfile = (input: DeleteConnectionProfileInput) => {
-		const remove = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			requireProfile(db, input.profileId);
-
-			const profiles = db
-				.select({ id: connectionProfileTable.id })
-				.from(connectionProfileTable)
-				.orderBy(asc(connectionProfileTable.id))
-				.all();
-			const deletingActive = settings.active_profile_id === input.profileId;
-			let nextActiveProfileId = settings.active_profile_id;
-			if (deletingActive && profiles.length > 1) {
-				const replacementProfileId = input.replacementProfileId ?? null;
-				if (replacementProfileId === null || replacementProfileId === input.profileId) {
-					throw new ConnectionProfileReplacementRequiredError();
+				writePinnedModels(db, input.profileId, profile.pinnedModels);
+				if (modelsUrlChanged) {
+					db.delete(connectionProfileDiscoveryModelTable)
+						.where(eq(connectionProfileDiscoveryModelTable.profile_id, input.profileId))
+						.run();
 				}
-				requireProfile(db, replacementProfileId);
-				nextActiveProfileId = replacementProfileId;
-			} else if (deletingActive) {
-				nextActiveProfileId = null;
-			}
-
-			db.update(connectionSettingsTable)
-				.set({
-					revision: settings.revision + 1,
-					active_profile_id: nextActiveProfileId,
-				})
-				.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
-				.run();
-			db.delete(connectionProfileTable)
-				.where(eq(connectionProfileTable.id, input.profileId))
-				.run();
-			return read();
+				writeSecretState(db, input.profileId, {
+					credential: currentSecret?.credential ?? null,
+					headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
+				}, getKey());
+				advanceRevision(db, settings.revision);
+			},
 		});
-		return remove.immediate();
 	};
+
+	const activateProfile = (input: ActivateConnectionProfileInput) =>
+		revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: ({ db, settings }) => {
+				if (settings.active_profile_id === input.profileId) return;
+				advanceRevisionWithActiveProfile(db, settings.revision, input.profileId);
+			},
+		});
+
+	const deleteProfile = (input: DeleteConnectionProfileInput) =>
+		revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: ({ db, settings }) => {
+				const profiles = db
+					.select({ id: connectionProfileTable.id })
+					.from(connectionProfileTable)
+					.orderBy(asc(connectionProfileTable.id))
+					.all();
+				const deletingActive = settings.active_profile_id === input.profileId;
+				let nextActiveProfileId = settings.active_profile_id;
+				if (deletingActive && profiles.length > 1) {
+					const replacementProfileId = input.replacementProfileId ?? null;
+					if (replacementProfileId === null || replacementProfileId === input.profileId) {
+						throw new ConnectionProfileReplacementRequiredError();
+					}
+					requireProfile(db, replacementProfileId);
+					nextActiveProfileId = replacementProfileId;
+				} else if (deletingActive) {
+					nextActiveProfileId = null;
+				}
+
+				advanceRevisionWithActiveProfile(db, settings.revision, nextActiveProfileId);
+				db.delete(connectionProfileTable)
+					.where(eq(connectionProfileTable.id, input.profileId))
+					.run();
+			},
+		});
 
 	const setCredential = (input: SetConnectionCredentialInput) => {
 		if (input.credential.trim().length === 0) {
 			throw new InvalidConnectionProfileError("A Connection Credential is required.");
 		}
-		const update = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			requireProfile(db, input.profileId);
-			const currentSecret = readSecret(db, input.profileId, getKey());
-			writeSecretState(db, input.profileId, {
-				credential: input.credential,
-				headers: currentSecret?.headers ?? {},
-			}, getKey());
-			advanceRevision(db, settings.revision);
-			return read();
+		return revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: (tx) => {
+				writeCredentialKeepingHeaders(tx, input.credential);
+				advanceRevision(tx.db, tx.settings.revision);
+			},
 		});
-		return update.immediate();
 	};
 
 	const setPinnedModels = (input: SetPinnedModelsInput) => {
 		const pinnedModels = normalizePinnedModels(input.pinnedModels);
-		const update = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			requireProfile(db, input.profileId);
-			writePinnedModels(db, input.profileId, pinnedModels);
-			advanceRevision(db, settings.revision);
-			return read();
+		return revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: ({ db, settings }) => {
+				writePinnedModels(db, input.profileId, pinnedModels);
+				advanceRevision(db, settings.revision);
+			},
 		});
-		return update.immediate();
 	};
 
 	const replaceDiscoveryCatalog = (
@@ -320,26 +331,14 @@ export function createConnectionSettingsModule(
 
 	const resetCredential = (input: ResetConnectionCredentialInput) => {
 		if (!input.confirmed) throw new ConnectionCredentialConfirmationError();
-		const reset = database.transaction(() => {
-			const db = connect(database);
-			const settings = ensureSettingsRow(db);
-			requireRevision(database, settings.revision, input.expectedRevision, getKey());
-			requireProfile(db, input.profileId);
-			const currentSecret = readSecret(db, input.profileId, getKey());
-			if (currentSecret !== null && Object.keys(currentSecret.headers).length > 0) {
-				writeSecretState(db, input.profileId, {
-					credential: null,
-					headers: currentSecret.headers,
-				}, getKey());
-			} else {
-				db.delete(connectionSecretTable)
-					.where(eq(connectionSecretTable.profile_id, input.profileId))
-					.run();
-			}
-			advanceRevision(db, settings.revision);
-			return read();
+		return revisionedProfileWrite({
+			expectedRevision: input.expectedRevision,
+			profileId: input.profileId,
+			mutate: (tx) => {
+				writeCredentialKeepingHeaders(tx, null);
+				advanceRevision(tx.db, tx.settings.revision);
+			},
 		});
-		return reset.immediate();
 	};
 
 	return {
@@ -369,20 +368,12 @@ export function withConnectionSettings<T>(
 }
 
 function requireRevision(
-	database: Database,
+	read: () => ConnectionSettingsSnapshot,
 	actualRevision: number,
 	expectedRevision: number,
-	masterKey: Uint8Array | undefined,
 ): void {
 	if (actualRevision === expectedRevision) return;
-	const current = createConnectionSettingsModule(database, {
-		masterKey,
-	}).get();
-	throw new StaleConnectionSettingsRevisionError(
-		expectedRevision,
-		actualRevision,
-		current,
-	);
+	throw new StaleConnectionSettingsRevisionError(expectedRevision, actualRevision, read());
 }
 
 export {

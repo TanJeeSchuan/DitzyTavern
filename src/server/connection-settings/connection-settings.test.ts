@@ -292,6 +292,36 @@ describe("Connection Settings", () => {
 		}
 	});
 
+	test("revisioned writes bump one revision, return the post-write read, and attach conflict snapshots to stale throws", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const profileId = created.activeProfileId ?? 0;
+
+		const pinned = settings.setPinnedModels({
+			expectedRevision: created.revision,
+			profileId,
+			pinnedModels: ["deepseek-v4-flash"],
+		});
+		expect(pinned.revision).toBe(created.revision + 1);
+		expect(pinned).toEqual(settings.get());
+
+		try {
+			settings.setPinnedModels({
+				expectedRevision: created.revision,
+				profileId,
+				pinnedModels: ["deepseek-v4-pro"],
+			});
+			throw new Error("Expected a stale revision error.");
+		} catch (error) {
+			expect(error).toBeInstanceOf(StaleConnectionSettingsRevisionError);
+			// SAFETY: the preceding assertion narrows this caught error to the
+			// typed stale-revision class exposed by the module.
+			const conflict = error as StaleConnectionSettingsRevisionError;
+			expect(conflict.actualRevision).toBe(pinned.revision);
+			expect(conflict.currentSettings).toEqual(settings.get());
+		}
+	});
+
 	test("keeps the first active Profile active while creating and applying another Profile", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const first = settings.createProfile({

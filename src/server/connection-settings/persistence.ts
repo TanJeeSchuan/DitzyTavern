@@ -233,3 +233,14 @@ export function advanceRevision(db: ConnectionSettingsDb, revision: number): voi
 		.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
 		.run();
 }
+
+export function advanceRevisionWithActiveProfile(
+	db: ConnectionSettingsDb,
+	revision: number,
+	activeProfileId: number | null,
+): void {
+	db.update(connectionSettingsTable)
+		.set({ revision: revision + 1, active_profile_id: activeProfileId })
+		.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
+		.run();
+}
