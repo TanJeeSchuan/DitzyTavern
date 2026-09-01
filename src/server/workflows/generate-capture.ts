@@ -1,13 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { activeGenerationTable } from "../database/schema";
 import {
+	connectConversationDatabase,
 	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	ContinuationUnavailableError,
 	deriveMessageSwipeEligibility,
+	hasActiveGeneration,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type AcceptTailGenerationInput,
@@ -463,13 +462,6 @@ export interface ContinuationGenerationCapture extends CapturedGeneration {
 	assistantPrefill?: AssistantPrefill;
 }
 
-const isActiveGeneration = (database: Database, conversationId: number): boolean =>
-	drizzle(database)
-		.select({ id: activeGenerationTable.id })
-		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.chat_id, conversationId))
-		.get() !== undefined;
-
 function continuationHasUsableOutput(
 	variant: ConversationSnapshot["messages"][number]["variants"][number],
 ): boolean {
@@ -488,7 +480,7 @@ export function captureContinuationGeneration(
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
 ): ContinuationGenerationCapture {
-	if (isActiveGeneration(database, snapshot.id)) {
+	if (hasActiveGeneration(connectConversationDatabase(database), snapshot.id)) {
 		throw new ContinuationUnavailableError("active-generation");
 	}
 	if (!snapshot.playable) throw new ConversationNotPlayableError(snapshot.id);

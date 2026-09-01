@@ -60,6 +60,13 @@ export { deriveMessageSwipeEligibility } from "./snapshot";
 // ==[HUMAN APPROVED]== Canonical persisted-intent reader shared by terminal commands and the
 // recovery sweep so the sibling discriminator cannot drift between them.
 export { isSiblingGenerationRow } from "./commands/active-generation";
+// ==[HUMAN APPROVED]== The one Active-Generation existence probe and the database seam, shared
+// with the Generation-start capture workflows so no workflow re-probes the
+// active_generation table through its own raw handle.
+export {
+	connectConversationDatabase,
+	hasActiveGeneration,
+} from "./internal";
 export {
 	DEFAULT_HISTORY_PAGE_SIZE,
 	MAX_HISTORY_PAGE_SIZE,
