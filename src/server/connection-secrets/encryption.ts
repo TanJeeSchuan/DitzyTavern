@@ -47,19 +47,6 @@ export class ConnectionSecretDecryptionError extends Error {
 	}
 }
 
-export async function encryptConnectionSecret(
-	masterKey: Uint8Array,
-	profileId: string | number,
-	payload: ConnectionSecretPayload,
-	options: EncryptConnectionSecretOptions = {},
-): Promise<EncryptedConnectionSecret> {
-	return encryptConnectionSecretSync(masterKey, profileId, payload, options);
-}
-
-// The database configuration aggregate uses this synchronous form so that a
-// Profile row and its initial encrypted payload can be committed by one
-// SQLite transaction. The async public function above remains available to
-// callers that prefer the original promise-shaped seam.
 export function encryptConnectionSecretSync(
 	masterKey: Uint8Array,
 	profileId: string | number,
@@ -102,14 +89,6 @@ export function encryptConnectionSecretSync(
 			"Unable to encrypt the Connection Secret.",
 		);
 	}
-}
-
-export async function decryptConnectionSecret(
-	masterKey: Uint8Array,
-	profileId: string | number,
-	encrypted: EncryptedConnectionSecret,
-): Promise<ConnectionSecretPayload> {
-	return decryptConnectionSecretSync(masterKey, profileId, encrypted);
 }
 
 export function decryptConnectionSecretSync(

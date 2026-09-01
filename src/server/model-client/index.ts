@@ -2,7 +2,6 @@
 // events are public; concrete transports remain private to this module.
 
 export {
-	collectModelClientContent,
 	collectModelClientGeneration,
 	ModelClientGenerationError,
 	ModelClientProtocolError,
@@ -37,7 +36,6 @@ export type {
 	OpenAICompatibleModelClientOptions,
 } from "./deepseek";
 export {
-	resolveTestConnectionBackend,
 	testConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,

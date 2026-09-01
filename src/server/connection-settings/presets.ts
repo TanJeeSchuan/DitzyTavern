@@ -61,10 +61,6 @@ export function listConnectionPresets(): readonly ConnectionPreset[] {
 	return presets;
 }
 
-export function getConnectionPreset(id: string): ConnectionPreset | undefined {
-	return presets.find((preset) => preset.id === id);
-}
-
 export function cloneProfileDraft(profile: ConnectionProfileDraft): ConnectionProfileDraft {
 	return {
 		...profile,

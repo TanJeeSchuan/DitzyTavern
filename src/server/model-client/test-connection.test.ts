@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionProfileDraft } from "../connection-settings/types";
 import {
-	resolveTestConnectionBackend,
 	testConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
 	TEST_CONNECTION_PROMPT,
@@ -107,7 +106,7 @@ describe("Model Test Connection", () => {
 		expect(JSON.stringify(result)).not.toContain("openrouter-secret-never-returned");
 	});
 
-	test("resolves Automatic to AI SDK before making one exact authenticated request", async () => {
+	test("makes one exact authenticated request", async () => {
 		let request: { url: string; init: RequestInit } | undefined;
 		const result = await testConnection({
 			profile,
@@ -120,7 +119,6 @@ describe("Model Test Connection", () => {
 			},
 		});
 
-		expect(resolveTestConnectionBackend("automatic")).toBe("ai-sdk");
 		expect(result.outcome).toBe("success");
 		expect(request?.url).toBe("http://127.0.0.1:43127/v1/chat/completions?tenant=test");
 		expect(request?.init.method).toBe("POST");

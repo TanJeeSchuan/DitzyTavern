@@ -413,10 +413,6 @@ export const generationReplayTable = sqliteTable(
 	},
 );
 
-// Keep the short name available to callers that refer to the persisted
-// record as a Generation. Both exports point at the same Drizzle table.
-export const generationTable = activeGenerationTable;
-
 // Conversation-owned generation controls. These values are deliberately
 // separate from the application-global Connection Profile: activating or
 // editing a Profile changes the transport used by later Generations, never

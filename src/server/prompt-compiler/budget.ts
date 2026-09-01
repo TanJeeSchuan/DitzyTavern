@@ -204,11 +204,6 @@ export class PromptBudgetExceededError extends Error {
 	}
 }
 
-export function assertPromptBudget(result: PromptBudgetResult): PromptBudgetResult {
-	if (!result.fits) throw new PromptBudgetExceededError(result);
-	return result;
-}
-
 function findLatestHumanIndex(
 	roles: readonly PromptHistoryRole[],
 ): number | undefined {

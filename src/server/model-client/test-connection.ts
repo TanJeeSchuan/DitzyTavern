@@ -43,13 +43,6 @@ export interface TestConnectionOptions {
 	readonly maxOutputTokens?: number;
 }
 
-export function resolveTestConnectionBackend(
-	modelBackend: ConnectionProfileDraft["modelBackend"],
-): "ai-sdk" {
-	if (modelBackend === "automatic" || modelBackend === "ai-sdk") return "ai-sdk";
-	throw new Error(`The Model Backend "${modelBackend}" is unavailable.`);
-}
-
 export async function testConnection(
 	input: TestConnectionInput,
 	options: TestConnectionOptions = {},
@@ -60,14 +53,6 @@ export async function testConnection(
 	}
 	if (input.profile.apiFormat !== "chat-completions") {
 		return failure("adapter-unavailable", "The selected API Format is unavailable.");
-	}
-	try {
-		resolveTestConnectionBackend(input.profile.modelBackend);
-	} catch (error) {
-		return failure(
-			"adapter-unavailable",
-			error instanceof Error ? error.message : "The selected Model Backend is unavailable.",
-		);
 	}
 	if (!isModelAdapter(input.profile.adapter)) {
 		return failure(

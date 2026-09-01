@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
 	collectModelClientGeneration,
-	collectModelClientContent,
 	createFakeModelClient,
 	ModelClientGenerationError,
-	ModelClientProtocolError,
 } from ".";
 import type { PromptPlan } from "../prompt-compiler";
 
@@ -29,41 +27,6 @@ const testGenerationSettings = {
 };
 
 describe("Model Client seam", () => {
-	test("the fake client streams a complete ordinary result without network access", async () => {
-		let receivedPlan: PromptPlan | undefined;
-		const client = createFakeModelClient(({ promptPlan }) => {
-			receivedPlan = promptPlan;
-			return "A complete reply.";
-		});
-
-		await expect(
-			collectModelClientContent(client, {
-				promptPlan: plan,
-				historyRoles: [],
-				modelId: "test-model",
-				generationSettings: testGenerationSettings,
-			}),
-		).resolves.toBe("A complete reply.");
-		expect(receivedPlan).toBe(plan);
-	});
-
-	test("an incomplete stream is rejected at the seam", async () => {
-		const client = {
-			async *generate() {
-				yield { type: "content" as const, text: "partial" };
-			},
-		};
-
-		await expect(
-			collectModelClientContent(client, {
-				promptPlan: plan,
-				historyRoles: [],
-				modelId: "test-model",
-				generationSettings: testGenerationSettings,
-			}),
-		).rejects.toThrow(ModelClientProtocolError);
-	});
-
 	test("collects visible content, separate reasoning, usage, and length metadata", async () => {
 		const client = createFakeModelClient(() => [
 			{ type: "reasoning", text: "First think. " },

@@ -37,9 +37,7 @@ export {
 	CONNECTION_SECRET_KEY_ENV,
 } from "./bootstrap";
 export {
-	decryptConnectionSecret,
 	decryptConnectionSecretSync,
-	encryptConnectionSecret,
 	encryptConnectionSecretSync,
 	ConnectionSecretDecryptionError,
 	ConnectionSecretEncryptionError,

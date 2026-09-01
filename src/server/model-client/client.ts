@@ -143,17 +143,6 @@ function isModelClientFailure(
 	);
 }
 
-// Collects the ordinary full Message result while keeping the transport
-// contract asynchronous and event-based. Future streaming workflows can
-// consume the same normalized events incrementally without changing the
-// Model Client boundary.
-export async function collectModelClientContent(
-	client: ModelClient,
-	input: ModelClientGenerationInput,
-): Promise<string> {
-	return (await collectModelClientGeneration(client, input)).content;
-}
-
 const assertNeverModelClientEvent = (event: never): never => {
 	throw new ModelClientProtocolError(
 		`Unsupported Model Client event: ${JSON.stringify(event)}.`,
