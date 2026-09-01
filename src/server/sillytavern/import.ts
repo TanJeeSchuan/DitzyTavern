@@ -83,21 +83,13 @@ export function importSillyTavernChat(
 	// related sources alike, with only exact copies gated by the staged
 	// confirmation later on that path.
 	const priorMatches = findPriorImportsBySource(database, decoded.report.source);
-	const duplicates = {
-		exact: priorMatches
-			.filter((match) => match.kind === "exact")
-			.map(({ id, name }) => ({ id, name })),
-		related: priorMatches
-			.filter((match) => match.kind === "related")
-			.map(({ id, name }) => ({ id, name })),
-	};
-	const duplicateChatIds = [...duplicates.exact, ...duplicates.related].map(
+	const duplicateChatIds = [...priorMatches.exact, ...priorMatches.related].map(
 		(match) => match.id,
 	);
 	const projected = projectImport(
 		decoded,
 		defaultImportResolution(decoded),
-		duplicates,
+		priorMatches,
 	);
 
 	// The exact validated bytes are copied into a unique managed relative

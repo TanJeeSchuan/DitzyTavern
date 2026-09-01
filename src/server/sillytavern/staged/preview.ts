@@ -14,7 +14,6 @@ import {
 	UNKNOWN_IMPORTED_AUTHOR_NAME,
 } from "../import-projection";
 import type {
-	ChatImportDuplicateMatch,
 	ChatImportGroup,
 	ChatImportPreview,
 	ChatImportSuggestion,
@@ -103,11 +102,6 @@ const buildGroups = (
 			group.key === null ? null : strongestSuggestion(group.key, characters),
 	}));
 
-const toDuplicateMatch = (match: { id: number; name: string }): ChatImportDuplicateMatch => ({
-	id: match.id,
-	name: match.name,
-});
-
 export const buildPreview = (
 	database: Database,
 	originalFilename: string,
@@ -126,9 +120,6 @@ export const buildPreview = (
 		counts: { ...inspection.report.counts },
 		warnings: [...inspection.report.warnings],
 		groups: buildGroups(inspection.authors, characters),
-		duplicates: {
-			exact: matches.filter((match) => match.kind === "exact").map(toDuplicateMatch),
-			related: matches.filter((match) => match.kind === "related").map(toDuplicateMatch),
-		},
+		duplicates: matches,
 	};
 };

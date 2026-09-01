@@ -12,6 +12,7 @@
 // and every Conversation command stay available.
 
 import type { Database } from "bun:sqlite";
+import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 import {
 	createArtifactModule,
 	type ArtifactDownloadResult,
@@ -28,11 +29,6 @@ import {
 	type SillyTavernImportSource,
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
-
-export interface ChatImportDetailsDuplicateMatch {
-	id: number;
-	name: string;
-}
 
 // The complete Import Details payload for one imported Chat. Null is never
 // a failure: a Chat without import provenance simply has no Import Details.
@@ -53,10 +49,7 @@ export interface ChatImportDetails {
 	// Structured duplicate evidence as of this read, excluding this Chat
 	// itself: matching raw-byte SHA-256 is an exact duplicate; a declared-
 	// integrity-only match is a related source.
-	duplicates: {
-		exact: ChatImportDetailsDuplicateMatch[];
-		related: ChatImportDetailsDuplicateMatch[];
-	};
+	duplicates: ChatImportDuplicateEvidence;
 	// The exact-source artifact inspection, including derived availability.
 	// Present for every imported Chat; availability reports cleaned up with
 	// the reason when the physical copy is missing or fails verification.
@@ -139,7 +132,7 @@ export function createChatImportDetailsModule(
 		importDetails(conversationId) {
 			const read = conversations.readConversationData(conversationId, {
 				namespace: IMPORT_NAMESPACE,
-				keys: [IMPORT_KEYS.reportJson, IMPORT_KEYS.warnings],
+				keys: [IMPORT_KEYS.reportJson],
 			});
 			// Either the Chat is missing (read returns undefined) or the Chat
 			// exists but carries no import provenance (report parse is null);
@@ -148,9 +141,6 @@ export function createChatImportDetailsModule(
 			const report = parseReport(importEntryValue(read.entries, IMPORT_KEYS.reportJson));
 			if (report === null) return undefined;
 
-			const warnings = parseReportWarnings(
-				importEntryValue(read.entries, IMPORT_KEYS.warnings),
-			);
 			const artifact = artifacts.getArtifact(
 				conversationId,
 				EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -172,9 +162,11 @@ export function createChatImportDetailsModule(
 			) {
 				sourceValue.integrity = report.source.integrity;
 			}
-			const matches = findPriorImportsBySource(database, sourceValue).filter(
-				(match) => match.id !== conversationId,
-			);
+			const matches = findPriorImportsBySource(database, sourceValue);
+			const duplicates: ChatImportDuplicateEvidence = {
+				exact: matches.exact.filter((match) => match.id !== conversationId),
+				related: matches.related.filter((match) => match.id !== conversationId),
+			};
 
 			return {
 				conversationId,
@@ -188,18 +180,10 @@ export function createChatImportDetailsModule(
 						messages: report.counts.messages,
 						variants: report.counts.variants,
 					},
-					warnings:
-						warnings.length > 0 ? warnings : arrayOfStrings(report.warnings),
+					warnings: arrayOfStrings(report.warnings),
 					importerVersion: report.importerVersion,
 				},
-				duplicates: {
-					exact: matches
-						.filter((match) => match.kind === "exact")
-						.map((match) => ({ id: match.id, name: match.name })),
-					related: matches
-						.filter((match) => match.kind === "related")
-						.map((match) => ({ id: match.id, name: match.name })),
-				},
+				duplicates,
 				artifact,
 			};
 		},
@@ -259,20 +243,6 @@ const isString = (value: JsonValue): value is string =>
 
 const isNumber = (value: JsonValue): value is number =>
 	value !== null && value !== undefined && value.constructor === Number;
-
-// The persisted warnings entry is a JSON string array; malformed values fall
-// back to the report's own warnings rather than inventing data.
-const parseReportWarnings = (value: string | null): string[] => {
-	if (value === null) return [];
-	try {
-		// SAFETY: JSON.parse output is a JsonValue; the array shape is
-		// checked below and strings are filtered by constructor identity.
-		const parsed: JsonValue = JSON.parse(value) as JsonValue;
-		return Array.isArray(parsed) ? arrayOfStrings(parsed) : [];
-	} catch {
-		return [];
-	}
-};
 
 // Reduces a parsed JSON array to its string entries; non-strings are
 // structural noise and never masquerade as warnings.

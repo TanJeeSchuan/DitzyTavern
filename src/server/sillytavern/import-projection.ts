@@ -29,6 +29,7 @@ import {
 	type SillyTavernExactAuthor,
 	type SillyTavernImportReport,
 } from "./adapter/types";
+import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 
 // The blank captured author's proposed Participant-name default lives in
 // shared so the server projection and the client flow label cannot drift.
@@ -168,25 +169,15 @@ export const defaultImportResolution = (
 	};
 };
 
-export interface ImportProjectionDuplicateMatch {
-	id: number;
-	name: string;
-}
-
 // Prior-import evidence classified by its match kind. Exact matches (raw
 // SHA-256) and related matches (declared integrity only) both produce one
 // independent-copy warning; only exact matches demand the staged
 // confirmation gate, which stays with the Staged Import.
-export interface ImportProjectionDuplicateEvidence {
-	exact: readonly ImportProjectionDuplicateMatch[];
-	related: readonly ImportProjectionDuplicateMatch[];
-}
-
 // One copy warning per matching prior Chat, mirroring the wording both
 // import paths always used. Each warning names an independent copy: import
 // never deduplicates, matches, or reuses prior Chats.
 const duplicateCopyWarnings = (
-	duplicates: ImportProjectionDuplicateEvidence,
+	duplicates: ChatImportDuplicateEvidence,
 ): string[] =>
 	[...duplicates.exact, ...duplicates.related].map(
 		(match) =>
@@ -242,7 +233,7 @@ export const importReportEntries = (
 export function projectImport(
 	decoded: SillyTavernDecodedImportSource,
 	resolution: ImportProjectionResolution,
-	duplicates: ImportProjectionDuplicateEvidence,
+	duplicates: ChatImportDuplicateEvidence,
 ): ProjectedImport {
 	const report: SillyTavernImportReport = {
 		...decoded.report,

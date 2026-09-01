@@ -9,15 +9,8 @@ import type { Database } from "bun:sqlite";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { chatDataTable, chatTable } from "../database/schema";
+import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 import { IMPORT_KEYS, IMPORT_NAMESPACE, type SillyTavernImportSource } from "./adapter";
-
-export type PriorImportMatchKind = "exact" | "related";
-
-export interface PriorImportMatch {
-	id: number;
-	name: string;
-	kind: PriorImportMatchKind;
-}
 
 // One entry per matching prior Chat, classified into the kind of evidence
 // that matched. A prior Chat sharing both the SHA-256 and the declared
@@ -26,7 +19,7 @@ export interface PriorImportMatch {
 export function findPriorImportsBySource(
 	database: Database,
 	source: SillyTavernImportSource,
-): PriorImportMatch[] {
+): ChatImportDuplicateEvidence {
 	const conditions = [
 		and(
 			eq(chatDataTable.namespace, IMPORT_NAMESPACE),
@@ -75,7 +68,7 @@ export function findPriorImportsBySource(
 	}
 
 	const orderedIds = [...exactIds, ...relatedIds];
-	if (orderedIds.length === 0) return [];
+	if (orderedIds.length === 0) return { exact: [], related: [] };
 
 	const names = new Map<number, string>();
 	for (const row of db
@@ -86,9 +79,8 @@ export function findPriorImportsBySource(
 		names.set(row.id, row.name);
 	}
 
-	return orderedIds.map((chatId) => ({
-		id: chatId,
-		name: names.get(chatId) ?? "",
-		kind: seenExact.has(chatId) ? "exact" : "related",
-	}));
+	return {
+		exact: exactIds.map((id) => ({ id, name: names.get(id) ?? "" })),
+		related: relatedIds.map((id) => ({ id, name: names.get(id) ?? "" })),
+	};
 }

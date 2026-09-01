@@ -33,8 +33,6 @@ export {
 } from "./import-projection";
 export type {
 	ImportAuthorGroup,
-	ImportProjectionDuplicateEvidence,
-	ImportProjectionDuplicateMatch,
 	ImportProjectionParticipant,
 	ImportProjectionResolution,
 	ProjectedImport,
@@ -50,14 +48,12 @@ export {
 export { chatNameFromFilename, importSillyTavernChat } from "./import";
 export type { SillyTavernImportResult } from "./import";
 export { findPriorImportsBySource } from "./prior-imports";
-export type { PriorImportMatch, PriorImportMatchKind } from "./prior-imports";
 export {
 	createChatImportDetailsModule,
 	withChatImportDetails,
 } from "./import-details";
 export type {
 	ChatImportDetails,
-	ChatImportDetailsDuplicateMatch,
 	ChatImportDetailsModule,
 } from "./import-details";
 export {
