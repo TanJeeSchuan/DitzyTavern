@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
-import { conversationSummary, participantPrompt } from "./conversation-schema";
+import { conversationSummary } from "./conversation-schema";
+import { participantPrompt } from "./prompt-schema";
 
 // One seat of a new native Conversation: fork an existing Character at a
 // pinned revision, or define an ad-hoc Participant inline.

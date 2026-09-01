@@ -4,9 +4,10 @@
 // never provider payloads, URLs, headers, credentials, or request overrides.
 
 import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
-import type {
-	CanonicalGenerationSettings,
-	GenerationSettingsField,
+import {
+	GENERATION_SETTINGS_FIELDS,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsField,
 } from "./contract/generation-settings";
 
 // The generation-owned JSON vocabulary is declared in the shared leaf module
@@ -40,72 +41,15 @@ export type GenerationContinuationPrefillSuffix = NonNullable<
 	GenerationProvenanceSettings["continuationPrefillSuffix"]
 >;
 
-// The canonical field vocabulary retained in provenance, compile-locked to
-// the derived projection: adding a canonical field (outside the two
-// exclusions) fails typecheck until the capture and decode adapters below
-// state how it participates.
-const provenanceSettingsFieldFlags = {
-	temperature: null,
-	topP: null,
-	frequencyPenalty: null,
-	presencePenalty: null,
-	contextLimit: null,
-	responseBudget: null,
-	safetyAllowance: null,
-	siblingGenerationLimit: null,
-	continuationStrategy: null,
-	continuationInstruction: null,
-	continuationPrefillSuffix: null,
-} as const satisfies Record<ProvenanceSettingsField, null>;
-
-// SAFETY: the satisfies lock proves the flag record's keys are exactly the
-// retained provenance field union, so this key list is the vocabulary.
-const provenanceSettingsFieldKeys = Object.keys(
-	provenanceSettingsFieldFlags,
-) as readonly ProvenanceSettingsField[];
-
-export const PROVENANCE_SETTINGS_FIELDS = provenanceSettingsFieldKeys;
-
-// The retained value for each provenance field, captured from the plan's
-// Effective Generation Settings: the nullable form a Generation attempt
-// actually produces, where an intent-inapplicable Continuation operand is
-// already absent. Compile-locked: adding a retained canonical field fails
-// typecheck until the capture states its value.
-type ProvenanceSettingsCapture = {
-	readonly [K in ProvenanceSettingsField]: (
-		effective: GenerationProvenanceSettings,
-	) => GenerationProvenanceSettings[K];
-};
-
-const captureProvenanceSettingsField: ProvenanceSettingsCapture = {
-	temperature: (effective) => effective.temperature,
-	topP: (effective) => effective.topP,
-	frequencyPenalty: (effective) => effective.frequencyPenalty,
-	presencePenalty: (effective) => effective.presencePenalty,
-	contextLimit: (effective) => effective.contextLimit,
-	responseBudget: (effective) => effective.responseBudget,
-	safetyAllowance: (effective) => effective.safetyAllowance,
-	siblingGenerationLimit: (effective) => effective.siblingGenerationLimit,
-	continuationStrategy: (effective) => effective.continuationStrategy,
-	continuationInstruction: (effective) => effective.continuationInstruction,
-	continuationPrefillSuffix: (effective) => effective.continuationPrefillSuffix,
-};
-
-export const captureGenerationProvenanceSettings = (
-	effective: GenerationProvenanceSettings,
-): GenerationProvenanceSettings => ({
-	temperature: captureProvenanceSettingsField.temperature(effective),
-	topP: captureProvenanceSettingsField.topP(effective),
-	frequencyPenalty: captureProvenanceSettingsField.frequencyPenalty(effective),
-	presencePenalty: captureProvenanceSettingsField.presencePenalty(effective),
-	contextLimit: captureProvenanceSettingsField.contextLimit(effective),
-	responseBudget: captureProvenanceSettingsField.responseBudget(effective),
-	safetyAllowance: captureProvenanceSettingsField.safetyAllowance(effective),
-	siblingGenerationLimit: captureProvenanceSettingsField.siblingGenerationLimit(effective),
-	continuationStrategy: captureProvenanceSettingsField.continuationStrategy(effective),
-	continuationInstruction: captureProvenanceSettingsField.continuationInstruction(effective),
-	continuationPrefillSuffix: captureProvenanceSettingsField.continuationPrefillSuffix(effective),
-});
+// The canonical field vocabulary retained in provenance is projected from
+// the canonical Generation Settings declaration. Keeping the runtime list
+// derived means adding or removing a canonical field updates this vocabulary
+// automatically; the typed decoders and wire schemas below still require an
+// explicit per-field decision for every retained field.
+export const PROVENANCE_SETTINGS_FIELDS = GENERATION_SETTINGS_FIELDS.filter(
+	(field): field is ProvenanceSettingsField =>
+		field !== "modelId" && field !== "requestOverrides",
+);
 
 export type GenerationUsage = Record<string, number>;
 

@@ -4,8 +4,8 @@ import { Value } from "@sinclair/typebox/value";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
 import { projectModelClientGenerationSettings } from "../../server/model-client/generation-settings";
 import {
-	captureGenerationProvenanceSettings,
 	PROVENANCE_SETTINGS_FIELDS,
+	type GenerationProvenanceSettings,
 } from "../generation-provenance";
 import {
 	conversationGenerationSettings,
@@ -233,7 +233,20 @@ describe("conversationGenerationSettings", () => {
 
 describe("generationProvenanceSettingsWire", () => {
 	test("accepts the captured provenance settings with their intentional nullability", () => {
-		const captured = captureGenerationProvenanceSettings(validSettings());
+		const settings = validSettings();
+		const captured = {
+			temperature: settings.temperature,
+			topP: settings.topP,
+			frequencyPenalty: settings.frequencyPenalty,
+			presencePenalty: settings.presencePenalty,
+			contextLimit: settings.contextLimit,
+			responseBudget: settings.responseBudget,
+			safetyAllowance: settings.safetyAllowance,
+			siblingGenerationLimit: settings.siblingGenerationLimit,
+			continuationStrategy: settings.continuationStrategy,
+			continuationInstruction: settings.continuationInstruction,
+			continuationPrefillSuffix: settings.continuationPrefillSuffix,
+		} satisfies GenerationProvenanceSettings;
 		expect(Value.Check(generationProvenanceSettingsWire, captured)).toBe(true);
 		// Every retained field is nullable: an unconfigured value decodes as
 		// null rather than an accidental zero or empty string.

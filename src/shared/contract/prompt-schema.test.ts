@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { characterSnapshot } from "./character-library";
-import { conversationSummary, participantPrompt } from "./conversation-schema";
+import { conversationSummary } from "./conversation-schema";
+import { participantPrompt } from "./prompt-schema";
 
 describe("canonical prompt contract", () => {
 	test("is the same five-field schema object in both contracts", () => {

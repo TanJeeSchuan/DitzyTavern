@@ -21,10 +21,6 @@ import type {
 	ProvenanceSettingsField,
 } from "../generation-provenance";
 
-// Preserve the established contract export while keeping the schema owned by
-// the shared prompt module used by both Conversation and Character contracts.
-export { participantPrompt };
-
 const castParticipant = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),

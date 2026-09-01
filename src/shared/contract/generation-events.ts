@@ -1,4 +1,10 @@
 import { Type, type Static } from "@sinclair/typebox";
+import {
+	conflictReasonOutcome,
+	invalidOutcome,
+	notFoundOutcome,
+	notPlayableOutcome,
+} from "./outcomes";
 
 // The normalized Generation event vocabulary: the provider-neutral events a
 // Model Client emits, the Generation runtime publishes at the SSE seam, and
@@ -129,34 +135,21 @@ const failedGenerationOutcome = Type.Object({
 	outcome: Type.Literal("failed"),
 	reason: Type.String(),
 });
-const missingGenerationOutcome = Type.Object({ outcome: Type.Literal("not-found") });
-const unplayableGenerationOutcome = Type.Object({
-	outcome: Type.Literal("not-playable"),
-	reason: Type.String(),
-});
-const invalidGenerationOutcome = Type.Object({
-	outcome: Type.Literal("invalid"),
-	reason: Type.String(),
-});
-const conflictingGenerationOutcome = Type.Object({
-	outcome: Type.Literal("conflict"),
-	reason: Type.String(),
-});
 
 export const generationSubscriptionFailurePayload = Type.Union([
 	failedGenerationOutcome,
-	missingGenerationOutcome,
-	unplayableGenerationOutcome,
-	invalidGenerationOutcome,
-	conflictingGenerationOutcome,
+	notFoundOutcome,
+	notPlayableOutcome,
+	invalidOutcome,
+	conflictReasonOutcome,
 ]);
 
 export const generationFailurePayload = Type.Union([
 	Type.Composite([generationAttemptTarget, failedGenerationOutcome]),
-	Type.Composite([generationAttemptTarget, missingGenerationOutcome]),
-	Type.Composite([generationAttemptTarget, unplayableGenerationOutcome]),
-	Type.Composite([generationAttemptTarget, invalidGenerationOutcome]),
-	Type.Composite([generationAttemptTarget, conflictingGenerationOutcome]),
+	Type.Composite([generationAttemptTarget, notFoundOutcome]),
+	Type.Composite([generationAttemptTarget, notPlayableOutcome]),
+	Type.Composite([generationAttemptTarget, invalidOutcome]),
+	Type.Composite([generationAttemptTarget, conflictReasonOutcome]),
 ]);
 
 export type GenerationFailurePayload = Static<typeof generationFailurePayload>;

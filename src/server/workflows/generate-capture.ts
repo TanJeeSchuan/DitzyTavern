@@ -44,9 +44,9 @@ import {
 import { projectModelClientGenerationSettings } from "../model-client";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 import {
-	captureGenerationProvenanceSettings,
 	generationProvenanceCodec,
 	type GenerationProvenanceRecord,
+	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 
@@ -178,21 +178,34 @@ function captureConfiguration(
 }
 
 // The retained provenance record: safe connection identity, model identity,
-// and the attempt's Effective Generation Settings. The exhaustive provenance
-// capture adapter projects exactly the settings that participated — an
-// intent-inapplicable Continuation operand is already absent from the plan —
-// and Request Overrides are never retained.
+// and the attempt's Effective Generation Settings. Only fields in the shared
+// provenance vocabulary are retained — an intent-inapplicable Continuation
+// operand is already absent from the plan — and Request Overrides are never
+// retained.
 const generationProvenanceEntry = (
 	plan: GenerationPlan,
 	connection: ModelClientConnectionSnapshot | null,
 ): ConversationDataEntry => {
+	const generationSettings = {
+		temperature: plan.effectiveSettings.temperature,
+		topP: plan.effectiveSettings.topP,
+		frequencyPenalty: plan.effectiveSettings.frequencyPenalty,
+		presencePenalty: plan.effectiveSettings.presencePenalty,
+		contextLimit: plan.effectiveSettings.contextLimit,
+		responseBudget: plan.effectiveSettings.responseBudget,
+		safetyAllowance: plan.effectiveSettings.safetyAllowance,
+		siblingGenerationLimit: plan.effectiveSettings.siblingGenerationLimit,
+		continuationStrategy: plan.effectiveSettings.continuationStrategy,
+		continuationInstruction: plan.effectiveSettings.continuationInstruction,
+		continuationPrefillSuffix: plan.effectiveSettings.continuationPrefillSuffix,
+	} satisfies GenerationProvenanceSettings;
 	const provenanceRecord: GenerationProvenanceRecord = {
 		connectionProfileId: connection?.profileId ?? null,
 		connectionSettingsRevision: connection?.settingsRevision ?? null,
 		modelBackend: connection?.backend ?? null,
 		adapter: connection?.adapter ?? null,
 		modelId: plan.effectiveSettings.modelId,
-		generationSettings: captureGenerationProvenanceSettings(plan.effectiveSettings),
+		generationSettings,
 		usage: null,
 		finishReason: null,
 		status: null,
