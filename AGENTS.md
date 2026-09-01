@@ -12,8 +12,18 @@ Exhaustive declarations should encode information. An exhaustive object whose va
 - Tautological tests considered harmful.
 - During refactors, tests for **architectural** regressions are not needed, e.g. a set of hand-writen identical declarations being unified into a single declaration doesn't need a test to detect if it regressed into it's initial state
 
-## Ticket implementation
+## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
 - Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
+
+
+## Implementer Subagents Orchestration
+- /implement runs /code-review itself at the end (Standards + Spec axes, parallel reviewer subagents), then commits to the current branch
+
+The prompt of each subagent is simple, this verbatim:
+```
+ /implement <ticket-path>; use <user-provided-model> for review subagents;
+```
+user-provided-model is muse-spark-1.2-contributor [opencode-go] [max] by default, change on request
 
 ## Database persistance
 - Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
