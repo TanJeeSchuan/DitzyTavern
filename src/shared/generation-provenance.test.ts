@@ -34,6 +34,8 @@ const startProvenance = {
 };
 
 describe("generation provenance codec", () => {
+	// Keep behavioral boundary coverage here; the removed identity projection
+	// had no codec behavior to verify.
 	test("round-trips the persisted start record into terminal transport details", () => {
 		const encoded = encodeGenerationProvenance(startProvenance);
 		const data = [
