@@ -156,18 +156,18 @@ export const createConversationRoutes = (
 			params: { id: number };
 			body: { expectedRevision: number; content?: string };
 		}) => {
-		return generationAcceptanceResponse(
-			params.id,
-			() => start(params.id, body),
-			(accepted) => accepted.modelMessageId,
-			(failure) => {
-				switch (failure.status) {
-					case 404: return status(404, failure.body);
-					case 409: return status(409, failure.body);
-					case 422: return status(422, failure.body);
-				}
-			},
-		);
+			return generationAcceptanceResponse(
+				params.id,
+				() => start(params.id, body),
+				(accepted) => accepted.modelMessageId,
+				(failure) => {
+					switch (failure.status) {
+						case 404: return status(404, failure.body);
+						case 409: return status(409, failure.body);
+						case 422: return status(422, failure.body);
+					}
+				},
+			);
 		};
 
 	const readActiveGenerationDetailsRoute = ({ params }: {
