@@ -16,11 +16,7 @@ import {
 	commandBodySchema,
 } from "../../shared/contract/character-library";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
-import {
-	invalidResponse,
-	notFoundResponse,
-	staleCharacterConflictResponse,
-} from "./payload";
+import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toCharacterPayload } from "./projections";
 
 // ==[HUMAN APPROVED]== Keep this adapter export stable for sibling route adapters that use the

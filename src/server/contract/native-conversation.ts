@@ -8,12 +8,8 @@ import {
 import { InvalidConversationCreationError } from "../conversation";
 import { withDatabase } from "../database/database";
 import { createNativeConversation } from "../workflows";
-import {
-	invalidResponse,
-	notFoundResponse,
-	staleCharacterConflictResponse,
-	toConversationSummary,
-} from "./payload";
+import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+import { toConversationSummary } from "./projections";
 import { characterConflict } from "../../shared/contract/character-library";
 import {
 	nativeConversationBody,

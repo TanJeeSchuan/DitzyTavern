@@ -16,7 +16,8 @@ import {
 	withChatImport,
 	withChatImportDetails,
 } from "../sillytavern";
-import { invalidResponse, toConversationSummary } from "./payload";
+import { invalidResponse } from "./responses";
+import { toConversationSummary } from "./projections";
 import {
 	chatImportCommitBody,
 	chatImportDetails,

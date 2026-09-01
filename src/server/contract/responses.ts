@@ -1,10 +1,6 @@
 import { status } from "elysia";
 import { StaleCharacterRevisionError } from "../character-library";
-import { toCharacterPayload, toConversationSummary } from "./projections";
-
-// ==[HUMAN APPROVED]== Keep this adapter export stable for the conversation routes while the
-// implementation lives below the route-adapter layer.
-export { toConversationSummary };
+import { toCharacterPayload } from "./projections";
 
 // ==[HUMAN APPROVED]== Builds the typed 409 conflict payload for a stale Character revision so
 // every adapter that forks or edits Characters presents the same recovery

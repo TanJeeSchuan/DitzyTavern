@@ -26,12 +26,8 @@ import {
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
-import {
-	invalidResponse,
-	notFoundResponse,
-	staleCharacterConflictResponse,
-	toConversationSummary,
-} from "./payload";
+import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
+import { toConversationSummary } from "./projections";
 import {
 	activeGenerationDetails,
 	addCharacterToCastBody,
