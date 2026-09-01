@@ -193,7 +193,7 @@ describe("canonical Conversation Generation removal", () => {
 				},
 			}),
 		).toThrow(
-			"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation is active.",
+			"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
 		);
 
 		const selected = input.module.execute({

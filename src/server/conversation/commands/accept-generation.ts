@@ -652,10 +652,12 @@ export function acceptConversationSiblingGeneration(
 			}
 			throw new SiblingVariantUnavailableError(eligibility.reason);
 		}
-		const historicalPair = historicalContext!;
+		if (historicalContext === null) {
+			throw new SiblingVariantUnavailableError("missing-historical-context");
+		}
 		if (
-			historicalPair.humanParticipantId !== input.humanParticipantId ||
-			historicalPair.modelParticipantId !== input.modelParticipantId
+			historicalContext.humanParticipantId !== input.humanParticipantId ||
+			historicalContext.modelParticipantId !== input.modelParticipantId
 		) {
 			throw new InvalidConversationCommandError(
 				"The captured historical Control pair does not match the target Message.",
@@ -669,7 +671,7 @@ export function acceptConversationSiblingGeneration(
 			.all();
 		if (activeRows.some((row) => !isSiblingGenerationRow({ generation_intent_json: row.intent }))) {
 			throw new InvalidConversationCommandError(
-				"A Sibling Generation cannot start while another Active Generation is active.",
+				"A Sibling Generation cannot start while an Active Generation exists.",
 			);
 		}
 		if (activeRows.some((row) => row.messageId !== input.messageId)) {

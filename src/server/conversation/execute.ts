@@ -67,7 +67,7 @@ export function executeConversationCommand(
 				command.action.type === "assign-control")
 		) {
 			throw new InvalidConversationCommandError(
-				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation is active.",
+				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
 			);
 		}
 
