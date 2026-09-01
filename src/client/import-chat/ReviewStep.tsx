@@ -4,6 +4,7 @@ import {
 	deriveDuplicateNameWarnings,
 	type ChatImportFlowAction,
 	type ChatImportFlowState,
+	variantCountForGroup,
 } from "../import-chat-flow";
 import { outcomeLabel, sourceSize } from "./presentation";
 
@@ -75,9 +76,9 @@ export function ReviewStep({
 								{outcomeLabel(group.outcome)}
 							</span>
 							<small>
-								{group.messageCount} Message
-								{group.messageCount === 1 ? "" : "s"} · {group.variantCount}{" "}
-								Variant{group.variantCount === 1 ? "" : "s"}
+								{group.messages.length} Message
+								{group.messages.length === 1 ? "" : "s"} · {variantCountForGroup(group)}{" "}
+								Variant{variantCountForGroup(group) === 1 ? "" : "s"}
 							</small>
 						</li>
 					))}

@@ -1,70 +1,27 @@
 import type { ConversationSnapshot } from "../../conversation/types";
+import type {
+	ChatImportCommitBody,
+	ChatImportDuplicateMatch,
+	ChatImportGroup as ChatImportGroupContract,
+	ChatImportPreview as ChatImportPreviewContract,
+	ChatImportReceipt as ChatImportReceiptContract,
+	ChatImportReceiptParticipant as ChatImportReceiptParticipantContract,
+	ChatImportResolvedParticipant,
+	ChatImportSuggestion,
+	ImportResolutionOutcome as ImportResolutionOutcomeContract,
+} from "../../../shared/contract/chat-import";
 
-export type SuggestionMatchKind = "exact" | "case-insensitive" | "fuzzy";
+// Compact post-commit receipt shared with the HTTP contract.
+export type ChatImportReceipt = ChatImportReceiptContract;
+export type ChatImportReceiptParticipant = ChatImportReceiptParticipantContract;
+export type { ChatImportDuplicateMatch, ChatImportSuggestion };
+export type SuggestionMatchKind = ChatImportSuggestion["match"];
 
-// The strongest name-only Character candidate for one author group. It is
-// always presented as an unconfirmed pre-fill: `confirmed` starts false and
-// can only become true through the user's explicit approval.
-export interface ChatImportSuggestion {
-	characterId: number;
-	name: string;
-	match: SuggestionMatchKind;
-	confirmed: boolean;
-}
-
-// One initial author group keyed on the resolved (trimmed) captured author
-// string through the Import Projection's grouping primitive. Whitespace
-// variants and every blank captured name collapse into one group; case and
-// Unicode stay distinct, and nothing is case-folded, aliased, merged, or
-// split beyond that. The user may still merge or split whole Messages in
-// the Resolved Participant Plan.
-export interface ChatImportGroup {
-	// The trimmed captured author string; the empty string for the single
-	// blank group.
-	key: string;
-	isBlank: boolean;
-	// 1-based record positions whose Messages belong to this group.
-	messagePositions: number[];
-	// Variant count of each retained Message, parallel to messagePositions,
-	// so the resolver can present per-Message inspection and selection.
-	messageVariantCounts: number[];
-	messageCount: number;
-	variantCount: number;
-	// Proposed native Participant name, editable by the user. Blank groups
-	// default to UNKNOWN_IMPORTED_AUTHOR_NAME; others keep the trimmed key.
-	participantNameDefault: string;
-	// Strongest name-only Character suggestion, unconfirmed; null when the
-	// group (or the library) has nothing to suggest.
-	suggestion: ChatImportSuggestion | null;
-}
-
-export interface ChatImportDuplicateMatch {
-	id: number;
-	name: string;
-}
-
+export type ChatImportGroup = ChatImportGroupContract;
 // The full staged preview. Everything here is derived from the exact
 // uploaded bytes and existing library/import state; previewing creates no
 // native or global domain record.
-export interface ChatImportPreview {
-	// Filename-derived Chat title, editable by the user before commit.
-	title: string;
-	originalFilename: string;
-	// Raw-byte SHA-256 of the exact uploaded bytes; the binding authority.
-	sha256: string;
-	byteLength: number;
-	// Source-declared integrity when the export carried one; advisory only.
-	integrity: string | null;
-	counts: { messages: number; variants: number };
-	warnings: string[];
-	groups: ChatImportGroup[];
-	duplicates: {
-		// Matching raw SHA-256: an exact duplicate of a prior import.
-		exact: ChatImportDuplicateMatch[];
-		// Declared-integrity-only match: a related source, not a duplicate.
-		related: ChatImportDuplicateMatch[];
-	};
-}
+export type ChatImportPreview = ChatImportPreviewContract;
 
 export interface StagedChatImportResult {
 	token: string;
@@ -76,62 +33,18 @@ export interface StagedChatImportResult {
 // create a Participant together with a minimal new Actor Profile, or keep a
 // complete Chat-only Participant. No skip, source-role inference, or later
 // re-assignment alternative exists.
-export type ImportResolutionOutcome =
-	| { type: "fork"; characterId: number }
-	| { type: "new-character" }
-	| { type: "chat-only" };
+export type ImportResolutionOutcome = ImportResolutionOutcomeContract;
 
 // One resulting Participant in the user-confirmed resolution plan. Whole
 // Messages are referenced by their 1-based record positions; every retained
 // Message must belong to exactly one Participant and none may be skipped.
 // The source author strings themselves are never part of the plan: preserved
 // import data keeps the exact captured values regardless of grouping.
-export interface ChatImportResolvedParticipantPlan {
-	// Proposed native Participant name. For a fork the server derives the
-	// authoritative name from the selected Profile's current name instead.
-	name: string;
-	outcome: ImportResolutionOutcome;
-	messagePositions: number[];
-}
+export type ChatImportResolvedParticipantPlan = ChatImportResolvedParticipant;
 
-export interface ChatImportCommitInput {
-	// The SHA-256 the client already knows from the preview; only the exact
-	// staged bytes that produced the preview may be committed.
-	sha256: string;
-	// The editable Chat title confirmed at final review.
-	title: string;
-	// Explicit import another copy confirmation, required only when the
-	// staged source is an exact duplicate of a prior import.
-	duplicateConfirmed: boolean;
-	participants: ChatImportResolvedParticipantPlan[];
-}
+export type ChatImportCommitInput = ChatImportCommitBody;
 
-export type ChatImportResolvedOutcome = "fork" | "new-character" | "chat-only";
-
-export interface ChatImportReceiptParticipant {
-	name: string;
-	outcome: ChatImportResolvedOutcome;
-	sourceCharacterId: number | null;
-}
-
-// Compact post-commit receipt: what was created, under which source
-// identity, with which Participants and outcomes. Receipt details also
-// persist as Conversation-scoped report data; the receipt itself is the
-// immediate success surface, never a badge, category, or capability flag.
-export interface ChatImportReceipt {
-	conversationId: number;
-	title: string;
-	originalFilename: string;
-	sha256: string;
-	byteLength: number;
-	counts: { messages: number; variants: number };
-	participants: ChatImportReceiptParticipant[];
-	warnings: string[];
-	duplicates: {
-		exact: ChatImportDuplicateMatch[];
-		related: ChatImportDuplicateMatch[];
-	};
-}
+export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
 
 export interface ChatImportCommitResult {
 	conversation: ConversationSnapshot;

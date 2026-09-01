@@ -23,11 +23,7 @@ import type {
 	ChatImportReceipt,
 	ChatImportSuggestion,
 	ImportResolutionOutcome,
-} from "./import-chat";
-
-// The editable Participant-name default for blank captured author groups;
-// the shared module keeps the client label identical to the server seam.
-export { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../shared/imported-author";
+} from "../shared/contract/chat-import";
 
 export type ChatImportPhase =
 	| "choose"
@@ -38,10 +34,15 @@ export type ChatImportPhase =
 	| "success"
 	| "closing";
 
-// One working segment of the resolution. Whole Messages are referenced by
-// their 1-based record positions, and every Variant rides with its owning
-// Message: messageVariantCounts and messageIsBlankSource stay parallel to
-// messagePositions through every merge and split.
+export interface ImportMessageRecord {
+	position: number;
+	variantCount: number;
+	isBlankSource: boolean;
+}
+
+// One working segment of the resolution. Whole Messages are carried as
+// records so their position, Variant count, and blank-source marker cannot
+// drift apart during a merge or split.
 export interface ImportGroupDraft {
 	// Stable local identity, since a split produces two segments sharing one
 	// exact captured author key.
@@ -50,15 +51,9 @@ export interface ImportGroupDraft {
 	// with; the empty string for blank captured names.
 	key: string;
 	isBlank: boolean;
-	messagePositions: number[];
-	// Variant count of each retained Message, parallel to messagePositions.
-	messageVariantCounts: number[];
-	// Whether each retained Message came from a blank captured name, parallel
-	// to messagePositions. Blank-source Messages require an explicit usable
-	// Participant name before commit, wherever they end up after merge/split.
-	messageIsBlankSource: boolean[];
-	messageCount: number;
-	variantCount: number;
+	// Blank-source Messages require an explicit usable Participant name before
+	// commit, wherever they end up after merge or split.
+	messages: ImportMessageRecord[];
 	// Editable native Participant name.
 	participantName: string;
 	// Strongest name-only Character suggestion, unconfirmed; null when the
@@ -75,6 +70,9 @@ export interface ImportGroupDraft {
 	// View-local multi-selection of whole Messages for splitting.
 	selectedPositions: number[];
 }
+
+export const variantCountForGroup = (group: ImportGroupDraft): number =>
+	group.messages.reduce((total, message) => total + message.variantCount, 0);
 
 // The staged handle and its binding, set once when the upload succeeds.
 // Every preview refresh, commit, and discard works from this handle alone;
@@ -180,9 +178,7 @@ export const createChatImportFlowState = (): ChatImportFlowState => ({
 const cloneGroups = (groups: readonly ImportGroupDraft[]): ImportGroupDraft[] =>
 	groups.map((group) => ({
 		...group,
-		messagePositions: [...group.messagePositions],
-		messageVariantCounts: [...group.messageVariantCounts],
-		messageIsBlankSource: [...group.messageIsBlankSource],
+		messages: group.messages.map((message) => ({ ...message })),
 		selectedPositions: [...group.selectedPositions],
 		suggestion: group.suggestion === null ? null : { ...group.suggestion },
 	}));
@@ -196,11 +192,11 @@ const draftFromGroup = (
 	isBlank: group.isBlank,
 	// A blank captured group's Messages are all blank-source; nonblank
 	// groups carry no blank-source Messages until later splits move some in.
-	messagePositions: [...group.messagePositions],
-	messageVariantCounts: [...group.messageVariantCounts],
-	messageIsBlankSource: group.messagePositions.map(() => group.isBlank),
-	messageCount: group.messageCount,
-	variantCount: group.variantCount,
+	messages: group.messagePositions.map((position, index) => ({
+		position,
+		variantCount: group.messageVariantCounts[index] ?? 0,
+		isBlankSource: group.isBlank,
+	})),
 	participantName: group.participantNameDefault,
 	suggestion: group.suggestion === null ? null : { ...group.suggestion },
 	// The strongest suggestion is pre-filled but never auto-approved.
@@ -216,7 +212,7 @@ const draftFromGroup = (
 });
 
 const hasBlankSource = (group: ImportGroupDraft): boolean =>
-	group.messageIsBlankSource.some(Boolean);
+	group.messages.some((message) => message.isBlankSource);
 
 // Single preview/review-phase guard shared by every case that only applies
 // while a staged preview is open; the guard helper keeps the repeated switch
@@ -241,7 +237,7 @@ const mergePreviewGroups = (
 	);
 	return existing.map((draft) => {
 		const initial = byInitialKey.get(
-			`${draft.key}\u0000${draft.messagePositions.join(",")}`,
+			`${draft.key}\u0000${draft.messages.map((message) => message.position).join(",")}`,
 		);
 		return initial === undefined
 			? draft
@@ -288,31 +284,17 @@ const mergeSegments = (
 
 	const merged: ImportGroupDraft = {
 		...target,
-		messagePositions: [
-			...target.messagePositions,
-			...sources.flatMap((source) => source.messagePositions),
+		messages: [
+			...target.messages,
+			...sources.flatMap((source) => source.messages),
 		],
-		messageVariantCounts: [
-			...target.messageVariantCounts,
-			...sources.flatMap((source) => source.messageVariantCounts),
-		],
-		messageIsBlankSource: [
-			...target.messageIsBlankSource,
-			...sources.flatMap((source) => source.messageIsBlankSource),
-		],
-		messageCount:
-			target.messagePositions.length +
-			sources.reduce((total, source) => total + source.messagePositions.length, 0),
-		variantCount:
-			target.variantCount +
-			sources.reduce((total, source) => total + source.variantCount, 0),
 		selectedPositions: [],
 		// Blank-content arriving with merged Messages re-arms the name
 		// confirmation when the target had none; an already confirmed
 		// blank-affected target keeps its confirmation.
-		blankNameConfirmed: target.messageIsBlankSource.some(Boolean)
+		blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
 			? target.blankNameConfirmed
-			: !sources.some((source) => source.messageIsBlankSource.some(Boolean)),
+			: !sources.some((source) => hasBlankSource(source)),
 	};
 	const sourceIdsSet = new Set(sources.map((source) => source.id));
 	return {
@@ -328,8 +310,8 @@ const mergeSegments = (
 // Splits selected whole Messages out of one segment. Moving into an existing
 // segment keeps that segment's identity and choices; moving into a brand-new
 // segment creates a fresh unconfirmed identity that must be named before
-// commit. Every Variant stays with its owning Message because the parallel
-// variant-count and blank-source arrays move together.
+// commit. Every Variant stays with its owning Message because the record moves
+// as one value.
 const splitSegments = (
 	state: ChatImportFlowState,
 	fromId: string,
@@ -340,40 +322,13 @@ const splitSegments = (
 	if (from === undefined || positions.length === 0) return state;
 
 	const moving = new Set(positions);
-	const movedIndexes = from.messagePositions
-		.map((position, index) => (moving.has(position) ? index : -1))
-		.filter((index) => index !== -1);
-	if (movedIndexes.length === 0) return state;
-
-	const movedPositions = movedIndexes.map((index) => from.messagePositions[index]);
-	const movedVariantCounts = movedIndexes.map(
-		(index) => from.messageVariantCounts[index],
-	);
-	const movedBlankSource = movedIndexes.map(
-		(index) => from.messageIsBlankSource[index],
-	);
-	const keptIndexes = new Set(
-		from.messagePositions
-			.map((position, index) => (moving.has(position) ? -1 : index))
-			.filter((index) => index !== -1),
-	);
+	const moved = from.messages.filter((message) => moving.has(message.position));
+	if (moved.length === 0) return state;
+	const keptMessages = from.messages.filter((message) => !moving.has(message.position));
 
 	const kept: ImportGroupDraft = {
 		...from,
-		messagePositions: from.messagePositions.filter((_, index) =>
-			keptIndexes.has(index),
-		),
-		messageVariantCounts: from.messageVariantCounts.filter((_, index) =>
-			keptIndexes.has(index),
-		),
-		messageIsBlankSource: from.messageIsBlankSource.filter((_, index) =>
-			keptIndexes.has(index),
-		),
-		messageCount: keptIndexes.size,
-		variantCount: from.messageVariantCounts.reduce(
-			(total, count, index) => (keptIndexes.has(index) ? total + count : total),
-			0,
-		),
+		messages: keptMessages,
 		selectedPositions: [],
 	};
 
@@ -382,27 +337,20 @@ const splitSegments = (
 	// pre-split snapshot keeps the operation fully reversible.
 	const nextGroups = state.groups
 		.map((group) => (group.id === fromId ? kept : group))
-		.filter((group) => group.messagePositions.length > 0);
+		.filter((group) => group.messages.length > 0);
 
 	if ("existingId" in to) {
 		const target = nextGroups.find((group) => group.id === to.existingId);
 		if (target === undefined || target.id === fromId) return state;
 		const nextTarget: ImportGroupDraft = {
 			...target,
-			messagePositions: [...target.messagePositions, ...movedPositions],
-			messageVariantCounts: [...target.messageVariantCounts, ...movedVariantCounts],
-			messageIsBlankSource: [...target.messageIsBlankSource, ...movedBlankSource],
-			messageCount: target.messagePositions.length + movedPositions.length,
-			variantCount: target.variantCount + movedVariantCounts.reduce(
-				(total, count) => total + count,
-				0,
-			),
+			messages: [...target.messages, ...moved],
 			selectedPositions: [],
 			// Blank-content arriving with moved Messages re-arms the name
 			// confirmation when the target had none.
-			blankNameConfirmed: target.messageIsBlankSource.some(Boolean)
+			blankNameConfirmed: target.messages.some((message) => message.isBlankSource)
 				? target.blankNameConfirmed
-				: !movedBlankSource.some(Boolean),
+				: !moved.some((message) => message.isBlankSource),
 		};
 		return {
 			...state,
@@ -420,11 +368,7 @@ const splitSegments = (
 		id: to.newId,
 		key: to.newKey,
 		isBlank: to.newIsBlank,
-		messagePositions: movedPositions,
-		messageVariantCounts: movedVariantCounts,
-		messageIsBlankSource: movedBlankSource,
-		messageCount: movedPositions.length,
-		variantCount: movedVariantCounts.reduce((total, count) => total + count, 0),
+		messages: moved,
 		participantName: "",
 		suggestion: null,
 		suggestedApproved: true,
@@ -679,7 +623,7 @@ export const shouldBeginUpload = (state: ChatImportFlowState): boolean =>
 export const resolutionReady = (state: ChatImportFlowState): boolean => {
 	if (state.title.trim() === "") return false;
 	return state.groups.every((group) => {
-		if (group.messagePositions.length === 0) return false;
+		if (group.messages.length === 0) return false;
 		if (group.participantName.trim() === "") return false;
 		if (group.outcome.type === "fork" && !group.suggestedApproved) return false;
 		if (hasBlankSource(group) && !group.blankNameConfirmed) return false;
@@ -735,5 +679,5 @@ export const buildResolvedParticipants = (
 	state.groups.map((group) => ({
 		name: group.participantName,
 		outcome: group.outcome,
-		messagePositions: [...group.messagePositions],
+		messagePositions: group.messages.map((message) => message.position),
 	}));

@@ -10,7 +10,8 @@ import type {
 	ChatImportFlowAction,
 	ImportGroupDraft,
 } from "../import-chat-flow";
-import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../import-chat-flow";
+import { variantCountForGroup } from "../import-chat-flow";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../../shared/imported-author";
 
 export function ResolvedGroupCard({
 	group,
@@ -33,20 +34,17 @@ export function ResolvedGroupCard({
 }) {
 	const [messagesOpen, setMessagesOpen] = useState(false);
 	const [splitTarget, setSplitTarget] = useState<string>("new");
-	const blankAffected = group.messageIsBlankSource.some(Boolean);
+	const blankAffected = group.messages.some((message) => message.isBlankSource);
 	const selected = group.selectedPositions;
 	const selectedVariantCount = useMemo(() => {
 		const byPosition = new Map(
-			group.messagePositions.map((position, index) => [
-				position,
-				group.messageVariantCounts[index] ?? 0,
-			]),
+			group.messages.map((message) => [message.position, message.variantCount]),
 		);
 		return selected.reduce(
 			(total, position) => total + (byPosition.get(position) ?? 0),
 			0,
 		);
-	}, [group.messagePositions, group.messageVariantCounts, selected]);
+	}, [group.messages, selected]);
 
 	const splitAffordance = selected.length > 0;
 
@@ -61,9 +59,9 @@ export function ResolvedGroupCard({
 						)}
 					</strong>
 					<small>
-						{group.messageCount} Message
-						{group.messageCount === 1 ? "" : "s"} · {group.variantCount} Variant
-						{group.variantCount === 1 ? "" : "s"}
+						{group.messages.length} Message
+						{group.messages.length === 1 ? "" : "s"} · {variantCountForGroup(group)} Variant
+						{variantCountForGroup(group) === 1 ? "" : "s"}
 					</small>
 				</div>
 				<label className="import-merge-toggle" title="Select for merging">
@@ -182,7 +180,7 @@ export function ResolvedGroupCard({
 				aria-expanded={messagesOpen}
 			>
 				<span>
-					Inspect Messages ({group.messageCount})
+					Inspect Messages ({group.messages.length})
 				</span>
 				{messagesOpen ? (
 					<ChevronUp aria-hidden="true" />
@@ -193,29 +191,29 @@ export function ResolvedGroupCard({
 
 			{messagesOpen && (
 				<div className="import-message-list">
-					{group.messagePositions.map((position, index) => (
-						<label className="import-message-entry" key={position}>
+					{group.messages.map((message) => (
+						<label className="import-message-entry" key={message.position}>
 							<input
 								type="checkbox"
-								checked={group.selectedPositions.includes(position)}
+								checked={group.selectedPositions.includes(message.position)}
 								onChange={(event) =>
 									onDispatch({
 										type: "message-selected",
 										id: group.id,
-										position,
+										position: message.position,
 										selected: event.target.checked,
 									})
 								}
 							/>
 							<span>
-								Message {position}
-								{group.messageIsBlankSource[index] === true && (
+								Message {message.position}
+								{message.isBlankSource && (
 									<small className="import-blank-source">blank name</small>
 								)}
 							</span>
 							<small>
-								{group.messageVariantCounts[index] ?? 0} Variant
-								{(group.messageVariantCounts[index] ?? 0) === 1 ? "" : "s"}
+								{message.variantCount} Variant
+								{message.variantCount === 1 ? "" : "s"}
 							</small>
 						</label>
 					))}

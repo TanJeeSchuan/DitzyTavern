@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { ConnectionSettingsEditorState } from "./connection-settings-state";
-import { copyDraft, preserveConnectionDraftOnConflict } from "./connection-settings-state";
+import type { ConnectionProfile, ConnectionPreset } from "./connection-settings";
+import type { ConnectionSettingsControllerState, ConnectionSettingsEditorState } from "./connection-settings-state";
+import {
+	copyDraft,
+	createConnectionSettingsControllerState,
+	emptyConnectionProfileDraft,
+	headerEditorDataFor,
+	preserveConnectionDraftOnConflict,
+	reduceConnectionSettingsController,
+} from "./connection-settings-state";
 
 const draft = {
 	displayName: "Local draft",
@@ -21,6 +29,63 @@ const state: ConnectionSettingsEditorState = {
 	credentialDraft: "replacement-secret",
 	conflict: null,
 };
+
+const profile = (id: number, displayName: string, pinnedModels: string[] = ["model"]): ConnectionProfile => ({
+	id,
+	displayName,
+	apiFormat: "chat-completions",
+	requestUrl: `https://${displayName.toLowerCase()}.example/`,
+	modelsUrl: "",
+	modelBackend: "automatic",
+	adapter: "openai-compatible",
+	outputTokenRepresentation: "automatic",
+	timeoutMs: 120_000,
+	pinnedModels,
+	discoveryCatalog: [...pinnedModels, "discovered-model"],
+	credentialConfigured: true,
+	headers: [{ name: "X-Client", configured: true }],
+});
+
+const preset: ConnectionPreset = {
+	id: "preset",
+	label: "Preset",
+	description: "Preset description",
+	profile: {
+		displayName: "Preset draft",
+		apiFormat: "chat-completions",
+		requestUrl: "https://preset.example/",
+		modelsUrl: "",
+		modelBackend: "automatic",
+		adapter: "openai-compatible",
+		outputTokenRepresentation: "automatic",
+		timeoutMs: 120_000,
+		pinnedModels: ["preset-model"],
+	},
+};
+
+const controllerSettings = {
+	revision: 2,
+	activeProfileId: 2,
+	profiles: [profile(1, "First"), profile(2, "Second", ["second-model"])],
+};
+
+const controllerState = (): ConnectionSettingsControllerState => ({
+	...createConnectionSettingsControllerState(),
+	settings: controllerSettings,
+	selectedProfileId: 1,
+	draft: { ...emptyConnectionProfileDraft, displayName: "Local edit" },
+	credentialDraft: "secret",
+	headerEditorData: { "X-Client": { configured: true, operation: "replace", replacement: "local" } },
+	testModelId: "local-model",
+	testResult: { outcome: "success", message: "Connected." },
+	replacementProfileId: 2,
+	pendingDeletionProfileId: 1,
+	openProfileMenuId: 1,
+	presetChoicesOpen: true,
+	headersExpanded: false,
+	notice: "old notice",
+	error: "old error",
+});
 
 describe("preserveConnectionDraftOnConflict", () => {
 	test("refreshes authoritative settings without discarding the complete local draft", () => {
@@ -75,5 +140,89 @@ describe("copyDraft", () => {
 			timeoutMs: 120_000,
 			pinnedModels: ["deepseek-chat"],
 		});
+	});
+});
+
+describe("reduceConnectionSettingsController", () => {
+	test("loads settings and initializes the active profile editor atomically", () => {
+		const next = reduceConnectionSettingsController(
+			createConnectionSettingsControllerState(),
+			{ type: "load-succeeded", settings: controllerSettings, presets: [preset] },
+		);
+
+		expect(next.settings).toBe(controllerSettings);
+		expect(next.presets).toEqual([preset]);
+		expect(next.selectedProfileId).toBe(2);
+		expect(next.draft).toEqual(copyDraft(controllerSettings.profiles[1]!));
+		expect(next.testModelId).toBe("second-model");
+		expect(next.headerEditorData).toEqual(
+			headerEditorDataFor(controllerSettings.profiles[1]!.headers),
+		);
+	});
+
+	test("choosing a preset creates a clean new-profile draft", () => {
+		const next = reduceConnectionSettingsController(controllerState(), {
+			type: "choose-preset",
+			preset,
+		});
+
+		expect(next.selectedProfileId).toBeNull();
+		expect(next.draft).toEqual(copyDraft(preset.profile));
+		expect(next.credentialDraft).toBe("");
+		expect(next.testModelId).toBe("preset-model");
+		expect(next.headerEditorData).toEqual({});
+		expect(next.pendingDeletionProfileId).toBeNull();
+		expect(next.openProfileMenuId).toBeNull();
+		expect(next.presetChoicesOpen).toBe(false);
+		expect(next.notice).toContain("Preset defaults copied");
+		expect(next.error).toBeNull();
+	});
+
+	test("a command conflict replaces authority while retaining the local editor", () => {
+		const conflict = {
+			outcome: "conflict" as const,
+			expectedRevision: 2,
+			actualRevision: 3,
+			currentSettings: {
+				revision: 3,
+				activeProfileId: 2,
+				profiles: [profile(2, "Authoritative")],
+			},
+		};
+		const next = reduceConnectionSettingsController(controllerState(), {
+			type: "command-conflict",
+			conflict,
+			message: "Connection Settings changed elsewhere.",
+		});
+
+		expect(next.settings).toBe(conflict.currentSettings);
+		expect(next.conflict).toBe(conflict);
+		expect(next.draft.displayName).toBe("Local edit");
+		expect(next.credentialDraft).toBe("secret");
+		expect(next.selectedProfileId).toBe(1);
+		expect(next.error).toBe("Connection Settings changed elsewhere.");
+	});
+
+	test("deleting a profile selects the replacement and resets dependent editor state", () => {
+		const next = reduceConnectionSettingsController(controllerState(), {
+			type: "delete-succeeded",
+			settings: {
+				revision: 3,
+				activeProfileId: 2,
+				profiles: [profile(2, "Second", ["replacement-model"])],
+			},
+			deletedDisplayName: "First",
+			replacementProfileId: 2,
+		});
+
+		expect(next.selectedProfileId).toBe(2);
+		expect(next.draft).toEqual(copyDraft(next.settings!.profiles[0]!));
+		expect(next.testModelId).toBe("replacement-model");
+		expect(next.headerEditorData).toEqual(
+			headerEditorDataFor(next.settings!.profiles[0]!.headers),
+		);
+		expect(next.pendingDeletionProfileId).toBeNull();
+		expect(next.headersExpanded).toBe(true);
+		expect(next.notice).toBe("First deleted.");
 	});
 });

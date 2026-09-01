@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { ChatImportPreview } from "./import-chat";
+import type { ChatImportPreview } from "../shared/contract/chat-import";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME as UNKNOWN_NAME } from "../shared/imported-author";
 import {
-	UNKNOWN_IMPORTED_AUTHOR_NAME as UNKNOWN_NAME,
 	buildResolvedParticipants,
 	canCommit,
 	cancelNeedsWarning,
@@ -114,7 +114,7 @@ describe("reduceChatImportFlow", () => {
 		expect(state.groups.map((group) => group.id)).toEqual(["group-0", "group-1"]);
 		expect(state.groups[0]).toMatchObject({
 			key: "Writer",
-			messagePositions: [1],
+			messages: [{ position: 1, variantCount: 1, isBlankSource: false }],
 			participantName: "Writer",
 			suggestedApproved: false,
 			outcome: { type: "fork", characterId: 1 },
@@ -254,10 +254,10 @@ describe("reduceChatImportFlow", () => {
 		// approvals and takes the union of the whole Messages.
 		expect(state.groups.map((group) => group.id)).toEqual(["group-0", "group-2"]);
 		expect(state.groups[0]).toMatchObject({
-			messagePositions: [1, 3],
-			messageVariantCounts: [1, 2],
-			messageCount: 2,
-			variantCount: 3,
+			messages: [
+				{ position: 1, variantCount: 1, isBlankSource: false },
+				{ position: 3, variantCount: 2, isBlankSource: false },
+			],
 			participantName: "Writer",
 			outcome: { type: "fork", characterId: 1 },
 		});
@@ -272,8 +272,10 @@ describe("reduceChatImportFlow", () => {
 			"group-1",
 			"group-2",
 		]);
-		expect(state.groups[1]?.messagePositions).toEqual([3]);
-		expect(state.groups[1]?.messageVariantCounts).toEqual([2]);
+		expect(state.groups[1]?.messages.map((message) => message.position)).toEqual([3]);
+		expect(state.groups[1]?.messages).toEqual([
+			{ position: 3, variantCount: 2, isBlankSource: false },
+		]);
 	});
 
 	test("splits selected whole Messages into another Participant and undoes the split", () => {
@@ -305,18 +307,13 @@ describe("reduceChatImportFlow", () => {
 		expect(state.groups.map((group) => group.id)).toEqual(["split-a", "group-0"]);
 		expect(state.groups[0]).toMatchObject({
 			key: "Writer",
-			messagePositions: [2],
-			messageVariantCounts: [1],
-			messageCount: 1,
-			variantCount: 1,
+			messages: [{ position: 2, variantCount: 1, isBlankSource: false }],
 			participantName: "",
 			outcome: { type: "chat-only" },
 			blankNameConfirmed: false,
 		});
 		expect(state.groups[1]).toMatchObject({
-			messagePositions: [1],
-			messageVariantCounts: [2],
-			variantCount: 2,
+			messages: [{ position: 1, variantCount: 2, isBlankSource: false }],
 		});
 		// The fresh participant must be named before the review can pass.
 		expect(resolutionReady(state)).toBe(false);
@@ -330,8 +327,10 @@ describe("reduceChatImportFlow", () => {
 		// Undo restores the exact pre-split segments.
 		state = reduceChatImportFlow(state, { type: "undo-resolution" });
 		expect(state.groups.map((group) => group.id)).toEqual(["group-0"]);
-		expect(state.groups[0]?.messagePositions).toEqual([1, 2]);
-		expect(state.groups[0]?.variantCount).toBe(3);
+		expect(state.groups[0]?.messages).toEqual([
+			{ position: 1, variantCount: 2, isBlankSource: false },
+			{ position: 2, variantCount: 1, isBlankSource: false },
+		]);
 	});
 
 	test("splitting into an existing Participant moves the whole Messages and stays undoable", () => {
@@ -369,18 +368,18 @@ describe("reduceChatImportFlow", () => {
 			positions: [1],
 		});
 		expect(state.groups[0]).toMatchObject({
-			messagePositions: [3],
-			messageCount: 1,
+			messages: [{ position: 3, variantCount: 1, isBlankSource: false }],
 		});
 		expect(state.groups[1]).toMatchObject({
-			messagePositions: [2, 1],
-			messageCount: 2,
-			variantCount: 2,
+			messages: [
+				{ position: 2, variantCount: 1, isBlankSource: false },
+				{ position: 1, variantCount: 1, isBlankSource: false },
+			],
 		});
 
 		state = reduceChatImportFlow(state, { type: "undo-resolution" });
-		expect(state.groups[0]?.messagePositions).toEqual([1, 3]);
-		expect(state.groups[1]?.messagePositions).toEqual([2]);
+		expect(state.groups[0]?.messages.map((message) => message.position)).toEqual([1, 3]);
+		expect(state.groups[1]?.messages.map((message) => message.position)).toEqual([2]);
 	});
 
 	test("moving blank-source Messages carries the blank confirmation requirement to the target", () => {
@@ -393,8 +392,10 @@ describe("reduceChatImportFlow", () => {
 			toId: "group-0",
 			positions: [2],
 		});
-		expect(state.groups[0]?.messagePositions).toEqual([1, 2]);
-		expect(state.groups[0]?.messageIsBlankSource).toEqual([false, true]);
+		expect(state.groups[0]?.messages).toEqual([
+			{ position: 1, variantCount: 1, isBlankSource: false },
+			{ position: 2, variantCount: 1, isBlankSource: true },
+		]);
 		expect(state.groups.map((group) => group.id)).toEqual(["group-0"]);
 
 		// The blank-source flag moved with the Message: the merged segment
@@ -663,7 +664,7 @@ describe("reduceChatImportFlow", () => {
 		// The merged target keeps its identity and moves first; the remaining
 		// segments follow in their previous order. Merged position order is
 		// target-first, then each source's positions in order.
-		expect(state.groups.map((group) => group.messagePositions)).toEqual([
+		expect(state.groups.map((group) => group.messages.map((message) => message.position))).toEqual([
 			[3, 1],
 			[2],
 		]);
