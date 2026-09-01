@@ -447,7 +447,13 @@ export class GenerationRuntime {
 const registries = new WeakMap<Database, GenerationRuntimeRegistry>();
 const defaultRegistry = new GenerationRuntimeRegistry();
 
-export function generationRuntimeFor(database: Database): GenerationRuntimeRegistry {
+/**
+ * Resolve the process-owned runtime registry for one database scope. HTTP
+ * callers without an injected database use the process default and therefore
+ * do not need to open a SQLite connection just to select a registry.
+ */
+export function generationRuntimeFor(database: Database | undefined): GenerationRuntimeRegistry {
+	if (database === undefined) return defaultRegistry;
 	const existing = registries.get(database);
 	if (existing !== undefined) return existing;
 	const created = new GenerationRuntimeRegistry();
@@ -455,10 +461,8 @@ export function generationRuntimeFor(database: Database): GenerationRuntimeRegis
 	return created;
 }
 
-// The HTTP contract may intentionally open short-lived SQLite connections per
-// request. A process-wide registry keeps those request connections attached to
-// the same server-owned generation stream in production; injected test
-// databases still receive isolated WeakMap registries above.
+// The default registry is retained as the explicit process-lifecycle seam used
+// by startup recovery and graceful shutdown.
 export function defaultGenerationRuntime(): GenerationRuntimeRegistry {
 	return defaultRegistry;
 }

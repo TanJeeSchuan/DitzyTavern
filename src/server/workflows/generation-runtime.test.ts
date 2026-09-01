@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { openDatabase } from "../database/database";
 import { gracefullyShutdownGenerations } from "./generation-recovery";
-import { defaultGenerationRuntime, GenerationRuntimeRegistry } from "./generation-runtime";
+import {
+	defaultGenerationRuntime,
+	generationRuntimeFor,
+	GenerationRuntimeRegistry,
+} from "./generation-runtime";
 
 describe("Generation runtime", () => {
 	test("fans one ordered provider stream out to multiple subscribers", () => {
@@ -203,6 +207,20 @@ describe("Generation runtime", () => {
 			expect(runtime.signal.aborted).toBe(true);
 		} finally {
 			registry.remove(generationId);
+			database.close();
+		}
+	});
+
+	test("selects the process registry without a database and reuses injected database scope", () => {
+		const database = openDatabase({ path: ":memory:" });
+		try {
+			const processRegistry = generationRuntimeFor(undefined);
+			const databaseRegistry = generationRuntimeFor(database);
+
+			expect(processRegistry).toBe(defaultGenerationRuntime());
+			expect(generationRuntimeFor(database)).toBe(databaseRegistry);
+			expect(databaseRegistry).not.toBe(processRegistry);
+		} finally {
 			database.close();
 		}
 	});

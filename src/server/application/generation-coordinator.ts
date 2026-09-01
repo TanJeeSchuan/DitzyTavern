@@ -27,10 +27,8 @@ import {
 	type ModelFetch,
 } from "../model-client";
 import {
-	defaultGenerationRuntime,
 	generationRuntimeFor,
 	type GenerationRuntime,
-	type GenerationRuntimeRegistry,
 	type GenerationRuntimeState,
 } from "../workflows";
 import {
@@ -493,21 +491,10 @@ export class GenerationCoordinator {
 		}
 	}
 
-	/**
-	 * The process runtime registry that owns this server's Generation runtimes.
-	 * The same selection the start path uses, so Stop always settles runtimes
-	 * the Coordinator itself registered.
-	 */
-	private runtimeRegistry(): GenerationRuntimeRegistry {
-		return this.configuredDatabase === undefined
-			? defaultGenerationRuntime()
-			: generationRuntimeFor(this.configuredDatabase);
-	}
-
 	/** The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
 	private runtimeLifecycle(): GenerationRuntimeLifecycle {
 		if (this.options.runtimeLifecycle !== undefined) return this.options.runtimeLifecycle;
-		return this.runtimeRegistry();
+		return generationRuntimeFor(this.configuredDatabase);
 	}
 
 	private async startGeneration<
@@ -529,7 +516,7 @@ export class GenerationCoordinator {
 				throw new ConversationNotFoundError(input.conversationId);
 			}
 			const transport = this.resolveTransport(database);
-			const runtimeRegistry = this.runtimeRegistry();
+			const runtimeRegistry = generationRuntimeFor(this.configuredDatabase);
 			let runtime: GenerationRuntime | undefined;
 			const started = input.start({
 				database,

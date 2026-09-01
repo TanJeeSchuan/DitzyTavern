@@ -72,7 +72,6 @@ export function createGenerationSubscriptionResponse(
 	runtime: GenerationRuntime,
 	afterEventId: number,
 	request: Request,
-	onClosed?: () => void,
 ): Response {
 	const encoder = new TextEncoder();
 	const frame = (type: string, data: GenerationSsePayload, eventId?: number) =>
@@ -82,34 +81,48 @@ export function createGenerationSubscriptionResponse(
 			let closed = false;
 			let subscription: ReturnType<typeof runtime.subscribe> | undefined;
 			let removeStateListener: (() => void) | undefined;
+			let removeAbortListener: (() => void) | undefined;
+			const cleanup = () => {
+				subscription?.close();
+				removeStateListener?.();
+				removeAbortListener?.();
+			};
 			const emit = (type: string, data: GenerationSsePayload, eventId?: number) => {
 				if (closed) return;
 				try { controller.enqueue(encoder.encode(frame(type, data, eventId))); } catch { /* client disconnected */ }
 			};
 			const finish = (state: GenerationRuntimeState) => {
 				if (closed || state.status === "active") return;
-				subscription?.close();
-				removeStateListener?.();
 				const terminal = terminalGenerationFrame(state);
 				emit(terminal.type, terminal.data);
 				closed = true;
+				cleanup();
 				try { controller.close(); } catch { /* client disconnected */ }
-				onClosed?.();
 			};
+			const onAbort = () => {
+				if (closed) return;
+				closed = true;
+				cleanup();
+				try { controller.close(); } catch { /* client disconnected */ }
+			};
+			removeStateListener = runtime.onStateChange(finish);
 			subscription = runtime.subscribe(
 				afterEventId,
 				(envelope) => emit("generation", envelope.event, envelope.eventId),
 				(state) => emit("state", activeGenerationPayload(state)),
 			);
-			removeStateListener = runtime.onStateChange(finish);
+			// A terminal runtime can synchronously finish from the replay callback
+			// before subscribe() returns. Close the newly-created subscription too.
+			if (closed) subscription.close();
 			finish(runtime.state);
-			request.signal.addEventListener("abort", () => {
-				if (closed) return;
-				closed = true;
-				subscription?.close();
-				removeStateListener?.();
-				onClosed?.();
-			}, { once: true });
+			removeAbortListener = () => request.signal.removeEventListener("abort", onAbort);
+			if (closed) {
+				removeAbortListener();
+			} else if (request.signal.aborted) {
+				onAbort();
+			} else {
+				request.signal.addEventListener("abort", onAbort, { once: true });
+			}
 		},
 	});
 	return new Response(stream, {

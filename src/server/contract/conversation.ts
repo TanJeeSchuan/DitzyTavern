@@ -19,11 +19,10 @@ import {
 	createGenerationCoordinator,
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
-import { openDatabase, withDatabase } from "../database/database";
+import { withDatabase } from "../database/database";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
-	defaultGenerationRuntime,
 	saveParticipantAsCharacter,
 } from "../workflows";
 import { toCharacterPayload } from "./character-library";
@@ -70,9 +69,6 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
-
-const runtimeRegistryForRequest = (connection: Database, configuredDatabase: Database | undefined) =>
-	configuredDatabase === undefined ? defaultGenerationRuntime() : generationRuntimeFor(connection);
 
 // Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
@@ -371,21 +367,14 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generations/:generationId/events",
 			({ params, query, request }) => {
-				const connection = database ?? openDatabase();
-				const runtime = runtimeRegistryForRequest(connection, database).get(params.generationId);
+				const runtime = generationRuntimeFor(database).get(params.generationId);
 				if (runtime === undefined || runtime.state.conversationId !== params.id) {
-					if (!database) connection.close();
 					return new Response(JSON.stringify({ outcome: "not-found" }), {
 						status: 404,
 						headers: { "content-type": "application/json" },
 					});
 				}
-				return createGenerationSubscriptionResponse(
-					runtime,
-					query.after ?? 0,
-					request,
-					() => { if (!database) connection.close(); },
-				);
+				return createGenerationSubscriptionResponse(runtime, query.after ?? 0, request);
 			},
 			{
 				params: generationIdParams,
