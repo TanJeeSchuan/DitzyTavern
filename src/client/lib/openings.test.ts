@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { openingsFromText, openingsToText } from "./openings";
 
-// Characterizes the single openings conversion shared by the Cast and
-// Character Library editors. The trimming variant is the deliberate one
+// Characterizes the single openings conversion shared by New Chat, Cast,
+// and Character Library editors. The trimming variant is the deliberate one
 // (it replaced the Character Library's untrimmed duplicate), so these
 // assertions pin the exact semantics: trailing whitespace and Windows
 // carriage returns never leak into stored openings, while leading
