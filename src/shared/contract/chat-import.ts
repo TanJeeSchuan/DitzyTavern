@@ -177,8 +177,12 @@ const importDetailsArtifactAvailability = Type.Union([
 
 export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
-const importDetailsArtifact = Type.Object({
-	chatId: Type.Integer(),
+// ==[HUMAN APPROVED]== The committed metadata of one preserved exact-source artifact:
+// (namespace, key) identity within the Conversation, managed placement, and
+// content digest. Neutral shared home for the 7-field schema so the
+// Conversation creation seam and the wire artifact shape both derive from
+// one declaration instead of restating it.
+export const artifactMetadata = Type.Object({
 	namespace: Type.String(),
 	key: Type.String(),
 	// Path relative to the managed artifact directory of the deployment.
@@ -192,8 +196,17 @@ const importDetailsArtifact = Type.Object({
 	// bytes, sensitive to BOM, line endings, whitespace, escape spelling,
 	// blank lines, and trailing newline.
 	sha256: Type.String(),
-	availability: importDetailsArtifactAvailability,
 });
+
+// ==[HUMAN APPROVED]== The wire artifact shape adds the owning Chat and the derived
+// availability on top of the committed metadata.
+const importDetailsArtifact = Type.Composite([
+	artifactMetadata,
+	Type.Object({
+		chatId: Type.Integer(),
+		availability: importDetailsArtifactAvailability,
+	}),
+]);
 
 export type ImportDetailsArtifact = Static<typeof importDetailsArtifact>;
 

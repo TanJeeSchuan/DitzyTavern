@@ -1,7 +1,9 @@
+import type { Static } from "@sinclair/typebox";
 import type {
 	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../../shared/generation-provenance";
+import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	ActiveGenerationDetails as SharedActiveGenerationDetails,
 	CapabilityAvailability as SharedCapabilityAvailability,
@@ -91,15 +93,10 @@ export interface ConversationDataRead {
 // bytes live outside SQLite under the caller-provided unique managed
 // relative path and are never automatically deleted. Identity is unique per
 // Conversation by (namespace, key).
-export interface ConversationArtifactSeed {
-	namespace: string;
-	key: string;
-	relativePath: string;
-	originalFilename: string;
-	mediaType: string;
-	byteLength: number;
-	sha256: string;
-}
+//
+// ==[HUMAN APPROVED]== Derived from the canonical shared artifact metadata schema so the
+// creation seam and the Chat Import wire contract cannot drift.
+export type ConversationArtifactSeed = Static<typeof artifactMetadata>;
 
 // A complete Conversation-local identity Definition. Derived from the
 // canonical shared schema (ADR-0032) so it stays structurally identical to a

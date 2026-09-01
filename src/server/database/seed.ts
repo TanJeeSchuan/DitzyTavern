@@ -11,6 +11,7 @@ import {
 	type CharacterDefinition,
 	createCharacterLibraryModule,
 } from "../character-library";
+import type { ParticipantDefinition } from "../conversation/types";
 import {
 	createNativeConversation,
 	type NewChatSeat,
@@ -104,11 +105,7 @@ export const characters: SeedCharacter[] = [
 	},
 ];
 
-export interface AdHocPersona {
-	name: string;
-	prompt: CharacterDefinition["prompt"];
-	openings: string[];
-}
+export type AdHocPersona = ParticipantDefinition;
 
 // ==[HUMAN APPROVED]== Ad-hoc human personas. "Writer" is an ordinary possible Participant name;
 // it carries no special behavior. The satisfies check keeps the concrete

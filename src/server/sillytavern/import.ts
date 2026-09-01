@@ -108,27 +108,10 @@ export function importSillyTavernChat(
 		);
 	}
 
-	const conversation = createImportedConversation(database, {
-		name,
-		participants: projected.input.participants,
-		control: projected.input.control,
-		messages: projected.input.messages,
-		data: projected.input.data,
-		artifacts: [
-			{
-				namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
-				key: EXACT_SOURCE_ARTIFACT_KEY,
-				relativePath: stored.relativePath,
-				originalFilename: filename,
-				mediaType: mediaTypeFromFilename(filename),
-				byteLength: stored.byteLength,
-				sha256: stored.sha256,
-			},
-		],
-	});
-
-	const artifact: ArtifactMetadata = {
-		chatId: conversation.id,
+	// ==[HUMAN APPROVED]== One construction of the committed artifact metadata: the seed
+	// rides into the Conversation creation seam and the returned metadata
+	// adds only the resolved Chat id.
+	const artifactSeed = {
 		namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
 		key: EXACT_SOURCE_ARTIFACT_KEY,
 		relativePath: stored.relativePath,
@@ -136,6 +119,20 @@ export function importSillyTavernChat(
 		mediaType: mediaTypeFromFilename(filename),
 		byteLength: stored.byteLength,
 		sha256: stored.sha256,
+	};
+
+	const conversation = createImportedConversation(database, {
+		name,
+		participants: projected.input.participants,
+		control: projected.input.control,
+		messages: projected.input.messages,
+		data: projected.input.data,
+		artifacts: [artifactSeed],
+	});
+
+	const artifact: ArtifactMetadata = {
+		chatId: conversation.id,
+		...artifactSeed,
 	};
 
 	return {
