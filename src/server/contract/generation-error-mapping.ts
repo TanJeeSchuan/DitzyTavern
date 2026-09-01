@@ -1,3 +1,4 @@
+import type { Static } from "@sinclair/typebox";
 import {
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
@@ -8,6 +9,7 @@ import {
 } from "../conversation";
 import { GenerationConfigurationError } from "../application/generation-coordinator";
 import { PromptBudgetExceededError } from "../prompt-compiler";
+import { generationAccepted } from "../../shared/contract/conversation-schema";
 
 type GenerationStartFailure =
 	| { readonly status: 404; readonly body: { readonly outcome: "not-found" } }
@@ -85,13 +87,10 @@ type AcceptedGenerationFields = {
 	readonly provisionalVariantId: number;
 };
 
-type AcceptedGenerationBody = {
-	readonly outcome: "accepted";
-	readonly generationId: number;
-	readonly conversationId: number;
-	readonly messageId: number;
-	readonly variantId: number;
-};
+// ==[HUMAN APPROVED]== The accepted body derives from the canonical generationAccepted
+// wire schema (ADR-0032) so the acceptance response can never drift from the
+// transport contract.
+type AcceptedGenerationBody = Static<typeof generationAccepted>;
 
 /**
  * ==[HUMAN APPROVED]== Shared acceptance seam for Send, Continue, and Sibling starts. The caller

@@ -12,6 +12,7 @@
 // and story dispatches into it.
 
 import type {
+	GenerationAttemptTarget,
 	GenerationEvent,
 	GenerationStatePayload,
 	GenerationStreamStatus,
@@ -19,12 +20,10 @@ import type {
 import type { GenerationStreamResult } from "./conversation-stream";
 
 // ==[HUMAN APPROVED]== One authoritative snapshot target: the server-owned identity of an Active
-// Generation's provisional Variant.
-export interface GenerationSessionTarget {
-	generationId: number;
-	messageId: number;
-	variantId: number;
-}
+// Generation's provisional Variant. It derives from the canonical attempt
+// target (ADR-0032) minus the Conversation id, which the collection tracks
+// once per view rather than per target.
+export type GenerationSessionTarget = Omit<GenerationAttemptTarget, "conversationId">;
 
 // ==[HUMAN APPROVED]== Subscription lifecycle of one observed Generation:
 // - `subscribing`: a subscribe effect is outstanding (opening or reconnecting).

@@ -11,6 +11,7 @@ import {
 	participantTable,
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
+import type { ControlAssignment } from "../../shared/cast";
 import { isImportOwnedDataNamespace } from "../../shared/import-data";
 import {
 	InvalidConversationCommandError,
@@ -19,10 +20,10 @@ import {
 export const connectConversationDatabase = (database: Database) => drizzle(database);
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
 
-export interface ControlAssignmentState {
-	humanParticipantId: number | null;
-	modelParticipantId: number | null;
-}
+// ==[HUMAN APPROVED]== The Control assignment state aliases the shared ControlAssignment
+// declaration (ADR-0032) so the domain read model can never drift from the
+// snapshot and client derivations.
+export type ControlAssignmentState = ControlAssignment;
 
 // ==[HUMAN APPROVED]== Reads the current Control assignment. A Conversation is playable only when
 // both distinct seats are occupied; this derived state is never stored.
@@ -75,10 +76,7 @@ export const hasActiveGeneration = (
 export const writeControlAssignment = (
 	db: ConversationDatabase,
 	conversationId: number,
-	assignment: {
-		humanParticipantId: number | null;
-		modelParticipantId: number | null;
-	},
+	assignment: ControlAssignmentState,
 ) => {
 	db.delete(conversationControlTable)
 		.where(eq(conversationControlTable.chat_id, conversationId))

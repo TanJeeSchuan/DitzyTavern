@@ -19,7 +19,10 @@ import type {
 	ConversationSnapshot,
 	ParticipantDefinition,
 } from "../conversation/types";
-import type { newChatSeatSchema } from "../../shared/contract/native-conversation";
+import type {
+	nativeConversationBody,
+	newChatSeatSchema,
+} from "../../shared/contract/native-conversation";
 
 // ==[HUMAN APPROVED]== Seat shapes derive from the canonical native-conversation wire
 // schema so the workflow can never drift from the transport contract.
@@ -29,12 +32,12 @@ export type CharacterForkSeat = Extract<NewChatSeat, { type: "character" }>;
 
 export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
 
-export interface CreateNativeConversationInput {
-	name: string;
-	humanSeat: NewChatSeat;
-	modelSeat: NewChatSeat;
+// ==[HUMAN APPROVED]== The input derives from the canonical native-conversation wire
+// schema (ADR-0032); `createdAt` stays workflow-owned because the transport
+// never submits it — the server defaults it to the creation time.
+export type CreateNativeConversationInput = Static<typeof nativeConversationBody> & {
 	createdAt?: string | undefined;
-}
+};
 
 interface ResolvedSeat {
 	definition: ParticipantDefinition;

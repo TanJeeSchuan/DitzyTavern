@@ -8,6 +8,7 @@
 // source. Either conflict fails atomically with no partial writes.
 
 import type { Database } from "bun:sqlite";
+import type { Static } from "@sinclair/typebox";
 import {
 	CharacterNotFoundError,
 	StaleCharacterRevisionError,
@@ -15,13 +16,15 @@ import {
 } from "../character-library";
 import { createConversationModule } from "../conversation";
 import type { ConversationSnapshot } from "../conversation/types";
+import { addCharacterToCastBody } from "../../shared/contract/conversation-schema";
 
-export interface AddCharacterToCastInput {
+// ==[HUMAN APPROVED]== The input derives from the canonical add-character-to-cast wire
+// schema (ADR-0032) so the workflow can never drift from the transport
+// contract; the Conversation id is not part of the body because it lives in
+// the route path.
+export type AddCharacterToCastInput = Static<typeof addCharacterToCastBody> & {
 	conversationId: number;
-	expectedConversationRevision: number;
-	characterId: number;
-	expectedCharacterRevision: number;
-}
+};
 
 export function addCharacterToCast(
 	database: Database,
