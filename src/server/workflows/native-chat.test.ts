@@ -58,7 +58,7 @@ describe("Native New Chat workflow", () => {
 		characterId,
 		expectedRevision,
 	});
-	const adHoc = (name: string, openings: readonly string[] = []) => ({
+	const adHoc = (name: string, openings: string[] = []) => ({
 		type: "adhoc" as const,
 		definition: { name, prompt: prompt(), openings },
 	});

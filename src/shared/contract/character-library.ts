@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
 
@@ -6,7 +6,7 @@ import { numericWire } from "./wire";
 // Routes stay thin adapters: persistence and validation rules live behind
 // the deep module, never here.
 
-const characterLibrarySummary = Type.Object({
+export const characterLibrarySummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -17,18 +17,20 @@ const characterLibrarySummary = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
 });
 
-const characterDeletionMode = Type.Union([
+export const characterDeletionMode = Type.Union([
 	Type.Literal("hard-delete"),
 	Type.Literal("tombstone"),
 ]);
 
 // Derived deletion impact presented with every authoritative read so the
 // confirmation flow can show the exact consequence before any command.
-const characterDeletionImpact = Type.Object({
+export const characterDeletionImpact = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });
 
+// A complete reusable identity. Openings are ordered, exact, nonblank
+// text entries; an empty list is valid.
 export const characterSnapshot = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
@@ -41,7 +43,7 @@ export const characterSnapshot = Type.Object({
 
 // Outcome of a confirmed deletion: the mode is derived from the reference
 // count at command time, never guessed by the client.
-const characterDeletionResult = Type.Object({
+export const characterDeletionResult = Type.Object({
 	characterId: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });
@@ -102,6 +104,18 @@ export const commandBodySchema = Type.Union([
 ]);
 
 // Route boundary schemas referenced by the Character Library adapter.
+// Canonical transport types. The server domain seam and the client both
+// import these Static types instead of restating the shapes, so the three
+// layers can never drift apart. The reusable Definition is the create
+// command's payload: creation is the only path that introduces one.
+export type CharacterLibrarySummary = Static<typeof characterLibrarySummary>;
+export type CharacterDeletionMode = Static<typeof characterDeletionMode>;
+export type CharacterDeletionImpact = Static<typeof characterDeletionImpact>;
+export type CharacterDefinition = Static<typeof createCommand>["definition"];
+export type CharacterSnapshot = Static<typeof characterSnapshot>;
+export type CharacterDeletionResult = Static<typeof characterDeletionResult>;
+export type CharacterCommand = Static<typeof commandBodySchema>;
+
 export const characterIdParams = Type.Object({ id: numericWire });
 
 export const characterListResponse = Type.Object({

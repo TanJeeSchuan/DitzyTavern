@@ -8,6 +8,7 @@
 // partially configured state.
 
 import type { Database } from "bun:sqlite";
+import type { Static } from "@sinclair/typebox";
 import {
 	CharacterNotFoundError,
 	StaleCharacterRevisionError,
@@ -18,19 +19,15 @@ import type {
 	ConversationSnapshot,
 	ParticipantDefinition,
 } from "../conversation/types";
+import type { newChatSeatSchema } from "../../shared/contract/native-conversation";
 
-export interface CharacterForkSeat {
-	type: "character";
-	characterId: number;
-	expectedRevision: number;
-}
+// ==[HUMAN APPROVED]== Seat shapes derive from the canonical native-conversation wire
+// schema so the workflow can never drift from the transport contract.
+export type NewChatSeat = Static<typeof newChatSeatSchema>;
 
-export interface AdHocSeat {
-	type: "adhoc";
-	definition: ParticipantDefinition;
-}
+export type CharacterForkSeat = Extract<NewChatSeat, { type: "character" }>;
 
-export type NewChatSeat = CharacterForkSeat | AdHocSeat;
+export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
 
 export interface CreateNativeConversationInput {
 	name: string;

@@ -1,83 +1,28 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
-import type { PromptChannels } from "../shared/contract/prompt-schema";
+import type {
+	CharacterCommand,
+	CharacterDeletionImpact,
+	CharacterDeletionMode,
+	CharacterDeletionResult,
+	CharacterLibrarySummary as CharacterSummary,
+	CharacterSnapshot,
+} from "../shared/contract/character-library";
 
 // ==[HUMAN APPROVED]== Typed client for the Character Library transport adapters. Outcomes mirror
 // the server's typed results so the UI can recover from conflicts without
-// losing local drafts.
+// losing local drafts. Every Character shape is the canonical shared wire
+// schema's Static type, imported under the client's historical names so the
+// client can never drift from the server.
 
-export interface CharacterSummary {
-	id: number;
-	name: string;
-	revision: number;
-	pinned: boolean;
-	preview: string;
-	// Global provenance reference count (active or tombstoned Participants
-	// ==[HUMAN APPROVED]== forked from this Character), so pickers and lists present deletion
-	// impact without one detail request per row.
-	provenanceReferenceCount: number;
-}
-
-export type CharacterDeletionMode = "hard-delete" | "tombstone";
-
-export interface CharacterDeletionImpact {
-	provenanceReferenceCount: number;
-	deletionMode: CharacterDeletionMode;
-}
-
-export interface CharacterSnapshot {
-	id: number;
-	name: string;
-	revision: number;
-	pinned: boolean;
-	prompt: PromptChannels;
-	openings: string[];
-	// Derived deletion impact presented with every authoritative read so the
-	// ==[HUMAN APPROVED]== confirmation flow can show the exact consequence before any command.
-	deletionImpact: CharacterDeletionImpact;
-}
-
-export type CharacterDeletionResult = {
-	characterId: number;
-	deletionMode: CharacterDeletionMode;
+export type {
+	CharacterCommand,
+	CharacterDeletionImpact,
+	CharacterDeletionMode,
+	CharacterDeletionResult,
+	CharacterSnapshot,
+	CharacterSummary,
 };
-
-export type CharacterCommand =
-	| {
-			type: "create";
-			definition: {
-				name: string;
-				prompt: PromptChannels;
-				openings: string[];
-			};
-	  }
-	| { type: "rename"; characterId: number; expectedRevision: number; name: string }
-	| {
-			type: "replace-prompt";
-			characterId: number;
-			expectedRevision: number;
-			prompt: PromptChannels;
-	  }
-	| {
-			type: "replace-openings";
-			characterId: number;
-			expectedRevision: number;
-			openings: string[];
-	  }
-	| {
-			type: "set-pinned";
-			characterId: number;
-			expectedRevision: number;
-			pinned: boolean;
-	  }
-	// Confirmed deletion. The expected revision guards against deleting a
-	// ==[HUMAN APPROVED]== Character whose impact the caller has not seen; the outcome derives the
-	// deletion mode from the current reference count.
-	| {
-			type: "delete";
-			characterId: number;
-			expectedRevision: number;
-	  };
 
 export type CommandOutcome =
 	| { status: "applied"; character: CharacterSnapshot }
