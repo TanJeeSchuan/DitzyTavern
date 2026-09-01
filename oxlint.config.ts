@@ -34,6 +34,18 @@ export default defineConfig({
 		"anti-slop/no-unknown-returns": "error",
 		"anti-slop/no-unknown-type-aliases": "error",
 		"anti-slop/no-unsafe-dictionary-type": "error",
+		"anti-slop/no-unapproved-comments": [
+			"warn",
+			{
+				// Repo policy: opt out file classes where comments are the deliverable.
+				ignoreFilePatterns: [
+					"\\.(test|spec)\\.[cm]?[jt]sx?$", // test files
+					"^src/shared/contract/", // wire contract modules
+					"(^|/)types\\.ts$", // type-definition modules
+					"^scripts/", // tooling scripts
+				],
+			},
+		],
 		"anti-slop/no-widen-then-assert": "error",
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
 		"ditzy/no-contract-definition-outside-contract": "error",
