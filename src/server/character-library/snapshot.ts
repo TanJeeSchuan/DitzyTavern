@@ -1,6 +1,9 @@
 import { asc, eq } from "drizzle-orm";
-import { firstPromptText, promptPreview } from "../../shared/definition";
-import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import {
+	emptyPromptChannels,
+	firstPromptText,
+	promptPreview,
+} from "../../shared/definition";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -13,14 +16,6 @@ import type {
 	CharacterSnapshot,
 	CharacterSummary,
 } from "./types";
-
-const emptyPrompt: PromptChannels = {
-	systemInstruction: "",
-	identity: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 // Alphabetical order for the library. Case and Unicode differences are
 // resolved by the collator; stable identity is only an invisible
@@ -95,7 +90,7 @@ export function readCharacterSnapshot(
 		name: character.name,
 		revision: character.revision,
 		pinned: character.pinned,
-		prompt: prompt ?? emptyPrompt,
+		prompt: prompt ?? emptyPromptChannels(),
 		openings,
 		deletionImpact: readDeletionImpact(db, characterId),
 	};

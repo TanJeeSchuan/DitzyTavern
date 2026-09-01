@@ -1,5 +1,5 @@
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
-import { promptFields } from "./definition";
+import { promptChannelFields } from "../../shared/definition";
 
 export function NameField({
 	id,
@@ -33,7 +33,7 @@ export function PromptFields({
 }) {
 	return (
 		<>
-			{promptFields.map((field) => (
+			{promptChannelFields.map((field) => (
 				<PromptField
 					key={field.key}
 					id={`prompt-${field.key}`}

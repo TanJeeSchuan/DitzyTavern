@@ -1,6 +1,7 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
+import { emptyPromptChannels } from "../shared/definition";
 
 // Typed client for the native New Chat workflow. Outcomes mirror the
 // server's typed results so setup problems (stale fork sources, invalid
@@ -28,17 +29,9 @@ export type CreationOutcome =
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
-const emptyPrompt = (): PromptChannels => ({
-	systemInstruction: "",
-	identity: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
-
 export const emptySeatDraft = (): Extract<SeatDraft, { type: "adhoc" }> => ({
 	type: "adhoc",
-	definition: { name: "", prompt: emptyPrompt(), openings: [] },
+	definition: { name: "", prompt: emptyPromptChannels(), openings: [] },
 });
 
 export async function createNativeConversation(input: {

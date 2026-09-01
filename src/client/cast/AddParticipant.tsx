@@ -1,9 +1,7 @@
 import { Pin, Plus } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-import {
-	promptFields,
-	type AdHocDraft,
-} from "./definition";
+import { promptChannelFields } from "../../shared/definition";
+import type { AdHocDraft } from "./definition";
 
 interface PickerEntry {
 	character: {
@@ -129,9 +127,9 @@ export function AddParticipant({
 									placeholder="A Conversation-local name"
 								/>
 							</div>
-							{promptFields.map((field) => (
-								<div className="field" key={field.key}>
-									<label htmlFor={`cast-adhoc-${field.key}`}>{field.label}</label>
+								{promptChannelFields.map((field) => (
+									<div className="field" key={field.key}>
+										<label htmlFor={`cast-adhoc-${field.key}`}>{field.label}</label>
 									<textarea
 										id={`cast-adhoc-${field.key}`}
 										rows={2}

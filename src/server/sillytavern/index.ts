@@ -26,7 +26,6 @@ export {
 	defaultImportResolution,
 	deterministicImportControl,
 	emptyImportedDefinition,
-	emptyImportedPrompt,
 	groupImportedAuthors,
 	importReportEntries,
 	projectImport,

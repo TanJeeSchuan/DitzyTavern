@@ -11,6 +11,7 @@
 // backslash escapes a recognized macro (`\{{self}}` renders `{{self}}`).
 // Unknown macros remain literal and become prompt-inspection warnings.
 
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import type {
 	CompilePromptInput,
 	ExpansionResult,
@@ -19,6 +20,24 @@ import type {
 	PromptPlan,
 	PromptWarning,
 } from "./types";
+
+// The version-one channel→block-kind correspondence, exhaustive over the
+// shared Prompt contract: a channel added to `promptChannels` without an
+// entry here is a compile error, and every Definition block the plan can
+// contain is named by the channel that compiles into it. `identity` names
+// the role-distinguished identity block; the construction below compiles it
+// once per controlled Definition (human, then model). History blocks are
+// not channel-derived and stay outside this mapping.
+const channelBlockKinds = {
+	systemInstruction: "system-instruction",
+	identity: "identity",
+	scenario: "scenario",
+	exampleDialogue: "example-dialogue",
+	postHistoryInstruction: "post-history-instruction",
+} as const satisfies Record<
+	keyof PromptChannels,
+	Exclude<PromptBlock["kind"], "history">
+>;
 
 // Version-one recognized macros. Deliberately tiny: general SillyTavern
 // macro compatibility beyond `{{self}}`/`{{other}}` is out of scope.
@@ -144,7 +163,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "system-instruction", content: "" },
+		{ kind: channelBlockKinds.systemInstruction, content: "" },
 		input.model.prompt.systemInstruction,
 		modelContext,
 		"system-instruction",
@@ -153,7 +172,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "identity", role: "human", content: "" },
+		{ kind: channelBlockKinds.identity, role: "human", content: "" },
 		input.human.prompt.identity,
 		humanContext,
 		"identity (human)",
@@ -162,7 +181,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "identity", role: "model", content: "" },
+		{ kind: channelBlockKinds.identity, role: "model", content: "" },
 		input.model.prompt.identity,
 		modelContext,
 		"identity (model)",
@@ -171,7 +190,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "scenario", content: "" },
+		{ kind: channelBlockKinds.scenario, content: "" },
 		input.model.prompt.scenario,
 		modelContext,
 		"scenario",
@@ -180,7 +199,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "example-dialogue", content: "" },
+		{ kind: channelBlockKinds.exampleDialogue, content: "" },
 		input.model.prompt.exampleDialogue,
 		modelContext,
 		"example-dialogue",
@@ -197,7 +216,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	expandInto(
 		blocks,
 		warnings,
-		{ kind: "post-history-instruction", content: "" },
+		{ kind: channelBlockKinds.postHistoryInstruction, content: "" },
 		input.model.prompt.postHistoryInstruction,
 		modelContext,
 		"post-history-instruction",

@@ -7,6 +7,7 @@ import {
 	type SeatDraft,
 } from "./new-chat";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
+import { promptChannelFields } from "../shared/definition";
 import { openingsFromText } from "./lib/openings";
 import { useAsyncEffect } from "./lib/use-async";
 
@@ -138,14 +139,6 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 	);
 }
 
-const promptFieldLabels: { key: keyof PromptChannels; label: string }[] = [
-	{ key: "systemInstruction", label: "System Instruction" },
-	{ key: "identity", label: "Identity" },
-	{ key: "scenario", label: "Scenario" },
-	{ key: "exampleDialogue", label: "Example Dialogue" },
-	{ key: "postHistoryInstruction", label: "Post-History Instruction" },
-];
-
 function PromptFields({
 	prompt,
 	onChange,
@@ -156,7 +149,7 @@ function PromptFields({
 	return (
 		<details className="seat-details">
 			<summary>Prompt fields</summary>
-			{promptFieldLabels.map(({ key, label }) => (
+			{promptChannelFields.map(({ key, label }) => (
 				<label className="seat-field" key={key}>
 					<span>{label}</span>
 					<textarea

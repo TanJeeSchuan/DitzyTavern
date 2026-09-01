@@ -5,12 +5,8 @@ import {
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
-import {
-	emptyPrompt,
-	openingsFromText,
-	openingsToText,
-	promptFields,
-} from "./definition";
+import { openingsFromText, openingsToText } from "./definition";
+import { emptyPromptChannels, promptChannelFields } from "../../shared/definition";
 
 // The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -38,7 +34,7 @@ export function ParticipantEditor({
 	);
 	const [drafts, setDrafts] = useState(() => ({
 		name: participant?.name ?? "",
-		prompt: participant?.prompt ?? emptyPrompt(),
+		prompt: participant?.prompt ?? emptyPromptChannels(),
 		openingsText: participant ? openingsToText(participant.openings) : "",
 	}));
 	const [pending, setPending] = useState(false);
@@ -133,7 +129,7 @@ export function ParticipantEditor({
 			<section className="editor-section">
 				<h3>Prompt</h3>
 				<div className="definition-form">
-					{promptFields.map((field) => (
+					{promptChannelFields.map((field) => (
 						<div className="field" key={field.key}>
 							<label htmlFor={`participant-prompt-${participant.id}-${field.key}`}>
 								{field.label}
