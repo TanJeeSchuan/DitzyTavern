@@ -1,69 +1,40 @@
-export type ConnectionApiFormat =
-	| "chat-completions"
-	| "responses"
-	| "anthropic-messages";
+import type {
+	ConnectionHeaderOperationPayload,
+	ConnectionPresetPayload,
+	ConnectionProfileDraftPayload,
+	ConnectionProfilePayload,
+	ConnectionSettingsPayload,
+} from "../../shared/contract/connection-settings";
 
-export type ModelBackend = "automatic" | "ai-sdk";
+// ==[HUMAN APPROVED]== The shared wire contract is the canonical declaration of every Connection
+// Settings shape; the server-side types below derive from it so the two
+// representations can no longer drift apart.
+export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
-export type ConnectionAdapter =
-	| "openai-compatible"
-	| "deepseek"
-	| "openrouter";
+export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
 
-export type OutputTokenRepresentation =
-	| "automatic"
-	| "max_tokens"
-	| "max_completion_tokens"
-	| "omit";
+export type ConnectionAdapter = ConnectionProfileDraftPayload["adapter"];
 
-export interface ConnectionProfileDraft {
-	readonly displayName: string;
-	readonly apiFormat: ConnectionApiFormat;
-	readonly requestUrl: string;
-	readonly modelsUrl: string;
-	readonly modelBackend: ModelBackend;
-	readonly adapter: ConnectionAdapter;
-	readonly outputTokenRepresentation: OutputTokenRepresentation;
-	// Null or zero disables inactivity expiry. A positive value is the maximum
-	// quiet interval, not a total Generation duration.
-	readonly timeoutMs: number | null;
-	readonly pinnedModels: readonly string[];
-}
+export type OutputTokenRepresentation = ConnectionProfileDraftPayload["outputTokenRepresentation"];
 
-export interface RedactedHeader {
-	readonly name: string;
-	readonly configured: boolean;
-}
+export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
 
-export type ConnectionHeaderOperation =
-	| { readonly name: string; readonly operation: "keep" }
-	| { readonly name: string; readonly operation: "replace"; readonly value: string }
-	| { readonly name: string; readonly operation: "remove" };
+// Null or zero disables inactivity expiry. A positive value is the maximum
+// quiet interval, not a total Generation duration.
+export type ConnectionProfileDraft = ConnectionProfileDraftPayload;
 
-export interface ConnectionProfile extends ConnectionProfileDraft {
-	readonly id: number;
-	readonly discoveryCatalog: readonly string[];
-	readonly credentialConfigured: boolean;
-	readonly headers: readonly RedactedHeader[];
-}
+export type RedactedHeader = ConnectionProfilePayload["headers"][number];
+
+export type ConnectionProfile = ConnectionProfilePayload;
 
 export interface ConnectionProfileSecretSnapshot {
 	readonly credential: string | null;
 	readonly headers: Readonly<Record<string, string>>;
 }
 
-export interface ConnectionSettingsSnapshot {
-	readonly revision: number;
-	readonly activeProfileId: number | null;
-	readonly profiles: readonly ConnectionProfile[];
-}
+export type ConnectionSettingsSnapshot = ConnectionSettingsPayload;
 
-export interface ConnectionPreset {
-	readonly id: string;
-	readonly label: string;
-	readonly description: string;
-	readonly profile: ConnectionProfileDraft;
-}
+export type ConnectionPreset = ConnectionPresetPayload;
 
 export interface CreateConnectionProfileInput {
 	readonly expectedRevision: number;
