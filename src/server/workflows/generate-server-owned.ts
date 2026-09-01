@@ -149,13 +149,18 @@ export function startServerOwnedGenerationFrom<
 
 type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
 
-interface GenerationOutcome {
+export type GenerationInterruptionCause =
+	| ModelClientFailureKind
+	| "server-restart"
+	| "server-shutdown";
+
+export interface GenerationOutcome {
 	content: string;
 	reasoning: string;
 	usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | null;
 	finishReason: "stop" | "length" | "other" | null;
 	status: GenerationOutcomeStatus;
-	interruptionCause: ModelClientFailureKind | null;
+	interruptionCause: GenerationInterruptionCause | null;
 	error: string | null;
 }
 
@@ -285,6 +290,23 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	}
 	return data;
 }
+
+/**
+ * Encode a recovered or gracefully stopped Generation with the same terminal
+ * data vocabulary used by a live interrupted provider attempt.
+ */
+export const interruptedGenerationData = (
+	cause: GenerationInterruptionCause,
+	reasoning: string,
+): ConversationDataEntry[] => generationOutcomeData({
+		content: "",
+		reasoning,
+		usage: null,
+		finishReason: null,
+		status: "interrupted",
+		interruptionCause: cause,
+		error: null,
+});
 
 function normalizeUsage(input: {
 	inputTokens?: number;

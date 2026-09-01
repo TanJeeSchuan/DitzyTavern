@@ -10,6 +10,7 @@ import {
 	deriveMessageSwipeEligibility,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
+	type AcceptTailGenerationInput,
 	type ConversationDataEntry,
 	type ConversationJsonValue,
 	type ConversationSnapshot,
@@ -37,8 +38,11 @@ import {
 } from "../connection-settings";
 import {
 	type AssistantPrefill,
+	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
 } from "../model-client";
+import { projectModelClientGenerationSettings } from "../model-client";
+import type { GenerationAttemptInput } from "./generate-server-owned";
 import {
 	captureGenerationProvenanceSettings,
 	generationProvenanceCodec,
@@ -201,7 +205,7 @@ const generationProvenanceEntry = (
 	} satisfies ConversationDataEntry;
 };
 
-interface CapturedGeneration {
+export interface CapturedGeneration {
 	readonly plan: GenerationPlan;
 	readonly historyRoles: readonly ("human" | "model" | null)[];
 	readonly humanParticipant: ParticipantPreview;
@@ -215,6 +219,51 @@ interface CapturedGeneration {
 	};
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly provenance: ConversationDataEntry;
+}
+
+/**
+ * Project one captured Generation into the fields shared by every acceptance
+ * command. Each workflow spreads this projection alongside its lifecycle-
+ * specific target fields, keeping those differences visible at the callsite.
+ */
+export function capturedAcceptanceFields(
+	capture: CapturedGeneration,
+	input: { conversationId: number; timestamp: string },
+) {
+	return {
+		conversationId: input.conversationId,
+		timestamp: input.timestamp,
+		humanParticipantId: capture.control.humanParticipantId,
+		modelParticipantId: capture.control.modelParticipantId,
+		capturedHumanName: capture.humanParticipant.name,
+		capturedModelName: capture.author.capturedName,
+		promptPlan: promptPlanJson(capture.plan.promptPlan),
+		promptInspection: promptInspectionJson(capture.plan.budget),
+		historyRoles: capture.historyRoles,
+		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
+		connection: connectionJson(capture.connection),
+		provenance: capture.provenance,
+	} satisfies Pick<
+		AcceptTailGenerationInput,
+		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
+		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
+		"historyRoles" | "generationSettings" | "connection" | "provenance"
+	>;
+}
+
+/** Build the common provider-neutral request for an accepted Generation. */
+export function modelRequestFor(
+	capture: CapturedGeneration,
+	input: Pick<GenerationAttemptInput, "signal">,
+): ModelClientGenerationInput {
+	return {
+		promptPlan: capture.plan.promptPlan,
+		historyRoles: capture.historyRoles,
+		modelId: capture.plan.effectiveSettings.modelId,
+		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
+		connection: capture.connection,
+		signal: input.signal,
+	};
 }
 
 /**

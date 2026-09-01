@@ -9,12 +9,12 @@ import {
 	cleanupRetainedGenerationInspections,
 	createConversationModule,
 	isSiblingGenerationRow,
-	type ConversationDataEntry,
 } from "../conversation";
 import {
 	defaultGenerationRuntime,
 	type GenerationRuntimeRegistry,
 } from "./generation-runtime";
+import { interruptedGenerationData } from "./generate-server-owned";
 
 /** The only local terminal causes used by startup and graceful shutdown. */
 export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
@@ -71,13 +71,7 @@ export function recoverActiveGenerations(
 		const intent = isSiblingGenerationRow(row) ? "sibling" : "tail";
 		try {
 			if (content.length > 0 || reasoning.length > 0) {
-				const data: ConversationDataEntry[] = [
-					{ namespace: "generation", key: "outcome", value: "interrupted" },
-					{ namespace: "generation", key: "interruption-cause", value: cause },
-				];
-				if (reasoning.length > 0) {
-					data.push({ namespace: "generation", key: "reasoning", value: reasoning });
-				}
+				const data = interruptedGenerationData(cause, reasoning);
 				if (intent === "sibling") {
 					conversation.resolveSiblingGeneration({
 						conversationId: row.chatId,

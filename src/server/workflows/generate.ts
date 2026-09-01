@@ -32,7 +32,6 @@ import {
 import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
 import type { PromptHistoryEntry } from "../prompt-compiler";
 import type { ModelClient, ModelClientConnectionSnapshot } from "../model-client";
-import { projectModelClientGenerationSettings } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import {
 	runAcceptedGeneration,
@@ -46,11 +45,9 @@ import {
 	captureSendGeneration,
 	captureContinuationGeneration,
 	captureSiblingGeneration,
+	capturedAcceptanceFields,
+	modelRequestFor,
 	deriveGeneration,
-	promptPlanJson,
-	generationSettingsJson,
-	connectionJson,
-	promptInspectionJson,
 	resolveConnectionApiFormat,
 	toCompilerDefinition,
 	type ParticipantPreview,
@@ -68,6 +65,17 @@ export type {
 	ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
 export type { ParticipantPreview } from "./generate-capture";
+
+async function notifyAccepted<Accepted>(
+	input: { onAccepted?: (accepted: Accepted) => void | Promise<void> },
+	accepted: Accepted,
+): Promise<void> {
+	try {
+		await input.onAccepted?.(accepted);
+	} catch {
+		// Acceptance is authoritative even when an observing caller disconnects.
+	}
+}
 
 // Read-only prompt inspection result. `playable: false` means the
 // Conversation cannot currently generate because the two distinct Control
@@ -276,37 +284,17 @@ export async function sendThroughProvisionalTailGeneration(
 	);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = conversation.acceptTailGeneration({
-		conversationId: input.conversationId,
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
 		expectedRevision: input.expectedRevision,
-		timestamp,
 		humanContent: capture.humanContent,
 		reuseHumanMessageId: capture.reuseHumanMessageId,
-		humanParticipantId: capture.control.humanParticipantId,
-		modelParticipantId: capture.control.modelParticipantId,
-		capturedHumanName: capture.humanParticipant.name,
-		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.plan.promptPlan),
-		promptInspection: promptInspectionJson(capture.plan.budget),
-		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
-		connection: connectionJson(capture.connection),
-		provenance: capture.provenance,
 	});
-	try {
-		await input.onAccepted?.(accepted);
-	} catch {
-		// Acceptance is authoritative even when an observing transport has
-		// disconnected. Continue the server-owned provider attempt.
-	}
+	await notifyAccepted(input, accepted);
 
-	const committed = await runAcceptedGeneration(input, {
-		promptPlan: capture.plan.promptPlan,
-		historyRoles: capture.historyRoles,
-		modelId: capture.plan.effectiveSettings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
-		connection: capture.connection,
-		signal: input.signal,
-	}, {
+	const committed = await runAcceptedGeneration(input, modelRequestFor(capture, input), {
 		remove: () => {
 			conversation.removeGeneration({
 				conversationId: input.conversationId,
@@ -375,36 +363,19 @@ export async function continueGeneration(
 	);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = conversation.acceptContinuationGeneration({
-		conversationId: input.conversationId,
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
 		expectedRevision: input.expectedRevision,
-		timestamp,
 		precedingMessageId: capture.precedingMessageId,
 		precedingVariantId: capture.precedingVariantId,
-		humanParticipantId: capture.control.humanParticipantId,
-		modelParticipantId: capture.control.modelParticipantId,
-		capturedHumanName: capture.humanParticipant.name,
-		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.plan.promptPlan),
-		promptInspection: promptInspectionJson(capture.plan.budget),
-		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
-		connection: connectionJson(capture.connection),
 		generationIntent: capture.intent,
-		provenance: capture.provenance,
 	});
-	try {
-		await input.onAccepted?.(accepted);
-	} catch {
-		// Acceptance is authoritative even when the observing caller disconnects.
-	}
+	await notifyAccepted(input, accepted);
 	const committed = await runAcceptedGeneration(input, {
-		promptPlan: capture.plan.promptPlan,
-		historyRoles: capture.historyRoles,
-		modelId: capture.plan.effectiveSettings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
+		...modelRequestFor(capture, input),
 		assistantPrefill: capture.assistantPrefill,
-		connection: capture.connection,
-		signal: input.signal,
 	}, {
 		remove: () => {
 			conversation.removeGeneration({
@@ -501,35 +472,15 @@ export async function generateSiblingVariant(
 	const capture = captureSiblingGeneration(database, snapshot, input);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = conversation.acceptSiblingGeneration({
-		conversationId: input.conversationId,
+		...capturedAcceptanceFields(capture, {
+			conversationId: input.conversationId,
+			timestamp,
+		}),
 		messageId: input.messageId,
-		timestamp,
-		humanParticipantId: capture.control.humanParticipantId,
-		modelParticipantId: capture.control.modelParticipantId,
-		capturedHumanName: capture.humanParticipant.name,
-		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.plan.promptPlan),
-		promptInspection: promptInspectionJson(capture.plan.budget),
-		historyRoles: capture.historyRoles,
-		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
-		connection: connectionJson(capture.connection),
 		generationIntent: { type: "sibling" },
-		provenance: capture.provenance,
 	});
-	try {
-		await input.onAccepted?.(accepted);
-	} catch {
-		// Acceptance is authoritative even if an observer disconnects while
-		// the provider request is being started.
-	}
-	return runAcceptedGeneration(input, {
-		promptPlan: capture.plan.promptPlan,
-		historyRoles: capture.historyRoles,
-		modelId: capture.plan.effectiveSettings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
-		connection: capture.connection,
-		signal: input.signal,
-	}, {
+	await notifyAccepted(input, accepted);
+	return runAcceptedGeneration(input, modelRequestFor(capture, input), {
 		remove: () => {
 			conversation.removeGeneration({
 				conversationId: input.conversationId,
