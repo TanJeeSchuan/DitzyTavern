@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { participantPrompt } from "./prompt-schema";
+import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
 
 // Typed transport schemas mirror the Character Library seam's public types.
@@ -34,7 +34,7 @@ export const characterSnapshot = Type.Object({
 	name: Type.String(),
 	revision: Type.Integer(),
 	pinned: Type.Boolean(),
-	prompt: participantPrompt,
+	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
 	deletionImpact: characterDeletionImpact,
 });
@@ -50,7 +50,7 @@ const createCommand = Type.Object({
 	type: Type.Literal("create"),
 	definition: Type.Object({
 		name: Type.String(),
-		prompt: participantPrompt,
+		prompt: promptChannels,
 		openings: Type.Array(Type.String()),
 	}),
 });
@@ -66,7 +66,7 @@ const replacePromptCommand = Type.Object({
 	type: Type.Literal("replace-prompt"),
 	characterId: Type.Integer(),
 	expectedRevision: Type.Integer(),
-	prompt: participantPrompt,
+	prompt: promptChannels,
 });
 
 const replaceOpeningsCommand = Type.Object({

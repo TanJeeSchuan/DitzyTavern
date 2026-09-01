@@ -1,20 +1,14 @@
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
+
 // Public contract of the deep Character Library seam. The module owns
 // Character lifecycle, Definitions, revisions, and ordering; callers see
 // only these types plus command execution outcomes.
-
-export interface CharacterPrompt {
-	readonly systemInstruction: string;
-	readonly identity: string;
-	readonly scenario: string;
-	readonly exampleDialogue: string;
-	readonly postHistoryInstruction: string;
-}
 
 // A complete reusable identity. Openings are ordered, exact, nonblank
 // text entries; an empty list is valid.
 export interface CharacterDefinition {
 	readonly name: string;
-	readonly prompt: CharacterPrompt;
+	readonly prompt: Readonly<PromptChannels>;
 	readonly openings: readonly string[];
 }
 
@@ -55,7 +49,7 @@ export interface CharacterSnapshot {
 	readonly name: string;
 	readonly revision: number;
 	readonly pinned: boolean;
-	readonly prompt: CharacterPrompt;
+	readonly prompt: Readonly<PromptChannels>;
 	readonly openings: readonly string[];
 	// Derived deletion impact presented with every authoritative read so the
 	// confirmation flow can show the exact consequence before any command.
@@ -81,7 +75,7 @@ export type CharacterLibraryCommand =
 			readonly type: "replace-prompt";
 			readonly characterId: number;
 			readonly expectedRevision: number;
-			readonly prompt: CharacterPrompt;
+			readonly prompt: Readonly<PromptChannels>;
 	  }
 	| {
 			readonly type: "replace-openings";

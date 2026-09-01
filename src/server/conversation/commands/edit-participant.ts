@@ -10,7 +10,7 @@ import {
 	requireParticipantName,
 	requireParticipantOpenings,
 } from "../internal";
-import type { ParticipantDefinitionPrompt } from "../types";
+import type { PromptChannels } from "../../../shared/contract/prompt-schema";
 
 export interface EditParticipantNameInput {
 	conversationId: number;
@@ -21,7 +21,7 @@ export interface EditParticipantNameInput {
 export interface ReplaceParticipantPromptInput {
 	conversationId: number;
 	participantId: number;
-	prompt: ParticipantDefinitionPrompt;
+	prompt: PromptChannels;
 }
 
 export interface ReplaceParticipantOpeningsInput {

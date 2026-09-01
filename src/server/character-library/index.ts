@@ -26,7 +26,6 @@ export type {
 	CharacterDefinition,
 	CharacterLibraryCommand,
 	CharacterLibraryModule,
-	CharacterPrompt,
 	CharacterSnapshot,
 	CharacterSummary,
 } from "./types";

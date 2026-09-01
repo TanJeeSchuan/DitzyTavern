@@ -12,7 +12,6 @@ export {
 export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
-	CompilePromptSource,
 	ExpansionResult,
 	GenerationIntent,
 	MacroContext,

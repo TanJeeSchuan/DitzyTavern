@@ -5,6 +5,7 @@ import type {
 import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -90,17 +91,9 @@ export interface ConversationArtifactSeed {
 // A complete Conversation-local identity Definition. Structurally identical
 // to a library Definition so application workflows can copy either direction
 // without translation, while this seam stays independent of the library.
-export interface ParticipantDefinitionPrompt {
-	systemInstruction: string;
-	identity: string;
-	scenario: string;
-	exampleDialogue: string;
-	postHistoryInstruction: string;
-}
-
 export interface ParticipantDefinition {
 	name: string;
-	prompt: ParticipantDefinitionPrompt;
+	prompt: PromptChannels;
 	openings: readonly string[];
 }
 
@@ -108,7 +101,7 @@ export interface CastParticipantSnapshot {
 	id: number;
 	position: number;
 	name: string;
-	prompt: ParticipantDefinitionPrompt;
+	prompt: PromptChannels;
 	openings: readonly string[];
 	// Immutable provenance: the Character this Participant forked, if any.
 	sourceCharacterId: number | null;
@@ -382,7 +375,7 @@ export type ConversationAction =
 	| {
 			type: "replace-participant-prompt";
 			participantId: number;
-			prompt: ParticipantDefinitionPrompt;
+			prompt: PromptChannels;
 	  }
 	| {
 			type: "replace-participant-openings";

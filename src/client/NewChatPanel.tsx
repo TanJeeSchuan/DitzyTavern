@@ -5,8 +5,8 @@ import {
 	createNativeConversation,
 	emptySeatDraft,
 	type SeatDraft,
-	type SeatPromptDraft,
 } from "./new-chat";
+import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { openingsFromText } from "./lib/openings";
 import { useAsyncEffect } from "./lib/use-async";
 
@@ -138,7 +138,7 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 	);
 }
 
-const promptFieldLabels: { key: keyof SeatPromptDraft; label: string }[] = [
+const promptFieldLabels: { key: keyof PromptChannels; label: string }[] = [
 	{ key: "systemInstruction", label: "System Instruction" },
 	{ key: "identity", label: "Identity" },
 	{ key: "scenario", label: "Scenario" },
@@ -150,8 +150,8 @@ function PromptFields({
 	prompt,
 	onChange,
 }: {
-	prompt: SeatPromptDraft;
-	onChange: (prompt: SeatPromptDraft) => void;
+	prompt: PromptChannels;
+	onChange: (prompt: PromptChannels) => void;
 }) {
 	return (
 		<details className="seat-details">

@@ -125,7 +125,6 @@ export type {
 	MessageSwipeBlockReason,
 	MessageSwipeEligibility,
 	ParticipantDefinition,
-	ParticipantDefinitionPrompt,
 	ParticipantDeletionMode,
 	ParticipantRemovalBlockReason,
 	ParticipantRemovalEligibility,

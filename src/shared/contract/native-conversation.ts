@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { conversationSummary } from "./conversation-schema";
-import { participantPrompt } from "./prompt-schema";
+import { promptChannels } from "./prompt-schema";
 
 // One seat of a new native Conversation: fork an existing Character at a
 // pinned revision, or define an ad-hoc Participant inline.
@@ -14,7 +14,7 @@ export const newChatSeatSchema = Type.Union([
 		type: Type.Literal("adhoc"),
 		definition: Type.Object({
 			name: Type.String(),
-			prompt: participantPrompt,
+			prompt: promptChannels,
 			openings: Type.Array(Type.String()),
 		}),
 	}),

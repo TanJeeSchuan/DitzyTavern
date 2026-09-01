@@ -1,22 +1,17 @@
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
+
 // Provider-neutral Prompt Compiler contract. This module is pure: it never
 // touches SQLite, HTTP, credentials, or provider vocabulary. It consumes
 // resolved Participant Definitions and normalized selected history and
 // produces a deterministic, named-block Prompt Plan plus macro warnings.
 
-// A Definition as the compiler consumes it. Structurally identical to the
-// Conversation-local and library Definitions so callers pass them through
-// without translation, while the compiler stays independent of both seams.
+// A Definition as the compiler consumes it. The Prompt is the canonical
+// shared contract, so callers pass Conversation-local and library
+// Definitions through without translation while the compiler stays
+// independent of both seams.
 export interface CompilePromptDefinition {
 	name: string;
-	prompt: CompilePromptSource;
-}
-
-export interface CompilePromptSource {
-	systemInstruction: string;
-	identity: string;
-	scenario: string;
-	exampleDialogue: string;
-	postHistoryInstruction: string;
+	prompt: PromptChannels;
 }
 
 // One normalized selected-history entry derived from a Message's selected

@@ -1,18 +1,12 @@
+import type { PromptChannels } from "./contract/prompt-schema";
+
 // Shared Prompt presentation derivation. The server uses these rules to put
 // a short preview on Character Library list entries (so the Cast picker
 // never needs one detail request per Character), and clients use the same
 // helpers for any local formatting.
 
-export interface TypedPrompt {
-	systemInstruction: string;
-	identity: string;
-	scenario: string;
-	exampleDialogue: string;
-	postHistoryInstruction: string;
-}
-
 // First non-empty Prompt field in the agreed presentation order.
-export const firstPromptText = (prompt: TypedPrompt): string =>
+export const firstPromptText = (prompt: PromptChannels): string =>
 	[
 		prompt.systemInstruction,
 		prompt.identity,

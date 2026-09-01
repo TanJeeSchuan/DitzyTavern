@@ -1,5 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { firstPromptText, promptPreview } from "../../shared/definition";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -9,12 +10,11 @@ import {
 import type { CharacterDatabase } from "./internal";
 import type {
 	CharacterDeletionImpact,
-	CharacterPrompt,
 	CharacterSnapshot,
 	CharacterSummary,
 } from "./types";
 
-const emptyPrompt: CharacterPrompt = {
+const emptyPrompt: PromptChannels = {
 	systemInstruction: "",
 	identity: "",
 	scenario: "",

@@ -5,7 +5,7 @@ import {
 	canonicalGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { participantPrompt } from "./prompt-schema";
+import { promptChannels } from "./prompt-schema";
 import {
 	invalidOutcome,
 	notFoundOutcome,
@@ -25,7 +25,7 @@ const castParticipant = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
 	name: Type.String(),
-	prompt: participantPrompt,
+	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 	sourceCharacterName: Type.Union([Type.Null(), Type.String()]),
@@ -114,7 +114,6 @@ export const conversationSummary = Type.Object({
 	activeGenerations,
 });
 
-export type ParticipantPrompt = Static<typeof participantPrompt>;
 export type CastParticipant = Static<typeof castParticipant>;
 export type ConversationControl = Static<typeof conversationControl>;
 export type ConversationControlValidity = Static<typeof conversationControlValidity>;
@@ -341,7 +340,7 @@ export type ChatHistoryAuthorStamp = NonNullable<ChatHistoryMessage["author"]>;
 
 const participantDefinition = Type.Object({
 	name: Type.String(),
-	prompt: participantPrompt,
+	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
 });
 
@@ -457,7 +456,7 @@ const renameParticipantAction = Type.Object({
 const replaceParticipantPromptAction = Type.Object({
 	type: Type.Literal("replace-participant-prompt"),
 	participantId: Type.Integer(),
-	prompt: participantPrompt,
+	prompt: promptChannels,
 });
 
 const replaceParticipantOpeningsAction = Type.Object({

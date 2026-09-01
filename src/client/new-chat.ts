@@ -1,17 +1,10 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
+import type { PromptChannels } from "../shared/contract/prompt-schema";
 
 // Typed client for the native New Chat workflow. Outcomes mirror the
 // server's typed results so setup problems (stale fork sources, invalid
 // Definitions) surface without losing the user's draft.
-
-export interface SeatPromptDraft {
-	systemInstruction: string;
-	identity: string;
-	scenario: string;
-	exampleDialogue: string;
-	postHistoryInstruction: string;
-}
 
 export type SeatDraft =
 	| {
@@ -23,7 +16,7 @@ export type SeatDraft =
 			type: "adhoc";
 			definition: {
 				name: string;
-				prompt: SeatPromptDraft;
+				prompt: PromptChannels;
 				openings: string[];
 			};
 	  };
@@ -35,7 +28,7 @@ export type CreationOutcome =
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
-const emptyPrompt = (): SeatPromptDraft => ({
+const emptyPrompt = (): PromptChannels => ({
 	systemInstruction: "",
 	identity: "",
 	scenario: "",

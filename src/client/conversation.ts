@@ -30,9 +30,9 @@ export type {
 	GenerationRequestOverrides,
 	GenerationRequestValue,
 	ParticipantDefinition,
-	ParticipantPrompt,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
+export type { PromptChannels } from "../shared/contract/prompt-schema";
 export type {
 	GenerationStreamDelta,
 	GenerationStreamResult,

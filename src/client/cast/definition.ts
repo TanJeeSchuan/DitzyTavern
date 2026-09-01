@@ -1,6 +1,6 @@
-import type { ParticipantPrompt } from "../conversation";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
-export const emptyPrompt = (): ParticipantPrompt => ({
+export const emptyPrompt = (): PromptChannels => ({
 	systemInstruction: "",
 	identity: "",
 	scenario: "",
@@ -10,7 +10,7 @@ export const emptyPrompt = (): ParticipantPrompt => ({
 
 export interface AdHocDraft {
 	name: string;
-	prompt: ParticipantPrompt;
+	prompt: PromptChannels;
 	openingsText: string;
 }
 
@@ -25,7 +25,7 @@ export const emptyAdHocDraft: AdHocDraft = {
 export { openingsFromText, openingsToText } from "../lib/openings";
 
 export const promptFields: Array<{
-	key: keyof ParticipantPrompt;
+	key: keyof PromptChannels;
 	label: string;
 }> = [
 	{ key: "systemInstruction", label: "System Instruction" },

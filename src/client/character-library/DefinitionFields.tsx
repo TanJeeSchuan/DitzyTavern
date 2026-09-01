@@ -1,4 +1,4 @@
-import type { CharacterPrompt } from "../character-library";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { promptFields } from "./definition";
 
 export function NameField({
@@ -28,8 +28,8 @@ export function PromptFields({
 	prompt,
 	onChange,
 }: {
-	prompt: CharacterPrompt;
-	onChange: (prompt: CharacterPrompt) => void;
+	prompt: PromptChannels;
+	onChange: (prompt: PromptChannels) => void;
 }) {
 	return (
 		<>

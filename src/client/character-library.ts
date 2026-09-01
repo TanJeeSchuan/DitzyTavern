@@ -1,17 +1,10 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
+import type { PromptChannels } from "../shared/contract/prompt-schema";
 
 // Typed client for the Character Library transport adapters. Outcomes mirror
 // the server's typed results so the UI can recover from conflicts without
 // losing local drafts.
-
-export interface CharacterPrompt {
-	systemInstruction: string;
-	identity: string;
-	scenario: string;
-	exampleDialogue: string;
-	postHistoryInstruction: string;
-}
 
 export interface CharacterSummary {
 	id: number;
@@ -37,7 +30,7 @@ export interface CharacterSnapshot {
 	name: string;
 	revision: number;
 	pinned: boolean;
-	prompt: CharacterPrompt;
+	prompt: PromptChannels;
 	openings: string[];
 	// Derived deletion impact presented with every authoritative read so the
 	// confirmation flow can show the exact consequence before any command.
@@ -54,7 +47,7 @@ export type CharacterCommand =
 			type: "create";
 			definition: {
 				name: string;
-				prompt: CharacterPrompt;
+				prompt: PromptChannels;
 				openings: string[];
 			};
 	  }
@@ -63,7 +56,7 @@ export type CharacterCommand =
 			type: "replace-prompt";
 			characterId: number;
 			expectedRevision: number;
-			prompt: CharacterPrompt;
+			prompt: PromptChannels;
 	  }
 	| {
 			type: "replace-openings";

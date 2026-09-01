@@ -1,16 +1,14 @@
-import type {
-	CharacterPrompt,
-	CharacterSnapshot,
-} from "../character-library";
+import type { CharacterSnapshot } from "../character-library";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { openingsToText } from "../lib/openings";
 
 export interface Drafts {
 	name: string;
-	prompt: CharacterPrompt;
+	prompt: PromptChannels;
 	openingsText: string;
 }
 
-export const emptyPrompt: CharacterPrompt = {
+export const emptyPrompt: PromptChannels = {
 	systemInstruction: "",
 	identity: "",
 	scenario: "",
@@ -35,7 +33,7 @@ export const draftsOf = (character: CharacterSnapshot): Drafts => ({
 });
 
 export const promptFields: Array<{
-	key: keyof CharacterPrompt;
+	key: keyof PromptChannels;
 	label: string;
 }> = [
 	{ key: "systemInstruction", label: "System Instruction" },

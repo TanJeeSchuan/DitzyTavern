@@ -20,8 +20,8 @@ import type {
 	ConversationDataEntry,
 	ConversationParticipantSeed,
 	ParticipantDefinition,
-	ParticipantDefinitionPrompt,
 } from "../conversation/types";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
@@ -41,7 +41,7 @@ export { UNKNOWN_IMPORTED_AUTHOR_NAME };
 // the history itself is the preserved record, and no identity content is
 // fabricated. Names follow the shared Definition rules (leading and trailing
 // whitespace removed, case and Unicode preserved).
-export const emptyImportedPrompt = (): ParticipantDefinitionPrompt => ({
+export const emptyImportedPrompt = (): PromptChannels => ({
 	systemInstruction: "",
 	identity: "",
 	scenario: "",

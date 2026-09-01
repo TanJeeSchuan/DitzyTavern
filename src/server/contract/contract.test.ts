@@ -8,6 +8,7 @@ import {
 } from "../character-library";
 import { createConversationModule } from "../conversation";
 import type { ConversationAction } from "../conversation";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { createNativeConversation } from "../workflows";
 import {
 	createCharacterLibraryRoutes,
@@ -233,13 +234,7 @@ describe("Native Conversation transport adapter", () => {
 		type: "adhoc";
 		definition: {
 			name: string;
-			prompt: {
-				systemInstruction: string;
-				identity: string;
-				scenario: string;
-				exampleDialogue: string;
-				postHistoryInstruction: string;
-			};
+			prompt: PromptChannels;
 			openings: string[];
 		};
 	}
