@@ -6,7 +6,6 @@ import {
 	type GenerationPlan,
 } from ".";
 import {
-	createTokenEstimator,
 	PromptBudgetExceededError,
 	type CompilePromptDefinition,
 	type PromptHistoryEntry,
@@ -70,9 +69,7 @@ const entry = (speakerName: string, content: string): PromptHistoryEntry => ({
 
 // The transcript length is a monotone stand-in for a tokenizer: a longer
 // Prompt Plan estimates higher, so budget outcomes stay deterministic.
-const transcriptLengthEstimator = createTokenEstimator(
-	(transcript) => transcript.length,
-);
+const transcriptLengthEstimator = (transcript: string) => transcript.length;
 
 const compile = (
 	overrides: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},

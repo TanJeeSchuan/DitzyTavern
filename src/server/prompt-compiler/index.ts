@@ -5,7 +5,6 @@
 export { compileOpening, compilePrompt, expandText } from "./compiler";
 export {
 	budgetPromptPlan,
-	createTokenEstimator,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,

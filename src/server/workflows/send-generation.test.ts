@@ -6,7 +6,6 @@ import { activeGenerationTable } from "../database/schema";
 import { openDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
-import { createTokenEstimator } from "../prompt-compiler";
 import { sendThroughProvisionalTailGeneration } from ".";
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -204,7 +203,7 @@ describe("Send through provisional Tail Generation", () => {
 				contacted = true;
 				return "never";
 			}),
-			tokenEstimator: createTokenEstimator(() => 40_000),
+			tokenEstimator: () => 40_000,
 		})).rejects.toThrow();
 		expect(contacted).toBe(false);
 		expect(createConversationModule(database).getSnapshot(conversationId)?.messages).toHaveLength(0);

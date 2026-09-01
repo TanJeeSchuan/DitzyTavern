@@ -3,7 +3,6 @@ import type { PromptPlan } from ".";
 import {
 	PromptBudgetExceededError,
 	budgetPromptPlan,
-	createTokenEstimator,
 	toEstimationTranscript,
 } from "./budget";
 
@@ -19,10 +18,10 @@ const planFor = (history: readonly { speakerName: string | null; content: string
 describe("Prompt Plan budget", () => {
 	test("counts one deterministic transcript for the complete candidate", () => {
 		const calls: string[] = [];
-		const estimator = createTokenEstimator((transcript) => {
+		const estimator = (transcript: string) => {
 			calls.push(transcript);
 			return 3;
-		});
+		};
 		const history = [
 			{ speakerName: "Writer", content: "A human line." },
 			{ speakerName: "Maren", content: "A model line." },
@@ -54,7 +53,7 @@ describe("Prompt Plan budget", () => {
 
 	test("drops the oldest whole history entry and recompiles until it fits", () => {
 		const estimates = [200, 100];
-		const estimator = createTokenEstimator(() => estimates.shift() ?? 100);
+		const estimator = () => estimates.shift() ?? 100;
 		const history = [
 			{ speakerName: "Old", content: "old history" },
 			{ speakerName: "Writer", content: "latest human input" },
@@ -79,7 +78,7 @@ describe("Prompt Plan budget", () => {
 	});
 
 	test("protects the latest human entry and reports an inspectable failure", () => {
-		const estimator = createTokenEstimator(() => 20);
+		const estimator = () => 20;
 		const history = [{ speakerName: "Writer", content: "protected input" }];
 		const result = budgetPromptPlan({
 			plan: planFor(history),
@@ -112,11 +111,11 @@ describe("Prompt Plan budget", () => {
 			content: `History ${index}`,
 		}));
 		let estimateCalls = 0;
-		const estimator = createTokenEstimator((transcript) => {
+		const estimator = (transcript: string) => {
 			estimateCalls += 1;
 			const historyBlocks = transcript.split("\u001fhistory").length - 1;
 			return historyBlocks * 10;
-		});
+		};
 
 		const result = budgetPromptPlan({
 			plan: planFor(history),

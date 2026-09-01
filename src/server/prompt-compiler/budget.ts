@@ -3,21 +3,11 @@ import type { PromptHistoryEntry, PromptPlan } from "./types";
 
 // The application owns this small synchronous boundary. The heuristic library
 // can be replaced without changing Prompt Compiler or Generation code.
-export interface TokenEstimator {
-	estimate(transcript: string): number;
-}
-
-export function createTokenEstimator(
-	estimate: (transcript: string) => number,
-): TokenEstimator {
-	return { estimate };
-}
+export type TokenEstimator = (transcript: string) => number;
 
 // tokenx is deliberately imported in one place. Its estimate is an
 // approximation for preflight, never a provider tokenization guarantee.
-export const tokenxEstimator: TokenEstimator = createTokenEstimator(
-	(transcript) => estimateTokenCount(transcript),
-);
+export const tokenxEstimator: TokenEstimator = estimateTokenCount;
 
 export type PromptHistoryRole = "human" | "model" | null;
 
@@ -214,7 +204,7 @@ function findLatestHumanIndex(
 }
 
 function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan): number {
-	const estimate = estimator.estimate(toEstimationTranscript(plan));
+	const estimate = estimator(toEstimationTranscript(plan));
 	if (!Number.isFinite(estimate) || estimate < 0) {
 		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
 	}

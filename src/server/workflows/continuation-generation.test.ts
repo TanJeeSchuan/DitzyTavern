@@ -4,7 +4,7 @@ import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import { openDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
-import { createTokenEstimator, type PromptPlan } from "../prompt-compiler";
+import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration, inspectGenerationPrompt } from ".";
 import { generateTerminalTailFixture } from "./generate";
 
@@ -174,10 +174,10 @@ describe("Continuation Generation", () => {
 			conversationId,
 			expectedRevision: before.revision,
 			modelClient: createFakeModelClient(() => "done"),
-			tokenEstimator: createTokenEstimator((value) => {
+			tokenEstimator: (value) => {
 				transcript = value;
 				return 1;
-			}),
+			},
 		});
 		expect(transcript).toContain("Continue the narrative naturally without repeating the previous text.");
 	});

@@ -11,7 +11,6 @@ import {
 } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import {
-	createTokenEstimator,
 	PromptBudgetExceededError,
 	type PromptPlan,
 } from "../prompt-compiler";
@@ -659,7 +658,7 @@ describe("Generation runtime behavior", () => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
 			}),
-			tokenEstimator: createTokenEstimator(() => estimates.shift() ?? 100),
+			tokenEstimator: () => estimates.shift() ?? 100,
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
@@ -713,7 +712,7 @@ describe("Generation runtime behavior", () => {
 					contacted = true;
 					return "Must not be contacted.";
 				}),
-				tokenEstimator: createTokenEstimator(() => 20),
+				tokenEstimator: () => 20,
 			});
 		} catch (error) {
 			if (error instanceof PromptBudgetExceededError) failure = error;
@@ -734,7 +733,7 @@ describe("Generation runtime behavior", () => {
 		// Read-only inspection of the stored Conversation reports the same
 		// impossible budget without contacting anything.
 		const inspection = inspectGenerationPrompt(database, conversationId, {
-			tokenEstimator: createTokenEstimator(() => 20),
+			tokenEstimator: () => 20,
 		});
 		expect(inspection.budgetFits).toBe(false);
 	});
@@ -799,7 +798,7 @@ describe("Generation runtime behavior", () => {
 				receivedPlan = promptPlan;
 				return "Budgeted sibling output.";
 			}),
-			tokenEstimator: createTokenEstimator(() => estimates.shift() ?? 100),
+			tokenEstimator: () => estimates.shift() ?? 100,
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
