@@ -17,6 +17,7 @@ import { advanceConversationRevision, runConversationTransaction } from "./trans
 import type {
 	ConversationDataEntry,
 	ConversationSnapshot,
+	CheckpointGenerationInput,
 	RemoveGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
@@ -241,13 +242,15 @@ export function resolveConversationSiblingGeneration(
 }
 
 /**
- * ==[HUMAN APPROVED]== Remove one accepted target. The persisted Active Generation row is the
- * sole authority for the mutation: a Sibling Generation loses only its
+ * ==[HUMAN APPROVED]== Remove one accepted target. The persisted Active Generation row is
+ * the sole authority for the mutation: a Sibling Generation loses only its
  * provisional Variant (restoring the acceptance-time selection unless a
  * later explicit selection took precedence), while a Tail or Continuation
  * Generation is its own provisional Message and is removed whole. The
  * caller never selects a mode, so a Sibling Generation ID cannot reach the
  * Message-removal path and delete the Message owning every sibling Variant.
+ * Removal is the same destructive transition Stop applies to a target
+ * without durable output, so both entry points share it.
  */
 export const removeConversationGeneration = (
 	database: Database,
@@ -260,53 +263,10 @@ export const removeConversationGeneration = (
 				"The Active Generation is no longer available.",
 			);
 		}
-
-		if (isSiblingGenerationRow(active)) {
-			const variant = db
-				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
-				.from(messageVariantTable)
-				.where(
-					and(
-						eq(messageVariantTable.id, active.variant_id),
-						eq(messageVariantTable.message_id, active.message_id),
-					),
-				)
-				.get();
-			if (variant === undefined) {
-				throw new InvalidConversationCommandError(
-					"The provisional sibling Variant is no longer available.",
-				);
-			}
-			db.delete(messageVariantTable)
-				.where(eq(messageVariantTable.id, variant.id))
-				.run();
-			if (variant.selected && active.prior_variant_id !== null) {
-				db.update(messageVariantTable)
-					.set({ selected: true })
-					.where(
-						and(
-							eq(messageVariantTable.id, active.prior_variant_id),
-							eq(messageVariantTable.message_id, active.message_id),
-						),
-					)
-					.run();
-			}
-		} else {
-			// ==[HUMAN APPROVED]== Tail and Continuation targets are their own provisional Messages;
-			// removing the Message cascades its Variant and leaves a retriable
-			// accepted Human Message (when Send created one).
-			db.delete(messageTable)
-				.where(
-					and(
-						eq(messageTable.id, active.message_id),
-						eq(messageTable.chat_id, input.conversationId),
-					),
-				)
-				.run();
+		const transition = removeActiveGenerationTargetInTransaction(db, active);
+		if (transition.removedSibling !== undefined) {
+			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		db.delete(activeGenerationTable)
-			.where(eq(activeGenerationTable.id, active.id))
-			.run();
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
@@ -323,22 +283,17 @@ export function resolveConversationTailGeneration(
 
 // ==[HUMAN APPROVED]== Sibling checkpoints share the same revision-neutral semantics as Tail
 // checkpoints. The target is selected by the Active Generation id, never by
-// a client-supplied Variant id.
+// a client-supplied Variant id, and the sibling gate rides the same single
+// transactional read that guards the write.
 export function checkpointConversationSiblingGeneration(
 	database: Database,
-	input: {
-		conversationId: number;
-		generationId: number;
-		content: string;
-		reasoning?: string;
-		latestEventId?: number;
-		timestamp?: string;
-	},
+	input: CheckpointGenerationInput,
 ): void {
-	const db = connectConversationDatabase(database);
-	const active = readActiveGeneration(db, input.conversationId, input.generationId);
-	if (active === undefined || !isSiblingGenerationRow(active)) return;
-	checkpointConversationGeneration(database, input);
+	runConversationTransaction(database, (db) => {
+		const active = readActiveGeneration(db, input.conversationId, input.generationId);
+		if (active === undefined || !isSiblingGenerationRow(active)) return;
+		writeCheckpointInTransaction(db, active, input);
+	});
 }
 
 /**
@@ -353,53 +308,58 @@ export function checkpointConversationSiblingGeneration(
  */
 export function checkpointConversationGeneration(
 	database: Database,
-	input: {
-		conversationId: number;
-		generationId: number;
-		content: string;
-		reasoning?: string;
-		latestEventId?: number;
-		timestamp?: string;
-	},
+	input: CheckpointGenerationInput,
 ): void {
 	runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) return;
-		const currentEventId = active.checkpoint_event_id;
-		if (
-			input.latestEventId !== undefined &&
-			Number.isInteger(input.latestEventId) &&
-			input.latestEventId < currentEventId
-		) return;
-		const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
-			? currentEventId
-			: Math.max(currentEventId, input.latestEventId);
-		const values: CheckpointVariantValues = { content: input.content };
-		if (input.timestamp !== undefined) values.timestamp = input.timestamp;
-		db.update(messageVariantTable)
-			.set(values)
-			.where(
-				and(
-					eq(messageVariantTable.id, active.variant_id),
-					eq(messageVariantTable.message_id, active.message_id),
-				),
-			)
-			.run();
-		db.update(activeGenerationTable)
-			.set({
-				checkpoint_content: input.content,
-				checkpoint_reasoning: input.reasoning ?? active.checkpoint_reasoning,
-				checkpoint_event_id: eventId,
-				checkpointed_at: input.timestamp ?? new Date().toISOString(),
-			})
-			.where(
-				and(
-					eq(activeGenerationTable.id, active.id),
-					eq(activeGenerationTable.chat_id, input.conversationId),
-				),
-			)
-			.run();
+		writeCheckpointInTransaction(db, active, input);
 	});
+}
+
+// ==[HUMAN APPROVED]== The checkpoint write against an already-read Active Generation row:
+// the monotonic event position guards delayed writes, the provisional
+// Variant mirrors the visible content, and the crash-recovery copy stores
+// both streams. Shared by the Tail and Sibling checkpoint seams.
+function writeCheckpointInTransaction(
+	db: ReturnType<typeof connectConversationDatabase>,
+	active: ActiveGenerationRow,
+	input: CheckpointGenerationInput,
+): void {
+	const currentEventId = active.checkpoint_event_id;
+	if (
+		input.latestEventId !== undefined &&
+		Number.isInteger(input.latestEventId) &&
+		input.latestEventId < currentEventId
+	) return;
+	const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
+		? currentEventId
+		: Math.max(currentEventId, input.latestEventId);
+	const values: CheckpointVariantValues = { content: input.content };
+	if (input.timestamp !== undefined) values.timestamp = input.timestamp;
+	db.update(messageVariantTable)
+		.set(values)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.run();
+	db.update(activeGenerationTable)
+		.set({
+			checkpoint_content: input.content,
+			checkpoint_reasoning: input.reasoning ?? active.checkpoint_reasoning,
+			checkpoint_event_id: eventId,
+			checkpointed_at: input.timestamp ?? new Date().toISOString(),
+		})
+		.where(
+			and(
+				eq(activeGenerationTable.id, active.id),
+				eq(activeGenerationTable.chat_id, input.conversationId),
+			),
+		)
+		.run();
 }
 
 interface StoppedSiblingTarget {
@@ -415,8 +375,65 @@ interface StopTransition {
 }
 
 /**
- * ==[HUMAN APPROVED]== Apply one Stop transition against an already-open transaction. Keeping the
- * row mutation here lets Stop and Stop All share exactly the same terminal
+ * ==[HUMAN APPROVED]== The destructive terminal transition: discard the provisional
+ * target — the sibling Variant alone, or the whole provisional Message for
+ * a Tail or Continuation target (which leaves a retriable accepted Human
+ * Message when Send created one) — and report the removed sibling so the
+ * caller can restore the selection the attempt displaced. Shared by Stop's
+ * zero-output transition and the canonical removal so the destructive path
+ * is written once.
+ */
+function removeActiveGenerationTargetInTransaction(
+	db: ReturnType<typeof connectConversationDatabase>,
+	active: ActiveGenerationRow,
+): StopTransition {
+	if (isSiblingGenerationRow(active)) {
+		const variant = db
+			.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
+			.from(messageVariantTable)
+			.where(
+				and(
+					eq(messageVariantTable.id, active.variant_id),
+					eq(messageVariantTable.message_id, active.message_id),
+				),
+			)
+			.get();
+		if (variant === undefined) {
+			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
+		}
+		db.delete(activeGenerationTable)
+			.where(eq(activeGenerationTable.id, active.id))
+			.run();
+		db.delete(messageVariantTable)
+			.where(eq(messageVariantTable.id, variant.id))
+			.run();
+		return {
+			durableOutput: false,
+			removedSibling: {
+				messageId: active.message_id,
+				variantId: variant.id,
+				priorVariantId: active.prior_variant_id,
+				selected: variant.selected,
+			},
+		};
+	}
+	db.delete(activeGenerationTable)
+		.where(eq(activeGenerationTable.id, active.id))
+		.run();
+	db.delete(messageTable)
+		.where(
+			and(
+				eq(messageTable.id, active.message_id),
+				eq(messageTable.chat_id, active.chat_id),
+			),
+		)
+		.run();
+	return { durableOutput: false };
+}
+
+/**
+ * ==[HUMAN APPROVED]== Apply one Stop transition against an already-open transaction. Keeping
+ * the row mutation here lets Stop and Stop All share exactly the same terminal
  * persistence rules while Stop All can commit the complete target set once.
  */
 function stopActiveGenerationInTransaction(
@@ -427,48 +444,7 @@ function stopActiveGenerationInTransaction(
 	const content = active.checkpoint_content;
 	const reasoning = active.checkpoint_reasoning;
 	if (content.length === 0 && reasoning.length === 0) {
-		if (isSiblingGenerationRow(active)) {
-			const variant = db
-				.select({ id: messageVariantTable.id, selected: messageVariantTable.selected })
-				.from(messageVariantTable)
-				.where(
-					and(
-						eq(messageVariantTable.id, active.variant_id),
-						eq(messageVariantTable.message_id, active.message_id),
-					),
-				)
-				.get();
-			if (variant === undefined) {
-				throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
-			}
-			db.delete(activeGenerationTable)
-				.where(eq(activeGenerationTable.id, active.id))
-				.run();
-			db.delete(messageVariantTable)
-				.where(eq(messageVariantTable.id, variant.id))
-				.run();
-			return {
-				durableOutput: false,
-				removedSibling: {
-					messageId: active.message_id,
-					variantId: variant.id,
-					priorVariantId: active.prior_variant_id,
-					selected: variant.selected,
-				},
-			};
-		}
-		db.delete(activeGenerationTable)
-			.where(eq(activeGenerationTable.id, active.id))
-			.run();
-		db.delete(messageTable)
-			.where(
-				and(
-					eq(messageTable.id, active.message_id),
-					eq(messageTable.chat_id, active.chat_id),
-				),
-			)
-			.run();
-		return { durableOutput: false };
+		return removeActiveGenerationTargetInTransaction(db, active);
 	}
 
 	const variant = db

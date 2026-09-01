@@ -11,7 +11,7 @@
 // and ordinary swipe navigation after commit is the existing revisioned
 // Variant-selection command, never a second source representation.
 
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
 	chatTable,
 	conversationGenerationSettingsTable,
@@ -20,10 +20,15 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
+import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-defaults";
 import { type ConversationDatabase, readControlAssignment } from "./internal";
-import { deriveControlValidity, deriveMessageSwipeEligibility } from "./snapshot";
+import {
+	deriveControlValidity,
+	deriveMessageSwipeEligibility,
+	toAuthorStamp,
+	toHistoricalContext,
+} from "./snapshot";
 import type {
-	AuthorStampSnapshot,
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryPageRequest,
@@ -61,13 +66,13 @@ export function readChatHistory(
 		.select({ strategy: conversationGenerationSettingsTable.continuation_strategy })
 		.from(conversationGenerationSettingsTable)
 		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
-		.get()?.strategy ?? "instruction";
+		.get()?.strategy ?? DEFAULT_CONTINUATION_STRATEGY;
 
 	const totalMessages = db
-		.select({ count: messageTable.id })
+		.select({ count: sql<number>`count(*)` })
 		.from(messageTable)
 		.where(eq(messageTable.chat_id, conversationId))
-		.all().length;
+		.get()?.count ?? 0;
 
 	const pageSize = boundedPageSize(request.pageSize);
 	const totalPages = Math.max(1, Math.ceil(totalMessages / pageSize));
@@ -175,26 +180,8 @@ export function readChatHistory(
 	).valid;
 
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
-		const author: AuthorStampSnapshot | null =
-			message.author_participant_id !== null || message.author_name !== null
-				? {
-						participantId: message.author_participant_id,
-						capturedName: message.author_name,
-						// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
-						// displaying with a no-longer-in-Cast marker after removal.
-						inCast:
-							message.author_participant_id !== null &&
-							castIds.has(message.author_participant_id),
-					}
-				: null;
-		const historicalContext =
-			message.context_human_participant_id !== null &&
-			message.context_model_participant_id !== null
-				? {
-						humanParticipantId: message.context_human_participant_id,
-						modelParticipantId: message.context_model_participant_id,
-					}
-				: null;
+		const author = toAuthorStamp(message, castIds);
+		const historicalContext = toHistoricalContext(message);
 		return {
 			id: message.id,
 			position: message.position,

@@ -1,12 +1,9 @@
 import { and, eq, isNull, max } from "drizzle-orm";
-import {
-	participantOpeningTable,
-	participantPromptTable,
-	participantTable,
-} from "../../database/schema";
+import { participantTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import {
 	type ConversationDatabase,
+	insertParticipant,
 	readControlAssignment,
 	requireParticipantDefinition,
 	writeControlAssignment,
@@ -57,44 +54,13 @@ export function addParticipant(
 		)
 		.get()?.value;
 
-	const inserted = db
-		.insert(participantTable)
-		.values({
-			chat_id: input.conversationId,
-			name: definition.name,
-			position: (latestPosition ?? 0) + 1,
-			source_character_id: input.sourceCharacterId ?? null,
-		})
-		.returning({ id: participantTable.id })
-		.get();
-	if (inserted === undefined) {
-		throw new InvalidConversationCommandError(
-			"Participant insertion did not return an identifier.",
-		);
-	}
-
-	db.insert(participantPromptTable)
-		.values({
-			participant_id: inserted.id,
-			system_instruction: definition.prompt.systemInstruction,
-			identity: definition.prompt.identity,
-			scenario: definition.prompt.scenario,
-			example_dialogue: definition.prompt.exampleDialogue,
-			post_history_instruction: definition.prompt.postHistoryInstruction,
-		})
-		.run();
-
-	if (definition.openings.length > 0) {
-		db.insert(participantOpeningTable)
-			.values(
-				definition.openings.map((content, index) => ({
-					participant_id: inserted.id,
-					position: index + 1,
-					content,
-				})),
-			)
-			.run();
-	}
+	const inserted = insertParticipant(
+		db,
+		input.conversationId,
+		(latestPosition ?? 0) + 1,
+		definition,
+		input.sourceCharacterId ?? null,
+	);
 
 	// ==[HUMAN APPROVED]== Completion fill: only an incomplete Conversation (fewer than two
 	// distinct occupied seats) is eligible. Neither seat occupied assigns

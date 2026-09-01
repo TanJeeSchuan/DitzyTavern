@@ -1,10 +1,13 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, max } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
+	activeGenerationTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
+	participantOpeningTable,
+	participantPromptTable,
 	participantTable,
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
@@ -50,6 +53,19 @@ export const readControlAssignment = (
 export const isPlayable = (control: ControlAssignmentState): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
+
+// ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
+// treat a running Generation as mutually exclusive reads this predicate, so
+// the probe query and its existence rule are written once for the module.
+export const hasActiveGeneration = (
+	db: ConversationDatabase,
+	conversationId: number,
+): boolean =>
+	db
+		.select({ id: activeGenerationTable.id })
+		.from(activeGenerationTable)
+		.where(eq(activeGenerationTable.chat_id, conversationId))
+		.get() !== undefined;
 
 // ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
@@ -257,4 +273,197 @@ export const requireVariant = (
 	}
 
 	return variant;
+};
+
+export interface InsertedParticipant {
+	id: number;
+	name: string;
+	openings: readonly string[];
+}
+
+// ==[HUMAN APPROVED]== One Participant insertion: the active row, its complete local
+// Definition prompt, and its ordered openings. Shared by native creation and
+// the Cast append so the three written rows cannot drift.
+export const insertParticipant = (
+	db: ConversationDatabase,
+	conversationId: number,
+	position: number,
+	definition: ParticipantDefinition,
+	sourceCharacterId: number | null,
+): InsertedParticipant => {
+	const name = normalizeParticipantName(definition.name);
+	const inserted = db
+		.insert(participantTable)
+		.values({
+			chat_id: conversationId,
+			name,
+			position,
+			source_character_id: sourceCharacterId,
+		})
+		.returning({ id: participantTable.id })
+		.get();
+	if (inserted === undefined) {
+		throw new InvalidConversationCommandError(
+			"Participant insertion did not return an identifier.",
+		);
+	}
+
+	db.insert(participantPromptTable)
+		.values({
+			participant_id: inserted.id,
+			system_instruction: definition.prompt.systemInstruction,
+			identity: definition.prompt.identity,
+			scenario: definition.prompt.scenario,
+			example_dialogue: definition.prompt.exampleDialogue,
+			post_history_instruction: definition.prompt.postHistoryInstruction,
+		})
+		.run();
+
+	const openings = [...definition.openings];
+	if (openings.length > 0) {
+		db.insert(participantOpeningTable)
+			.values(
+				openings.map((content, index) => ({
+					participant_id: inserted.id,
+					position: index + 1,
+					content,
+				})),
+			)
+			.run();
+	}
+
+	return { id: inserted.id, name, openings };
+};
+
+// ==[HUMAN APPROVED]== The Author Stamp and captured historical Control pair a Message
+// carries. The shared shapes keep every insertion site writing exactly the
+// same columns.
+export interface MessageAuthorStamp {
+	participantId: number;
+	name: string;
+}
+
+export interface MessageControlContext {
+	humanParticipantId: number;
+	modelParticipantId: number;
+}
+
+// ==[HUMAN APPROVED]== One Message insertion shared by creation, Compose, and the
+// provisional Generation targets: the returning id is required, so a failed
+// insert is an error instead of a silent undefined dereference.
+export const insertMessage = (
+	db: ConversationDatabase,
+	values: {
+		chatId: number;
+		position: number;
+		timestamp: string;
+		author: MessageAuthorStamp | null;
+		context: MessageControlContext | null;
+	},
+): number => {
+	const inserted = db
+		.insert(messageTable)
+		.values({
+			chat_id: values.chatId,
+			position: values.position,
+			timestamp: values.timestamp,
+			author_participant_id: values.author?.participantId ?? null,
+			author_name: values.author?.name ?? null,
+			context_human_participant_id: values.context?.humanParticipantId ?? null,
+			context_model_participant_id: values.context?.modelParticipantId ?? null,
+		})
+		.returning({ id: messageTable.id })
+		.get();
+	if (inserted === undefined) {
+		throw new InvalidConversationCommandError(
+			"The Message could not be persisted.",
+		);
+	}
+	return inserted.id;
+};
+
+export interface VariantInsertValues {
+	messageId: number;
+	position: number;
+	content: string;
+	timestamp: string;
+	selected: boolean;
+}
+
+// ==[HUMAN APPROVED]== One Variant insertion with its required returning id, so callers
+// that address the new Variant (provisional targets, per-Variant data rows)
+// never read an undefined identifier.
+export const insertVariant = (
+	db: ConversationDatabase,
+	values: VariantInsertValues,
+): number => {
+	const inserted = db
+		.insert(messageVariantTable)
+		.values({
+			message_id: values.messageId,
+			position: values.position,
+			content: values.content,
+			timestamp: values.timestamp,
+			selected: values.selected,
+		})
+		.returning({ id: messageVariantTable.id })
+		.get();
+	if (inserted === undefined) {
+		throw new InvalidConversationCommandError(
+			"The Variant could not be persisted.",
+		);
+	}
+	return inserted.id;
+};
+
+// ==[HUMAN APPROVED]== Batch Variant insertion for Messages created with several Variants
+// at once; the returning ids keep per-Variant data rows addressable.
+export const insertVariants = (
+	db: ConversationDatabase,
+	values: readonly VariantInsertValues[],
+): number[] => {
+	if (values.length === 0) return [];
+	return db
+		.insert(messageVariantTable)
+		.values(
+			values.map((value) => ({
+				message_id: value.messageId,
+				position: value.position,
+				content: value.content,
+				timestamp: value.timestamp,
+				selected: value.selected,
+			})),
+		)
+		.returning({ id: messageVariantTable.id })
+		.all()
+		.map((row) => row.id);
+};
+
+// ==[HUMAN APPROVED]== Appending one selected Variant displaces the Message's current
+// selection and takes the next position. Shared by Swipe creation and the
+// provisional Sibling target so the deselect-then-insert rule is written once.
+export const appendSelectedVariant = (
+	db: ConversationDatabase,
+	values: {
+		messageId: number;
+		content: string;
+		timestamp: string;
+	},
+): number => {
+	db.update(messageVariantTable)
+		.set({ selected: false })
+		.where(eq(messageVariantTable.message_id, values.messageId))
+		.run();
+	const position = db
+		.select({ value: max(messageVariantTable.position) })
+		.from(messageVariantTable)
+		.where(eq(messageVariantTable.message_id, values.messageId))
+		.get()?.value ?? 0;
+	return insertVariant(db, {
+		messageId: values.messageId,
+		position: position + 1,
+		content: values.content,
+		timestamp: values.timestamp,
+		selected: true,
+	});
 };

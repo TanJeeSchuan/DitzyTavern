@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { conversationGenerationSettingsTable } from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
+import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-defaults";
 import {
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
@@ -20,7 +21,6 @@ const DEFAULT_REQUEST_OVERRIDES = {
 } as const;
 
 export const DEFAULT_SAFETY_ALLOWANCE = 500;
-export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
 export const DEFAULT_CONTINUATION_INSTRUCTION =
 	"Continue the narrative naturally without repeating the previous text.";
 
@@ -37,7 +37,7 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	responseBudget: 1024,
 	safetyAllowance: DEFAULT_SAFETY_ALLOWANCE,
 	siblingGenerationLimit: DEFAULT_SIBLING_GENERATION_LIMIT,
-	continuationStrategy: "instruction",
+	continuationStrategy: DEFAULT_CONTINUATION_STRATEGY,
 	continuationInstruction: DEFAULT_CONTINUATION_INSTRUCTION,
 	continuationPrefillSuffix: "",
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,

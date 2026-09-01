@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
-import { activeGenerationTable, chatTable } from "../database/schema";
+import { chatTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
@@ -26,15 +26,122 @@ import {
 	StaleConversationRevisionError,
 } from "./errors";
 import {
+	hasActiveGeneration,
 	isPlayable,
 	readControlAssignment,
+	type ConversationDatabase,
 } from "./internal";
 import {
 	advanceConversationRevisionGuarded,
 	requireConversationSnapshot,
 	runConversationTransaction,
 } from "./commands/transaction";
-import type { ConversationCommand, ConversationSnapshot } from "./types";
+import type { ConversationAction, ConversationCommand, ConversationSnapshot } from "./types";
+
+// ==[HUMAN APPROVED]== The per-command gate policy: each command declares whether it
+// requires a playable Conversation and whether an Active Generation blocks
+// it. Compose (create-message) and Swipe creation (create-variant) are play
+// actions needing both distinct Control seats; Control mutation joins them
+// behind the Active-Generation gate. Reads, edits, configuration, and
+// deletion remain available to incomplete Conversations. The table is the
+// one place a command's gates are stated, so a new command cannot silently
+// skip the shared gates.
+export interface ConversationCommandPolicy<K extends ConversationAction["type"]> {
+	handler: (db: ConversationDatabase, input: ConversationCommandInput<K>) => void;
+	requiresPlayable: boolean;
+	blockedByActiveGeneration: boolean;
+}
+
+type ConversationCommandInput<K extends ConversationAction["type"]> = {
+	conversationId: number;
+} & Extract<ConversationAction, { type: K }>;
+
+export const conversationCommandPolicy = {
+	"create-message": {
+		handler: createMessage,
+		requiresPlayable: true,
+		blockedByActiveGeneration: true,
+	},
+	"create-variant": {
+		handler: createVariant,
+		requiresPlayable: true,
+		blockedByActiveGeneration: true,
+	},
+	"select-variant": {
+		handler: selectVariant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"edit-variant": {
+		handler: editVariant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"delete-variant": {
+		handler: deleteVariant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"delete-message": {
+		handler: deleteMessage,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"add-participant": {
+		handler: addParticipant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"rename-participant": {
+		handler: renameParticipant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"replace-participant-prompt": {
+		handler: replaceParticipantPrompt,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"replace-participant-openings": {
+		handler: replaceParticipantOpenings,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"assign-control": {
+		handler: assignControl,
+		requiresPlayable: false,
+		blockedByActiveGeneration: true,
+	},
+	"remove-participant": {
+		handler: removeParticipant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"put-data": {
+		handler: putData,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"delete-data": {
+		handler: deleteData,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"update-generation-settings": {
+		handler: (db, input) => {
+			updateConversationGenerationSettings(db, input.conversationId, input.settings);
+		},
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"set-generation-model": {
+		handler: setGenerationModel,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+} satisfies {
+	[K in ConversationAction["type"]]: ConversationCommandPolicy<K>;
+};
 
 export function executeConversationCommand(
 	database: Database,
@@ -55,83 +162,71 @@ export function executeConversationCommand(
 				conversation.revision,
 			);
 		}
-		const responsePositionIsActive = db
-			.select({ id: activeGenerationTable.id })
-			.from(activeGenerationTable)
-			.where(eq(activeGenerationTable.chat_id, command.conversationId))
-			.get() !== undefined;
+		const policy = conversationCommandPolicy[command.action.type];
 		if (
-			responsePositionIsActive &&
-			(command.action.type === "create-message" ||
-				command.action.type === "create-variant" ||
-				command.action.type === "assign-control")
+			policy.blockedByActiveGeneration &&
+			hasActiveGeneration(db, command.conversationId)
 		) {
 			throw new InvalidConversationCommandError(
 				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
 			);
 		}
-
-		// ==[HUMAN APPROVED]== Compose and Swipe/Generate are play actions: they require both
-		// distinct Control seats. Reads, edits, configuration, and deletion
-		// remain available to incomplete Conversations.
 		if (
-			command.action.type === "create-message" ||
-			command.action.type === "create-variant"
+			policy.requiresPlayable &&
+			!isPlayable(readControlAssignment(db, command.conversationId))
 		) {
-			if (!isPlayable(readControlAssignment(db, command.conversationId))) {
-				throw new ConversationNotPlayableError(command.conversationId);
-			}
+			throw new ConversationNotPlayableError(command.conversationId);
 		}
 
 		const input = { conversationId: command.conversationId, ...command.action };
 		switch (input.type) {
 			case "create-message":
-				createMessage(db, input);
+				conversationCommandPolicy["create-message"].handler(db, input);
 				break;
 			case "create-variant":
-				createVariant(db, input);
+				conversationCommandPolicy["create-variant"].handler(db, input);
 				break;
 			case "select-variant":
-				selectVariant(db, input);
+				conversationCommandPolicy["select-variant"].handler(db, input);
 				break;
 			case "edit-variant":
-				editVariant(db, input);
+				conversationCommandPolicy["edit-variant"].handler(db, input);
 				break;
 			case "delete-variant":
-				deleteVariant(db, input);
+				conversationCommandPolicy["delete-variant"].handler(db, input);
 				break;
 			case "delete-message":
-				deleteMessage(db, input);
+				conversationCommandPolicy["delete-message"].handler(db, input);
 				break;
 			case "add-participant":
-				addParticipant(db, input);
+				conversationCommandPolicy["add-participant"].handler(db, input);
 				break;
 			case "rename-participant":
-				renameParticipant(db, input);
+				conversationCommandPolicy["rename-participant"].handler(db, input);
 				break;
 			case "replace-participant-prompt":
-				replaceParticipantPrompt(db, input);
+				conversationCommandPolicy["replace-participant-prompt"].handler(db, input);
 				break;
 			case "replace-participant-openings":
-				replaceParticipantOpenings(db, input);
+				conversationCommandPolicy["replace-participant-openings"].handler(db, input);
 				break;
 			case "assign-control":
-				assignControl(db, input);
+				conversationCommandPolicy["assign-control"].handler(db, input);
 				break;
 			case "remove-participant":
-				removeParticipant(db, input);
+				conversationCommandPolicy["remove-participant"].handler(db, input);
 				break;
 			case "put-data":
-				putData(db, input);
+				conversationCommandPolicy["put-data"].handler(db, input);
 				break;
 			case "delete-data":
-				deleteData(db, input);
+				conversationCommandPolicy["delete-data"].handler(db, input);
 				break;
 			case "update-generation-settings":
-				updateConversationGenerationSettings(db, input.conversationId, input.settings);
+				conversationCommandPolicy["update-generation-settings"].handler(db, input);
 				break;
 			case "set-generation-model":
-				setGenerationModel(db, input);
+				conversationCommandPolicy["set-generation-model"].handler(db, input);
 				break;
 		}
 

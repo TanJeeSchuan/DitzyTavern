@@ -18,11 +18,16 @@ import {
 	StaleConversationRevisionError,
 } from "../errors";
 import {
+	appendSelectedVariant,
 	connectConversationDatabase,
+	hasActiveGeneration,
+	insertMessage,
+	insertVariant,
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
 } from "../internal";
+import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-defaults";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,
@@ -171,41 +176,24 @@ const createProvisionalModelTarget = (
 		.where(eq(messageTable.chat_id, input.conversationId))
 		.get()?.value ?? 0) + 1);
 	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
-	const message = db
-		.insert(messageTable)
-		.values({
-			chat_id: input.conversationId,
-			position: nextPosition,
-			timestamp: input.timestamp,
-			author_participant_id: model.id,
-			author_name: model.name,
-			context_human_participant_id: input.humanParticipantId,
-			context_model_participant_id: model.id,
-		})
-		.returning({ id: messageTable.id })
-		.get();
-	if (message === undefined) {
-		throw new InvalidConversationCommandError(
-			"The provisional model Message could not be persisted.",
-		);
-	}
-	const variant = db
-		.insert(messageVariantTable)
-		.values({
-			message_id: message.id,
-			position: 1,
-			content: "",
-			timestamp: input.timestamp,
-			selected: true,
-		})
-		.returning({ id: messageVariantTable.id })
-		.get();
-	if (variant === undefined) {
-		throw new InvalidConversationCommandError(
-			"The provisional model Variant could not be persisted.",
-		);
-	}
-	return { modelMessageId: message.id, provisionalVariantId: variant.id };
+	const modelMessageId = insertMessage(db, {
+		chatId: input.conversationId,
+		position: nextPosition,
+		timestamp: input.timestamp,
+		author: { participantId: model.id, name: model.name },
+		context: {
+			humanParticipantId: input.humanParticipantId,
+			modelParticipantId: model.id,
+		},
+	});
+	const provisionalVariantId = insertVariant(db, {
+		messageId: modelMessageId,
+		position: 1,
+		content: "",
+		timestamp: input.timestamp,
+		selected: true,
+	});
+	return { modelMessageId, provisionalVariantId };
 };
 
 const createProvisionalSiblingVariant = (
@@ -223,32 +211,12 @@ const createProvisionalSiblingVariant = (
 			),
 		)
 		.get()?.id ?? null;
-	const position = db
-		.select({ value: max(messageVariantTable.position) })
-		.from(messageVariantTable)
-		.where(eq(messageVariantTable.message_id, messageId))
-		.get()?.value ?? 0;
-	db.update(messageVariantTable)
-		.set({ selected: false })
-		.where(eq(messageVariantTable.message_id, messageId))
-		.run();
-	const variant = db
-		.insert(messageVariantTable)
-		.values({
-			message_id: messageId,
-			position: position + 1,
-			content: "",
-			timestamp,
-			selected: true,
-		})
-		.returning({ id: messageVariantTable.id })
-		.get();
-	if (variant === undefined) {
-		throw new InvalidConversationCommandError(
-			"The provisional sibling Variant could not be persisted.",
-		);
-	}
-	return { provisionalVariantId: variant.id, priorVariantId };
+	const provisionalVariantId = appendSelectedVariant(db, {
+		messageId,
+		content: "",
+		timestamp,
+	});
+	return { provisionalVariantId, priorVariantId };
 };
 
 function hasReasoningData(
@@ -358,12 +326,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 				"The captured model Author Stamp is no longer authoritative.",
 			);
 		}
-		const existing = db
-			.select({ id: activeGenerationTable.id })
-			.from(activeGenerationTable)
-			.where(eq(activeGenerationTable.chat_id, input.conversationId))
-			.get();
-		if (existing !== undefined) {
+		if (hasActiveGeneration(db, input.conversationId)) {
 			throw new InvalidConversationCommandError(
 				"This Conversation already has an Active Generation.",
 			);
@@ -473,32 +436,21 @@ export function acceptConversationTailGeneration(
 				}
 				return { humanMessageId: reused.id };
 			}
-			const insertedHuman = db
-				.insert(messageTable)
-				.values({
-					chat_id: input.conversationId,
-					position: (latestPosition ?? 0) + 1,
-					timestamp: input.timestamp,
-					author_participant_id: human.id,
-					author_name: human.name,
-				})
-				.returning({ id: messageTable.id })
-				.get();
-			if (insertedHuman === undefined) {
-				throw new InvalidConversationCommandError(
-					"The human Message could not be persisted.",
-				);
-			}
-			db.insert(messageVariantTable)
-				.values({
-					message_id: insertedHuman.id,
-					position: 1,
-					content: input.humanContent,
-					timestamp: input.timestamp,
-					selected: true,
-				})
-				.run();
-			return { humanMessageId: insertedHuman.id };
+			const humanMessageId = insertMessage(db, {
+				chatId: input.conversationId,
+				position: (latestPosition ?? 0) + 1,
+				timestamp: input.timestamp,
+				author: { participantId: human.id, name: human.name },
+				context: null,
+			});
+			insertVariant(db, {
+				messageId: humanMessageId,
+				position: 1,
+				content: input.humanContent,
+				timestamp: input.timestamp,
+				selected: true,
+			});
+			return { humanMessageId };
 		},
 	});
 	return {
@@ -672,7 +624,7 @@ export function acceptConversationSiblingGeneration(
 			.select({ value: conversationGenerationSettingsTable.sibling_generation_limit })
 			.from(conversationGenerationSettingsTable)
 			.where(eq(conversationGenerationSettingsTable.chat_id, input.conversationId))
-			.get()?.value ?? 4;
+			.get()?.value ?? DEFAULT_SIBLING_GENERATION_LIMIT;
 		if (activeRows.length >= configuredLimit) {
 			throw new InvalidConversationCommandError(
 				`The Conversation already has ${configuredLimit} active Sibling Generations at this response position.`,

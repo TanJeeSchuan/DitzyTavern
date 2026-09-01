@@ -1,8 +1,8 @@
 import { eq, max } from "drizzle-orm";
-import { messageTable, messageVariantTable } from "../../database/schema";
+import { messageTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
-import { requireParticipant } from "../internal";
+import { insertMessage, insertVariants, requireParticipant } from "../internal";
 
 export interface CreateMessageInput {
 	conversationId: number;
@@ -42,27 +42,22 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 		.from(messageTable)
 		.where(eq(messageTable.chat_id, input.conversationId))
 		.get()?.value;
-	const message = db
-		.insert(messageTable)
-		.values({
-			chat_id: input.conversationId,
-			position: (latestPosition ?? 0) + 1,
-			timestamp: input.timestamp,
-			author_participant_id: author.id,
-			author_name: author.name,
-		})
-		.returning()
-		.get();
+	const messageId = insertMessage(db, {
+		chatId: input.conversationId,
+		position: (latestPosition ?? 0) + 1,
+		timestamp: input.timestamp,
+		author: { participantId: author.id, name: author.name },
+		context: null,
+	});
 
-	db.insert(messageVariantTable)
-		.values(
-			input.variantContents.map((content, index) => ({
-				message_id: message.id,
-				position: index + 1,
-				content,
-				timestamp: input.timestamp,
-				selected: index === selectedVariantIndex,
-			})),
-		)
-		.run();
+	insertVariants(
+		db,
+		input.variantContents.map((content, index) => ({
+			messageId,
+			position: index + 1,
+			content,
+			timestamp: input.timestamp,
+			selected: index === selectedVariantIndex,
+		})),
+	);
 }

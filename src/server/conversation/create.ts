@@ -10,15 +10,13 @@ import {
 	conversationGenerationSettingsTable,
 	conversationControlTable,
 	messageDataTable,
-	messageTable,
 	messageVariantDataTable,
-	messageVariantTable,
-	participantOpeningTable,
-	participantPromptTable,
-	participantTable,
 } from "../database/schema";
 import { InvalidConversationCreationError } from "./errors";
 import {
+	insertMessage,
+	insertParticipant,
+	insertVariants,
 	normalizeParticipantName,
 	type ConversationDatabase,
 } from "./internal";
@@ -191,63 +189,6 @@ const insertScopedData = <Owner extends object>(
 ) => {
 	if (data === undefined || data.length === 0) return;
 	insert(data.map(toRow));
-};
-
-interface InsertedParticipant {
-	id: number;
-	name: string;
-	openings: readonly string[];
-}
-
-const insertParticipant = (
-	db: ConversationDatabase,
-	conversationId: number,
-	position: number,
-	definition: ParticipantDefinition,
-	sourceCharacterId: number | null,
-): InsertedParticipant => {
-	const name = normalizeParticipantName(definition.name);
-	const inserted = db
-		.insert(participantTable)
-		.values({
-			chat_id: conversationId,
-			name,
-			position,
-			source_character_id: sourceCharacterId,
-		})
-		.returning({ id: participantTable.id })
-		.get();
-	if (inserted === undefined) {
-		throw new InvalidConversationCreationError(
-			"Participant insertion did not return an identifier.",
-		);
-	}
-
-	db.insert(participantPromptTable)
-		.values({
-			participant_id: inserted.id,
-			system_instruction: definition.prompt.systemInstruction,
-			identity: definition.prompt.identity,
-			scenario: definition.prompt.scenario,
-			example_dialogue: definition.prompt.exampleDialogue,
-			post_history_instruction: definition.prompt.postHistoryInstruction,
-		})
-		.run();
-
-	const openings = [...definition.openings];
-	if (openings.length > 0) {
-		db.insert(participantOpeningTable)
-			.values(
-				openings.map((content, index) => ({
-					participant_id: inserted.id,
-					position: index + 1,
-					content,
-				})),
-			)
-			.run();
-	}
-
-	return { id: inserted.id, name, openings };
 };
 
 // ==[HUMAN APPROVED]== Native creation converts the initial model Participant's ordered openings
@@ -426,7 +367,7 @@ export function createConversation(
 
 		for (const [messageIndex, message] of messages.entries()) {
 			const greetingMessage = greeting !== null && messageIndex === 0;
-			const author = greetingMessage
+			const authorSeed = greetingMessage
 				? modelIndex !== undefined
 					? insertedParticipants[modelIndex]
 					: undefined
@@ -435,52 +376,46 @@ export function createConversation(
 					: undefined;
 			// ==[HUMAN APPROVED]== The greeting carries the historical Control pair captured at
 			// creation; preservation records never receive a fabricated pair.
-			const contextHumanId =
-				greetingMessage && humanIndex !== undefined
-					? insertedParticipants[humanIndex].id
-					: null;
-			const contextModelId =
-				greetingMessage && modelIndex !== undefined
-					? insertedParticipants[modelIndex].id
+			const context =
+				greetingMessage &&
+				humanIndex !== undefined &&
+				modelIndex !== undefined
+					? {
+							humanParticipantId: insertedParticipants[humanIndex].id,
+							modelParticipantId: insertedParticipants[modelIndex].id,
+						}
 					: null;
 
-			const insertedMessage = db
-				.insert(messageTable)
-				.values({
-					chat_id: conversation.id,
-					position: messageIndex + 1,
-					timestamp: message.timestamp,
-					author_participant_id: author?.id ?? null,
-					author_name: author?.name ?? null,
-					context_human_participant_id: contextHumanId,
-					context_model_participant_id: contextModelId,
-				})
-				.returning({ id: messageTable.id })
-				.get();
+			const messageId = insertMessage(db, {
+				chatId: conversation.id,
+				position: messageIndex + 1,
+				timestamp: message.timestamp,
+				author: authorSeed
+					? { participantId: authorSeed.id, name: authorSeed.name }
+					: null,
+				context,
+			});
 
 			insertScopedData(
 				message.data,
-				(entry) => ({ ...entry, message_id: insertedMessage.id }),
+				(entry) => ({ ...entry, message_id: messageId }),
 				(rows) => db.insert(messageDataTable).values(rows).run(),
 			);
 
-			const insertedVariants = db
-				.insert(messageVariantTable)
-				.values(
-					message.variants.map((variant, variantIndex) => ({
-						message_id: insertedMessage.id,
-						position: variantIndex + 1,
-						content: variant.content,
-						timestamp: variant.timestamp,
-						selected: variant.selected,
-					})),
-				)
-				.returning({ id: messageVariantTable.id })
-				.all();
+			const variantIds = insertVariants(
+				db,
+				message.variants.map((variant, variantIndex) => ({
+					messageId,
+					position: variantIndex + 1,
+					content: variant.content,
+					timestamp: variant.timestamp,
+					selected: variant.selected,
+				})),
+			);
 
 			const variantData = message.variants.flatMap((variant, variantIndex) => {
-				const variantId = insertedVariants[variantIndex]?.id;
-				if (variantId === undefined || variant.data === undefined) return [];
+				const variantId = variantIds[variantIndex];
+				if (variant.data === undefined) return [];
 				return variant.data.map((entry) => ({
 					...entry,
 					message_variant_id: variantId,

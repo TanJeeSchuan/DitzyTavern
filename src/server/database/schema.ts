@@ -11,6 +11,10 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import {
+	DEFAULT_CONTINUATION_STRATEGY,
+	DEFAULT_SIBLING_GENERATION_LIMIT,
+} from "../conversation/generation-defaults";
 
 export const chatTable = sqliteTable("chat", {
 	id: int().primaryKey({ autoIncrement: true }),
@@ -432,8 +436,8 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		safety_allowance: int().notNull().default(500),
 		// ==[HUMAN APPROVED]== Maximum number of parallel Sibling Generations at one response
 		// position. Tail and Continuation still use the single-position gate.
-		sibling_generation_limit: int().notNull().default(4),
-		continuation_strategy: text().notNull().default("instruction"),
+		sibling_generation_limit: int().notNull().default(DEFAULT_SIBLING_GENERATION_LIMIT),
+		continuation_strategy: text().notNull().default(DEFAULT_CONTINUATION_STRATEGY),
 		continuation_instruction: text()
 			.notNull()
 			.default("Continue the narrative naturally without repeating the previous text."),

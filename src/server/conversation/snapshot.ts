@@ -99,71 +99,101 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-// ==[HUMAN APPROVED]== Derives per-Participant removal eligibility and impact. Seated
-// Participants are protected (a Control seat must change first). For every
-// unseated Participant the deletion mode states whether removal would
-// hard-delete or tombstone, and the affected-generation count states how
+// ==[HUMAN APPROVED]== The Author Stamp and captured historical Control pair mappers shared
+// by the snapshot and the paginated history read: one derivation per row
+// shape, so the two read models can never disagree about Message identity.
+export const toAuthorStamp = (
+	row: { author_participant_id: number | null; author_name: string | null },
+	castIds: ReadonlySet<number>,
+): AuthorStampSnapshot | null =>
+	row.author_participant_id !== null || row.author_name !== null
+		? {
+				participantId: row.author_participant_id,
+				capturedName: row.author_name,
+				// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
+				// displaying with a no-longer-in-Cast marker after removal.
+				inCast:
+					row.author_participant_id !== null &&
+					castIds.has(row.author_participant_id),
+			}
+		: null;
+
+export const toHistoricalContext = (
+	row: {
+		context_human_participant_id: number | null;
+		context_model_participant_id: number | null;
+	},
+): HistoricalControlSnapshot | null =>
+	row.context_human_participant_id !== null &&
+	row.context_model_participant_id !== null
+		? {
+				humanParticipantId: row.context_human_participant_id,
+				modelParticipantId: row.context_model_participant_id,
+			}
+		: null;
+
+// ==[HUMAN APPROVED]== Derives one Participant's removal eligibility and impact. Seated
+// Participants are protected (a Control seat must change first); every other
+// Cast member is eligible, and the deletion mode states whether removal
+// would hard-delete or tombstone. The affected-generation count states how
 // many Messages currently able to generate a new sibling Variant would lose
 // that ability. Messages are the only retained references, so the same
-// messages array drives both the reference check and the impact count.
-const deriveRemovalEligibility = (
-	cast: readonly Omit<CastParticipantSnapshot, "duplicateLabel" | "removal">[],
+// messages array drives both the reference check and the impact count. The
+// derivation covers exactly the Cast it is called with, so no caller ever
+// needs a fallback for a missing result.
+const deriveParticipantRemoval = (
+	participantId: number,
 	messages: readonly ConversationMessageSnapshot[],
 	control: {
 		humanParticipantId: number | null;
 		modelParticipantId: number | null;
 	},
-): Map<number, ParticipantRemovalEligibility> => {
-	const byParticipant = new Map<number, ParticipantRemovalEligibility>();
-	for (const participant of cast) {
-		const seated =
-			participant.id === control.humanParticipantId ||
-			participant.id === control.modelParticipantId;
-		if (seated) {
-			byParticipant.set(participant.id, {
-				eligible: false,
-				reason: "control-assigned",
-				deletionMode: null,
-				affectedGenerationCount: 0,
-			});
-			continue;
-		}
-
-		let referenced = false;
-		let affectedGenerationCount = 0;
-		for (const message of messages) {
-			const row = {
-				authorParticipantId: message.author?.participantId ?? null,
-				contextHumanParticipantId:
-					message.historicalContext?.humanParticipantId ?? null,
-				contextModelParticipantId:
-					message.historicalContext?.modelParticipantId ?? null,
-			};
-			// ==[HUMAN APPROVED]== Same retained-reference rule the command enforces, so the derived
-			// impact can never drift from the persisted behavior.
-			if (messageReferencesParticipant(row, participant.id)) {
-				referenced = true;
-			}
-			// ==[HUMAN APPROVED]== Author-only references are retained (tombstone required) but never
-			// count as regeneration loss: only Messages whose captured historical
-			// pair includes this Participant and that currently could generate a
-			// new sibling Variant lose that ability when it is removed.
-			const referencesContext =
-				row.contextHumanParticipantId === participant.id ||
-				row.contextModelParticipantId === participant.id;
-			if (referencesContext && message.swipe.eligible) {
-				affectedGenerationCount += 1;
-			}
-		}
-
-		byParticipant.set(participant.id, {
-			eligible: true,
-			reason: null,
-			deletionMode: referenced ? "tombstone" : "hard-delete",
-			affectedGenerationCount,
-		});
+): ParticipantRemovalEligibility => {
+	const seated =
+		participantId === control.humanParticipantId ||
+		participantId === control.modelParticipantId;
+	if (seated) {
+		return {
+			eligible: false,
+			reason: "control-assigned",
+			deletionMode: null,
+			affectedGenerationCount: 0,
+		};
 	}
-	return byParticipant;
+
+	let referenced = false;
+	let affectedGenerationCount = 0;
+	for (const message of messages) {
+		const row = {
+			authorParticipantId: message.author?.participantId ?? null,
+			contextHumanParticipantId:
+				message.historicalContext?.humanParticipantId ?? null,
+			contextModelParticipantId:
+				message.historicalContext?.modelParticipantId ?? null,
+		};
+		// ==[HUMAN APPROVED]== Same retained-reference rule the command enforces, so the derived
+		// impact can never drift from the persisted behavior.
+		if (messageReferencesParticipant(row, participantId)) {
+			referenced = true;
+		}
+		// ==[HUMAN APPROVED]== Author-only references are retained (tombstone required) but never
+		// count as regeneration loss: only Messages whose captured historical
+		// pair includes this Participant and that currently could generate a
+		// new sibling Variant lose that ability when it is removed.
+		const referencesContext =
+			row.contextHumanParticipantId === participantId ||
+			row.contextModelParticipantId === participantId;
+		if (referencesContext && message.swipe.eligible) {
+			affectedGenerationCount += 1;
+		}
+	}
+
+	return {
+		eligible: true,
+		reason: null,
+		deletionMode: referenced ? "tombstone" : "hard-delete",
+		affectedGenerationCount,
+	};
 };
 
 // ==[HUMAN APPROVED]== Cheap existence probe for callers that only need to know whether the
@@ -359,26 +389,8 @@ export function readConversationSnapshot(
 	}
 
 	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
-		const author: AuthorStampSnapshot | null =
-			message.author_participant_id !== null || message.author_name !== null
-				? {
-						participantId: message.author_participant_id,
-						capturedName: message.author_name,
-						// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
-						// displaying with a no-longer-in-Cast marker after removal.
-						inCast:
-							message.author_participant_id !== null &&
-							castIdsSet.has(message.author_participant_id),
-					}
-				: null;
-		const historicalContext: HistoricalControlSnapshot | null =
-			message.context_human_participant_id !== null &&
-			message.context_model_participant_id !== null
-				? {
-						humanParticipantId: message.context_human_participant_id,
-						modelParticipantId: message.context_model_participant_id,
-					}
-				: null;
+		const author = toAuthorStamp(message, castIdsSet);
+		const historicalContext = toHistoricalContext(message);
 		return {
 			id: message.id,
 			position: message.position,
@@ -418,8 +430,6 @@ export function readConversationSnapshot(
 	// ==[HUMAN APPROVED]== Removal eligibility follows Messages: the deletion mode and
 	// affected-generation count derive from the same references the command
 	// enforces, so clients never reconstruct the rule.
-	const removalByParticipant = deriveRemovalEligibility(cast, messages, control);
-
 	return {
 		id: conversation.id,
 		name: conversation.name,
@@ -427,12 +437,11 @@ export function readConversationSnapshot(
 		cast: cast.map((participant) => ({
 			...participant,
 			duplicateLabel: labelsById.get(participant.id) ?? participant.name,
-			removal: removalByParticipant.get(participant.id) ?? {
-				eligible: true,
-				reason: null,
-				deletionMode: "hard-delete",
-				affectedGenerationCount: 0,
-			},
+			removal: deriveParticipantRemoval(
+				participant.id,
+				messages,
+				control,
+			),
 		})),
 		control,
 		controlValidity,
