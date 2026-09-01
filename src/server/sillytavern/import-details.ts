@@ -12,11 +12,14 @@
 // and every Conversation command stay available.
 
 import type { Database } from "bun:sqlite";
-import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
+import type { Static } from "@sinclair/typebox";
+import {
+	chatImportDetails,
+	type ChatImportDuplicateEvidence,
+} from "../../shared/contract/chat-import";
 import {
 	createArtifactModule,
 	type ArtifactDownloadResult,
-	type ArtifactInspection,
 } from "../artifact";
 import { createConversationModule } from "../conversation";
 import { withDatabase } from "../database/database";
@@ -30,31 +33,19 @@ import {
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 
-// ==[HUMAN APPROVED]== The complete Import Details payload for one imported Chat. Null is never
-// a failure: a Chat without import provenance simply has no Import Details.
-export interface ChatImportDetails {
-	conversationId: number;
-	title: string;
-	// ==[HUMAN APPROVED]== The compact receipt persisted at commit: counts, warnings, source
-	// identity, and importer version.
-	receipt: {
-		originalFilename: string;
-		sha256: string;
-		byteLength: number | null;
-		integrity: string | null;
-		counts: { messages: number; variants: number };
-		warnings: string[];
-		importerVersion: string;
-	};
-	// ==[HUMAN APPROVED]== Structured duplicate evidence as of this read, excluding this Chat
-	// itself: matching raw-byte SHA-256 is an exact duplicate; a declared-
-	// integrity-only match is a related source.
-	duplicates: ChatImportDuplicateEvidence;
-	// ==[HUMAN APPROVED]== The exact-source artifact inspection, including derived availability.
-	// Present for every imported Chat; availability reports cleaned up with
-	// the reason when the physical copy is missing or fails verification.
-	artifact: ArtifactInspection | null;
-}
+// ==[HUMAN APPROVED]== The complete Import Details payload for one imported Chat, derived
+// from the canonical shared wire schema so the transport shape can never
+// drift from it. Null is never a failure: a Chat without import provenance
+// simply has no Import Details.
+//
+// The receipt is the compact record persisted at commit (counts, warnings,
+// source identity, importer version). Duplicates are structured evidence as
+// of this read, excluding this Chat itself: matching raw-byte SHA-256 is an
+// exact duplicate, a declared-integrity-only match is a related source. The
+// artifact is the exact-source artifact inspection including derived
+// availability: present for every imported Chat, reporting cleaned up with
+// the reason when the physical copy is missing or fails verification.
+export type ChatImportDetails = Static<typeof chatImportDetails>;
 
 export interface ChatImportDetailsModule {
 	// ==[HUMAN APPROVED]== Reads the persisted receipt, source identity, duplicate evidence, and

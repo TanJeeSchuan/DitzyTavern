@@ -3,36 +3,31 @@
 // creation seam, while the exact bytes live outside SQLite in the managed
 // artifact directory. Ordinary Conversation snapshots never contain artifact
 // content; all access goes through these operations.
+//
+// The wire shape of an artifact inspection is owned by the shared Chat
+// import contract (importDetailsArtifact); every exported representation
+// here derives from it so the two can never drift.
+import type {
+	ImportCleanupReason,
+	ImportDetailsArtifact,
+	ImportDetailsArtifactAvailability,
+} from "../../shared/contract/chat-import";
 
-export type ArtifactUnavailableReason = "missing" | "corrupt";
+// The two ways an Exact Source Artifact copy can be missing content; missing
+// or corrupt copies report cleaned up without affecting the Chat.
+export type ArtifactUnavailableReason = ImportCleanupReason;
 
 // Derived, never stored: whether the physical copy currently satisfies the
 // committed metadata. A missing or corrupt file is reported as cleaned up so
 // provenance loss never makes the native Conversation look corrupt.
-export type ArtifactAvailability =
-	| { status: "available" }
-	| { status: "cleaned-up"; reason: ArtifactUnavailableReason };
+export type ArtifactAvailability = ImportDetailsArtifactAvailability;
 
-export interface ArtifactMetadata {
-	chatId: number;
-	namespace: string;
-	key: string;
-	// Path relative to the managed artifact directory of the deployment.
-	relativePath: string;
-	// The original leaf filename carried by the source, used verbatim for
-	// presentation; response metadata is sanitized on download only.
-	originalFilename: string;
-	mediaType: string;
-	byteLength: number;
-	// Raw-byte SHA-256: the authoritative content digest of the exact stored
-	// bytes, sensitive to BOM, line endings, whitespace, escape spelling,
-	// blank lines, and trailing newline.
-	sha256: string;
-}
+// The committed metadata of one stored artifact: the wire artifact shape
+// without the derived availability.
+export type ArtifactMetadata = Omit<ImportDetailsArtifact, "availability">;
 
-export interface ArtifactInspection extends ArtifactMetadata {
-	availability: ArtifactAvailability;
-}
+// One stored artifact's committed metadata plus its derived availability.
+export type ArtifactInspection = ImportDetailsArtifact;
 
 // Reading the exact stored bytes. Absent or failing-verification files are a
 // typed cleaned-up outcome, never an exception: the native Chat, canonical

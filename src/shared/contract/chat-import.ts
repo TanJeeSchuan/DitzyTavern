@@ -181,10 +181,16 @@ const importDetailsArtifact = Type.Object({
 	chatId: Type.Integer(),
 	namespace: Type.String(),
 	key: Type.String(),
+	// Path relative to the managed artifact directory of the deployment.
 	relativePath: Type.String(),
+	// The original leaf filename carried by the source, used verbatim for
+	// presentation; response metadata is sanitized on download only.
 	originalFilename: Type.String(),
 	mediaType: Type.String(),
 	byteLength: Type.Integer(),
+	// Raw-byte SHA-256: the authoritative content digest of the exact stored
+	// bytes, sensitive to BOM, line endings, whitespace, escape spelling,
+	// blank lines, and trailing newline.
 	sha256: Type.String(),
 	availability: importDetailsArtifactAvailability,
 });
