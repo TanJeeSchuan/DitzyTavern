@@ -32,6 +32,9 @@ const promptChannelOrderEntries = [
 
 type UnorderedChannel = Exclude<keyof PromptChannels, (typeof promptChannelOrderEntries)[number]>;
 
+// Compile-time assertion only (a type annotation, not runtime logic): a
+// contract channel missing from the entries above makes this exported type
+// require it appended, so the assignment fails to compile naming the gap.
 export const promptChannelOrder: UnorderedChannel extends never
 	? typeof promptChannelOrderEntries
 	: readonly [...typeof promptChannelOrderEntries, UnorderedChannel] = promptChannelOrderEntries;
