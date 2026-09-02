@@ -1,6 +1,6 @@
 # Model transport canonicalization
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -28,9 +28,9 @@ Do not edit the generation lifecycle bodies in `src/server/workflows/generate.ts
 - [x] Rename `deepseek.ts` to `chat-completions.ts` and update all production and test imports.
 - [x] Remove obsolete paths. Do not leave a compatibility re-export at `deepseek.ts`.
 - [x] Preserve behavior for DeepSeek, OpenAI-compatible, and OpenRouter adapters.
-- [ ] Run focused model-client and workflow tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Run focused model-client and workflow tests, typechecking, and the full test suite.
+- [x] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
