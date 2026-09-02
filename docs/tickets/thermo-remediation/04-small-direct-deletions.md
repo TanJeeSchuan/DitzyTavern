@@ -1,6 +1,6 @@
 # Small direct deletions
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -26,8 +26,8 @@ Delete four small pieces of restatement or unnecessary type coercion without cha
 - [x] Replace the import flow's array cast and safety comment with an `.at(-1)` undefined guard.
 - [x] Add no architectural regression tests for these mechanical simplifications.
 - [x] Run focused tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
