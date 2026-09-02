@@ -1,6 +1,6 @@
 # Small direct deletions
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: None
 
@@ -20,12 +20,12 @@ Delete four small pieces of restatement or unnecessary type coercion without cha
 
 ## Work
 
-- [ ] Build terminal replay inspection from the active row plus terminal overrides instead of copying every common column.
-- [ ] Give the plain and guarded revision advances one shared set-clause builder.
-- [ ] Pass `initialWorkspace` directly in `App.tsx`.
-- [ ] Replace the import flow's array cast and safety comment with an `.at(-1)` undefined guard.
-- [ ] Add no architectural regression tests for these mechanical simplifications.
-- [ ] Run focused tests, typechecking, and the full test suite.
+- [x] Build terminal replay inspection from the active row plus terminal overrides instead of copying every common column.
+- [x] Give the plain and guarded revision advances one shared set-clause builder.
+- [x] Pass `initialWorkspace` directly in `App.tsx`.
+- [x] Replace the import flow's array cast and safety comment with an `.at(-1)` undefined guard.
+- [x] Add no architectural regression tests for these mechanical simplifications.
+- [x] Run focused tests, typechecking, and the full test suite.
 - [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
 - [ ] Set this ticket to DONE and commit the implementation.
 
@@ -34,4 +34,3 @@ Delete four small pieces of restatement or unnecessary type coercion without cha
 - The four reported duplicates or coercions are gone.
 - Existing behavior and error ordering remain unchanged.
 - No fallback or compatibility path is added.
-

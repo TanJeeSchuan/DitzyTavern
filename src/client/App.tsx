@@ -17,6 +17,11 @@ type WorkspaceState =
 	| { status: "ready"; workspace: Workspace }
 	| { status: "error" };
 
+const hasActiveChat = (
+	workspace: Workspace,
+): workspace is Workspace & { activeChat: NonNullable<Workspace["activeChat"]> } =>
+	workspace.activeChat !== null;
+
 export function App() {
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
 	// ==[HUMAN APPROVED]== A just-imported Chat to open after the workspace reloads. It lives at
@@ -91,7 +96,7 @@ function WritingWorkspace({
 		await onReload();
 	};
 
-	if (!initialWorkspace.activeChat) {
+	if (!hasActiveChat(initialWorkspace)) {
 		return (
 			<>
 				<WorkspaceWithoutChats
@@ -130,10 +135,7 @@ function WritingWorkspace({
 		<>
 			<ActiveWritingWorkspace
 				key={initialWorkspace.activeChat.id}
-				initialWorkspace={{
-					...initialWorkspace,
-					activeChat: initialWorkspace.activeChat,
-				}}
+				initialWorkspace={initialWorkspace}
 				onNewChat={() => setNewChatOpen(true)}
 				newChatOpen={newChatOpen}
 				onNewChatClose={() => setNewChatOpen(false)}

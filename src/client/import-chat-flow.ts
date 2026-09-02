@@ -541,15 +541,16 @@ export function reduceChatImportFlow(
 					state.groups.find((group) => group.id === action.fromId)?.isBlank ??
 					false,
 			});
-		case "undo-resolution":
-			if (!inStagedFlow(state) || state.history.length === 0) return state;
+		case "undo-resolution": {
+			if (!inStagedFlow(state)) return state;
+			const previousGroups = state.history.at(-1);
+			if (previousGroups === undefined) return state;
 			return {
 				...state,
-				// ==[HUMAN APPROVED]== SAFETY: the history length check above guarantees pop()
-				// returns a snapshot.
-				groups: cloneGroups(state.history[state.history.length - 1] as ImportGroupDraft[]),
+				groups: cloneGroups(previousGroups),
 				history: state.history.slice(0, -1),
 			};
+		}
 		case "duplicate-confirmed":
 			return inStagedFlow(state)
 				? { ...state, duplicateConfirmed: action.confirmed }
