@@ -46,7 +46,6 @@ import type {
 	AcceptSiblingGenerationInput,
 	AcceptContinuationGenerationInput,
 	AcceptTailGenerationInput,
-	ConversationDataEntry,
 	ConversationJsonValue,
 	ConversationSnapshot,
 } from "../types";
@@ -88,24 +87,20 @@ const ensureConversationRevision = (
 	return conversation;
 };
 
-interface PersistActiveGenerationInput {
-	conversationId: number;
+type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
+	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
+	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
+	"historyRoles" | "generationSettings" | "connection" | "generationIntent" |
+	"provenance"
+>;
+
+interface PersistActiveGenerationInput
+	extends Omit<GenerationAcceptanceFields, "generationIntent"> {
 	humanMessageId: number | null;
 	messageId: number;
 	variantId: number;
 	priorVariantId?: number | null;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName: string;
-	capturedModelName: string;
-	startedAt: string;
-	promptPlan: ConversationJsonValue;
-	promptInspection?: ConversationJsonValue;
-	historyRoles: readonly ("human" | "model" | null)[];
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
 	generationIntent: ConversationJsonValue;
-	provenance?: ConversationDataEntry;
 }
 
 /** ==[HUMAN APPROVED]== Persist the common server-owned Generation record after target creation. */
@@ -125,7 +120,7 @@ const persistActiveGeneration = (
 			model_participant_id: input.modelParticipantId,
 			captured_human_name: input.capturedHumanName,
 			captured_model_name: input.capturedModelName,
-			started_at: input.startedAt,
+			started_at: input.timestamp,
 			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
 			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
 			history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
@@ -251,24 +246,13 @@ interface AcceptGenerationValidation {
 
 type AcceptGenerationParticipant = ReturnType<typeof requireParticipant>;
 
-interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidation> {
-	conversationId: number;
+interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidation>
+	extends Omit<GenerationAcceptanceFields, "generationIntent"> {
 	expectedRevision: number;
-	timestamp: string;
 	// ==[HUMAN APPROVED]== The lifecycle name spelled exactly as the shared distinct-seat denial
 	// addresses it: "Tail" and "Continuation".
 	lifecycle: "Tail" | "Continuation";
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
-	capturedModelName: string;
-	promptPlan: ConversationJsonValue;
-	promptInspection?: ConversationJsonValue | undefined;
-	historyRoles: readonly ("human" | "model" | null)[];
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
 	generationIntent: ConversationJsonValue;
-	provenance?: ConversationDataEntry | undefined;
 	// ==[HUMAN APPROVED]== Lifecycle rejection that must precede the shared seat guards: Send
 	// rejects empty composer content ahead of the distinct-seat denial so
 	// the original error precedence survives the extraction.
@@ -342,22 +326,12 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 			position: validation.position,
 		});
 		const activeGenerationId = persistActiveGeneration(db, {
-			conversationId: input.conversationId,
+			...input,
 			humanMessageId: validation.humanMessageId,
 			messageId: provisional.modelMessageId,
 			variantId: provisional.provisionalVariantId,
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
 			capturedHumanName: input.capturedHumanName ?? human.name,
 			capturedModelName: model.name,
-			startedAt: input.timestamp,
-			promptPlan: input.promptPlan,
-			promptInspection: input.promptInspection,
-			historyRoles: input.historyRoles,
-			generationSettings: input.generationSettings,
-			connection: input.connection,
-			generationIntent: input.generationIntent,
-			provenance: input.provenance,
 		});
 		advanceConversationRevisionGuarded(
 			db,
@@ -383,21 +357,9 @@ export function acceptConversationTailGeneration(
 	input: AcceptTailGenerationInput,
 ): AcceptedTailGeneration {
 	const accepted = acceptConversationGenerationTarget(database, {
-		conversationId: input.conversationId,
-		expectedRevision: input.expectedRevision,
-		timestamp: input.timestamp,
+		...input,
 		lifecycle: "Tail",
-		humanParticipantId: input.humanParticipantId,
-		modelParticipantId: input.modelParticipantId,
-		capturedHumanName: input.capturedHumanName,
-		capturedModelName: input.capturedModelName,
-		promptPlan: input.promptPlan,
-		promptInspection: input.promptInspection,
-		historyRoles: input.historyRoles,
-		generationSettings: input.generationSettings,
-		connection: input.connection,
 		generationIntent: input.generationIntent ?? { type: "tail" },
-		provenance: input.provenance,
 		preflight: () => {
 			if (input.humanContent.trim() === "") {
 				throw new InvalidConversationCommandError(
@@ -472,21 +434,9 @@ export function acceptConversationContinuationGeneration(
 	input: AcceptContinuationGenerationInput,
 ): AcceptedContinuationGeneration {
 	const accepted = acceptConversationGenerationTarget(database, {
-		conversationId: input.conversationId,
-		expectedRevision: input.expectedRevision,
-		timestamp: input.timestamp,
+		...input,
 		lifecycle: "Continuation",
-		humanParticipantId: input.humanParticipantId,
-		modelParticipantId: input.modelParticipantId,
-		capturedHumanName: input.capturedHumanName,
-		capturedModelName: input.capturedModelName,
-		promptPlan: input.promptPlan,
-		promptInspection: input.promptInspection,
-		historyRoles: input.historyRoles,
-		generationSettings: input.generationSettings,
-		connection: input.connection,
 		generationIntent: input.generationIntent ?? { type: "continuation", strategy: "instruction" },
-		provenance: input.provenance,
 		validate: (db, _human, model) => {
 			const latest = db
 				.select({ id: messageTable.id, position: messageTable.position })
@@ -638,23 +588,13 @@ export function acceptConversationSiblingGeneration(
 			input.timestamp,
 		);
 		const activeGenerationId = persistActiveGeneration(db, {
-			conversationId: input.conversationId,
+			...input,
 			humanMessageId: null,
 			messageId: input.messageId,
 			variantId: provisional.provisionalVariantId,
 			priorVariantId: provisional.priorVariantId,
-			humanParticipantId: input.humanParticipantId,
-			modelParticipantId: input.modelParticipantId,
 			capturedHumanName: input.capturedHumanName ?? human.name,
-			capturedModelName: input.capturedModelName,
-			startedAt: input.timestamp,
-			promptPlan: input.promptPlan,
-			promptInspection: input.promptInspection,
-			historyRoles: input.historyRoles,
-			generationSettings: input.generationSettings,
-			connection: input.connection,
 			generationIntent: input.generationIntent ?? { type: "sibling" },
-			provenance: input.provenance,
 		});
 		const snapshot = advanceConversationRevision(db, input.conversationId, input.timestamp);
 		return {

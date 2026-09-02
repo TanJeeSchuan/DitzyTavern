@@ -1,6 +1,6 @@
 # Generation lifecycle collapse
 
-Status: TODO
+Status: DONE
 
 Blocked By:
 
@@ -23,17 +23,17 @@ Avoid unrelated cleanup in model-client, connection-settings, or conversation re
 
 ## Work
 
-- [ ] Parameterize the shared accepted-generation tail for Send and Continue.
-- [ ] Let Sibling reuse the shared accept, notify, run, and remove structure where its revision-neutral semantics allow it.
-- [ ] Encode lifecycle differences through typed inputs or policies instead of scattered conditionals.
-- [ ] Make it impossible for Continue to insert a human Message through the shared abstraction.
-- [ ] Replace the three repeated acceptance-field attendance sheets with spread input plus the lifecycle-specific hooks.
-- [ ] Keep Send reuse validation, Continuation terminal validation, and Sibling revision-neutral behavior explicit.
-- [ ] Preserve HTTP contracts, wire schemas, revision behavior, and error-message precedence.
-- [ ] Confirm the targeted `generate.ts` clone families disappear or shrink through `bun run check:clones`.
-- [ ] Run the Send, Continue, Sibling, recovery, and workflow tests, typechecking, and the full test suite.
+- [x] Parameterize the shared accepted-generation tail for Send and Continue.
+- [x] Let Sibling reuse the shared accept, notify, run, and remove structure where its revision-neutral semantics allow it.
+- [x] Encode lifecycle differences through typed inputs or policies instead of scattered conditionals.
+- [x] Make it impossible for Continue to insert a human Message through the shared abstraction.
+- [x] Replace the three repeated acceptance-field attendance sheets with spread input plus the lifecycle-specific hooks.
+- [x] Keep Send reuse validation, Continuation terminal validation, and Sibling revision-neutral behavior explicit.
+- [x] Preserve HTTP contracts, wire schemas, revision behavior, and error-message precedence.
+- [x] Confirm the targeted `generate.ts` clone families disappear or shrink through `bun run check:clones`.
+- [x] Run the Send, Continue, Sibling, recovery, and workflow tests, typechecking, and the full test suite.
 - [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
@@ -41,4 +41,3 @@ Avoid unrelated cleanup in model-client, connection-settings, or conversation re
 - Sibling shares the common accepted-generation tail without hiding its distinct revision rules.
 - Common acceptance fields are not listed by hand at all three call sites.
 - Observable behavior and error precedence remain unchanged.
-

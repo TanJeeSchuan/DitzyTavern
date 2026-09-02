@@ -24,6 +24,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	StaleConversationRevisionError,
+	type ConversationModule,
 	type ConversationSnapshot,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
@@ -31,13 +32,18 @@ import {
 } from "../conversation";
 import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
 import type { PromptHistoryEntry } from "../prompt-compiler";
-import type { ModelClient, ModelClientConnectionSnapshot } from "../model-client";
+import type {
+	ModelClient,
+	ModelClientConnectionSnapshot,
+	ModelClientGenerationInput,
+} from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
 	startServerOwnedGenerationFrom,
 	type GenerationAttemptInput,
+	type GenerationOutcome,
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
@@ -50,6 +56,7 @@ import {
 	deriveGeneration,
 	resolveConnectionApiFormat,
 	toCompilerDefinition,
+	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
 import {
@@ -75,6 +82,86 @@ async function notifyAccepted<Accepted>(
 	} catch {
 		// ==[HUMAN APPROVED]== Acceptance is authoritative even when an observing caller disconnects.
 	}
+}
+
+interface GenerationLifecyclePolicy<
+	Input extends GenerationAttemptInput,
+	Capture extends CapturedGeneration,
+	Accepted extends { generationId: number },
+	Result,
+> {
+	preflight?: (input: Input) => void;
+	expectedRevision?: (input: Input) => number;
+	capture: (
+		database: Database,
+		snapshot: ConversationSnapshot,
+		input: Input,
+	) => Capture;
+	accept: (
+		conversation: ConversationModule,
+		input: Input,
+		capture: Capture,
+		timestamp: string,
+	) => Accepted;
+	request: (
+		capture: Capture,
+		input: Input,
+	) => ModelClientGenerationInput;
+	resolve: (
+		conversation: ConversationModule,
+		input: Input,
+		capture: Capture,
+		accepted: Accepted,
+		timestamp: string,
+		outcome: GenerationOutcome,
+	) => Result | Promise<Result>;
+}
+
+/**
+ * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
+ * Capture, acceptance, notification, provider execution, and terminal cleanup are
+ * deliberately policy inputs: the runner owns their ordering while each lifecycle
+ * keeps its own validation, request metadata, and resolution semantics.
+ */
+async function runGenerationLifecycle<
+	Accepted extends { generationId: number },
+	Input extends GenerationAttemptInput,
+	Capture extends CapturedGeneration,
+	Result,
+>(
+	database: Database,
+	input: Input,
+	onAccepted: ((accepted: Accepted) => void | Promise<void>) | undefined,
+	policy: GenerationLifecyclePolicy<Input, Capture, Accepted, Result>,
+): Promise<Result> {
+	policy.preflight?.(input);
+	const conversation = createConversationModule(database);
+	const snapshot = conversation.getSnapshot(input.conversationId);
+	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+	const expectedRevision = policy.expectedRevision?.(input);
+	if (expectedRevision !== undefined && snapshot.revision !== expectedRevision) {
+		throw new StaleConversationRevisionError(expectedRevision, snapshot.revision);
+	}
+	const capture = policy.capture(database, snapshot, input);
+	const timestamp = input.timestamp ?? new Date().toISOString();
+	const accepted = policy.accept(conversation, input, capture, timestamp);
+	await notifyAccepted<Accepted>({ onAccepted }, accepted);
+	return runAcceptedGeneration(input, policy.request(capture, input), {
+		remove: () => {
+			conversation.removeGeneration({
+				conversationId: input.conversationId,
+				generationId: accepted.generationId,
+			});
+		},
+		resolve: (outcome) => policy.resolve(
+			conversation,
+			input,
+			capture,
+			accepted,
+			timestamp,
+			outcome,
+		),
+	});
 }
 
 // ==[HUMAN APPROVED]== Read-only prompt inspection result. `playable: false` means the
@@ -236,62 +323,47 @@ export async function sendThroughProvisionalTailGeneration(
 	database: Database,
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
-	if (input.content.trim() === "") {
-		throw new InvalidConversationCommandError(
-			"Send requires non-empty composer content.",
-		);
-	}
-	const conversation = createConversationModule(database);
-	const snapshot = conversation.getSnapshot(input.conversationId);
-	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
-	if (snapshot.revision !== input.expectedRevision) {
-		throw new StaleConversationRevisionError(
-			input.expectedRevision,
-			snapshot.revision,
-		);
-	}
-	const capture = captureSendGeneration(
-		database,
-		snapshot,
-		input.content,
-		input.connection,
-		input.connectionSettings,
-		input.tokenEstimator,
-	);
-	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = conversation.acceptTailGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
-		}),
-		expectedRevision: input.expectedRevision,
-		humanContent: capture.humanContent,
-		reuseHumanMessageId: capture.reuseHumanMessageId,
-	});
-	await notifyAccepted(input, accepted);
-
-	const committed = await runAcceptedGeneration(input, modelRequestFor(capture, input), {
-		remove: () => {
-			conversation.removeGeneration({
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-			});
+	return runGenerationLifecycle(database, input, input.onAccepted, {
+		preflight: (current) => {
+			if (current.content.trim() === "") {
+				throw new InvalidConversationCommandError(
+					"Send requires non-empty composer content.",
+				);
+			}
 		},
-		resolve: (outcome) => conversation.resolveTailGeneration({
-			conversationId: input.conversationId,
+		expectedRevision: (current) => current.expectedRevision,
+		capture: (currentDatabase, snapshot, current) => captureSendGeneration(
+			currentDatabase,
+			snapshot,
+			current.content,
+			current.connection,
+			current.connectionSettings,
+			current.tokenEstimator,
+		),
+		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: current.conversationId,
+				timestamp,
+			}),
+			expectedRevision: current.expectedRevision,
+			humanContent: capture.humanContent,
+			reuseHumanMessageId: capture.reuseHumanMessageId,
+		}),
+		request: modelRequestFor,
+		resolve: (conversation, current, _capture, accepted, timestamp, outcome) => ({
+			conversation: conversation.resolveTailGeneration({
+				conversationId: current.conversationId,
+				generationId: accepted.generationId,
+				timestamp,
+				content: outcome.content,
+				data: generationOutcomeData(outcome),
+			}),
 			generationId: accepted.generationId,
-			timestamp,
-			content: outcome.content,
-			data: generationOutcomeData(outcome),
+			humanMessageId: accepted.humanMessageId,
+			modelMessageId: accepted.modelMessageId,
+			provisionalVariantId: accepted.provisionalVariantId,
 		}),
 	});
-	return {
-		conversation: committed,
-		generationId: accepted.generationId,
-		humanMessageId: accepted.humanMessageId,
-		modelMessageId: accepted.modelMessageId,
-		provisionalVariantId: accepted.provisionalVariantId,
-	};
 }
 
 export interface ContinueGenerationInput extends GenerationAttemptInput {
@@ -324,58 +396,45 @@ export async function continueGeneration(
 	database: Database,
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
-	const conversation = createConversationModule(database);
-	const snapshot = conversation.getSnapshot(input.conversationId);
-	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
-	if (snapshot.revision !== input.expectedRevision) {
-		throw new StaleConversationRevisionError(input.expectedRevision, snapshot.revision);
-	}
-	const capture = captureContinuationGeneration(
-		database,
-		snapshot,
-		input.connection,
-		input.connectionSettings,
-		input.tokenEstimator,
-	);
-	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = conversation.acceptContinuationGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
+	return runGenerationLifecycle(database, input, input.onAccepted, {
+		expectedRevision: (current) => current.expectedRevision,
+		capture: (currentDatabase, snapshot, current) => captureContinuationGeneration(
+			currentDatabase,
+			snapshot,
+			current.connection,
+			current.connectionSettings,
+			current.tokenEstimator,
+		),
+		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: current.conversationId,
+				timestamp,
+			}),
+			expectedRevision: current.expectedRevision,
+			precedingMessageId: capture.precedingMessageId,
+			precedingVariantId: capture.precedingVariantId,
+			generationIntent: capture.intent,
 		}),
-		expectedRevision: input.expectedRevision,
-		precedingMessageId: capture.precedingMessageId,
-		precedingVariantId: capture.precedingVariantId,
-		generationIntent: capture.intent,
-	});
-	await notifyAccepted(input, accepted);
-	const committed = await runAcceptedGeneration(input, {
-		...modelRequestFor(capture, input),
-		assistantPrefill: capture.assistantPrefill,
-	}, {
-		remove: () => {
-			conversation.removeGeneration({
-				conversationId: input.conversationId,
+		request: (capture, current) => ({
+			...modelRequestFor(capture, current),
+			assistantPrefill: capture.assistantPrefill,
+		}),
+		resolve: (conversation, current, capture, accepted, timestamp, outcome) => ({
+			conversation: conversation.resolveTailGeneration({
+				conversationId: current.conversationId,
 				generationId: accepted.generationId,
-			});
-		},
-		resolve: (outcome) => conversation.resolveTailGeneration({
-			conversationId: input.conversationId,
+				timestamp,
+				content: outcome.content,
+				data: [
+					{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
+					...generationOutcomeData(outcome),
+				],
+			}),
 			generationId: accepted.generationId,
-			timestamp,
-			content: outcome.content,
-			data: [
-				{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
-				...generationOutcomeData(outcome),
-			],
+			modelMessageId: accepted.modelMessageId,
+			provisionalVariantId: accepted.provisionalVariantId,
 		}),
 	});
-	return {
-		conversation: committed,
-		generationId: accepted.generationId,
-		modelMessageId: accepted.modelMessageId,
-		provisionalVariantId: accepted.provisionalVariantId,
-	};
 }
 
 export function startServerOwnedContinuationGeneration(
@@ -436,40 +495,31 @@ export async function generateSiblingVariant(
 	database: Database,
 	input: GenerateSiblingVariantInput,
 ): Promise<ConversationSnapshot> {
-	const conversation = createConversationModule(database);
-
-	// ==[HUMAN APPROVED]== Generation-start capture: one authoritative snapshot derives the plan
-	// from the target Message's historical pair; concurrent edits land and
-	// affect only later sibling generations.
-	const snapshot = conversation.getSnapshot(input.conversationId);
-	if (snapshot === undefined) {
-		throw new ConversationNotFoundError(input.conversationId);
-	}
-	const capture = captureSiblingGeneration(database, snapshot, input);
-	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = conversation.acceptSiblingGeneration({
-		...capturedAcceptanceFields(capture, {
-			conversationId: input.conversationId,
-			timestamp,
+	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
+	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
+	return runGenerationLifecycle(database, input, input.onAccepted, {
+		capture: (currentDatabase, snapshot, current) => captureSiblingGeneration(
+			currentDatabase,
+			snapshot,
+			current,
+		),
+		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
+			...capturedAcceptanceFields(capture, {
+				conversationId: current.conversationId,
+				timestamp,
+			}),
+			messageId: current.messageId,
+			generationIntent: { type: "sibling" },
 		}),
-		messageId: input.messageId,
-		generationIntent: { type: "sibling" },
-	});
-	await notifyAccepted(input, accepted);
-	return runAcceptedGeneration(input, modelRequestFor(capture, input), {
-		remove: () => {
-			conversation.removeGeneration({
-				conversationId: input.conversationId,
+		request: modelRequestFor,
+		resolve: (conversation, current, _capture, accepted, timestamp, outcome) =>
+			conversation.resolveSiblingGeneration({
+				conversationId: current.conversationId,
 				generationId: accepted.generationId,
-			});
-		},
-		resolve: (outcome) => conversation.resolveSiblingGeneration({
-			conversationId: input.conversationId,
-			generationId: accepted.generationId,
-			timestamp,
-			content: outcome.content,
-			data: generationOutcomeData(outcome),
-		}),
+				timestamp,
+				content: outcome.content,
+				data: generationOutcomeData(outcome),
+			}),
 	});
 }
 
