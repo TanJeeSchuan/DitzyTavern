@@ -329,11 +329,11 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
-		const sibling = await generateSiblingVariant(database, {
+		const sibling = (await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
 			modelClient: fakeModelClient(() => "sibling generation"),
-		});
+		})).conversation;
 		const target = sibling.messages.find((message) => message.id === targetId);
 		if (target === undefined) throw new Error("Target Message disappeared.");
 		const provenance = target.variants.map((variant) => {

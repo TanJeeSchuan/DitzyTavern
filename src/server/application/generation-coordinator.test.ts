@@ -97,8 +97,13 @@ describe("GenerationCoordinator", () => {
 			conversationId: conversation.id,
 			messageId: targetMessageId,
 		});
-		await sibling.result;
+		const siblingResult = await sibling.result;
 		expect(sibling.runtime.state.status).toBe("complete");
+		expect(siblingResult).toEqual(expect.objectContaining({
+			generationId: sibling.runtime.state.generationId,
+			messageId: targetMessageId,
+			provisionalVariantId: expect.any(Number),
+		}));
 	});
 
 	test("rejects a missing conversation before resolving transport", async () => {
@@ -642,7 +647,7 @@ describe("Generation Coordinator terminal races", () => {
 			variantId: accepted.provisionalVariantId,
 			startedAt: "2026-08-27T00:00:00.000Z",
 			onStop: () => {
-				input.module.resolveTailGeneration({
+				input.module.resolveGeneration({
 					conversationId: input.conversation.id,
 					generationId: accepted.generationId,
 					timestamp: "2026-08-27T00:00:01.000Z",

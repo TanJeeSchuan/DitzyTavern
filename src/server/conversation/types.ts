@@ -327,8 +327,8 @@ export interface ConversationModule {
 	acceptTailGeneration(
 		input: AcceptTailGenerationInput,
 	): AcceptedTailGeneration;
-	resolveTailGeneration(
-		input: ResolveTailGenerationInput,
+	resolveGeneration(
+		input: ResolveGenerationInput,
 	): ConversationSnapshot;
 	removeGeneration(
 		input: RemoveGenerationInput,
@@ -342,9 +342,6 @@ export interface ConversationModule {
 	acceptSiblingGeneration(
 		input: AcceptSiblingGenerationInput,
 	): AcceptedSiblingGeneration;
-	resolveSiblingGeneration(
-		input: ResolveSiblingGenerationInput,
-	): ConversationSnapshot;
 }
 
 export interface ActiveGenerationSnapshot {
@@ -409,7 +406,7 @@ export interface AcceptedTailGeneration {
 	conversation: ConversationSnapshot;
 }
 
-export interface ResolveTailGenerationInput {
+export interface ResolveGenerationInput {
 	conversationId: number;
 	generationId: number;
 	timestamp: string;
@@ -502,15 +499,6 @@ export interface AcceptedSiblingGeneration {
 	provisionalVariantId: number;
 	priorVariantId: number | null;
 	conversation: ConversationSnapshot;
-}
-
-export interface ResolveSiblingGenerationInput {
-	conversationId: number;
-	generationId: number;
-	timestamp: string;
-	content: string;
-	reasoning?: string | undefined;
-	data?: readonly ConversationDataEntry[] | undefined;
 }
 
 // Checkpointing is mutable execution state, not a Conversation edit. The

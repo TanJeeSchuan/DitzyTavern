@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { openDatabase, withDatabase } from "../database/database";
 import {
-	checkpointConversationSiblingGeneration,
 	checkpointConversationGeneration,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
@@ -311,7 +310,7 @@ export class GenerationCoordinator {
 				messageId: accepted.messageId,
 				variantId: accepted.provisionalVariantId,
 			}),
-			checkpoint: (database, accepted, output) => checkpointConversationSiblingGeneration(database, {
+			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				...output,

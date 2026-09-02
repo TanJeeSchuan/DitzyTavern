@@ -768,12 +768,12 @@ describe("SillyTavern chat import", () => {
 		// native Message: targeted Swipe generation works and leaves current
 		// Control and the Author Stamp untouched.
 		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
-		const sibling = await generateSiblingVariant(database, {
+		const sibling = (await generateSiblingVariant(database, {
 			conversationId: generated.id,
 			messageId: modelMessageId,
 			timestamp: "2026-08-08T14:31:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers differently."),
-		});
+		})).conversation;
 		const siblingTarget = sibling.messages.find(
 			(message) => message.id === modelMessageId,
 		);

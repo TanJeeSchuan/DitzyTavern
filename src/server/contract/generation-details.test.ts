@@ -99,7 +99,7 @@ describe("Generation detail transport", () => {
 			expect(body).not.toContain("secret.invalid");
 			expect(body).not.toContain("credential-do-not-expose");
 
-			module.resolveTailGeneration({
+			module.resolveGeneration({
 				conversationId: conversation.id,
 				generationId: accepted.generationId,
 				timestamp: "2026-08-27T10:00:01Z",

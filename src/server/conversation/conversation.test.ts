@@ -643,7 +643,7 @@ describe("Conversation module", () => {
 			module: ReturnType<typeof createConversationModule>,
 			generationId: number,
 		) =>
-			module.resolveTailGeneration({
+			module.resolveGeneration({
 				conversationId,
 				generationId,
 				timestamp: "2026-08-20T12:00:00Z",

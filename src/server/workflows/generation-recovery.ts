@@ -8,7 +8,6 @@ import {
 import {
 	cleanupRetainedGenerationInspections,
 	createConversationModule,
-	isSiblingGenerationRow,
 } from "../conversation";
 import {
 	defaultGenerationRuntime,
@@ -69,26 +68,15 @@ export function recoverActiveGenerations(
 		const content = row.checkpointContent;
 		const reasoning = row.checkpointReasoning;
 		try {
-			const intent = isSiblingGenerationRow(row) ? "sibling" : "tail";
 			if (content.length > 0 || reasoning.length > 0) {
 				const data = interruptedGenerationData(cause, reasoning);
-				if (intent === "sibling") {
-					conversation.resolveSiblingGeneration({
-						conversationId: row.conversationId,
-						generationId: row.id,
-						timestamp: new Date().toISOString(),
-						content,
-						data,
-					});
-				} else {
-					conversation.resolveTailGeneration({
-						conversationId: row.conversationId,
-						generationId: row.id,
-						timestamp: new Date().toISOString(),
-						content,
-						data,
-					});
-				}
+				conversation.resolveGeneration({
+					conversationId: row.conversationId,
+					generationId: row.id,
+					timestamp: new Date().toISOString(),
+					content,
+					data,
+				});
 				interrupted += 1;
 			} else {
 				// ==[HUMAN APPROVED]== The canonical removal seam reads the persisted intent itself:

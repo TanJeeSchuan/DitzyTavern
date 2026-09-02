@@ -124,7 +124,7 @@ describe("Historical sibling Variant generation", () => {
 		content: string,
 		options: { timestamp?: string; capture: (plan: PromptPlan) => void },
 	) => {
-		conversation = await generateSiblingVariant(database, {
+		const result = await generateSiblingVariant(database, {
 			conversationId: conversation.id,
 			messageId,
 			timestamp: options.timestamp ?? "2026-08-20T14:00:00Z",
@@ -133,6 +133,7 @@ describe("Historical sibling Variant generation", () => {
 				return content;
 			}),
 		});
+		conversation = result.conversation;
 		return conversation;
 	};
 
@@ -569,11 +570,17 @@ describe("Historical sibling Variant generation", () => {
 				modelClient: fakeModelClient(() => "Target model output."),
 			},
 		);
-		const sibling = await generateSiblingVariant(database, {
+		const siblingResult = await generateSiblingVariant(database, {
 			conversationId: conversation.id,
 			messageId: targetId,
 			modelClient: fakeModelClient(() => "Sibling model output."),
 		});
+		expect(siblingResult).toEqual(expect.objectContaining({
+			generationId: expect.any(Number),
+			messageId: targetId,
+			provisionalVariantId: expect.any(Number),
+		}));
+		const sibling = siblingResult.conversation;
 		const target = sibling.messages.find((message) => message.id === targetId);
 		const variant = target?.variants.at(-1);
 		if (target === undefined || variant === undefined) throw new Error("Variant missing.");
@@ -594,7 +601,7 @@ describe("Historical sibling Variant generation", () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
 
-		conversation = await generateSiblingVariant(database, {
+		const result = await generateSiblingVariant(database, {
 			conversationId: conversation.id,
 			messageId: greeting.id,
 			modelClient: createFakeModelClient(() => [
@@ -602,6 +609,7 @@ describe("Historical sibling Variant generation", () => {
 				{ type: "failed", kind: "transport", message: "Connection dropped." },
 			]),
 		});
+		conversation = result.conversation;
 
 		const message = conversation.messages.find((candidate) => candidate.id === greeting.id);
 		expect(message?.variants.map((variant) => variant.content)).toEqual([
@@ -649,7 +657,34 @@ describe("Historical sibling Variant generation", () => {
 
 		releaseFirst();
 		releaseSecond();
-		await Promise.all([first.result, second.result]);
+		const [firstResult, secondResult] = await Promise.all([first.result, second.result]);
+		expect(firstResult).toEqual(expect.objectContaining({
+			generationId: firstAccepted.generationId,
+			messageId: greeting.id,
+			provisionalVariantId: firstAccepted.provisionalVariantId,
+		}));
+		expect(secondResult).toEqual(expect.objectContaining({
+			generationId: secondAccepted.generationId,
+			messageId: greeting.id,
+			provisionalVariantId: secondAccepted.provisionalVariantId,
+		}));
 		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toEqual([]);
+	});
+
+	test("returns a complete SiblingGenerationResult directly from its resolution lifecycle hook", async () => {
+		const greeting = conversation.messages[0];
+		if (greeting === undefined) throw new Error("Greeting missing.");
+		const result = await generateSiblingVariant(database, {
+			conversationId: conversation.id,
+			messageId: greeting.id,
+			modelClient: fakeModelClient(() => "Direct result output."),
+		});
+		expect(result.generationId).toBeGreaterThan(0);
+		expect(result.messageId).toBe(greeting.id);
+		expect(result.provisionalVariantId).toBeGreaterThan(0);
+		expect(result.conversation.id).toBe(conversation.id);
+		const variant = result.conversation.messages[0]?.variants.at(-1);
+		expect(variant?.id).toBe(result.provisionalVariantId);
+		expect(variant?.content).toBe("Direct result output.");
 	});
 });
