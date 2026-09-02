@@ -27,6 +27,11 @@ _Avoid_: client placeholder, streaming response
 A durable snapshot of an Active Generation's accumulated Content, Reasoning Content, and latest persisted event position.
 _Avoid_: autosave, stream event
 
+**Generation resolution**:
+The transition that turns an Active Generation's provisional target into a durable terminal Variant, advances the Conversation Revision, and removes the Active Generation record.
+_Avoid_: generation completion, variant finalization
+
+
 **Generated Variant**:
 A Variant produced by a Generation attempt and retained as part of the Conversation.
 _Avoid_: response, completion
