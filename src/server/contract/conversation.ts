@@ -72,7 +72,7 @@ import {
 
 const withConversationModule = <T>(
 	database: Database | undefined,
-	operation: (conversation: ConversationModule) => T,
+	operation: (conversationModule: ConversationModule) => T,
 ): T =>
 	withDatabase(database, (connection) =>
 		operation(createConversationModule(connection)),
@@ -95,8 +95,8 @@ const staleConversationConflict = (
 			actualRevision: number;
 			currentConversation: ReturnType<typeof toConversationSummary>;
 	  } => {
-	const current = withConversationModule(database, (conversation) =>
-		conversation.getSnapshot(conversationId),
+	const current = withConversationModule(database, (conversationModule) =>
+		conversationModule.getSnapshot(conversationId),
 	);
 	if (current === undefined) {
 		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
@@ -183,8 +183,8 @@ export const createConversationRoutes = (
 	const readActiveGenerationDetailsRoute = ({ params }: {
 		params: { id: number; generationId: number };
 	}) => {
-		const details = withConversationModule(database, (conversation) =>
-			conversation.readActiveGenerationDetails(
+		const details = withConversationModule(database, (conversationModule) =>
+			conversationModule.readActiveGenerationDetails(
 				params.id,
 				params.generationId,
 			),
@@ -276,8 +276,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
 			({ params, status }) => {
-				const details = withConversationModule(database, (conversation) =>
-					conversation.readVariantDetails(
+				const details = withConversationModule(database, (conversationModule) =>
+					conversationModule.readVariantDetails(
 						params.id,
 						params.messageId,
 						params.variantId,
@@ -294,8 +294,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id",
 			({ params, status }) => {
-				const conversation = withConversationModule(database, (conversation) =>
-					conversation.getSnapshot(params.id),
+				const conversation = withConversationModule(database, (conversationModule) =>
+					conversationModule.getSnapshot(params.id),
 				);
 				if (conversation === undefined) {
 					return status(404, { outcome: "not-found" as const });
@@ -313,8 +313,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/history",
 			({ params, query, status }) => {
-				const history = withConversationModule(database, (conversation) =>
-					conversation.readHistory(params.id, {
+				const history = withConversationModule(database, (conversationModule) =>
+					conversationModule.readHistory(params.id, {
 						page: query.page,
 						pageSize: query.pageSize,
 					}),
@@ -336,8 +336,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generation-settings",
 			({ params, status }) => {
-				const settings = withConversationModule(database, (conversation) =>
-					conversation.getGenerationSettings(params.id),
+				const settings = withConversationModule(database, (conversationModule) =>
+					conversationModule.getGenerationSettings(params.id),
 				);
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
@@ -441,8 +441,8 @@ export const createConversationRoutes = (
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
-					const conversation = withConversationModule(database, (conversation) =>
-						conversation.execute({
+					const conversation = withConversationModule(database, (conversationModule) =>
+						conversationModule.execute({
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,

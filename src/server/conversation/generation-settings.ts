@@ -1,6 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
-import { conversationGenerationSettingsTable } from "../database/schema";
+import {
+	chatTable,
+	conversationGenerationSettingsTable,
+} from "../database/schema";
 import {
 	connectConversationDatabase,
 	type ConversationDatabase,
@@ -99,10 +102,14 @@ export function readConversationGenerationSettings(
 	database: Database,
 	conversationId: number,
 ): ConversationGenerationSettings | undefined {
-	return readConversationGenerationSettingsFromConnection(
-		connectConversationDatabase(database),
-		conversationId,
-	);
+	const db = connectConversationDatabase(database);
+	const conversation = db
+		.select({ id: chatTable.id })
+		.from(chatTable)
+		.where(eq(chatTable.id, conversationId))
+		.get();
+	if (conversation === undefined) return undefined;
+	return readConversationGenerationSettingsFromConnection(db, conversationId);
 }
 
 export function readConversationGenerationSettingsFromConnection(

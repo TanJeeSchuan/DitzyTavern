@@ -33,7 +33,7 @@ Do not edit `src/server/conversation/commands/accept-generation.ts` or `src/serv
 - [x] Keep query behavior, ordering, and returned shapes unchanged.
 - [x] Remove obsolete helper paths without compatibility layers.
 - [x] Run focused history, snapshot, generation-details, contract, and conversation tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
+- [x] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
 - [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
