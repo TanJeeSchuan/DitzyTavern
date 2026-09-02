@@ -26,6 +26,7 @@ import {
 	snapshotProviderResponse,
 	type ProviderErrorLike,
 } from "./provider-errors";
+import { monitorSseActivity } from "./sse-activity";
 
 export interface ChatCompletionsModelClientOptions {
 	readonly profile: ConnectionProfile;
@@ -147,7 +148,10 @@ async function* generateOpenAICompatibleStream(options: {
 				redirect: "error",
 			});
 			await rejectProviderResponse(response);
-			return monitorResponseActivity(response, resetInactivity, controller.signal);
+			return monitorSseActivity(response, {
+				onActivity: resetInactivity,
+				signal: controller.signal,
+			});
 		}
 		// ==[HUMAN APPROVED]== SAFETY: the AI SDK serializes this request as a JSON object whose values
 		// are within the Conversation Request Override JSON domain.
@@ -173,7 +177,10 @@ async function* generateOpenAICompatibleStream(options: {
 			redirect: "error",
 		});
 		await rejectProviderResponse(response);
-		return monitorResponseActivity(response, resetInactivity, controller.signal);
+		return monitorSseActivity(response, {
+			onActivity: resetInactivity,
+			signal: controller.signal,
+		});
 	};
 
 	try {
@@ -271,7 +278,9 @@ async function* generateOpenAICompatibleStream(options: {
 		}
 		if (error instanceof ModelClientTransportError) throw error;
 		if (error instanceof Error) {
-			throw new ModelClientTransportError(normalizeTransportError(error), "transport");
+			throw new ModelClientTransportError(normalizeTransportError(error), "transport", {
+				cause: error,
+			});
 		}
 		throw new ModelClientTransportError("The provider request failed.", "transport");
 	} finally {
@@ -476,102 +485,6 @@ export function normalizeUsage(value: {
 
 function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
 	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
-}
-
-function monitorResponseActivity(
-	response: Response,
-	markActivity: () => void,
-	abortSignal: AbortSignal,
-): Response {
-	if (response.body === null) return response;
-	const reader = response.body.getReader();
-	const decoder = new TextDecoder();
-	let pending = "";
-	const cancelReader = () => {
-		void reader.cancel();
-	};
-	if (abortSignal.aborted) cancelReader();
-	else abortSignal.addEventListener("abort", cancelReader, { once: true });
-	const body = new ReadableStream<Uint8Array>({
-		async pull(controller) {
-			try {
-				const next = await reader.read();
-				if (next.done) {
-					abortSignal.removeEventListener("abort", cancelReader);
-					controller.close();
-					return;
-				}
-				pending += decoder.decode(next.value, { stream: true });
-				const frames = pending.split(/\r?\n\r?\n/);
-				pending = frames.pop() ?? "";
-				for (const frame of frames) {
-					// ==[HUMAN APPROVED]== SSE comment frames (for example provider keep-alive pings)
-					// are deliberate provider activity: they prove the connection is
-					// delivering bytes while no token is ready, so they reset the
-					// inactivity timer. Only true silence may abort the stream.
-					if (frame.split(/\r?\n/).some((line) => line.trimStart().startsWith(":"))) {
-						markActivity();
-						continue;
-					}
-					const data = frame
-						.split(/\r?\n/)
-						.filter((line) => line.startsWith("data:"))
-						.map((line) => line.slice(5).trimStart())
-						.join("\n");
-					if (data === "[DONE]") {
-						markActivity();
-						continue;
-					}
-					try {
-						// ==[HUMAN APPROVED]== SAFETY: this is the validated JSON object boundary for SSE activity
-						// inspection; AI SDK remains authoritative for actual response parsing.
-						const parsed = JSON.parse(data) as ProviderSseFrame;
-						const choice = parsed.choices?.[0];
-						const delta = choice?.delta;
-						if (
-							delta?.content !== undefined ||
-							delta?.reasoning !== undefined ||
-							delta?.reasoning_content !== undefined ||
-							delta?.reasoning_details !== undefined ||
-							parsed.usage !== undefined ||
-							choice?.finish_reason !== null && choice?.finish_reason !== undefined
-						) {
-							markActivity();
-						}
-					} catch {
-						// ==[HUMAN APPROVED]== AI SDK owns malformed-frame handling. Arbitrary or incomplete
-						// bytes are deliberately not considered stream activity here.
-					}
-				}
-				controller.enqueue(next.value);
-			} catch (error) {
-				controller.error(error);
-				return;
-			}
-		},
-		cancel(reason) {
-			abortSignal.removeEventListener("abort", cancelReader);
-			return reader.cancel(reason);
-		},
-	});
-	return new Response(body, {
-		status: response.status,
-		statusText: response.statusText,
-		headers: response.headers,
-	});
-}
-
-interface ProviderSseFrame {
-	choices?: Array<{
-			delta?: {
-			content?: string;
-			reasoning?: string;
-			reasoning_content?: string;
-			reasoning_details?: unknown;
-		};
-		finish_reason?: string | null;
-	}>;
-	usage?: unknown;
 }
 
 function normalizeTransportError(error: Error): string {

@@ -56,6 +56,9 @@ _Avoid_: continue nudge, synthetic Message
 The Conversation-owned configuration a new Generation starts from: model selection, sampling parameters, budget fields, Continuation strategy, and Request Overrides. Endpoints, credentials, and transport details belong to Connection Profiles instead.
 _Avoid_: connection settings, generation config, Model Settings
 
+**Stream Inactivity Timeout**:
+The Connection Profile's maximum quiet interval for one Generation attempt; null or zero disables it. A stream quieter than this is aborted with the `inactivity` failure kind. It is never a total Generation duration.
+
 **Effective Generation Settings**:
 The Generation Settings that actually participate in one Generation attempt after its Generation intent determines which settings apply. They describe the attempt rather than merely copying the Conversation's configured values.
 _Avoid_: configuration snapshot, raw Generation Settings

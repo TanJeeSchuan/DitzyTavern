@@ -6,8 +6,9 @@ export class ModelClientTransportError extends Error {
 	constructor(
 		message: string,
 		kind: ModelClientFailureKind = "transport",
+		options?: ErrorOptions,
 	) {
-		super(message);
+		super(message, options);
 		this.name = "ModelClientTransportError";
 		this.kind = kind;
 	}
