@@ -16,6 +16,7 @@ import {
 	type StoppedGenerations,
 } from "../conversation";
 import {
+	connectionSnapshotOf,
 	createConnectionSettingsModule,
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
@@ -587,13 +588,7 @@ export class GenerationCoordinator {
 				secrets: settingsModule.getProfileSecrets(profile.id),
 				fetch: this.options.fetch,
 			}),
-			connection: {
-				profileId: profile.id,
-				settingsRevision: settings.revision,
-				backend: "ai-sdk",
-				adapter: profile.adapter,
-				apiFormat: profile.apiFormat,
-			},
+			connection: connectionSnapshotOf(settings, profile),
 		};
 	}
 }

@@ -31,6 +31,7 @@ import type {
 	TokenEstimator,
 } from "../prompt-compiler";
 import {
+	connectionSnapshotOf,
 	createConnectionSettingsModule,
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
@@ -312,13 +313,7 @@ function resolveConnectionSnapshot(
 		(entry) => entry.id === settings.activeProfileId,
 	);
 	if (profile === undefined) return null;
-	return {
-		profileId: profile.id,
-		settingsRevision: settings.revision,
-		backend: "ai-sdk",
-		adapter: profile.adapter,
-		apiFormat: profile.apiFormat,
-	};
+	return connectionSnapshotOf(settings, profile);
 }
 
 // ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the

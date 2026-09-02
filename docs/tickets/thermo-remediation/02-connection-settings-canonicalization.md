@@ -1,6 +1,6 @@
 # Connection settings canonicalization
 
-Status: TODO
+Status: DONE
 
 Blocked By: None
 
@@ -24,16 +24,16 @@ Do not edit `src/server/workflows/generate.ts` or generation acceptance commands
 
 ## Work
 
-- [ ] Add one canonical constructor for the persisted and runtime connection snapshot.
-- [ ] Use that constructor in the generation coordinator and generation capture path.
-- [ ] Put the canonical blank profile draft beside the shared connection-settings schema.
-- [ ] Derive the client blank state and generic OpenAI-compatible preset from the canonical draft.
-- [ ] Replace repeated field-by-field wire projections with one shared projection.
-- [ ] Bind the connection-settings module once in the contract route instead of repeating `withConnectionSettings` wrappers.
-- [ ] Remove replaced literals and helpers without compatibility layers.
-- [ ] Run focused connection-settings and generation tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Add one canonical constructor for the persisted and runtime connection snapshot.
+- [x] Use that constructor in the generation coordinator and generation capture path.
+- [x] Put the canonical blank profile draft beside the shared connection-settings schema.
+- [x] Derive the client blank state and generic OpenAI-compatible preset from the canonical draft.
+- [x] Replace repeated field-by-field wire projections with one shared projection.
+- [x] Bind the connection-settings module once in the contract route instead of repeating `withConnectionSettings` wrappers.
+- [x] Remove replaced literals and helpers without compatibility layers.
+- [x] Run focused connection-settings and generation tests, typechecking, and the full test suite.
+- [x] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
@@ -41,4 +41,3 @@ Do not edit `src/server/workflows/generate.ts` or generation acceptance commands
 - Client initial state and the generic preset share one blank draft.
 - Wire payload fields have one projection helper.
 - The connection-settings route no longer repeats module connection boilerplate.
-

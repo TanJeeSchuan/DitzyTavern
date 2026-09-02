@@ -1,4 +1,8 @@
 import type { ConnectionPreset, ConnectionProfileDraft } from "./types";
+import {
+	blankConnectionProfileDraft,
+	connectionProfileDraftOf,
+} from "../../shared/contract/connection-settings";
 
 const deepSeekProfile: ConnectionProfileDraft = {
 	displayName: "DeepSeek",
@@ -43,27 +47,10 @@ const presets: readonly ConnectionPreset[] = [
 		id: "generic-openai-compatible",
 		label: "Generic OpenAI Compatible",
 		description: "A blank Chat Completions profile for local or proxied endpoints.",
-		profile: {
-			displayName: "OpenAI Compatible",
-			apiFormat: "chat-completions",
-			requestUrl: "",
-			modelsUrl: "",
-			modelBackend: "automatic",
-			adapter: "openai-compatible",
-			outputTokenRepresentation: "automatic",
-			timeoutMs: 120000,
-			pinnedModels: [],
-		},
+		profile: connectionProfileDraftOf(blankConnectionProfileDraft),
 	},
 ];
 
 export function listConnectionPresets(): readonly ConnectionPreset[] {
 	return presets;
-}
-
-export function cloneProfileDraft(profile: ConnectionProfileDraft): ConnectionProfileDraft {
-	return {
-		...profile,
-		pinnedModels: [...profile.pinnedModels],
-	};
 }

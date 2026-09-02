@@ -10,10 +10,15 @@ import {
 	} from "../database/schema";
 import { openDatabase } from "../database/database";
 import {
+	connectionSnapshotOf,
 	createConnectionSettingsModule,
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from ".";
+import {
+	blankConnectionProfileDraft,
+	connectionProfileDraftOf,
+} from "../../shared/contract/connection-settings";
 import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
@@ -93,6 +98,32 @@ describe("Connection Settings", () => {
 		});
 		expect(JSON.stringify(preset?.profile)).not.toContain("Referer");
 		expect(JSON.stringify(preset?.profile)).not.toContain("Title");
+	});
+
+	test("derives the generic preset from the canonical blank draft", () => {
+		const preset = createConnectionSettingsModule(database, { masterKey: key })
+			.listPresets()
+			.find((entry) => entry.id === "generic-openai-compatible");
+
+		expect(preset?.profile).toEqual(blankConnectionProfileDraft);
+		if (preset === undefined) throw new Error("Generic preset was not found.");
+		expect(preset.profile).not.toBe(blankConnectionProfileDraft);
+		expect(connectionProfileDraftOf(preset.profile)).not.toBe(preset.profile);
+	});
+
+	test("constructs one safe snapshot for runtime and persisted generation identity", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+		const profile = created.profiles[0];
+		if (profile === undefined) throw new Error("Connection Profile was not created.");
+
+		expect(connectionSnapshotOf(created, profile)).toEqual({
+			profileId: profile.id,
+			settingsRevision: created.revision,
+			backend: "ai-sdk",
+			adapter: profile.adapter,
+			apiFormat: profile.apiFormat,
+		});
 	});
 
 	test("allows the stream inactivity timeout to be disabled", () => {

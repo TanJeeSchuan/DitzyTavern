@@ -189,6 +189,22 @@ export const connectionTestResponse = testConnectionResult;
 
 export const connectionCommandBody = commandBody;
 
+// The unconfigured Connection Profile is shared by the client editor and the
+// Generic OpenAI Compatible preset. Keeping this literal beside the schema
+// makes the blank state a contract-owned default rather than a layer-specific
+// copy.
+export const blankConnectionProfileDraft = {
+	displayName: "",
+	apiFormat: "chat-completions",
+	requestUrl: "",
+	modelsUrl: "",
+	modelBackend: "automatic",
+	adapter: "openai-compatible",
+	outputTokenRepresentation: "automatic",
+	timeoutMs: 120000,
+	pinnedModels: [],
+} satisfies Static<typeof profileDraft>;
+
 // Stale-revision conflict carrying the authoritative current settings so
 // the caller can recover without a follow-up read.
 export const connectionSettingsConflict = Type.Object({
@@ -228,3 +244,25 @@ export type ConnectionSettingsCommandResultPayload =
 	| Static<typeof connectionSettingsConflict>
 	| Static<typeof connectionInvalidResponse>
 	| Static<typeof connectionNotFoundResponse>;
+
+/**
+ * Projects either a complete Profile payload or a draft into the command
+ * shape. This is the one wire projection for the editable Profile fields;
+ * callers receive a fresh pinned-model list so drafts remain independently
+ * editable.
+ */
+export function connectionProfileDraftOf(
+	profile: ConnectionProfilePayload | ConnectionProfileDraftPayload,
+): ConnectionProfileDraftPayload {
+	return {
+		displayName: profile.displayName,
+		apiFormat: profile.apiFormat,
+		requestUrl: profile.requestUrl,
+		modelsUrl: profile.modelsUrl,
+		modelBackend: profile.modelBackend,
+		adapter: profile.adapter,
+		outputTokenRepresentation: profile.outputTokenRepresentation,
+		timeoutMs: profile.timeoutMs,
+		pinnedModels: [...profile.pinnedModels],
+	};
+}

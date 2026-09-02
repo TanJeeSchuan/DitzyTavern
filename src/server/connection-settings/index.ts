@@ -16,9 +16,10 @@ import {
 	StaleConnectionSettingsRevisionError,
 } from "./errors";
 import {
-	cloneProfileDraft,
 	listConnectionPresets,
 } from "./presets";
+import { connectionProfileDraftOf } from "../../shared/contract/connection-settings";
+import type { ModelClientConnectionSnapshot } from "../model-client/types";
 import {
 	advanceRevision,
 	connect,
@@ -47,6 +48,7 @@ import {
 import type {
 	ApplyConnectionProfileInput,
 	ActivateConnectionProfileInput,
+	ConnectionProfile,
 	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
@@ -78,6 +80,24 @@ type RevisionedWriteOutcome =
 
 export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
+}
+
+/** ==[HUMAN APPROVED]==
+ * Creates the safe connection identity captured by runtime attempts and
+ * persisted for generation inspection. Both paths use this constructor so
+ * their provenance cannot disagree about the active Profile or revision.
+ */
+export function connectionSnapshotOf(
+	settings: ConnectionSettingsSnapshot,
+	profile: ConnectionProfile,
+): ModelClientConnectionSnapshot {
+	return {
+		profileId: profile.id,
+		settingsRevision: settings.revision,
+		backend: "ai-sdk",
+		adapter: profile.adapter,
+		apiFormat: profile.apiFormat,
+	};
 }
 
 export function createConnectionSettingsModule(
@@ -375,7 +395,7 @@ export function createConnectionSettingsModule(
 		getProfileSecrets,
 		listPresets: () => listConnectionPresets().map((preset) => ({
 			...preset,
-			profile: cloneProfileDraft(preset.profile),
+			profile: connectionProfileDraftOf(preset.profile),
 		})),
 		createProfile,
 		applyProfile,
@@ -407,6 +427,7 @@ function requireRevision(
 
 export {
 	applyConnectionHeaderOperations,
+	connectionProfileDraftOf,
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,

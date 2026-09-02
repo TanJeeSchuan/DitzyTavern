@@ -6,18 +6,13 @@ import type {
 	ConnectionSettingsResult,
 	TestConnectionResult,
 } from "./connection-settings";
+import {
+	blankConnectionProfileDraft,
+	connectionProfileDraftOf,
+} from "../shared/contract/connection-settings";
 
-export const emptyConnectionProfileDraft: ConnectionProfileDraft = {
-	displayName: "",
-	apiFormat: "chat-completions",
-	requestUrl: "",
-	modelsUrl: "",
-	modelBackend: "automatic",
-	adapter: "openai-compatible",
-	outputTokenRepresentation: "automatic",
-	timeoutMs: 120000,
-	pinnedModels: [],
-};
+export const emptyConnectionProfileDraft: ConnectionProfileDraft =
+	connectionProfileDraftOf(blankConnectionProfileDraft);
 
 export type HeaderEditorValue = {
 	configured: boolean;
@@ -40,17 +35,7 @@ export type ConnectionSettingsConflict = Extract<
  * metadata and identifiers from leaking back across the API boundary.
  */
 export function copyDraft(profile: ConnectionProfile | ConnectionProfileDraft): ConnectionProfileDraft {
-	return {
-		displayName: profile.displayName,
-		apiFormat: profile.apiFormat,
-		requestUrl: profile.requestUrl,
-		modelsUrl: profile.modelsUrl,
-		modelBackend: profile.modelBackend,
-		adapter: profile.adapter,
-		outputTokenRepresentation: profile.outputTokenRepresentation,
-		timeoutMs: profile.timeoutMs,
-		pinnedModels: [...profile.pinnedModels],
-	};
+	return connectionProfileDraftOf(profile);
 }
 
 export const headerEditorDataFor = (
@@ -90,7 +75,7 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	settings: null,
 	presets: [],
 	selectedProfileId: null,
-	draft: emptyConnectionProfileDraft,
+	draft: connectionProfileDraftOf(blankConnectionProfileDraft),
 	credentialDraft: "",
 	headerEditorData: {},
 	testModelId: "",
@@ -285,7 +270,7 @@ export function reduceConnectionSettingsController(
 				? {
 						...next,
 						selectedProfileId: null,
-						draft: copyDraft(emptyConnectionProfileDraft),
+						draft: connectionProfileDraftOf(blankConnectionProfileDraft),
 						headerEditorData: {},
 						testModelId: "",
 						testResult: null,
