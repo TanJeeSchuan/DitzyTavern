@@ -32,7 +32,7 @@ Avoid unrelated cleanup in model-client, connection-settings, or conversation re
 - [x] Preserve HTTP contracts, wire schemas, revision behavior, and error-message precedence.
 - [x] Confirm the targeted `generate.ts` clone families disappear or shrink through `bun run check:clones`.
 - [x] Run the Send, Continue, Sibling, recovery, and workflow tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
+- [x] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
 - [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
