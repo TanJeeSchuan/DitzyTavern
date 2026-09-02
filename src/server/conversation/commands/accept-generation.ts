@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, max, sql } from "drizzle-orm";
+import { and, eq, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	conversationTable,
@@ -7,8 +7,6 @@ import {
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
-	participantPromptTable,
-	participantTable,
 } from "../../database/schema";
 import {
 	ConversationNotFoundError,
@@ -22,6 +20,7 @@ import {
 	hasActiveGeneration,
 	insertMessage,
 	insertVariant,
+	readActiveCast,
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
@@ -517,21 +516,9 @@ export function acceptConversationSiblingGeneration(
 				modelParticipantId: message.context_model_participant_id,
 			}
 			: null;
-		const castIds = db
-			.select({ id: participantTable.id })
-			.from(participantTable)
-			.innerJoin(
-				participantPromptTable,
-				eq(participantPromptTable.participant_id, participantTable.id),
-			)
-			.where(
-				and(
-					eq(participantTable.conversation_id, input.conversationId),
-					isNull(participantTable.deleted_at),
-				),
-			)
-			.all()
-			.map((participant) => participant.id);
+		const castIds = readActiveCast(db, input.conversationId).map(
+			(participant) => participant.id,
+		);
 		const controlValidity = deriveControlValidity(control, castIds);
 		const eligibility = deriveMessageSwipeEligibility(
 			controlValidity.valid,

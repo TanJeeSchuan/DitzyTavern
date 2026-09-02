@@ -3,6 +3,7 @@ import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
+	toPromptChannelRow,
 } from "../../database/schema";
 import {
 	type ConversationDatabase,
@@ -55,24 +56,15 @@ export function replaceParticipantPrompt(
 	input: ReplaceParticipantPromptInput,
 ) {
 	requireParticipant(db, input.conversationId, input.participantId);
+	const promptRow = toPromptChannelRow(input.prompt);
 	db.insert(participantPromptTable)
 		.values({
 			participant_id: input.participantId,
-			system_instruction: input.prompt.systemInstruction,
-			identity: input.prompt.identity,
-			scenario: input.prompt.scenario,
-			example_dialogue: input.prompt.exampleDialogue,
-			post_history_instruction: input.prompt.postHistoryInstruction,
+			...promptRow,
 		})
 		.onConflictDoUpdate({
 			target: participantPromptTable.participant_id,
-			set: {
-				system_instruction: input.prompt.systemInstruction,
-				identity: input.prompt.identity,
-				scenario: input.prompt.scenario,
-				example_dialogue: input.prompt.exampleDialogue,
-				post_history_instruction: input.prompt.postHistoryInstruction,
-			},
+			set: promptRow,
 		})
 		.run();
 }

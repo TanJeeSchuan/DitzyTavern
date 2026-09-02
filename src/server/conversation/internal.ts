@@ -10,6 +10,7 @@ import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
+	toPromptChannelRow,
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
@@ -384,11 +385,7 @@ export const insertParticipant = (
 	db.insert(participantPromptTable)
 		.values({
 			participant_id: inserted.id,
-			system_instruction: definition.prompt.systemInstruction,
-			identity: definition.prompt.identity,
-			scenario: definition.prompt.scenario,
-			example_dialogue: definition.prompt.exampleDialogue,
-			post_history_instruction: definition.prompt.postHistoryInstruction,
+			...toPromptChannelRow(definition.prompt),
 		})
 		.run();
 

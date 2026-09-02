@@ -47,7 +47,7 @@ export function Composer({
 				id="writer-message"
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder="Optional guidance for the next Generation"
+				placeholder="Write a message to continue the story…"
 				disabled={!canWrite}
 				rows={1}
 			/>

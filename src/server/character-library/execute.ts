@@ -4,6 +4,7 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	toPromptChannelRow,
 } from "../database/schema";
 import { createCharacter } from "./create";
 import { deleteCharacter } from "./delete-character";
@@ -71,24 +72,15 @@ export function executeCharacterCommand(
 				break;
 			}
 			case "replace-prompt": {
+				const promptRow = toPromptChannelRow(command.prompt);
 				db.insert(characterPromptTable)
 					.values({
 						character_id: character.id,
-						system_instruction: command.prompt.systemInstruction,
-						identity: command.prompt.identity,
-						scenario: command.prompt.scenario,
-						example_dialogue: command.prompt.exampleDialogue,
-						post_history_instruction: command.prompt.postHistoryInstruction,
+						...promptRow,
 					})
 					.onConflictDoUpdate({
 						target: characterPromptTable.character_id,
-						set: {
-							system_instruction: command.prompt.systemInstruction,
-							identity: command.prompt.identity,
-							scenario: command.prompt.scenario,
-							example_dialogue: command.prompt.exampleDialogue,
-							post_history_instruction: command.prompt.postHistoryInstruction,
-						},
+						set: promptRow,
 					})
 					.run();
 				break;

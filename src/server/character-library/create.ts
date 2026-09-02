@@ -3,6 +3,7 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	toPromptChannelRow,
 } from "../database/schema";
 import {
 	connectCharacterLibraryDatabase,
@@ -37,11 +38,7 @@ export function createCharacter(
 		db.insert(characterPromptTable)
 			.values({
 				character_id: inserted.id,
-				system_instruction: definition.prompt.systemInstruction,
-				identity: definition.prompt.identity,
-				scenario: definition.prompt.scenario,
-				example_dialogue: definition.prompt.exampleDialogue,
-				post_history_instruction: definition.prompt.postHistoryInstruction,
+				...toPromptChannelRow(definition.prompt),
 			})
 			.run();
 

@@ -15,6 +15,7 @@ import {
 	DEFAULT_CONTINUATION_STRATEGY,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
@@ -179,6 +180,26 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
+});
+
+// ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
+// character_prompt and participant_prompt tables.
+export interface PromptChannelRow {
+	system_instruction: string;
+	identity: string;
+	scenario: string;
+	example_dialogue: string;
+	post_history_instruction: string;
+}
+
+// ==[HUMAN APPROVED]== Maps canonical PromptChannels to database column names shared by
+// character_prompt and participant_prompt tables.
+export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => ({
+	system_instruction: prompt.systemInstruction,
+	identity: prompt.identity,
+	scenario: prompt.scenario,
+	example_dialogue: prompt.exampleDialogue,
+	post_history_instruction: prompt.postHistoryInstruction,
 });
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows owned by the Participant.

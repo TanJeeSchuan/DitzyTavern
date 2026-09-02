@@ -9,8 +9,10 @@
 // Prompt fields, and ordered Opening contents) after every referencing
 // Conversation is gone.
 
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { promptChannelOrder } from "../../shared/definition";
+import { readCharacterSnapshot } from "../character-library/snapshot";
 import { openDatabase } from "./database";
 import {
 	characterOpeningTable,
@@ -66,34 +68,16 @@ export function teardown(databasePath?: string) {
 
 			const matchingIds: number[] = [];
 			for (const candidate of candidates) {
-				const prompt = db
-					.select({
-						systemInstruction: characterPromptTable.system_instruction,
-						identity: characterPromptTable.identity,
-						scenario: characterPromptTable.scenario,
-						exampleDialogue: characterPromptTable.example_dialogue,
-						postHistoryInstruction: characterPromptTable.post_history_instruction,
-					})
-					.from(characterPromptTable)
-					.where(eq(characterPromptTable.character_id, candidate.id))
-					.get();
-				const openings = db
-					.select({ content: characterOpeningTable.content })
-					.from(characterOpeningTable)
-					.where(eq(characterOpeningTable.character_id, candidate.id))
-					.orderBy(asc(characterOpeningTable.position))
-					.all()
-					.map((row) => row.content);
-
+				const snapshot = readCharacterSnapshot(db, candidate.id);
 				if (
-					prompt !== undefined &&
-					prompt.systemInstruction === character.prompt.systemInstruction &&
-					prompt.identity === character.prompt.identity &&
-					prompt.scenario === character.prompt.scenario &&
-					prompt.exampleDialogue === character.prompt.exampleDialogue &&
-					prompt.postHistoryInstruction ===
-						character.prompt.postHistoryInstruction &&
-					JSON.stringify(openings) === JSON.stringify(character.openings)
+					snapshot !== undefined &&
+					promptChannelOrder.every(
+						(channel) => snapshot.prompt[channel] === character.prompt[channel],
+					) &&
+					snapshot.openings.length === character.openings.length &&
+					snapshot.openings.every(
+						(content, index) => content === character.openings[index],
+					)
 				) {
 					matchingIds.push(candidate.id);
 				}
