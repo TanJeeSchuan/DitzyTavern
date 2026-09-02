@@ -322,7 +322,7 @@ describe("Participant removal", () => {
 		// Retained: stable identity, final name, Conversation identity, and
 		// immutable Character provenance. Stripped: Definition children and
 		// any Cast position.
-		expect(tombstone?.chat_id).toBe(snapshot.id);
+		expect(tombstone?.conversation_id).toBe(snapshot.id);
 		expect(tombstone?.name).toBe("Maren Voss");
 		expect(tombstone?.source_character_id).toBe(source.id);
 		expect(tombstone?.position).toBe(0);

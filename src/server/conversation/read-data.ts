@@ -8,7 +8,7 @@
 
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { chatDataTable, chatTable } from "../database/schema";
+import { conversationDataTable, conversationTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import type {
 	ConversationDataEntry,
@@ -39,23 +39,23 @@ export function readConversationData(
 	const db = connectConversationDatabase(database);
 	const conversation = db
 		.select()
-		.from(chatTable)
-		.where(eq(chatTable.id, conversationId))
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
 
-	const conditions = [eq(chatDataTable.chat_id, conversationId)];
+	const conditions = [eq(conversationDataTable.conversation_id, conversationId)];
 	if (filter.namespace !== undefined) {
-		conditions.push(eq(chatDataTable.namespace, filter.namespace));
+		conditions.push(eq(conversationDataTable.namespace, filter.namespace));
 	}
 	if (filter.keys !== undefined && filter.keys.length > 0) {
-		conditions.push(inArray(chatDataTable.key, filter.keys));
+		conditions.push(inArray(conversationDataTable.key, filter.keys));
 	}
 	const rows = db
 		.select()
-		.from(chatDataTable)
+		.from(conversationDataTable)
 		.where(and(...conditions))
-		.orderBy(asc(chatDataTable.namespace), asc(chatDataTable.key))
+		.orderBy(asc(conversationDataTable.namespace), asc(conversationDataTable.key))
 		.all();
 
 	return {

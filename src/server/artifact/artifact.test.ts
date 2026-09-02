@@ -17,7 +17,7 @@ import {
 } from ".";
 import type { ConversationArtifactSeed } from "../conversation";
 import { createConversationModule, InvalidConversationCreationError } from "../conversation";
-import { artifactTable, chatTable } from "../database/schema";
+import { artifactTable, conversationTable } from "../database/schema";
 import { openDatabase } from "../database/database";
 
 const sha256Hex = (bytes: Buffer) =>
@@ -70,7 +70,7 @@ describe("Conversation artifacts", () => {
 		});
 	};
 
-	const countRows = (table: typeof chatTable | typeof artifactTable) =>
+	const countRows = (table: typeof conversationTable | typeof artifactTable) =>
 		drizzle(database).select().from(table).all().length;
 
 	test("commits the generic artifact record through the Conversation creation seam", () => {
@@ -90,11 +90,11 @@ describe("Conversation artifacts", () => {
 		const row = drizzle(database)
 			.select()
 			.from(artifactTable)
-			.where(eq(artifactTable.chat_id, created.id))
+			.where(eq(artifactTable.conversation_id, created.id))
 			.get();
 		expect(row).toBeDefined();
 		expect(row && {
-			chat_id: row.chat_id,
+			conversation_id: row.conversation_id,
 			namespace: row.namespace,
 			key: row.key,
 			relative_path: row.relative_path,
@@ -103,7 +103,7 @@ describe("Conversation artifacts", () => {
 			byte_length: row.byte_length,
 			sha256: row.sha256,
 		}).toEqual({
-			chat_id: created.id,
+			conversation_id: created.id,
 			namespace: "test.artifact",
 			key: "source.exact",
 			relative_path: seed.relativePath,
@@ -137,7 +137,7 @@ describe("Conversation artifacts", () => {
 			}),
 		).toThrow(InvalidConversationCreationError);
 		// The abort is atomic: no Chat and no artifact metadata row exist.
-		expect(countRows(chatTable)).toBe(1);
+		expect(countRows(conversationTable)).toBe(1);
 		expect(countRows(artifactTable)).toBe(0);
 	});
 
@@ -359,7 +359,7 @@ describe("Conversation artifacts", () => {
 		// directly simulates the future deletion path. The metadata row
 		// follows the Chat, but the physical copy is never automatically
 		// deleted.
-		database.run("DELETE FROM chat WHERE id = ?", [owner.id]);
+		database.run("DELETE FROM conversation WHERE id = ?", [owner.id]);
 		expect(module.getArtifact(owner.id, "test.artifact", "source.exact")).toBeUndefined();
 		expect(module.readArtifact(owner.id, "test.artifact", "source.exact")).toBeUndefined();
 

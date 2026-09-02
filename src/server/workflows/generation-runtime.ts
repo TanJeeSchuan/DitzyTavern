@@ -118,7 +118,11 @@ export class GenerationRuntimeRegistry {
 	start(input: StartGenerationRuntimeInput): GenerationRuntime {
 		this.cleanup();
 		const existing = this.runtimes.get(input.generationId);
-		if (existing !== undefined) return existing;
+		if (existing !== undefined) {
+			throw new Error(
+				`Generation runtime id ${input.generationId} is already active; duplicate start is an invariant violation.`,
+			);
+		}
 		const runtime = new GenerationRuntime(input, () => this.scheduleCleanup());
 		this.runtimes.set(input.generationId, runtime);
 		return runtime;

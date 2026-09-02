@@ -10,7 +10,7 @@ import {
 	type CharacterDefinition,
 } from "../character-library";
 import { openDatabase } from "../database/database";
-import { artifactTable, chatTable, participantTable } from "../database/schema";
+import { artifactTable, conversationTable, participantTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
 	STAGED_IMPORT_SESSION_TTL_MS,
@@ -124,7 +124,7 @@ describe("staged SillyTavern chat import", () => {
 		const refreshed = module.preview(token);
 		expect(refreshed).toEqual(preview);
 		expect(stagedFiles()).toHaveLength(1);
-		expect(drizzle(database).select().from(chatTable).all()).toEqual([]);
+		expect(drizzle(database).select().from(conversationTable).all()).toEqual([]);
 		expect(drizzle(database).select().from(participantTable).all()).toEqual([]);
 		expect(drizzle(database).select().from(artifactTable).all()).toEqual([]);
 	});
@@ -442,7 +442,7 @@ describe("staged SillyTavern chat import", () => {
 					participants: [],
 				}),
 			).toThrow(StagedChatImportExpiredError);
-			expect(drizzle(database).select().from(chatTable).all()).toEqual([]);
+			expect(drizzle(database).select().from(conversationTable).all()).toEqual([]);
 		} finally {
 			setSystemTime(realNow);
 		}

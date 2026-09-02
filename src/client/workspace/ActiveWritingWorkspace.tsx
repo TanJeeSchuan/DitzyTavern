@@ -143,9 +143,10 @@ export function ActiveWritingWorkspace({
 	});
 
 	const latestStoryMessage = story.messages.at(-1);
-	const modelParticipant = session.conversation === null
+	const conversation = session.conversation;
+	const modelParticipant = conversation === null
 		? null
-		: session.conversation.cast.find((participant) => participant.id === session.conversation?.control.modelParticipantId) ?? null;
+		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused;
 
 	const openActiveGenerationDetails = () => {

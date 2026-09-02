@@ -5,7 +5,7 @@ import {
 	connectionProfileTable,
 	connectionSecretTable,
 	conversationControlTable,
-	chatTable,
+	conversationTable,
 	messageTable,
 	} from "../database/schema";
 import { openDatabase } from "../database/database";
@@ -55,7 +55,7 @@ describe("Connection Settings", () => {
 		});
 
 		const db = drizzle(database);
-		expect(db.select().from(chatTable).all()).toHaveLength(0);
+		expect(db.select().from(conversationTable).all()).toHaveLength(0);
 		expect(db.select().from(messageTable).all()).toHaveLength(0);
 		expect(db.select().from(conversationControlTable).all()).toHaveLength(0);
 	});

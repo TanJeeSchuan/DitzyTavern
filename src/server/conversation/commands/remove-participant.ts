@@ -99,7 +99,7 @@ export function removeParticipant(
 		.set({ position: sql`${participantTable.position} - 1` })
 		.where(
 			and(
-				eq(participantTable.chat_id, input.conversationId),
+				eq(participantTable.conversation_id, input.conversationId),
 				gt(participantTable.position, participant.position),
 				isNull(participantTable.deleted_at),
 			),

@@ -21,8 +21,8 @@ import {
 	artifactTable,
 	characterTable,
 	characterPromptTable,
-	chatDataTable,
-	chatTable,
+	conversationDataTable,
+	conversationTable,
 	messageTable,
 	messageVariantTable,
 	participantTable,
@@ -129,7 +129,7 @@ describe("staged SillyTavern chat import commit", () => {
 	const rowCounts = () => {
 		const db = drizzle(database);
 		return {
-			chats: db.select().from(chatTable).all().length,
+			chats: db.select().from(conversationTable).all().length,
 			participants: db.select().from(participantTable).all().length,
 			characters: db.select().from(characterTable).all().length,
 			messages: db.select().from(messageTable).all().length,
@@ -236,8 +236,8 @@ describe("staged SillyTavern chat import commit", () => {
 		const data = drizzle(database);
 		const archive = data
 			.select()
-			.from(chatDataTable)
-			.where(eq(chatDataTable.chat_id, conversation.id))
+			.from(conversationDataTable)
+			.where(eq(conversationDataTable.conversation_id, conversation.id))
 			.all()
 			.find((entry) => entry.key === "source");
 		expect(archive?.namespace).toBe("archive");
@@ -246,7 +246,7 @@ describe("staged SillyTavern chat import commit", () => {
 		const artifactRow = data
 			.select()
 			.from(artifactTable)
-			.where(eq(artifactTable.chat_id, conversation.id))
+			.where(eq(artifactTable.conversation_id, conversation.id))
 			.all();
 		expect(artifactRow).toHaveLength(1);
 		expect(artifactRow[0]).toMatchObject({
@@ -651,7 +651,7 @@ describe("staged SillyTavern chat import commit", () => {
 		}
 		expect(rowCounts().chats).toBe(1);
 		expect(first.receipt.conversationId).toBe(
-			drizzle(database).select().from(chatTable).all()[0]?.id,
+			drizzle(database).select().from(conversationTable).all()[0]?.id,
 		);
 	});
 
@@ -687,7 +687,7 @@ describe("staged SillyTavern chat import commit", () => {
 		// Variant, or artifact metadata row exists either. Participant rows
 		// cannot be counted because the table itself is gone.
 		const db = drizzle(database);
-		expect(db.select().from(chatTable).all()).toEqual([]);
+		expect(db.select().from(conversationTable).all()).toEqual([]);
 		expect(db.select().from(characterTable).all()).toHaveLength(profilesBefore);
 		expect(db.select().from(characterPromptTable).all()).toHaveLength(profilesBefore);
 		expect(db.select().from(messageTable).all()).toEqual([]);

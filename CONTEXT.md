@@ -2,6 +2,9 @@
 
 DitzyTavern is a chat-writing tool. A Conversation is the primary object people create and work in; Conversations can be created natively or brought in from an external chat import, and everything downstream — generation, history, provenance — is expressed in ordinary Conversation terms.
 
+**Chat**:
+The everyday word for a Conversation, used in the workspace list, the active-chat header, and UI copy; no Chat subtype exists.
+
 ## Generation
 
 **Generation**:

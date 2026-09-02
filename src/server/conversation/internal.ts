@@ -38,7 +38,7 @@ export const readControlAssignment = (
 			participantId: conversationControlTable.participant_id,
 		})
 		.from(conversationControlTable)
-		.where(eq(conversationControlTable.chat_id, conversationId))
+		.where(eq(conversationControlTable.conversation_id, conversationId))
 		.all();
 
 	const state: ControlAssignmentState = {
@@ -94,12 +94,27 @@ export const readActiveCast = (
 		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
 		.where(
 			and(
-				eq(participantTable.chat_id, conversationId),
+				eq(participantTable.conversation_id, conversationId),
 				isNull(participantTable.deleted_at),
 			),
 		)
 		.orderBy(asc(participantTable.position))
 		.all();
+
+export const groupRowsByNumber = <Row, Value>(
+	rows: readonly Row[],
+	keyOf: (row: Row) => number,
+	toValue: (row: Row) => Value,
+): Map<number, Value[]> => {
+	const grouped = new Map<number, Value[]>();
+	for (const row of rows) {
+		const key = keyOf(row);
+		const values = grouped.get(key) ?? [];
+		values.push(toValue(row));
+		grouped.set(key, values);
+	}
+	return grouped;
+};
 
 export const groupVariantsByMessage = <
 	Row extends { message_id: number },
@@ -107,15 +122,7 @@ export const groupVariantsByMessage = <
 >(
 	rows: readonly Row[],
 	toValue: (row: Row) => Value,
-): Map<number, Value[]> => {
-	const grouped = new Map<number, Value[]>();
-	for (const row of rows) {
-		const values = grouped.get(row.message_id) ?? [];
-		values.push(toValue(row));
-		grouped.set(row.message_id, values);
-	}
-	return grouped;
-};
+): Map<number, Value[]> => groupRowsByNumber(rows, (row) => row.message_id, toValue);
 
 // ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
 // treat a running Generation as mutually exclusive reads this predicate, so
@@ -130,7 +137,7 @@ export const hasActiveGeneration = (
 	connectConversationDatabase(database)
 		.select({ id: activeGenerationTable.id })
 		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.chat_id, conversationId))
+		.where(eq(activeGenerationTable.conversation_id, conversationId))
 		.get() !== undefined;
 
 // ==[HUMAN APPROVED]== Writes a complete Control assignment by deleting the Conversation's rows
@@ -144,19 +151,19 @@ export const writeControlAssignment = (
 	assignment: ControlAssignmentState,
 ) => {
 	db.delete(conversationControlTable)
-		.where(eq(conversationControlTable.chat_id, conversationId))
+		.where(eq(conversationControlTable.conversation_id, conversationId))
 		.run();
 	const rows = [];
 	if (assignment.humanParticipantId !== null) {
 		rows.push({
-			chat_id: conversationId,
+			conversation_id: conversationId,
 			seat: "human" as const,
 			participant_id: assignment.humanParticipantId,
 		});
 	}
 	if (assignment.modelParticipantId !== null) {
 		rows.push({
-			chat_id: conversationId,
+			conversation_id: conversationId,
 			seat: "model" as const,
 			participant_id: assignment.modelParticipantId,
 		});
@@ -217,7 +224,7 @@ export const requireParticipant = (
 		.where(
 			and(
 				eq(participantTable.id, participantId),
-				eq(participantTable.chat_id, conversationId),
+				eq(participantTable.conversation_id, conversationId),
 				isNull(participantTable.deleted_at),
 			),
 		)
@@ -270,7 +277,7 @@ export const hasRetainedParticipantReference = (
 			contextModelParticipantId: messageTable.context_model_participant_id,
 		})
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, conversationId))
+		.where(eq(messageTable.conversation_id, conversationId))
 		.all()
 		.some((message) => messageReferencesParticipant(message, participantId));
 
@@ -297,7 +304,7 @@ export const requireMessage = (
 		.where(
 			and(
 				eq(messageTable.id, messageId),
-				eq(messageTable.chat_id, conversationId),
+				eq(messageTable.conversation_id, conversationId),
 			),
 		)
 		.get();
@@ -361,7 +368,7 @@ export const insertParticipant = (
 	const inserted = db
 		.insert(participantTable)
 		.values({
-			chat_id: conversationId,
+			conversation_id: conversationId,
 			name,
 			position,
 			source_character_id: sourceCharacterId,
@@ -433,7 +440,7 @@ export const insertMessage = (
 	const inserted = db
 		.insert(messageTable)
 		.values({
-			chat_id: values.chatId,
+			conversation_id: values.chatId,
 			position: values.position,
 			timestamp: values.timestamp,
 			author_participant_id: values.author?.participantId ?? null,

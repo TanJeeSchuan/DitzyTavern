@@ -8,6 +8,13 @@
       "when": 1788205529350,
       "tag": "0000_warm_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788365009853,
+      "tag": "0001_rename_chat_to_conversation",
+      "breakpoints": true
     }
   ]
 }

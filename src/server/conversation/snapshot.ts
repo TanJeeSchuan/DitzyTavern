@@ -3,8 +3,8 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
 	activeGenerationTable,
-	chatDataTable,
-	chatTable,
+	conversationDataTable,
+	conversationTable,
 	messageDataTable,
 	messageTable,
 	messageVariantDataTable,
@@ -13,6 +13,7 @@ import {
 } from "../database/schema";
 import {
 	connectConversationDatabase,
+	groupRowsByNumber,
 	groupVariantsByMessage,
 	messageReferencesParticipant,
 	readActiveCast,
@@ -26,7 +27,6 @@ import type {
 	ConversationCapabilities,
 	ConversationControlSnapshot,
 	ConversationControlValidity,
-	ConversationDataEntry,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
 	ConversationVariantSnapshot,
@@ -212,9 +212,9 @@ export function conversationExists(
 	const db = connectConversationDatabase(database);
 	return (
 		db
-			.select({ id: chatTable.id })
-			.from(chatTable)
-			.where(eq(chatTable.id, conversationId))
+			.select({ id: conversationTable.id })
+			.from(conversationTable)
+			.where(eq(conversationTable.id, conversationId))
 			.get() !== undefined
 	);
 }
@@ -235,8 +235,8 @@ export function readConversationSnapshotFromConnection(
 ): ConversationSnapshot | undefined {
 	const conversation = db
 		.select()
-		.from(chatTable)
-		.where(eq(chatTable.id, conversationId))
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
 
@@ -260,12 +260,11 @@ export function readConversationSnapshotFromConnection(
 					)
 					.all();
 
-	const openingsByParticipant = new Map<number, string[]>();
-	for (const opening of openingRows) {
-		const openings = openingsByParticipant.get(opening.participant_id) ?? [];
-		openings.push(opening.content);
-		openingsByParticipant.set(opening.participant_id, openings);
-	}
+	const openingsByParticipant = groupRowsByNumber(
+		openingRows,
+		(opening) => opening.participant_id,
+		(opening) => opening.content,
+	);
 
 	// ==[HUMAN APPROVED]== Intermediate Cast shape lacks the derived per-Participant fields; they
 	// are attached after Control is read so labels and removal eligibility
@@ -309,7 +308,7 @@ export function readConversationSnapshotFromConnection(
 	const messageRows = db
 		.select()
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, conversationId))
+		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(asc(messageTable.position))
 		.all();
 	const messageIds = messageRows.map((message) => message.id);
@@ -353,12 +352,11 @@ export function readConversationSnapshotFromConnection(
 					)
 					.all();
 
-	const variantDataByVariant = new Map<number, ConversationDataEntry[]>();
-	for (const row of variantDataRows) {
-		const entries = variantDataByVariant.get(row.message_variant_id) ?? [];
-		entries.push(toDataEntry(row));
-		variantDataByVariant.set(row.message_variant_id, entries);
-	}
+	const variantDataByVariant = groupRowsByNumber(
+		variantDataRows,
+		(row) => row.message_variant_id,
+		toDataEntry,
+	);
 
 	const variantsByMessage = groupVariantsByMessage(
 		variantRows,
@@ -372,12 +370,11 @@ export function readConversationSnapshotFromConnection(
 		}),
 	);
 
-	const messageDataByMessage = new Map<number, ConversationDataEntry[]>();
-	for (const row of messageDataRows) {
-		const entries = messageDataByMessage.get(row.message_id) ?? [];
-		entries.push(toDataEntry(row));
-		messageDataByMessage.set(row.message_id, entries);
-	}
+	const messageDataByMessage = groupRowsByNumber(
+		messageDataRows,
+		(row) => row.message_id,
+		toDataEntry,
+	);
 
 	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
 		const author = toAuthorStamp(message, castIdsSet);
@@ -400,9 +397,9 @@ export function readConversationSnapshotFromConnection(
 
 	const data = db
 		.select()
-		.from(chatDataTable)
-		.where(eq(chatDataTable.chat_id, conversationId))
-		.orderBy(asc(chatDataTable.namespace), asc(chatDataTable.key))
+		.from(conversationDataTable)
+		.where(eq(conversationDataTable.conversation_id, conversationId))
+		.orderBy(asc(conversationDataTable.namespace), asc(conversationDataTable.key))
 		.all()
 		.map(toDataEntry);
 
@@ -414,7 +411,7 @@ export function readConversationSnapshotFromConnection(
 			startedAt: activeGenerationTable.started_at,
 		})
 		.from(activeGenerationTable)
-		.where(eq(activeGenerationTable.chat_id, conversationId))
+		.where(eq(activeGenerationTable.conversation_id, conversationId))
 		.orderBy(asc(activeGenerationTable.id))
 		.all();
 

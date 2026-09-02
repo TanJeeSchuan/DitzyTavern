@@ -1,0 +1,1982 @@
+{
+  "id": "4fda99f4-fa73-472c-af05-5c9c95b9302c",
+  "prevId": "98e4053f-4c6a-4d16-898d-fab2f3a0dfeb",
+  "version": "6",
+  "dialect": "sqlite",
+  "tables": {
+    "active_generation": {
+      "name": "active_generation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "human_message_id": {
+          "name": "human_message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "variant_id": {
+          "name": "variant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prior_variant_id": {
+          "name": "prior_variant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "human_participant_id": {
+          "name": "human_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_participant_id": {
+          "name": "model_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "captured_human_name": {
+          "name": "captured_human_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "captured_model_name": {
+          "name": "captured_model_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_plan_json": {
+          "name": "prompt_plan_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_inspection_json": {
+          "name": "prompt_inspection_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "history_roles_json": {
+          "name": "history_roles_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generation_settings_json": {
+          "name": "generation_settings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connection_json": {
+          "name": "connection_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generation_intent_json": {
+          "name": "generation_intent_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{\"type\":\"tail\"}'"
+        },
+        "checkpoint_content": {
+          "name": "checkpoint_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "checkpoint_reasoning": {
+          "name": "checkpoint_reasoning",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "checkpoint_event_id": {
+          "name": "checkpoint_event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "checkpointed_at": {
+          "name": "checkpointed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provenance_namespace": {
+          "name": "provenance_namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provenance_key": {
+          "name": "provenance_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "provenance_value": {
+          "name": "provenance_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "active_generation_conversation_id_conversation_id_fk": {
+          "name": "active_generation_conversation_id_conversation_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "active_generation_human_message_id_messages_id_fk": {
+          "name": "active_generation_human_message_id_messages_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "human_message_id"
+          ],
+          "tableTo": "messages",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "active_generation_message_id_messages_id_fk": {
+          "name": "active_generation_message_id_messages_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "tableTo": "messages",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "active_generation_variant_id_message_variant_id_fk": {
+          "name": "active_generation_variant_id_message_variant_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "variant_id"
+          ],
+          "tableTo": "message_variant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "active_generation_prior_variant_id_message_variant_id_fk": {
+          "name": "active_generation_prior_variant_id_message_variant_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "prior_variant_id"
+          ],
+          "tableTo": "message_variant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        },
+        "active_generation_human_participant_id_participant_id_fk": {
+          "name": "active_generation_human_participant_id_participant_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "human_participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "active_generation_model_participant_id_participant_id_fk": {
+          "name": "active_generation_model_participant_id_participant_id_fk",
+          "tableFrom": "active_generation",
+          "columnsFrom": [
+            "model_participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "artifact": {
+      "name": "artifact",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "relative_path": {
+          "name": "relative_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "original_filename": {
+          "name": "original_filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_length": {
+          "name": "byte_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "artifact_conversation_namespace_key_unique": {
+          "name": "artifact_conversation_namespace_key_unique",
+          "columns": [
+            "conversation_id",
+            "namespace",
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "artifact_conversation_id_conversation_id_fk": {
+          "name": "artifact_conversation_id_conversation_id_fk",
+          "tableFrom": "artifact",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "character_opening": {
+      "name": "character_opening",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "character_id": {
+          "name": "character_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "character_opening_character_position_unique": {
+          "name": "character_opening_character_position_unique",
+          "columns": [
+            "character_id",
+            "position"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "character_opening_character_id_character_id_fk": {
+          "name": "character_opening_character_id_character_id_fk",
+          "tableFrom": "character_opening",
+          "columnsFrom": [
+            "character_id"
+          ],
+          "tableTo": "character",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "character_prompt": {
+      "name": "character_prompt",
+      "columns": {
+        "character_id": {
+          "name": "character_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "system_instruction": {
+          "name": "system_instruction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identity": {
+          "name": "identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scenario": {
+          "name": "scenario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "example_dialogue": {
+          "name": "example_dialogue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "post_history_instruction": {
+          "name": "post_history_instruction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "character_prompt_character_id_character_id_fk": {
+          "name": "character_prompt_character_id_character_id_fk",
+          "tableFrom": "character_prompt",
+          "columnsFrom": [
+            "character_id"
+          ],
+          "tableTo": "character",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "character": {
+      "name": "character",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "pinned": {
+          "name": "pinned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "conversation_data": {
+      "name": "conversation_data",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "conversation_data_owner_key_unique": {
+          "name": "conversation_data_owner_key_unique",
+          "columns": [
+            "conversation_id",
+            "namespace",
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "conversation_data_conversation_id_conversation_id_fk": {
+          "name": "conversation_data_conversation_id_conversation_id_fk",
+          "tableFrom": "conversation_data",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "conversation": {
+      "name": "conversation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creation_time": {
+          "name": "creation_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_message_time": {
+          "name": "last_message_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "connection_profile_discovery_model": {
+      "name": "connection_profile_discovery_model",
+      "columns": {
+        "profile_id": {
+          "name": "profile_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "connection_profile_discovery_model_profile_id_connection_profile_id_fk": {
+          "name": "connection_profile_discovery_model_profile_id_connection_profile_id_fk",
+          "tableFrom": "connection_profile_discovery_model",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "tableTo": "connection_profile",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "connection_profile_discovery_model_profile_id_model_id_pk": {
+          "columns": [
+            "profile_id",
+            "model_id"
+          ],
+          "name": "connection_profile_discovery_model_profile_id_model_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "connection_profile_pinned_model": {
+      "name": "connection_profile_pinned_model",
+      "columns": {
+        "profile_id": {
+          "name": "profile_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "connection_profile_pinned_model_id_unique": {
+          "name": "connection_profile_pinned_model_id_unique",
+          "columns": [
+            "profile_id",
+            "model_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "connection_profile_pinned_model_profile_id_connection_profile_id_fk": {
+          "name": "connection_profile_pinned_model_profile_id_connection_profile_id_fk",
+          "tableFrom": "connection_profile_pinned_model",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "tableTo": "connection_profile",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "connection_profile_pinned_model_profile_id_position_pk": {
+          "columns": [
+            "profile_id",
+            "position"
+          ],
+          "name": "connection_profile_pinned_model_profile_id_position_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "connection_profile": {
+      "name": "connection_profile",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_format": {
+          "name": "api_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_url": {
+          "name": "request_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "models_url": {
+          "name": "models_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "model_backend": {
+          "name": "model_backend",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "adapter": {
+          "name": "adapter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "output_token_representation": {
+          "name": "output_token_representation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'automatic'"
+        },
+        "timeout_ms": {
+          "name": "timeout_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 120000
+        }
+      },
+      "indexes": {
+        "connection_profile_display_name_ci": {
+          "name": "connection_profile_display_name_ci",
+          "columns": [
+            "lower(\"display_name\")"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "connection_profile_timeout_nonnegative": {
+          "name": "connection_profile_timeout_nonnegative",
+          "value": "\"connection_profile\".\"timeout_ms\" IS NULL OR \"connection_profile\".\"timeout_ms\" >= 0"
+        }
+      }
+    },
+    "connection_secret": {
+      "name": "connection_secret",
+      "columns": {
+        "profile_id": {
+          "name": "profile_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "format_version": {
+          "name": "format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ciphertext": {
+          "name": "ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "connection_secret_profile_id_connection_profile_id_fk": {
+          "name": "connection_secret_profile_id_connection_profile_id_fk",
+          "tableFrom": "connection_secret",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "tableTo": "connection_profile",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "connection_settings": {
+      "name": "connection_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "active_profile_id": {
+          "name": "active_profile_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "connection_settings_active_profile_id_connection_profile_id_fk": {
+          "name": "connection_settings_active_profile_id_connection_profile_id_fk",
+          "tableFrom": "connection_settings",
+          "columnsFrom": [
+            "active_profile_id"
+          ],
+          "tableTo": "connection_profile",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "conversation_control": {
+      "name": "conversation_control",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seat": {
+          "name": "seat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "conversation_control_participant_unique": {
+          "name": "conversation_control_participant_unique",
+          "columns": [
+            "participant_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "conversation_control_conversation_id_conversation_id_fk": {
+          "name": "conversation_control_conversation_id_conversation_id_fk",
+          "tableFrom": "conversation_control",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "conversation_control_participant_id_participant_id_fk": {
+          "name": "conversation_control_participant_id_participant_id_fk",
+          "tableFrom": "conversation_control",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "conversation_control_conversation_id_seat_pk": {
+          "columns": [
+            "conversation_id",
+            "seat"
+          ],
+          "name": "conversation_control_conversation_id_seat_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "conversation_control_seat_check": {
+          "name": "conversation_control_seat_check",
+          "value": "\"conversation_control\".\"seat\" IN ('human', 'model')"
+        }
+      }
+    },
+    "conversation_generation_settings": {
+      "name": "conversation_generation_settings",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'deepseek-chat'"
+        },
+        "temperature": {
+          "name": "temperature",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "top_p": {
+          "name": "top_p",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "frequency_penalty": {
+          "name": "frequency_penalty",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "presence_penalty": {
+          "name": "presence_penalty",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context_limit": {
+          "name": "context_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 32768
+        },
+        "response_budget": {
+          "name": "response_budget",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1024
+        },
+        "safety_allowance": {
+          "name": "safety_allowance",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 500
+        },
+        "sibling_generation_limit": {
+          "name": "sibling_generation_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 4
+        },
+        "continuation_strategy": {
+          "name": "continuation_strategy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'instruction'"
+        },
+        "continuation_instruction": {
+          "name": "continuation_instruction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Continue the narrative naturally without repeating the previous text.'"
+        },
+        "continuation_prefill_suffix": {
+          "name": "continuation_prefill_suffix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "request_overrides_json": {
+          "name": "request_overrides_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "conversation_generation_settings_conversation_id_conversation_id_fk": {
+          "name": "conversation_generation_settings_conversation_id_conversation_id_fk",
+          "tableFrom": "conversation_generation_settings",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "generation_replay": {
+      "name": "generation_replay",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "variant_id": {
+          "name": "variant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "human_participant_id": {
+          "name": "human_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_participant_id": {
+          "name": "model_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "captured_human_name": {
+          "name": "captured_human_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "captured_model_name": {
+          "name": "captured_model_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_plan_json": {
+          "name": "prompt_plan_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_inspection_json": {
+          "name": "prompt_inspection_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "history_roles_json": {
+          "name": "history_roles_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generation_settings_json": {
+          "name": "generation_settings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connection_json": {
+          "name": "connection_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "generation_intent_json": {
+          "name": "generation_intent_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpoint_content": {
+          "name": "checkpoint_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpoint_reasoning": {
+          "name": "checkpoint_reasoning",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpoint_event_id": {
+          "name": "checkpoint_event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checkpointed_at": {
+          "name": "checkpointed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "terminal_status": {
+          "name": "terminal_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "terminal_at": {
+          "name": "terminal_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "generation_replay_conversation_id_conversation_id_fk": {
+          "name": "generation_replay_conversation_id_conversation_id_fk",
+          "tableFrom": "generation_replay",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "generation_replay_message_id_messages_id_fk": {
+          "name": "generation_replay_message_id_messages_id_fk",
+          "tableFrom": "generation_replay",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "tableTo": "messages",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "generation_replay_variant_id_message_variant_id_fk": {
+          "name": "generation_replay_variant_id_message_variant_id_fk",
+          "tableFrom": "generation_replay",
+          "columnsFrom": [
+            "variant_id"
+          ],
+          "tableTo": "message_variant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "messages_data": {
+      "name": "messages_data",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "messages_data_owner_key_unique": {
+          "name": "messages_data_owner_key_unique",
+          "columns": [
+            "message_id",
+            "namespace",
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "messages_data_message_id_messages_id_fk": {
+          "name": "messages_data_message_id_messages_id_fk",
+          "tableFrom": "messages_data",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "tableTo": "messages",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "messages": {
+      "name": "messages",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author_participant_id": {
+          "name": "author_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "author_name": {
+          "name": "author_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context_human_participant_id": {
+          "name": "context_human_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "context_model_participant_id": {
+          "name": "context_model_participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "messages_conversation_position_unique": {
+          "name": "messages_conversation_position_unique",
+          "columns": [
+            "conversation_id",
+            "position"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "messages_conversation_id_conversation_id_fk": {
+          "name": "messages_conversation_id_conversation_id_fk",
+          "tableFrom": "messages",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "messages_author_participant_id_participant_id_fk": {
+          "name": "messages_author_participant_id_participant_id_fk",
+          "tableFrom": "messages",
+          "columnsFrom": [
+            "author_participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "messages_context_human_participant_id_participant_id_fk": {
+          "name": "messages_context_human_participant_id_participant_id_fk",
+          "tableFrom": "messages",
+          "columnsFrom": [
+            "context_human_participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "messages_context_model_participant_id_participant_id_fk": {
+          "name": "messages_context_model_participant_id_participant_id_fk",
+          "tableFrom": "messages",
+          "columnsFrom": [
+            "context_model_participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "messages_context_pair_together": {
+          "name": "messages_context_pair_together",
+          "value": "(context_human_participant_id IS NULL) = (context_model_participant_id IS NULL)"
+        }
+      }
+    },
+    "message_variant_data": {
+      "name": "message_variant_data",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "message_variant_id": {
+          "name": "message_variant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "message_variant_data_owner_key_unique": {
+          "name": "message_variant_data_owner_key_unique",
+          "columns": [
+            "message_variant_id",
+            "namespace",
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "message_variant_data_message_variant_id_message_variant_id_fk": {
+          "name": "message_variant_data_message_variant_id_message_variant_id_fk",
+          "tableFrom": "message_variant_data",
+          "columnsFrom": [
+            "message_variant_id"
+          ],
+          "tableTo": "message_variant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "message_variant": {
+      "name": "message_variant",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "selected": {
+          "name": "selected",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "message_variant_message_position_unique": {
+          "name": "message_variant_message_position_unique",
+          "columns": [
+            "message_id",
+            "position"
+          ],
+          "isUnique": true
+        },
+        "message_variant_one_selected_per_message": {
+          "name": "message_variant_one_selected_per_message",
+          "columns": [
+            "message_id"
+          ],
+          "where": "\"message_variant\".\"selected\" = 1",
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "message_variant_message_id_messages_id_fk": {
+          "name": "message_variant_message_id_messages_id_fk",
+          "tableFrom": "message_variant",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "tableTo": "messages",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "participant_opening": {
+      "name": "participant_opening",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "participant_opening_participant_position_unique": {
+          "name": "participant_opening_participant_position_unique",
+          "columns": [
+            "participant_id",
+            "position"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "participant_opening_participant_id_participant_id_fk": {
+          "name": "participant_opening_participant_id_participant_id_fk",
+          "tableFrom": "participant_opening",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "participant_prompt": {
+      "name": "participant_prompt",
+      "columns": {
+        "participant_id": {
+          "name": "participant_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "system_instruction": {
+          "name": "system_instruction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identity": {
+          "name": "identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scenario": {
+          "name": "scenario",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "example_dialogue": {
+          "name": "example_dialogue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "post_history_instruction": {
+          "name": "post_history_instruction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "participant_prompt_participant_id_participant_id_fk": {
+          "name": "participant_prompt_participant_id_participant_id_fk",
+          "tableFrom": "participant_prompt",
+          "columnsFrom": [
+            "participant_id"
+          ],
+          "tableTo": "participant",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "participant": {
+      "name": "participant",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_character_id": {
+          "name": "source_character_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "participant_conversation_position_unique": {
+          "name": "participant_conversation_position_unique",
+          "columns": [
+            "conversation_id",
+            "position"
+          ],
+          "where": "\"participant\".\"deleted_at\" IS NULL",
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "participant_conversation_id_conversation_id_fk": {
+          "name": "participant_conversation_id_conversation_id_fk",
+          "tableFrom": "participant",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "tableTo": "conversation",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "participant_source_character_id_character_id_fk": {
+          "name": "participant_source_character_id_character_id_fk",
+          "tableFrom": "participant",
+          "columnsFrom": [
+            "source_character_id"
+          ],
+          "tableTo": "character",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  },
+  "internal": {
+    "indexes": {
+      "connection_profile_display_name_ci": {
+        "columns": {
+          "lower(\"display_name\")": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

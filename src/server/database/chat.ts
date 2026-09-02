@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { withDatabase } from "./database";
-import { chatTable } from "./schema";
+import { conversationTable } from "./schema";
 
 export const listChatSummaries = (database?: Database) =>
 	withDatabase(database, (connection) => {
@@ -10,8 +10,8 @@ export const listChatSummaries = (database?: Database) =>
 
 		const chats = db
 			.select()
-			.from(chatTable)
-			.orderBy(desc(chatTable.last_message_time))
+			.from(conversationTable)
+			.orderBy(desc(conversationTable.last_message_time))
 			.all();
 
 		return chats.map((chat) => ({

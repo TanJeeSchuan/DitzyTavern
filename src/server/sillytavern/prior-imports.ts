@@ -8,7 +8,7 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { chatDataTable, chatTable } from "../database/schema";
+import { conversationDataTable, conversationTable } from "../database/schema";
 import type { ChatImportDuplicateEvidence } from "../../shared/contract/chat-import";
 import { IMPORT_KEYS, IMPORT_NAMESPACE, type SillyTavernImportSource } from "./adapter";
 
@@ -22,17 +22,17 @@ export function findPriorImportsBySource(
 ): ChatImportDuplicateEvidence {
 	const conditions = [
 		and(
-			eq(chatDataTable.namespace, IMPORT_NAMESPACE),
-			eq(chatDataTable.key, IMPORT_KEYS.sha256),
-			eq(chatDataTable.value, source.sha256),
+			eq(conversationDataTable.namespace, IMPORT_NAMESPACE),
+			eq(conversationDataTable.key, IMPORT_KEYS.sha256),
+			eq(conversationDataTable.value, source.sha256),
 		),
 	];
 	if (source.integrity !== undefined) {
 		conditions.push(
 			and(
-				eq(chatDataTable.namespace, IMPORT_NAMESPACE),
-				eq(chatDataTable.key, IMPORT_KEYS.integrity),
-				eq(chatDataTable.value, source.integrity),
+				eq(conversationDataTable.namespace, IMPORT_NAMESPACE),
+				eq(conversationDataTable.key, IMPORT_KEYS.integrity),
+				eq(conversationDataTable.value, source.integrity),
 			),
 		);
 	}
@@ -40,10 +40,10 @@ export function findPriorImportsBySource(
 	const db = drizzle(database);
 	const rows = db
 		.select({
-			chatId: chatDataTable.chat_id,
-			key: chatDataTable.key,
+			chatId: conversationDataTable.conversation_id,
+			key: conversationDataTable.key,
 		})
-		.from(chatDataTable)
+		.from(conversationDataTable)
 		.where(or(...conditions))
 		.all();
 
@@ -72,9 +72,9 @@ export function findPriorImportsBySource(
 
 	const names = new Map<number, string>();
 	for (const row of db
-		.select({ id: chatTable.id, name: chatTable.name })
-		.from(chatTable)
-		.where(inArray(chatTable.id, orderedIds))
+		.select({ id: conversationTable.id, name: conversationTable.name })
+		.from(conversationTable)
+		.where(inArray(conversationTable.id, orderedIds))
 		.all()) {
 		names.set(row.id, row.name);
 	}

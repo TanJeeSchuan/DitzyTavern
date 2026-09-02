@@ -5,7 +5,7 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	chatTable,
+	conversationTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
@@ -61,7 +61,7 @@ describe("Conversation creation", () => {
 
 	const countRows = (
 		table:
-			| typeof chatTable
+			| typeof conversationTable
 			| typeof messageTable
 			| typeof messageVariantTable
 			| typeof participantTable
@@ -320,7 +320,7 @@ describe("Conversation creation", () => {
 			),
 		).toThrow(InvalidConversationCreationError);
 
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
 		expect(countRows(participantPromptTable)).toBe(0);
 		expect(countRows(participantOpeningTable)).toBe(0);
@@ -349,7 +349,7 @@ describe("Conversation creation", () => {
 			conversation.create(inputWith({ control: { human: 0, model: 5 } })),
 		).toThrow(InvalidConversationCreationError);
 
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
 	});
 
@@ -399,7 +399,7 @@ describe("Conversation creation", () => {
 		// Cast positions are unique per Conversation.
 		expect(() =>
 			db.insert(participantTable).values({
-				chat_id: snapshot.id,
+				conversation_id: snapshot.id,
 				position: 1,
 				name: "Clash",
 			}).run(),
@@ -419,19 +419,19 @@ describe("Conversation creation", () => {
 		expect(() =>
 			db
 				.insert(conversationControlTable)
-				.values({ chat_id: snapshot.id, seat: "human", participant_id: modelId })
+				.values({ conversation_id: snapshot.id, seat: "human", participant_id: modelId })
 				.run(),
 		).toThrow();
 		expect(() =>
 			db
 				.insert(conversationControlTable)
-				.values({ chat_id: snapshot.id, seat: "model", participant_id: humanId })
+				.values({ conversation_id: snapshot.id, seat: "model", participant_id: humanId })
 				.run(),
 		).toThrow();
 		expect(() =>
 			db
 				.insert(conversationControlTable)
-				.values({ chat_id: snapshot.id, seat: "audience", participant_id: modelId })
+				.values({ conversation_id: snapshot.id, seat: "audience", participant_id: modelId })
 				.run(),
 		).toThrow();
 
@@ -440,7 +440,7 @@ describe("Conversation creation", () => {
 			db
 				.insert(participantTable)
 				.values({
-					chat_id: snapshot.id,
+					conversation_id: snapshot.id,
 					position: 3,
 					name: "Ghost",
 					source_character_id: 987654,
@@ -452,7 +452,7 @@ describe("Conversation creation", () => {
 			db
 				.insert(messageTable)
 				.values({
-					chat_id: snapshot.id,
+					conversation_id: snapshot.id,
 					position: 1,
 					timestamp: "2026-08-21T09:00:00Z",
 					author_participant_id: 987654,
@@ -466,7 +466,7 @@ describe("Conversation creation", () => {
 			db
 				.insert(messageTable)
 				.values({
-					chat_id: snapshot.id,
+					conversation_id: snapshot.id,
 					position: 2,
 					timestamp: "2026-08-21T09:00:00Z",
 					context_human_participant_id: humanId,

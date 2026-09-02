@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createConversationModule } from "../conversation";
 import { openDatabase } from "../database/database";
-import { artifactTable, chatDataTable } from "../database/schema";
+import { artifactTable, conversationDataTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
 	createChatImportDetailsModule,
@@ -104,7 +104,7 @@ describe("graduated Chat history and Import Details", () => {
 		const owned = drizzle(database)
 			.select()
 			.from(artifactTable)
-			.where(eq(artifactTable.chat_id, conversationId))
+			.where(eq(artifactTable.conversation_id, conversationId))
 			.all();
 		const artifact = owned.find((entry) => entry.namespace === "import.sillytavern");
 		if (artifact === undefined) throw new Error("missing artifact metadata row");
@@ -115,8 +115,8 @@ describe("graduated Chat history and Import Details", () => {
 		const db = drizzle(database);
 		const entries = db
 			.select()
-			.from(chatDataTable)
-			.where(eq(chatDataTable.chat_id, conversationId))
+			.from(conversationDataTable)
+			.where(eq(conversationDataTable.conversation_id, conversationId))
 			.all();
 		const archive = entries.find(
 			(entry) => entry.namespace === "archive" && entry.key === "source",

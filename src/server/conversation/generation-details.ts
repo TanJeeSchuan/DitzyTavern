@@ -7,7 +7,7 @@ import type { Database } from "bun:sqlite";
 import { and, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	chatTable,
+	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
@@ -180,12 +180,12 @@ export function readActiveGenerationDetailsFromConnection(
 ): ActiveGenerationDetails | undefined {
 	const active = db.select().from(activeGenerationTable).where(and(
 		eq(activeGenerationTable.id, generationId),
-		eq(activeGenerationTable.chat_id, conversationId),
+		eq(activeGenerationTable.conversation_id, conversationId),
 	)).get();
 	const retained = active === undefined
 		? db.select().from(generationReplayTable).where(and(
 			eq(generationReplayTable.id, generationId),
-			eq(generationReplayTable.chat_id, conversationId),
+			eq(generationReplayTable.conversation_id, conversationId),
 		)).get()
 		: undefined;
 	if (retained !== undefined && retained.expires_at <= new Date().toISOString()) {
@@ -196,7 +196,7 @@ export function readActiveGenerationDetailsFromConnection(
 	}
 	const row = active ?? retained;
 	if (row === undefined) return undefined;
-	const conversation = db.select({ id: chatTable.id }).from(chatTable).where(eq(chatTable.id, conversationId)).get();
+	const conversation = db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get();
 	if (conversation === undefined) return undefined;
 	const humanName = row.captured_human_name.length > 0
 		? row.captured_human_name
@@ -265,7 +265,7 @@ export function readVariantDetailsFromConnection(
 ): VariantDetails | undefined {
 	const message = db.select().from(messageTable).where(and(
 		eq(messageTable.id, messageId),
-		eq(messageTable.chat_id, conversationId),
+		eq(messageTable.conversation_id, conversationId),
 	)).get();
 	if (message === undefined) return undefined;
 	const variant = db.select().from(messageVariantTable).where(and(

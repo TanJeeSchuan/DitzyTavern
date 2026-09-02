@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
-	chatTable,
+	conversationTable,
 } from "../database/schema";
 import {
 	cleanupRetainedGenerationInspections,
@@ -39,13 +39,13 @@ interface ActiveRecoveryRow {
 const readActiveRows = (database: Database): ActiveRecoveryRow[] => drizzle(database)
 	.select({
 		id: activeGenerationTable.id,
-		chatId: activeGenerationTable.chat_id,
+		chatId: activeGenerationTable.conversation_id,
 		checkpointContent: activeGenerationTable.checkpoint_content,
 		checkpointReasoning: activeGenerationTable.checkpoint_reasoning,
 		generation_intent_json: activeGenerationTable.generation_intent_json,
 	})
 	.from(activeGenerationTable)
-	.innerJoin(chatTable, eq(chatTable.id, activeGenerationTable.chat_id))
+	.innerJoin(conversationTable, eq(conversationTable.id, activeGenerationTable.conversation_id))
 	.all();
 
 /**

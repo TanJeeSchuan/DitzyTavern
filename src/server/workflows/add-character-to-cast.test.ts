@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	chatTable,
+	conversationTable,
 	participantTable,
 } from "../database/schema";
 import { openDatabase } from "../database/database";
@@ -44,7 +44,7 @@ describe("Add Character to Cast workflow", () => {
 		database.close();
 	});
 
-	const countRows = (table: typeof chatTable | typeof participantTable) =>
+	const countRows = (table: typeof conversationTable | typeof participantTable) =>
 		drizzle(database).select().from(table).all().length;
 
 	const playableConversation = () =>
@@ -202,7 +202,7 @@ describe("Add Character to Cast workflow", () => {
 			}),
 		).toThrow(ConversationNotFoundError);
 		// The existing Conversation and its Cast are untouched.
-		expect(countRows(chatTable)).toBe(1);
+		expect(countRows(conversationTable)).toBe(1);
 		expect(
 			createConversationModule(database).getSnapshot(conversation.id)?.revision,
 		).toBe(conversation.revision);

@@ -14,7 +14,7 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
-	chatTable,
+	conversationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
@@ -78,20 +78,20 @@ export function readChatHistory(
 	const db = connectConversationDatabase(database);
 	const conversation = db
 		.select()
-		.from(chatTable)
-		.where(eq(chatTable.id, conversationId))
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
 	const continuationStrategy = db
 		.select({ strategy: conversationGenerationSettingsTable.continuation_strategy })
 		.from(conversationGenerationSettingsTable)
-		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
+		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
 		.get()?.strategy ?? DEFAULT_CONTINUATION_STRATEGY;
 
 	const totalMessages = db
 		.select({ count: sql<number>`count(*)` })
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, conversationId))
+		.where(eq(messageTable.conversation_id, conversationId))
 		.get()?.count ?? 0;
 
 	const pageSize = boundedPageSize(request.pageSize);
@@ -110,7 +110,7 @@ export function readChatHistory(
 	const messageRows = db
 		.select()
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, conversationId))
+		.where(eq(messageTable.conversation_id, conversationId))
 		.orderBy(desc(messageTable.position))
 		.limit(pageSize)
 		.offset(offset)

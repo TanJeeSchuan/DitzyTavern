@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
-	chatTable,
+	conversationTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
@@ -45,7 +45,7 @@ describe("Native New Chat workflow", () => {
 
 	const countRows = (
 		table:
-			| typeof chatTable
+			| typeof conversationTable
 			| typeof messageTable
 			| typeof messageVariantTable
 			| typeof participantTable
@@ -85,7 +85,7 @@ describe("Native New Chat workflow", () => {
 
 		// The whole Conversation commits at revision zero with no other rows.
 		expect(snapshot.revision).toBe(0);
-		expect(countRows(chatTable)).toBe(1);
+		expect(countRows(conversationTable)).toBe(1);
 		expect(countRows(participantTable)).toBe(2);
 	});
 
@@ -188,7 +188,7 @@ describe("Native New Chat workflow", () => {
 		expect(conflict?.currentCharacter.name).toBe("Renamed Voss");
 
 		// Atomic: no Conversation, Participants, Control, or greeting exist.
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
 		expect(countRows(participantPromptTable)).toBe(0);
 		expect(countRows(conversationControlTable)).toBe(0);
@@ -204,7 +204,7 @@ describe("Native New Chat workflow", () => {
 				modelSeat: fork(424242, 0),
 			}),
 		).toThrow(CharacterNotFoundError);
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
 	});
 });

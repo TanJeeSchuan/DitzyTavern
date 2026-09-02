@@ -7,8 +7,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "../database/database";
 import {
 	artifactTable,
-	chatDataTable,
-	chatTable,
+	conversationDataTable,
+	conversationTable,
 	messageTable,
 	messageVariantTable,
 	participantTable,
@@ -65,10 +65,10 @@ describe("SillyTavern import validation", () => {
 
 	const countRows = (
 		table:
-			| typeof chatTable
+			| typeof conversationTable
 			| typeof messageTable
 			| typeof messageVariantTable
-			| typeof chatDataTable
+			| typeof conversationDataTable
 			| typeof artifactTable
 			| typeof participantTable,
 	) => drizzle(database).select().from(table).all().length;
@@ -78,10 +78,10 @@ describe("SillyTavern import validation", () => {
 		expect(() => importChat(path)).toThrow(
 			SillyTavernImportError,
 		);
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(messageTable)).toBe(0);
 		expect(countRows(messageVariantTable)).toBe(0);
-		expect(countRows(chatDataTable)).toBe(0);
+		expect(countRows(conversationDataTable)).toBe(0);
 	});
 
 	test("aborts the whole import atomically on a mismatched Swipe array", () => {
@@ -97,10 +97,10 @@ describe("SillyTavern import validation", () => {
 		expect(() => importChat(path)).toThrow(
 			SillyTavernImportError,
 		);
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(messageTable)).toBe(0);
 		expect(countRows(messageVariantTable)).toBe(0);
-		expect(countRows(chatDataTable)).toBe(0);
+		expect(countRows(conversationDataTable)).toBe(0);
 	});
 
 	test("rejects a missing source file", () => {

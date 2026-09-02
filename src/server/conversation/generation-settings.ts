@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import {
-	chatTable,
+	conversationTable,
 	conversationGenerationSettingsTable,
 } from "../database/schema";
 import {
@@ -104,9 +104,9 @@ export function readConversationGenerationSettings(
 ): ConversationGenerationSettings | undefined {
 	const db = connectConversationDatabase(database);
 	const conversation = db
-		.select({ id: chatTable.id })
-		.from(chatTable)
-		.where(eq(chatTable.id, conversationId))
+		.select({ id: conversationTable.id })
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
 		.get();
 	if (conversation === undefined) return undefined;
 	return readConversationGenerationSettingsFromConnection(db, conversationId);
@@ -119,7 +119,7 @@ export function readConversationGenerationSettingsFromConnection(
 	const row = db
 		.select()
 		.from(conversationGenerationSettingsTable)
-		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
+		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
 		.get();
 	return row === undefined ? undefined : readGenerationSettingsRow(row);
 }
@@ -131,13 +131,13 @@ export function updateConversationGenerationSettings(
 ): ConversationGenerationSettings {
 	const normalized = normalizeGenerationSettings(input);
 	db.insert(conversationGenerationSettingsTable)
-		.values({ chat_id: conversationId })
+		.values({ conversation_id: conversationId })
 		.onConflictDoNothing()
 		.run();
 	const updated = db
 		.update(conversationGenerationSettingsTable)
 		.set(settingsRowValues(normalized))
-		.where(eq(conversationGenerationSettingsTable.chat_id, conversationId))
+		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
 		.returning()
 		.get();
 	if (updated === undefined) {

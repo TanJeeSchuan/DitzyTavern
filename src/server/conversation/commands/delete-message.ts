@@ -29,7 +29,7 @@ const collectReleasedTombstones = (
 		.from(participantTable)
 		.where(
 			and(
-				eq(participantTable.chat_id, conversationId),
+				eq(participantTable.conversation_id, conversationId),
 				isNotNull(participantTable.deleted_at),
 			),
 		)
@@ -47,7 +47,7 @@ const collectReleasedTombstones = (
 			contextModelParticipantId: messageTable.context_model_participant_id,
 		})
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, conversationId))
+		.where(eq(messageTable.conversation_id, conversationId))
 		.all();
 
 	for (const tombstone of tombstones) {

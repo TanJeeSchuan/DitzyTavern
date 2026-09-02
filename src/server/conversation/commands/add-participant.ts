@@ -48,7 +48,7 @@ export function addParticipant(
 		.from(participantTable)
 		.where(
 			and(
-				eq(participantTable.chat_id, input.conversationId),
+				eq(participantTable.conversation_id, input.conversationId),
 				isNull(participantTable.deleted_at),
 			),
 		)

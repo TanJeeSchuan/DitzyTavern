@@ -22,7 +22,7 @@ export interface ArtifactModuleOptions {
 }
 
 const toMetadata = (row: ArtifactRow): ArtifactMetadata => ({
-	chatId: row.chat_id,
+	chatId: row.conversation_id,
 	namespace: row.namespace,
 	key: row.key,
 	relativePath: row.relative_path,
@@ -46,7 +46,7 @@ export function createArtifactModule(
 			.from(artifactTable)
 			.where(
 				and(
-					eq(artifactTable.chat_id, conversationId),
+					eq(artifactTable.conversation_id, conversationId),
 					eq(artifactTable.namespace, namespace),
 					eq(artifactTable.key, key),
 				),

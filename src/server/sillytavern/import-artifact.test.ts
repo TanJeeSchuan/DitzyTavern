@@ -11,8 +11,8 @@ import { openDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import {
 	artifactTable,
-	chatDataTable,
-	chatTable,
+	conversationDataTable,
+	conversationTable,
 	messageTable,
 	messageVariantTable,
 	participantTable,
@@ -80,10 +80,10 @@ describe("SillyTavern import artifacts", () => {
 
 	const countRows = (
 		table:
-			| typeof chatTable
+			| typeof conversationTable
 			| typeof messageTable
 			| typeof messageVariantTable
-			| typeof chatDataTable
+			| typeof conversationDataTable
 			| typeof artifactTable
 			| typeof participantTable,
 	) => drizzle(database).select().from(table).all().length;
@@ -213,12 +213,12 @@ describe("SillyTavern import artifacts", () => {
 		expect(
 			drizzle(database)
 				.select()
-				.from(chatDataTable)
+				.from(conversationDataTable)
 				.where(
 					and(
-						eq(chatDataTable.chat_id, conversation.id),
-						eq(chatDataTable.namespace, ARCHIVE_NAMESPACE),
-						eq(chatDataTable.key, ARCHIVE_KEY),
+						eq(conversationDataTable.conversation_id, conversation.id),
+						eq(conversationDataTable.namespace, ARCHIVE_NAMESPACE),
+						eq(conversationDataTable.key, ARCHIVE_KEY),
 					),
 				)
 				.get()?.value,
@@ -267,11 +267,11 @@ describe("SillyTavern import artifacts", () => {
 		// The abort happens before the database creation operation begins:
 		// no Chat, Participant, Profile, Message, Variant, Roster, Author
 		// Stamp, or artifact metadata row exists.
-		expect(countRows(chatTable)).toBe(0);
+		expect(countRows(conversationTable)).toBe(0);
 		expect(countRows(participantTable)).toBe(0);
 		expect(countRows(messageTable)).toBe(0);
 		expect(countRows(messageVariantTable)).toBe(0);
-		expect(countRows(chatDataTable)).toBe(0);
+		expect(countRows(conversationDataTable)).toBe(0);
 		expect(countRows(artifactTable)).toBe(0);
 	});
 
@@ -339,7 +339,7 @@ describe("SillyTavern import artifacts", () => {
 		// simulates the future deletion path. The metadata row follows the
 		// Chat, but the committed physical copy is never automatically
 		// deleted and no cleanup subsystem touches it.
-		database.run("DELETE FROM chat WHERE id = ?", [conversation.id]);
+		database.run("DELETE FROM conversation WHERE id = ?", [conversation.id]);
 		expect(exactArtifact(conversation.id)).toBeUndefined();
 		expect(
 			artifacts.readArtifact(

@@ -291,7 +291,7 @@ describe("Save Participant as Character workflow", () => {
 		const inserted = drizzle(database)
 			.insert(participantTable)
 			.values({
-				chat_id: conversation.id,
+				conversation_id: conversation.id,
 				name: "   ",
 				position: 3,
 				source_character_id: null,

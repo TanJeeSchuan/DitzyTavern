@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
 import { openDatabase } from "../database/database";
 import {
-	chatTable,
+	conversationTable,
 	conversationControlTable,
 	participantTable,
 } from "../database/schema";
@@ -188,8 +188,8 @@ describe("SillyTavern chat import", () => {
 		// Chat and activity times are derived from the mapped timestamps.
 		const chatRow = drizzle(database)
 			.select()
-			.from(chatTable)
-			.where(eq(chatTable.id, conversation.id))
+			.from(conversationTable)
+			.where(eq(conversationTable.id, conversation.id))
 			.get();
 		expect(chatRow?.creation_time).toBe("2026-08-08T12:53:02.008Z");
 		expect(chatRow?.last_message_time).toBe("2026-08-08T13:10:00.000Z");
@@ -875,8 +875,8 @@ describe("SillyTavern chat import", () => {
 		// the latest timestamp across every Variant.
 		const chatRow = drizzle(database)
 			.select()
-			.from(chatTable)
-			.where(eq(chatTable.id, conversation.id))
+			.from(conversationTable)
+			.where(eq(conversationTable.id, conversation.id))
 			.get();
 		expect(chatRow?.creation_time).toBe("2026-08-08T13:04:50.000Z");
 		expect(chatRow?.last_message_time).toBe("2026-08-08T13:30:00.000Z");

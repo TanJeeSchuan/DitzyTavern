@@ -16,7 +16,7 @@ import {
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
 
-export const chatTable = sqliteTable("chat", {
+export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
 	creation_time: text().notNull(),
@@ -28,9 +28,9 @@ export const messageTable = sqliteTable(
 	"messages",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		position: int().notNull(),
 		timestamp: text().notNull(),
 		// ==[HUMAN APPROVED]== Immutable Author Stamp: the authoring Cast Participant and the name
@@ -45,8 +45,8 @@ export const messageTable = sqliteTable(
 		context_model_participant_id: int().references(() => participantTable.id),
 	},
 	(table) => [
-		uniqueIndex("messages_chat_position_unique").on(
-			table.chat_id,
+		uniqueIndex("messages_conversation_position_unique").on(
+			table.conversation_id,
 			table.position,
 		),
 		check(
@@ -141,9 +141,9 @@ export const participantTable = sqliteTable(
 	"participant",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		// ==[HUMAN APPROVED]== The Participant's own normalized nonblank name, independent of the
 		// source Character and of every other Cast member. For a tombstone
 		// this is the final name captured at removal.
@@ -161,8 +161,8 @@ export const participantTable = sqliteTable(
 		deleted_at: text(),
 	},
 	(table) => [
-		uniqueIndex("participant_chat_position_unique")
-			.on(table.chat_id, table.position)
+		uniqueIndex("participant_conversation_position_unique")
+			.on(table.conversation_id, table.position)
 			.where(sql`${table.deleted_at} IS NULL`),
 	],
 );
@@ -207,16 +207,16 @@ export const participantOpeningTable = sqliteTable(
 export const conversationControlTable = sqliteTable(
 	"conversation_control",
 	{
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		seat: text().notNull(),
 		participant_id: int()
 			.notNull()
 			.references(() => participantTable.id, { onDelete: "cascade" }),
 	},
 	(table) => [
-		primaryKey({ columns: [table.chat_id, table.seat] }),
+		primaryKey({ columns: [table.conversation_id, table.seat] }),
 		uniqueIndex("conversation_control_participant_unique").on(
 			table.participant_id,
 		),
@@ -227,20 +227,20 @@ export const conversationControlTable = sqliteTable(
 	],
 );
 
-export const chatDataTable = sqliteTable(
-	"chat_data",
+export const conversationDataTable = sqliteTable(
+	"conversation_data",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		namespace: text().notNull(),
 		key: text().notNull(),
 		value: text().notNull(),
 	},
 	(table) => [
-		uniqueIndex("chat_data_owner_key_unique").on(
-			table.chat_id,
+		uniqueIndex("conversation_data_owner_key_unique").on(
+			table.conversation_id,
 			table.namespace,
 			table.key,
 		),
@@ -297,9 +297,9 @@ export const artifactTable = sqliteTable(
 	"artifact",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		namespace: text().notNull(),
 		key: text().notNull(),
 		// ==[HUMAN APPROVED]== Path relative to the managed artifact directory of the owning
@@ -313,8 +313,8 @@ export const artifactTable = sqliteTable(
 		sha256: text().notNull(),
 	},
 	(table) => [
-		uniqueIndex("artifact_chat_namespace_key_unique").on(
-			table.chat_id,
+		uniqueIndex("artifact_conversation_namespace_key_unique").on(
+			table.conversation_id,
 			table.namespace,
 			table.key,
 		),
@@ -331,9 +331,9 @@ export const activeGenerationTable = sqliteTable(
 	"active_generation",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		human_message_id: int()
 			.references(() => messageTable.id, { onDelete: "cascade" }),
 		message_id: int()
@@ -386,9 +386,9 @@ export const generationReplayTable = sqliteTable(
 	"generation_replay",
 	{
 		id: int().primaryKey(),
-		chat_id: int()
+		conversation_id: int()
 			.notNull()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		message_id: int()
 			.notNull()
 			.references(() => messageTable.id, { onDelete: "cascade" }),
@@ -423,9 +423,9 @@ export const generationReplayTable = sqliteTable(
 export const conversationGenerationSettingsTable = sqliteTable(
 	"conversation_generation_settings",
 	{
-		chat_id: int()
+		conversation_id: int()
 			.primaryKey()
-			.references(() => chatTable.id, { onDelete: "cascade" }),
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		model_id: text().notNull().default("deepseek-chat"),
 		temperature: real(),
 		top_p: real(),

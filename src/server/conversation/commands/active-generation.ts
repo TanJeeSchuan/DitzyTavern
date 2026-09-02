@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	chatTable,
+	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
@@ -48,7 +48,7 @@ const readActiveGeneration = (
 	.where(
 		and(
 			eq(activeGenerationTable.id, generationId),
-			eq(activeGenerationTable.chat_id, conversationId),
+			eq(activeGenerationTable.conversation_id, conversationId),
 		),
 	)
 	.get();
@@ -319,8 +319,10 @@ function writeCheckpointInTransaction(
 	const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
 		? currentEventId
 		: Math.max(currentEventId, input.latestEventId);
-	const values: CheckpointVariantValues = { content: input.content };
-	if (input.timestamp !== undefined) values.timestamp = input.timestamp;
+	const values: CheckpointVariantValues = {
+		content: input.content,
+		...(input.timestamp === undefined ? undefined : { timestamp: input.timestamp }),
+	};
 	db.update(messageVariantTable)
 		.set(values)
 		.where(
@@ -340,7 +342,7 @@ function writeCheckpointInTransaction(
 		.where(
 			and(
 				eq(activeGenerationTable.id, active.id),
-				eq(activeGenerationTable.chat_id, input.conversationId),
+				eq(activeGenerationTable.conversation_id, input.conversationId),
 			),
 		)
 		.run();
@@ -408,7 +410,7 @@ function removeActiveGenerationTargetInTransaction(
 		.where(
 			and(
 				eq(messageTable.id, active.message_id),
-				eq(messageTable.chat_id, active.chat_id),
+				eq(messageTable.conversation_id, active.conversation_id),
 			),
 		)
 		.run();
@@ -532,15 +534,15 @@ export function stopConversationGenerations(
 ): StoppedGenerations {
 	return runConversationTransaction(database, (db) => {
 		const conversation = db
-			.select({ id: chatTable.id })
-			.from(chatTable)
-			.where(eq(chatTable.id, input.conversationId))
+			.select({ id: conversationTable.id })
+			.from(conversationTable)
+			.where(eq(conversationTable.id, input.conversationId))
 			.get();
 		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const activeRows = db
 			.select()
 			.from(activeGenerationTable)
-			.where(eq(activeGenerationTable.chat_id, input.conversationId))
+			.where(eq(activeGenerationTable.conversation_id, input.conversationId))
 			.orderBy(asc(activeGenerationTable.id))
 			.all();
 		if (activeRows.length === 0) {

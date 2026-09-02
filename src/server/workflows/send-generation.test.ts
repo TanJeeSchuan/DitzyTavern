@@ -46,7 +46,7 @@ describe("Send through provisional Tail Generation", () => {
 				contactedWithActiveTarget = drizzle(database)
 					.select()
 					.from(activeGenerationTable)
-					.where(eq(activeGenerationTable.chat_id, conversationId))
+					.where(eq(activeGenerationTable.conversation_id, conversationId))
 					.all().length === 1;
 				return "The door opens.";
 			}),

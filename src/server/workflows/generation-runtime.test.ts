@@ -8,6 +8,22 @@ import {
 } from "./generation-runtime";
 
 describe("Generation runtime", () => {
+	test("rejects a duplicate active generation id", () => {
+		const registry = new GenerationRuntimeRegistry();
+		const input = {
+			generationId: 7,
+			conversationId: 3,
+			messageId: 12,
+			variantId: 18,
+			startedAt: "2026-08-27T00:00:00.000Z",
+		};
+		registry.start(input);
+
+		expect(() => registry.start(input)).toThrow(
+			"Generation runtime id 7 is already active; duplicate start is an invariant violation.",
+		);
+	});
+
 	test("fans one ordered provider stream out to multiple subscribers", () => {
 		const registry = new GenerationRuntimeRegistry();
 		const runtime = registry.start({

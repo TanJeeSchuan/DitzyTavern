@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
-import { chatTable } from "../database/schema";
+import { conversationTable } from "../database/schema";
 import { addParticipant } from "./commands/add-participant";
 import { assignControl } from "./commands/assign-control";
 import { createMessage } from "./commands/create-message";
@@ -149,9 +149,9 @@ export function executeConversationCommand(
 ): ConversationSnapshot {
 	return runConversationTransaction(database, (db) => {
 		const conversation = db
-			.select({ revision: chatTable.revision })
-			.from(chatTable)
-			.where(eq(chatTable.id, command.conversationId))
+			.select({ revision: conversationTable.revision })
+			.from(conversationTable)
+			.where(eq(conversationTable.id, command.conversationId))
 			.get();
 		if (conversation === undefined) {
 			throw new ConversationNotFoundError(command.conversationId);

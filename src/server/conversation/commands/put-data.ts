@@ -1,4 +1,4 @@
-import { chatDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
+import { conversationDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
 import type { ConversationDataScope } from "../types";
 import type { ConversationDatabase } from "../internal";
 import {
@@ -21,15 +21,15 @@ export function putData(db: ConversationDatabase, input: PutDataInput) {
 	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":
-			db.insert(chatDataTable)
+			db.insert(conversationDataTable)
 				.values({
-					chat_id: input.conversationId,
+					conversation_id: input.conversationId,
 					namespace: input.namespace,
 					key: input.key,
 					value: input.value,
 				})
 				.onConflictDoUpdate({
-					target: [chatDataTable.chat_id, chatDataTable.namespace, chatDataTable.key],
+					target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key],
 					set: { value: input.value },
 				})
 				.run();

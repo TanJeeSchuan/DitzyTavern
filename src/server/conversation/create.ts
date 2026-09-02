@@ -5,8 +5,8 @@ import {
 } from "../prompt-compiler";
 import {
 	artifactTable,
-	chatDataTable,
-	chatTable,
+	conversationDataTable,
+	conversationTable,
 	conversationGenerationSettingsTable,
 	messageDataTable,
 	messageVariantDataTable,
@@ -90,7 +90,7 @@ const insertArtifacts = (
 	db.insert(artifactTable)
 		.values(
 			artifacts.map((artifact) => ({
-				chat_id: conversationId,
+				conversation_id: conversationId,
 				namespace: artifact.namespace,
 				key: artifact.key,
 				relative_path: artifact.relativePath,
@@ -324,13 +324,13 @@ export function createConversation(
 
 		const { creationTime, lastMessageTime } = deriveChatTimes(messages, baseTime);
 		const conversation = db
-			.insert(chatTable)
+			.insert(conversationTable)
 			.values({
 				name: input.name,
 				creation_time: creationTime,
 				last_message_time: lastMessageTime,
 			})
-			.returning({ id: chatTable.id })
+			.returning({ id: conversationTable.id })
 			.get();
 		if (conversation === undefined) {
 			throw new InvalidConversationCreationError(
@@ -338,7 +338,7 @@ export function createConversation(
 			);
 		}
 		db.insert(conversationGenerationSettingsTable)
-			.values({ chat_id: conversation.id })
+			.values({ conversation_id: conversation.id })
 			.run();
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
@@ -374,8 +374,8 @@ export function createConversation(
 
 		insertScopedData(
 			input.data,
-			(entry) => ({ ...entry, chat_id: conversation.id }),
-			(rows) => db.insert(chatDataTable).values(rows).run(),
+			(entry) => ({ ...entry, conversation_id: conversation.id }),
+			(rows) => db.insert(conversationDataTable).values(rows).run(),
 		);
 
 		// ==[HUMAN APPROVED]== Artifact metadata rows are Conversation database state and commit

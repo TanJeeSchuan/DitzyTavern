@@ -16,7 +16,7 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	chatTable,
+	conversationTable,
 } from "./schema";
 import { characters, conversations } from "./seed";
 
@@ -31,24 +31,24 @@ export function teardown(databasePath?: string) {
 		// timestamps.
 		const seedChatMatches = conversations.map((conversation) =>
 			and(
-				eq(chatTable.name, conversation.name),
-				eq(chatTable.creation_time, conversation.createdAt),
-				eq(chatTable.last_message_time, conversation.createdAt),
+				eq(conversationTable.name, conversation.name),
+				eq(conversationTable.creation_time, conversation.createdAt),
+				eq(conversationTable.last_message_time, conversation.createdAt),
 			),
 		);
 		const seededChatIds =
 			seedChatMatches.length > 0
 				? db
-						.select({ id: chatTable.id })
-						.from(chatTable)
+						.select({ id: conversationTable.id })
+						.from(conversationTable)
 						.where(or(...seedChatMatches))
 						.all()
 						.map((row) => row.id)
 				: [];
 
 		if (seededChatIds.length > 0) {
-			db.delete(chatTable)
-				.where(inArray(chatTable.id, seededChatIds))
+			db.delete(conversationTable)
+				.where(inArray(conversationTable.id, seededChatIds))
 				.run();
 		}
 		log(`removed ${seededChatIds.length} conversation rows with their Casts and history`);

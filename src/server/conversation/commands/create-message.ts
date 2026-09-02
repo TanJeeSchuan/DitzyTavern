@@ -40,7 +40,7 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 	const latestPosition = db
 		.select({ value: max(messageTable.position) })
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, input.conversationId))
+		.where(eq(messageTable.conversation_id, input.conversationId))
 		.get()?.value;
 	const messageId = insertMessage(db, {
 		chatId: input.conversationId,

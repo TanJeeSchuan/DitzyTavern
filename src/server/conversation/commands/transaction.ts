@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, sql } from "drizzle-orm";
-import { chatTable } from "../../database/schema";
+import { conversationTable } from "../../database/schema";
 import {
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
@@ -20,9 +20,9 @@ import type { ConversationSnapshot } from "../types";
 
 const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 	lastMessageTime === undefined
-		? { revision: sql`${chatTable.revision} + 1` }
+		? { revision: sql`${conversationTable.revision} + 1` }
 		: {
-				revision: sql`${chatTable.revision} + 1`,
+				revision: sql`${conversationTable.revision} + 1`,
 				last_message_time: lastMessageTime,
 		};
 
@@ -48,9 +48,9 @@ export function advanceConversationRevision(
 	conversationId: number,
 	lastMessageTime?: string,
 ): ConversationSnapshot {
-	db.update(chatTable)
+	db.update(conversationTable)
 		.set(revisionAdvanceSet(lastMessageTime))
-		.where(eq(chatTable.id, conversationId))
+		.where(eq(conversationTable.id, conversationId))
 		.run();
 	return requireConversationSnapshot(db, conversationId);
 }
@@ -70,15 +70,15 @@ export function advanceConversationRevisionGuarded(
 	lastMessageTime?: string,
 ): void {
 	const advanced = db
-		.update(chatTable)
+		.update(conversationTable)
 		.set(revisionAdvanceSet(lastMessageTime))
 		.where(
 			and(
-				eq(chatTable.id, conversationId),
-				eq(chatTable.revision, expectedRevision),
+				eq(conversationTable.id, conversationId),
+				eq(conversationTable.revision, expectedRevision),
 			),
 		)
-		.returning({ revision: chatTable.revision })
+		.returning({ revision: conversationTable.revision })
 		.get();
 	if (advanced === undefined) {
 		throw new StaleConversationRevisionError(

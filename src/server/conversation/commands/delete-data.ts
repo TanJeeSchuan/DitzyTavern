@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { chatDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
+import { conversationDataTable, messageDataTable, messageVariantDataTable } from "../../database/schema";
 import type { ConversationDatabase } from "../internal";
 import {
 	requireGenericDataNamespace,
@@ -21,12 +21,12 @@ export function deleteData(db: ConversationDatabase, input: DeleteDataInput) {
 	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":
-			db.delete(chatDataTable)
+			db.delete(conversationDataTable)
 				.where(
 					and(
-						eq(chatDataTable.chat_id, input.conversationId),
-						eq(chatDataTable.namespace, input.namespace),
-						eq(chatDataTable.key, input.key),
+						eq(conversationDataTable.conversation_id, input.conversationId),
+						eq(conversationDataTable.namespace, input.namespace),
+						eq(conversationDataTable.key, input.key),
 					),
 				)
 				.run();

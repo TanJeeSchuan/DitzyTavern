@@ -78,6 +78,14 @@ const withConversationModule = <T>(
 		operation(createConversationModule(connection)),
 	);
 
+const readConversationOr404 = <T>(
+	database: Database | undefined,
+	read: (conversationModule: ConversationModule) => T | undefined,
+): T | ReturnType<typeof notFoundResponse> => {
+	const value = withConversationModule(database, read);
+	return value === undefined ? notFoundResponse() : value;
+};
+
 // ==[HUMAN APPROVED]== Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
 // conflict payload, or a 404 when the Conversation disappeared in the
@@ -183,14 +191,12 @@ export const createConversationRoutes = (
 	const readActiveGenerationDetailsRoute = ({ params }: {
 		params: { id: number; generationId: number };
 	}) => {
-		const details = withConversationModule(database, (conversationModule) =>
+		return readConversationOr404(database, (conversationModule) =>
 			conversationModule.readActiveGenerationDetails(
 				params.id,
 				params.generationId,
 			),
 		);
-		if (details === undefined) return status(404, { outcome: "not-found" as const });
-		return details;
 	};
 
 	const activeGenerationDetailsRouteOptions = {
@@ -275,17 +281,14 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
-			({ params, status }) => {
-				const details = withConversationModule(database, (conversationModule) =>
+			({ params }) =>
+				readConversationOr404(database, (conversationModule) =>
 					conversationModule.readVariantDetails(
 						params.id,
 						params.messageId,
 						params.variantId,
 					),
-				);
-				if (details === undefined) return status(404, { outcome: "not-found" as const });
-				return details;
-			},
+				),
 			{
 				params: variantIdParams,
 				response: { 200: variantDetails, 404: notFoundOutcome },
@@ -293,15 +296,11 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id",
-			({ params, status }) => {
-				const conversation = withConversationModule(database, (conversationModule) =>
-					conversationModule.getSnapshot(params.id),
-				);
-				if (conversation === undefined) {
-					return status(404, { outcome: "not-found" as const });
-				}
-				return toConversationSummary(conversation);
-			},
+			({ params }) =>
+				readConversationOr404(database, (conversationModule) => {
+					const conversation = conversationModule.getSnapshot(params.id);
+					return conversation === undefined ? undefined : toConversationSummary(conversation);
+				}),
 			{
 				params: conversationIdParams,
 				response: {
@@ -312,18 +311,13 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/history",
-			({ params, query, status }) => {
-				const history = withConversationModule(database, (conversationModule) =>
+			({ params, query }) =>
+				readConversationOr404(database, (conversationModule) =>
 					conversationModule.readHistory(params.id, {
 						page: query.page,
 						pageSize: query.pageSize,
 					}),
-				);
-				if (history === undefined) {
-					return status(404, { outcome: "not-found" as const });
-				}
-				return history;
-			},
+				),
 			{
 				params: conversationIdParams,
 				query: historyPageQuery,

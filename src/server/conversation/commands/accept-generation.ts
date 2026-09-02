@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, eq, isNull, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	chatTable,
+	conversationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
@@ -76,9 +76,9 @@ const ensureConversationRevision = (
 	expectedRevision: number,
 ) => {
 	const conversation = db
-		.select({ id: chatTable.id, revision: chatTable.revision })
-		.from(chatTable)
-		.where(eq(chatTable.id, conversationId))
+		.select({ id: conversationTable.id, revision: conversationTable.revision })
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
 		.get();
 	if (conversation === undefined) throw new ConversationNotFoundError(conversationId);
 	if (conversation.revision !== expectedRevision) {
@@ -111,7 +111,7 @@ const persistActiveGeneration = (
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
-			chat_id: input.conversationId,
+			conversation_id: input.conversationId,
 			human_message_id: input.humanMessageId,
 			message_id: input.messageId,
 			variant_id: input.variantId,
@@ -168,7 +168,7 @@ const createProvisionalModelTarget = (
 	const nextPosition = input.position ?? ((db
 		.select({ value: max(messageTable.position) })
 		.from(messageTable)
-		.where(eq(messageTable.chat_id, input.conversationId))
+		.where(eq(messageTable.conversation_id, input.conversationId))
 		.get()?.value ?? 0) + 1);
 	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
 	const modelMessageId = insertMessage(db, {
@@ -374,7 +374,7 @@ export function acceptConversationTailGeneration(
 			const latestPosition = db
 				.select({ value: max(messageTable.position) })
 				.from(messageTable)
-				.where(eq(messageTable.chat_id, input.conversationId))
+				.where(eq(messageTable.conversation_id, input.conversationId))
 				.get()?.value;
 			if (reused !== undefined) {
 				const selected = db
@@ -441,7 +441,7 @@ export function acceptConversationContinuationGeneration(
 			const latest = db
 				.select({ id: messageTable.id, position: messageTable.position })
 				.from(messageTable)
-				.where(eq(messageTable.chat_id, input.conversationId))
+				.where(eq(messageTable.conversation_id, input.conversationId))
 				.orderBy(sql`${messageTable.position} DESC`)
 				.limit(1)
 				.get();
@@ -496,9 +496,9 @@ export function acceptConversationSiblingGeneration(
 ): AcceptedSiblingGeneration {
 	return runConversationTransaction(database, (db) => {
 		const conversation = db
-			.select({ id: chatTable.id })
-			.from(chatTable)
-			.where(eq(chatTable.id, input.conversationId))
+			.select({ id: conversationTable.id })
+			.from(conversationTable)
+			.where(eq(conversationTable.id, input.conversationId))
 			.get();
 		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
 		if (input.humanParticipantId === input.modelParticipantId) {
@@ -526,7 +526,7 @@ export function acceptConversationSiblingGeneration(
 			)
 			.where(
 				and(
-					eq(participantTable.chat_id, input.conversationId),
+					eq(participantTable.conversation_id, input.conversationId),
 					isNull(participantTable.deleted_at),
 				),
 			)
@@ -559,7 +559,7 @@ export function acceptConversationSiblingGeneration(
 		const activeRows = db
 			.select({ id: activeGenerationTable.id, messageId: activeGenerationTable.message_id, intent: activeGenerationTable.generation_intent_json })
 			.from(activeGenerationTable)
-			.where(eq(activeGenerationTable.chat_id, input.conversationId))
+			.where(eq(activeGenerationTable.conversation_id, input.conversationId))
 			.all();
 		if (activeRows.some((row) => !isSiblingGenerationRow({ generation_intent_json: row.intent }))) {
 			throw new InvalidConversationCommandError(
@@ -574,7 +574,7 @@ export function acceptConversationSiblingGeneration(
 		const configuredLimit = db
 			.select({ value: conversationGenerationSettingsTable.sibling_generation_limit })
 			.from(conversationGenerationSettingsTable)
-			.where(eq(conversationGenerationSettingsTable.chat_id, input.conversationId))
+			.where(eq(conversationGenerationSettingsTable.conversation_id, input.conversationId))
 			.get()?.value ?? DEFAULT_SIBLING_GENERATION_LIMIT;
 		if (activeRows.length >= configuredLimit) {
 			throw new InvalidConversationCommandError(

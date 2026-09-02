@@ -297,7 +297,7 @@ describe("Generation transport contract", () => {
 			credential: "budget-contract-secret",
 		});
 		database.run(
-			"UPDATE conversation_generation_settings SET context_limit = 1 WHERE chat_id = ?",
+			"UPDATE conversation_generation_settings SET context_limit = 1 WHERE conversation_id = ?",
 			[conversation.id],
 		);
 		const app = createConversationRoutes(database, {
@@ -335,7 +335,7 @@ describe("Generation transport contract", () => {
 			credential: "malformed-settings-secret",
 		});
 		database.run(
-			"UPDATE conversation_generation_settings SET context_limit = 0 WHERE chat_id = ?",
+			"UPDATE conversation_generation_settings SET context_limit = 0 WHERE conversation_id = ?",
 			[conversation.id],
 		);
 		const app = createConversationRoutes(database, {
