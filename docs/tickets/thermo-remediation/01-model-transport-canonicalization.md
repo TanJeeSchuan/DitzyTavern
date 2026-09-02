@@ -1,6 +1,6 @@
 # Model transport canonicalization
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: None
 
@@ -23,11 +23,11 @@ Do not edit the generation lifecycle bodies in `src/server/workflows/generate.ts
 
 ## Work
 
-- [ ] Replace the hand-written `GenerationRequestValue` and `GenerationRequestOverrides` vocabulary with aliases or re-exports from `src/shared/generation-json.ts`.
-- [ ] Give `normalizeUsage` and `addUsage` one owner in the model-client layer and remove the duplicate workflow implementation.
-- [ ] Rename `deepseek.ts` to `chat-completions.ts` and update all production and test imports.
-- [ ] Remove obsolete paths. Do not leave a compatibility re-export at `deepseek.ts`.
-- [ ] Preserve behavior for DeepSeek, OpenAI-compatible, and OpenRouter adapters.
+- [x] Replace the hand-written `GenerationRequestValue` and `GenerationRequestOverrides` vocabulary with aliases or re-exports from `src/shared/generation-json.ts`.
+- [x] Give `normalizeUsage` and `addUsage` one owner in the model-client layer and remove the duplicate workflow implementation.
+- [x] Rename `deepseek.ts` to `chat-completions.ts` and update all production and test imports.
+- [x] Remove obsolete paths. Do not leave a compatibility re-export at `deepseek.ts`.
+- [x] Preserve behavior for DeepSeek, OpenAI-compatible, and OpenRouter adapters.
 - [ ] Run focused model-client and workflow tests, typechecking, and the full test suite.
 - [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
 - [ ] Set this ticket to DONE and commit the implementation.
@@ -38,4 +38,3 @@ Do not edit the generation lifecycle bodies in `src/server/workflows/generate.ts
 - There is one implementation of the usage normalization and addition helpers.
 - No source import refers to `model-client/deepseek`.
 - All three adapters still use the shared chat-completions transport.
-

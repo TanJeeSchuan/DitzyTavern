@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
+	normalizeUsage,
 	type ModelClient,
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
@@ -308,18 +309,3 @@ export const interruptedGenerationData = (
 		error: null,
 });
 
-function normalizeUsage(input: {
-	inputTokens?: number;
-	outputTokens?: number;
-	totalTokens?: number;
-}) {
-	const usage: Record<string, number> = {};
-	addUsage(usage, "inputTokens", input.inputTokens);
-	addUsage(usage, "outputTokens", input.outputTokens);
-	addUsage(usage, "totalTokens", input.totalTokens);
-	return usage;
-}
-
-function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
-	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
-}

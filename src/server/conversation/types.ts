@@ -1,6 +1,6 @@
 import type { Static } from "@sinclair/typebox";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
-	GenerationJsonValue,
 	GenerationProvenance as SharedGenerationProvenance,
 } from "../../shared/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
@@ -46,17 +46,10 @@ export type ConversationJsonValue = GenerationJsonValue;
 // wire format.
 export type ConversationGenerationSettings = CanonicalGenerationSettings;
 
-export type GenerationRequestValue =
-	| string
-	| number
-	| boolean
-	| null
-	| readonly GenerationRequestValue[]
-	| Readonly<{ [key: string]: GenerationRequestValue }>;
-
-export type GenerationRequestOverrides = Readonly<
-	Record<string, GenerationRequestValue>
->;
+export type {
+	GenerationJsonObject as GenerationRequestOverrides,
+	GenerationJsonValue as GenerationRequestValue,
+} from "../../shared/generation-json";
 
 // Suffixes are intentionally a closed set. They are request-time formatting
 // choices, not authored Conversation content. The domain alias stays derived

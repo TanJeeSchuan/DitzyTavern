@@ -29,12 +29,13 @@ export {
 	createDeepSeekModelClient,
 	createOpenRouterModelClient,
 	createOpenAICompatibleModelClient,
+	normalizeUsage,
 	ModelClientTransportError,
-} from "./deepseek";
+} from "./chat-completions";
 export type {
 	DeepSeekModelClientOptions,
 	OpenAICompatibleModelClientOptions,
-} from "./deepseek";
+} from "./chat-completions";
 export {
 	testConnection,
 	TEST_CONNECTION_MAX_OUTPUT_TOKENS,

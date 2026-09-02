@@ -464,7 +464,7 @@ function normalizeFinishReason(value: string | null | undefined): "stop" | "leng
 	return "other";
 }
 
-function normalizeUsage(value: {
+export function normalizeUsage(value: {
 	inputTokens?: number | undefined;
 	outputTokens?: number | undefined;
 	totalTokens?: number | undefined;
