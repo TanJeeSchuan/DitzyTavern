@@ -401,6 +401,10 @@ describe("graduated Chat history and Import Details", () => {
 				namespace: IMPORT_NAMESPACE,
 				key: IMPORT_KEYS.reportJson,
 				value: "not valid JSON",
+			}, {
+				namespace: IMPORT_NAMESPACE,
+				key: IMPORT_KEYS.sha256,
+				value: "corrupt-sha256",
 			}],
 		});
 

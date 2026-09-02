@@ -19,7 +19,10 @@ import type {
 import { authenticatedHeaders } from "./authenticated-headers";
 import type { ModelFetch } from "./model-fetch";
 import { createModelAdapter } from "./adapter";
-import { ModelClientTransportError } from "./errors";
+import {
+	ModelClientTransportError,
+	toModelClientTransportError,
+} from "./errors";
 import {
 	formatProviderError,
 	snapshotProviderError,
@@ -277,12 +280,7 @@ async function* generateOpenAICompatibleStream(options: {
 			);
 		}
 		if (error instanceof ModelClientTransportError) throw error;
-		if (error instanceof Error) {
-			throw new ModelClientTransportError(normalizeTransportError(error), "transport", {
-				cause: error,
-			});
-		}
-		throw new ModelClientTransportError("The provider request failed.", "transport");
+		throw toModelClientTransportError(error);
 	} finally {
 		if (inactivityTimer !== undefined) clearTimeout(inactivityTimer);
 		options.input.signal?.removeEventListener("abort", onCallerAbort);
@@ -487,12 +485,3 @@ function addUsage(target: Record<string, number>, key: string, value: number | u
 	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
 }
 
-function normalizeTransportError(error: Error): string {
-	if (error.name === "AbortError") {
-		return "The provider did not respond before the Connection Profile timeout.";
-	}
-	if (error.message.trim().length > 0) {
-		return "The provider request failed: an adapter error occurred.";
-	}
-	return "The provider request failed.";
-}

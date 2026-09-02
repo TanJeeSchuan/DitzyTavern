@@ -430,7 +430,7 @@ export interface MessageControlContext {
 export const insertMessage = (
 	db: ConversationDatabase,
 	values: {
-		chatId: number;
+		conversationId: number;
 		position: number;
 		timestamp: string;
 		author: MessageAuthorStamp | null;
@@ -440,7 +440,7 @@ export const insertMessage = (
 	const inserted = db
 		.insert(messageTable)
 		.values({
-			conversation_id: values.chatId,
+			conversation_id: values.conversationId,
 			position: values.position,
 			timestamp: values.timestamp,
 			author_participant_id: values.author?.participantId ?? null,

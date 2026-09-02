@@ -406,7 +406,7 @@ export function createConversation(
 
 			const messageId = asCreationError(() =>
 				insertMessage(db, {
-					chatId: conversation.id,
+					conversationId: conversation.id,
 					position: messageIndex + 1,
 					timestamp: message.timestamp,
 					author: authorSeed

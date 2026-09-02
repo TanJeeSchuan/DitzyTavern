@@ -4,7 +4,7 @@
 // the response body at the fetch boundary, so this module keeps a deliberately
 // small second SSE parser for activity detection only.
 
-export interface ProviderSseFrame {
+interface ProviderSseFrame {
 	choices?: Array<{
 		delta?: {
 			content?: string;

@@ -172,7 +172,7 @@ const createProvisionalModelTarget = (
 		.get()?.value ?? 0) + 1);
 	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
 	const modelMessageId = insertMessage(db, {
-		chatId: input.conversationId,
+		conversationId: input.conversationId,
 		position: nextPosition,
 		timestamp: input.timestamp,
 		author: { participantId: model.id, name: model.name },
@@ -400,7 +400,7 @@ export function acceptConversationTailGeneration(
 				return { humanMessageId: reused.id };
 			}
 			const humanMessageId = insertMessage(db, {
-				chatId: input.conversationId,
+		conversationId: input.conversationId,
 				position: (latestPosition ?? 0) + 1,
 				timestamp: input.timestamp,
 				author: { participantId: human.id, name: human.name },

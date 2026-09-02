@@ -28,7 +28,7 @@ export {
 	deterministicImportControl,
 	emptyImportedDefinition,
 	groupImportedAuthors,
-	importReportEntries,
+	importProvenanceEntries,
 	projectImport,
 } from "./import-projection";
 export type {

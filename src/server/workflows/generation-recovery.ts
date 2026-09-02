@@ -28,7 +28,7 @@ export interface GenerationRecoverySummary {
 
 interface ActiveRecoveryRow {
 	id: number;
-	chatId: number;
+	conversationId: number;
 	checkpointContent: string;
 	checkpointReasoning: string;
 	// ==[HUMAN APPROVED]== Kept under the persisted column name so the row satisfies the canonical
@@ -39,7 +39,7 @@ interface ActiveRecoveryRow {
 const readActiveRows = (database: Database): ActiveRecoveryRow[] => drizzle(database)
 	.select({
 		id: activeGenerationTable.id,
-		chatId: activeGenerationTable.conversation_id,
+		conversationId: activeGenerationTable.conversation_id,
 		checkpointContent: activeGenerationTable.checkpoint_content,
 		checkpointReasoning: activeGenerationTable.checkpoint_reasoning,
 		generation_intent_json: activeGenerationTable.generation_intent_json,
@@ -74,7 +74,7 @@ export function recoverActiveGenerations(
 				const data = interruptedGenerationData(cause, reasoning);
 				if (intent === "sibling") {
 					conversation.resolveSiblingGeneration({
-						conversationId: row.chatId,
+						conversationId: row.conversationId,
 						generationId: row.id,
 						timestamp: new Date().toISOString(),
 						content,
@@ -82,7 +82,7 @@ export function recoverActiveGenerations(
 					});
 				} else {
 					conversation.resolveTailGeneration({
-						conversationId: row.chatId,
+						conversationId: row.conversationId,
 						generationId: row.id,
 						timestamp: new Date().toISOString(),
 						content,
@@ -96,7 +96,7 @@ export function recoverActiveGenerations(
 				// Continuation attempts their provisional Message. The accepted
 				// human Message of a Tail attempt is never removed here.
 				conversation.removeGeneration({
-					conversationId: row.chatId,
+					conversationId: row.conversationId,
 					generationId: row.id,
 				});
 				removed += 1;

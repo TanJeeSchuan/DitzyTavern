@@ -26,10 +26,10 @@ import { withDatabase } from "../database/database";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
+	decodeSillyTavernImportReport,
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	toSillyTavernImportSource,
-	type SillyTavernImportReport,
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 
@@ -66,58 +66,6 @@ export function createChatImportDetailsModule(
 ): ChatImportDetailsModule {	const artifacts = createArtifactModule(database, { directory: artifactDirectory });
 	const conversations = createConversationModule(database);
 
-	const parseReport = (value: string | null): SillyTavernImportReport | null => {
-		if (value === null) return null;
-		let parsed: JsonValue;
-		try {
-			// SAFETY: JSON.parse output is exactly the JSON scalars, arrays,
-			// and plain objects modeled by JsonValue; the boundary mark keeps
-			// the unvalidated parse inside this parsing function. ==[HUMAN APPROVED]==
-			parsed = JSON.parse(value) as JsonValue;
-		} catch {
-			return null;
-		}
-		// ==[HUMAN APPROVED]== Parsed JSON output can only be the JSON scalars, arrays, and plain
-		// objects; constructor identity is a sound discriminator here.
-		if (!isObject(parsed)) return null;
-		const report = parsed;
-		const source = isObject(report.source) ? report.source : null;
-		const counts = isObject(report.counts) ? report.counts : null;
-		const integrity = source === null ? undefined : source.integrity;
-		if (
-			!isString(report.importerVersion) ||
-			source === null ||
-			!isString(source.filename) ||
-			!isString(source.sha256) ||
-			(integrity !== undefined && !isString(integrity)) ||
-			counts === null ||
-			!isInteger(counts.messages) ||
-			!isInteger(counts.variants) ||
-			!Array.isArray(report.warnings) ||
-			!report.warnings.every((warning) => isString(warning))
-		) {
-			return null;
-		}
-		// ==[HUMAN APPROVED]== SAFETY: every field the report contract requires (importerVersion,
-		// source identity, counts, warnings, optional integrity) was validated
-		// with constructor-identity guards above, so the narrowed parsed JSON
-		// is a complete SillyTavernImportReport.
-		const sourceValue = toSillyTavernImportSource({
-			filename: source.filename,
-			sha256: source.sha256,
-			integrity,
-		});
-		return {
-			importerVersion: report.importerVersion,
-			source: sourceValue,
-			counts: {
-				messages: counts.messages,
-				variants: counts.variants,
-			},
-			warnings: arrayOfStrings(report.warnings),
-		};
-	};
-
 	return {
 		importDetails(conversationId) {
 			const read = conversations.readConversationData(conversationId, {
@@ -129,7 +77,7 @@ export function createChatImportDetailsModule(
 			if (read === undefined) return undefined;
 			const reportValue = importEntryValue(read.entries, IMPORT_KEYS.reportJson);
 			if (reportValue === null) return undefined;
-			const report = parseReport(reportValue);
+			const report = decodeSillyTavernImportReport(reportValue);
 			if (report === null) {
 				return {
 					provenanceState: "unreadable",
@@ -172,7 +120,7 @@ export function createChatImportDetailsModule(
 						messages: report.counts.messages,
 						variants: report.counts.variants,
 					},
-					warnings: arrayOfStrings(report.warnings),
+					warnings: [...report.warnings],
 					importerVersion: report.importerVersion,
 				},
 				duplicates,
@@ -213,38 +161,3 @@ const importEntryValue = (
 	return entry?.value ?? null;
 };
 
-// ==[HUMAN APPROVED]== Parsed JSON output can only be the JSON scalars, arrays, and plain
-// objects; constructor identity is therefore a sound discriminator here.
-type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
-
-const isObject = (value: JsonValue): value is JsonObject =>
-	value !== null &&
-	value !== undefined &&
-	!Array.isArray(value) &&
-	value.constructor === Object;
-
-const isString = (value: JsonValue): value is string =>
-	value !== null && value !== undefined && value.constructor === String;
-
-const isNumber = (value: JsonValue): value is number =>
-	value !== null && value !== undefined && value.constructor === Number;
-
-const isInteger = (value: JsonValue): value is number =>
-	isNumber(value) && Number.isInteger(value);
-
-// ==[HUMAN APPROVED]== Reduces a parsed JSON array to its string entries; non-strings are
-// structural noise and never masquerade as warnings.
-const arrayOfStrings = (entries: readonly JsonValue[]): string[] =>
-	entries.filter(
-		(entry): entry is string =>
-			entry !== null &&
-			entry !== undefined &&
-			entry.constructor === String,
-	);

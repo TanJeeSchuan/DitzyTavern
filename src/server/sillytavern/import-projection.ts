@@ -199,7 +199,7 @@ export interface ProjectedImport {
 // namespace is import-owned (shared/import-data): these entries commit
 // through the creation seam, and the generic put-data/delete-data commands
 // can never address them afterwards.
-export const importReportEntries = (
+export const importProvenanceEntries = (
 	report: SillyTavernImportReport,
 ): ConversationDataEntry[] => {
 	// ==[HUMAN APPROVED]== The report is canonical; every flat query-index value is derived from
@@ -289,7 +289,7 @@ export function projectImport(
 			})),
 			control: deterministicImportControl(resolution.participants.length),
 			messages,
-			data: [...decoded.data, ...importReportEntries(report)],
+			data: [...decoded.data, ...importProvenanceEntries(report)],
 		},
 		report,
 	};

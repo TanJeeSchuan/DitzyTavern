@@ -71,6 +71,71 @@ export const toSillyTavernImportSource = (input: {
 	return source;
 };
 
+// ==[HUMAN APPROVED]== One decoder defines whether persisted canonical import provenance is
+// readable. Import Details and duplicate classification share it so corrupt
+// report JSON cannot remain usable through a stale flat query index.
+export const decodeSillyTavernImportReport = (
+	value: string,
+): SillyTavernImportReport | null => {
+	let parsed: JsonValue;
+	try {
+		// ==[HUMAN APPROVED]== SAFETY: JSON.parse output is confined to the JSON value domain;
+		// the field checks below validate the complete report before returning it.
+		parsed = JSON.parse(value) as JsonValue;
+	} catch {
+		return null;
+	}
+	if (!isJsonObject(parsed)) return null;
+	const source = isJsonObject(parsed.source) ? parsed.source : null;
+	const counts = isJsonObject(parsed.counts) ? parsed.counts : null;
+	const integrity = source?.integrity;
+	if (
+		!isJsonString(parsed.importerVersion) ||
+		source === null ||
+		!isJsonString(source.filename) ||
+		!isJsonString(source.sha256) ||
+		(integrity !== undefined && !isJsonString(integrity)) ||
+		counts === null ||
+		!isJsonInteger(counts.messages) ||
+		!isJsonInteger(counts.variants) ||
+		!Array.isArray(parsed.warnings) ||
+		!parsed.warnings.every(isJsonString)
+	) {
+		return null;
+	}
+	return {
+		importerVersion: parsed.importerVersion,
+		source: toSillyTavernImportSource({
+			filename: source.filename,
+			sha256: source.sha256,
+			integrity,
+		}),
+		counts: {
+			messages: counts.messages,
+			variants: counts.variants,
+		},
+		warnings: [...parsed.warnings],
+	};
+};
+
+type JsonValue =
+	| null
+	| boolean
+	| number
+	| string
+	| JsonValue[]
+	| { [key: string]: JsonValue };
+type JsonObject = { [key: string]: JsonValue };
+
+const isJsonObject = (value: JsonValue): value is JsonObject =>
+	value !== null && !Array.isArray(value) && value.constructor === Object;
+
+const isJsonString = (value: JsonValue): value is string =>
+	value !== null && value.constructor === String;
+
+const isJsonInteger = (value: JsonValue): value is number =>
+	value !== null && value.constructor === Number && Number.isInteger(value);
+
 // ==[HUMAN APPROVED]== The sealed single-pass source decode shared by the developer import path
 // and the Staged Import: identical validation, counts, archive, and report,
 // plus the per-record exact author values the import groups on. Previewing

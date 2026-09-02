@@ -43,7 +43,7 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 		.where(eq(messageTable.conversation_id, input.conversationId))
 		.get()?.value;
 	const messageId = insertMessage(db, {
-		chatId: input.conversationId,
+		conversationId: input.conversationId,
 		position: (latestPosition ?? 0) + 1,
 		timestamp: input.timestamp,
 		author: { participantId: author.id, name: author.name },
