@@ -8,16 +8,19 @@ import {
 	chatDataTable,
 	chatTable,
 	conversationGenerationSettingsTable,
-	conversationControlTable,
 	messageDataTable,
 	messageVariantDataTable,
 } from "../database/schema";
-import { InvalidConversationCreationError } from "./errors";
+import {
+	InvalidConversationCommandError,
+	InvalidConversationCreationError,
+} from "./errors";
 import {
 	insertMessage,
 	insertParticipant,
 	insertVariants,
 	normalizeParticipantName,
+	writeControlAssignment,
 	type ConversationDatabase,
 } from "./internal";
 import { readConversationSnapshot } from "./snapshot";
@@ -191,6 +194,21 @@ const insertScopedData = <Owner extends object>(
 	insert(data.map(toRow));
 };
 
+// ==[HUMAN APPROVED]== The shared insert seam throws the module's canonical command error;
+// creation maps it to the creation contract class at its own boundary, so
+// the shared helpers never learn about the creation/command transport split
+// and the error text stays byte-identical on the wire.
+const asCreationError = <T>(run: () => T): T => {
+	try {
+		return run();
+	} catch (error) {
+		if (error instanceof InvalidConversationCommandError) {
+			throw new InvalidConversationCreationError(error.message);
+		}
+		throw error;
+	}
+};
+
 // ==[HUMAN APPROVED]== Native creation converts the initial model Participant's ordered openings
 // into one Message whose sibling Variants match the openings and whose first
 // Variant is selected. No openings produce no Message. Openings are used only
@@ -326,34 +344,32 @@ export function createConversation(
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers. Insertion failures surface as the creation
 		// error class so the transport contracts map them to 422.
-		const insertedParticipants = seeds.map((seed, index) =>
-			insertParticipant(
-				db,
-				conversation.id,
-				index + 1,
-				seed.definition,
-				seed.sourceCharacterId ?? null,
-				InvalidConversationCreationError,
+		const insertedParticipants = asCreationError(() =>
+			seeds.map((seed, index) =>
+				insertParticipant(
+					db,
+					conversation.id,
+					index + 1,
+					seed.definition,
+					seed.sourceCharacterId ?? null,
+				),
 			),
 		);
 
-		const controlRows = [];
-		if (humanIndex !== undefined) {
-			controlRows.push({
-				chat_id: conversation.id,
-				seat: "human" as const,
-				participant_id: insertedParticipants[humanIndex].id,
+		// ==[HUMAN APPROVED]== Creation seeds Control through the canonical seat write. Its leading
+		// DELETE is a no-op on the brand-new Conversation row, so the two seats
+		// are written exactly as assign-control writes them.
+		if (humanIndex !== undefined || modelIndex !== undefined) {
+			writeControlAssignment(db, conversation.id, {
+				humanParticipantId:
+					humanIndex !== undefined
+						? insertedParticipants[humanIndex].id
+						: null,
+				modelParticipantId:
+					modelIndex !== undefined
+						? insertedParticipants[modelIndex].id
+						: null,
 			});
-		}
-		if (modelIndex !== undefined) {
-			controlRows.push({
-				chat_id: conversation.id,
-				seat: "model" as const,
-				participant_id: insertedParticipants[modelIndex].id,
-			});
-		}
-		if (controlRows.length > 0) {
-			db.insert(conversationControlTable).values(controlRows).run();
 		}
 
 		insertScopedData(
@@ -388,9 +404,8 @@ export function createConversation(
 						}
 					: null;
 
-			const messageId = insertMessage(
-				db,
-				{
+			const messageId = asCreationError(() =>
+				insertMessage(db, {
 					chatId: conversation.id,
 					position: messageIndex + 1,
 					timestamp: message.timestamp,
@@ -398,8 +413,7 @@ export function createConversation(
 						? { participantId: authorSeed.id, name: authorSeed.name }
 						: null,
 					context,
-				},
-				InvalidConversationCreationError,
+				}),
 			);
 
 			insertScopedData(

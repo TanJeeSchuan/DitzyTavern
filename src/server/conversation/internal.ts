@@ -58,11 +58,14 @@ export const isPlayable = (control: ControlAssignmentState): boolean =>
 // ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
 // treat a running Generation as mutually exclusive reads this predicate, so
 // the probe query and its existence rule are written once for the module.
+// Like every public entry point it takes the raw Database and connects
+// internally, so no caller — including the workflows layer — ever
+// constructs the module's Drizzle handle.
 export const hasActiveGeneration = (
-	db: ConversationDatabase,
+	database: Database,
 	conversationId: number,
 ): boolean =>
-	db
+	connectConversationDatabase(database)
 		.select({ id: activeGenerationTable.id })
 		.from(activeGenerationTable)
 		.where(eq(activeGenerationTable.chat_id, conversationId))
@@ -281,17 +284,16 @@ export interface InsertedParticipant {
 
 // ==[HUMAN APPROVED]== One Participant insertion: the active row, its complete local
 // Definition prompt, and its ordered openings. Shared by native creation and
-// the Cast append so the three written rows cannot drift. The caller picks
-// the error class for an insertion failure (creation maps it to 422, commands
-// to the command class) so both paths share the writes, not the transport
-// contract.
+// the Cast append so the three written rows cannot drift. Insertion failures
+// always throw the module's canonical command error; creation maps it to its
+// own contract class at the creation boundary, so the shared write never
+// learns about the creation/command transport split.
 export const insertParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,
 	position: number,
 	definition: ParticipantDefinition,
 	sourceCharacterId: number | null,
-	errorClass: new (message: string) => Error = InvalidConversationCommandError,
 ): InsertedParticipant => {
 	const name = normalizeParticipantName(definition.name);
 	const inserted = db
@@ -305,7 +307,7 @@ export const insertParticipant = (
 		.returning({ id: participantTable.id })
 		.get();
 	if (inserted === undefined) {
-		throw new errorClass(
+		throw new InvalidConversationCommandError(
 			"Participant insertion did not return an identifier.",
 		);
 	}
@@ -352,9 +354,10 @@ export interface MessageControlContext {
 
 // ==[HUMAN APPROVED]== One Message insertion shared by creation, Compose, and the
 // provisional Generation targets: the returning id is required, so a failed
-// insert is an error instead of a silent undefined dereference. The caller
-// picks the error class (creation maps it to 422, commands to the command
-// class) so both paths share the write, not the transport contract.
+// insert is an error instead of a silent undefined dereference. Insertion
+// failures always throw the module's canonical command error; creation maps
+// it to its own contract class at the creation boundary, so the shared write
+// never learns about the creation/command transport split.
 export const insertMessage = (
 	db: ConversationDatabase,
 	values: {
@@ -364,7 +367,6 @@ export const insertMessage = (
 		author: MessageAuthorStamp | null;
 		context: MessageControlContext | null;
 	},
-	errorClass: new (message: string) => Error = InvalidConversationCommandError,
 ): number => {
 	const inserted = db
 		.insert(messageTable)
@@ -380,7 +382,7 @@ export const insertMessage = (
 		.returning({ id: messageTable.id })
 		.get();
 	if (inserted === undefined) {
-		throw new errorClass(
+		throw new InvalidConversationCommandError(
 			"The Message could not be persisted.",
 		);
 	}

@@ -3,10 +3,7 @@ import {
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
 } from "../conversation";
-import {
-	UnexpectedGenerationStartFailure,
-	generationAcceptanceResponse,
-} from "./generation-error-mapping";
+import { generationAcceptanceResponse } from "./generation-error-mapping";
 
 type Accepted = { readonly accepted: { generationId: 7; provisionalVariantId: 9 } };
 
@@ -35,12 +32,12 @@ describe("generationAcceptanceResponse responder contract", () => {
 				throw new ConversationNotFoundError(42);
 			},
 			(accepted) => accepted.generationId,
-			() => "mapped-404",
+			() => ({ present: true as const, response: "mapped-404" }),
 		);
 		expect(result).toBe("mapped-404");
 	});
 
-	test("rethrows the original domain error when the responder refuses the mapping", async () => {
+	test("rethrows the original domain error when the responder declines the mapping", async () => {
 		const stale = new StaleConversationRevisionError(2, 3);
 		const result = generationAcceptanceResponse(
 			42,
@@ -48,9 +45,7 @@ describe("generationAcceptanceResponse responder contract", () => {
 				throw stale;
 			},
 			(accepted) => accepted.generationId,
-			() => {
-				throw new UnexpectedGenerationStartFailure();
-			},
+			() => ({ present: false as const }),
 		);
 		expect(result).rejects.toBe(stale);
 	});
@@ -63,7 +58,7 @@ describe("generationAcceptanceResponse responder contract", () => {
 				throw unexpected;
 			},
 			(accepted) => accepted.generationId,
-			() => "never-mapped",
+			() => ({ present: true as const, response: "never-mapped" }),
 		);
 		expect(result).rejects.toBe(unexpected);
 	});

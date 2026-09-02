@@ -12,7 +12,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
-import { connectConversationDatabase } from "../internal";
+import type { ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
@@ -39,7 +39,7 @@ import {
 // terminal persistence helpers below.
 
 const readActiveGeneration = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	conversationId: number,
 	generationId: number,
 ) => db
@@ -89,7 +89,7 @@ const terminalStatusFrom = (
 };
 
 const retainTerminalInspection = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 	data: readonly ConversationDataEntry[],
 	content: string,
@@ -145,7 +145,7 @@ const terminalProvenance = (
  * reasoning dedupe rule cannot drift.
  */
 export const persistTerminalVariantData = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	variantId: number,
 	input: {
 		provenance: ConversationDataEntry | undefined;
@@ -322,7 +322,7 @@ export function checkpointConversationGeneration(
 // Variant mirrors the visible content, and the crash-recovery copy stores
 // both streams. Shared by the Tail and Sibling checkpoint seams.
 function writeCheckpointInTransaction(
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 	input: CheckpointGenerationInput,
 ): void {
@@ -384,7 +384,7 @@ interface StopTransition {
  * is written once.
  */
 function removeActiveGenerationTargetInTransaction(
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 ): StopTransition {
 	if (isSiblingGenerationRow(active)) {
@@ -437,7 +437,7 @@ function removeActiveGenerationTargetInTransaction(
  * persistence rules while Stop All can commit the complete target set once.
  */
 function stopActiveGenerationInTransaction(
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 	timestamp: string,
 ): StopTransition {
@@ -481,7 +481,7 @@ function stopActiveGenerationInTransaction(
 }
 
 function restoreStoppedSiblingSelection(
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	removed: readonly StoppedSiblingTarget[],
 ): void {
 	const removedIds = new Set(removed.map((target) => target.variantId));

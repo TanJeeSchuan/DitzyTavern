@@ -44,6 +44,20 @@ const boundedPageSize = (pageSize: number | undefined): number => {
 	return Math.min(pageSize, MAX_HISTORY_PAGE_SIZE);
 };
 
+// ==[HUMAN APPROVED]== A Message is continuable when its selected Variant carries visible
+// content or — under the instruction strategy — persisted Reasoning
+// Content. Named (not an inline IIFE) so the read model states its rule
+// once, beside the acceptance path's related but deliberately different
+// reasoning rule.
+const isContinuable = (
+	selected: ChatHistoryVariant | undefined,
+	continuationStrategy: string,
+): boolean =>
+	selected !== undefined &&
+	(selected.content.length > 0 ||
+		(continuationStrategy === "instruction" &&
+			(selected.reasoning?.length ?? 0) > 0));
+
 // ==[HUMAN APPROVED]== Reads one page of the stable Message sequence, counted backward from the
 // newest Message: page 1 serves the latest window and later pages reach
 // further into older history. Each served page is still chronological. The
@@ -152,7 +166,6 @@ export function readChatHistory(
 		variantsByMessage.set(variant.message_id, variants);
 	}
 
-	const castIds = new Set<number>();
 	const cast = db
 		.select({
 			id: participantTable.id,
@@ -168,7 +181,8 @@ export function readChatHistory(
 		)
 		.orderBy(asc(participantTable.position))
 		.all();
-	for (const participant of cast) castIds.add(participant.id);
+	const castIds = cast.map((participant) => participant.id);
+	const castIdsSet = new Set(castIds);
 
 	// ==[HUMAN APPROVED]== Playability is the single derived Control-validity rule, and the
 	// capability objects below flow through the canonical snapshot helpers,
@@ -176,11 +190,11 @@ export function readChatHistory(
 	// commands about sibling eligibility.
 	const playable = deriveControlValidity(
 		readControlAssignment(db, conversationId),
-		cast.map((participant) => participant.id),
+		castIds,
 	).valid;
 
 	const messages: ChatHistoryMessage[] = messageRows.map((message) => {
-		const author = toAuthorStamp(message, castIds);
+		const author = toAuthorStamp(message, castIdsSet);
 		const historicalContext = toHistoricalContext(message);
 		return {
 			id: message.id,
@@ -189,18 +203,16 @@ export function readChatHistory(
 			author,
 			modelParticipantIdAtCreation:
 				message.context_model_participant_id ?? null,
-			continuable: (() => {
-				const selected = variantsByMessage.get(message.id)?.find((variant) => variant.selected);
-				return selected !== undefined &&
-					(selected.content.length > 0 ||
-						(continuationStrategy === "instruction" && (selected.reasoning?.length ?? 0) > 0));
-			})(),
+			continuable: isContinuable(
+				variantsByMessage.get(message.id)?.find((variant) => variant.selected),
+				continuationStrategy,
+			),
 			// ==[HUMAN APPROVED]== Server-derived targeted Swipe eligibility from the canonical rule
 			// (ADR-0003): the client never reconstructs it from hints.
 			swipe: deriveMessageSwipeEligibility(
 				playable,
 				historicalContext,
-				cast.map((participant) => participant.id),
+				castIds,
 			),
 			variants: [...(variantsByMessage.get(message.id) ?? [])],
 		};

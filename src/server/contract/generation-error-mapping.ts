@@ -1,4 +1,5 @@
 import type { Static } from "@sinclair/typebox";
+import { status } from "elysia";
 import {
 	ConversationNotFoundError,
 	ConversationNotPlayableError,
@@ -17,26 +18,42 @@ type GenerationStartFailure =
 	| { readonly status: 409; readonly body: { readonly outcome: "conflict"; readonly reason: string } }
 	| { readonly status: 422; readonly body: { readonly outcome: "invalid"; readonly reason: string } };
 
+// ==[HUMAN APPROVED]== The typed transport response for a set of recognized failures: one
+// status response per failure status the set covers, with that status's
+// allowed bodies. Derived from the failure vocabulary so the responder
+// annotations below can never drift from it.
+type FailureResponseOf<F extends GenerationStartFailure> =
+	| ReturnType<typeof status<404, Extract<F, { status: 404 }>["body"]>>
+	| ReturnType<typeof status<409, Extract<F, { status: 409 }>["body"]>>
+	| ReturnType<typeof status<422, Extract<F, { status: 422 }>["body"]>>;
+
+// ==[HUMAN APPROVED]== A responder's verdict: the mapped transport response, or a refusal
+// for a failure outside its route's vocabulary.
+export type ResponderOutcome<TResult> =
+	| { readonly present: true; readonly response: TResult }
+	| { readonly present: false };
+
+// ==[HUMAN APPROVED]== The response union Send and Continue present: every recognized
+// failure. Responders annotate their outcome with it explicitly, because
+// TypeScript infers only the first arm of a multi-arm responder union.
+export type GenerationStartFailureResponse = FailureResponseOf<GenerationStartFailure>;
+
+// ==[HUMAN APPROVED]== The response union Sibling starts present: stale-revision conflicts
+// are declined (the route has no revision input), so the 409 response
+// carries only the not-playable body the sibling schema declares.
+export type SiblingGenerationStartFailureResponse = FailureResponseOf<
+	Exclude<GenerationStartFailure, { status: 409; body: { outcome: "conflict" } }>
+>;
+
 /**
  * ==[HUMAN APPROVED]== The responder maps a recognized failure onto its transport response.
- * The contract is total: a failure the route refuses to present to clients
- * (for example a stale-revision conflict on a route without a revision
- * input) is thrown as `UnexpectedGenerationStartFailure`, and the original
- * domain error is rethrown in its place so the framework's own 500 handling
- * stays intact.
+ * The contract is a typed sum: a responder either presents a response or
+ * declines to present the failure (`{ present: false }`), in which case the
+ * original domain error reaches the framework's own 500 handling unchanged.
  */
 type GenerationStartFailureResponder<TResult> = (
 	failure: GenerationStartFailure,
-) => TResult;
-
-// ==[HUMAN APPROVED]== Marker thrown by a responder for a failure outside its transport
-// vocabulary; `generationAcceptanceResponse` never lets it reach a client.
-export class UnexpectedGenerationStartFailure extends Error {
-	constructor() {
-		super("The Generation start failure is outside the route's acceptance contract.");
-		this.name = "UnexpectedGenerationStartFailure";
-	}
-}
+) => ResponderOutcome<TResult>;
 
 /**
  * ==[HUMAN APPROVED]== Map only errors that are part of the Generation acceptance contract. An
@@ -74,12 +91,11 @@ function generationStartFailureResponse<TResult>(
 	// client-correctable response; the original error reaches the framework
 	// unchanged.
 	if (failure === undefined) throw error;
-	try {
-		return respond(failure);
-	} catch (thrown) {
-		if (thrown instanceof UnexpectedGenerationStartFailure) throw error;
-		throw thrown;
-	}
+	const outcome = respond(failure);
+	// ==[HUMAN APPROVED]== A responder that declines the mapping (a failure outside its route's
+	// vocabulary) lets the original domain error reach the framework unchanged.
+	if (!outcome.present) throw error;
+	return outcome.response;
 }
 
 type AcceptedGenerationFields = {

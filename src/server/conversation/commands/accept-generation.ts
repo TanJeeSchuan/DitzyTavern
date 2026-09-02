@@ -19,13 +19,13 @@ import {
 } from "../errors";
 import {
 	appendSelectedVariant,
-	connectConversationDatabase,
 	hasActiveGeneration,
 	insertMessage,
 	insertVariant,
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
+	type ConversationDatabase,
 } from "../internal";
 import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-defaults";
 import {
@@ -72,7 +72,7 @@ const jsonText = (
 };
 
 const ensureConversationRevision = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	conversationId: number,
 	expectedRevision: number,
 ) => {
@@ -110,7 +110,7 @@ interface PersistActiveGenerationInput {
 
 /** ==[HUMAN APPROVED]== Persist the common server-owned Generation record after target creation. */
 const persistActiveGeneration = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
 ): number => {
 	const active = db
@@ -167,7 +167,7 @@ interface ProvisionalSiblingVariant {
 
 /** ==[HUMAN APPROVED]== Create the model Message and its selected empty Variant as one target. */
 const createProvisionalModelTarget = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	input: ProvisionalModelTargetInput,
 ): ProvisionalModelTarget => {
 	const nextPosition = input.position ?? ((db
@@ -197,7 +197,7 @@ const createProvisionalModelTarget = (
 };
 
 const createProvisionalSiblingVariant = (
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	messageId: number,
 	timestamp: string,
 ): ProvisionalSiblingVariant => {
@@ -220,7 +220,7 @@ const createProvisionalSiblingVariant = (
 };
 
 function hasReasoningData(
-	db: ReturnType<typeof connectConversationDatabase>,
+	db: ConversationDatabase,
 	variantId: number,
 ): boolean {
 	const reasoning = db
@@ -234,7 +234,8 @@ function hasReasoningData(
 			),
 		)
 		.get();
-	return reasoning?.value.length !== 0 && reasoning?.value !== undefined;
+	const value = reasoning?.value;
+	return value !== undefined && value.length > 0;
 }
 
 // ==[HUMAN APPROVED]== The differing mid-acceptance validation: Tail creates or reuses the
@@ -275,7 +276,7 @@ interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidat
 	// ==[HUMAN APPROVED]== The differing validation, run inside the transaction after the shared
 	// guards; every thrown message keeps its original precedence.
 	validate: (
-		db: ReturnType<typeof connectConversationDatabase>,
+		db: ConversationDatabase,
 		human: AcceptGenerationParticipant,
 		model: AcceptGenerationParticipant,
 	) => Validation;
@@ -326,7 +327,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 				"The captured model Author Stamp is no longer authoritative.",
 			);
 		}
-		if (hasActiveGeneration(db, input.conversationId)) {
+		if (hasActiveGeneration(database, input.conversationId)) {
 			throw new InvalidConversationCommandError(
 				"This Conversation already has an Active Generation.",
 			);

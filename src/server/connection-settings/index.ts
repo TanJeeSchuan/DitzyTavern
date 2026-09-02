@@ -21,7 +21,6 @@ import {
 } from "./presets";
 import {
 	advanceRevision,
-	advanceRevisionWithActiveProfile,
 	connect,
 	ensureProfileNameAvailable,
 	ensureSettingsRow,
@@ -68,6 +67,14 @@ interface RevisionedWriteTx {
 interface RevisionedProfileWriteTx extends RevisionedWriteTx {
 	readonly profile: ConnectionProfileRow;
 }
+
+// ==[HUMAN APPROVED]== A revisioned mutate reports whether it changed state and, when it
+// did, the active Profile the seam should record. Every advanced outcome
+// bumps the revision exactly once; "unchanged" (re-activating the
+// already-active Profile) deliberately skips the bump.
+type RevisionedWriteOutcome =
+	| { readonly kind: "advanced"; readonly nextActiveProfileId: number | null }
+	| { readonly kind: "unchanged" };
 
 export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
@@ -123,17 +130,23 @@ export function createConnectionSettingsModule(
 		};
 	};
 
+	// ==[HUMAN APPROVED]== One seam owns connect, ensure, revision check, mutate, and the
+	// revision advance, so every successful write bumps the revision exactly
+	// once by construction rather than by caller discipline.
 	function revisionedWrite(
 		input: {
 			readonly expectedRevision: number;
-			readonly mutate: (tx: RevisionedWriteTx) => void;
+			readonly mutate: (tx: RevisionedWriteTx) => RevisionedWriteOutcome;
 		},
 	): ConnectionSettingsSnapshot {
 		const write = database.transaction(() => {
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
 			requireRevision(read, settings.revision, input.expectedRevision);
-			input.mutate({ db, settings });
+			const outcome = input.mutate({ db, settings });
+			if (outcome.kind === "advanced") {
+				advanceRevision(db, settings.revision, outcome.nextActiveProfileId);
+			}
 			return read();
 		});
 		return write.immediate();
@@ -143,14 +156,14 @@ export function createConnectionSettingsModule(
 		input: {
 			readonly expectedRevision: number;
 			readonly profileId: number;
-			readonly mutate: (tx: RevisionedProfileWriteTx) => void;
+			readonly mutate: (tx: RevisionedProfileWriteTx) => RevisionedWriteOutcome;
 		},
 	): ConnectionSettingsSnapshot {
 		return revisionedWrite({
 			expectedRevision: input.expectedRevision,
 			mutate: (tx) => {
 				const profile = requireProfile(tx.db, input.profileId);
-				input.mutate({ ...tx, profile });
+				return input.mutate({ ...tx, profile });
 			},
 		});
 	}
@@ -190,11 +203,10 @@ export function createConnectionSettingsModule(
 					headers: applyHeaderOperations({}, headerOperations),
 				}, getKey());
 
-				advanceRevisionWithActiveProfile(
-					db,
-					settings.revision,
-					settings.active_profile_id ?? inserted.id,
-				);
+				return {
+					kind: "advanced",
+					nextActiveProfileId: settings.active_profile_id ?? inserted.id,
+				};
 			},
 		});
 	};
@@ -224,7 +236,10 @@ export function createConnectionSettingsModule(
 					credential: currentSecret?.credential ?? null,
 					headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
 				}, getKey());
-				advanceRevision(db, settings.revision);
+				return {
+					kind: "advanced",
+					nextActiveProfileId: settings.active_profile_id,
+				};
 			},
 		});
 	};
@@ -233,10 +248,10 @@ export function createConnectionSettingsModule(
 		revisionedProfileWrite({
 			expectedRevision: input.expectedRevision,
 			profileId: input.profileId,
-			mutate: ({ db, settings }) => {
-				if (settings.active_profile_id === input.profileId) return;
-				advanceRevisionWithActiveProfile(db, settings.revision, input.profileId);
-			},
+			mutate: ({ settings }) =>
+				settings.active_profile_id === input.profileId
+					? { kind: "unchanged" }
+					: { kind: "advanced", nextActiveProfileId: input.profileId },
 		});
 
 	const deleteProfile = (input: DeleteConnectionProfileInput) =>
@@ -262,10 +277,15 @@ export function createConnectionSettingsModule(
 					nextActiveProfileId = null;
 				}
 
-				advanceRevisionWithActiveProfile(db, settings.revision, nextActiveProfileId);
+				// ==[HUMAN APPROVED]== The row is deleted before the seam advances: when the deleted
+				// Profile holds the active seat, the foreign key nulls the selection
+				// (PRAGMA foreign_keys is ON), and the seam then writes the returned
+				// replacement id — the same final state, still one immediate
+				// transaction.
 				db.delete(connectionProfileTable)
 					.where(eq(connectionProfileTable.id, input.profileId))
 					.run();
+				return { kind: "advanced", nextActiveProfileId };
 			},
 		});
 
@@ -278,7 +298,10 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: (tx) => {
 				writeCredentialKeepingHeaders(tx, input.credential);
-				advanceRevision(tx.db, tx.settings.revision);
+				return {
+					kind: "advanced",
+					nextActiveProfileId: tx.settings.active_profile_id,
+				};
 			},
 		});
 	};
@@ -290,7 +313,10 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: ({ db, settings }) => {
 				writePinnedModels(db, input.profileId, pinnedModels);
-				advanceRevision(db, settings.revision);
+				return {
+					kind: "advanced",
+					nextActiveProfileId: settings.active_profile_id,
+				};
 			},
 		});
 	};
@@ -336,7 +362,10 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: (tx) => {
 				writeCredentialKeepingHeaders(tx, null);
-				advanceRevision(tx.db, tx.settings.revision);
+				return {
+					kind: "advanced",
+					nextActiveProfileId: tx.settings.active_profile_id,
+				};
 			},
 		});
 	};

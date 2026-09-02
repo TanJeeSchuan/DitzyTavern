@@ -360,6 +360,19 @@ describe("Connection Settings", () => {
 		expect(activated.profiles).toHaveLength(2);
 	});
 
+	test("re-activating the active Profile does not bump the revision", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
+
+		const reactivated = settings.activateProfile({
+			expectedRevision: created.revision,
+			profileId: created.activeProfileId ?? 0,
+		});
+
+		expect(reactivated.revision).toBe(created.revision);
+		expect(reactivated.activeProfileId).toBe(created.activeProfileId);
+	});
+
 	test("requires a replacement before deleting the active Profile when another exists", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });

@@ -165,7 +165,7 @@ export function executeConversationCommand(
 		const policy = conversationCommandPolicy[command.action.type];
 		if (
 			policy.blockedByActiveGeneration &&
-			hasActiveGeneration(db, command.conversationId)
+			hasActiveGeneration(database, command.conversationId)
 		) {
 			throw new InvalidConversationCommandError(
 				"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",

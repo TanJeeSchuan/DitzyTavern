@@ -265,24 +265,13 @@ export type StopConversationGenerationResult =
 	| { outcome: "failed"; reason: string };
 
 // ==[HUMAN APPROVED]== The stop routes declare only the shared typed not-found outcome as
-// an error response. Their remaining treaty error member is Elysia's default
-// request-validation body for a status the routes do not redeclare; the
-// client never triggers it, and neither member ever fabricates a server
-// reason.
+// an error response. Any other error status (Elysia's default
+// request-validation body, a server 500, a network failure) carries a body
+// the client never models: the handler branches only on status and
+// substitutes a client-owned reason, so the error shape is not restated.
 type StopGenerationError =
 	| { status: 404; value: Static<typeof notFoundOutcome> }
-	| {
-			status: 422;
-			value: {
-				type: "validation";
-				on: string;
-				summary?: string | undefined;
-				message?: string | undefined;
-				found?: unknown;
-				property?: string | undefined;
-				expected?: string | undefined;
-			};
-	  };
+	| { status: number; value: unknown };
 type StopGenerationResponse = GenerationStopped | GenerationsStopped;
 type StopGenerationRequest = EdenResponse<StopGenerationResponse, StopGenerationError>;
 

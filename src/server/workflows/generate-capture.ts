@@ -1,6 +1,5 @@
 import type { Database } from "bun:sqlite";
 import {
-	connectConversationDatabase,
 	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
@@ -480,7 +479,7 @@ export function captureContinuationGeneration(
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
 ): ContinuationGenerationCapture {
-	if (hasActiveGeneration(connectConversationDatabase(database), snapshot.id)) {
+	if (hasActiveGeneration(database, snapshot.id)) {
 		throw new ContinuationUnavailableError("active-generation");
 	}
 	if (!snapshot.playable) throw new ConversationNotPlayableError(snapshot.id);

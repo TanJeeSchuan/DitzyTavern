@@ -227,14 +227,12 @@ export function requireProfile(
 	return profile;
 }
 
-export function advanceRevision(db: ConnectionSettingsDb, revision: number): void {
-	db.update(connectionSettingsTable)
-		.set({ revision: revision + 1 })
-		.where(eq(connectionSettingsTable.id, SETTINGS_ROW_ID))
-		.run();
-}
-
-export function advanceRevisionWithActiveProfile(
+// ==[HUMAN APPROVED]== The one revision advance: every successful revisioned write bumps the
+// revision exactly once and rewrites the active Profile selection in the
+// same row update. The revisionedWrite seam is its sole caller, so "every
+// write bumps exactly once" is a property of the seam, not of caller
+// discipline.
+export function advanceRevision(
 	db: ConnectionSettingsDb,
 	revision: number,
 	activeProfileId: number | null,
