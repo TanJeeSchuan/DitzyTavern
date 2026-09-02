@@ -1,6 +1,7 @@
 import {
 	InvalidConnectionProfileError,
 } from "./errors";
+import { compareModelIds } from "../../shared/model-identifier";
 import type {
 	ConnectionHeaderOperation,
 	ConnectionProfileDraft,
@@ -160,16 +161,6 @@ function validateUrl(value: string, label: string, allowBlank: boolean): string 
 		);
 	}
 	return normalized;
-}
-
-function compareModelIds(left: string, right: string): number {
-	const leftFolded = left.toLocaleLowerCase();
-	const rightFolded = right.toLocaleLowerCase();
-	if (leftFolded < rightFolded) return -1;
-	if (leftFolded > rightFolded) return 1;
-	if (left < right) return -1;
-	if (left > right) return 1;
-	return 0;
 }
 
 const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;

@@ -42,49 +42,23 @@ export { ModelClientTransportError } from "./errors";
 // ==[HUMAN APPROVED]== Production v1 Model Client. The adapter owns all provider request shaping;
 // callers only supply the opaque Prompt Plan and provider-neutral generation
 // settings. The request destination is captured when this client is created,
-// so Profile edits cannot redirect an in-flight Generation.
-export function createDeepSeekModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "deepseek");
-}
-
-export function createOpenAICompatibleModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "openai-compatible");
-}
-
-export function createOpenRouterModelClient(
-	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	return createConfiguredModelClient(options, "openrouter");
-}
-
-// ==[HUMAN APPROVED]== The adapter dispatch lives inside the deep Model Client. Routes and
-// workflows select one provider-neutral factory and never import concrete
-// transport constructors.
+// so Profile edits cannot redirect an in-flight Generation. The adapter dispatch
+// lives inside the deep Model Client: routes and workflows select one
+// provider-neutral factory and never import concrete transport constructors.
 export function createModelClient(
 	options: ChatCompletionsModelClientOptions,
-): ModelClient {
-	if (options.profile.adapter === "deepseek") return createDeepSeekModelClient(options);
-	if (options.profile.adapter === "openrouter") return createOpenRouterModelClient(options);
-	if (options.profile.adapter === "openai-compatible") return createOpenAICompatibleModelClient(options);
-	throw new ModelClientTransportError(
-		`The AI SDK Adapter "${String(options.profile.adapter)}" is unavailable.`,
-	);
-}
-
-function createConfiguredModelClient(
-	options: ChatCompletionsModelClientOptions,
-	adapter: "deepseek" | "openrouter" | "openai-compatible",
 ): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {
 		throw new ModelClientTransportError("The selected API Format is unavailable.");
 	}
-	if (options.profile.adapter !== adapter) {
+	const adapter = options.profile.adapter;
+	if (
+		adapter !== "deepseek" &&
+		adapter !== "openrouter" &&
+		adapter !== "openai-compatible"
+	) {
 		throw new ModelClientTransportError(
-			`The AI SDK Adapter "${options.profile.adapter}" is unavailable.`,
+			`The AI SDK Adapter "${String(adapter)}" is unavailable.`,
 		);
 	}
 	const requestUrl = resolveChatCompletionsRequestUrl(options.profile.requestUrl);

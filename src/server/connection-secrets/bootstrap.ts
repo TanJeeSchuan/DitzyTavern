@@ -6,8 +6,11 @@ import {
 	writeSync,
 } from "node:fs";
 import { join } from "node:path";
-import { Buffer } from "node:buffer";
-import { randomBytes as cryptoRandomBytes } from "node:crypto";
+import {
+	decodeStrictBase64,
+	encodeBase64,
+	secureRandomBytes,
+} from "./crypto-codecs";
 
 export const CONNECTION_SECRET_KEY_ENV = "CONNECTION_SECRET_KEY";
 export const CONNECTION_SECRET_KEY_BYTES = 32;
@@ -71,7 +74,11 @@ export function bootstrapConnectionSecretKey(
 }
 
 export function decodeConnectionSecretKey(value: string): Uint8Array {
-	const decoded = decodeBase64(value);
+	const decoded = decodeStrictBase64(value, () =>
+		new ConnectionSecretBootstrapError(
+			`${CONNECTION_SECRET_KEY_ENV} must be canonical Base64.`,
+		),
+	);
 	if (decoded.length !== CONNECTION_SECRET_KEY_BYTES) {
 		throw new ConnectionSecretBootstrapError(
 			`${CONNECTION_SECRET_KEY_ENV} must contain exactly ${CONNECTION_SECRET_KEY_BYTES} bytes encoded as Base64.`,
@@ -88,32 +95,6 @@ const createResult = (
 	encoded: encodeBase64(bytes),
 	source,
 });
-
-const secureRandomBytes = (length: number): Uint8Array => {
-	return new Uint8Array(cryptoRandomBytes(length));
-};
-
-const encodeBase64 = (bytes: Uint8Array): string =>
-	Buffer.from(bytes).toString("base64");
-
-const decodeBase64 = (value: string): Uint8Array => {
-	if (
-		value.length % 4 !== 0 ||
-		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
-	) {
-		throw new ConnectionSecretBootstrapError(
-			`${CONNECTION_SECRET_KEY_ENV} must be canonical Base64.`,
-		);
-	}
-
-	const decoded = Buffer.from(value, "base64");
-	if (encodeBase64(decoded) !== value) {
-		throw new ConnectionSecretBootstrapError(
-			`${CONNECTION_SECRET_KEY_ENV} must be canonical Base64.`,
-		);
-	}
-	return new Uint8Array(decoded);
-};
 
 const readEnvFile = (path: string): EnvFileContents => {
 	let contents: string;

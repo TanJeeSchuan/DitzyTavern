@@ -3,12 +3,15 @@ import {
 	loadActiveGenerationDetails,
 	loadVariantDetails,
 	type ActiveGenerationDetails,
-	type GenerationDetailsJsonObject,
 	type GenerationDetailsJsonValue,
 	type GenerationInspectionStatus,
 	type GenerationProvenance,
 	type VariantDetails,
 } from "./conversation";
+import {
+	generationJsonObject,
+	generationJsonString,
+} from "../shared/generation-provenance";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -99,9 +102,9 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 					<h3>Omitted history</h3>
 					<ul>
 						{omitted.map((entry, index) => {
-							const item = generationDetailsObject(entry);
-							const speakerName = generationDetailsString(item?.speakerName);
-							const content = generationDetailsString(item?.content);
+							const item = generationJsonObject(entry);
+							const speakerName = generationJsonString(item?.speakerName);
+							const content = generationJsonString(item?.content);
 							return <li key={index}>{speakerName === null ? "" : `${speakerName}: `}{content ?? "Message omitted"}</li>;
 						})}
 					</ul>
@@ -113,7 +116,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 }
 
 function PromptPlan({ plan }: { plan: GenerationDetailsJsonValue }) {
-	const object = generationDetailsObject(plan);
+	const object = generationJsonObject(plan);
 	const blocks = Array.isArray(object?.blocks) ? object.blocks : [];
 	return (
 		<details className="generation-detail-section generation-prompt-plan" open>
@@ -121,9 +124,9 @@ function PromptPlan({ plan }: { plan: GenerationDetailsJsonValue }) {
 			{blocks.length === 0 ? <p className="panel-note">No Prompt Plan blocks are available.</p> : (
 				<ol>
 					{blocks.map((block, index) => {
-						const item = generationDetailsObject(block);
-						const kind = generationDetailsString(item?.kind);
-						const content = generationDetailsString(item?.content);
+						const item = generationJsonObject(block);
+						const kind = generationJsonString(item?.kind);
+						const content = generationJsonString(item?.content);
 						return <li key={index}><span>{kind ?? "block"}</span><p>{content ?? ""}</p></li>;
 					})}
 				</ol>
@@ -172,10 +175,11 @@ function ProvenanceSettings({ provenance }: { provenance: GenerationProvenance }
 }
 
 function intentLabel(intent: GenerationDetailsJsonValue): string {
-	const value = generationDetailsObject(intent);
-	if (generationDetailsString(value?.type) === "sibling") return "Sibling";
-	if (generationDetailsString(value?.type) === "continuation") {
-		return generationDetailsString(value?.strategy) === "assistant-prefill"
+	const value = generationJsonObject(intent);
+	const type = generationJsonString(value?.type);
+	if (type === "sibling") return "Sibling";
+	if (type === "continuation") {
+		return generationJsonString(value?.strategy) === "assistant-prefill"
 			? "Continuation · Assistant prefill"
 			: "Continuation · Instruction";
 	}
@@ -199,12 +203,3 @@ function formatUsage(usage: Record<string, number>): string {
 	return Object.entries(usage).map(([key, value]) => `${key}: ${value}`).join(" · ");
 }
 
-const generationDetailsObject = (value: GenerationDetailsJsonValue | undefined): GenerationDetailsJsonObject | null => {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// ==[HUMAN APPROVED]== SAFETY: the object-tag check above establishes the JSON object shape before
-	// this projection is used to inspect a detail field.
-	return value as GenerationDetailsJsonObject;
-};
-
-const generationDetailsString = (value: GenerationDetailsJsonValue | undefined): string | null =>
-	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;

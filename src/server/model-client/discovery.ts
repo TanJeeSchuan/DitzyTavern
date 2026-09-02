@@ -6,6 +6,7 @@ import { authenticatedHeaders } from "./authenticated-headers";
 import type { ModelFetch } from "./model-fetch";
 import { fetchWithTimeout, ModelFetchTimeoutError, readBoundedResponse } from "./model-fetch";
 import { formatProviderError, snapshotProviderResponse } from "./provider-errors";
+import { compareModelIds } from "../../shared/model-identifier";
 
 const MAX_DISCOVERY_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DISCOVERY_TIMEOUT_MS = 10_000;
@@ -144,16 +145,6 @@ function jsonObject(value: JsonValue): { readonly [key: string]: JsonValue } | n
 	// ==[HUMAN APPROVED]== SAFETY: the object tag check above establishes a JSON object before this
 	// assertion is used to inspect its named fields.
 	return value as { readonly [key: string]: JsonValue };
-}
-
-function compareModelIds(left: string, right: string): number {
-	const leftFolded = left.toLocaleLowerCase();
-	const rightFolded = right.toLocaleLowerCase();
-	if (leftFolded < rightFolded) return -1;
-	if (leftFolded > rightFolded) return 1;
-	if (left < right) return -1;
-	if (left > right) return 1;
-	return 0;
 }
 
 function failure(kind: DiscoveryFailureKind, message: string): DiscoveryResult {

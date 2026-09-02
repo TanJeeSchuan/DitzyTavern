@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile } from "../connection-settings/types";
 import {
 	collectModelClientGeneration,
-	createOpenAICompatibleModelClient,
+	createModelClient,
 } from ".";
 
 const profile: ConnectionProfile = {
@@ -61,7 +61,7 @@ interface CapturedBody {
 describe("OpenAI Compatible Model Client", () => {
 	test("uses an exact endpoint, custom Authorization, custom headers, and safe late overrides", async () => {
 		let request: { url: string; headers: Headers; body: CapturedBody } | undefined;
-		const client = createOpenAICompatibleModelClient({
+		const client = createModelClient({
 			profile,
 			secrets: {
 				credential: null,
@@ -104,7 +104,7 @@ describe("OpenAI Compatible Model Client", () => {
 	test("appends chat completions only to a conventional base URL", async () => {
 		let url = "";
 		let body: CapturedBody | undefined;
-		const client = createOpenAICompatibleModelClient({
+		const client = createModelClient({
 			profile: { ...profile, requestUrl: "http://127.0.0.1:43127/v1/", outputTokenRepresentation: "omit" },
 			secrets: null,
 			fetch: async (input, init) => {
@@ -128,7 +128,7 @@ describe("OpenAI Compatible Model Client", () => {
 
 	test("preserves prompt block roles and history authorship at the transport boundary", async () => {
 		let body: CapturedBody | undefined;
-		const client = createOpenAICompatibleModelClient({
+		const client = createModelClient({
 			profile: { ...profile, outputTokenRepresentation: "omit" },
 			secrets: null,
 			fetch: async (_input, init) => {
@@ -174,7 +174,7 @@ describe("OpenAI Compatible Model Client", () => {
 
 	test("rejects unsupported request overrides before contacting the provider", async () => {
 		let calls = 0;
-		const client = createOpenAICompatibleModelClient({
+		const client = createModelClient({
 			profile,
 			secrets: null,
 			fetch: async () => {
@@ -204,7 +204,7 @@ describe("OpenAI Compatible Model Client", () => {
 	test("places the preceding model text in the assistant prefill slot", async () => {
 		for (const suffix of ["", " ", "\n", "\n\n"] as const) {
 			let body: CapturedBody | undefined;
-			const client = createOpenAICompatibleModelClient({
+			const client = createModelClient({
 				profile: { ...profile, outputTokenRepresentation: "omit" },
 				secrets: null,
 				fetch: async (_input, init) => {

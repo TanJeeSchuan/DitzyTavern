@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile } from "../connection-settings/types";
-import { createDeepSeekModelClient, ModelClientTransportError } from ".";
+import { createModelClient, ModelClientTransportError } from ".";
 
 const profile: ConnectionProfile = {
 	id: 7,
@@ -67,7 +67,7 @@ const streamResponse = () => {
 describe("DeepSeek production Model Client", () => {
 	test("normalizes visible text chunks and pins the resolved authenticated request", async () => {
 		let request: { url: string; body: CapturedBody; auth: string | null } | undefined;
-		const client = createDeepSeekModelClient({
+		const client = createModelClient({
 			profile,
 			secrets: { credential: "secret-never-returned", headers: {} },
 			fetch: async (input, init) => {
@@ -108,7 +108,7 @@ describe("DeepSeek production Model Client", () => {
 	});
 
 	test("aborts an inactive stream without imposing a total-duration limit", async () => {
-		const client = createDeepSeekModelClient({
+		const client = createModelClient({
 			profile: { ...profile, timeoutMs: 20 },
 			secrets: { credential: "secret", headers: {} },
 			fetch: async () => new Response(
@@ -140,7 +140,7 @@ describe("DeepSeek production Model Client", () => {
 		const commentFrame = ": keep-alive\n\n";
 		const dataFrame = (delta: { content?: string }, finishReason: string | null) =>
 			`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
-		const client = createDeepSeekModelClient({
+		const client = createModelClient({
 			profile: { ...profile, timeoutMs: 60 },
 			secrets: { credential: "secret", headers: {} },
 			fetch: async () => new Response(
@@ -186,7 +186,7 @@ describe("DeepSeek production Model Client", () => {
 				message: `${"diagnostic ".repeat(2_000)} ${credential} ${customHeaderValue}`,
 			},
 		});
-		const client = createDeepSeekModelClient({
+		const client = createModelClient({
 			profile,
 			secrets: { credential, headers: { "x-routing": customHeaderValue } },
 			fetch: async () => new Response(errorBody, {

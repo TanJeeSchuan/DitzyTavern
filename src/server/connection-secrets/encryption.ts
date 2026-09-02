@@ -1,9 +1,13 @@
 import { Buffer } from "node:buffer";
 import {
+	decodeStrictBase64,
+	encodeBase64,
+	secureRandomBytes,
+} from "./crypto-codecs";
+import {
 	createCipheriv,
 	createDecipheriv,
 	createHash,
-	randomBytes as cryptoRandomBytes,
 } from "node:crypto";
 
 export const CONNECTION_SECRET_FORMAT_VERSION = 1 as const;
@@ -103,9 +107,10 @@ export function decryptConnectionSecretSync(
 		const keyId = deriveKeyId(masterKey);
 		if (encrypted.keyId !== keyId) throw new ConnectionSecretDecryptionError();
 
-		const nonce = decodeBase64(encrypted.nonce);
-		const ciphertext = decodeBase64(encrypted.ciphertext);
-		const tag = decodeBase64(encrypted.tag);
+		const decryptionError = () => new ConnectionSecretDecryptionError();
+		const nonce = decodeStrictBase64(encrypted.nonce, decryptionError);
+		const ciphertext = decodeStrictBase64(encrypted.ciphertext, decryptionError);
+		const tag = decodeStrictBase64(encrypted.tag, decryptionError);
 		if (
 			nonce.length !== CONNECTION_SECRET_NONCE_BYTES ||
 			tag.length !== CONNECTION_SECRET_TAG_BYTES
@@ -167,10 +172,6 @@ const isConnectionSecretPayload = (
 const isJsonString = (value: JsonValue): value is string =>
 	Object.prototype.toString.call(value) === "[object String]";
 
-const secureRandomBytes = (length: number): Uint8Array => {
-	return new Uint8Array(cryptoRandomBytes(length));
-};
-
 const deriveKeyId = (masterKey: Uint8Array): string => {
 	return createHash("sha256").update(masterKey).digest("hex");
 };
@@ -179,21 +180,6 @@ const associatedData = (profileId: string | number, keyId: string): Uint8Array =
 	new TextEncoder().encode(
 		`DitzyTavern/ConnectionSecret/${CONNECTION_SECRET_FORMAT_VERSION}/${String(profileId)}/${keyId}`,
 	);
-
-const encodeBase64 = (bytes: Uint8Array): string =>
-	Buffer.from(bytes).toString("base64");
-
-const decodeBase64 = (value: string): Uint8Array => {
-	if (
-		value.length % 4 !== 0 ||
-		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
-	) {
-		throw new ConnectionSecretDecryptionError();
-	}
-	const decoded = Buffer.from(value, "base64");
-	if (encodeBase64(decoded) !== value) throw new ConnectionSecretDecryptionError();
-	return new Uint8Array(decoded);
-};
 
 const assertEncryptedSecret = (
 	encrypted: EncryptedConnectionSecret,
