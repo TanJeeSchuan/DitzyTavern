@@ -206,7 +206,7 @@ describe("SillyTavern chat import", () => {
 		});
 
 		// Source identity, counts, importer version, warnings, and the JSON
-		// report remain separate entries in the transitional import namespace.
+		// report remain separate entries in the import namespace.
 		const sha256 = sha256Of([header, first, second, blankName]);
 		expect(
 			findEntry(conversation.data, IMPORT_NAMESPACE, IMPORT_KEYS.sha256)

@@ -10,7 +10,13 @@ import { createConversationModule } from "../conversation";
 import { openDatabase } from "../database/database";
 import { artifactTable, chatDataTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
-import { createChatImportDetailsModule, type ChatImportDetailsModule } from "./import-details";
+import {
+	createChatImportDetailsModule,
+	type ChatImportDetails,
+	type ChatImportDetailsModule,
+} from "./import-details";
+import { IMPORT_KEYS, IMPORT_NAMESPACE } from "./adapter";
+import { findPriorImportsBySource } from "./prior-imports";
 import {
 	clearStagedImportRegistry,
 	createChatImportModule,
@@ -34,6 +40,13 @@ import {
 
 const sha256Of = (bytes: Buffer) =>
 	createHash("sha256").update(bytes).digest("hex");
+
+const readableDetails = (details: ChatImportDetails | undefined) => {
+	if (details?.provenanceState !== "readable") {
+		throw new Error("expected readable import details");
+	}
+	return details;
+};
 
 describe("graduated Chat history and Import Details", () => {
 	let database: Database;
@@ -270,10 +283,9 @@ describe("graduated Chat history and Import Details", () => {
 			chatOnly("Rulership", [2]),
 		]);
 
-		const loaded = details.importDetails(result.conversation.id);
-		expect(loaded).toBeDefined();
-		expect(loaded?.title).toBe("Lantern House");
-		expect(loaded?.receipt).toMatchObject({
+		const loaded = readableDetails(details.importDetails(result.conversation.id));
+		expect(loaded.title).toBe("Lantern House");
+		expect(loaded.receipt).toMatchObject({
 			originalFilename: "lantern-house.jsonl",
 			sha256: preview.sha256,
 			byteLength: source.bytes.length,
@@ -283,10 +295,10 @@ describe("graduated Chat history and Import Details", () => {
 		});
 		// The persisted warning for the blank captured author is present… the
 		// fixture carries none, so warnings may be empty; never fabricate.
-		expect(Array.isArray(loaded?.receipt.warnings)).toBe(true);
+		expect(Array.isArray(loaded.receipt.warnings)).toBe(true);
 		// Duplicate evidence excludes this Chat itself.
-		expect(loaded?.duplicates).toEqual({ exact: [], related: [] });
-		expect(loaded?.artifact).toMatchObject({
+		expect(loaded.duplicates).toEqual({ exact: [], related: [] });
+		expect(loaded.artifact).toMatchObject({
 			originalFilename: "lantern-house.jsonl",
 			byteLength: source.bytes.length,
 			sha256: preview.sha256,
@@ -322,8 +334,8 @@ describe("graduated Chat history and Import Details", () => {
 		});
 		expect(history?.messages).toHaveLength(2);
 
-		const loaded = details.importDetails(result.conversation.id);
-		expect(loaded?.artifact?.availability).toEqual({
+		const loaded = readableDetails(details.importDetails(result.conversation.id));
+		expect(loaded.artifact?.availability).toEqual({
 			status: "cleaned-up",
 			reason: "missing",
 		});
@@ -349,8 +361,8 @@ describe("graduated Chat history and Import Details", () => {
 		// A corrupt artifact (bytes changed) reports cleaned up as corrupt and
 		// disables only exact download.
 		writeFileSync(artifactPath, Buffer.from("not the original bytes", "utf8"));
-		const afterCorrupt = details.importDetails(result.conversation.id);
-		expect(afterCorrupt?.artifact?.availability).toEqual({
+		const afterCorrupt = readableDetails(details.importDetails(result.conversation.id));
+		expect(afterCorrupt.artifact?.availability).toEqual({
 			status: "cleaned-up",
 			reason: "corrupt",
 		});
@@ -358,6 +370,50 @@ describe("graduated Chat history and Import Details", () => {
 			status: "cleaned-up",
 			reason: "corrupt",
 		});
+	});
+
+	test("corrupt persisted provenance is explicit and never makes a Chat a prior import", () => {
+		const conversations = createConversationModule(database);
+		const corrupt = conversations.create({
+			name: "Corrupt Import",
+			participants: [{
+				definition: {
+					name: "Writer",
+					prompt: {
+						systemInstruction: "",
+						identity: "",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+					openings: [],
+				},
+			}],
+			messages: [{
+				timestamp: "2026-08-08T12:53:02.008Z",
+				variants: [{
+					content: "Still a normal Chat",
+					timestamp: "2026-08-08T12:53:02.008Z",
+					selected: true,
+				}],
+			}],
+			data: [{
+				namespace: IMPORT_NAMESPACE,
+				key: IMPORT_KEYS.reportJson,
+				value: "not valid JSON",
+			}],
+		});
+
+		expect(details.importDetails(corrupt.id)).toEqual({
+			provenanceState: "unreadable",
+			conversationId: corrupt.id,
+			title: "Corrupt Import",
+		});
+		expect(findPriorImportsBySource(database, {
+			filename: "corrupt.jsonl",
+			sha256: "corrupt-sha256",
+		})).toEqual({ exact: [], related: [] });
+		expect(conversations.readHistory(corrupt.id)?.messages).toHaveLength(1);
 	});
 
 	test("duplicate evidence in Import Details excludes this Chat and classifies related sources", async () => {
@@ -371,13 +427,13 @@ describe("graduated Chat history and Import Details", () => {
 			chatOnly("Writer", [1]),
 		]);
 
-		const loaded = details.importDetails(result.conversation.id);
+		const loaded = readableDetails(details.importDetails(result.conversation.id));
 		// The prior Chat is the exact duplicate; this Chat is excluded.
-		expect(loaded?.duplicates).toEqual({
+		expect(loaded.duplicates).toEqual({
 			exact: [{ id: prior.id, name: prior.name }],
 			related: [],
 		});
-		expect(loaded?.artifact?.availability).toEqual({ status: "available" });
+		expect(loaded.artifact?.availability).toEqual({ status: "available" });
 	});
 
 	test("imported Chats receive the same availability rules as ordinary Chats: no imported read-only state", async () => {
@@ -391,7 +447,7 @@ describe("graduated Chat history and Import Details", () => {
 
 		const conversations = createConversationModule(database);
 		// Control assignment and Cast management work exactly like native
-		// Chats; nothing imported-specific blocks them. Import Control set the
+				// Chats; nothing imported-specific blocks them. Import Control set the
 		// model seat on the second Participant, so assigning the human seat to
 		// it performs the atomic seat swap.
 		const snapshot = conversations.getSnapshot(result.conversation.id);

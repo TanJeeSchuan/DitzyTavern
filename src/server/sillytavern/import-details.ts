@@ -28,8 +28,8 @@ import {
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
+	toSillyTavernImportSource,
 	type SillyTavernImportReport,
-	type SillyTavernImportSource,
 } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 
@@ -49,9 +49,9 @@ export type ChatImportDetails = Static<typeof chatImportDetails>;
 
 export interface ChatImportDetailsModule {
 	// ==[HUMAN APPROVED]== Reads the persisted receipt, source identity, duplicate evidence, and
-	// exact-artifact availability for one imported Chat. Undefined when the
-	// Chat exists but has no import provenance, and when the Chat itself is
-	// missing.
+	// exact-artifact availability for one imported Chat. An unreadable persisted
+	// report is returned as an explicit state; undefined is reserved for a
+	// missing Chat or a Chat with no report entry.
 	importDetails(conversationId: number): ChatImportDetails | undefined;
 	// ==[HUMAN APPROVED]== Streams the exact managed bytes with the stored original leaf filename
 	// through the artifact seal. Undefined when the Chat owns no exact
@@ -91,9 +91,10 @@ export function createChatImportDetailsModule(
 			!isString(source.sha256) ||
 			(integrity !== undefined && !isString(integrity)) ||
 			counts === null ||
-			!isNumber(counts.messages) ||
-			!isNumber(counts.variants) ||
-			!Array.isArray(report.warnings)
+			!isInteger(counts.messages) ||
+			!isInteger(counts.variants) ||
+			!Array.isArray(report.warnings) ||
+			!report.warnings.every((warning) => isString(warning))
 		) {
 			return null;
 		}
@@ -101,13 +102,11 @@ export function createChatImportDetailsModule(
 		// source identity, counts, warnings, optional integrity) was validated
 		// with constructor-identity guards above, so the narrowed parsed JSON
 		// is a complete SillyTavernImportReport.
-		const sourceValue: SillyTavernImportSource = {
+		const sourceValue = toSillyTavernImportSource({
 			filename: source.filename,
 			sha256: source.sha256,
-		};
-		if (integrity !== undefined && integrity !== null && integrity !== "") {
-			sourceValue.integrity = integrity;
-		}
+			integrity,
+		});
 		return {
 			importerVersion: report.importerVersion,
 			source: sourceValue,
@@ -125,12 +124,19 @@ export function createChatImportDetailsModule(
 				namespace: IMPORT_NAMESPACE,
 				keys: [IMPORT_KEYS.reportJson],
 			});
-			// ==[HUMAN APPROVED]== Either the Chat is missing (read returns undefined) or the Chat
-			// exists but carries no import provenance (report parse is null);
-			// both mean "no Import Details".
+			// ==[HUMAN APPROVED]== A missing report entry means the Chat has no import provenance;
+			// an existing but invalid report is a distinct, visible read state.
 			if (read === undefined) return undefined;
-			const report = parseReport(importEntryValue(read.entries, IMPORT_KEYS.reportJson));
-			if (report === null) return undefined;
+			const reportValue = importEntryValue(read.entries, IMPORT_KEYS.reportJson);
+			if (reportValue === null) return undefined;
+			const report = parseReport(reportValue);
+			if (report === null) {
+				return {
+					provenanceState: "unreadable",
+					conversationId,
+					title: read.name,
+				};
+			}
 
 			const artifact = artifacts.getArtifact(
 				conversationId,
@@ -140,19 +146,13 @@ export function createChatImportDetailsModule(
 			// ==[HUMAN APPROVED]== Byte length comes from the committed artifact metadata (the
 			// source-declared report never records a byte count).
 			const byteLength = artifact?.byteLength ?? null;
-			const sourceValue: SillyTavernImportSource = {
+			const sourceValue = toSillyTavernImportSource({
 				filename: report.source.filename,
 				sha256: report.source.sha256,
-			};
+				integrity: report.source.integrity,
+			});
 			// ==[HUMAN APPROVED]== Declared integrity is advisory and optional; it participates in
 			// duplicate classification only when the report carried it.
-			if (
-				report.source.integrity !== undefined &&
-				report.source.integrity !== null &&
-				report.source.integrity !== ""
-			) {
-				sourceValue.integrity = report.source.integrity;
-			}
 			const matches = findPriorImportsBySource(database, sourceValue);
 			const duplicates: ChatImportDuplicateEvidence = {
 				exact: matches.exact.filter((match) => match.id !== conversationId),
@@ -160,6 +160,7 @@ export function createChatImportDetailsModule(
 			};
 
 			return {
+				provenanceState: "readable",
 				conversationId,
 				title: read.name,
 				receipt: {
@@ -234,6 +235,9 @@ const isString = (value: JsonValue): value is string =>
 
 const isNumber = (value: JsonValue): value is number =>
 	value !== null && value !== undefined && value.constructor === Number;
+
+const isInteger = (value: JsonValue): value is number =>
+	isNumber(value) && Number.isInteger(value);
 
 // ==[HUMAN APPROVED]== Reduces a parsed JSON array to its string entries; non-strings are
 // structural noise and never masquerade as warnings.

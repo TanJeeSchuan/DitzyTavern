@@ -46,6 +46,10 @@ export function ChatInformationPanel({
 			.then((outcome) => {
 				if (isCancelled()) return;
 				if (outcome.status === "available") {
+					if (outcome.details.provenanceState === "unreadable") {
+						dispatch({ type: "details-unreadable" });
+						return;
+					}
 					dispatch({ type: "details-loaded", details: outcome.details });
 					return;
 				}
@@ -98,6 +102,13 @@ export function ChatInformationPanel({
 							This Chat was created in DitzyTavern.
 						</p>
 					</>
+				)}
+
+				{state.status === "unreadable-import-details" && (
+					<p className="import-problem" role="alert">
+						Import provenance could not be read. You can still read and edit
+						this Chat, but Import Details are unavailable.
+					</p>
 				)}
 
 				{state.status === "error" && (

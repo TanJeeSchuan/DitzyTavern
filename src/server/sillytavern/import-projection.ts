@@ -201,18 +201,56 @@ export interface ProjectedImport {
 // can never address them afterwards.
 export const importReportEntries = (
 	report: SillyTavernImportReport,
-): ConversationDataEntry[] => [
-	{
-		namespace: IMPORT_NAMESPACE,
-		key: IMPORT_KEYS.warnings,
-		value: JSON.stringify(report.warnings),
-	},
-	{
-		namespace: IMPORT_NAMESPACE,
-		key: IMPORT_KEYS.reportJson,
-		value: JSON.stringify(report),
-	},
-];
+): ConversationDataEntry[] => {
+	// ==[HUMAN APPROVED]== The report is canonical; every flat query-index value is derived from
+	// this same committed value so the two persistence mirrors cannot drift.
+	const entries: ConversationDataEntry[] = [];
+	if (report.source.integrity !== undefined) {
+		entries.push({
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.integrity,
+			value: report.source.integrity,
+		});
+	}
+	entries.push(
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.sha256,
+			value: report.source.sha256,
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.filename,
+			value: report.source.filename,
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.importerVersion,
+			value: report.importerVersion,
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.countsMessages,
+			value: String(report.counts.messages),
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.countsVariants,
+			value: String(report.counts.variants),
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.warnings,
+			value: JSON.stringify(report.warnings),
+		},
+		{
+			namespace: IMPORT_NAMESPACE,
+			key: IMPORT_KEYS.reportJson,
+			value: JSON.stringify(report),
+		},
+	);
+	return entries;
+};
 
 // ==[HUMAN APPROVED]== The canonical Import Projection: maps decoded source and one resolution
 // into native creation data. It stamps every retained Message with its

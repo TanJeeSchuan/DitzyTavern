@@ -31,8 +31,6 @@ import {
 	ARCHIVE_KEY,
 	ARCHIVE_NAMESPACE,
 	IMPORTER_VERSION,
-	IMPORT_KEYS,
-	IMPORT_NAMESPACE,
 	type ParsedSillyTavernChat,
 	type SillyTavernChatInspection,
 	type SillyTavernDecodedImportSource,
@@ -49,6 +47,29 @@ import {
 
 export * from "./adapter/types";
 export { decodeSillyTavernSourceBytes } from "./adapter/messages";
+
+// ==[HUMAN APPROVED]== One adapter-owned codec constructs source identity everywhere the
+// import domain needs it. Empty or absent advisory integrity is omitted so
+// the decoded report, persisted report, and duplicate-index lookup share one
+// representation.
+export const toSillyTavernImportSource = (input: {
+	filename: string;
+	sha256: string;
+	integrity?: string | null | undefined;
+}): SillyTavernImportSource => {
+	const source: SillyTavernImportSource = {
+		filename: input.filename,
+		sha256: input.sha256,
+	};
+	if (
+		input.integrity !== undefined &&
+		input.integrity !== null &&
+		input.integrity !== ""
+	) {
+		source.integrity = input.integrity;
+	}
+	return source;
+};
 
 // ==[HUMAN APPROVED]== The sealed single-pass source decode shared by the developer import path
 // and the Staged Import: identical validation, counts, archive, and report,
@@ -81,52 +102,14 @@ export function decodeSillyTavernImportSource(
 		value: JSON.stringify({ header, messages: messageRecords }),
 	};
 
-	// ==[HUMAN APPROVED]== Source identity, counts, and importer version live in the transitional
-	// import namespace; the warnings and full JSON report entries are
-	// appended by the Import Projection once it knows about prior imports.
+	// ==[HUMAN APPROVED]== The Import Projection is the only writer of the flat query index;
+	// this decoder contributes only the canonical archive and report value.
 	const data: ConversationDataEntry[] = [archive];
-	if (integrity !== undefined) {
-		data.push({
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.integrity,
-			value: integrity,
-		});
-	}
-	data.push(
-		{
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.sha256,
-			value: meta.sha256,
-		},
-		{
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.filename,
-			value: meta.filename,
-		},
-		{
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.importerVersion,
-			value: IMPORTER_VERSION,
-		},
-		{
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.countsMessages,
-			value: String(messages.length),
-		},
-		{
-			namespace: IMPORT_NAMESPACE,
-			key: IMPORT_KEYS.countsVariants,
-			value: String(variantCount),
-		},
-	);
-
-	const source: SillyTavernImportSource = {
+	const source = toSillyTavernImportSource({
 		filename: meta.filename,
 		sha256: meta.sha256,
-	};
-	if (integrity !== undefined) {
-		source.integrity = integrity;
-	}
+		integrity,
+	});
 
 	const report: SillyTavernImportReport = {
 		importerVersion: IMPORTER_VERSION,

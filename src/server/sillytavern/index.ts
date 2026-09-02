@@ -11,6 +11,7 @@ export {
 	decodeSillyTavernSourceBytes,
 	inspectSillyTavernChatJsonl,
 	parseSillyTavernChatJsonl,
+	toSillyTavernImportSource,
 } from "./adapter";
 export type {
 	SillyTavernChatInspection,

@@ -13,8 +13,9 @@ import {
 // presentation derives out.
 
 const details = (
-	overrides: Partial<ChatImportDetails> = {},
-): ChatImportDetails => ({
+	overrides: Partial<Extract<ChatImportDetails, { provenanceState: "readable" }>> = {},
+): Extract<ChatImportDetails, { provenanceState: "readable" }> => ({
+	provenanceState: "readable",
 	conversationId: 7,
 	title: "Lantern House",
 	receipt: {
@@ -74,6 +75,18 @@ describe("Chat information state", () => {
 			reason: null,
 		});
 		expect(artifactAvailabilityLabel(noProvenance)).toBeNull();
+	});
+
+	test("an unreadable import report is visible and has no download", () => {
+		const unreadable = reduceChatInformation(createChatInformationState(), {
+			type: "details-unreadable",
+		});
+		expect(unreadable.status).toBe("unreadable-import-details");
+		expect(sourceDownloadAvailable(unreadable)).toEqual({
+			available: false,
+			reason: null,
+		});
+		expect(artifactAvailabilityLabel(unreadable)).toBeNull();
 	});
 
 	test("missing and corrupt artifacts are presented as cleaned up and disable only exact download", () => {

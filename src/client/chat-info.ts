@@ -3,12 +3,17 @@
 // inside it only when the Chat carries import provenance. There is no
 // persistent Imported badge, header marker, or separate category.
 //
-// The reducer keeps the loading, no-provenance, available, and error states
-// testable without a browser: the view feeds typed transport outcomes in and
-// derives the exact presentation (including cleaned-up artifact handling)
-// from the state.
+// The reducer keeps the loading, no-provenance, unreadable, available, and
+// error states testable without a browser: the view feeds typed transport
+// outcomes in and derives the exact presentation (including cleaned-up
+// artifact handling) from the state.
 
 import type { ChatImportDetails } from "./chat-history";
+
+export type ReadableChatImportDetails = Extract<
+	ChatImportDetails,
+	{ provenanceState: "readable" }
+>;
 
 export type ChatInformationState =
 	// The panel opened; the lightweight Import Details check is in flight.
@@ -17,17 +22,21 @@ export type ChatInformationState =
 	// The Chat exists but has no import provenance: generic Chat information
 	// ==[HUMAN APPROVED]== only, with no imported marker of any kind.
 	| { status: "no-import-details" }
+	// ==[HUMAN APPROVED]== The Chat has an import report entry, but its persisted provenance cannot
+	// be decoded. Keep this visible rather than treating it as never imported.
+	| { status: "unreadable-import-details" }
 	// Import Details loaded; the exact-artifact availability drives the
 	// ==[HUMAN APPROVED]== download action and the cleaned-up presentation.
-	| { status: "available"; details: ChatImportDetails }
+	| { status: "available"; details: ReadableChatImportDetails }
 	// The details could not be loaded (transport failure); Chat information
 	// ==[HUMAN APPROVED]== stays usable without importing specifics.
 	| { status: "error" };
 
 export type ChatInformationAction =
 	| { type: "chat-opened" }
-	| { type: "details-loaded"; details: ChatImportDetails }
+	| { type: "details-loaded"; details: ReadableChatImportDetails }
 	| { type: "no-import-details" }
+	| { type: "details-unreadable" }
 	| { type: "details-failed" };
 
 export const createChatInformationState = (): ChatInformationState => ({
@@ -45,6 +54,8 @@ export function reduceChatInformation(
 			return { status: "available", details: action.details };
 		case "no-import-details":
 			return { status: "no-import-details" };
+		case "details-unreadable":
+			return { status: "unreadable-import-details" };
 		case "details-failed":
 			return { status: "error" };
 	}

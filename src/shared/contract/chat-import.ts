@@ -210,12 +210,13 @@ const importDetailsArtifact = Type.Composite([
 
 export type ImportDetailsArtifact = Static<typeof importDetailsArtifact>;
 
-// The complete Import Details payload: the persisted receipt and source
-// identity, structured duplicate evidence, and exact-artifact availability.
-// Heavy provenance (archive text, reasoning, signatures, exact bytes) is
-// never part of this contract; exact bytes load only through the download
-// route.
-export const chatImportDetails = Type.Object({
+// The complete readable Import Details payload: the persisted receipt and
+// source identity, structured duplicate evidence, and exact-artifact
+// availability. Heavy provenance (archive text, reasoning, signatures,
+// exact bytes) is never part of this contract; exact bytes load only through
+// the download route.
+const readableChatImportDetails = Type.Object({
+	provenanceState: Type.Literal("readable"),
 	conversationId: Type.Integer(),
 	title: Type.String(),
 	receipt: Type.Object({
@@ -233,6 +234,20 @@ export const chatImportDetails = Type.Object({
 	duplicates: duplicateEvidence,
 	artifact: Type.Union([Type.Null(), importDetailsArtifact]),
 });
+
+// A persisted report entry can outlive its ability to decode. Keep that
+// state distinct from absent provenance so the Chat information surface can
+// explain the loss while ordinary Conversation reads remain available.
+const unreadableChatImportDetails = Type.Object({
+	provenanceState: Type.Literal("unreadable"),
+	conversationId: Type.Integer(),
+	title: Type.String(),
+});
+
+export const chatImportDetails = Type.Union([
+	readableChatImportDetails,
+	unreadableChatImportDetails,
+]);
 
 export type ChatImportDetails = Static<typeof chatImportDetails>;
 

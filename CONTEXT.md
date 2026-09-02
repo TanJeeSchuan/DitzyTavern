@@ -154,6 +154,10 @@ _Avoid_: source dump
 The state where a Chat's Exact Source Artifact copy is missing or corrupt. Provenance is lost but ordinary Conversation behavior is unaffected; only exact download is disabled.
 _Avoid_: deleted, lost file
 
+**Unreadable Import Provenance**:
+The state where an imported Chat's persisted Import provenance cannot be decoded; Import Details degrades to an explicit notice instead of silently reporting none.
+_Avoid_: missing import, no provenance
+
 **Import Details**:
 The read of an imported Chat's provenance: its Import receipt, current Duplicate evidence, and Exact Source Artifact availability. A Chat without Import provenance simply has none.
 _Avoid_: import info, provenance panel

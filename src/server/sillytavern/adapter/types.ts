@@ -34,8 +34,8 @@ export const IMPORT_KEYS = {
 	reportJson: "report.json",
 } as const;
 
-// Variant-scoped promoted provenance lives in the same transitional import
-// namespace. Only values present in the source are promoted; absent fields
+// Variant-scoped promoted provenance lives in the same import namespace. Only
+// values present in the source are promoted; absent fields
 // are not manufactured as empty placeholders.
 export const VARIANT_KEYS = {
 	swipeIndex: "variant.swipe.index",
@@ -109,8 +109,8 @@ export interface SillyTavernDecodedImportSource {
 	// The verbatim captured author value per retained record (never trimmed
 	// or normalized), parallel to `messages` by record position.
 	authors: SillyTavernExactAuthor[];
-	// Canonical archive plus source-identity entries. The Import Projection
-	// appends the final warnings and report entries after duplicate
+	// Canonical archive entry. The Import Projection appends source identity,
+	// derived query-index, warnings, and report entries after duplicate
 	// evidence is known.
 	data: ConversationDataEntry[];
 	report: SillyTavernImportReport;

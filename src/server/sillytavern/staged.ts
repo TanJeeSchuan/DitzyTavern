@@ -29,6 +29,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
 import { createCharacterLibraryModule } from "../character-library";
@@ -127,68 +129,31 @@ export const clearStagedImportRegistry = (): void => {
 
 // ==[HUMAN APPROVED]== Streams the uploaded bytes into their staged managed path while hashing
 // them in flight, so neither the HTTP boundary nor this module buffers the
-// complete artifact in memory. The pump handles reader failures (for example
-// an aborted upload) by discarding the partial staged file.
-const streamToStagedFile = (
+// complete artifact in memory. Node's pipeline owns backpressure and
+// propagates reader or writer failures to the call-site cleanup path.
+const streamToStagedFile = async (
 	path: string,
 	bytes: ReadableStream<Uint8Array>,
-): Promise<{ byteLength: number; sha256: string }> =>
-	new Promise((resolve, reject) => {
-		const hash = createHash("sha256");
-		let byteLength = 0;
-		let settled = false;
-		const output = createWriteStream(path, { flags: "wx" });
-		const fail = (detail: Error) => {
-			if (settled) return;
-			settled = true;
-			output.destroy();
-			rmSync(path, { force: true });
-			reject(detail);
-		};
-		output.on("error", fail);
-		output.on("finish", () => {
-			if (settled) return;
-			settled = true;
-			resolve({ byteLength, sha256: hash.digest("hex") });
-		});
-		const reader = bytes.getReader();
-		const writeChunk = (chunk: Uint8Array): Promise<void> =>
-			new Promise((resolveDrain, rejectDrain) => {
-				if (output.write(chunk)) {
-					resolveDrain();
-					return;
-				}
-				const onDrain = () => {
-					output.off("error", onError);
-					resolveDrain();
-				};
-				const onError = (error: Error) => {
-					output.off("drain", onDrain);
-					rejectDrain(error);
-				};
-				output.once("drain", onDrain);
-				output.once("error", onError);
-			});
-		const pump = async () => {
-			try {
-				for (;;) {
-					const { done, value } = await reader.read();
-					if (done) {
-						output.end();
-						return;
-					}
-					hash.update(value);
-					byteLength += value.byteLength;
-					await writeChunk(value);
-				}
-			} catch (error) {
-				// ==[HUMAN APPROVED]== The reader or the staging writer failed mid-stream; parse the
-				// boundary value once so the failure path only sees an Error.
-				fail(error instanceof Error ? error : new Error(String(error)));
-			}
-		};
-		void pump();
+): Promise<{ byteLength: number; sha256: string }> => {
+	const hash = createHash("sha256");
+	let byteLength = 0;
+	const hashing = new Transform({
+		transform(chunk: Buffer, _encoding, callback) {
+			hash.update(chunk);
+			byteLength += chunk.byteLength;
+			callback(null, chunk);
+		},
 	});
+	await pipeline(
+		// ==[HUMAN APPROVED]== Bun's Web ReadableStream is runtime-compatible with Node's
+		// WebReadableStream; the declarations differ only in their convenience methods.
+		// @ts-expect-error
+		Readable.fromWeb(bytes),
+		hashing,
+		createWriteStream(path, { flags: "wx" }),
+	);
+	return { byteLength, sha256: hash.digest("hex") };
+};
 
 const verifyStagedBytes = (
 	record: StagedRecord,
@@ -318,8 +283,8 @@ const resolvePlanParticipants = (
 	input: ChatImportCommitInput,
 ): ResolvedPlanParticipant[] => {
 	const library = createCharacterLibraryModule(database);
-	return input.participants.map((plan, index) => {
-		const displayName = plan.name.trim() || `Participant ${index + 1}`;
+	return input.participants.map((plan) => {
+		const displayName = plan.name.trim();
 		if (plan.outcome.type === "fork") {
 			const character = library.get(plan.outcome.characterId);
 			if (character === undefined) {
