@@ -27,13 +27,11 @@ import {
 	type ProviderErrorLike,
 } from "./provider-errors";
 
-export interface DeepSeekModelClientOptions {
+export interface ChatCompletionsModelClientOptions {
 	readonly profile: ConnectionProfile;
 	readonly secrets: ConnectionProfileSecretSnapshot | null;
 	readonly fetch?: ModelFetch;
 }
-
-export type OpenAICompatibleModelClientOptions = DeepSeekModelClientOptions;
 
 export { ModelClientTransportError } from "./errors";
 
@@ -42,19 +40,19 @@ export { ModelClientTransportError } from "./errors";
 // settings. The request destination is captured when this client is created,
 // so Profile edits cannot redirect an in-flight Generation.
 export function createDeepSeekModelClient(
-	options: DeepSeekModelClientOptions,
+	options: ChatCompletionsModelClientOptions,
 ): ModelClient {
 	return createConfiguredModelClient(options, "deepseek");
 }
 
 export function createOpenAICompatibleModelClient(
-	options: OpenAICompatibleModelClientOptions,
+	options: ChatCompletionsModelClientOptions,
 ): ModelClient {
 	return createConfiguredModelClient(options, "openai-compatible");
 }
 
 export function createOpenRouterModelClient(
-	options: OpenAICompatibleModelClientOptions,
+	options: ChatCompletionsModelClientOptions,
 ): ModelClient {
 	return createConfiguredModelClient(options, "openrouter");
 }
@@ -63,7 +61,7 @@ export function createOpenRouterModelClient(
 // workflows select one provider-neutral factory and never import concrete
 // transport constructors.
 export function createModelClient(
-	options: OpenAICompatibleModelClientOptions,
+	options: ChatCompletionsModelClientOptions,
 ): ModelClient {
 	if (options.profile.adapter === "deepseek") return createDeepSeekModelClient(options);
 	if (options.profile.adapter === "openrouter") return createOpenRouterModelClient(options);
@@ -74,7 +72,7 @@ export function createModelClient(
 }
 
 function createConfiguredModelClient(
-	options: OpenAICompatibleModelClientOptions,
+	options: ChatCompletionsModelClientOptions,
 	adapter: "deepseek" | "openrouter" | "openai-compatible",
 ): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {

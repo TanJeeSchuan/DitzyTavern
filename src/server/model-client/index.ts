@@ -33,8 +33,7 @@ export {
 	ModelClientTransportError,
 } from "./chat-completions";
 export type {
-	DeepSeekModelClientOptions,
-	OpenAICompatibleModelClientOptions,
+	ChatCompletionsModelClientOptions,
 } from "./chat-completions";
 export {
 	testConnection,
