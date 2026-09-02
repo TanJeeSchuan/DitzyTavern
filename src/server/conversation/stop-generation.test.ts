@@ -4,7 +4,6 @@ import { openDatabase } from "../database/database";
 import {
 	acceptConversationSiblingGeneration,
 	acceptConversationTailGeneration,
-	checkpointConversationSiblingGeneration,
 	checkpointConversationGeneration,
 	createConversationModule,
 } from ".";
@@ -174,7 +173,7 @@ describe("explicit Conversation Generation Stop", () => {
 	test("keeps partial Sibling output selected and marks it interrupted", () => {
 		const input = setup();
 		const accepted = acceptSibling(input);
-		checkpointConversationSiblingGeneration(database, {
+		checkpointConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			content: "Alternative answer.",

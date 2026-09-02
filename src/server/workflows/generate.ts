@@ -351,7 +351,7 @@ export async function sendThroughProvisionalTailGeneration(
 		}),
 		request: modelRequestFor,
 		resolve: (conversation, current, _capture, accepted, timestamp, outcome) => ({
-			conversation: conversation.resolveTailGeneration({
+			conversation: conversation.resolveGeneration({
 				conversationId: current.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
@@ -420,7 +420,7 @@ export async function continueGeneration(
 			assistantPrefill: capture.assistantPrefill,
 		}),
 		resolve: (conversation, current, capture, accepted, timestamp, outcome) => ({
-			conversation: conversation.resolveTailGeneration({
+			conversation: conversation.resolveGeneration({
 				conversationId: current.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
@@ -494,7 +494,7 @@ export type ServerOwnedSiblingGenerationCallbacks = ServerOwnedGenerationCallbac
 export async function generateSiblingVariant(
 	database: Database,
 	input: GenerateSiblingVariantInput,
-): Promise<ConversationSnapshot> {
+): Promise<SiblingGenerationResult> {
 	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
 	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
 	return runGenerationLifecycle(database, input, input.onAccepted, {
@@ -512,14 +512,18 @@ export async function generateSiblingVariant(
 			generationIntent: { type: "sibling" },
 		}),
 		request: modelRequestFor,
-		resolve: (conversation, current, _capture, accepted, timestamp, outcome) =>
-			conversation.resolveSiblingGeneration({
+		resolve: (conversation, current, _capture, accepted, timestamp, outcome) => ({
+			conversation: conversation.resolveGeneration({
 				conversationId: current.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
 				content: outcome.content,
 				data: generationOutcomeData(outcome),
 			}),
+			generationId: accepted.generationId,
+			messageId: accepted.messageId,
+			provisionalVariantId: accepted.provisionalVariantId,
+		}),
 	});
 }
 
@@ -531,23 +535,10 @@ export function startServerOwnedSiblingGeneration(
 	input: GenerateSiblingVariantInput,
 	callbacks: ServerOwnedSiblingGenerationCallbacks = {},
 ): ServerOwnedSiblingGeneration {
-	const started = startServerOwnedGenerationFrom(
+	return startServerOwnedGenerationFrom(
 		database,
 		input,
 		generateSiblingVariant,
 		callbacks,
 	);
-	return {
-		accepted: started.accepted,
-		result: started.result.then(async (conversation) => {
-			const accepted = await started.accepted;
-			return {
-				conversation,
-				generationId: accepted.generationId,
-				messageId: accepted.messageId,
-				provisionalVariantId: accepted.provisionalVariantId,
-			};
-		}),
-		signal: started.signal,
-	};
 }

@@ -22,8 +22,7 @@ import type {
 	StopGenerationsInput,
 	StoppedGenerations,
 	StopGenerationInput,
-	ResolveTailGenerationInput,
-	ResolveSiblingGenerationInput,
+	ResolveGenerationInput,
 } from "../types";
 import { GENERATION_REPLAY_RETENTION_MS } from "../generation-retention";
 import {
@@ -157,28 +156,21 @@ export const persistTerminalVariantData = (
 	}
 };
 
-type ResolveGenerationInput =
-	| ResolveTailGenerationInput
-	| ResolveSiblingGenerationInput;
-
 /**
- * ==[HUMAN APPROVED]== Resolve either kind of provisional target in one transaction. Tail and
- * continuation targets are model Messages; siblings are Variants on an
- * existing Message. Everything else about terminal persistence is shared.
+ * ==[HUMAN APPROVED]== Resolving replaces the provisional content, writes compact terminal
+ * provenance, retains inspection state, and removes the Active Generation record.
+ * Tail, continuation, and sibling attempts all share this single resolution
+ * seam by inspecting the target record directly. It advances the Conversation
+ * revision exactly once as an authoritative lifecycle transition.
  */
-const resolveConversationGeneration = (
+export function resolveConversationGeneration(
 	database: Database,
 	input: ResolveGenerationInput,
-	mode: "tail" | "sibling",
-): ConversationSnapshot => {
+): ConversationSnapshot {
 	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined || (mode === "sibling" && !isSiblingGenerationRow(active))) {
-			throw new InvalidConversationCommandError(
-				mode === "sibling"
-					? "The Sibling Generation is no longer available."
-					: "The Active Generation is no longer available.",
-			);
+		if (active === undefined) {
+			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
 		}
 		const variant = db
 			.select({ id: messageVariantTable.id })
@@ -191,11 +183,7 @@ const resolveConversationGeneration = (
 			)
 			.get();
 		if (variant === undefined) {
-			throw new InvalidConversationCommandError(
-				mode === "sibling"
-					? "The provisional sibling Variant is no longer available."
-					: "The provisional Variant is no longer available.",
-			);
+			throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
 		}
 
 		db.update(messageVariantTable)
@@ -214,15 +202,6 @@ const resolveConversationGeneration = (
 			.run();
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
-};
-
-// ==[HUMAN APPROVED]== Resolving a sibling keeps the target Message and its original Author Stamp
-// intact; only the accepted provisional Variant becomes durable.
-export function resolveConversationSiblingGeneration(
-	database: Database,
-	input: ResolveSiblingGenerationInput,
-): ConversationSnapshot {
-	return resolveConversationGeneration(database, input, "sibling");
 }
 
 /**
@@ -254,31 +233,6 @@ export const removeConversationGeneration = (
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
-
-// ==[HUMAN APPROVED]== Resolving replaces the provisional content and writes compact terminal
-// provenance before removing the Active Generation record. It advances the
-// Conversation revision exactly once as a lifecycle transition.
-export function resolveConversationTailGeneration(
-	database: Database,
-	input: ResolveTailGenerationInput,
-): ConversationSnapshot {
-	return resolveConversationGeneration(database, input, "tail");
-}
-
-// ==[HUMAN APPROVED]== Sibling checkpoints share the same revision-neutral semantics as Tail
-// checkpoints. The target is selected by the Active Generation id, never by
-// a client-supplied Variant id, and the sibling gate rides the same single
-// transactional read that guards the write.
-export function checkpointConversationSiblingGeneration(
-	database: Database,
-	input: CheckpointGenerationInput,
-): void {
-	runConversationTransaction(database, (db) => {
-		const active = readActiveGeneration(db, input.conversationId, input.generationId);
-		if (active === undefined || !isSiblingGenerationRow(active)) return;
-		writeCheckpointInTransaction(db, active, input);
-	});
-}
 
 /**
  * ==[HUMAN APPROVED]== Persist one revision-neutral Generation checkpoint.

@@ -285,7 +285,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		input: ReturnType<typeof siblingInput>,
 		generationId: number,
 	) =>
-		module.resolveSiblingGeneration({
+		module.resolveGeneration({
 			conversationId: input.conversationId,
 			generationId,
 			timestamp: input.timestamp,

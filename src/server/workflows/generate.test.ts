@@ -791,7 +791,7 @@ describe("Generation runtime behavior", () => {
 
 		let receivedPlan: PromptPlan | undefined;
 		const estimates = [200, 100];
-		const sibling = await generateSiblingVariant(database, {
+		const sibling = (await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
 			modelClient: createFakeModelClient(({ promptPlan }) => {
@@ -799,7 +799,7 @@ describe("Generation runtime behavior", () => {
 				return "Budgeted sibling output.";
 			}),
 			tokenEstimator: () => estimates.shift() ?? 100,
-		});
+		})).conversation;
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Writer", content: "Human context before target." },

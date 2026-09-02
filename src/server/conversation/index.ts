@@ -9,8 +9,7 @@ import {
 	removeConversationGeneration,
 	stopConversationGeneration,
 	stopConversationGenerations,
-	resolveConversationSiblingGeneration,
-	resolveConversationTailGeneration,
+	resolveConversationGeneration,
 } from "./commands/active-generation";
 import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
@@ -48,10 +47,8 @@ export {
 } from "./commands/accept-generation";
 export {
 	checkpointConversationGeneration,
-	checkpointConversationSiblingGeneration,
 	removeConversationGeneration,
-	resolveConversationSiblingGeneration,
-	resolveConversationTailGeneration,
+	resolveConversationGeneration,
 } from "./commands/active-generation";
 // ==[HUMAN APPROVED]== Derived targeted-Swipe rule shared by the snapshot and the sibling
 // generation workflow so clients and transports never reproduce it.
@@ -117,8 +114,7 @@ export type {
 	StopGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
-	ResolveTailGenerationInput,
-	ResolveSiblingGenerationInput,
+	ResolveGenerationInput,
 	ConversationDataScope,
 	ConversationMessageSnapshot,
 	ConversationModule,
@@ -159,14 +155,12 @@ export function createConversationModule(database: Database): ConversationModule
 		acceptConversationSiblingGeneration(database, input),
 		checkpointGeneration: (input) =>
 			checkpointConversationGeneration(database, input),
-		resolveTailGeneration: (input) =>
-			resolveConversationTailGeneration(database, input),
-	stopGeneration: (input) =>
-		stopConversationGeneration(database, input),
-	stopGenerations: (input) =>
-		stopConversationGenerations(database, input),
-		resolveSiblingGeneration: (input) =>
-			resolveConversationSiblingGeneration(database, input),
+		resolveGeneration: (input) =>
+			resolveConversationGeneration(database, input),
+		stopGeneration: (input) =>
+			stopConversationGeneration(database, input),
+		stopGenerations: (input) =>
+			stopConversationGenerations(database, input),
 		// ==[HUMAN APPROVED]== One canonical removal: the persisted Active Generation row decides
 		// between the Sibling Variant and Tail/Continuation Message mutations.
 		removeGeneration: (input) =>
