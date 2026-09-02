@@ -1,6 +1,10 @@
+import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { conversationGenerationSettingsTable } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import {
+	connectConversationDatabase,
+	type ConversationDatabase,
+} from "./internal";
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
 import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-defaults";
 import {
@@ -92,6 +96,16 @@ const settingsRowValues = (settings: ConversationGenerationSettings): SettingsRo
 });
 
 export function readConversationGenerationSettings(
+	database: Database,
+	conversationId: number,
+): ConversationGenerationSettings | undefined {
+	return readConversationGenerationSettingsFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+	);
+}
+
+export function readConversationGenerationSettingsFromConnection(
 	db: ConversationDatabase,
 	conversationId: number,
 ): ConversationGenerationSettings | undefined {

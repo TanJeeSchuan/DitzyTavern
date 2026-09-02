@@ -1,7 +1,7 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import type { Database } from "bun:sqlite";
+import { asc, eq, inArray } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
-	characterTable,
 	activeGenerationTable,
 	chatDataTable,
 	chatTable,
@@ -10,10 +10,15 @@ import {
 	messageVariantDataTable,
 	messageVariantTable,
 	participantOpeningTable,
-	participantPromptTable,
-	participantTable,
 } from "../database/schema";
-import { type ConversationDatabase, messageReferencesParticipant, readControlAssignment } from "./internal";
+import {
+	connectConversationDatabase,
+	groupVariantsByMessage,
+	messageReferencesParticipant,
+	readActiveCast,
+	readControlAssignment,
+	type ConversationDatabase,
+} from "./internal";
 import type {
 	AuthorStampSnapshot,
 	CapabilityAvailability,
@@ -201,9 +206,10 @@ const deriveParticipantRemoval = (
 // to assemble the full snapshot (cast, messages, variants, data, active
 // generations), which is too costly to use as an existence check.
 export function conversationExists(
-	db: ConversationDatabase,
+	database: Database,
 	conversationId: number,
 ): boolean {
+	const db = connectConversationDatabase(database);
 	return (
 		db
 			.select({ id: chatTable.id })
@@ -214,6 +220,16 @@ export function conversationExists(
 }
 
 export function readConversationSnapshot(
+	database: Database,
+	conversationId: number,
+): ConversationSnapshot | undefined {
+	return readConversationSnapshotFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+	);
+}
+
+export function readConversationSnapshotFromConnection(
 	db: ConversationDatabase,
 	conversationId: number,
 ): ConversationSnapshot | undefined {
@@ -227,30 +243,7 @@ export function readConversationSnapshot(
 	// ==[HUMAN APPROVED]== Active Cast members only. Tombstoned Participants keep a minimal base
 	// row solely to satisfy structural Message references; they are never
 	// part of the Cast and carry no position.
-	const castRows = db
-		.select({
-			id: participantTable.id,
-			position: participantTable.position,
-			name: participantTable.name,
-			sourceCharacterId: participantTable.source_character_id,
-			sourceCharacterName: characterTable.name,
-			systemInstruction: participantPromptTable.system_instruction,
-			identity: participantPromptTable.identity,
-			scenario: participantPromptTable.scenario,
-			exampleDialogue: participantPromptTable.example_dialogue,
-			postHistoryInstruction: participantPromptTable.post_history_instruction,
-		})
-		.from(participantTable)
-		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
-		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
-		.where(
-			and(
-				eq(participantTable.chat_id, conversationId),
-				isNull(participantTable.deleted_at),
-			),
-		)
-		.orderBy(asc(participantTable.position))
-		.all();
+	const castRows = readActiveCast(db, conversationId);
 	const castIds = castRows.map((participant) => participant.id);
 	const castIdsSet = new Set(castIds);
 
@@ -367,19 +360,17 @@ export function readConversationSnapshot(
 		variantDataByVariant.set(row.message_variant_id, entries);
 	}
 
-	const variantsByMessage = new Map<number, ConversationVariantSnapshot[]>();
-	for (const variant of variantRows) {
-		const variants = variantsByMessage.get(variant.message_id) ?? [];
-		variants.push({
+	const variantsByMessage = groupVariantsByMessage(
+		variantRows,
+		(variant): ConversationVariantSnapshot => ({
 			id: variant.id,
 			position: variant.position,
 			content: variant.content,
 			timestamp: variant.timestamp,
 			selected: variant.selected,
 			data: variantDataByVariant.get(variant.id) ?? [],
-		});
-		variantsByMessage.set(variant.message_id, variants);
-	}
+		}),
+	);
 
 	const messageDataByMessage = new Map<number, ConversationDataEntry[]>();
 	for (const row of messageDataRows) {

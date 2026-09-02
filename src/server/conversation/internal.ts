@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull, max } from "drizzle-orm";
+import { and, asc, eq, isNull, max } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
+	characterTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
@@ -54,6 +55,67 @@ export const readControlAssignment = (
 export const isPlayable = (control: ControlAssignmentState): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
+
+export interface ActiveCastRow {
+	id: number;
+	position: number;
+	name: string;
+	sourceCharacterId: number | null;
+	sourceCharacterName: string | null;
+	systemInstruction: string;
+	identity: string;
+	scenario: string;
+	exampleDialogue: string;
+	postHistoryInstruction: string;
+}
+
+// ==[HUMAN APPROVED]== Every Conversation read model uses the same active Cast query. The
+// complete row keeps lightweight history reads and detailed snapshots on one
+// active-membership definition while callers choose their own projection.
+export const readActiveCast = (
+	db: ConversationDatabase,
+	conversationId: number,
+): ActiveCastRow[] =>
+	db
+		.select({
+			id: participantTable.id,
+			position: participantTable.position,
+			name: participantTable.name,
+			sourceCharacterId: participantTable.source_character_id,
+			sourceCharacterName: characterTable.name,
+			systemInstruction: participantPromptTable.system_instruction,
+			identity: participantPromptTable.identity,
+			scenario: participantPromptTable.scenario,
+			exampleDialogue: participantPromptTable.example_dialogue,
+			postHistoryInstruction: participantPromptTable.post_history_instruction,
+		})
+		.from(participantTable)
+		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
+		.leftJoin(characterTable, eq(characterTable.id, participantTable.source_character_id))
+		.where(
+			and(
+				eq(participantTable.chat_id, conversationId),
+				isNull(participantTable.deleted_at),
+			),
+		)
+		.orderBy(asc(participantTable.position))
+		.all();
+
+export const groupVariantsByMessage = <
+	Row extends { message_id: number },
+	Value,
+>(
+	rows: readonly Row[],
+	toValue: (row: Row) => Value,
+): Map<number, Value[]> => {
+	const grouped = new Map<number, Value[]>();
+	for (const row of rows) {
+		const values = grouped.get(row.message_id) ?? [];
+		values.push(toValue(row));
+		grouped.set(row.message_id, values);
+	}
+	return grouped;
+};
 
 // ==[HUMAN APPROVED]== The one Active-Generation existence probe: every gate that must
 // treat a running Generation as mutually exclusive reads this predicate, so

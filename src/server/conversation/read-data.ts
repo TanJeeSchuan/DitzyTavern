@@ -6,9 +6,10 @@
 // the owning domain (the SillyTavern import adapter, etc.) keeps deciding
 // their meaning.
 
+import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { chatDataTable, chatTable } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import { connectConversationDatabase } from "./internal";
 import type {
 	ConversationDataEntry,
 	ConversationDataRead,
@@ -31,10 +32,11 @@ const toDataEntry = (row: {
 // Conversation with no matching entries returns an empty entries array, so
 // "no data under this filter" is a clean empty read rather than a failure.
 export function readConversationData(
-	db: ConversationDatabase,
+	database: Database,
 	conversationId: number,
 	filter: ConversationDataReadFilter = {},
 ): ConversationDataRead | undefined {
+	const db = connectConversationDatabase(database);
 	const conversation = db
 		.select()
 		.from(chatTable)

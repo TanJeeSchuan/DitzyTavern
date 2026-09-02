@@ -1,7 +1,7 @@
 import type { ConversationDatabase } from "../internal";
 import {
 	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
-	readConversationGenerationSettings,
+	readConversationGenerationSettingsFromConnection,
 	updateConversationGenerationSettings,
 } from "../generation-settings";
 
@@ -19,7 +19,7 @@ export function setGenerationModel(
 	db: ConversationDatabase,
 	input: SetGenerationModelInput,
 ) {
-	const existing = readConversationGenerationSettings(db, input.conversationId);
+	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
 	return updateConversationGenerationSettings(db, input.conversationId, {
 		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),
 		modelId: input.modelId,

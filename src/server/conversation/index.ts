@@ -15,7 +15,6 @@ import {
 import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
-import { connectConversationDatabase } from "./internal";
 import { conversationExists, readConversationSnapshot } from "./snapshot";
 import { readConversationData } from "./read-data";
 import {
@@ -139,39 +138,18 @@ export type {
 export function createConversationModule(database: Database): ConversationModule {
 	return {
 		create: (input) => createConversation(database, input),
-		exists: (conversationId) =>
-			conversationExists(connectConversationDatabase(database), conversationId),
-		getSnapshot: (conversationId) =>
-			readConversationSnapshot(
-				connectConversationDatabase(database),
-				conversationId,
-			),
-		getGenerationSettings: (conversationId) => {
-			const db = connectConversationDatabase(database);
-			if (!conversationExists(db, conversationId)) return undefined;
-			return readConversationGenerationSettings(db, conversationId);
-		},
+		exists: (conversationId) => conversationExists(database, conversationId),
+		getSnapshot: (conversationId) => readConversationSnapshot(database, conversationId),
+		getGenerationSettings: (conversationId) =>
+			readConversationGenerationSettings(database, conversationId),
 		readHistory: (conversationId, request) =>
-			readChatHistory(connectConversationDatabase(database), conversationId, request),
+			readChatHistory(database, conversationId, request),
 		readConversationData: (conversationId, filter) =>
-			readConversationData(
-				connectConversationDatabase(database),
-				conversationId,
-				filter,
-			),
+			readConversationData(database, conversationId, filter),
 		readActiveGenerationDetails: (conversationId, generationId) =>
-			readActiveGenerationDetails(
-				connectConversationDatabase(database),
-				conversationId,
-				generationId,
-			),
+			readActiveGenerationDetails(database, conversationId, generationId),
 		readVariantDetails: (conversationId, messageId, variantId) =>
-			readVariantDetails(
-				connectConversationDatabase(database),
-				conversationId,
-				messageId,
-				variantId,
-			),
+			readVariantDetails(database, conversationId, messageId, variantId),
 		execute: (command) => executeConversationCommand(database, command),
 		acceptTailGeneration: (input) =>
 			acceptConversationTailGeneration(database, input),

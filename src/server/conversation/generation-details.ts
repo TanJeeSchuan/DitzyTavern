@@ -3,7 +3,8 @@
 // for the bounded server-owned lifecycle and terminal reads expose only the
 // compact safe provenance allow-list.
 
-import { and, eq, isNull } from "drizzle-orm";
+import type { Database } from "bun:sqlite";
+import { and, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	chatTable,
@@ -13,7 +14,11 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import type { ConversationDatabase } from "./internal";
+import {
+	connectConversationDatabase,
+	readActiveCast,
+	type ConversationDatabase,
+} from "./internal";
 import type {
 	ActiveGenerationDetails,
 	AuthorStampSnapshot,
@@ -136,18 +141,12 @@ const authorFor = (
 ): AuthorStampSnapshot | null => {
 	if (participantId === null && name === null) return null;
 	const active = participantId === null
-		? undefined
-		: db.select({ id: participantTable.id })
-			.from(participantTable)
-			.where(and(
-				eq(participantTable.id, participantId),
-				eq(participantTable.chat_id, conversationId),
-				isNull(participantTable.deleted_at),
-			)).get();
+		? false
+		: readActiveCast(db, conversationId).some((participant) => participant.id === participantId);
 	return {
 		participantId,
 		capturedName: name,
-		inCast: active !== undefined,
+		inCast: active,
 	};
 };
 
@@ -163,6 +162,18 @@ const historicalContextFor = (message: {
 		: null;
 
 export function readActiveGenerationDetails(
+	database: Database,
+	conversationId: number,
+	generationId: number,
+): ActiveGenerationDetails | undefined {
+	return readActiveGenerationDetailsFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+		generationId,
+	);
+}
+
+export function readActiveGenerationDetailsFromConnection(
 	db: ConversationDatabase,
 	conversationId: number,
 	generationId: number,
@@ -233,6 +244,20 @@ export function readActiveGenerationDetails(
 }
 
 export function readVariantDetails(
+	database: Database,
+	conversationId: number,
+	messageId: number,
+	variantId: number,
+): VariantDetails | undefined {
+	return readVariantDetailsFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+		messageId,
+		variantId,
+	);
+}
+
+export function readVariantDetailsFromConnection(
 	db: ConversationDatabase,
 	conversationId: number,
 	messageId: number,

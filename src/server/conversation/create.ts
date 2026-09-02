@@ -23,7 +23,7 @@ import {
 	writeControlAssignment,
 	type ConversationDatabase,
 } from "./internal";
-import { readConversationSnapshot } from "./snapshot";
+import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
 	ConversationArtifactSeed,
@@ -446,7 +446,7 @@ export function createConversation(
 			}
 		}
 
-		const snapshot = readConversationSnapshot(db, conversation.id);
+		const snapshot = readConversationSnapshotFromConnection(db, conversation.id);
 		if (snapshot === undefined) {
 			throw new InvalidConversationCreationError(
 				"Created Conversation could not be read back.",

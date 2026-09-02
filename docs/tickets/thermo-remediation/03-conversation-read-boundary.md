@@ -1,6 +1,6 @@
 # Conversation read boundary
 
-Status: TODO
+Status: DONE
 
 Blocked By: None
 
@@ -25,20 +25,19 @@ Do not edit `src/server/conversation/commands/accept-generation.ts` or `src/serv
 
 ## Work
 
-- [ ] Change public read helpers to accept the raw `Database` and connect internally.
-- [ ] Stop reconnecting the database in every read lambda in the conversation facade.
-- [ ] Bind the conversation module once in the conversation contract route.
-- [ ] Extract module-internal helpers for active-cast reads and variants-by-message grouping.
-- [ ] Replace the duplicate history and snapshot query/grouping paths with those helpers.
-- [ ] Keep query behavior, ordering, and returned shapes unchanged.
-- [ ] Remove obsolete helper paths without compatibility layers.
-- [ ] Run focused history, snapshot, generation-details, contract, and conversation tests, typechecking, and the full test suite.
+- [x] Change public read helpers to accept the raw `Database` and connect internally.
+- [x] Stop reconnecting the database in every read lambda in the conversation facade.
+- [x] Bind the conversation module once in the conversation contract route.
+- [x] Extract module-internal helpers for active-cast reads and variants-by-message grouping.
+- [x] Replace the duplicate history and snapshot query/grouping paths with those helpers.
+- [x] Keep query behavior, ordering, and returned shapes unchanged.
+- [x] Remove obsolete helper paths without compatibility layers.
+- [x] Run focused history, snapshot, generation-details, contract, and conversation tests, typechecking, and the full test suite.
 - [ ] Run `/code-review` with Luna XHigh review subagents and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
 - Conversation read entry points follow the same raw `Database` policy as commands.
 - Contract routes do not repeat `withDatabase` module construction.
 - Active-cast and variant-grouping query scaffolding each have one implementation.
-

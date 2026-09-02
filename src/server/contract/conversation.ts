@@ -14,6 +14,7 @@ import {
 	createConversationModule,
 	StaleConversationRevisionError,
 	type ConversationAction,
+	type ConversationModule,
 } from "../conversation";
 import {
 	createGenerationCoordinator,
@@ -69,6 +70,14 @@ import {
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
 
+const withConversationModule = <T>(
+	database: Database | undefined,
+	operation: (conversation: ConversationModule) => T,
+): T =>
+	withDatabase(database, (connection) =>
+		operation(createConversationModule(connection)),
+	);
+
 // ==[HUMAN APPROVED]== Builds the typed stale-revision recovery shared by every Conversation
 // route: the authoritative summary is re-read and returned inside the 409
 // conflict payload, or a 404 when the Conversation disappeared in the
@@ -86,8 +95,8 @@ const staleConversationConflict = (
 			actualRevision: number;
 			currentConversation: ReturnType<typeof toConversationSummary>;
 	  } => {
-	const current = withDatabase(database, (connection) =>
-		createConversationModule(connection).getSnapshot(conversationId),
+	const current = withConversationModule(database, (conversation) =>
+		conversation.getSnapshot(conversationId),
 	);
 	if (current === undefined) {
 		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
@@ -174,8 +183,8 @@ export const createConversationRoutes = (
 	const readActiveGenerationDetailsRoute = ({ params }: {
 		params: { id: number; generationId: number };
 	}) => {
-		const details = withDatabase(database, (connection) =>
-			createConversationModule(connection).readActiveGenerationDetails(
+		const details = withConversationModule(database, (conversation) =>
+			conversation.readActiveGenerationDetails(
 				params.id,
 				params.generationId,
 			),
@@ -267,8 +276,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
 			({ params, status }) => {
-				const details = withDatabase(database, (connection) =>
-					createConversationModule(connection).readVariantDetails(
+				const details = withConversationModule(database, (conversation) =>
+					conversation.readVariantDetails(
 						params.id,
 						params.messageId,
 						params.variantId,
@@ -285,8 +294,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id",
 			({ params, status }) => {
-				const conversation = withDatabase(database, (connection) =>
-					createConversationModule(connection).getSnapshot(params.id),
+				const conversation = withConversationModule(database, (conversation) =>
+					conversation.getSnapshot(params.id),
 				);
 				if (conversation === undefined) {
 					return status(404, { outcome: "not-found" as const });
@@ -304,8 +313,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/history",
 			({ params, query, status }) => {
-				const history = withDatabase(database, (connection) =>
-					createConversationModule(connection).readHistory(params.id, {
+				const history = withConversationModule(database, (conversation) =>
+					conversation.readHistory(params.id, {
 						page: query.page,
 						pageSize: query.pageSize,
 					}),
@@ -327,8 +336,8 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generation-settings",
 			({ params, status }) => {
-				const settings = withDatabase(database, (connection) =>
-					createConversationModule(connection).getGenerationSettings(params.id),
+				const settings = withConversationModule(database, (conversation) =>
+					conversation.getGenerationSettings(params.id),
 				);
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
@@ -432,8 +441,8 @@ export const createConversationRoutes = (
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
-					const conversation = withDatabase(database, (connection) =>
-						createConversationModule(connection).execute({
+					const conversation = withConversationModule(database, (conversation) =>
+						conversation.execute({
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,

@@ -9,7 +9,7 @@ import {
 	connectConversationDatabase,
 	type ConversationDatabase,
 } from "../internal";
-import { readConversationSnapshot } from "../snapshot";
+import { readConversationSnapshotFromConnection } from "../snapshot";
 import type { ConversationSnapshot } from "../types";
 
 // ==[HUMAN APPROVED]== Shared Conversation write seam: every server-owned write runs as one
@@ -17,6 +17,14 @@ import type { ConversationSnapshot } from "../types";
 // Conversation revision exactly once, and finishes with the authoritative
 // snapshot. Command modules compose these pieces instead of hand-repeating
 // the connect/bump/read scaffolding.
+
+const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
+	lastMessageTime === undefined
+		? { revision: sql`${chatTable.revision} + 1` }
+		: {
+				revision: sql`${chatTable.revision} + 1`,
+				last_message_time: lastMessageTime,
+		};
 
 /** ==[HUMAN APPROVED]== Run one Conversation write as a single immediate transaction. */
 export function runConversationTransaction<T>(
@@ -41,9 +49,7 @@ export function advanceConversationRevision(
 	lastMessageTime?: string,
 ): ConversationSnapshot {
 	db.update(chatTable)
-		.set(lastMessageTime === undefined
-			? { revision: sql`${chatTable.revision} + 1` }
-			: { revision: sql`${chatTable.revision} + 1`, last_message_time: lastMessageTime })
+		.set(revisionAdvanceSet(lastMessageTime))
 		.where(eq(chatTable.id, conversationId))
 		.run();
 	return requireConversationSnapshot(db, conversationId);
@@ -65,9 +71,7 @@ export function advanceConversationRevisionGuarded(
 ): void {
 	const advanced = db
 		.update(chatTable)
-		.set(lastMessageTime === undefined
-			? { revision: sql`${chatTable.revision} + 1` }
-			: { revision: sql`${chatTable.revision} + 1`, last_message_time: lastMessageTime })
+		.set(revisionAdvanceSet(lastMessageTime))
 		.where(
 			and(
 				eq(chatTable.id, conversationId),
@@ -89,7 +93,7 @@ export function requireConversationSnapshot(
 	db: ConversationDatabase,
 	conversationId: number,
 ): ConversationSnapshot {
-	const snapshot = readConversationSnapshot(db, conversationId);
+	const snapshot = readConversationSnapshotFromConnection(db, conversationId);
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}

@@ -11,17 +11,22 @@
 // and ordinary swipe navigation after commit is the existing revisioned
 // Variant-selection command, never a second source representation.
 
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { Database } from "bun:sqlite";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
 	chatTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
-	participantTable,
 } from "../database/schema";
 import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-defaults";
-import { type ConversationDatabase, readControlAssignment } from "./internal";
+import {
+	connectConversationDatabase,
+	groupVariantsByMessage,
+	readActiveCast,
+	readControlAssignment,
+} from "./internal";
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,
@@ -66,10 +71,11 @@ const isContinuable = (
 // repeated reads. A missing Conversation is undefined; there is no partial
 // page.
 export function readChatHistory(
-	db: ConversationDatabase,
+	database: Database,
 	conversationId: number,
 	request: ChatHistoryPageRequest = {},
 ): ChatHistoryPage | undefined {
+	const db = connectConversationDatabase(database);
 	const conversation = db
 		.select()
 		.from(chatTable)
@@ -150,38 +156,25 @@ export function readChatHistory(
 					.map((row) => [row.variantId, row.value]),
 	);
 
-	const variantsByMessage = new Map<number, ChatHistoryVariant[]>();
-	for (const variant of variantRows) {
-		const variants = variantsByMessage.get(variant.message_id) ?? [];
-		const historyVariant: ChatHistoryVariant = {
-			id: variant.id,
-			position: variant.position,
-			content: variant.content,
-			timestamp: variant.timestamp,
-			selected: variant.selected,
-		};
-		const reasoning = reasoningByVariant.get(variant.id);
-		if (reasoning !== undefined) historyVariant.reasoning = reasoning;
-		variants.push(historyVariant);
-		variantsByMessage.set(variant.message_id, variants);
-	}
+	const variantsByMessage = groupVariantsByMessage(
+		variantRows,
+		(variant): ChatHistoryVariant => {
+			const historyVariant: ChatHistoryVariant = {
+				id: variant.id,
+				position: variant.position,
+				content: variant.content,
+				timestamp: variant.timestamp,
+				selected: variant.selected,
+			};
+			const reasoning = reasoningByVariant.get(variant.id);
+			if (reasoning !== undefined) historyVariant.reasoning = reasoning;
+			return historyVariant;
+		},
+	);
 
-	const cast = db
-		.select({
-			id: participantTable.id,
-			position: participantTable.position,
-			name: participantTable.name,
-		})
-		.from(participantTable)
-		.where(
-			and(
-				eq(participantTable.chat_id, conversationId),
-				isNull(participantTable.deleted_at),
-			),
-		)
-		.orderBy(asc(participantTable.position))
-		.all();
-	const castIds = cast.map((participant) => participant.id);
+	const activeCast = readActiveCast(db, conversationId);
+	const cast = activeCast.map(({ id, position, name }) => ({ id, position, name }));
+	const castIds = activeCast.map((participant) => participant.id);
 	const castIdsSet = new Set(castIds);
 
 	// ==[HUMAN APPROVED]== Playability is the single derived Control-validity rule, and the
