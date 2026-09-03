@@ -18,7 +18,7 @@ import type {
 } from "./types";
 import { authenticatedHeaders } from "./authenticated-headers";
 import type { ModelFetch } from "./model-fetch";
-import { createModelAdapter } from "./adapter";
+import { createModelAdapter, isModelAdapter } from "./adapter";
 import {
 	ModelClientTransportError,
 	toModelClientTransportError,
@@ -42,23 +42,50 @@ export { ModelClientTransportError } from "./errors";
 // ==[HUMAN APPROVED]== Production v1 Model Client. The adapter owns all provider request shaping;
 // callers only supply the opaque Prompt Plan and provider-neutral generation
 // settings. The request destination is captured when this client is created,
-// so Profile edits cannot redirect an in-flight Generation. The adapter dispatch
-// lives inside the deep Model Client: routes and workflows select one
-// provider-neutral factory and never import concrete transport constructors.
+// so Profile edits cannot redirect an in-flight Generation.
+export function createDeepSeekModelClient(
+	options: ChatCompletionsModelClientOptions,
+): ModelClient {
+	return createConfiguredModelClient(options, "deepseek");
+}
+
+export function createOpenAICompatibleModelClient(
+	options: ChatCompletionsModelClientOptions,
+): ModelClient {
+	return createConfiguredModelClient(options, "openai-compatible");
+}
+
+export function createOpenRouterModelClient(
+	options: ChatCompletionsModelClientOptions,
+): ModelClient {
+	return createConfiguredModelClient(options, "openrouter");
+}
+
+// ==[HUMAN APPROVED]== The adapter dispatch lives inside the deep Model Client: routes and
+// workflows select one provider-neutral factory and never import concrete
+// transport constructors.
 export function createModelClient(
 	options: ChatCompletionsModelClientOptions,
+): ModelClient {
+	if (!isModelAdapter(options.profile.adapter)) {
+		throw new ModelClientTransportError(
+			`The AI SDK Adapter "${String(options.profile.adapter)}" is unavailable.`,
+			"transport",
+		);
+	}
+	return createConfiguredModelClient(options, options.profile.adapter);
+}
+
+function createConfiguredModelClient(
+	options: ChatCompletionsModelClientOptions,
+	adapter: "deepseek" | "openrouter" | "openai-compatible",
 ): ModelClient {
 	if (options.profile.apiFormat !== "chat-completions") {
 		throw new ModelClientTransportError("The selected API Format is unavailable.");
 	}
-	const adapter = options.profile.adapter;
-	if (
-		adapter !== "deepseek" &&
-		adapter !== "openrouter" &&
-		adapter !== "openai-compatible"
-	) {
+	if (options.profile.adapter !== adapter) {
 		throw new ModelClientTransportError(
-			`The AI SDK Adapter "${String(adapter)}" is unavailable.`,
+			`The profile uses ${options.profile.adapter}; expected ${adapter}.`,
 		);
 	}
 	const requestUrl = resolveChatCompletionsRequestUrl(options.profile.requestUrl);
