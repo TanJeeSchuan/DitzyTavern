@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Plus } from "lucide-react";
+import { BookOpen, MessageSquare, Plus, Upload } from "lucide-react";
 
 export function WorkspaceLoading() {
 	return (
@@ -32,9 +32,11 @@ export function WorkspaceError({ onRetry }: { onRetry: () => void }) {
 
 export function WorkspaceWithoutChats({
 	onNewChat,
+	onImportChat,
 	onOpenSettings,
 }: {
 	onNewChat: () => void;
+	onImportChat: () => void;
 	onOpenSettings: () => void;
 }) {
 	return (
@@ -45,6 +47,9 @@ export function WorkspaceWithoutChats({
 				<p>Create a Chat with two Participants to open the writing workspace.</p>
 				<button className="primary-button" type="button" onClick={onNewChat}>
 					<Plus aria-hidden="true" /> New Chat
+				</button>
+				<button className="secondary-button" type="button" onClick={onImportChat}>
+					<Upload aria-hidden="true" /> Import Chat
 				</button>
 				<button className="secondary-button" type="button" onClick={onOpenSettings}>
 					Connection Settings

@@ -15,16 +15,6 @@
 		margin-left: 1.25rem;
 	}
 
-	/* New Chat opened from the no-chat surface renders outside the
-	   workspace; keep it docked to the right edge there too. */
-	body > .details-panel {
-		position: fixed;
-		top: 0;
-		bottom: 0;
-		right: 0;
-		width: 18rem;
-	}
-
 	.composer[data-receded="true"] {
 		opacity: 0.24;
 		transform: translateY(72%);
@@ -35,6 +25,25 @@
 		opacity: 1;
 		transform: translateY(0);
 	}
+}
+
+/* New Chat and Import Chat opened from the no-chat surface render outside
+   the workspace; cover the viewport instead of docking. */
+body > .details-panel {
+	position: fixed;
+	inset: 0;
+	z-index: 45;
+	width: 100%;
+	height: 100dvh;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+}
+
+body > .details-panel > .panel-body {
+	width: min(100%, 42rem);
+	margin-inline: auto;
+	padding: 1.25rem;
 }
 
 @media (max-width: 90rem) and (min-width: 78.01rem) {
@@ -484,10 +493,6 @@
 }
 
 .new-chat-panel .primary-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 0.45rem;
 	width: 100%;
 }
 

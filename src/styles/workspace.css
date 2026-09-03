@@ -364,6 +364,10 @@
 
 .primary-button,
 .secondary-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45rem;
 	min-height: 2.55rem;
 	padding: 0 0.95rem;
 	border-radius: 0.75rem;
@@ -397,6 +401,10 @@
 /* Destructive actions (Character deletion) share the button shape of
    primary/secondary actions but use the destructive color instead. */
 .danger-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45rem;
 	min-height: 2.55rem;
 	padding: 0 0.95rem;
 	border: 1px solid var(--destructive);

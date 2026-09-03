@@ -7,6 +7,7 @@ import {
 import { ActiveWritingWorkspace } from "./workspace/ActiveWritingWorkspace";
 import { ConnectionSettingsPanel } from "./workspace/ConnectionSettingsPanel";
 import { NewChatSurface } from "./workspace/NewChatSurface";
+import { ImportChatSurface } from "./import-chat/ImportChatSurface";
 import {
 	WorkspaceError,
 	WorkspaceLoading,
@@ -90,6 +91,7 @@ function WritingWorkspace({
 	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [newChatOpen, setNewChatOpen] = useState(false);
+	const [importChatOpen, setImportChatOpen] = useState(false);
 	const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false);
 
 	const handleCreated = async () => {
@@ -102,6 +104,7 @@ function WritingWorkspace({
 			<>
 				<WorkspaceWithoutChats
 					onNewChat={() => setNewChatOpen(true)}
+					onImportChat={() => setImportChatOpen(true)}
 					onOpenSettings={() => setConnectionSettingsOpen(true)}
 				/>
 				{connectionSettingsOpen && (
@@ -122,15 +125,25 @@ function WritingWorkspace({
 						</section>
 					</div>
 				)}
-			{newChatOpen && (
-				createPortal(
-					<NewChatSurface
-						onCreated={() => void handleCreated()}
-						onClose={() => setNewChatOpen(false)}
-					/>,
-					document.body,
-				)
-			)}
+				{newChatOpen && (
+					createPortal(
+						<NewChatSurface
+							onCreated={() => void handleCreated()}
+							onClose={() => setNewChatOpen(false)}
+						/>,
+						document.body,
+					)
+				)}
+				{importChatOpen && (
+					createPortal(
+						<ImportChatSurface
+							characters={initialWorkspace.characters}
+							onImportLaunched={onImportLaunched}
+							onClose={() => setImportChatOpen(false)}
+						/>,
+						document.body,
+					)
+				)}
 			</>
 		);
 	}
