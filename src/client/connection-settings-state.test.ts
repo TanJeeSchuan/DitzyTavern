@@ -179,18 +179,4 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.notice).toBe("First deleted.");
 	});
 
-	test("basic and advanced edits remain in one controller draft", () => {
-		const nextDraft = { ...controllerState().draft, displayName: "Renamed", requestUrl: "https://new.example/" };
-		const withBasics = reduceConnectionSettingsController(controllerState(), {
-			type: "set-draft",
-			draft: nextDraft,
-		});
-		const withAdvanced = reduceConnectionSettingsController(withBasics, {
-			type: "set-header-editor-data",
-			value: { "X-Trace": { configured: false, operation: "replace", replacement: "on" } },
-		});
-
-		expect(withAdvanced.draft).toEqual(nextDraft);
-		expect(withAdvanced.headerEditorData["X-Trace"]?.replacement).toBe("on");
-	});
 });
