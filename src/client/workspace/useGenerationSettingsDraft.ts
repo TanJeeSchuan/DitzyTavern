@@ -116,8 +116,9 @@ function applyDraftsToGenerationSettings(
 type LoadStatus = "loading" | "ready" | "saving" | "load-error";
 
 interface GenerationSettingsDraftOptions {
-	conversation: ConversationSummary;
-	onConversationChange: (conversation: ConversationSummary) => void;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary | null) => void;
+	transmittingNamespace?: OverridesNamespace | null;
 }
 
 /**
@@ -130,6 +131,7 @@ interface GenerationSettingsDraftOptions {
 export function useGenerationSettingsDraft({
 	conversation,
 	onConversationChange,
+	transmittingNamespace: externalTransmittingNamespace,
 }: GenerationSettingsDraftOptions) {
 	const [settings, setSettings] = useState<ConversationGenerationSettings | null>(null);
 	const [instruction, setInstruction] = useState("");
@@ -150,10 +152,15 @@ export function useGenerationSettingsDraft({
 	>({ status: "loading" });
 	const [status, setStatus] = useState<LoadStatus>("loading");
 	const [problem, setProblem] = useState<string | null>(null);
-	const conversationIdRef = useRef(conversation.id);
-	conversationIdRef.current = conversation.id;
+	const conversationIdRef = useRef<number | null>(conversation?.id ?? null);
+	conversationIdRef.current = conversation?.id ?? null;
 
 	useAsyncEffect((isCancelled) => {
+		if (conversation === null) {
+			setSettings(null);
+			setStatus("loading");
+			return;
+		}
 		setStatus("loading");
 		void loadConversationGenerationSettings(conversation.id)
 			.then((loaded) => {
@@ -171,11 +178,20 @@ export function useGenerationSettingsDraft({
 			.catch(() => {
 				if (!isCancelled()) setStatus("load-error");
 			});
-	}, [conversation.id]);
+	}, [conversation?.id]);
 
-	// ==[HUMAN APPROVED]== Connection Settings are global and this panel remounts on every open, so
-	// a single load identifies the transmitting namespace for this visit.
+	// ==[HUMAN APPROVED]== The active Connection Profile is global. The workspace supplies its
+	// current namespace when available so activating a Profile updates this indication without
+	// reloading or replacing the local Generation draft.
 	useAsyncEffect((isCancelled) => {
+		if (externalTransmittingNamespace !== undefined) {
+			setTransmittingNamespace(
+				externalTransmittingNamespace === null
+					? { status: "no-active-profile" }
+					: { status: "known", namespace: externalTransmittingNamespace },
+			);
+			return;
+		}
 		void loadConnectionSettings()
 			.then((settings) => {
 				if (isCancelled()) return;
@@ -191,7 +207,7 @@ export function useGenerationSettingsDraft({
 			.catch(() => {
 				if (!isCancelled()) setTransmittingNamespace({ status: "unavailable" });
 			});
-	}, []);
+	}, [externalTransmittingNamespace]);
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
@@ -226,6 +242,7 @@ export function useGenerationSettingsDraft({
 
 	const save = async () => {
 		if (
+			conversation === null ||
 			!canSave ||
 			samplingValues === null ||
 			budgetValues === null ||
@@ -294,3 +311,5 @@ export function useGenerationSettingsDraft({
 		save,
 	};
 }
+
+export type GenerationSettingsDraftController = ReturnType<typeof useGenerationSettingsDraft>;

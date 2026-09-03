@@ -6,9 +6,11 @@ import { ArrowLeft, PanelLeftClose } from "lucide-react";
 // the Chats panel) renders its own header instead.
 export function PanelHeader({
 	title,
+	backLabel = "Back to Chat",
 	onClose,
 }: {
 	title: string;
+	backLabel?: string;
 	onClose: () => void;
 }) {
 	return (
@@ -17,7 +19,7 @@ export function PanelHeader({
 				className="mobile-back"
 				type="button"
 				onClick={onClose}
-				aria-label="Back to Chat"
+				aria-label={backLabel}
 			>
 				<ArrowLeft aria-hidden="true" />
 			</button>

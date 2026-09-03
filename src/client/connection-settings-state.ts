@@ -65,7 +65,6 @@ export type ConnectionSettingsControllerState = {
 	pendingDeletionProfileId: number | null;
 	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
-	headersExpanded: boolean;
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
@@ -84,7 +83,6 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	pendingDeletionProfileId: null,
 	openProfileMenuId: null,
 	presetChoicesOpen: false,
-	headersExpanded: false,
 	conflict: null,
 	notice: null,
 	error: null,
@@ -103,9 +101,8 @@ const profileEditorState = (
 		testResult: null,
 		replacementProfileId: state.settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null,
 		pendingDeletionProfileId: null,
-		openProfileMenuId: null,
+	openProfileMenuId: null,
 		presetChoicesOpen: false,
-		headersExpanded: profile.headers.length > 0,
 		conflict: null,
 		notice: null,
 		error: null,
@@ -120,7 +117,6 @@ export type ConnectionSettingsControllerAction =
 	| { type: "set-credential-draft"; value: string }
 	| { type: "set-header-editor-data"; value: HeaderEditorData }
 	| { type: "set-test-model-id"; value: string }
-	| { type: "set-headers-expanded"; value: boolean }
 	| { type: "set-preset-choices-open"; value: boolean }
 	| { type: "set-open-profile-menu"; value: number | null }
 	| { type: "set-replacement-profile"; value: number | null }
@@ -170,7 +166,6 @@ export function reduceConnectionSettingsController(
 				pendingDeletionProfileId: null,
 				openProfileMenuId: null,
 				presetChoicesOpen: false,
-				headersExpanded: false,
 				conflict: null,
 				notice: `${action.preset.label} defaults copied into a new editable Profile draft.`,
 				error: null,
@@ -185,8 +180,6 @@ export function reduceConnectionSettingsController(
 			return { ...state, headerEditorData: action.value };
 		case "set-test-model-id":
 			return { ...state, testModelId: action.value };
-		case "set-headers-expanded":
-			return { ...state, headersExpanded: action.value };
 		case "set-preset-choices-open":
 			return { ...state, presetChoicesOpen: action.value };
 		case "set-open-profile-menu":
@@ -275,7 +268,6 @@ export function reduceConnectionSettingsController(
 						testModelId: "",
 						testResult: null,
 						replacementProfileId: null,
-						headersExpanded: false,
 					}
 				: { ...profileEditorState(next, nextProfile), notice: next.notice };
 		}

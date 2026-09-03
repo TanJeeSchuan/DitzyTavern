@@ -38,6 +38,13 @@ export interface SamplingDrafts {
 	presencePenalty: string;
 }
 
+export interface GenerationSettingsSummary {
+	sampling: string;
+	budget: string;
+	overrides: string;
+	transmittingNamespace: string;
+}
+
 export function makeEmptySamplingDrafts(): SamplingDrafts {
 	return { temperature: "", topP: "", frequencyPenalty: "", presencePenalty: "" };
 }
@@ -306,6 +313,50 @@ export function resolveOverridesValues(
 		responses: responses.value,
 		"anthropic-messages": anthropicMessages.value,
 	};
+}
+
+export function generationSettingsSummaryFromDrafts(
+	drafts: {
+		sampling: SamplingDrafts;
+		budget: BudgetDrafts;
+		overrides: OverridesDrafts;
+	},
+	transmittingNamespace: OverridesNamespace | null,
+): GenerationSettingsSummary {
+	const sampling = resolveSamplingValues(drafts.sampling);
+	const budget = resolveBudgetValues(drafts.budget);
+	const overrides = resolveOverridesValues(drafts.overrides);
+	const configuredSampling = sampling === null
+		? null
+		: Object.values(sampling).filter((value) => value !== null).length;
+	const overrideCount = overrides === null
+		? null
+		: transmittingNamespace === null
+			? 0
+			: Object.keys(overrides[transmittingNamespace]).length;
+
+	return {
+		sampling: configuredSampling === null
+			? "Fix invalid values"
+			: configuredSampling === 0
+				? "Provider defaults"
+				: `${configuredSampling} value${configuredSampling === 1 ? "" : "s"} configured`,
+		budget: budget === null
+			? "Fix invalid values"
+			: `${formatSummaryNumber(budget.contextLimit)} context · ${formatSummaryNumber(budget.responseBudget)} response`,
+		overrides: overrideCount === null
+			? "Fix invalid values"
+			: overrideCount === 0
+				? transmittingNamespace === null ? "No transmitted namespace" : "No custom fields"
+				: `${overrideCount} custom field${overrideCount === 1 ? "" : "s"}`,
+		transmittingNamespace: transmittingNamespace === null
+			? "Unknown"
+			: OVERRIDES_NAMESPACE_LABELS[transmittingNamespace],
+	};
+}
+
+function formatSummaryNumber(value: number): string {
+	return new Intl.NumberFormat("en-US").format(value);
 }
 
 // ==[HUMAN APPROVED]== The first-class Sampling wire keys and the two managed key families are

@@ -5,7 +5,7 @@ import {
 	workspaceClient,
 } from "./workspace";
 import { ActiveWritingWorkspace } from "./workspace/ActiveWritingWorkspace";
-import { ConnectionSettingsPanel } from "./workspace/ConnectionSettingsPanel";
+import { ConnectionSettingsPanelHost } from "./workspace/ConnectionSettingsPanel";
 import { NewChatSurface } from "./workspace/NewChatSurface";
 import { ImportChatSurface } from "./import-chat/ImportChatSurface";
 import {
@@ -121,7 +121,7 @@ function WritingWorkspace({
 									×
 								</button>
 							</header>
-							<ConnectionSettingsPanel />
+							<ConnectionSettingsPanelHost />
 						</section>
 					</div>
 				)}

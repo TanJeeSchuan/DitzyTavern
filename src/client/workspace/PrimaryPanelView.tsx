@@ -11,6 +11,9 @@ import type {
 import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import { GenerationPanel } from "./GenerationPanel";
+import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
+import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import type { SplitInspector } from "./panel-coordination";
 import type { PrimaryPanel } from "./types";
 
 export function PrimaryPanelView({
@@ -28,6 +31,9 @@ export function PrimaryPanelView({
 	libraryFocusCharacterId,
 	onLibraryFocusConsumed,
 	onOpenLibraryCharacter,
+	connectionSettings,
+	generationSettings,
+	onOpenInspector,
 	mutationsDisabled = false,
 }: {
 	panel: PrimaryPanel;
@@ -44,6 +50,9 @@ export function PrimaryPanelView({
 	libraryFocusCharacterId: number | null;
 	onLibraryFocusConsumed: () => void;
 	onOpenLibraryCharacter: (characterId: number) => void;
+	connectionSettings: ConnectionSettingsController;
+	generationSettings: GenerationSettingsDraftController;
+	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
 	return (
@@ -105,14 +114,15 @@ export function PrimaryPanelView({
 					)}
 					{panel === "models" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-							<ConnectionSettingsPanel />
+							<ConnectionSettingsPanel controller={connectionSettings} onOpenInspector={() => onOpenInspector("models")} />
 						</div>
 					)}
 					{panel === "generation" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<GenerationPanel
 								conversation={conversation}
-								onConversationChange={onConversationChange}
+								controller={generationSettings}
+								onOpenInspector={() => onOpenInspector("generation")}
 							/>
 						</div>
 					)}

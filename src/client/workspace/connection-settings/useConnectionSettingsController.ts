@@ -23,6 +23,11 @@ import {
 	type HeaderEditorData,
 	type HeaderEditorValue,
 } from "../../connection-settings-state";
+import {
+	connectionAdvancedDraftValidationError,
+	connectionBasicDraftValidationError,
+	connectionDraftValidationError,
+} from "../../connection-settings-draft";
 import { useAsyncEffect } from "../../lib/use-async";
 import { resolveChatCompletionsRequestUrl } from "../../../shared/connection-url";
 
@@ -84,7 +89,10 @@ export type ConnectionSettingsController = {
 	pendingDeletionProfileId: number | null;
 	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
-	headersExpanded: boolean;
+	canSave: boolean;
+	validationError: string | null;
+	basicValidationError: string | null;
+	advancedValidationError: string | null;
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
@@ -98,7 +106,6 @@ export type ConnectionSettingsController = {
 	setCredentialDraft: (value: string) => void;
 	setHeaderEditorData: (value: HeaderEditorData) => void;
 	setTestModelId: (value: string) => void;
-	setHeadersExpanded: (value: boolean) => void;
 	setPresetChoicesOpen: (value: boolean) => void;
 	setOpenProfileMenuId: (value: number | null) => void;
 	setReplacementProfileId: (value: number | null) => void;
@@ -117,8 +124,7 @@ export type ConnectionSettingsController = {
  * ==[HUMAN APPROVED]== Owns the Connection Settings editor state. The former single patch-any-field
  * store is split into focused slices — server catalog, editable Profile
  * draft, selection and menus, and user-facing feedback — and the Profile
- * command handlers share one runConnectionCommand failure path. The returned
- * controller shape is unchanged for its callers.
+ * command handlers share one runConnectionCommand failure path.
  */
 export function useConnectionSettingsController(): ConnectionSettingsController {
 	const [state, dispatch] = useReducer(
@@ -139,7 +145,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
-		headersExpanded,
 		conflict,
 		notice,
 		error,
@@ -152,7 +157,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const setCredentialDraft = (value: string) => dispatch({ type: "set-credential-draft", value });
 	const setHeaderEditorData = (value: HeaderEditorData) => dispatch({ type: "set-header-editor-data", value });
 	const setTestModelId = (value: string) => dispatch({ type: "set-test-model-id", value });
-	const setHeadersExpanded = (value: boolean) => dispatch({ type: "set-headers-expanded", value });
 	const setPresetChoicesOpen = (value: boolean) => dispatch({ type: "set-preset-choices-open", value });
 	const setOpenProfileMenuId = (value: number | null) => dispatch({ type: "set-open-profile-menu", value });
 	const setReplacementProfileId = (value: number | null) => dispatch({ type: "set-replacement-profile", value });
@@ -191,6 +195,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
 		}
 	}, [draft.requestUrl]);
+	const validationError = connectionDraftValidationError(draft, headerEditorData);
+	const basicValidationError = connectionBasicDraftValidationError(draft);
+	const advancedValidationError = connectionAdvancedDraftValidationError(draft, headerEditorData);
+	const canSave = settings !== null && validationError === null;
 
 	// ==[HUMAN APPROVED]== Runs one Connection Settings command and owns the failure wording
 	// repeated by every Profile command handler: a conflict preserves the
@@ -223,6 +231,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	};
 
 	const testDraft = async () => {
+		if (validationError !== null) {
+			dispatch({ type: "set-error", message: validationError });
+			return;
+		}
 		if (testModelId.trim().length === 0) {
 			dispatch({ type: "set-error", message: "Enter a model ID before testing this Connection Profile." });
 			return;
@@ -267,6 +279,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 
 	const applyDraft = async () => {
 		if (settings === null) return;
+		if (validationError !== null) {
+			dispatch({ type: "set-error", message: validationError });
+			return;
+		}
 		let headers: ConnectionHeaderOperation[];
 		try { headers = headerOperationsFor(headerEditorData); }
 		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return; }
@@ -375,7 +391,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
-		headersExpanded,
+		canSave,
+		validationError,
+		basicValidationError,
+		advancedValidationError,
 		conflict,
 		notice,
 		error,
@@ -389,7 +408,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		setCredentialDraft,
 		setHeaderEditorData,
 		setTestModelId,
-		setHeadersExpanded,
 		setPresetChoicesOpen,
 		setOpenProfileMenuId,
 		setReplacementProfileId,

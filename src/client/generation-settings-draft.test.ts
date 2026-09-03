@@ -13,6 +13,7 @@ import {
 	resolveBudgetValues,
 	resolveOverridesValues,
 	resolveSamplingValues,
+	generationSettingsSummaryFromDrafts,
 	samplingDraftsFromSettings,
 } from "./generation-settings-draft";
 
@@ -269,6 +270,41 @@ describe("request override drafts", () => {
 		expect(managedOverrideKeys("chat-completions", { custom_field: "kept" })).toEqual({
 			structural: [],
 			outputLimit: [],
+		});
+	});
+});
+
+describe("Generation Settings summaries", () => {
+	test("derives compact summaries from the same drafts used for saving", () => {
+		const sampling = makeEmptySamplingDrafts();
+		sampling.temperature = "0.7";
+		const budget = makeEmptyBudgetDrafts();
+		budget.contextLimit = "32768";
+		budget.responseBudget = "1024";
+		budget.safetyAllowance = "500";
+		budget.siblingGenerationLimit = "4";
+		const overrides = makeEmptyOverridesDrafts();
+		overrides["chat-completions"] = { custom_field: true };
+
+		expect(generationSettingsSummaryFromDrafts({ sampling, budget, overrides }, "chat-completions")).toEqual({
+			sampling: "1 value configured",
+			budget: "32,768 context · 1,024 response",
+			overrides: "1 custom field",
+			transmittingNamespace: "Chat Completions",
+		});
+	});
+
+	test("surfaces invalid drafts and an unavailable transmitting namespace", () => {
+		const sampling = makeEmptySamplingDrafts();
+		const budget = makeEmptyBudgetDrafts();
+		const overrides = makeEmptyOverridesDrafts();
+		budget.contextLimit = "not a number";
+
+		expect(generationSettingsSummaryFromDrafts({ sampling, budget, overrides }, null)).toEqual({
+			sampling: "Provider defaults",
+			budget: "Fix invalid values",
+			overrides: "No transmitted namespace",
+			transmittingNamespace: "Unknown",
 		});
 	});
 });
