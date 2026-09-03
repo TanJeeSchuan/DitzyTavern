@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
 	type Workspace,
 	workspaceClient,
@@ -121,12 +122,15 @@ function WritingWorkspace({
 						</section>
 					</div>
 				)}
-				{newChatOpen && (
+			{newChatOpen && (
+				createPortal(
 					<NewChatSurface
 						onCreated={() => void handleCreated()}
 						onClose={() => setNewChatOpen(false)}
-					/>
-				)}
+					/>,
+					document.body,
+				)
+			)}
 			</>
 		);
 	}
