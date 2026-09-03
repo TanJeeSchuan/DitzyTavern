@@ -21,7 +21,6 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import type {
-	AuthorStampSnapshot,
 	CapabilityAvailability,
 	CastParticipantSnapshot,
 	ConversationCapabilities,
@@ -35,6 +34,10 @@ import type {
 	MessageSwipeEligibility,
 	ParticipantRemovalEligibility,
 } from "./types";
+import {
+	toAuthorStamp,
+	toHistoricalContext,
+} from "./message-read-projection";
 
 const toDataEntry = (row: { namespace: string; key: string; value: string }) => ({
 	namespace: row.namespace,
@@ -104,39 +107,6 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-// ==[HUMAN APPROVED]== The Author Stamp and captured historical Control pair mappers shared
-// by the snapshot and the paginated history read: one derivation per row
-// shape, so the two read models can never disagree about Message identity.
-export const toAuthorStamp = (
-	row: { author_participant_id: number | null; author_name: string | null },
-	castIds: ReadonlySet<number>,
-): AuthorStampSnapshot | null =>
-	row.author_participant_id !== null || row.author_name !== null
-		? {
-				participantId: row.author_participant_id,
-				capturedName: row.author_name,
-				// ==[HUMAN APPROVED]== Derived historical display state: the captured name keeps
-				// displaying with a no-longer-in-Cast marker after removal.
-				inCast:
-					row.author_participant_id !== null &&
-					castIds.has(row.author_participant_id),
-			}
-		: null;
-
-export const toHistoricalContext = (
-	row: {
-		context_human_participant_id: number | null;
-		context_model_participant_id: number | null;
-	},
-): HistoricalControlSnapshot | null =>
-	row.context_human_participant_id !== null &&
-	row.context_model_participant_id !== null
-		? {
-				humanParticipantId: row.context_human_participant_id,
-				modelParticipantId: row.context_model_participant_id,
-			}
-		: null;
-
 // ==[HUMAN APPROVED]== Derives one Participant's removal eligibility and impact. Seated
 // Participants are protected (a Control seat must change first); every other
 // Cast member is eligible, and the deletion mode states whether removal

@@ -30,9 +30,11 @@ import {
 import {
 	deriveControlValidity,
 	deriveMessageSwipeEligibility,
+} from "./snapshot";
+import {
 	toAuthorStamp,
 	toHistoricalContext,
-} from "./snapshot";
+} from "./message-read-projection";
 import type {
 	ChatHistoryMessage,
 	ChatHistoryPage,

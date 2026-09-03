@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { toAuthorStamp, toHistoricalContext } from "./snapshot";
+import {
+	toAuthorStamp,
+	toHistoricalContext,
+} from "./message-read-projection";
 
 // The row→view mappers are the one derivation of Message identity shared by
 // the snapshot and the paginated history read.

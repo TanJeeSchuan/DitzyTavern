@@ -19,12 +19,14 @@ import {
 	readActiveCast,
 	type ConversationDatabase,
 } from "./internal";
+import {
+	toAuthorStamp,
+	toHistoricalContext,
+} from "./message-read-projection";
 import type {
 	ActiveGenerationDetails,
-	AuthorStampSnapshot,
 	ConversationJsonValue,
 	GenerationProvenance,
-	HistoricalControlSnapshot,
 	VariantDetails,
 } from "./types";
 import {
@@ -40,12 +42,6 @@ import {
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
 
-const isRecord = generationJsonObject;
-const parseJson = parseGenerationJson;
-const finiteInteger = generationJsonInteger;
-const finiteNumber = generationJsonNumber;
-const nullableString = generationJsonString;
-
 interface SafeConnection {
 	readonly [key: string]: ConversationJsonValue;
 	profileId: number | null;
@@ -56,13 +52,13 @@ interface SafeConnection {
 }
 
 const safeConnection = (value: ConversationJsonValue): SafeConnection => {
-	const source = isRecord(value);
+	const source = generationJsonObject(value);
 	return {
-		profileId: finiteInteger(source?.profileId),
-		settingsRevision: finiteInteger(source?.settingsRevision),
-		backend: nullableString(source?.backend),
-		adapter: nullableString(source?.adapter),
-		apiFormat: nullableString(source?.apiFormat),
+		profileId: generationJsonInteger(source?.profileId),
+		settingsRevision: generationJsonInteger(source?.settingsRevision),
+		backend: generationJsonString(source?.backend),
+		adapter: generationJsonString(source?.adapter),
+		apiFormat: generationJsonString(source?.apiFormat),
 	};
 };
 
@@ -94,24 +90,24 @@ type InspectionSettingsDecoder = {
 };
 
 const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
-	modelId: (source) => nullableString(source?.modelId),
-	temperature: (source) => finiteNumber(source?.temperature),
-	topP: (source) => finiteNumber(source?.topP),
-	frequencyPenalty: (source) => finiteNumber(source?.frequencyPenalty),
-	presencePenalty: (source) => finiteNumber(source?.presencePenalty),
-	contextLimit: (source) => finiteInteger(source?.contextLimit),
-	responseBudget: (source) => finiteInteger(source?.responseBudget),
-	safetyAllowance: (source) => finiteInteger(source?.safetyAllowance),
-	siblingGenerationLimit: (source) => finiteInteger(source?.siblingGenerationLimit),
-	continuationStrategy: (source) => nullableString(source?.continuationStrategy),
-	continuationInstruction: (source) => nullableString(source?.continuationInstruction),
-	continuationPrefillSuffix: (source) => nullableString(source?.continuationPrefillSuffix),
+	modelId: (source) => generationJsonString(source?.modelId),
+	temperature: (source) => generationJsonNumber(source?.temperature),
+	topP: (source) => generationJsonNumber(source?.topP),
+	frequencyPenalty: (source) => generationJsonNumber(source?.frequencyPenalty),
+	presencePenalty: (source) => generationJsonNumber(source?.presencePenalty),
+	contextLimit: (source) => generationJsonInteger(source?.contextLimit),
+	responseBudget: (source) => generationJsonInteger(source?.responseBudget),
+	safetyAllowance: (source) => generationJsonInteger(source?.safetyAllowance),
+	siblingGenerationLimit: (source) => generationJsonInteger(source?.siblingGenerationLimit),
+	continuationStrategy: (source) => generationJsonString(source?.continuationStrategy),
+	continuationInstruction: (source) => generationJsonString(source?.continuationInstruction),
+	continuationPrefillSuffix: (source) => generationJsonString(source?.continuationPrefillSuffix),
 };
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
 	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
 	// decoder then resolves its own intentional null.
-	const source = isRecord(value);
+	const source = generationJsonObject(value);
 	return {
 		modelId: inspectionSettingsFieldValue.modelId(source),
 		temperature: inspectionSettingsFieldValue.temperature(source),
@@ -133,33 +129,15 @@ const safeProvenance = (
 	data: readonly { namespace: string; key: string; value: string }[],
 ): GenerationProvenance | null => generationProvenanceCodec.decodeStored(value, data);
 
-const authorFor = (
-	db: ConversationDatabase,
-	conversationId: number,
-	participantId: number | null,
-	name: string | null,
-): AuthorStampSnapshot | null => {
-	if (participantId === null && name === null) return null;
-	const active = participantId === null
-		? false
-		: readActiveCast(db, conversationId).some((participant) => participant.id === participantId);
-	return {
-		participantId,
-		capturedName: name,
-		inCast: active,
-	};
-};
-
-const historicalContextFor = (message: {
-	context_human_participant_id: number | null;
-	context_model_participant_id: number | null;
-}): HistoricalControlSnapshot | null =>
-	message.context_human_participant_id !== null && message.context_model_participant_id !== null
-		? {
-			humanParticipantId: message.context_human_participant_id,
-			modelParticipantId: message.context_model_participant_id,
-		}
-		: null;
+const deriveGenerationStatus = (
+	active: boolean,
+	terminalStatus: string | null | undefined,
+): ActiveGenerationDetails["status"] =>
+	active
+		? "active"
+		: terminalStatus === "length-limited" || terminalStatus === "interrupted"
+			? terminalStatus
+			: "complete";
 
 export function readActiveGenerationDetails(
 	database: Database,
@@ -202,9 +180,9 @@ export function readActiveGenerationDetailsFromConnection(
 		? row.captured_human_name
 		: db.select({ name: participantTable.name }).from(participantTable)
 			.where(eq(participantTable.id, row.human_participant_id)).get()?.name ?? "";
-	const inspection = parseJson(row.prompt_inspection_json, {});
-	const inspectionRecord = isRecord(inspection);
-	const settings = safeGenerationSettings(parseJson(row.generation_settings_json, {}));
+	const inspection = parseGenerationJson(row.prompt_inspection_json, {});
+	const inspectionRecord = generationJsonObject(inspection);
+	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedHistory = Array.isArray(inspectionRecord?.omittedHistory) ? inspectionRecord.omittedHistory : [];
 	return {
 		conversationId,
@@ -212,26 +190,22 @@ export function readActiveGenerationDetailsFromConnection(
 		messageId: row.message_id,
 		variantId: row.variant_id,
 		startedAt: row.started_at,
-		status: active === undefined
-			? retained?.terminal_status === "length-limited" || retained?.terminal_status === "interrupted"
-				? retained.terminal_status
-				: "complete"
-			: "active",
-		intent: parseJson(row.generation_intent_json, {}),
+		status: deriveGenerationStatus(active !== undefined, retained?.terminal_status),
+		intent: parseGenerationJson(row.generation_intent_json, {}),
 		participants: {
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
-		promptPlan: parseJson(row.prompt_plan_json, {}),
-		historyRoles: parseJson(row.history_roles_json, []),
+		promptPlan: parseGenerationJson(row.prompt_plan_json, {}),
+		historyRoles: parseGenerationJson(row.history_roles_json, []),
 		generationSettings: settings,
-		connection: safeConnection(parseJson(row.connection_json, null)),
+		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
-			tokenEstimate: finiteInteger(inspectionRecord?.tokenEstimate),
-			responseBudget: finiteInteger(inspectionRecord?.responseBudget) ?? finiteInteger(settings.responseBudget),
-			safetyAllowance: finiteInteger(inspectionRecord?.safetyAllowance) ?? finiteInteger(settings.safetyAllowance),
-			contextLimit: finiteInteger(inspectionRecord?.contextLimit) ?? finiteInteger(settings.contextLimit),
-			totalRequiredTokens: finiteInteger(inspectionRecord?.totalRequiredTokens),
+			tokenEstimate: generationJsonInteger(inspectionRecord?.tokenEstimate),
+			responseBudget: generationJsonInteger(inspectionRecord?.responseBudget) ?? generationJsonInteger(settings.responseBudget),
+			safetyAllowance: generationJsonInteger(inspectionRecord?.safetyAllowance) ?? generationJsonInteger(settings.safetyAllowance),
+			contextLimit: generationJsonInteger(inspectionRecord?.contextLimit) ?? generationJsonInteger(settings.contextLimit),
+			totalRequiredTokens: generationJsonInteger(inspectionRecord?.totalRequiredTokens),
 			omittedHistory,
 		},
 		checkpoint: {
@@ -279,15 +253,18 @@ export function readVariantDetailsFromConnection(
 		.all();
 	const provenanceEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "provenance");
 	let provenanceValue: ConversationJsonValue | null = null;
-	if (provenanceEntry !== undefined) provenanceValue = parseJson(provenanceEntry.value, null);
+	if (provenanceEntry !== undefined) provenanceValue = parseGenerationJson(provenanceEntry.value, null);
+	const castIds = message.author_participant_id === null
+		? new Set<number>()
+		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));
 	return {
 		conversationId,
 		messageId,
 		variantId,
 		content: variant.content,
 		timestamp: variant.timestamp,
-		author: authorFor(db, conversationId, message.author_participant_id, message.author_name),
-		historicalContext: historicalContextFor(message),
+		author: toAuthorStamp(message, castIds),
+		historicalContext: toHistoricalContext(message),
 		provenance: safeProvenance(provenanceValue, data),
 	};
 }
