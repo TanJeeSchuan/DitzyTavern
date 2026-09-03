@@ -298,6 +298,8 @@ describe("Conversation module", () => {
 			throw new Error("Preserved Message or Variant missing.");
 		}
 
+		expect(preservedMessage.author).toBeNull();
+		expect(preservedMessage.historicalContext).toBeNull();
 		expect(incomplete.playable).toBe(false);
 
 		for (const action of [
