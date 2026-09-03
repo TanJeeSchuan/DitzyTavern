@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openDatabase } from "../database/database";
-import { conversationGenerationSettingsTable } from "../database/schema";
+import {
+	conversationGenerationSettingsTable,
+	messageTable,
+	messageVariantTable,
+} from "../database/schema";
 import {
 	ARCHIVE_KEY,
 	ARCHIVE_NAMESPACE,
@@ -164,6 +168,179 @@ describe("Conversation module", () => {
 			(candidate) => candidate.id === message.id,
 		);
 		expect(editedMessage?.author).toEqual(message.author);
+	});
+
+	test("uses removed Cast membership in every public Message read", () => {
+		const module = createConversationModule(database);
+		const initial = module.getSnapshot(conversationId);
+		if (initial === undefined) throw new Error("Conversation snapshot missing.");
+
+		const withThird = module.execute({
+			conversationId,
+			expectedRevision: initial.revision,
+			action: {
+				type: "add-participant",
+				definition: { name: "Spare", prompt: emptyPrompt(), openings: [] },
+			},
+		});
+		const spareId = withThird.cast.at(-1)?.id;
+		if (spareId === undefined) throw new Error("Spare Participant missing.");
+
+		const reassigned = module.execute({
+			conversationId,
+			expectedRevision: withThird.revision,
+			action: {
+				type: "assign-control",
+				seat: "model",
+				participantId: spareId,
+			},
+		});
+		const removed = module.execute({
+			conversationId,
+			expectedRevision: reassigned.revision,
+			action: { type: "remove-participant", participantId: modelId },
+		});
+		const message = removed.messages[0];
+		const variant = message?.variants[0];
+		if (message === undefined || variant === undefined) {
+			throw new Error("Greeting Message missing.");
+		}
+
+		const expectedAuthor = {
+			participantId: modelId,
+			capturedName: "Maren",
+			inCast: false,
+		};
+		expect(message.author).toEqual(expectedAuthor);
+		expect(module.readHistory(conversationId)?.messages[0]?.author).toEqual(
+			expectedAuthor,
+		);
+		expect(
+			module.readVariantDetails(conversationId, message.id, variant.id)?.author,
+		).toEqual(expectedAuthor);
+	});
+
+	test("keeps a captured author name without a Participant ID in public reads", () => {
+		const module = createConversationModule(database);
+		const conversation = module.create({ name: "Captured Name" });
+		const db = drizzle(database);
+		const insertedMessage = db
+			.insert(messageTable)
+			.values({
+				conversation_id: conversation.id,
+				position: 1,
+				timestamp: "2026-08-20T00:00:00Z",
+				author_participant_id: null,
+				author_name: "Ghost",
+				context_human_participant_id: null,
+				context_model_participant_id: null,
+			})
+			.returning({ id: messageTable.id })
+			.get();
+		if (insertedMessage === undefined) throw new Error("Message insert failed.");
+		const insertedVariant = db
+			.insert(messageVariantTable)
+			.values({
+				message_id: insertedMessage.id,
+				position: 1,
+				content: "Preserved",
+				timestamp: "2026-08-20T00:00:00Z",
+				selected: true,
+			})
+			.returning({ id: messageVariantTable.id })
+			.get();
+		if (insertedVariant === undefined) throw new Error("Variant insert failed.");
+
+		const expectedAuthor = {
+			participantId: null,
+			capturedName: "Ghost",
+			inCast: false,
+		};
+		expect(module.getSnapshot(conversation.id)?.messages[0]?.author).toEqual(
+			expectedAuthor,
+		);
+		expect(module.readHistory(conversation.id)?.messages[0]?.author).toEqual(
+			expectedAuthor,
+		);
+		expect(
+			module.readVariantDetails(
+				conversation.id,
+				insertedMessage.id,
+				insertedVariant.id,
+			)?.author,
+		).toEqual(expectedAuthor);
+	});
+
+	test("does not fabricate historical Control from a partial persisted pair", () => {
+		const module = createConversationModule(database);
+		const conversation = module.create({
+			name: "Partial Context",
+			participants: [
+				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+				{ definition: { name: "Maren", prompt: emptyPrompt(), openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const humanId = conversation.cast[0]?.id;
+		if (humanId === undefined) throw new Error("Human Participant missing.");
+		const db = drizzle(database);
+
+		database.run("PRAGMA ignore_check_constraints = ON");
+		let messageId: number;
+		let variantId: number;
+		try {
+			const insertedMessage = db
+				.insert(messageTable)
+				.values({
+					conversation_id: conversation.id,
+					position: 1,
+					timestamp: "2026-08-20T00:00:00Z",
+					author_participant_id: null,
+					author_name: null,
+					context_human_participant_id: humanId,
+					context_model_participant_id: null,
+				})
+				.returning({ id: messageTable.id })
+				.get();
+			if (insertedMessage === undefined) throw new Error("Message insert failed.");
+			messageId = insertedMessage.id;
+			const insertedVariant = db
+				.insert(messageVariantTable)
+				.values({
+					message_id: messageId,
+					position: 1,
+					content: "Preserved",
+					timestamp: "2026-08-20T00:00:00Z",
+					selected: true,
+				})
+				.returning({ id: messageVariantTable.id })
+				.get();
+			if (insertedVariant === undefined) throw new Error("Variant insert failed.");
+			variantId = insertedVariant.id;
+		} finally {
+			database.run("PRAGMA ignore_check_constraints = OFF");
+		}
+
+		const expectedSwipe = {
+			eligible: false,
+			reason: "missing-historical-context",
+		} as const;
+		const snapshot = module.getSnapshot(conversation.id);
+		expect(snapshot?.messages[0]?.author).toBeNull();
+		expect(snapshot?.messages[0]?.historicalContext).toBeNull();
+		expect(snapshot?.messages[0]?.swipe).toEqual(expectedSwipe);
+
+		const history = module.readHistory(conversation.id);
+		expect(history?.messages[0]?.author).toBeNull();
+		expect(history?.messages[0]?.swipe).toEqual(expectedSwipe);
+
+		const details = module.readVariantDetails(
+			conversation.id,
+			messageId,
+			variantId,
+		);
+		expect(details?.author).toBeNull();
+		expect(details?.historicalContext).toBeNull();
 	});
 
 	test("rejects authorship referencing a Participant outside the Conversation", () => {
