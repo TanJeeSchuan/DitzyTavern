@@ -140,23 +140,10 @@ async function* generateOpenAICompatibleStream(options: {
 		else options.input.signal.addEventListener("abort", onCallerAbort, { once: true });
 	}
 	resetInactivity();
-	const fetchAtResolvedDestination = async (_input: RequestInfo | URL, init?: RequestInit) => {
-		if (init?.body === undefined) {
-			const response = await options.actualFetch(options.requestUrl, {
-				...init,
-					headers: authenticatedHeaders(
-						init?.headers,
-						options.credential.length > 0 ? options.credential : null,
-						options.customHeaders,
-					),
-				redirect: "error",
-			});
-			await rejectProviderResponse(response);
-			return monitorSseActivity(response, {
-				onActivity: resetInactivity,
-				signal: controller.signal,
-			});
-		}
+	// ==[HUMAN APPROVED]== A request without a body carries no Request Overrides to apply and is
+	// forwarded to the captured destination unchanged.
+	const overriddenBody = (init?: RequestInit): string | undefined => {
+		if (init?.body === undefined) return undefined;
 		// ==[HUMAN APPROVED]== SAFETY: the AI SDK serializes this request as a JSON object whose values
 		// are within the Conversation Request Override JSON domain.
 		const providerBody = JSON.parse(String(init.body)) as GenerationRequestOverrides;
@@ -164,22 +151,26 @@ async function* generateOpenAICompatibleStream(options: {
 		// namespace of the API Format this adapter was constructed for.
 		const overrides = settings.requestOverrides;
 		validateChatCompletionsOverrides(overrides);
-		const requestBody = mergeChatCompletionsOverrides(
+		return JSON.stringify(mergeChatCompletionsOverrides(
 			providerBody,
 			overrides,
 			options.profile.outputTokenRepresentation,
 			settings.responseBudget,
-		);
-		const response = await options.actualFetch(options.requestUrl, {
+		));
+	};
+	const fetchAtResolvedDestination = async (_input: RequestInfo | URL, init?: RequestInit) => {
+		const request: RequestInit = {
 			...init,
 			headers: authenticatedHeaders(
-					init.headers,
-					options.credential.length > 0 ? options.credential : null,
-					options.customHeaders,
-				),
-			body: JSON.stringify(requestBody),
+				init?.headers,
+				options.credential.length > 0 ? options.credential : null,
+				options.customHeaders,
+			),
 			redirect: "error",
-		});
+		};
+		const body = overriddenBody(init);
+		if (body !== undefined) request.body = body;
+		const response = await options.actualFetch(options.requestUrl, request);
 		await rejectProviderResponse(response);
 		return monitorSseActivity(response, {
 			onActivity: resetInactivity,
