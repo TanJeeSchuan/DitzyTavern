@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	ConversationNotFoundError,
+	ConversationNotPlayableError,
 	StaleConversationRevisionError,
 } from "../conversation";
-import { generationAcceptanceResponse } from "./generation-error-mapping";
+import {
+	generationAcceptanceResponse,
+	siblingGenerationAcceptanceResponse,
+} from "./generation-error-mapping";
 
 type Accepted = { readonly accepted: { generationId: 7; provisionalVariantId: 9 } };
 
@@ -11,11 +15,15 @@ const acceptedStart = async (): Promise<Accepted> => ({
 	accepted: { generationId: 7, provisionalVariantId: 9 },
 });
 
-describe("generationAcceptanceResponse responder contract", () => {
+const failingStart = (error: Error) => async (): Promise<Accepted> => {
+	throw error;
+};
+
+const messageId = (accepted: Accepted["accepted"]) => accepted.generationId;
+
+describe("generation acceptance seams", () => {
 	test("returns the typed acceptance body with the caller's Message id", async () => {
-		const result = await generationAcceptanceResponse(42, acceptedStart, (accepted) => accepted.generationId, () => {
-			throw new Error("A recognized start never asks the responder to map a response.");
-		});
+		const result = await generationAcceptanceResponse(42, acceptedStart, messageId);
 		expect(result).toEqual({
 			outcome: "accepted",
 			generationId: 7,
@@ -25,56 +33,47 @@ describe("generationAcceptanceResponse responder contract", () => {
 		});
 	});
 
-	test("returns the responder's mapped response for a recognized failure", async () => {
+	test("maps a recognized failure onto its status response", async () => {
 		const result = await generationAcceptanceResponse(
 			42,
-			async () => {
-				throw new ConversationNotFoundError(42);
-			},
-			(accepted) => accepted.generationId,
-			() => ({ present: true as const, response: "mapped-404" }),
+			failingStart(new ConversationNotFoundError(42)),
+			messageId,
 		);
-		expect(result).toBe("mapped-404");
+		expect(result).toMatchObject({ code: 404, response: { outcome: "not-found" } });
 	});
 
-	test("rethrows the original domain error when the responder declines the mapping", async () => {
-		const stale = new StaleConversationRevisionError(2, 3);
-		const result = generationAcceptanceResponse(
+	test("maps a stale-revision conflict for Send and Continue", async () => {
+		const result = await generationAcceptanceResponse(
 			42,
-			async () => {
-				throw stale;
-			},
-			(accepted) => accepted.generationId,
-			() => ({ present: false as const }),
+			failingStart(new StaleConversationRevisionError(2, 3)),
+			messageId,
 		);
-		expect(result).rejects.toBe(stale);
+		expect(result).toMatchObject({ code: 409, response: { outcome: "conflict" } });
 	});
 
 	test("rethrows errors outside the Generation acceptance contract", async () => {
 		const unexpected = new Error("a domain bug outside the acceptance contract");
-		const result = generationAcceptanceResponse(
-			42,
-			async () => {
-				throw unexpected;
-			},
-			(accepted) => accepted.generationId,
-			() => ({ present: true as const, response: "never-mapped" }),
-		);
-		expect(result).rejects.toBe(unexpected);
+		expect(
+			generationAcceptanceResponse(42, failingStart(unexpected), messageId),
+		).rejects.toBe(unexpected);
 	});
 
-	test("propagates a responder crash instead of masking it as a mapped response", async () => {
-		const crash = new Error("responder failure");
-		const result = generationAcceptanceResponse(
+	test("Sibling starts present a not-playable conflict", async () => {
+		const result = await siblingGenerationAcceptanceResponse(
 			42,
-			async () => {
-				throw new ConversationNotFoundError(42);
-			},
-			(accepted) => accepted.generationId,
-			() => {
-				throw crash;
-			},
+			failingStart(new ConversationNotPlayableError(42)),
+			messageId,
 		);
-		expect(result).rejects.toBe(crash);
+		expect(result).toMatchObject({ code: 409, response: { outcome: "not-playable" } });
+	});
+
+	// ==[HUMAN APPROVED]== Sibling starts carry no revision input, so a stale-revision conflict
+	// is outside their vocabulary and must reach the framework's 500 handling
+	// as the original domain error.
+	test("Sibling starts decline a stale-revision conflict", async () => {
+		const stale = new StaleConversationRevisionError(2, 3);
+		expect(
+			siblingGenerationAcceptanceResponse(42, failingStart(stale), messageId),
+		).rejects.toBe(stale);
 	});
 });

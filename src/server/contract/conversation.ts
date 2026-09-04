@@ -58,10 +58,8 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
-	GenerationStartFailureResponse,
-	ResponderOutcome,
-	SiblingGenerationStartFailureResponse,
 	generationAcceptanceResponse,
+	siblingGenerationAcceptanceResponse,
 } from "./generation-error-mapping";
 import { createGenerationSubscriptionResponse } from "./generation-sse";
 import {
@@ -175,16 +173,6 @@ export const createConversationRoutes = (
 				params.id,
 				() => start(params.id, body),
 				(accepted) => accepted.modelMessageId,
-				(failure): ResponderOutcome<GenerationStartFailureResponse> => {
-					switch (failure.status) {
-						case 404:
-							return { present: true as const, response: status(404, failure.body) };
-						case 409:
-							return { present: true as const, response: status(409, failure.body) };
-						case 422:
-							return { present: true as const, response: status(422, failure.body) };
-					}
-				},
 			);
 		};
 
@@ -393,27 +381,13 @@ export const createConversationRoutes = (
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
 			async ({ params }) =>
-				generationAcceptanceResponse(
+				siblingGenerationAcceptanceResponse(
 					params.id,
 					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
 					}),
 					(accepted) => accepted.messageId,
-					(failure): ResponderOutcome<SiblingGenerationStartFailureResponse> => {
-						// ==[HUMAN APPROVED]== Sibling starts have no revision input, so a stale-revision
-						// conflict remains an unexpected domain failure: the responder
-						// declines the mapping and the original error reaches the
-						// framework's 500 handling as before.
-						if (failure.status === 409) {
-							if (failure.body.outcome === "conflict") return { present: false as const };
-							return { present: true as const, response: status(409, failure.body) };
-						}
-						if (failure.status === 404) {
-							return { present: true as const, response: status(404, failure.body) };
-						}
-						return { present: true as const, response: status(422, failure.body) };
-					},
 				),
 			{
 				params: messageIdParams,

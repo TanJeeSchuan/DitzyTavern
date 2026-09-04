@@ -27,15 +27,7 @@ type FailureResponseOf<F extends GenerationStartFailure> =
 	| ReturnType<typeof status<409, Extract<F, { status: 409 }>["body"]>>
 	| ReturnType<typeof status<422, Extract<F, { status: 422 }>["body"]>>;
 
-// ==[HUMAN APPROVED]== A responder's verdict: the mapped transport response, or a refusal
-// for a failure outside its route's vocabulary.
-export type ResponderOutcome<TResult> =
-	| { readonly present: true; readonly response: TResult }
-	| { readonly present: false };
-
-// ==[HUMAN APPROVED]== The response union Send and Continue present: every recognized
-// failure. Responders annotate their outcome with it explicitly, because
-// TypeScript infers only the first arm of a multi-arm responder union.
+// ==[HUMAN APPROVED]== The response union Send and Continue present: every recognized failure.
 export type GenerationStartFailureResponse = FailureResponseOf<GenerationStartFailure>;
 
 // ==[HUMAN APPROVED]== The response union Sibling starts present: stale-revision conflicts
@@ -44,16 +36,6 @@ export type GenerationStartFailureResponse = FailureResponseOf<GenerationStartFa
 export type SiblingGenerationStartFailureResponse = FailureResponseOf<
 	Exclude<GenerationStartFailure, { status: 409; body: { outcome: "conflict" } }>
 >;
-
-/**
- * ==[HUMAN APPROVED]== The responder maps a recognized failure onto its transport response.
- * The contract is a typed sum: a responder either presents a response or
- * declines to present the failure (`{ present: false }`), in which case the
- * original domain error reaches the framework's own 500 handling unchanged.
- */
-type GenerationStartFailureResponder<TResult> = (
-	failure: GenerationStartFailure,
-) => ResponderOutcome<TResult>;
 
 /**
  * ==[HUMAN APPROVED]== Map only errors that are part of the Generation acceptance contract. An
@@ -82,21 +64,30 @@ const generationStartFailure = (error: Error): GenerationStartFailure | undefine
 	return undefined;
 };
 
-function generationStartFailureResponse<TResult>(
+// ==[HUMAN APPROVED]== Send and Continue present every recognized failure as its own status.
+const presentGenerationStartFailure = (
+	failure: GenerationStartFailure,
+): GenerationStartFailureResponse => {
+	if (failure.status === 404) return status(404, failure.body);
+	if (failure.status === 409) return status(409, failure.body);
+	return status(422, failure.body);
+};
+
+// ==[HUMAN APPROVED]== Sibling starts have no revision input, so a stale-revision conflict is
+// not part of their vocabulary: the original domain error reaches the
+// framework's 500 handling unchanged instead of becoming a client-correctable
+// response.
+const presentSiblingGenerationStartFailure = (
+	failure: GenerationStartFailure,
 	error: Error,
-	respond: GenerationStartFailureResponder<TResult>,
-): TResult {
-	const failure = generationStartFailure(error);
-	// ==[HUMAN APPROVED]== An error outside the acceptance contract is never shaped into a
-	// client-correctable response; the original error reaches the framework
-	// unchanged.
-	if (failure === undefined) throw error;
-	const outcome = respond(failure);
-	// ==[HUMAN APPROVED]== A responder that declines the mapping (a failure outside its route's
-	// vocabulary) lets the original domain error reach the framework unchanged.
-	if (!outcome.present) throw error;
-	return outcome.response;
-}
+): SiblingGenerationStartFailureResponse => {
+	if (failure.status === 409) {
+		if (failure.body.outcome === "conflict") throw error;
+		return status(409, failure.body);
+	}
+	if (failure.status === 404) return status(404, failure.body);
+	return status(422, failure.body);
+};
 
 type AcceptedGenerationFields = {
 	readonly generationId: number;
@@ -110,17 +101,18 @@ type AcceptedGenerationBody = Static<typeof generationAccepted>;
 
 /**
  * ==[HUMAN APPROVED]== Shared acceptance seam for Send, Continue, and Sibling starts. The caller
- * supplies only the coordinator start and the field that identifies its
- * target Message; recognized failures receive the same HTTP mapping.
+ * supplies only the coordinator start, the field that identifies its target
+ * Message, and how its route presents a recognized failure; an error outside
+ * the acceptance contract reaches the framework unchanged.
  */
-export async function generationAcceptanceResponse<
+async function acceptanceResponse<
 	TAccepted extends AcceptedGenerationFields,
 	TFailureResponse,
 >(
 	conversationId: number,
 	start: () => Promise<{ readonly accepted: TAccepted }>,
 	messageId: (accepted: TAccepted) => number,
-	respond: GenerationStartFailureResponder<TFailureResponse>,
+	present: (failure: GenerationStartFailure, error: Error) => TFailureResponse,
 ): Promise<AcceptedGenerationBody | TFailureResponse> {
 	try {
 		const started = await start();
@@ -134,6 +126,32 @@ export async function generationAcceptanceResponse<
 		};
 	} catch (error) {
 		if (!(error instanceof Error)) throw error;
-		return generationStartFailureResponse(error, respond);
+		const failure = generationStartFailure(error);
+		// ==[HUMAN APPROVED]== An error outside the acceptance contract is never shaped into a
+		// client-correctable response; the original error reaches the framework
+		// unchanged.
+		if (failure === undefined) throw error;
+		return present(failure, error);
 	}
+}
+
+export function generationAcceptanceResponse<TAccepted extends AcceptedGenerationFields>(
+	conversationId: number,
+	start: () => Promise<{ readonly accepted: TAccepted }>,
+	messageId: (accepted: TAccepted) => number,
+): Promise<AcceptedGenerationBody | GenerationStartFailureResponse> {
+	return acceptanceResponse(conversationId, start, messageId, presentGenerationStartFailure);
+}
+
+export function siblingGenerationAcceptanceResponse<TAccepted extends AcceptedGenerationFields>(
+	conversationId: number,
+	start: () => Promise<{ readonly accepted: TAccepted }>,
+	messageId: (accepted: TAccepted) => number,
+): Promise<AcceptedGenerationBody | SiblingGenerationStartFailureResponse> {
+	return acceptanceResponse(
+		conversationId,
+		start,
+		messageId,
+		presentSiblingGenerationStartFailure,
+	);
 }
