@@ -12,6 +12,7 @@ import {
 	downloadImportedSourceInBrowser,
 	type ChatSourceDownloadOutcome,
 } from "./chat-history";
+import { ImportWarningsList } from "./import-chat/ImportNotices";
 import { useAsyncEffect } from "./lib/use-async";
 import { formatSize } from "./lib/format";
 import { PanelHeader } from "./PanelHeader";
@@ -204,16 +205,7 @@ function ImportDetailsSection({
 				</div>
 			)}
 
-			{details.receipt.warnings.length > 0 && (
-				<div className="import-warnings">
-					<h3>Warnings</h3>
-					<ul>
-						{details.receipt.warnings.map((warning) => (
-							<li key={warning}>{warning}</li>
-						))}
-					</ul>
-				</div>
-			)}
+			<ImportWarningsList warnings={details.receipt.warnings} />
 
 			<div className="import-details-artifact">
 				<h3>Preserved source</h3>
