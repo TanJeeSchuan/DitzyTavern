@@ -48,7 +48,6 @@ export type ConversationGenerationSettings = CanonicalGenerationSettings;
 
 export type {
 	GenerationJsonObject as GenerationRequestOverrides,
-	GenerationJsonValue as GenerationRequestValue,
 } from "../../shared/generation-json";
 
 // Suffixes are intentionally a closed set. They are request-time formatting

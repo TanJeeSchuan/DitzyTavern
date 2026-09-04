@@ -3,7 +3,6 @@ import {
 	loadActiveGenerationDetails,
 	loadVariantDetails,
 	type ActiveGenerationDetails,
-	type GenerationDetailsJsonValue,
 	type GenerationInspectionStatus,
 	type GenerationProvenance,
 	type VariantDetails,
@@ -12,6 +11,7 @@ import {
 	generationJsonObject,
 	generationJsonString,
 } from "../shared/generation-provenance";
+import type { GenerationJsonValue } from "../shared/generation-json";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -115,7 +115,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 	);
 }
 
-function PromptPlan({ plan }: { plan: GenerationDetailsJsonValue }) {
+function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 	const object = generationJsonObject(plan);
 	const blocks = Array.isArray(object?.blocks) ? object.blocks : [];
 	return (
@@ -174,7 +174,7 @@ function ProvenanceSettings({ provenance }: { provenance: GenerationProvenance }
 	);
 }
 
-function intentLabel(intent: GenerationDetailsJsonValue): string {
+function intentLabel(intent: GenerationJsonValue): string {
 	const value = generationJsonObject(intent);
 	const type = generationJsonString(value?.type);
 	if (type === "sibling") return "Sibling";

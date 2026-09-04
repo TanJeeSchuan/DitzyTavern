@@ -90,9 +90,6 @@ export type ConversationCapabilities = Static<typeof conversationCapabilities>;
 // `unknown`.
 const jsonValue = Type.Unsafe<GenerationJsonValue>({ [Kind]: "Unknown" });
 
-export type GenerationDetailsJsonValue = GenerationJsonValue;
-export type GenerationDetailsJsonObject = GenerationJsonObject;
-export type GenerationRequestValue = GenerationDetailsJsonValue;
 export type GenerationRequestOverrides = GenerationJsonObject;
 
 const activeGenerations = Type.Array(Type.Object({

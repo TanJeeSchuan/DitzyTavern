@@ -25,12 +25,9 @@ export type {
 	ConversationGenerationSettings,
 	ConversationSummary,
 	ContinuationPrefillSuffix,
-	GenerationDetailsJsonObject,
-	GenerationDetailsJsonValue,
 	GenerationInspectionStatus,
 	GenerationProvenance,
 	GenerationRequestOverrides,
-	GenerationRequestValue,
 	ParticipantDefinition,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
