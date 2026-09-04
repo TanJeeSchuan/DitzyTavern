@@ -87,6 +87,47 @@ const terminalStatusFrom = (
 	return value === "length-limited" || value === "interrupted" ? value : "complete";
 };
 
+// ==[HUMAN APPROVED]== The Active Generation columns the bounded replay window carries over
+// verbatim. The exclusions are the active-only bookkeeping the durable
+// Variant or the running attempt owns (provenance, human Message, prior
+// Variant) and the two checkpoint columns the terminal outcome supplies
+// below. Because every other column is named, adding one to
+// `active_generation` fails typecheck here until this projection states
+// whether the replay row keeps it; spreading the row instead suppressed the
+// excess-property check and let both directions of drift pass silently.
+type ReplayCarriedColumn = Exclude<
+	keyof ActiveGenerationRow,
+	| "human_message_id"
+	| "prior_variant_id"
+	| "provenance_namespace"
+	| "provenance_key"
+	| "provenance_value"
+	| "checkpoint_content"
+	| "checkpoint_reasoning"
+>;
+
+const replayCarriedColumns = (
+	active: ActiveGenerationRow,
+): Pick<ActiveGenerationRow, ReplayCarriedColumn> => ({
+	id: active.id,
+	conversation_id: active.conversation_id,
+	message_id: active.message_id,
+	variant_id: active.variant_id,
+	human_participant_id: active.human_participant_id,
+	model_participant_id: active.model_participant_id,
+	captured_human_name: active.captured_human_name,
+	captured_model_name: active.captured_model_name,
+	started_at: active.started_at,
+	prompt_plan_json: active.prompt_plan_json,
+	prompt_inspection_json: active.prompt_inspection_json,
+	history_roles_json: active.history_roles_json,
+	generation_settings_json: active.generation_settings_json,
+	connection_json: active.connection_json,
+	generation_intent_json: active.generation_intent_json,
+	checkpoint_event_id: active.checkpoint_event_id,
+	checkpointed_at: active.checkpointed_at,
+});
+
 const retainTerminalInspection = (
 	db: ConversationDatabase,
 	active: ActiveGenerationRow,
@@ -95,14 +136,15 @@ const retainTerminalInspection = (
 	reasoning: string | undefined,
 ): void => {
 	const terminalAt = new Date();
-	db.insert(generationReplayTable).values({
-		...active,
+	const replay: typeof generationReplayTable.$inferInsert = {
+		...replayCarriedColumns(active),
 		checkpoint_content: content,
 		checkpoint_reasoning: reasoning ?? active.checkpoint_reasoning,
 		terminal_status: terminalStatusFrom(data),
 		terminal_at: terminalAt.toISOString(),
 		expires_at: new Date(terminalAt.getTime() + GENERATION_REPLAY_RETENTION_MS).toISOString(),
-	}).run();
+	};
+	db.insert(generationReplayTable).values(replay).run();
 };
 
 const terminalProvenance = (
