@@ -1,4 +1,4 @@
-import { validateConnectionProfileShared } from "../shared/connection-profile-validation";
+import { sharedConnectionProfileValidationError } from "../shared/connection-profile-validation";
 import type { ConnectionProfileDraft } from "./connection-settings";
 import type { HeaderEditorData } from "./connection-settings-state";
 
@@ -25,7 +25,5 @@ export function connectionAdvancedDraftValidationError(
 	draft: ConnectionProfileDraft,
 	headerEditorData: HeaderEditorData,
 ): string | null {
-	return (
-		validateConnectionProfileShared(draft, Object.keys(headerEditorData))?.message ?? null
-	);
+	return sharedConnectionProfileValidationError(draft, Object.keys(headerEditorData));
 }

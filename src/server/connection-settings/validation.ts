@@ -3,8 +3,8 @@ import {
 } from "./errors";
 import { compareModelIds } from "../../shared/model-identifier";
 import {
-	validateConnectionProfileHeaderNames,
-	validateConnectionProfileSharedDraft,
+	sharedConnectionHeaderNamesValidationError,
+	sharedConnectionProfileDraftValidationError,
 } from "../../shared/connection-profile-validation";
 import type {
 	ConnectionHeaderOperation,
@@ -16,9 +16,9 @@ export function validateConnectionProfileDraft(
 	input: ConnectionProfileDraft,
 ): ConnectionProfileDraft {
 	const displayName = normalizeDisplayName(input.displayName);
-	const sharedFailure = validateConnectionProfileSharedDraft(input);
+	const sharedFailure = sharedConnectionProfileDraftValidationError(input);
 	if (sharedFailure !== null) {
-		throw new InvalidConnectionProfileError(sharedFailure.message);
+		throw new InvalidConnectionProfileError(sharedFailure);
 	}
 	const requestUrl = input.requestUrl.trim();
 	const modelsUrl = input.modelsUrl.trim();
@@ -49,11 +49,11 @@ export function applyConnectionHeaderOperations(
 export function validateHeaderOperations(
 	operations: readonly ConnectionHeaderOperation[],
 ): readonly ConnectionHeaderOperation[] {
-	const failure = validateConnectionProfileHeaderNames(
+	const failure = sharedConnectionHeaderNamesValidationError(
 		operations.map((operation) => operation.name),
 	);
 	if (failure !== null) {
-		throw new InvalidConnectionProfileError(failure.message);
+		throw new InvalidConnectionProfileError(failure);
 	}
 	return operations;
 }

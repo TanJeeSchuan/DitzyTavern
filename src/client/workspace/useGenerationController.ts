@@ -1,5 +1,6 @@
 import {
 	useEffect,
+	useReducer,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -28,6 +29,10 @@ import {
 	type GenerationSessionStoryEffect,
 	type GenerationStopCommandOutcome,
 } from "../generation-sessions";
+import {
+	createPendingGenerationStarts,
+	reducePendingGenerationStarts,
+} from "../pending-generation-starts";
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
@@ -107,8 +112,12 @@ export function useGenerationController({
 	refreshStory,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
-	const [startPending, setStartPending] = useState(false);
-	const [acceptedGenerationId, setAcceptedGenerationId] = useState<number | null>(null);
+	const [pendingStarts, dispatchPendingStarts] = useReducer(
+		reducePendingGenerationStarts,
+		undefined,
+		createPendingGenerationStarts,
+	);
+	const nextStartIdRef = useRef(1);
 	const [startError, setStartError] = useState<string | null>(null);
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
@@ -149,20 +158,16 @@ export function useGenerationController({
 
 	const sessions = useSyncExternalStore(runner.subscribe, runner.getSnapshot);
 	const hasSessions = hasActiveGenerationSessions(sessions);
-	const isGenerating = startPending || hasSessions;
+	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
 	const generationError = startError ?? firstActiveGenerationSessionError(sessions);
 
 	useEffect(() => {
-		if (
-			startPending &&
-			acceptedGenerationId !== null &&
-			sessions.sessions.has(acceptedGenerationId)
-		) {
-			setStartPending(false);
-			setAcceptedGenerationId(null);
-		}
-	}, [startPending, acceptedGenerationId, sessions]);
+		dispatchPendingStarts({
+			type: "sessions-observed",
+			generationIds: new Set(sessions.sessions.keys()),
+		});
+	}, [pendingStarts, sessions]);
 
 	const activeGenerationTargets = conversation === null
 		? []
@@ -174,8 +179,7 @@ export function useGenerationController({
 	}) ?? activeGenerationTargets[0];
 
 	const conversationSwitched = () => {
-		setStartPending(false);
-		setAcceptedGenerationId(null);
+		dispatchPendingStarts({ type: "conversation-switched" });
 		setStartError(null);
 		runner.dispatch({ type: "conversation-switched" });
 	};
@@ -219,6 +223,7 @@ export function useGenerationController({
 	};
 
 	const startGeneration = async (
+		startId: number,
 		conversationId: number,
 		request: Promise<Awaited<ReturnType<typeof startConversationGeneration>>>,
 		onAccepted?: () => void,
@@ -235,15 +240,17 @@ export function useGenerationController({
 						(generation) => generation.generationId === outcome.generationId,
 					)
 				) {
-					setStartPending(false);
-					setAcceptedGenerationId(null);
+					dispatchPendingStarts({ type: "settled", startId });
 				} else {
-					setAcceptedGenerationId(outcome.generationId);
+					dispatchPendingStarts({
+						type: "accepted",
+						startId,
+						generationId: outcome.generationId,
+					});
 				}
 				return;
 			}
-			setStartPending(false);
-			setAcceptedGenerationId(null);
+			dispatchPendingStarts({ type: "settled", startId });
 			setStartError(
 				outcome.outcome === "not-found"
 					? "The Conversation no longer exists."
@@ -251,24 +258,27 @@ export function useGenerationController({
 			);
 		} catch {
 			if (Number(activeChatIdRef.current) !== conversationId) return;
-			setStartPending(false);
-			setAcceptedGenerationId(null);
+			dispatchPendingStarts({ type: "settled", startId });
 			setStartError("Generation could not be started.");
 		}
 	};
 
 	const beginStart = () => {
-		setStartPending(true);
+		const startId = nextStartIdRef.current;
+		nextStartIdRef.current += 1;
+		dispatchPendingStarts({ type: "started", startId });
 		setStartError(null);
 		runner.dispatch({ type: "errors-acknowledged" });
+		return startId;
 	};
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable || draft.trim() === "") return;
 		const conversationId = conversation.id;
-		beginStart();
+		const startId = beginStart();
 		void startGeneration(
+			startId,
 			conversationId,
 			startConversationGeneration(conversationId, conversation.revision, draft),
 			() => setDraft(""),
@@ -284,8 +294,9 @@ export function useGenerationController({
 			!isModelAuthoredMessage(latest)
 		) return;
 		const conversationId = conversation.id;
-		beginStart();
+		const startId = beginStart();
 		void startGeneration(
+			startId,
 			conversationId,
 			startConversationContinuationGeneration(conversationId, conversation.revision),
 		);
@@ -304,8 +315,9 @@ export function useGenerationController({
 			})
 		) return;
 		const conversationId = conversation.id;
-		beginStart();
+		const startId = beginStart();
 		void startGeneration(
+			startId,
 			conversationId,
 			startConversationSiblingGeneration(conversationId, messageId),
 		);
