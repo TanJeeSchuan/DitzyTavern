@@ -208,22 +208,11 @@ interface ManagedGenerationInput<TAccepted extends GenerationAccepted, TResult> 
 		messageId: number;
 		variantId: number;
 	};
-	checkpoint: (
-		database: Database,
-		accepted: TAccepted,
-		output: GenerationCheckpoint,
-	) => void;
 }
 
 interface ServerOwnedGenerationHandle<TAccepted, TResult> {
 	readonly accepted: Promise<TAccepted>;
 	readonly result: Promise<TResult>;
-}
-
-interface GenerationCheckpoint {
-	readonly content: string;
-	readonly reasoning: string;
-	readonly latestEventId: number;
 }
 
 interface ResolvedGenerationTransport {
@@ -262,11 +251,6 @@ export class GenerationCoordinator {
 				messageId: accepted.modelMessageId,
 				variantId: accepted.provisionalVariantId,
 			}),
-			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-				...output,
-			}),
 		});
 	}
 
@@ -286,11 +270,6 @@ export class GenerationCoordinator {
 				messageId: accepted.modelMessageId,
 				variantId: accepted.provisionalVariantId,
 			}),
-			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-				...output,
-			}),
 		});
 	}
 
@@ -309,11 +288,6 @@ export class GenerationCoordinator {
 			runtimeTarget: (accepted) => ({
 				messageId: accepted.messageId,
 				variantId: accepted.provisionalVariantId,
-			}),
-			checkpoint: (database, accepted, output) => checkpointConversationGeneration(database, {
-				conversationId: input.conversationId,
-				generationId: accepted.generationId,
-				...output,
 			}),
 		});
 	}
@@ -537,7 +511,11 @@ export class GenerationCoordinator {
 								this.configuredDatabase,
 								accepted.generationId,
 							),
-							onCheckpoint: (output) => input.checkpoint(database, accepted, output),
+							onCheckpoint: (output) => checkpointConversationGeneration(database, {
+								conversationId: input.conversationId,
+								generationId: accepted.generationId,
+								...output,
+							}),
 						});
 					},
 					onEvent: (event) => { runtime?.publish(event); },

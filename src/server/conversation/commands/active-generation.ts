@@ -156,6 +156,50 @@ export const persistTerminalVariantData = (
 	}
 };
 
+// ==[HUMAN APPROVED]== The durable terminal commit against an already-open transaction:
+// validate the provisional target, write terminal content, persist terminal
+// Variant data, retain bounded inspection data, and remove the Active
+// Generation row. Shared by resolution and Stop's durable-output branch so
+// the terminal mutation is written once. Revision advancement stays with the
+// public commands.
+function commitDurableTerminalGenerationInTransaction(
+	db: ConversationDatabase,
+	active: ActiveGenerationRow,
+	input: {
+		content: string;
+		reasoning: string | undefined;
+		timestamp: string;
+		suppliedData: readonly ConversationDataEntry[];
+	},
+): void {
+	const variant = db
+		.select({ id: messageVariantTable.id })
+		.from(messageVariantTable)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.get();
+	if (variant === undefined) {
+		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
+	}
+	db.update(messageVariantTable)
+		.set({ content: input.content, timestamp: input.timestamp })
+		.where(eq(messageVariantTable.id, variant.id))
+		.run();
+	persistTerminalVariantData(db, variant.id, {
+		provenance: terminalProvenance(active, input.suppliedData),
+		reasoning: input.reasoning,
+		suppliedData: input.suppliedData,
+	});
+	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
+	db.delete(activeGenerationTable)
+		.where(eq(activeGenerationTable.id, active.id))
+		.run();
+}
+
 /**
  * ==[HUMAN APPROVED]== Resolving replaces the provisional content, writes compact terminal
  * provenance, retains inspection state, and removes the Active Generation record.
@@ -172,34 +216,12 @@ export function resolveConversationGeneration(
 		if (active === undefined) {
 			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
 		}
-		const variant = db
-			.select({ id: messageVariantTable.id })
-			.from(messageVariantTable)
-			.where(
-				and(
-					eq(messageVariantTable.id, active.variant_id),
-					eq(messageVariantTable.message_id, active.message_id),
-				),
-			)
-			.get();
-		if (variant === undefined) {
-			throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
-		}
-
-		db.update(messageVariantTable)
-			.set({ content: input.content, timestamp: input.timestamp })
-			.where(eq(messageVariantTable.id, variant.id))
-			.run();
-		const suppliedData = input.data ?? [];
-		persistTerminalVariantData(db, variant.id, {
-			provenance: terminalProvenance(active, suppliedData),
+		commitDurableTerminalGenerationInTransaction(db, active, {
+			content: input.content,
 			reasoning: input.reasoning,
-			suppliedData,
+			timestamp: input.timestamp,
+			suppliedData: input.data ?? [],
 		});
-		retainTerminalInspection(db, active, suppliedData, input.content, input.reasoning);
-		db.delete(activeGenerationTable)
-			.where(eq(activeGenerationTable.id, active.id))
-			.run();
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -387,36 +409,15 @@ function stopActiveGenerationInTransaction(
 		return removeActiveGenerationTargetInTransaction(db, active);
 	}
 
-	const variant = db
-		.select({ id: messageVariantTable.id })
-		.from(messageVariantTable)
-		.where(
-			and(
-				eq(messageVariantTable.id, active.variant_id),
-				eq(messageVariantTable.message_id, active.message_id),
-			),
-		)
-		.get();
-	if (variant === undefined) {
-		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
-	}
-	db.update(messageVariantTable)
-		.set({ content, timestamp })
-		.where(eq(messageVariantTable.id, variant.id))
-		.run();
-	const suppliedData = [
-		{ namespace: "generation", key: "outcome", value: "interrupted" },
-		{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
-	] satisfies ConversationDataEntry[];
-	persistTerminalVariantData(db, variant.id, {
-		provenance: terminalProvenance(active, suppliedData),
+	commitDurableTerminalGenerationInTransaction(db, active, {
+		content,
 		reasoning,
-		suppliedData,
+		timestamp,
+		suppliedData: [
+			{ namespace: "generation", key: "outcome", value: "interrupted" },
+			{ namespace: "generation", key: "interruption-cause", value: "user-stop" },
+		] satisfies ConversationDataEntry[],
 	});
-	retainTerminalInspection(db, active, suppliedData, content, reasoning);
-	db.delete(activeGenerationTable)
-		.where(eq(activeGenerationTable.id, active.id))
-		.run();
 	return { durableOutput: true };
 }
 
