@@ -24,6 +24,7 @@ import {
 	ConversationNotFoundError,
 	StaleConversationRevisionError,
 	type ConversationModule,
+	type ConversationDataEntry,
 	type ConversationSnapshot,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
@@ -42,7 +43,6 @@ import {
 	generationOutcomeData,
 	startServerOwnedGenerationFrom,
 	type GenerationAttemptInput,
-	type GenerationOutcome,
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
@@ -83,11 +83,17 @@ async function notifyAccepted<Accepted>(
 	}
 }
 
+// ==[HUMAN APPROVED]== What acceptance must report for the runner to finish a Generation
+// without asking the lifecycle anything further.
+interface AcceptedGenerationTarget {
+	generationId: number;
+	conversation: ConversationSnapshot;
+}
+
 interface GenerationLifecyclePolicy<
 	Input extends GenerationAttemptInput,
 	Capture extends CapturedGeneration,
-	Accepted extends { generationId: number },
-	Result,
+	Accepted extends AcceptedGenerationTarget,
 > {
 	capture: (
 		database: Database,
@@ -104,33 +110,28 @@ interface GenerationLifecyclePolicy<
 		capture: Capture,
 		input: Input,
 	) => ModelClientGenerationInput;
-	resolve: (
-		conversation: ConversationModule,
-		input: Input,
-		capture: Capture,
-		accepted: Accepted,
-		timestamp: string,
-		outcome: GenerationOutcome,
-	) => Result | Promise<Result>;
+	// ==[HUMAN APPROVED]== Terminal Conversation data particular to this lifecycle, recorded
+	// ahead of the shared outcome entries. Only Continue has any.
+	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
 
 /**
  * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
- * Capture, acceptance, notification, provider execution, and terminal cleanup are
- * deliberately policy inputs: the runner owns their ordering while each lifecycle
- * keeps its own validation, request metadata, and resolution semantics.
+ * What differs between Send, Continue, and Sibling is what they capture, how
+ * they accept, and what they ask the provider for. Resolution does not
+ * differ: the runner commits the terminal outcome and reports the acceptance
+ * record against the Conversation as it stands afterwards.
  */
 async function runGenerationLifecycle<
-	Accepted extends { generationId: number },
+	Accepted extends AcceptedGenerationTarget,
 	Input extends GenerationAttemptInput,
 	Capture extends CapturedGeneration,
-	Result,
 >(
 	database: Database,
 	input: Input,
 	onAccepted: ((accepted: Accepted) => void | Promise<void>) | undefined,
-	policy: GenerationLifecyclePolicy<Input, Capture, Accepted, Result>,
-): Promise<Result> {
+	policy: GenerationLifecyclePolicy<Input, Capture, Accepted>,
+): Promise<Accepted> {
 	const conversation = createConversationModule(database);
 	const snapshot = conversation.getSnapshot(input.conversationId);
 	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
@@ -155,14 +156,19 @@ async function runGenerationLifecycle<
 				generationId: accepted.generationId,
 			});
 		},
-		resolve: (outcome) => policy.resolve(
-			conversation,
-			input,
-			capture,
-			accepted,
-			timestamp,
-			outcome,
-		),
+		resolve: (outcome) => ({
+			...accepted,
+			conversation: conversation.resolveGeneration({
+				conversationId: input.conversationId,
+				generationId: accepted.generationId,
+				timestamp,
+				content: outcome.content,
+				data: [
+					...(policy.terminalData?.(capture) ?? []),
+					...generationOutcomeData(outcome),
+				],
+			}),
+		}),
 	});
 }
 
@@ -204,13 +210,14 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
 }
 
-export interface SendThroughProvisionalTailGenerationResult {
-	conversation: ConversationSnapshot;
-	generationId: number;
-	humanMessageId: number;
-	messageId: number;
-	provisionalVariantId: number;
-}
+/**
+ * ==[HUMAN APPROVED]== A settled Generation is its acceptance record restated against the
+ * Conversation as it stands after resolution. Acceptance already names the
+ * Generation, its target Message, and its Provisional Variant, so a terminal
+ * result carries nothing new but the newer snapshot — there is no separate
+ * per-lifecycle result shape to map onto.
+ */
+export type SendThroughProvisionalTailGenerationResult = AcceptedTailGeneration;
 
 // ==[HUMAN APPROVED]== Starts Send as a detached server-owned attempt. The caller receives an
 // acceptance promise separately from the terminal result and may attach zero
@@ -339,19 +346,6 @@ export async function sendThroughProvisionalTailGeneration(
 			reuseHumanMessageId: capture.reuseHumanMessageId,
 		}),
 		request: modelRequestFor,
-		resolve: (conversation, current, _capture, accepted, timestamp, outcome) => ({
-			conversation: conversation.resolveGeneration({
-				conversationId: current.conversationId,
-				generationId: accepted.generationId,
-				timestamp,
-				content: outcome.content,
-				data: generationOutcomeData(outcome),
-			}),
-			generationId: accepted.generationId,
-			humanMessageId: accepted.humanMessageId,
-			messageId: accepted.messageId,
-			provisionalVariantId: accepted.provisionalVariantId,
-		}),
 	});
 }
 
@@ -363,12 +357,7 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
 }
 
-export interface ContinueGenerationResult {
-	conversation: ConversationSnapshot;
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-}
+export type ContinueGenerationResult = AcceptedContinuationGeneration;
 
 // ==[HUMAN APPROVED]== Continue starts from the selected narrative path and persists an ordinary
 // model-authored Message. It shares the same normalized stream, terminal
@@ -400,21 +389,9 @@ export async function continueGeneration(
 			...modelRequestFor(capture, current),
 			assistantPrefill: capture.assistantPrefill,
 		}),
-		resolve: (conversation, current, capture, accepted, timestamp, outcome) => ({
-			conversation: conversation.resolveGeneration({
-				conversationId: current.conversationId,
-				generationId: accepted.generationId,
-				timestamp,
-				content: outcome.content,
-				data: [
-					{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
-					...generationOutcomeData(outcome),
-				],
-			}),
-			generationId: accepted.generationId,
-			messageId: accepted.messageId,
-			provisionalVariantId: accepted.provisionalVariantId,
-		}),
+		terminalData: (capture) => [
+			{ namespace: "generation", key: "intent", value: JSON.stringify(capture.intent) },
+		],
 	});
 }
 
@@ -452,12 +429,7 @@ export interface GenerateSiblingVariantInput {
 	timestamp?: string | undefined;
 }
 
-export interface SiblingGenerationResult {
-	conversation: ConversationSnapshot;
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-}
+export type SiblingGenerationResult = AcceptedSiblingGeneration;
 
 // ==[HUMAN APPROVED]== Targeted Swipe: generates a new sibling Variant for an existing native
 // Message using the historical Control pair captured when that Message was
@@ -486,18 +458,6 @@ export async function generateSiblingVariant(
 			generationIntent: { type: "sibling" },
 		}),
 		request: modelRequestFor,
-		resolve: (conversation, current, _capture, accepted, timestamp, outcome) => ({
-			conversation: conversation.resolveGeneration({
-				conversationId: current.conversationId,
-				generationId: accepted.generationId,
-				timestamp,
-				content: outcome.content,
-				data: generationOutcomeData(outcome),
-			}),
-			generationId: accepted.generationId,
-			messageId: accepted.messageId,
-			provisionalVariantId: accepted.provisionalVariantId,
-		}),
 	});
 }
 
