@@ -99,7 +99,6 @@ describe("Generation session wiring", () => {
 				storyActions.push(action);
 			},
 			refreshConversation: () => {},
-			onStateChange: () => {},
 		});
 
 		runner.dispatch(observe([7]));

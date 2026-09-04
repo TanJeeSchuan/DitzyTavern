@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch } from "react";
+import { useCallback, useRef, useState, type Dispatch } from "react";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	loadConversation,
@@ -81,7 +81,7 @@ export function useConversationSession({
 		}
 	};
 
-	const refreshStory = async (conversationId: number) => {
+	const refreshStory = useCallback(async (conversationId: number) => {
 		const [freshConversation, freshHistory] = await Promise.all([
 			loadConversation(conversationId),
 			chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
@@ -92,7 +92,7 @@ export function useConversationSession({
 			dispatchStory({ type: "first-page", page: freshHistory.page });
 		}
 		return freshConversation;
-	};
+	}, [dispatchStory]);
 
 	return {
 		activeChatId,

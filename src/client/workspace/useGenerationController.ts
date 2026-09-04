@@ -1,8 +1,8 @@
 import {
 	useEffect,
 	useRef,
-	useReducer,
 	useState,
+	useSyncExternalStore,
 	type Dispatch,
 	type FormEvent,
 	type RefObject,
@@ -108,17 +108,8 @@ export function useGenerationController({
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
 	const [startPending, setStartPending] = useState(false);
+	const [acceptedGenerationId, setAcceptedGenerationId] = useState<number | null>(null);
 	const [startError, setStartError] = useState<string | null>(null);
-	const [, rerender] = useReducer((count: number) => count + 1, 0);
-
-	// ==[HUMAN APPROVED]== The runner is created once; host callbacks route through this ref,
-	// refreshed every render, so the runner never observes a stale closure
-	// even if a host callback's identity changes between renders.
-	const hostRef = useRef<{
-		dispatchStory: Dispatch<StoryAction>;
-		refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
-	} | null>(null);
-	hostRef.current = { dispatchStory, refreshStory };
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
@@ -126,12 +117,11 @@ export function useGenerationController({
 			adapter: generationStreamAdapter,
 			applyStoryEffect: (effect) => {
 				const action = generationSessionStoryAction(effect);
-				if (action !== null) hostRef.current?.dispatchStory(action);
+				if (action !== null) dispatchStory(action);
 			},
 			refreshConversation: (conversationId) => {
-				void hostRef.current?.refreshStory(conversationId);
+				void refreshStory(conversationId);
 			},
-			onStateChange: () => rerender(),
 		});
 	}
 	const runner = runnerRef.current;
@@ -157,17 +147,22 @@ export function useGenerationController({
 		});
 	}, [runner, conversation]);
 
-	const sessions = runner.snapshot();
+	const sessions = useSyncExternalStore(runner.subscribe, runner.getSnapshot);
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = startPending || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
 	const generationError = startError ?? firstActiveGenerationSessionError(sessions);
 
-	// ==[HUMAN APPROVED]== The first observed session retires the start-pending flag; session
-	// state owns generation activity from acceptance onward.
 	useEffect(() => {
-		if (startPending && hasSessions) setStartPending(false);
-	}, [startPending, hasSessions]);
+		if (
+			startPending &&
+			acceptedGenerationId !== null &&
+			sessions.sessions.has(acceptedGenerationId)
+		) {
+			setStartPending(false);
+			setAcceptedGenerationId(null);
+		}
+	}, [startPending, acceptedGenerationId, sessions]);
 
 	const activeGenerationTargets = conversation === null
 		? []
@@ -180,6 +175,7 @@ export function useGenerationController({
 
 	const conversationSwitched = () => {
 		setStartPending(false);
+		setAcceptedGenerationId(null);
 		setStartError(null);
 		runner.dispatch({ type: "conversation-switched" });
 	};
@@ -233,15 +229,21 @@ export function useGenerationController({
 			if (outcome.outcome === "accepted") {
 				onAccepted?.();
 				const freshConversation = await refreshStory(conversationId);
-				// ==[HUMAN APPROVED]== Accepted starts hand activity over to the session machine; the
-				// start-pending flag only persists until the refreshed snapshot
-				// is observed (or proves there is nothing to observe).
-				if (freshConversation === null || freshConversation.activeGenerations.length === 0) {
+				if (
+					freshConversation === null ||
+					!freshConversation.activeGenerations.some(
+						(generation) => generation.generationId === outcome.generationId,
+					)
+				) {
 					setStartPending(false);
+					setAcceptedGenerationId(null);
+				} else {
+					setAcceptedGenerationId(outcome.generationId);
 				}
 				return;
 			}
 			setStartPending(false);
+			setAcceptedGenerationId(null);
 			setStartError(
 				outcome.outcome === "not-found"
 					? "The Conversation no longer exists."
@@ -250,6 +252,7 @@ export function useGenerationController({
 		} catch {
 			if (Number(activeChatIdRef.current) !== conversationId) return;
 			setStartPending(false);
+			setAcceptedGenerationId(null);
 			setStartError("Generation could not be started.");
 		}
 	};

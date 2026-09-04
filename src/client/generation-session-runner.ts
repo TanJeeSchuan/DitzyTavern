@@ -21,18 +21,17 @@ import {
 
 // The host surfaces the runner's outward effects. Story effects are mapped
 // ==[HUMAN APPROVED]== by the host (which owns the story reducer boundary); refresh requests go
-// to the authoritative Conversation read; state changes notify reactive
-// hosts such as the React hook.
+// to the authoritative Conversation read.
 export interface GenerationSessionRunnerHost {
 	adapter: GenerationStreamAdapter;
 	applyStoryEffect: (effect: GenerationSessionStoryEffect) => void;
 	refreshConversation: (conversationId: number) => void;
-	onStateChange: (state: GenerationSessionsState) => void;
 }
 
 export interface GenerationSessionRunner {
 	dispatch: (action: GenerationSessionsAction) => void;
-	snapshot: () => GenerationSessionsState;
+	getSnapshot: () => GenerationSessionsState;
+	subscribe: (listener: () => void) => () => void;
 	// Closes every live local subscription. This is teardown only: it never
 	// ==[HUMAN APPROVED]== reaches a Stop command, so navigation and unmounting can never cancel a
 	// server-owned Active Generation.
@@ -42,12 +41,30 @@ export interface GenerationSessionRunner {
 export function createGenerationSessionRunner(host: GenerationSessionRunnerHost): GenerationSessionRunner {
 	let state = createGenerationSessions();
 	const controllers = new Map<number, AbortController>();
+	const listeners = new Set<() => void>();
+	let disposed = false;
+
+	const getSnapshot = (): GenerationSessionsState => state;
+
+	const subscribe = (listener: () => void): (() => void) => {
+		if (disposed) return () => {};
+		listeners.add(listener);
+		return () => {
+			listeners.delete(listener);
+		};
+	};
+
+	const notify = (): void => {
+		if (disposed) return;
+		for (const listener of listeners) listener();
+	};
 
 	const dispatch = (action: GenerationSessionsAction): void => {
+		if (disposed) return;
 		const transition = reduceGenerationSessions(state, action);
 		if (transition.state === state) return;
 		state = transition.state;
-		host.onStateChange(state);
+		notify();
 		for (const effect of transition.effects) runEffect(effect);
 	};
 
@@ -129,14 +146,21 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 
 	return {
 		dispatch,
-		snapshot: () => state,
+		getSnapshot,
+		subscribe,
 		dispose: () => {
+			if (disposed) return;
 			for (const controller of controllers.values()) controller.abort();
 			controllers.clear();
 			// Detach the machine as well: a surface that stops observing loses
 			// ==[HUMAN APPROVED]== its live subscriptions, and a later surface reattaches from the
 			// sessions' cursors instead of resuming dead "subscribing" rows.
-			dispatch({ type: "conversation-switched" });
+			// The detach updates silently: disposal itself never notifies, and
+			// later work cannot reach subscribers.
+			const transition = reduceGenerationSessions(state, { type: "conversation-switched" });
+			state = transition.state;
+			listeners.clear();
+			disposed = true;
 		},
 	};
 }

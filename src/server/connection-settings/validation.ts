@@ -2,6 +2,10 @@ import {
 	InvalidConnectionProfileError,
 } from "./errors";
 import { compareModelIds } from "../../shared/model-identifier";
+import {
+	validateConnectionProfileHeaderNames,
+	validateConnectionProfileSharedDraft,
+} from "../../shared/connection-profile-validation";
 import type {
 	ConnectionHeaderOperation,
 	ConnectionProfileDraft,
@@ -12,32 +16,12 @@ export function validateConnectionProfileDraft(
 	input: ConnectionProfileDraft,
 ): ConnectionProfileDraft {
 	const displayName = normalizeDisplayName(input.displayName);
-	if (input.apiFormat !== "chat-completions") {
-		throw new InvalidConnectionProfileError(
-			"Only the Chat Completions API Format is available in version one.",
-		);
+	const sharedFailure = validateConnectionProfileSharedDraft(input);
+	if (sharedFailure !== null) {
+		throw new InvalidConnectionProfileError(sharedFailure.message);
 	}
-	if (input.modelBackend !== "automatic" && input.modelBackend !== "ai-sdk") {
-		throw new InvalidConnectionProfileError("The selected Model Backend is unavailable.");
-	}
-	if (!["openai-compatible", "deepseek", "openrouter"].includes(input.adapter)) {
-		throw new InvalidConnectionProfileError("The selected AI SDK Adapter is unavailable.");
-	}
-	if (!["automatic", "max_tokens", "max_completion_tokens", "omit"].includes(input.outputTokenRepresentation)) {
-		throw new InvalidConnectionProfileError(
-			"The selected output-token representation is unavailable.",
-		);
-	}
-	const requestUrl = validateUrl(input.requestUrl, "request URL", true);
-	const modelsUrl = validateUrl(input.modelsUrl, "Models URL", true);
-	if (
-		input.timeoutMs !== null &&
-		(!Number.isInteger(input.timeoutMs) || input.timeoutMs < 0)
-	) {
-		throw new InvalidConnectionProfileError(
-			"Timeout must be zero, null, or a positive whole number of milliseconds.",
-		);
-	}
+	const requestUrl = input.requestUrl.trim();
+	const modelsUrl = input.modelsUrl.trim();
 	const pinnedModels = normalizePinnedModels(input.pinnedModels);
 	return {
 		displayName,
@@ -65,22 +49,13 @@ export function applyConnectionHeaderOperations(
 export function validateHeaderOperations(
 	operations: readonly ConnectionHeaderOperation[],
 ): readonly ConnectionHeaderOperation[] {
-	const seen = new Set<string>();
-	return operations.map((operation) => {
-		const normalized = operation.name.toLowerCase();
-		if (!HTTP_TOKEN.test(operation.name) || TRANSPORT_OWNED_HEADERS.has(normalized)) {
-			throw new InvalidConnectionProfileError(
-				`Custom header name "${operation.name}" is not a valid user-controlled HTTP header.`,
-			);
-		}
-		if (seen.has(normalized)) {
-			throw new InvalidConnectionProfileError(
-				`Custom header names must be unique case-insensitively: "${operation.name}".`,
-			);
-		}
-		seen.add(normalized);
-		return operation;
-	});
+	const failure = validateConnectionProfileHeaderNames(
+		operations.map((operation) => operation.name),
+	);
+	if (failure !== null) {
+		throw new InvalidConnectionProfileError(failure.message);
+	}
+	return operations;
 }
 
 export function applyHeaderOperations(
@@ -137,45 +112,3 @@ export function normalizeCredential(value: string | null | undefined): string | 
 	if (value.trim().length === 0) return null;
 	return value;
 }
-
-function validateUrl(value: string, label: string, allowBlank: boolean): string {
-	const normalized = value.trim();
-	if (normalized.length === 0) {
-		if (allowBlank) return "";
-		throw new InvalidConnectionProfileError(`A ${label} is required.`);
-	}
-	let parsed: URL;
-	try {
-		parsed = new URL(normalized);
-	} catch {
-		throw new InvalidConnectionProfileError(`The ${label} must be a valid HTTP or HTTPS URL.`);
-	}
-	if (
-		(parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-		parsed.username.length > 0 ||
-		parsed.password.length > 0 ||
-		parsed.hash.length > 0
-	) {
-		throw new InvalidConnectionProfileError(
-			`${label} must use HTTP or HTTPS without user information or a fragment.`,
-		);
-	}
-	return normalized;
-}
-
-const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-const TRANSPORT_OWNED_HEADERS = new Set([
-	"accept-encoding",
-	"connection",
-	"content-encoding",
-	"content-length",
-	"content-type",
-	"host",
-	"keep-alive",
-	"proxy-authenticate",
-	"proxy-authorization",
-	"te",
-	"trailer",
-	"transfer-encoding",
-	"upgrade",
-]);

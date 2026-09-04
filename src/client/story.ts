@@ -231,6 +231,25 @@ const prependUnique = (
 	return [...fresh, ...existing];
 };
 
+const updateStoryVariant = (
+	state: StoryState,
+	messageId: number,
+	variantId: number,
+	update: (variant: StoryVariant) => StoryVariant,
+): StoryState => ({
+	...state,
+	messages: state.messages.map((message) =>
+		message.id !== messageId
+			? message
+			: {
+					...message,
+					swipes: message.swipes.map((variant) =>
+						variant.id !== variantId ? variant : update(variant),
+					),
+				},
+	),
+});
+
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
 	switch (action.type) {
 		case "chat-opened":
@@ -287,57 +306,26 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 				}),
 			};
 		case "generation-content":
-			return {
-				...state,
-				messages: state.messages.map((message) => message.id !== action.messageId
-					? message
-					: {
-							...message,
-						swipes: message.swipes.map((variant) => variant.id !== action.variantId
-								? variant
-								: { ...variant, content: action.content, empty: action.content === "" }),
-						}),
-			};
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
+				...variant,
+				content: action.content,
+				empty: action.content === "",
+			}));
 		case "generation-content-delta":
-			return {
-				...state,
-				messages: state.messages.map((message) => message.id !== action.messageId
-					? message
-					: {
-							...message,
-						swipes: message.swipes.map((variant) => variant.id !== action.variantId
-								? variant
-								: {
-									...variant,
-									content: variant.content + action.text,
-									empty: variant.content + action.text === "",
-								}),
-						}),
-			};
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
+				const content = variant.content + action.text;
+				return { ...variant, content, empty: content === "" };
+			});
 		case "generation-reasoning":
-			return {
-				...state,
-				messages: state.messages.map((message) => message.id !== action.messageId
-					? message
-					: {
-							...message,
-							swipes: message.swipes.map((variant) => variant.id !== action.variantId
-								? variant
-								: { ...variant, reasoning: action.reasoning }),
-						}),
-			};
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
+				...variant,
+				reasoning: action.reasoning,
+			}));
 		case "generation-reasoning-delta":
-			return {
-				...state,
-				messages: state.messages.map((message) => message.id !== action.messageId
-					? message
-					: {
-							...message,
-							swipes: message.swipes.map((variant) => variant.id !== action.variantId
-								? variant
-								: { ...variant, reasoning: (variant.reasoning ?? "") + action.text }),
-						}),
-			};
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
+				...variant,
+				reasoning: (variant.reasoning ?? "") + action.text,
+			}));
 		case "preview-started": {
 			if (state.preview !== null) return state;
 			const message = state.messages.find((entry) => entry.id === action.messageId);

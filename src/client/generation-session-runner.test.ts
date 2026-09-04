@@ -72,13 +72,11 @@ const fakeStream = (): FakeStream => {
 interface Host {
 	storyEffects: GenerationSessionStoryEffect[];
 	refreshes: number[];
-	states: GenerationSessionsState[];
 }
 
 const host = (): Host => ({
 	storyEffects: [],
 	refreshes: [],
-	states: [],
 });
 
 // Lets the runner's promise reactions settle before assertions.
@@ -89,7 +87,6 @@ const runnerWith = (stream: FakeStream, spy: Host) =>
 		adapter: stream.adapter,
 		applyStoryEffect: (effect) => spy.storyEffects.push(effect),
 		refreshConversation: (conversationId) => spy.refreshes.push(conversationId),
-		onStateChange: (state) => spy.states.push(state),
 	});
 
 const observeTargets = (generationIds: readonly number[]) =>
@@ -107,7 +104,7 @@ describe("the Generation session runner", () => {
 		expect(stream.requests[0]?.conversationId).toBe(42);
 		expect(stream.requests[0]?.generationId).toBe(7);
 		expect(stream.requests[0]?.afterEventId).toBe(0);
-		expect(spy.states).toHaveLength(1);
+		expect(runner.getSnapshot().sessions.has(7)).toBe(true);
 
 		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Hello") });
 		stream.requests[0]!.onEvent({ eventId: 2, event: { type: "reasoning", text: "Plan" } });
@@ -170,7 +167,7 @@ describe("the Generation session runner", () => {
 		await flushSubscriptions();
 
 		expect(spy.refreshes).toEqual([42]);
-		expect(firstSessionError(runner.snapshot())).toBe("Generation subscription was interrupted.");
+		expect(firstSessionError(runner.getSnapshot())).toBe("Generation subscription was interrupted.");
 	});
 
 	test("a Conversation switch aborts only the local subscription and swallows the aborted settle", async () => {
@@ -189,7 +186,7 @@ describe("the Generation session runner", () => {
 		stream.settle(0, { outcome: "applied" });
 		await flushSubscriptions();
 		expect(spy.refreshes).toEqual([]);
-		expect(runner.snapshot().sessions.get(7)?.phase).toBe("detached");
+		expect(runner.getSnapshot().sessions.get(7)?.phase).toBe("detached");
 	});
 
 	test("dispose aborts every live subscription", () => {
@@ -202,6 +199,89 @@ describe("the Generation session runner", () => {
 
 		expect(stream.requests[0]!.signal.aborted).toBe(true);
 		expect(stream.requests[1]!.signal.aborted).toBe(true);
+	});
+
+	test("snapshot identity is stable without transitions and changes after a meaningful transition", () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+
+		const initial = runner.getSnapshot();
+		runner.dispatch(observeTargets([]));
+		const empty = runner.getSnapshot();
+		expect(empty).not.toBe(initial);
+		expect(empty.activeConversationId).toBe(42);
+
+		runner.dispatch(observeTargets([]));
+		expect(runner.getSnapshot()).toBe(empty);
+
+		runner.dispatch(observeTargets([7]));
+		const reconciled = runner.getSnapshot();
+		expect(reconciled).not.toBe(empty);
+		expect(reconciled.sessions.has(7)).toBe(true);
+
+		runner.dispatch(observeTargets([7]));
+		expect(runner.getSnapshot()).toBe(reconciled);
+	});
+
+	test("subscribers are notified on transitions and can unsubscribe", () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+
+		let notifications = 0;
+		const unsubscribe = runner.subscribe(() => {
+			notifications += 1;
+		});
+
+		runner.dispatch(observeTargets([7]));
+		expect(notifications).toBe(1);
+
+		runner.dispatch(observeTargets([7]));
+		expect(notifications).toBe(1);
+
+		unsubscribe();
+		runner.dispatch(observeTargets([8]));
+		expect(notifications).toBe(1);
+		expect(runner.getSnapshot().sessions.has(8)).toBe(true);
+	});
+
+	test("accepted-target reconciliation exposes the accepted Generation in the snapshot", () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+
+		expect(runner.getSnapshot().sessions.has(7)).toBe(false);
+		runner.dispatch(observeTargets([7]));
+		expect(runner.getSnapshot().sessions.has(7)).toBe(true);
+		expect(runner.getSnapshot().sessions.get(7)?.messageId).toBe(907);
+	});
+
+	test("disposal stops subscriber updates including late settles", async () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+
+		let notifications = 0;
+		runner.subscribe(() => {
+			notifications += 1;
+		});
+
+		runner.dispatch(observeTargets([7]));
+		expect(notifications).toBe(1);
+
+		runner.dispose();
+		const detached = runner.getSnapshot();
+		expect(detached.sessions.get(7)?.phase).toBe("detached");
+
+		runner.dispatch(observeTargets([8]));
+		expect(notifications).toBe(1);
+		expect(runner.getSnapshot()).toBe(detached);
+
+		stream.settle(0, { outcome: "applied" });
+		await flushSubscriptions();
+		expect(notifications).toBe(1);
+		expect(spy.refreshes).toEqual([]);
 	});
 });
 
