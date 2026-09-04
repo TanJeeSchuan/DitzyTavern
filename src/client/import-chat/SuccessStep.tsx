@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import type { ChatImportReceipt } from "../import-chat";
+import { ImportWarningsList } from "./ImportNotices";
 import { sourceSize } from "./presentation";
 
 export function SuccessStep({
@@ -71,16 +72,7 @@ export function SuccessStep({
 				</ul>
 			</section>
 
-			{receipt.warnings.length > 0 && (
-				<section className="import-warnings">
-					<h3>Warnings</h3>
-					<ul>
-						{receipt.warnings.map((warning) => (
-							<li key={warning}>{warning}</li>
-						))}
-					</ul>
-				</section>
-			)}
+			<ImportWarningsList warnings={receipt.warnings} />
 
 			<div className="import-success-actions">
 				<button className="primary-button" type="button" onClick={onOpen}>

@@ -6,6 +6,11 @@ import {
 	type ChatImportFlowState,
 	variantCountForGroup,
 } from "../import-chat-flow";
+import {
+	ImportRelatedNotice,
+	ImportTitleField,
+	ImportWarningsList,
+} from "./ImportNotices";
 import { outcomeLabel } from "./presentation";
 import { SourceCard } from "./SourceCard";
 
@@ -29,15 +34,10 @@ export function ReviewStep({
 
 	return (
 		<div className="import-review">
-			<label className="seat-field">
-				<span>Chat title</span>
-				<input
-					value={flow.title}
-					onChange={(event) =>
-						onDispatch({ type: "title-changed", title: event.target.value })
-					}
-				/>
-			</label>
+			<ImportTitleField
+				title={flow.title}
+				onTitleChange={(title) => onDispatch({ type: "title-changed", title })}
+			/>
 
 			<SourceCard handle={flow.handle} counts={flow.counts} />
 
@@ -62,16 +62,7 @@ export function ReviewStep({
 				</ul>
 			</section>
 
-			{allWarnings.length > 0 && (
-				<section className="import-warnings">
-					<h3>Warnings</h3>
-					<ul>
-						{allWarnings.map((warning) => (
-							<li key={warning}>{warning}</li>
-						))}
-					</ul>
-				</section>
-			)}
+			<ImportWarningsList warnings={allWarnings} />
 
 			{exactCount > 0 && (
 				<section className="import-duplicate-confirm" role="alert">
@@ -96,14 +87,8 @@ export function ReviewStep({
 					</label>
 				</section>
 			)}
-			{exactCount === 0 && flow.duplicates.related.length > 0 && (
-				<p className="import-related-banner">
-					<span>
-						A related import was found in{" "}
-						{flow.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.
-						Both files report the same integrity value, but their bytes differ.
-					</span>
-				</p>
+			{exactCount === 0 && (
+				<ImportRelatedNotice related={flow.duplicates.related} />
 			)}
 
 			{flow.problem !== null && (

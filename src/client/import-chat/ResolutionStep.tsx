@@ -5,6 +5,11 @@ import {
 	type ChatImportFlowAction,
 	type ChatImportFlowState,
 } from "../import-chat-flow";
+import {
+	ImportRelatedNotice,
+	ImportTitleField,
+	ImportWarningsList,
+} from "./ImportNotices";
 import { ResolvedGroupCard } from "./ResolvedGroupCard";
 import { SourceCard } from "./SourceCard";
 
@@ -26,7 +31,6 @@ export function ResolutionStep({
 	onContinue: () => void;
 }) {
 	const exactCount = flow.duplicates.exact.length;
-	const relatedCount = flow.duplicates.related.length;
 	// ==[HUMAN APPROVED]== Presentation-only merge selection; the reducer only sees the confirmed
 	// merge action with its explicit target and sources.
 	const [mergeSelection, setMergeSelection] = useState<readonly string[]>([]);
@@ -57,39 +61,19 @@ export function ResolutionStep({
 					</span>
 				</p>
 			)}
-			{exactCount === 0 && relatedCount > 0 && (
-				<p className="import-related-banner">
-					<span>
-						A related import was found in{" "}
-						{flow.duplicates.related.map((match) => `Chat ${match.id}`).join(", ")}.
-						Both files report the same integrity value, but their bytes differ.
-					</span>
-				</p>
+			{exactCount === 0 && (
+				<ImportRelatedNotice related={flow.duplicates.related} />
 			)}
 
-			<label className="seat-field">
-				<span>Chat title</span>
-				<input
-					value={flow.title}
-					placeholder="Title this Chat"
-					onChange={(event) =>
-						onDispatch({ type: "title-changed", title: event.target.value })
-					}
-				/>
-			</label>
+			<ImportTitleField
+				title={flow.title}
+				placeholder="Title this Chat"
+				onTitleChange={(title) => onDispatch({ type: "title-changed", title })}
+			/>
 
 			<SourceCard handle={flow.handle} counts={flow.counts} showDeclaredIntegrity />
 
-			{flow.warnings.length > 0 && (
-				<section className="import-warnings">
-					<h3>Warnings</h3>
-					<ul>
-						{flow.warnings.map((warning) => (
-							<li key={warning}>{warning}</li>
-						))}
-					</ul>
-				</section>
-			)}
+			<ImportWarningsList warnings={flow.warnings} />
 
 			<section className="import-groups">
 				<h3>Resolve Participants</h3>
