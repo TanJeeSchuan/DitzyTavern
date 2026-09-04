@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, isNull, max } from "drizzle-orm";
+import { and, asc, eq, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
@@ -272,15 +272,23 @@ export const hasRetainedParticipantReference = (
 	participantId: number,
 ) =>
 	db
-		.select({
-			authorParticipantId: messageTable.author_participant_id,
-			contextHumanParticipantId: messageTable.context_human_participant_id,
-			contextModelParticipantId: messageTable.context_model_participant_id,
-		})
+		.select({ id: messageTable.id })
 		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.all()
-		.some((message) => messageReferencesParticipant(message, participantId));
+		.where(
+			and(
+				eq(messageTable.conversation_id, conversationId),
+				// ==[HUMAN APPROVED]== The same three reference columns the shared predicate reads,
+				// asked of the database so the first hit ends the search and no
+				// Message of a long Conversation is materialized to answer a boolean.
+				or(
+					eq(messageTable.author_participant_id, participantId),
+					eq(messageTable.context_human_participant_id, participantId),
+					eq(messageTable.context_model_participant_id, participantId),
+				),
+			),
+		)
+		.limit(1)
+		.get() !== undefined;
 
 // ==[HUMAN APPROVED]== Generic data commands write only generic namespaces. The import-owned
 // namespaces hold server-owned provenance written by the import projection
