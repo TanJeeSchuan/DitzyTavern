@@ -150,32 +150,6 @@ export const createConversationRoutes = (
 ) => {
 	const generationCoordinator = createGenerationCoordinator(database, options);
 
-	type GenerationAcceptanceStart = (
-		conversationId: number,
-		body: { expectedRevision: number; content?: string },
-	) => Promise<{
-		accepted: {
-			generationId: number;
-			modelMessageId: number;
-			provisionalVariantId: number;
-		};
-	}>;
-
-	// ==[HUMAN APPROVED]== Send and Continue share one acceptance skeleton. Elysia validates the
-	// route-specific body schema before this handler, so `content` is present
-	// only for Send and the coordinator call receives exactly its own shape.
-	const generationAcceptanceRoute = (start: GenerationAcceptanceStart) =>
-		async ({ params, body }: {
-			params: { id: number };
-			body: { expectedRevision: number; content?: string };
-		}) => {
-			return generationAcceptanceResponse(
-				params.id,
-				() => start(params.id, body),
-				(accepted) => accepted.modelMessageId,
-			);
-		};
-
 	return new Elysia()
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
@@ -222,11 +196,13 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/continue/generations",
-			generationAcceptanceRoute((conversationId, body) =>
-				generationCoordinator.startContinuationGeneration({
-					conversationId,
+			async ({ params, body }) => generationAcceptanceResponse(
+				params.id,
+				() => generationCoordinator.startContinuationGeneration({
+					conversationId: params.id,
 					expectedRevision: body.expectedRevision,
 				}),
+				(accepted) => accepted.modelMessageId,
 			),
 			{
 				params: conversationIdParams,
@@ -320,18 +296,15 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations",
-			generationAcceptanceRoute((conversationId, body) => {
-				if (body.content === undefined) {
-					throw new InvalidConversationCommandError(
-						"Generation start requires content and an expected Conversation revision.",
-					);
-				}
-				return generationCoordinator.startSendGeneration({
-					conversationId,
+			async ({ params, body }) => generationAcceptanceResponse(
+				params.id,
+				() => generationCoordinator.startSendGeneration({
+					conversationId: params.id,
 					expectedRevision: body.expectedRevision,
 					content: body.content,
-				});
-			}),
+				}),
+				(accepted) => accepted.modelMessageId,
+			),
 			{
 				params: conversationIdParams,
 				body: generationBody,

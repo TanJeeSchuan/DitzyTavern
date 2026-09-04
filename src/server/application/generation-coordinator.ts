@@ -188,6 +188,16 @@ interface ServerOwnedGenerationHandle<TAccepted, TResult> {
 	readonly result: Promise<TResult>;
 }
 
+/**
+ * ==[HUMAN APPROVED]== A connection plus the release its holder owes it. A configured connection
+ * releases to a no-op; one opened for a single detached Generation closes on
+ * the first release and ignores later ones.
+ */
+interface AcquiredDatabase {
+	readonly database: Database;
+	release(): void;
+}
+
 interface ResolvedGenerationTransport {
 	readonly modelClient: ModelClient;
 	readonly connection: ModelClientConnectionSnapshot;
@@ -407,19 +417,13 @@ export class GenerationCoordinator {
 	}
 
 	/**
-	 * ==[HUMAN APPROVED]== Opens the short-lived request database only when neither a composed
-	 * Conversation adapter nor a configured database supplies one, and always
-	 * closes a connection it opened itself.
+	 * ==[HUMAN APPROVED]== Runs a scoped lifecycle operation. A composed Conversation adapter needs
+	 * no connection at all; otherwise the canonical `withDatabase` helper
+	 * supplies the configured connection or opens and closes one of its own.
 	 */
 	private withLifecycleConnection<T>(run: (database: Database | undefined) => T): T {
 		if (this.options.conversationLifecycle !== undefined) return run(undefined);
-		if (this.configuredDatabase !== undefined) return run(this.configuredDatabase);
-		const database = openDatabase();
-		try {
-			return run(database);
-		} finally {
-			database.close();
-		}
+		return withDatabase(this.configuredDatabase, run);
 	}
 
 	/** ==[HUMAN APPROVED]== The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
@@ -434,13 +438,7 @@ export class GenerationCoordinator {
 	>(
 		input: ManagedGenerationInput<TAccepted, TResult>,
 	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
-		const database = this.openDatabase();
-		let closed = false;
-		const close = () => {
-			if (closed || this.configuredDatabase !== undefined) return;
-			closed = true;
-			database.close();
-		};
+		const { database, release } = this.acquireDatabase();
 
 		try {
 			if (!createConversationModule(database).exists(input.conversationId)) {
@@ -490,20 +488,38 @@ export class GenerationCoordinator {
 					activeRuntime.fail(error instanceof Error ? error.message : "Generation failed.");
 					throw error;
 				})
-				.finally(close);
+				.finally(release);
 			// ==[HUMAN APPROVED]== The HTTP adapter intentionally returns after acceptance. Consume the
 			// detached rejection here while exposing the terminal Promise to tests
 			// and non-HTTP callers that want to await it.
 			void result.catch(() => undefined);
 			return { accepted, runtime: activeRuntime, result };
 		} catch (error) {
-			close();
+			release();
 			throw error;
 		}
 	}
 
-	private openDatabase(): Database {
-		return this.configuredDatabase ?? openDatabase();
+	/**
+	 * ==[HUMAN APPROVED]== Acquires the connection one detached Generation works on. Its lifetime
+	 * outlives the call that starts it, so it cannot use the scoped helper:
+	 * the caller releases it when terminal work settles. A configured
+	 * connection is never closed here, and releasing twice is a no-op.
+	 */
+	private acquireDatabase(): AcquiredDatabase {
+		if (this.configuredDatabase !== undefined) {
+			return { database: this.configuredDatabase, release: () => undefined };
+		}
+		const database = openDatabase();
+		let released = false;
+		return {
+			database,
+			release: () => {
+				if (released) return;
+				released = true;
+				database.close();
+			},
+		};
 	}
 
 	private resolveTransport(database: Database): ResolvedGenerationTransport {
