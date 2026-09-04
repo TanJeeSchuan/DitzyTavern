@@ -22,7 +22,6 @@ import type { Database } from "bun:sqlite";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
-	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationSnapshot,
@@ -90,8 +89,6 @@ interface GenerationLifecyclePolicy<
 	Accepted extends { generationId: number },
 	Result,
 > {
-	preflight?: (input: Input) => void;
-	expectedRevision?: (input: Input) => number;
 	capture: (
 		database: Database,
 		snapshot: ConversationSnapshot,
@@ -134,13 +131,18 @@ async function runGenerationLifecycle<
 	onAccepted: ((accepted: Accepted) => void | Promise<void>) | undefined,
 	policy: GenerationLifecyclePolicy<Input, Capture, Accepted, Result>,
 ): Promise<Result> {
-	policy.preflight?.(input);
 	const conversation = createConversationModule(database);
 	const snapshot = conversation.getSnapshot(input.conversationId);
 	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
-	const expectedRevision = policy.expectedRevision?.(input);
-	if (expectedRevision !== undefined && snapshot.revision !== expectedRevision) {
-		throw new StaleConversationRevisionError(expectedRevision, snapshot.revision);
+	// ==[HUMAN APPROVED]== A revisioned lifecycle fails fast before the Prompt Plan is
+	// compiled. The acceptance transaction re-checks the revision under its
+	// own lock and stays authoritative; this only avoids budgeting a
+	// Conversation that has already moved on.
+	if (
+		input.expectedRevision !== undefined &&
+		snapshot.revision !== input.expectedRevision
+	) {
+		throw new StaleConversationRevisionError(input.expectedRevision, snapshot.revision);
 	}
 	const capture = policy.capture(database, snapshot, input);
 	const timestamp = input.timestamp ?? new Date().toISOString();
@@ -324,14 +326,6 @@ export async function sendThroughProvisionalTailGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		preflight: (current) => {
-			if (current.content.trim() === "") {
-				throw new InvalidConversationCommandError(
-					"Send requires non-empty composer content.",
-				);
-			}
-		},
-		expectedRevision: (current) => current.expectedRevision,
 		capture: (currentDatabase, snapshot, current) => captureSendGeneration(
 			currentDatabase,
 			snapshot,
@@ -397,7 +391,6 @@ export async function continueGeneration(
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		expectedRevision: (current) => current.expectedRevision,
 		capture: (currentDatabase, snapshot, current) => captureContinuationGeneration(
 			currentDatabase,
 			snapshot,

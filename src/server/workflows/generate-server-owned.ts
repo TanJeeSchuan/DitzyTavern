@@ -21,6 +21,11 @@ import type { TokenEstimator } from "../prompt-compiler";
 
 export interface GenerationAttemptInput {
 	conversationId: number;
+	// ==[HUMAN APPROVED]== Present on the revisioned lifecycles (Send, Continue) and absent on
+	// Sibling, whose eligibility is revision-neutral. The lifecycle runner
+	// reads it directly for its pre-capture fail-fast; the acceptance
+	// transaction owns the authoritative guard.
+	expectedRevision?: number;
 	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events. The workflow never calls a
 	// provider or interprets a provider request shape directly.
@@ -71,51 +76,9 @@ export interface ServerOwnedGenerationCallbacks<Accepted> {
  * Acceptance is exposed separately so an HTTP caller can return as soon as
  * the provisional target exists. The provider attempt remains owned by the
  * controller until its terminal result settles, regardless of request
- * disconnects.
- */
-export function startServerOwnedGeneration<Accepted, Result>(
-	execute: (
-		signal: AbortSignal,
-		onAccepted: (accepted: Accepted) => void | Promise<void>,
-		onEvent: (event: ModelClientEvent) => void | Promise<void>,
-	) => Promise<Result>,
-	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
-): ServerOwnedGeneration<Accepted, Result> {
-	const controller = new AbortController();
-	let accepted = false;
-	let resolveAccepted!: (value: Accepted) => void;
-	let rejectAccepted!: (reason: Error) => void;
-	const acceptedPromise = new Promise<Accepted>((resolve, reject) => {
-		resolveAccepted = resolve;
-		rejectAccepted = reject;
-	});
-	const result = execute(
-		controller.signal,
-		async (value) => {
-			accepted = true;
-			resolveAccepted(value);
-			await callbacks.onAccepted?.(value, {
-				signal: controller.signal,
-				stop: () => controller.abort(),
-			});
-		},
-		async (event) => {
-			await callbacks.onEvent?.(event);
-		},
-	);
-	void result.catch((error) => {
-		if (!accepted) {
-			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
-		}
-	});
-	return { accepted: acceptedPromise, result, signal: controller.signal };
-}
-
-/**
- * ==[HUMAN APPROVED]== The one generic public detached-start seam behind the three startServerOwned*
- * wrappers. Input composition is identical everywhere: the caller's input
- * callbacks fire first, then the detached observer callbacks, and the provider
- * signal replaces whatever the observing request owned.
+ * disconnects. Input composition is identical for every lifecycle: the
+ * caller's own callbacks fire first, then the detached observer callbacks,
+ * and the provider signal replaces whatever the observing request owned.
  */
 export function startServerOwnedGenerationFrom<
 	Accepted,
@@ -131,21 +94,37 @@ export function startServerOwnedGenerationFrom<
 	start: (database: Database, input: Input) => Promise<Result>,
 	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
 ): ServerOwnedGeneration<Accepted, Result> {
-	return startServerOwnedGeneration(
-		(signal, onAccepted, onEvent) => start(database, {
-			...input,
-			signal,
-			onAccepted: async (value) => {
-				await input.onAccepted?.(value);
-				await onAccepted(value);
-			},
-			onEvent: async (event) => {
-				await input.onEvent?.(event);
-				await onEvent(event);
-			},
-		}),
-		callbacks,
-	);
+	const controller = new AbortController();
+	let accepted = false;
+	let resolveAccepted!: (value: Accepted) => void;
+	let rejectAccepted!: (reason: Error) => void;
+	const acceptedPromise = new Promise<Accepted>((resolve, reject) => {
+		resolveAccepted = resolve;
+		rejectAccepted = reject;
+	});
+	const result = start(database, {
+		...input,
+		signal: controller.signal,
+		onAccepted: async (value) => {
+			await input.onAccepted?.(value);
+			accepted = true;
+			resolveAccepted(value);
+			await callbacks.onAccepted?.(value, {
+				signal: controller.signal,
+				stop: () => controller.abort(),
+			});
+		},
+		onEvent: async (event) => {
+			await input.onEvent?.(event);
+			await callbacks.onEvent?.(event);
+		},
+	});
+	void result.catch((error) => {
+		if (!accepted) {
+			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
+		}
+	});
+	return { accepted: acceptedPromise, result, signal: controller.signal };
 }
 
 type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
