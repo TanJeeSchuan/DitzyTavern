@@ -202,7 +202,6 @@ export const createConversationRoutes = (
 					conversationId: params.id,
 					expectedRevision: body.expectedRevision,
 				}),
-				(accepted) => accepted.modelMessageId,
 			),
 			{
 				params: conversationIdParams,
@@ -303,7 +302,6 @@ export const createConversationRoutes = (
 					expectedRevision: body.expectedRevision,
 					content: body.content,
 				}),
-				(accepted) => accepted.modelMessageId,
 			),
 			{
 				params: conversationIdParams,
@@ -341,7 +339,6 @@ export const createConversationRoutes = (
 						conversationId: params.id,
 						messageId: params.messageId,
 					}),
-					(accepted) => accepted.messageId,
 				),
 			{
 				params: messageIdParams,

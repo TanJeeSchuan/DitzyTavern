@@ -744,7 +744,7 @@ describe("Generation runtime behavior", () => {
 		if (before === undefined) throw new Error("Snapshot missing.");
 		// The Send composes the production Tail lifecycle: its accepted human
 		// Message precedes the generated target the sibling targets.
-		const { modelMessageId: targetId } = await sendThroughProvisionalTailGeneration(database, {
+		const { messageId: targetId } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: before.revision,
 			content: "Human context before target.",
@@ -806,5 +806,6 @@ describe("Generation runtime behavior", () => {
 		]);
 		const siblingTarget = sibling.messages.find((message) => message.id === targetId);
 		expect(siblingTarget?.variants.at(-1)?.content).toBe("Budgeted sibling output.");
-	});
+	});
+
 });

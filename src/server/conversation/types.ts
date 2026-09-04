@@ -400,7 +400,7 @@ export interface AcceptTailGenerationInput {
 export interface AcceptedTailGeneration {
 	generationId: number;
 	humanMessageId: number;
-	modelMessageId: number;
+	messageId: number;
 	provisionalVariantId: number;
 	conversation: ConversationSnapshot;
 }
@@ -467,7 +467,7 @@ export interface AcceptContinuationGenerationInput {
 
 export interface AcceptedContinuationGeneration {
 	generationId: number;
-	modelMessageId: number;
+	messageId: number;
 	provisionalVariantId: number;
 	conversation: ConversationSnapshot;
 }

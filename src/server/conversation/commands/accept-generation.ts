@@ -418,7 +418,7 @@ export function acceptConversationTailGeneration(
 	return {
 		generationId: accepted.generationId,
 		humanMessageId: accepted.validation.humanMessageId,
-		modelMessageId: accepted.provisional.modelMessageId,
+		messageId: accepted.provisional.modelMessageId,
 		provisionalVariantId: accepted.provisional.provisionalVariantId,
 		conversation: accepted.conversation,
 	};
@@ -479,7 +479,7 @@ export function acceptConversationContinuationGeneration(
 	});
 	return {
 		generationId: accepted.generationId,
-		modelMessageId: accepted.provisional.modelMessageId,
+		messageId: accepted.provisional.modelMessageId,
 		provisionalVariantId: accepted.provisional.provisionalVariantId,
 		conversation: accepted.conversation,
 	};

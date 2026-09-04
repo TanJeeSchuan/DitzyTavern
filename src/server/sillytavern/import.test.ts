@@ -743,7 +743,7 @@ describe("SillyTavern chat import", () => {
 		const model = completed.cast[1];
 		expect(human).toBeDefined();
 		expect(model).toBeDefined();
-		const { conversation: generated, modelMessageId } = await sendThroughProvisionalTailGeneration(database, {
+		const { conversation: generated, messageId } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId: completed.id,
 			expectedRevision: completed.revision,
 			content: "The lamp is lit again.",
@@ -751,7 +751,7 @@ describe("SillyTavern chat import", () => {
 			modelClient: createFakeModelClient(() => "The lamp answers at last."),
 		});
 		const nativeMessage = generated.messages.find(
-			(message) => message.id === modelMessageId,
+			(message) => message.id === messageId,
 		);
 		expect(nativeMessage).toBeDefined();
 		expect(nativeMessage?.author).toEqual({
@@ -770,12 +770,12 @@ describe("SillyTavern chat import", () => {
 		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
 		const sibling = (await generateSiblingVariant(database, {
 			conversationId: generated.id,
-			messageId: modelMessageId,
+			messageId,
 			timestamp: "2026-08-08T14:31:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers differently."),
 		})).conversation;
 		const siblingTarget = sibling.messages.find(
-			(message) => message.id === modelMessageId,
+			(message) => message.id === messageId,
 		);
 		expect(siblingTarget?.variants).toHaveLength(2);
 		expect(siblingTarget?.variants[1]?.content).toBe(

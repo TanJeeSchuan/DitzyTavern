@@ -92,7 +92,7 @@ describe("GenerationCoordinator", () => {
 		expect(continuation.runtime.state.status).toBe("complete");
 		expect(continuationResult.conversation.messages).toHaveLength(3);
 
-		const targetMessageId = firstResult.modelMessageId;
+		const targetMessageId = firstResult.messageId;
 		const sibling = await coordinator.startSiblingGeneration({
 			conversationId: conversation.id,
 			messageId: targetMessageId,
@@ -643,7 +643,7 @@ describe("Generation Coordinator terminal races", () => {
 		runtime = generationRuntimeFor(database).start({
 			generationId: accepted.generationId,
 			conversationId: input.conversation.id,
-			messageId: accepted.modelMessageId,
+			messageId: accepted.messageId,
 			variantId: accepted.provisionalVariantId,
 			startedAt: "2026-08-27T00:00:00.000Z",
 			onStop: () => {

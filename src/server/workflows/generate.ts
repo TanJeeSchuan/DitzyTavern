@@ -208,26 +208,21 @@ export interface SendThroughProvisionalTailGenerationResult {
 	conversation: ConversationSnapshot;
 	generationId: number;
 	humanMessageId: number;
-	modelMessageId: number;
+	messageId: number;
 	provisionalVariantId: number;
 }
-
-export type ServerOwnedSendGeneration = ServerOwnedGeneration<
-	AcceptedTailGeneration,
-	SendThroughProvisionalTailGenerationResult
->;
-
-export type ServerOwnedSendGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedTailGeneration>;
 
 // ==[HUMAN APPROVED]== Starts Send as a detached server-owned attempt. The caller receives an
 // acceptance promise separately from the terminal result and may attach zero
 // or more observers to the generation runtime in between. In particular, the
 // caller's HTTP AbortSignal is intentionally not forwarded to the provider.
+// The three entry points below exist to name their Accepted and Result types:
+// the generic seam cannot infer them from an input literal alone.
 export function startServerOwnedSendGeneration(
 	database: Database,
 	input: SendThroughProvisionalTailGenerationInput,
-	callbacks: ServerOwnedSendGenerationCallbacks = {},
-): ServerOwnedSendGeneration {
+	callbacks: ServerOwnedGenerationCallbacks<AcceptedTailGeneration> = {},
+): ServerOwnedGeneration<AcceptedTailGeneration, SendThroughProvisionalTailGenerationResult> {
 	return startServerOwnedGenerationFrom(
 		database,
 		input,
@@ -354,7 +349,7 @@ export async function sendThroughProvisionalTailGeneration(
 			}),
 			generationId: accepted.generationId,
 			humanMessageId: accepted.humanMessageId,
-			modelMessageId: accepted.modelMessageId,
+			messageId: accepted.messageId,
 			provisionalVariantId: accepted.provisionalVariantId,
 		}),
 	});
@@ -371,16 +366,9 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 export interface ContinueGenerationResult {
 	conversation: ConversationSnapshot;
 	generationId: number;
-	modelMessageId: number;
+	messageId: number;
 	provisionalVariantId: number;
 }
-
-export type ServerOwnedContinuationGeneration = ServerOwnedGeneration<
-	AcceptedContinuationGeneration,
-	ContinueGenerationResult
->;
-
-export type ServerOwnedContinuationGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedContinuationGeneration>;
 
 // ==[HUMAN APPROVED]== Continue starts from the selected narrative path and persists an ordinary
 // model-authored Message. It shares the same normalized stream, terminal
@@ -424,7 +412,7 @@ export async function continueGeneration(
 				],
 			}),
 			generationId: accepted.generationId,
-			modelMessageId: accepted.modelMessageId,
+			messageId: accepted.messageId,
 			provisionalVariantId: accepted.provisionalVariantId,
 		}),
 	});
@@ -433,8 +421,8 @@ export async function continueGeneration(
 export function startServerOwnedContinuationGeneration(
 	database: Database,
 	input: ContinueGenerationInput,
-	callbacks: ServerOwnedContinuationGenerationCallbacks = {},
-): ServerOwnedContinuationGeneration {
+	callbacks: ServerOwnedGenerationCallbacks<AcceptedContinuationGeneration> = {},
+): ServerOwnedGeneration<AcceptedContinuationGeneration, ContinueGenerationResult> {
 	return startServerOwnedGenerationFrom(
 		database,
 		input,
@@ -470,13 +458,6 @@ export interface SiblingGenerationResult {
 	messageId: number;
 	provisionalVariantId: number;
 }
-
-export type ServerOwnedSiblingGeneration = ServerOwnedGeneration<
-	AcceptedSiblingGeneration,
-	SiblingGenerationResult
->;
-
-export type ServerOwnedSiblingGenerationCallbacks = ServerOwnedGenerationCallbacks<AcceptedSiblingGeneration>;
 
 // ==[HUMAN APPROVED]== Targeted Swipe: generates a new sibling Variant for an existing native
 // Message using the historical Control pair captured when that Message was
@@ -526,8 +507,8 @@ export async function generateSiblingVariant(
 export function startServerOwnedSiblingGeneration(
 	database: Database,
 	input: GenerateSiblingVariantInput,
-	callbacks: ServerOwnedSiblingGenerationCallbacks = {},
-): ServerOwnedSiblingGeneration {
+	callbacks: ServerOwnedGenerationCallbacks<AcceptedSiblingGeneration> = {},
+): ServerOwnedGeneration<AcceptedSiblingGeneration, SiblingGenerationResult> {
 	return startServerOwnedGenerationFrom(
 		database,
 		input,

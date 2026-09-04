@@ -146,17 +146,36 @@ export interface CoordinatedGeneration<TAccepted, TResult> {
 	readonly result: Promise<TResult>;
 }
 
-type GenerationAccepted =
-	| AcceptedTailGeneration
-	| AcceptedContinuationGeneration
-	| AcceptedSiblingGeneration;
+/**
+ * ==[HUMAN APPROVED]== What every accepted Generation tells the Coordinator: the Provisional
+ * Variant and the Message it belongs to. Send additionally reports the human
+ * Message it wrote and Sibling the previously selected Variant, but the
+ * runtime target is the same question for all three, so this is a shape they
+ * satisfy rather than a union that has to name them.
+ */
+interface AcceptedGeneration {
+	readonly generationId: number;
+	readonly messageId: number;
+	readonly provisionalVariantId: number;
+}
 
-type GenerationResult =
-	| SendThroughProvisionalTailGenerationResult
-	| ContinueGenerationResult
-	| SiblingGenerationResult;
+/**
+ * ==[HUMAN APPROVED]== The attempt fields the Coordinator resolves itself: the transport it builds
+ * from the active Profile, the detached signal and observers the runtime
+ * owns, and the terminal checkpoint flush. A caller supplies only the rest.
+ */
+export type GenerationStartRequest<TInput> = Omit<
+	TInput,
+	| "modelClient"
+	| "connection"
+	| "connectionSettings"
+	| "signal"
+	| "onEvent"
+	| "onBeforeTerminal"
+	| "onAccepted"
+>;
 
-interface GenerationStartCallbacks<TAccepted extends GenerationAccepted> {
+interface GenerationStartCallbacks<TAccepted extends AcceptedGeneration> {
 	onAccepted: (
 		accepted: TAccepted,
 		control: ServerOwnedGenerationControl,
@@ -164,7 +183,7 @@ interface GenerationStartCallbacks<TAccepted extends GenerationAccepted> {
 	onEvent: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-interface GenerationStartContext<TAccepted extends GenerationAccepted> {
+interface GenerationStartContext<TAccepted extends AcceptedGeneration> {
 	database: Database;
 	modelClient: ModelClient;
 	connection: ModelClientConnectionSnapshot;
@@ -172,15 +191,11 @@ interface GenerationStartContext<TAccepted extends GenerationAccepted> {
 	callbacks: GenerationStartCallbacks<TAccepted>;
 }
 
-interface ManagedGenerationInput<TAccepted extends GenerationAccepted, TResult> {
+interface ManagedGenerationInput<TAccepted extends AcceptedGeneration, TResult> {
 	conversationId: number;
 	start: (
 		context: GenerationStartContext<TAccepted>,
 	) => ServerOwnedGenerationHandle<TAccepted, TResult>;
-	runtimeTarget: (accepted: TAccepted) => {
-		messageId: number;
-		variantId: number;
-	};
 }
 
 interface ServerOwnedGenerationHandle<TAccepted, TResult> {
@@ -219,7 +234,7 @@ export class GenerationCoordinator {
 	) {}
 
 	startSendGeneration(
-		input: Omit<SendThroughProvisionalTailGenerationInput, "modelClient" | "connection" | "connectionSettings" | "signal" | "onEvent" | "onBeforeTerminal" | "onAccepted">,
+		input: GenerationStartRequest<SendThroughProvisionalTailGenerationInput>,
 	): Promise<CoordinatedGeneration<AcceptedTailGeneration, SendThroughProvisionalTailGenerationResult>> {
 		return this.startGeneration({
 			conversationId: input.conversationId,
@@ -230,15 +245,11 @@ export class GenerationCoordinator {
 					connection,
 					onBeforeTerminal,
 				}, callbacks),
-			runtimeTarget: (accepted) => ({
-				messageId: accepted.modelMessageId,
-				variantId: accepted.provisionalVariantId,
-			}),
 		});
 	}
 
 	startContinuationGeneration(
-		input: Omit<ContinueGenerationInput, "modelClient" | "connection" | "connectionSettings" | "signal" | "onEvent" | "onBeforeTerminal" | "onAccepted">,
+		input: GenerationStartRequest<ContinueGenerationInput>,
 	): Promise<CoordinatedGeneration<AcceptedContinuationGeneration, ContinueGenerationResult>> {
 		return this.startGeneration({
 			conversationId: input.conversationId,
@@ -249,15 +260,11 @@ export class GenerationCoordinator {
 					connection,
 					onBeforeTerminal,
 				}, callbacks),
-			runtimeTarget: (accepted) => ({
-				messageId: accepted.modelMessageId,
-				variantId: accepted.provisionalVariantId,
-			}),
 		});
 	}
 
 	startSiblingGeneration(
-		input: Omit<GenerateSiblingVariantInput, "modelClient" | "connection" | "connectionSettings" | "signal" | "onEvent" | "onBeforeTerminal" | "onAccepted">,
+		input: GenerationStartRequest<GenerateSiblingVariantInput>,
 	): Promise<CoordinatedGeneration<AcceptedSiblingGeneration, SiblingGenerationResult>> {
 		return this.startGeneration({
 			conversationId: input.conversationId,
@@ -268,10 +275,6 @@ export class GenerationCoordinator {
 					connection,
 					onBeforeTerminal,
 				}, callbacks),
-			runtimeTarget: (accepted) => ({
-				messageId: accepted.messageId,
-				variantId: accepted.provisionalVariantId,
-			}),
 		});
 	}
 
@@ -433,8 +436,8 @@ export class GenerationCoordinator {
 	}
 
 	private async startGeneration<
-		TAccepted extends GenerationAccepted,
-		TResult extends GenerationResult,
+		TAccepted extends AcceptedGeneration,
+		TResult,
 	>(
 		input: ManagedGenerationInput<TAccepted, TResult>,
 	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
@@ -454,12 +457,11 @@ export class GenerationCoordinator {
 				onBeforeTerminal: () => runtime?.flushCheckpoint(),
 				callbacks: {
 					onAccepted: (accepted, control) => {
-						const target = input.runtimeTarget(accepted);
 						runtime = runtimeRegistry.start({
 							generationId: accepted.generationId,
 							conversationId: input.conversationId,
-							messageId: target.messageId,
-							variantId: target.variantId,
+							messageId: accepted.messageId,
+							variantId: accepted.provisionalVariantId,
 							startedAt: new Date().toISOString(),
 							onStop: control.stop,
 							onRetentionExpired: retainedInspectionCleanup(

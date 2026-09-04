@@ -561,7 +561,7 @@ describe("Historical sibling Variant generation", () => {
 				},
 			},
 		});
-		const { modelMessageId: targetId } = await sendThroughProvisionalTailGeneration(
+		const { messageId: targetId } = await sendThroughProvisionalTailGeneration(
 			database,
 			{
 				conversationId: conversation.id,

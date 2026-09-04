@@ -91,6 +91,9 @@ const presentSiblingGenerationStartFailure = (
 
 type AcceptedGenerationFields = {
 	readonly generationId: number;
+	// ==[HUMAN APPROVED]== The Message the Provisional Variant belongs to: a new model Message
+	// for Send and Continue, the existing target for a Sibling.
+	readonly messageId: number;
 	readonly provisionalVariantId: number;
 };
 
@@ -101,9 +104,9 @@ type AcceptedGenerationBody = Static<typeof generationAccepted>;
 
 /**
  * ==[HUMAN APPROVED]== Shared acceptance seam for Send, Continue, and Sibling starts. The caller
- * supplies only the coordinator start, the field that identifies its target
- * Message, and how its route presents a recognized failure; an error outside
- * the acceptance contract reaches the framework unchanged.
+ * supplies only the coordinator start and how its route presents a recognized
+ * failure; an error outside the acceptance contract reaches the framework
+ * unchanged.
  */
 async function acceptanceResponse<
 	TAccepted extends AcceptedGenerationFields,
@@ -111,7 +114,6 @@ async function acceptanceResponse<
 >(
 	conversationId: number,
 	start: () => Promise<{ readonly accepted: TAccepted }>,
-	messageId: (accepted: TAccepted) => number,
 	present: (failure: GenerationStartFailure, error: Error) => TFailureResponse,
 ): Promise<AcceptedGenerationBody | TFailureResponse> {
 	try {
@@ -121,7 +123,7 @@ async function acceptanceResponse<
 			outcome: "accepted",
 			generationId: accepted.generationId,
 			conversationId,
-			messageId: messageId(accepted),
+			messageId: accepted.messageId,
 			variantId: accepted.provisionalVariantId,
 		};
 	} catch (error) {
@@ -138,20 +140,13 @@ async function acceptanceResponse<
 export function generationAcceptanceResponse<TAccepted extends AcceptedGenerationFields>(
 	conversationId: number,
 	start: () => Promise<{ readonly accepted: TAccepted }>,
-	messageId: (accepted: TAccepted) => number,
 ): Promise<AcceptedGenerationBody | GenerationStartFailureResponse> {
-	return acceptanceResponse(conversationId, start, messageId, presentGenerationStartFailure);
+	return acceptanceResponse(conversationId, start, presentGenerationStartFailure);
 }
 
 export function siblingGenerationAcceptanceResponse<TAccepted extends AcceptedGenerationFields>(
 	conversationId: number,
 	start: () => Promise<{ readonly accepted: TAccepted }>,
-	messageId: (accepted: TAccepted) => number,
 ): Promise<AcceptedGenerationBody | SiblingGenerationStartFailureResponse> {
-	return acceptanceResponse(
-		conversationId,
-		start,
-		messageId,
-		presentSiblingGenerationStartFailure,
-	);
+	return acceptanceResponse(conversationId, start, presentSiblingGenerationStartFailure);
 }
