@@ -51,9 +51,9 @@ describe("Generation detail transport", () => {
 				safetyAllowance: 5,
 				contextLimit: 128,
 				totalRequiredTokens: 88,
-				omittedHistory: [{ speakerName: "Older", content: "Omitted." }],
+				omittedContext: [{ kind: "message", speakerName: "Older", content: "Omitted.", role: "human" }],
 			},
-			historyRoles: ["human"],
+			promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
 			generationSettings: {
 				modelId: "details-model",
 				temperature: 0.2,

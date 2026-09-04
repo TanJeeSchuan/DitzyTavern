@@ -275,7 +275,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 			modelParticipantId: control.modelId,
 			capturedModelName: control.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -530,7 +530,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 				modelParticipantId: humanId,
 				capturedModelName: "Writer",
 				promptPlan: {},
-				historyRoles: [],
+				promptContext: [],
 				generationSettings: {},
 				connection: {},
 			}),

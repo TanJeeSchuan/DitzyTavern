@@ -84,7 +84,6 @@ describe("OpenAI Compatible Model Client", () => {
 
 		const result = await collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
-			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -117,7 +116,6 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 		await collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
-			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -147,14 +145,13 @@ describe("OpenAI Compatible Model Client", () => {
 					{ kind: "identity", role: "model", content: "Model identity" },
 					{ kind: "scenario", content: "Scenario" },
 					{ kind: "example-dialogue", content: "Example" },
-					{ kind: "history", speakerName: "Human", content: "Hello" },
-					{ kind: "history", speakerName: "Model", content: "Hi" },
-					{ kind: "history", speakerName: null, content: "Unattributed" },
+					{ kind: "history", speakerName: "Human", content: "Hello", role: "human" },
+					{ kind: "history", speakerName: "Model", content: "Hi", role: "model" },
+					{ kind: "history", speakerName: null, content: "Unattributed", role: null },
 					{ kind: "post-history-instruction", content: "Continue" },
 				],
 				warnings: [],
 			},
-			historyRoles: ["human", "model", null],
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -185,7 +182,6 @@ describe("OpenAI Compatible Model Client", () => {
 
 		await expect(collectModelClientGeneration(client, {
 			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
-			historyRoles: [],
 			modelId: "local-model",
 			generationSettings: {
 				...settings,
@@ -217,12 +213,11 @@ describe("OpenAI Compatible Model Client", () => {
 				promptPlan: {
 					blocks: [
 						{ kind: "system-instruction", content: "System" },
-						{ kind: "history", speakerName: "Maren", content: "Previous model text." },
+						{ kind: "history", speakerName: "Maren", content: "Previous model text.", role: "model" },
 					],
 					warnings: [],
 					intent: { type: "continuation", strategy: "assistant-prefill", suffix },
 				},
-				historyRoles: ["model"],
 				assistantPrefill: { prefix: "Previous model text.", suffix },
 				modelId: "local-model",
 				generationSettings: settings,

@@ -24,11 +24,10 @@ export type ModelClientFinishReason = GenerationFinishReason;
 export type ModelClientFailureKind = GenerationFailureKind;
 
 export interface ModelClientGenerationInput {
+	// The compiler keeps the plan provider-neutral, and every history block
+	// carries its own authorship role, so the transport reads authorship from
+	// the block it is already walking instead of counting into a second list.
 	promptPlan: PromptPlan;
-	// The compiler keeps the plan provider-neutral. These role hints preserve
-	// historical authorship without making the transport depend on domain
-	// Participant objects or provider message types.
-	historyRoles: readonly ("human" | "model" | null)[];
 	// Conversation-owned values are captured once by the Generation workflow
 	// and travel with the opaque Prompt Plan into the transport seam.
 	modelId: string;

@@ -60,7 +60,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -164,7 +164,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -237,7 +237,7 @@ describe("explicit Conversation Generation Stop", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});

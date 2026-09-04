@@ -26,7 +26,7 @@ import {
 import type {
 	GenerationIntent,
 	PromptBudgetResult,
-	PromptHistoryEntry,
+	PromptContextEntry,
 	PromptPlan,
 	TokenEstimator,
 } from "../prompt-compiler";
@@ -64,14 +64,37 @@ export interface ParticipantPreview {
 interface GenerationDerivation {
 	human: CastParticipantSnapshot;
 	model: CastParticipantSnapshot;
-	history: readonly PromptHistoryEntry[];
-	historyRoles: readonly ("human" | "model" | null)[];
+	context: readonly PromptContextEntry[];
 }
 
-interface SelectedHistory {
-	entries: readonly PromptHistoryEntry[];
-	roles: readonly ("human" | "model" | null)[];
-}
+// ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model
+// writing when its Author Stamp matches the current model Control seat or the
+// model Participant of its own captured historical Control pair, and human
+// writing under the mirrored rule. Consulting the captured pair is what keeps
+// a Control reassignment from re-presenting earlier model writing as the
+// writer's own; deriving the role from current Control alone made Send and
+// Sibling disagree with Continuation about the same Message.
+const roleForMessage = (
+	message: ConversationSnapshot["messages"][number],
+	humanParticipantId: number,
+	modelParticipantId: number,
+): "human" | "model" | null => {
+	const authorId = message.author?.participantId;
+	if (authorId === undefined || authorId === null) return null;
+	if (
+		authorId === modelParticipantId ||
+		message.historicalContext?.modelParticipantId === authorId
+	) {
+		return "model";
+	}
+	if (
+		authorId === humanParticipantId ||
+		message.historicalContext?.humanParticipantId === authorId
+	) {
+		return "human";
+	}
+	return null;
+};
 
 // ==[HUMAN APPROVED]== Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
@@ -83,30 +106,22 @@ const selectedHistoryFrom = (
 	humanParticipantId: number,
 	modelParticipantId: number,
 	endExclusiveIndex?: number,
-	roleForMessage: (
-		message: ConversationSnapshot["messages"][number],
-	) => "human" | "model" | null = (message) =>
-		message.author?.participantId === humanParticipantId
-			? "human"
-			: message.author?.participantId === modelParticipantId
-				? "model"
-				: null,
-): SelectedHistory => {
-	const entries: PromptHistoryEntry[] = [];
-	const roles: ("human" | "model" | null)[] = [];
+): readonly PromptContextEntry[] => {
+	const entries: PromptContextEntry[] = [];
 
 	for (const message of snapshot.messages.slice(0, endExclusiveIndex)) {
 		const selected = message.variants.find((variant) => variant.selected);
 		if (selected === undefined) continue;
 
 		entries.push({
+			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
 			content: selected.content,
+			role: roleForMessage(message, humanParticipantId, modelParticipantId),
 		});
-		roles.push(roleForMessage(message));
 	}
 
-	return { entries, roles };
+	return entries;
 };
 
 export const deriveGeneration = (
@@ -122,15 +137,35 @@ export const deriveGeneration = (
 		return null;
 	}
 
-	const selectedHistory = selectedHistoryFrom(snapshot, human.id, model.id);
-
-	return {
-		human,
-		model,
-		history: selectedHistory.entries,
-		historyRoles: selectedHistory.roles,
-	};
+	return { human, model, context: selectedHistoryFrom(snapshot, human.id, model.id) };
 };
+
+/**
+ * ==[HUMAN APPROVED]== The one Generation Plan compilation. Every attempt and read-only
+ * inspection compiles the same way from a derived Control pair, its ordered
+ * writing context, and the captured configuration; only the Generation intent
+ * and the estimator differ, so those are the only arguments a call site
+ * states.
+ */
+export const compilePlanFrom = (
+	derivation: GenerationDerivation,
+	configuration: {
+		settings: ConversationGenerationSettings;
+		connection: GenerationConnectionFacts | null;
+	},
+	options: {
+		intent?: GenerationIntent | undefined;
+		estimator?: TokenEstimator | undefined;
+	} = {},
+): GenerationPlan => compileGenerationPlan({
+	human: toCompilerDefinition(derivation.human),
+	model: toCompilerDefinition(derivation.model),
+	context: derivation.context,
+	intent: options.intent,
+	settings: configuration.settings,
+	connection: configuration.connection,
+	estimator: options.estimator,
+});
 
 export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	name: participant.name,
@@ -219,7 +254,7 @@ const generationProvenanceEntry = (
 
 export interface CapturedGeneration {
 	readonly plan: GenerationPlan;
-	readonly historyRoles: readonly ("human" | "model" | null)[];
+	readonly context: readonly PromptContextEntry[];
 	readonly humanParticipant: ParticipantPreview;
 	readonly author: {
 		readonly participantId: number;
@@ -251,7 +286,7 @@ export function capturedAcceptanceFields(
 		capturedModelName: capture.author.capturedName,
 		promptPlan: promptPlanJson(capture.plan.promptPlan),
 		promptInspection: promptInspectionJson(capture.plan.budget),
-		historyRoles: capture.historyRoles,
+		promptContext: promptContextJson(capture.context),
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		provenance: capture.provenance,
@@ -259,7 +294,7 @@ export function capturedAcceptanceFields(
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"historyRoles" | "generationSettings" | "connection" | "provenance"
+		"promptContext" | "generationSettings" | "connection" | "provenance"
 	>;
 }
 
@@ -270,7 +305,6 @@ export function modelRequestFor(
 ): ModelClientGenerationInput {
 	return {
 		promptPlan: capture.plan.promptPlan,
-		historyRoles: capture.historyRoles,
 		modelId: capture.plan.effectiveSettings.modelId,
 		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
 		connection: capture.connection,
@@ -280,7 +314,7 @@ export function modelRequestFor(
 
 /**
  * ==[HUMAN APPROVED]== Assemble the shared Generation-start capture every lifecycle builds: the
- * complete compiled Generation Plan, the retained history roles, the Control
+ * complete compiled Generation Plan, the retained writing context, the Control
  * pair, the model author stamp, and the provenance capture.
  */
 const toCapturedGeneration = (
@@ -289,7 +323,7 @@ const toCapturedGeneration = (
 	plan: GenerationPlan,
 ): CapturedGeneration => ({
 	plan,
-	historyRoles: plan.budget.retainedHistoryRoles,
+	context: plan.budget.retainedContext,
 	humanParticipant: { id: derivation.human.id, name: derivation.human.name },
 	author: {
 		participantId: derivation.model.id,
@@ -315,6 +349,18 @@ function resolveConnectionSnapshot(
 	if (profile === undefined) return null;
 	return connectionSnapshotOf(settings, profile);
 }
+
+// ==[HUMAN APPROVED]== The persisted writing context: one closed JSON projection of the ordered
+// entries, each carrying its own role. Nothing aligns a second list against
+// it, so a stored context cannot be read back misaligned.
+export const promptContextJson = (
+	context: readonly PromptContextEntry[],
+): ConversationJsonValue => context.map((entry) => ({
+	kind: entry.kind,
+	speakerName: entry.speakerName,
+	content: entry.content,
+	role: entry.role,
+}));
 
 // ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
 // provider-neutral captures. These explicit projections keep provider and
@@ -384,9 +430,11 @@ export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJs
 	safetyAllowance: budget.safetyAllowance,
 	contextLimit: budget.contextLimit,
 	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedHistory: budget.omittedHistory.map((entry) => ({
+	omittedContext: budget.omittedContext.map((entry) => ({
+		kind: entry.kind,
 		speakerName: entry.speakerName,
 		content: entry.content,
+		role: entry.role,
 	})),
 });
 
@@ -422,26 +470,25 @@ export function captureSendGeneration(
 		latestSelected?.content === content
 		? latest.id
 		: undefined;
-	const history = reuseHumanMessageId === undefined
-		? [...derivation.history, {
-			speakerName: derivation.human.name,
-			content,
-		}]
-		: derivation.history;
-	const historyRoles = reuseHumanMessageId === undefined
-		? [...derivation.historyRoles, "human" as const]
-		: derivation.historyRoles;
+	// ==[HUMAN APPROVED]== A fresh Send budgets the submitted human writing as part of the context;
+	// a retry reuses the already accepted trailing human Message, which is
+	// already in it.
+	const submitted = reuseHumanMessageId === undefined
+		? {
+			...derivation,
+			context: [...derivation.context, {
+				kind: "message",
+				speakerName: derivation.human.name,
+				content,
+				role: "human",
+			}] satisfies readonly PromptContextEntry[],
+		}
+		: derivation;
 	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
 	// compiled plan has no applicable Continuation operand either.
-	const plan = assertGenerationPlan(compileGenerationPlan({
-		human: toCompilerDefinition(derivation.human),
-		model: toCompilerDefinition(derivation.model),
-		history,
-		historyRoles,
-		settings: configuration.settings,
-		connection: configuration.connection,
-		estimator: tokenEstimator,
-	}));
+	const plan = assertGenerationPlan(
+		compilePlanFrom(submitted, configuration, { estimator: tokenEstimator }),
+	);
 	return {
 		...toCapturedGeneration(derivation, configuration, plan),
 		humanContent: content,
@@ -508,45 +555,13 @@ export function captureContinuationGeneration(
 		}
 	}
 	const intent = continuationIntentFor(configuration.settings);
-	// ==[HUMAN APPROVED]== A prior model Message can have been authored by the Participant who held
-	// model Control at that time. Preserve that role in the continuation's
-	// provider input even when the current model Control has moved on.
-	const continuationHistory = selectedHistoryFrom(
-		snapshot,
-		derivation.human.id,
-		derivation.model.id,
-		undefined,
-		(message) => {
-			const authorId = message.author?.participantId;
-			if (
-				message.historicalContext?.modelParticipantId === authorId ||
-				authorId === derivation.model.id
-			) {
-				return "model";
-			}
-			if (
-				message.historicalContext?.humanParticipantId === authorId ||
-				authorId === derivation.human.id
-			) {
-				return "human";
-			}
-			return null;
-		},
-	);
 	// ==[HUMAN APPROVED]== The compiler owns intent applicability: an assistant-prefill Continuation
 	// protects its prefixed model text, an instruction Continuation protects
 	// the latest human entry, and the effective settings retain exactly the
 	// applicable Continuation operand.
-	const plan = assertGenerationPlan(compileGenerationPlan({
-		human: toCompilerDefinition(derivation.human),
-		model: toCompilerDefinition(derivation.model),
-		history: continuationHistory.entries,
-		historyRoles: continuationHistory.roles,
-		intent,
-		settings: configuration.settings,
-		connection: configuration.connection,
-		estimator: tokenEstimator,
-	}));
+	const plan = assertGenerationPlan(
+		compilePlanFrom(derivation, configuration, { intent, estimator: tokenEstimator }),
+	);
 	return {
 		...toCapturedGeneration(derivation, configuration, plan),
 		precedingMessageId: latest.id,
@@ -564,7 +579,7 @@ export function captureContinuationGeneration(
 const deriveSiblingDerivation = (
 	snapshot: ConversationSnapshot,
 	messageId: number,
-) => {
+): GenerationDerivation => {
 	const targetIndex = snapshot.messages.findIndex(
 		(message) => message.id === messageId,
 	);
@@ -592,16 +607,16 @@ const deriveSiblingDerivation = (
 		throw new SiblingVariantUnavailableError(eligibility.reason);
 	}
 
-	const context = target.historicalContext;
-	if (context === null) {
+	const historicalPair = target.historicalContext;
+	if (historicalPair === null) {
 		// Unreachable after the eligibility check; keeps the pair trusted. ==[HUMAN APPROVED]==
 		throw new SiblingVariantUnavailableError("missing-historical-context");
 	}
 	const human = snapshot.cast.find(
-		(participant) => participant.id === context.humanParticipantId,
+		(participant) => participant.id === historicalPair.humanParticipantId,
 	);
 	const model = snapshot.cast.find(
-		(participant) => participant.id === context.modelParticipantId,
+		(participant) => participant.id === historicalPair.modelParticipantId,
 	);
 	if (human === undefined || model === undefined) {
 		throw new SiblingVariantUnavailableError(
@@ -612,22 +627,12 @@ const deriveSiblingDerivation = (
 	// ==[HUMAN APPROVED]== Selected history strictly preceding the target Message. Excluding the
 	// target by construction also excludes all of its existing sibling
 	// Variants: an alternative never prompts on another alternative.
-	const selectedHistory = selectedHistoryFrom(
-		snapshot,
-		human.id,
-		model.id,
-		targetIndex,
-	);
+	const context = selectedHistoryFrom(snapshot, human.id, model.id, targetIndex);
 
 	// ==[HUMAN APPROVED]== The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
-	return {
-		human,
-		model,
-		history: selectedHistory.entries,
-		historyRoles: selectedHistory.roles,
-	};
+	return { human, model, context };
 };
 
 export function captureSiblingGeneration(
@@ -649,14 +654,8 @@ export function captureSiblingGeneration(
 	);
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
-	const plan = assertGenerationPlan(compileGenerationPlan({
-		human: toCompilerDefinition(derivation.human),
-		model: toCompilerDefinition(derivation.model),
-		history: derivation.history,
-		historyRoles: derivation.historyRoles,
+	const plan = assertGenerationPlan(compilePlanFrom(derivation, configuration, {
 		intent: { type: "sibling" },
-		settings: configuration.settings,
-		connection: configuration.connection,
 		estimator: input.tokenEstimator,
 	}));
 	return toCapturedGeneration(derivation, configuration, plan);

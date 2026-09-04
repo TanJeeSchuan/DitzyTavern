@@ -14,8 +14,7 @@ import type {
 	CompilePromptDefinition,
 	GenerationIntent,
 	PromptBudgetResult,
-	PromptHistoryEntry,
-	PromptHistoryRole,
+	PromptContextEntry,
 	PromptPlan,
 	TokenEstimator,
 } from "../prompt-compiler";
@@ -72,11 +71,11 @@ export interface GenerationConnectionFacts {
 /** The captured inputs one compilation consumes. */
 export interface CompileGenerationPlanInput {
 	// Captured Conversation state: the resolved Participant Definitions and
-	// the normalized selected history for this one attempt.
+	// the ordered writing context for this one attempt. Each entry carries
+	// its own role, so nothing aligns a second list against this one.
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
-	readonly history: readonly PromptHistoryEntry[];
-	readonly historyRoles: readonly PromptHistoryRole[];
+	readonly context: readonly PromptContextEntry[];
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;

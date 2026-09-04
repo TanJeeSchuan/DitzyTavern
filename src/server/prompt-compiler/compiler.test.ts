@@ -53,9 +53,9 @@ const filled = (): CompilePromptInput =>
 				postHistoryInstruction: "Post line.",
 			},
 		},
-		history: [
-			{ speakerName: "Writer", content: "First history line." },
-			{ speakerName: "Maren Voss", content: "Second history line." },
+		context: [
+			{ kind: "message", speakerName: "Writer", content: "First history line.", role: "human" },
+			{ kind: "message", speakerName: "Maren Voss", content: "Second history line.", role: "model" },
 		],
 	});
 
@@ -134,23 +134,23 @@ describe("Prompt compiler", () => {
 	test("includes every selected-history entry as its own block with the speaker name", () => {
 		const plan = compilePrompt(
 			source({
-				history: [
-					{ speakerName: "Writer", content: "One" },
-					{ speakerName: null, content: "Preserved" },
+				context: [
+					{ kind: "message", speakerName: "Writer", content: "One", role: "human" },
+					{ kind: "message", speakerName: null, content: "Preserved", role: null },
 				],
 			}),
 		);
 		expect(plan.blocks).toEqual([
-			{ kind: "history", speakerName: "Writer", content: "One" },
-			{ kind: "history", speakerName: null, content: "Preserved" },
+			{ kind: "history", speakerName: "Writer", content: "One", role: "human" },
+			{ kind: "history", speakerName: null, content: "Preserved", role: null },
 		]);
 	});
 
 	test("does not expand macros inside selected history", () => {
 		const plan = compilePrompt(
 			source({
-				history: [
-					{ speakerName: "Writer", content: "{{self}} stays literal here." },
+				context: [
+					{ kind: "message", speakerName: "Writer", content: "{{self}} stays literal here.", role: "human" },
 				],
 			}),
 		);
@@ -158,6 +158,7 @@ describe("Prompt compiler", () => {
 			kind: "history",
 			speakerName: "Writer",
 			content: "{{self}} stays literal here.",
+			role: "human",
 		});
 		expect(plan.warnings).toEqual([]);
 	});

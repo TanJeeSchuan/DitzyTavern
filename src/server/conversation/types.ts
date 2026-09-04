@@ -390,7 +390,7 @@ export interface AcceptTailGenerationInput {
 	// Active-only budget/omission diagnostics. Older direct callers may omit
 	// this field; workflow callers always capture it before acceptance.
 	promptInspection?: ConversationJsonValue | undefined;
-	historyRoles: readonly ("human" | "model" | null)[];
+	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
@@ -458,7 +458,7 @@ export interface AcceptContinuationGenerationInput {
 	capturedModelName: string;
 	promptPlan: ConversationJsonValue;
 	promptInspection?: ConversationJsonValue | undefined;
-	historyRoles: readonly ("human" | "model" | null)[];
+	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
@@ -485,7 +485,7 @@ export interface AcceptSiblingGenerationInput {
 	capturedModelName: string;
 	promptPlan: ConversationJsonValue;
 	promptInspection?: ConversationJsonValue | undefined;
-	historyRoles: readonly ("human" | "model" | null)[];
+	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;

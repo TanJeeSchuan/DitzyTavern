@@ -120,7 +120,7 @@ const replayCarriedColumns = (
 	started_at: active.started_at,
 	prompt_plan_json: active.prompt_plan_json,
 	prompt_inspection_json: active.prompt_inspection_json,
-	history_roles_json: active.history_roles_json,
+	prompt_context_json: active.prompt_context_json,
 	generation_settings_json: active.generation_settings_json,
 	connection_json: active.connection_json,
 	generation_intent_json: active.generation_intent_json,

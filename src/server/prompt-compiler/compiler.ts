@@ -205,11 +205,12 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		"example-dialogue",
 	);
 
-	for (const entry of input.history ?? []) {
+	for (const entry of input.context ?? []) {
 		blocks.push({
 			kind: "history",
 			speakerName: entry.speakerName,
 			content: entry.content,
+			role: entry.role,
 		});
 	}
 

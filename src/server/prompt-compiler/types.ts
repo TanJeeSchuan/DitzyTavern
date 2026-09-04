@@ -14,14 +14,27 @@ export interface CompilePromptDefinition {
 	prompt: PromptChannels;
 }
 
-// One normalized selected-history entry derived from a Message's selected
-// Variant. The speaker name comes from the immutable Author Stamp and is
-// null for preservation records without resolved authorship. History text is
-// already-final output and is never macro-expanded.
-export interface PromptHistoryEntry {
+// The authorship an entry carries into the provider request. Null means the
+// entry's author matched neither controlled Participant and no captured
+// historical pair claimed it — a preservation import, or a Participant
+// displaced from a seat it once held.
+export type PromptHistoryRole = "human" | "model" | null;
+
+// One entry of the ordered writing context. Every entry carries its own role,
+// so nothing has to align a second list against this one and an entry may be
+// inserted at any position without disturbing the entries around it.
+//
+// The `message` variant is derived from a Message's selected Variant; its
+// speaker name comes from the immutable Author Stamp and is null for
+// preservation records without resolved authorship. Its text is already-final
+// output and is never macro-expanded. The kind discriminant exists so a later
+// non-Message entry becomes a new variant rather than a new coupling.
+export type PromptContextEntry = {
+	kind: "message";
 	speakerName: string | null;
 	content: string;
-}
+	role: PromptHistoryRole;
+};
 
 // Provider-neutral purpose of one Generation attempt. A continuation is
 // represented as intent metadata rather than a synthetic history Message;
@@ -35,7 +48,7 @@ export type GenerationIntent =
 export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
-	history?: readonly PromptHistoryEntry[];
+	context?: readonly PromptContextEntry[];
 }
 
 // Named, ordered, provider-neutral blocks. The plan keeps blocks separate so
@@ -46,7 +59,7 @@ export type PromptBlock =
 	| { kind: "identity"; role: "human" | "model"; content: string }
 	| { kind: "scenario"; content: string }
 	| { kind: "example-dialogue"; content: string }
-	| { kind: "history"; speakerName: string | null; content: string }
+	| { kind: "history"; speakerName: string | null; content: string; role: PromptHistoryRole }
 	| { kind: "post-history-instruction"; content: string };
 
 // A preserved unknown macro surfaced by prompt inspection. The block label

@@ -811,7 +811,7 @@ describe("Conversation module", () => {
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
 				promptPlan: {},
-				historyRoles: [],
+				promptContext: [],
 				generationSettings: {},
 				connection: {},
 				...overrides,

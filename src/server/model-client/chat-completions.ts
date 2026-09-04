@@ -329,23 +329,23 @@ function toMessages(input: ModelClientGenerationInput) {
 			"protocol",
 		);
 	}
-	let historyIndex = 0;
-	const lastModelHistoryIndex = input.historyRoles.reduce(
-		(last, role, index) => role === "model" ? index : last,
+	const lastModelHistoryIndex = input.promptPlan.blocks.reduce(
+		(last, block, index) => block.kind === "history" && block.role === "model"
+			? index
+			: last,
 		-1,
 	);
 	let lastModelHistoryContent: string | undefined;
-	for (const block of input.promptPlan.blocks) {
+	for (const [blockIndex, block] of input.promptPlan.blocks.entries()) {
 		if (block.kind === "history") {
-			const currentHistoryIndex = historyIndex;
-			const role = input.historyRoles?.[historyIndex++] ?? "user";
+			const role = block.role;
 			if (role === "model") {
 				lastModelHistoryContent = block.content;
 			}
 			// ==[HUMAN APPROVED]== The selected preceding model text is moved to the final assistant
 			// message below when prefill is active. Leaving the history copy in
 			// place would send the prefix twice and would not be a true prefill.
-			if (assistantPrefill && currentHistoryIndex === lastModelHistoryIndex) {
+			if (assistantPrefill && blockIndex === lastModelHistoryIndex) {
 				continue;
 			}
 			if (block.content.length > 0) {

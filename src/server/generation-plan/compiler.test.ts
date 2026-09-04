@@ -8,7 +8,7 @@ import {
 import {
 	PromptBudgetExceededError,
 	type CompilePromptDefinition,
-	type PromptHistoryEntry,
+	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 
@@ -62,10 +62,11 @@ const configuredSettings = (
 	...overrides,
 });
 
-const entry = (speakerName: string, content: string): PromptHistoryEntry => ({
-	speakerName,
-	content,
-});
+const entry = (
+	speakerName: string,
+	content: string,
+	role: PromptContextEntry["role"],
+): PromptContextEntry => ({ kind: "message", speakerName, content, role });
 
 // The transcript length is a monotone stand-in for a tokenizer: a longer
 // Prompt Plan estimates higher, so budget outcomes stay deterministic.
@@ -76,8 +77,7 @@ const compile = (
 ): GenerationPlan => compileGenerationPlan({
 	human,
 	model,
-	history: [entry("Maren", "The lamp turns above you.")],
-	historyRoles: ["model"],
+	context: [entry("Maren", "The lamp turns above you.", "model")],
 	settings: configuredSettings(),
 	connection: { apiFormat: "chat-completions" },
 	estimator: transcriptLengthEstimator,
@@ -143,9 +143,9 @@ describe("Generation Plan Compiler", () => {
 			continuationPrefillSuffix: "\n\n",
 		});
 		const intent = continuationIntentFor(settings);
-		const plan = compile({ intent, historyRoles: ["human", "model"], history: [
-			entry("Writer", "h".repeat(400)),
-			entry("Maren", "m".repeat(400)),
+		const plan = compile({ intent, context: [
+			entry("Writer", "h".repeat(400), "human"),
+			entry("Maren", "m".repeat(400), "model"),
 		] });
 
 		expect(plan.promptPlan.intent).toEqual({
@@ -168,9 +168,9 @@ describe("Generation Plan Compiler", () => {
 			continuationPrefillSuffix: "\n",
 		});
 		const intent = continuationIntentFor(settings);
-		const plan = compile({ intent, historyRoles: ["human", "model"], history: [
-			entry("Writer", "h".repeat(400)),
-			entry("Maren", "p".repeat(400)),
+		const plan = compile({ intent, context: [
+			entry("Writer", "h".repeat(400), "human"),
+			entry("Maren", "p".repeat(400), "model"),
 		] });
 
 		expect(plan.promptPlan.intent).toEqual({
@@ -234,8 +234,7 @@ describe("Generation Plan Compiler", () => {
 		const input = {
 			human,
 			model,
-			history: [entry("Maren", "The lamp turns above you.")],
-			historyRoles: ["model"] as const,
+			context: [entry("Maren", "The lamp turns above you.", "model")],
 			intent: continuationIntentFor(configuredSettings()),
 			settings: configuredSettings(),
 			connection: { apiFormat: "chat-completions" as const },
@@ -256,16 +255,15 @@ describe("Generation Plan Compiler", () => {
 		const plan = compile({
 			settings,
 			intent: continuationIntentFor(settings),
-			historyRoles: ["human", "model"],
-			history: [entry("Writer", "h".repeat(400)), entry("Maren", "p".repeat(400))],
+			context: [entry("Writer", "h".repeat(400), "human"), entry("Maren", "p".repeat(400), "model")],
 		});
 
 		// The history shrank before the prefix: the human entry was omitted
 		// while the prefill prefix stayed protected.
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedHistory).toEqual([entry("Writer", "h".repeat(400))]);
+		expect(plan.budget.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
 		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Maren", content: "p".repeat(400) },
+			{ kind: "history", speakerName: "Maren", content: "p".repeat(400), role: "model" },
 		]);
 	});
 
@@ -280,8 +278,7 @@ describe("Generation Plan Compiler", () => {
 		const plan = compile({
 			settings,
 			intent: continuationIntentFor(settings),
-			historyRoles: ["human", "model"],
-			history: [entry("Writer", "h".repeat(400)), entry("Maren", "p".repeat(400))],
+			context: [entry("Writer", "h".repeat(400), "human"), entry("Maren", "p".repeat(400), "model")],
 		});
 
 		expect(plan.budget.fits).toBe(false);
@@ -289,9 +286,9 @@ describe("Generation Plan Compiler", () => {
 		// The failing candidate still protects the prefill prefix and omits
 		// the human entry, so the breakdown describes a real candidate.
 		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Maren", content: "p".repeat(400) },
+			{ kind: "history", speakerName: "Maren", content: "p".repeat(400), role: "model" },
 		]);
-		expect(plan.budget.omittedHistory).toEqual([entry("Writer", "h".repeat(400))]);
+		expect(plan.budget.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
 	});
 
 	test("recompiles omitted history with the Continuation intent intact", () => {
@@ -303,14 +300,13 @@ describe("Generation Plan Compiler", () => {
 		const plan = compile({
 			settings,
 			intent: continuationIntentFor(settings),
-			historyRoles: ["human", "model"],
-			history: [entry("Writer", "h".repeat(400)), entry("Maren", "m".repeat(400))],
+			context: [entry("Writer", "h".repeat(400), "human"), entry("Maren", "m".repeat(400), "model")],
 		});
 
 		expect(plan.budget.fits).toBe(true);
 		// The latest human entry stays protected; the older model entry is the
 		// whole-history omission.
-		expect(plan.budget.omittedHistory).toEqual([entry("Maren", "m".repeat(400))]);
+		expect(plan.budget.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
 		expect(plan.promptPlan.intent).toEqual({
 			type: "continuation",
 			strategy: "instruction",
@@ -325,14 +321,13 @@ describe("Generation Plan Compiler", () => {
 				responseBudget: 10,
 				safetyAllowance: 0,
 			}),
-			historyRoles: ["model", "human"],
-			history: [entry("Maren", "m".repeat(400)), entry("Writer", "h".repeat(400))],
+			context: [entry("Maren", "m".repeat(400), "model"), entry("Writer", "h".repeat(400), "human")],
 		});
 
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedHistory).toEqual([entry("Maren", "m".repeat(400))]);
+		expect(plan.budget.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
 		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Writer", content: "h".repeat(400) },
+			{ kind: "history", speakerName: "Writer", content: "h".repeat(400), role: "human" },
 		]);
 	});
 
@@ -343,8 +338,7 @@ describe("Generation Plan Compiler", () => {
 		});
 		expect(() => compile({
 			intent: continuationIntentFor(settings),
-			historyRoles: [],
-			history: [],
+			context: [],
 		})).toThrow(
 			"An assistant-prefill Continuation requires preceding model history to prefill from.",
 		);
@@ -356,8 +350,7 @@ describe("Generation Plan Compiler", () => {
 
 		const impossible = compile({
 			settings: configuredSettings({ contextLimit: 200 }),
-			historyRoles: ["human", "model"],
-			history: [entry("Writer", "h".repeat(400)), entry("Maren", "m".repeat(400))],
+			context: [entry("Writer", "h".repeat(400), "human"), entry("Maren", "m".repeat(400), "model")],
 		});
 		expect(impossible.budget.fits).toBe(false);
 		try {

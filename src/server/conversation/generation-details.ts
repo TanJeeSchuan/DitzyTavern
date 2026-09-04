@@ -183,7 +183,7 @@ export function readActiveGenerationDetailsFromConnection(
 	const inspection = parseGenerationJson(row.prompt_inspection_json, {});
 	const inspectionRecord = generationJsonObject(inspection);
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
-	const omittedHistory = Array.isArray(inspectionRecord?.omittedHistory) ? inspectionRecord.omittedHistory : [];
+	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	return {
 		conversationId,
 		generationId: row.id,
@@ -197,7 +197,7 @@ export function readActiveGenerationDetailsFromConnection(
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
 		promptPlan: parseGenerationJson(row.prompt_plan_json, {}),
-		historyRoles: parseGenerationJson(row.history_roles_json, []),
+		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
@@ -206,7 +206,7 @@ export function readActiveGenerationDetailsFromConnection(
 			safetyAllowance: generationJsonInteger(inspectionRecord?.safetyAllowance) ?? generationJsonInteger(settings.safetyAllowance),
 			contextLimit: generationJsonInteger(inspectionRecord?.contextLimit) ?? generationJsonInteger(settings.contextLimit),
 			totalRequiredTokens: generationJsonInteger(inspectionRecord?.totalRequiredTokens),
-			omittedHistory,
+			omittedContext,
 		},
 		checkpoint: {
 			content: row.checkpoint_content,

@@ -217,7 +217,7 @@ export const activeGenerationDetails = Type.Object({
 		model: Type.Object({ id: Type.Integer(), name: Type.String() }),
 	}),
 	promptPlan: jsonValue,
-	historyRoles: jsonValue,
+	promptContext: jsonValue,
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -226,7 +226,7 @@ export const activeGenerationDetails = Type.Object({
 		safetyAllowance: Type.Union([Type.Null(), Type.Integer()]),
 		contextLimit: Type.Union([Type.Null(), Type.Integer()]),
 		totalRequiredTokens: Type.Union([Type.Null(), Type.Integer()]),
-		omittedHistory: jsonValue,
+		omittedContext: jsonValue,
 	}),
 	checkpoint: Type.Object({
 		content: Type.String(),

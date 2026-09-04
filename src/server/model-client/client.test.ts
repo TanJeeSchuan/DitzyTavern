@@ -38,7 +38,6 @@ describe("Model Client seam", () => {
 
 		await expect(collectModelClientGeneration(client, {
 			promptPlan: plan,
-			historyRoles: [],
 			modelId: "test-model",
 			generationSettings: testGenerationSettings,
 		})).resolves.toEqual({
@@ -57,7 +56,6 @@ describe("Model Client seam", () => {
 		try {
 			await collectModelClientGeneration(client, {
 				promptPlan: plan,
-				historyRoles: [],
 				modelId: "test-model",
 				generationSettings: testGenerationSettings,
 			});

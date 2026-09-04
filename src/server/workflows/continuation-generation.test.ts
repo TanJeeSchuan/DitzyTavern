@@ -74,7 +74,7 @@ describe("Continuation Generation", () => {
 			instruction: "Continue the narrative naturally without repeating the previous text.",
 		});
 		expect(received?.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Maren", content: "The first scene ends here." },
+			{ kind: "history", speakerName: "Maren", content: "The first scene ends here.", role: "model" },
 		]);
 	});
 

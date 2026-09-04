@@ -1,0 +1,17 @@
+# Carry Prompt context roles on their entries
+
+The Prompt Compiler consumes one ordered list of Prompt context entries. Each entry carries its own authorship role. There is no second list aligned against it, and no consumer reconstructs an entry's role by counting its position.
+
+Previously the compiler took the selected history and its authorship roles as two positional lists that had to stay aligned by index. Three consumers re-derived that alignment independently: budgeting mapped retained indexes back onto the roles list, the persisted capture stored the roles beside the plan, and the Chat Completions adapter walked the compiled blocks while advancing its own counter into the roles. Nothing could be inserted between history entries without breaking all three at once, and the two derivations of an entry's role drifted: a Message authored by the Participant who previously held model Control reached the provider as model writing under a Continuation Generation and as human writing under a Send or Sibling Generation.
+
+One rule now decides authorship, at the single point each entry is built. A Message is model writing when its Message authorship matches either the current model Control seat or the model Participant of its own captured historical Control pair, and human writing under the mirrored rule. Every Generation kind uses that rule; none may override it.
+
+The fallback is deliberately asymmetric, because the evidence is. A model-authored Message captures its historical Control pair, so it remains recognisable as model writing after the seat moves. A Human-authored Message captures no pair, so once the human seat moves its author matches neither the current seat nor any pair of its own, and its role is null. Both a null role and human writing reach a provider as user writing, so this is not writer-visible. Inferring human authorship from a neighbouring Message's captured pair would be the same fabrication this rule exists to prevent.
+
+Compiled history blocks carry their entry's role. Adapters read authorship from the block they are already walking rather than counting into a separate structure. The role does not participate in the estimation transcript, so Token estimates are unchanged by this decision.
+
+The entry list is a discriminated union with one variant today. Entries derived from Messages are one kind of entry, not the definition of an entry. A later entry kind — dynamically activated context, the first candidate being the deferred World Info work — is a new variant of this union and a new position in this list, not a new list beside it. Insertion at an arbitrary position, including between entries derived from Messages, is an ordinary list operation and requires no further change to this seam.
+
+Budgeting evicts over the one list. Retained entries carry their roles, so no retained-roles output exists and no runtime assertion is needed to keep two lengths equal. Active Generation persistence stores the ordered entries as one closed JSON projection, so a stored writing context cannot be read back misaligned.
+
+This decision does not change the canonical block order, the set of block kinds, macro expansion, or Participant storage. The commitment in ADR 0007 that prompt assembly retains stable named blocks so a future Prompt Manager can arrange them without changing Participant storage is unaffected, and the single planning seam of ADR 0032 remains the only place a Generation Plan is compiled.

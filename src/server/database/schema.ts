@@ -382,7 +382,7 @@ export const activeGenerationTable = sqliteTable(
 		// separate from the plan makes the lifecycle able to discard the
 		// complete prompt while retaining only compact Variant provenance.
 		prompt_inspection_json: text().notNull().default("{}"),
-		history_roles_json: text().notNull(),
+		prompt_context_json: text().notNull(),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
@@ -423,7 +423,7 @@ export const generationReplayTable = sqliteTable(
 		started_at: text().notNull(),
 		prompt_plan_json: text().notNull(),
 		prompt_inspection_json: text().notNull(),
-		history_roles_json: text().notNull(),
+		prompt_context_json: text().notNull(),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),

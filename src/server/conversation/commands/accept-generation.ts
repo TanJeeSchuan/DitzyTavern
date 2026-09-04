@@ -89,7 +89,7 @@ const ensureConversationRevision = (
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-	"historyRoles" | "generationSettings" | "connection" | "generationIntent" |
+	"promptContext" | "generationSettings" | "connection" | "generationIntent" |
 	"provenance"
 >;
 
@@ -122,7 +122,7 @@ const persistActiveGeneration = (
 			started_at: input.timestamp,
 			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
 			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
-			history_roles_json: jsonText(input.historyRoles, "Prompt history roles"),
+			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),

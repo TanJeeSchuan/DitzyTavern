@@ -390,7 +390,7 @@ describe("Resumable generation transport", () => {
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});

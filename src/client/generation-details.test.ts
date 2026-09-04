@@ -31,7 +31,7 @@ const retainedInspection = (status: "active" | "complete" | "length-limited" | "
 		model: { id: 19, name: "Maren" },
 	},
 	promptPlan: { blocks: [{ kind: "history", content: "Retained context." }], warnings: [] },
-	historyRoles: ["human"],
+	promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
 	generationSettings: { modelId: "test-model" },
 	connection: { profileId: 23 },
 	budget: {
@@ -40,7 +40,7 @@ const retainedInspection = (status: "active" | "complete" | "length-limited" | "
 		safetyAllowance: 5,
 		contextLimit: 128,
 		totalRequiredTokens: 109,
-		omittedHistory: [],
+		omittedContext: [],
 	},
 	checkpoint: {
 		content: "Retained output.",

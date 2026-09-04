@@ -83,7 +83,7 @@ export function GenerationDetailsPanel({
 
 function GenerationInspectionDetails({ details }: { details: ActiveGenerationDetails }) {
 	const intent = intentLabel(details.intent);
-	const omitted = Array.isArray(details.budget.omittedHistory) ? details.budget.omittedHistory : [];
+	const omitted = Array.isArray(details.budget.omittedContext) ? details.budget.omittedContext : [];
 	return (
 		<>
 			<p className="generation-detail-status" role="status">{inspectionStatusLabel(details.status)} · Generation {details.generationId}</p>

@@ -630,7 +630,7 @@ describe("Generation Coordinator terminal races", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -689,7 +689,7 @@ describe("Generation Coordinator terminal races", () => {
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});

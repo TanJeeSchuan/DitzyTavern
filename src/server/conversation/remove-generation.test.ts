@@ -54,7 +54,7 @@ describe("canonical Conversation Generation removal", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -97,7 +97,7 @@ describe("canonical Conversation Generation removal", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
@@ -130,7 +130,7 @@ describe("canonical Conversation Generation removal", () => {
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
 			promptPlan: {},
-			historyRoles: [],
+			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});

@@ -1,5 +1,5 @@
 // ==[HUMAN APPROVED]== Deep, pure Prompt Compiler seam. Compiles resolved Participant Definitions
-// and normalized selected history into a deterministic provider-neutral
+// and one ordered writing context into a deterministic provider-neutral
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
 export { compileOpening, compilePrompt, expandText } from "./compiler";
@@ -16,7 +16,8 @@ export type {
 	GenerationIntent,
 	MacroContext,
 	PromptBlock,
-	PromptHistoryEntry,
+	PromptContextEntry,
+	PromptHistoryRole,
 	PromptPlan,
 	PromptWarning,
 } from "./types";
@@ -25,6 +26,5 @@ export type {
 	PromptBudgetFailure,
 	PromptBudgetInput,
 	PromptBudgetResult,
-	PromptHistoryRole,
 	TokenEstimator,
 } from "./budget";

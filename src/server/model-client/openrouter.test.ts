@@ -93,7 +93,6 @@ describe("OpenRouter Model Client", () => {
 				blocks: [{ kind: "system-instruction", content: "Answer." }],
 				warnings: [],
 			},
-			historyRoles: [],
 			modelId: "deepseek/deepseek-v4-flash",
 			generationSettings,
 		});
@@ -129,7 +128,6 @@ describe("OpenRouter Model Client", () => {
 					blocks: [{ kind: "system-instruction", content: "Answer." }],
 					warnings: [],
 				},
-				historyRoles: [],
 				modelId: "deepseek/deepseek-v4-flash",
 				generationSettings,
 			})) {

@@ -1,5 +1,5 @@
 import { estimateTokenCount } from "tokenx";
-import type { PromptHistoryEntry, PromptPlan } from "./types";
+import type { PromptContextEntry, PromptPlan } from "./types";
 
 // ==[HUMAN APPROVED]== The application owns this small synchronous boundary. The heuristic library
 // can be replaced without changing Prompt Compiler or Generation code.
@@ -8,8 +8,6 @@ export type TokenEstimator = (transcript: string) => number;
 // ==[HUMAN APPROVED]== tokenx is deliberately imported in one place. Its estimate is an
 // approximation for preflight, never a provider tokenization guarantee.
 export const tokenxEstimator: TokenEstimator = estimateTokenCount;
-
-export type PromptHistoryRole = "human" | "model" | null;
 
 export interface PromptBudgetBreakdown {
 	contextLimit: number;
@@ -32,24 +30,22 @@ export interface PromptBudgetInput {
 	// ==[HUMAN APPROVED]== `plan` is the first candidate. The callback recompiles the same
 	// provider-neutral plan after each whole-history omission.
 	plan: PromptPlan;
-	compile: (history: readonly PromptHistoryEntry[]) => PromptPlan;
-	history: readonly PromptHistoryEntry[];
-	historyRoles: readonly PromptHistoryRole[];
+	compile: (context: readonly PromptContextEntry[]) => PromptPlan;
+	context: readonly PromptContextEntry[];
 	contextLimit: number;
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
-	// ==[HUMAN APPROVED]== When omitted, the latest human history entry is protected. Ticket 03 can
-	// pass the candidate human Message's original index explicitly.
+	// ==[HUMAN APPROVED]== When omitted, the latest human entry is protected. Callers may pass the
+	// candidate human Message's original index explicitly.
 	protectedHistoryIndex?: number | undefined;
 }
 
 export interface PromptBudgetResult {
 	readonly fits: boolean;
 	readonly plan: PromptPlan;
-	readonly retainedHistory: readonly PromptHistoryEntry[];
-	readonly retainedHistoryRoles: readonly PromptHistoryRole[];
-	readonly omittedHistory: readonly PromptHistoryEntry[];
+	readonly retainedContext: readonly PromptContextEntry[];
+	readonly omittedContext: readonly PromptContextEntry[];
 	readonly tokenEstimate: number;
 	readonly responseBudget: number;
 	readonly safetyAllowance: number;
@@ -98,9 +94,6 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
-	if (input.historyRoles.length !== input.history.length) {
-		throw new Error("Prompt history roles must align with Prompt history entries.");
-	}
 	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
 		throw new Error("Prompt context limit must be a positive whole number.");
 	}
@@ -111,23 +104,23 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
 	}
 
-	const protectedHistoryIndex = input.protectedHistoryIndex ?? findLatestHumanIndex(input.historyRoles);
+	const protectedHistoryIndex = input.protectedHistoryIndex ?? findLatestHumanIndex(input.context);
 	if (
 		protectedHistoryIndex !== undefined &&
-		(protectedHistoryIndex < 0 || protectedHistoryIndex >= input.history.length)
+		(protectedHistoryIndex < 0 || protectedHistoryIndex >= input.context.length)
 	) {
 		throw new Error("The protected Prompt history index is outside the candidate history.");
 	}
 
 	const estimator = input.estimator ?? tokenxEstimator;
-	const allIndexes = input.history.map((_, index) => index);
+	const allIndexes = input.context.map((_, index) => index);
 	const removableIndexes = allIndexes.filter((index) => index !== protectedHistoryIndex);
 	const candidateAfterRemoving = (count: number) => {
 		const removed = new Set(removableIndexes.slice(0, count));
 		const retainedIndexes = allIndexes.filter((index) => !removed.has(index));
 		const plan = count === 0
 			? input.plan
-			: input.compile(retainedIndexes.map((index) => input.history[index]));
+			: input.compile(retainedIndexes.map((index) => input.context[index]));
 		return { retainedIndexes, plan, tokenEstimate: estimateCandidate(estimator, plan) };
 	};
 	const fits = (tokenEstimate: number) =>
@@ -196,10 +189,10 @@ export class PromptBudgetExceededError extends Error {
 }
 
 function findLatestHumanIndex(
-	roles: readonly PromptHistoryRole[],
+	context: readonly PromptContextEntry[],
 ): number | undefined {
-	for (let index = roles.length - 1; index >= 0; index -= 1) {
-		if (roles[index] === "human") return index;
+	for (let index = context.length - 1; index >= 0; index -= 1) {
+		if (context[index]?.role === "human") return index;
 	}
 	return undefined;
 }
@@ -230,7 +223,7 @@ function createBreakdown(
 					: plan.intent.suffix.length);
 	const protectedHistoryCharacters = protectedHistoryIndex === undefined
 		? 0
-		: input.history[protectedHistoryIndex]?.content.length ?? 0;
+		: input.context[protectedHistoryIndex]?.content.length ?? 0;
 	return {
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
@@ -254,9 +247,8 @@ function createResult(input: {
 	return {
 		fits: input.failure === null,
 		plan: input.plan,
-		retainedHistory: input.retainedIndexes.map((index) => input.input.history[index]),
-		retainedHistoryRoles: input.retainedIndexes.map((index) => input.input.historyRoles[index]),
-		omittedHistory: input.input.history.filter((_, index) => !retainedSet.has(index)),
+		retainedContext: input.retainedIndexes.map((index) => input.input.context[index]),
+		omittedContext: input.input.context.filter((_, index) => !retainedSet.has(index)),
 		tokenEstimate: input.tokenEstimate,
 		responseBudget: input.input.responseBudget,
 		safetyAllowance: input.input.safetyAllowance,

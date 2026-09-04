@@ -31,7 +31,7 @@ import {
 	type AcceptedSiblingGeneration,
 } from "../conversation";
 import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
-import type { PromptHistoryEntry } from "../prompt-compiler";
+import type { PromptContextEntry } from "../prompt-compiler";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
@@ -51,15 +51,14 @@ import {
 	captureContinuationGeneration,
 	captureSiblingGeneration,
 	capturedAcceptanceFields,
+	compilePlanFrom,
 	modelRequestFor,
 	deriveGeneration,
 	resolveConnectionApiFormat,
-	toCompilerDefinition,
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
 import {
-	compileGenerationPlan,
 	continuationIntentFor,
 	type EffectiveGenerationSettings,
 } from "../generation-plan";
@@ -194,7 +193,7 @@ export interface GenerationPromptInspection {
 	safetyAllowance: number | null;
 	contextLimit: number | null;
 	totalRequiredTokens: number | null;
-	omittedHistory: readonly PromptHistoryEntry[];
+	omittedContext: readonly PromptContextEntry[];
 	budgetFits: boolean | null;
 	tokenEstimateIsApproximate: boolean;
 	budgetFailure: PromptBudgetFailure | null;
@@ -269,7 +268,7 @@ export function inspectGenerationPrompt(
 			safetyAllowance: null,
 			contextLimit: null,
 			totalRequiredTokens: null,
-			omittedHistory: [],
+			omittedContext: [],
 			budgetFits: null,
 			tokenEstimateIsApproximate: false,
 			budgetFailure: null,
@@ -284,18 +283,17 @@ export function inspectGenerationPrompt(
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
 	// compiled plan carries no Continuation intent, and the impossible-budget
 	// failure is reported instead of thrown.
-	const plan = compileGenerationPlan({
-		human: toCompilerDefinition(derivation.human),
-		model: toCompilerDefinition(derivation.model),
-		history: derivation.history,
-		historyRoles: derivation.historyRoles,
-		settings,
-		// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
-		// Overrides are narrowed exactly as an executed attempt would narrow
-		// them.
-		connection: resolveConnectionApiFormat(database, options.connectionSettings),
-		estimator: options.tokenEstimator,
-	});
+	const plan = compilePlanFrom(
+		derivation,
+		{
+			settings,
+			// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
+			// Overrides are narrowed exactly as an executed attempt would narrow
+			// them.
+			connection: resolveConnectionApiFormat(database, options.connectionSettings),
+		},
+		{ estimator: options.tokenEstimator },
+	);
 	const continuationIntent = continuationIntentFor(settings);
 
 	return {
@@ -311,7 +309,7 @@ export function inspectGenerationPrompt(
 		safetyAllowance: plan.budget.safetyAllowance,
 		contextLimit: plan.budget.contextLimit,
 		totalRequiredTokens: plan.budget.totalRequiredTokens,
-		omittedHistory: plan.budget.omittedHistory,
+		omittedContext: plan.budget.omittedContext,
 		budgetFits: plan.budget.fits,
 		tokenEstimateIsApproximate: true,
 		budgetFailure: plan.budget.failure,

@@ -119,6 +119,7 @@ describe("Generation runtime behavior", () => {
 				kind: "history",
 				speakerName: "Maren Voss",
 				content: "The lamp turns above you.",
+				role: "model",
 			},
 		]);
 		// Unknown macros in Example Dialogue surface as warnings.
@@ -130,7 +131,7 @@ describe("Generation runtime behavior", () => {
 		expect(inspection.safetyAllowance).toBe(500);
 		expect(inspection.tokenEstimateIsApproximate).toBe(true);
 		expect(inspection.budgetFits).toBe(true);
-		expect(inspection.omittedHistory).toEqual([]);
+		expect(inspection.omittedContext).toEqual([]);
 		// Provider vocabulary never leaks into the inspection.
 		expect(JSON.stringify(inspection)).not.toContain("assistant");
 		expect(JSON.stringify(inspection)).not.toContain('"user"');
@@ -662,8 +663,8 @@ describe("Generation runtime behavior", () => {
 		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Maren Voss", content: "Older model history." },
-			{ kind: "history", speakerName: "Writer", content: "Latest human input." },
+			{ kind: "history", speakerName: "Maren Voss", content: "Older model history.", role: "model" },
+			{ kind: "history", speakerName: "Writer", content: "Latest human input.", role: "human" },
 		]);
 		expect(committed.messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
 	});
@@ -802,7 +803,7 @@ describe("Generation runtime behavior", () => {
 		})).conversation;
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
-			{ kind: "history", speakerName: "Writer", content: "Human context before target." },
+			{ kind: "history", speakerName: "Writer", content: "Human context before target.", role: "human" },
 		]);
 		const siblingTarget = sibling.messages.find((message) => message.id === targetId);
 		expect(siblingTarget?.variants.at(-1)?.content).toBe("Budgeted sibling output.");

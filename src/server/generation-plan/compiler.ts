@@ -19,7 +19,7 @@ import {
 	PromptBudgetExceededError,
 	type GenerationIntent,
 	type PromptPlan,
-	type PromptHistoryEntry,
+	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import type {
@@ -121,8 +121,8 @@ export const compileGenerationPlan = (
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
-	const compile = (history: readonly PromptHistoryEntry[]): PromptPlan => {
-		const compiled = compilePrompt({ human: input.human, model: input.model, history });
+	const compile = (context: readonly PromptContextEntry[]): PromptPlan => {
+		const compiled = compilePrompt({ human: input.human, model: input.model, context });
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
 	// ==[HUMAN APPROVED]== Intent applicability decides the protected history: an assistant-prefill
@@ -132,7 +132,7 @@ export const compileGenerationPlan = (
 	// so the compilation fails clearly instead of misreporting a budget index.
 	const protectedHistoryIndex = intent?.type === "continuation" &&
 			intent.strategy === "assistant-prefill"
-		? input.history.length - 1
+		? input.context.length - 1
 		: undefined;
 	if (protectedHistoryIndex !== undefined && protectedHistoryIndex < 0) {
 		throw new Error(
@@ -140,10 +140,9 @@ export const compileGenerationPlan = (
 		);
 	}
 	const budget = budgetPromptPlan({
-		plan: compile(input.history),
+		plan: compile(input.context),
 		compile,
-		history: input.history,
-		historyRoles: input.historyRoles,
+		context: input.context,
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
