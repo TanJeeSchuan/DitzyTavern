@@ -9,11 +9,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
-import {
-	CharacterNotFoundError,
-	StaleCharacterRevisionError,
-	withCharacterLibrary,
-} from "../character-library";
+import { forkCharacter } from "../character-library";
 import { createConversationModule } from "../conversation";
 import type { ConversationSnapshot } from "../conversation/types";
 import { addCharacterToCastBody } from "../../shared/contract/conversation-schema";
@@ -31,20 +27,11 @@ export function addCharacterToCast(
 	input: AddCharacterToCastInput,
 ): ConversationSnapshot {
 	const add = database.transaction(() => {
-		const character = withCharacterLibrary(database, (library) =>
-			library.get(input.characterId),
+		const fork = forkCharacter(
+			database,
+			input.characterId,
+			input.expectedCharacterRevision,
 		);
-		if (character === undefined) {
-			throw new CharacterNotFoundError(input.characterId);
-		}
-		if (character.revision !== input.expectedCharacterRevision) {
-			throw new StaleCharacterRevisionError(
-				character.id,
-				input.expectedCharacterRevision,
-				character.revision,
-				character,
-			);
-		}
 
 		// ==[HUMAN APPROVED]== The deep Conversation command validates the destination revision
 		// and existence inside the same transaction; appending a fork copies
@@ -55,12 +42,8 @@ export function addCharacterToCast(
 			expectedRevision: input.expectedConversationRevision,
 			action: {
 				type: "add-participant",
-				definition: {
-					name: character.name,
-					prompt: character.prompt,
-					openings: character.openings,
-				},
-				sourceCharacterId: character.id,
+				definition: fork.definition,
+				sourceCharacterId: fork.sourceCharacterId,
 			},
 		});
 	});

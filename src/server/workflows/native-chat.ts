@@ -9,11 +9,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
-import {
-	CharacterNotFoundError,
-	StaleCharacterRevisionError,
-	withCharacterLibrary,
-} from "../character-library";
+import { forkCharacter } from "../character-library";
 import { createConversationModule } from "../conversation";
 import type {
 	ConversationSnapshot,
@@ -51,30 +47,7 @@ const resolveSeat = (
 	if (seat.type === "adhoc") {
 		return { definition: seat.definition };
 	}
-
-	const character = withCharacterLibrary(database, (library) =>
-		library.get(seat.characterId),
-	);
-	if (character === undefined) {
-		throw new CharacterNotFoundError(seat.characterId);
-	}
-	if (character.revision !== seat.expectedRevision) {
-		throw new StaleCharacterRevisionError(
-			character.id,
-			seat.expectedRevision,
-			character.revision,
-			character,
-		);
-	}
-
-	return {
-		definition: {
-			name: character.name,
-			prompt: character.prompt,
-			openings: character.openings,
-		},
-		sourceCharacterId: character.id,
-	};
+	return forkCharacter(database, seat.characterId, seat.expectedRevision);
 };
 
 export function createNativeConversation(
