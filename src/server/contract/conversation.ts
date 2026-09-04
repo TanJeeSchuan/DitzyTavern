@@ -176,22 +176,6 @@ export const createConversationRoutes = (
 			);
 		};
 
-	const readActiveGenerationDetailsRoute = ({ params }: {
-		params: { id: number; generationId: number };
-	}) => {
-		return readConversationOr404(database, (conversationModule) =>
-			conversationModule.readActiveGenerationDetails(
-				params.id,
-				params.generationId,
-			),
-		);
-	};
-
-	const activeGenerationDetailsRouteOptions = {
-		params: generationIdParams,
-		response: { 200: activeGenerationDetails, 404: notFoundOutcome },
-	};
-
 	return new Elysia()
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
@@ -257,15 +241,17 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/generations/:generationId/inspection",
-			readActiveGenerationDetailsRoute,
-			activeGenerationDetailsRouteOptions,
-		)
-		// ==[HUMAN APPROVED]== Details is a vocabulary-friendly alias used by Message/Generation
-		// panels; both paths share the same bounded read semantics.
-		.get(
-			"/api/conversations/:id/generations/:generationId/details",
-			readActiveGenerationDetailsRoute,
-			activeGenerationDetailsRouteOptions,
+			({ params }) =>
+				readConversationOr404(database, (conversationModule) =>
+					conversationModule.readActiveGenerationDetails(
+						params.id,
+						params.generationId,
+					),
+				),
+			{
+				params: generationIdParams,
+				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+			},
 		)
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",

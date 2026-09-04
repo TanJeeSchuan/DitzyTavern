@@ -630,10 +630,6 @@ const deriveSiblingDerivation = (
 	};
 };
 
-export interface SiblingGenerationCapture extends CapturedGeneration {
-	readonly priorVariantId: number | null;
-}
-
 export function captureSiblingGeneration(
 	database: Database,
 	snapshot: ConversationSnapshot,
@@ -643,7 +639,7 @@ export function captureSiblingGeneration(
 		connectionSettings?: ConnectionSettingsModuleOptions | undefined;
 		tokenEstimator?: TokenEstimator | undefined;
 	},
-): SiblingGenerationCapture {
+): CapturedGeneration {
 	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
 	const configuration = captureConfiguration(
 		database,
@@ -663,10 +659,5 @@ export function captureSiblingGeneration(
 		connection: configuration.connection,
 		estimator: input.tokenEstimator,
 	}));
-	const target = snapshot.messages.find((message) => message.id === input.messageId);
-	const priorVariantId = target?.variants.find((variant) => variant.selected)?.id ?? null;
-	return {
-		...toCapturedGeneration(derivation, configuration, plan),
-		priorVariantId,
-	};
+	return toCapturedGeneration(derivation, configuration, plan);
 }
