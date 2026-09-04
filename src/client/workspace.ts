@@ -16,11 +16,24 @@ export type Workspace = {
 };
 
 export interface WorkspaceClient {
-	loadActiveWorkspace(): Promise<Workspace>;
+	loadActiveWorkspace(preferredChatId?: string): Promise<Workspace>;
+}
+
+export function resolveWorkspaceActiveChat(
+	chats: ChatSummary[],
+	authoritativeActiveChatId: string | null,
+	preferredChatId?: string,
+): ChatSummary | null {
+	if (preferredChatId !== undefined) {
+		const preferred = chats.find((chat) => chat.id === preferredChatId);
+		if (preferred !== undefined) return preferred;
+	}
+	if (authoritativeActiveChatId === null) return null;
+	return chats.find((chat) => chat.id === authoritativeActiveChatId) ?? null;
 }
 
 export const workspaceClient: WorkspaceClient = {
-	async loadActiveWorkspace() {
+	async loadActiveWorkspace(preferredChatId?: string) {
 		const { data, error } = await api.api.workspace.get();
 		if (error || !data) {
 			throw new Error("Unable to load workspace");
@@ -33,8 +46,11 @@ export const workspaceClient: WorkspaceClient = {
 		}));
 
 		return {
-			activeChat:
-				chats.find((chat) => chat.id === String(data.activeChatId)) ?? null,
+			activeChat: resolveWorkspaceActiveChat(
+				chats,
+				data.activeChatId === null ? null : String(data.activeChatId),
+				preferredChatId,
+			),
 			chats,
 			characters: data.characters.map((character) => ({ ...character })),
 		};

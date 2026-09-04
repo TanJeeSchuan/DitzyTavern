@@ -52,7 +52,6 @@ export function ActiveWritingWorkspace({
 	newChatOpen,
 	onNewChatClose,
 	onNewChatCreated,
-	importLaunchChatId,
 	onImportLaunched,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -60,7 +59,6 @@ export function ActiveWritingWorkspace({
 	newChatOpen: boolean;
 	onNewChatClose: () => void;
 	onNewChatCreated: () => void;
-	importLaunchChatId: string | null;
 	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
@@ -145,15 +143,6 @@ export function ActiveWritingWorkspace({
 		setGenerationDetailsTarget(null);
 		dispatchPanel({ type: "workspace-reset" });
 	};
-
-	// ==[HUMAN APPROVED]== A just-imported Chat is selected once the refreshed workspace list contains
-	// it. Keeping the selection idempotent avoids a transient missing-chat state.
-	useEffect(() => {
-		if (importLaunchChatId === null || importLaunchChatId === session.activeChatId) return;
-		if (initialWorkspace.chats.some((chat) => chat.id === importLaunchChatId)) {
-			selectChat(importLaunchChatId);
-		}
-	}, [importLaunchChatId, session.activeChatId, initialWorkspace.chats]);
 
 	const storyActions = useStoryMessageActions({
 		story,

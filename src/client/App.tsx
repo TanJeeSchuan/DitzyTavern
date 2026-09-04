@@ -26,15 +26,11 @@ const hasActiveChat = (
 
 export function App() {
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
-	// ==[HUMAN APPROVED]== A just-imported Chat to open after the workspace reloads. It lives at
-	// App level because reloading the workspace unmounts the whole tree, and
-	// the selection must survive until the reloaded chat list contains it.
-	const [importLaunchChatId, setImportLaunchChatId] = useState<string | null>(null);
 
-	const loadWorkspace = useCallback(async () => {
+	const loadWorkspace = useCallback(async (preferredChatId?: string) => {
 		setState({ status: "loading" });
 		try {
-			const workspace = await workspaceClient.loadActiveWorkspace();
+			const workspace = await workspaceClient.loadActiveWorkspace(preferredChatId);
 			setState({ status: "ready", workspace });
 		} catch {
 			setState({ status: "error" });
@@ -43,14 +39,7 @@ export function App() {
 
 	const handleImportLaunched = useCallback(
 		async (conversationId: number) => {
-			setImportLaunchChatId(String(conversationId));
-			try {
-				await loadWorkspace();
-			} finally {
-				// ==[HUMAN APPROVED]== Clears after the reloaded workspace rendered, so the selection
-				// effect could observe the target in the refreshed chat list.
-				window.setTimeout(() => setImportLaunchChatId(null), 0);
-			}
+			await loadWorkspace(String(conversationId));
 		},
 		[loadWorkspace],
 	);
@@ -71,7 +60,6 @@ export function App() {
 		<WritingWorkspace
 			initialWorkspace={state.workspace}
 			onReload={loadWorkspace}
-			importLaunchChatId={importLaunchChatId}
 			onImportLaunched={(conversationId) =>
 				void handleImportLaunched(conversationId)
 			}
@@ -82,12 +70,10 @@ export function App() {
 function WritingWorkspace({
 	initialWorkspace,
 	onReload,
-	importLaunchChatId,
 	onImportLaunched,
 }: {
 	initialWorkspace: Workspace;
 	onReload: () => Promise<void>;
-	importLaunchChatId: string | null;
 	onImportLaunched: (conversationId: number) => void;
 }) {
 	const [newChatOpen, setNewChatOpen] = useState(false);
@@ -157,7 +143,6 @@ function WritingWorkspace({
 				newChatOpen={newChatOpen}
 				onNewChatClose={() => setNewChatOpen(false)}
 				onNewChatCreated={() => void handleCreated()}
-				importLaunchChatId={importLaunchChatId}
 				onImportLaunched={onImportLaunched}
 			/>
 		</>
