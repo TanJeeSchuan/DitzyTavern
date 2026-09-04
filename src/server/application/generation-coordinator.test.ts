@@ -317,7 +317,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop reports already-terminal and releases the runtime when natural completion wins", async () => {
+	test("Stop stops nothing and releases the runtime when natural completion wins the race", async () => {
 		const conversation = conversationSnapshot("Stop race");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 12, conversation.id);
@@ -330,7 +330,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 12);
 
-		expect(expectOutcome(outcome, "already-terminal").generationId).toBe(12);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(12);
 		// The losing Stop request returns terminal ownership to the provider;
 		// the runtime settles through its own terminal event instead.
 		expect(order).toEqual([
@@ -340,7 +340,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop reports missing when no runtime exists and the durable target is gone", async () => {
+	test("Stop stops nothing when no runtime exists and the durable target is gone", async () => {
 		const conversation = conversationSnapshot("Stop missing");
 		const order: string[] = [];
 		const coordinator = createGenerationCoordinator(undefined, {
@@ -352,11 +352,11 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 13);
 
-		expect(expectOutcome(outcome, "missing").generationId).toBe(13);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(13);
 		expect(order).toEqual([`durableStop:13`]);
 	});
 
-	test("Stop reports missing and releases the runtime when the Conversation is unknown", async () => {
+	test("Stop stops nothing and releases the runtime when the Conversation is unknown", async () => {
 		const conversation = conversationSnapshot("Stop unknown conversation");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 14, conversation.id);
@@ -369,7 +369,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 14);
 
-		expect(expectOutcome(outcome, "missing").generationId).toBe(14);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(14);
 		expect(order).toEqual([
 			`stop:14`,
 			`durableStop:14`,
@@ -377,7 +377,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop reports conflict without touching durable state when the runtime belongs to another Conversation", async () => {
+	test("Stop stops nothing and never touches durable state when the runtime belongs to another Conversation", async () => {
 		const conversation = conversationSnapshot("Stop foreign runtime");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 15, conversation.id + 999);
@@ -388,11 +388,11 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 15);
 
-		expect(expectOutcome(outcome, "conflict").generationId).toBe(15);
+		expect(expectOutcome(outcome, "not-stoppable").generationId).toBe(15);
 		expect(order).toEqual([]);
 	});
 
-	test("Stop reports incomplete settlement when the durable commit succeeds but the runtime cannot settle", async () => {
+	test("Stop reports the unsettled runtime reason when the durable commit succeeds but the runtime cannot settle", async () => {
 		const conversation = conversationSnapshot("Stop settlement failure");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 16, conversation.id, {
@@ -405,9 +405,9 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 16);
 
-		const settled = expectOutcome(outcome, "incomplete-settlement");
+		const settled = expectOutcome(outcome, "stopped");
 		expect(settled.generationId).toBe(16);
-		expect(settled.reason).toBe("Runtime settlement exploded.");
+		expect(settled.unsettledReason).toBe("Runtime settlement exploded.");
 		expect(settled.conversation.id).toBe(conversation.id);
 		// The durable transition still committed: the Conversation snapshot
 		// remains authoritative even though the runtime entry lingers.
@@ -418,7 +418,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop reports incomplete settlement when the runtime cannot stop but still commits the durable transition", async () => {
+	test("Stop reports the unsettled runtime reason when the runtime cannot stop but still commits the durable transition", async () => {
 		const conversation = conversationSnapshot("Stop request failure");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 18, conversation.id, {
@@ -431,8 +431,8 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopGeneration(conversation.id, 18);
 
-		const settled = expectOutcome(outcome, "incomplete-settlement");
-		expect(settled.reason).toBe("Runtime abort failed.");
+		const settled = expectOutcome(outcome, "stopped");
+		expect(settled.unsettledReason).toBe("Runtime abort failed.");
 		expect(settled.conversation.id).toBe(conversation.id);
 		// A runtime glitch must never lose the Stop intent: the durable
 		// transition still commits, and settlement is not attempted again
@@ -498,7 +498,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop All reports missing without settling runtimes when the durable transition cannot commit", async () => {
+	test("Stop All stops nothing and settles no runtime when the durable transition cannot commit", async () => {
 		const conversation = conversationSnapshot("Stop All missing");
 		const order: string[] = [];
 		const runtimes = new Map<number, GenerationRuntimeHandle>([
@@ -515,7 +515,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopAllGenerations(conversation.id);
 
-		expect(outcome.outcome).toBe("missing");
+		expect(outcome.outcome).toBe("not-stoppable");
 		// Forced checkpoints happen before the durable attempt; settlement must
 		// not start because the durable commit never named a target set.
 		expect(order).toEqual([
@@ -524,7 +524,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop All reports incomplete settlement and still settles the remaining runtimes", async () => {
+	test("Stop All reports the unsettled targets and still settles the remaining runtimes", async () => {
 		const conversation = conversationSnapshot("Stop All partial settlement");
 		const order: string[] = [];
 		const runtimes = new Map<number, GenerationRuntimeHandle>([
@@ -543,9 +543,9 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopAllGenerations(conversation.id);
 
-		const settled = expectStopAllOutcome(outcome, "incomplete-settlement");
+		const settled = expectStopAllOutcome(outcome, "stopped");
 		expect([...settled.unsettled]).toEqual([52]);
-		expect(settled.reason).toBe("Runtime 52 refused settlement.");
+		expect(settled.unsettledReason).toBe("Runtime 52 refused settlement.");
 		expect([...settled.generationIds]).toEqual([51, 52, 53]);
 		expect(settled.conversation.id).toBe(conversation.id);
 		expect(order).toEqual([
@@ -578,9 +578,9 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 		const outcome = await coordinator.stopAllGenerations(conversation.id);
 
-		const settled = expectStopAllOutcome(outcome, "incomplete-settlement");
+		const settled = expectStopAllOutcome(outcome, "stopped");
 		expect([...settled.unsettled]).toEqual([55]);
-		expect(settled.reason).toBe("Runtime 55 abort failed.");
+		expect(settled.unsettledReason).toBe("Runtime 55 abort failed.");
 		expect(order).toEqual([
 			`flushAll:${conversation.id}`,
 			`durableStopAll:${conversation.id}`,
@@ -663,7 +663,7 @@ describe("Generation Coordinator terminal races", () => {
 
 		const outcome = await coordinator.stopGeneration(input.conversation.id, accepted.generationId);
 
-		expect(outcome.outcome).toBe("already-terminal");
+		expect(outcome.outcome).toBe("not-stoppable");
 		expect(runtime.state.status).toBe("complete");
 		expect(terminalStates).toEqual(["complete"]);
 		const snapshot = input.module.getSnapshot(input.conversation.id);

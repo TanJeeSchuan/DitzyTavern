@@ -86,74 +86,47 @@ export interface GenerationRuntimeLifecycle {
 }
 
 /**
- * ==[HUMAN APPROVED]== Typed application outcome of stopping one server-owned Generation. These
- * outcomes carry no HTTP terminology; transports map them onto their own
- * response vocabulary.
+ * ==[HUMAN APPROVED]== Typed application outcome of stopping one server-owned Generation.
+ *
+ * The only distinction a caller can act on is whether the durable interrupted
+ * transition committed. Everything that leaves nothing stopped — an unknown
+ * target, a Conversation that is gone, a Generation owned by a different
+ * Conversation, or a natural completion that won the race — is one
+ * `not-stoppable` outcome; the coordinator still handles each internally,
+ * releasing the losing Stop request so the provider's own terminal event
+ * settles the runtime. These outcomes carry no HTTP terminology; transports
+ * map them onto their own response vocabulary.
  */
 export type GenerationStopOutcome =
 	| {
-			/** ==[HUMAN APPROVED]== The durable interrupted transition committed and the runtime settled. */
 			readonly outcome: "stopped";
 			readonly generationId: number;
 			readonly conversation: ConversationSnapshot;
-	  }
-	| {
 			/**
-			 * ==[HUMAN APPROVED]== The Generation completed naturally while the Stop was in flight. The
-			 * losing Stop request was released, so the provider's own terminal
-			 * event settles the runtime and no interrupted transition was committed.
+			 * ==[HUMAN APPROVED]== Why the process runtime could not be settled, or null when it
+			 * settled cleanly. Either way the durable transition committed and
+			 * the Conversation snapshot is the authoritative result.
 			 */
-			readonly outcome: "already-terminal";
-			readonly generationId: number;
+			readonly unsettledReason: string | null;
 	  }
 	| {
-			/** ==[HUMAN APPROVED]== Nothing was stoppable: unknown target, or a Conversation that is gone. */
-			readonly outcome: "missing";
+			readonly outcome: "not-stoppable";
 			readonly generationId: number;
-	  }
-	| {
-			/**
-			 * ==[HUMAN APPROVED]== The runtime entry for that Generation belongs to a different
-			 * Conversation than the one addressed. Nothing was stopped.
-			 */
-			readonly outcome: "conflict";
-			readonly generationId: number;
-	  }
-	| {
-			/**
-			 * ==[HUMAN APPROVED]== The durable interrupted transition committed, but settling the
-			 * process runtime failed. The returned Conversation snapshot remains
-			 * the authoritative result of the Stop.
-			 */
-			readonly outcome: "incomplete-settlement";
-			readonly generationId: number;
-			readonly conversation: ConversationSnapshot;
-			readonly reason: string;
 	  };
 
 /** ==[HUMAN APPROVED]== Typed application outcome of stopping every Active Generation of one Conversation. */
 export type GenerationStopAllOutcome =
 	| {
-			/** ==[HUMAN APPROVED]== Every durable transition committed and its runtime settled. */
 			readonly outcome: "stopped";
 			readonly generationIds: readonly number[];
 			readonly conversation: ConversationSnapshot;
+			/** ==[HUMAN APPROVED]== Generations whose durable transition committed but whose runtime lingers. */
+			readonly unsettled: readonly number[];
+			readonly unsettledReason: string | null;
 	  }
 	| {
 			/** ==[HUMAN APPROVED]== The Conversation is unknown or has no Active Generations to stop. */
-			readonly outcome: "missing";
-	  }
-	| {
-			/**
-			 * ==[HUMAN APPROVED]== Every durable transition committed, but some corresponding runtime
-			 * entries could not be settled. The Conversation snapshot remains
-			 * authoritative; the unsettled runtime entries are listed by id.
-			 */
-			readonly outcome: "incomplete-settlement";
-			readonly generationIds: readonly number[];
-			readonly unsettled: readonly number[];
-			readonly conversation: ConversationSnapshot;
-			readonly reason: string;
+			readonly outcome: "not-stoppable";
 	  };
 
 /** ==[HUMAN APPROVED]== A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
@@ -306,7 +279,7 @@ export class GenerationCoordinator {
 			// A mismatch means the addressed Conversation has no such Generation;
 			// durable state is never consulted under another Conversation's name.
 			if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
-				return { outcome: "conflict", generationId } as const;
+				return { outcome: "not-stoppable", generationId } as const;
 			}
 			// ==[HUMAN APPROVED]== Stop flushes the latest runtime checkpoint before aborting the
 			// provider, so the durable transition below observes every delta the
@@ -318,20 +291,17 @@ export class GenerationCoordinator {
 				const snapshot = conversation.stopGeneration({ conversationId, generationId });
 				return this.settleStoppedGeneration(generationId, runtime, snapshot, settlementFailure);
 			} catch (error) {
-				if (error instanceof InvalidConversationCommandError) {
-					if (runtime === undefined) return { outcome: "missing", generationId } as const;
-					// ==[HUMAN APPROVED]== The Active Generation vanished while this Stop was in flight:
-					// the natural-completion race. Release the Stop request so the
-					// provider's own terminal event settles the runtime.
-					runtime.releaseStopRequest();
-					return { outcome: "already-terminal", generationId } as const;
-				}
-				if (error instanceof ConversationNotFoundError) {
-					// ==[HUMAN APPROVED]== The Conversation is gone; the provider attempt cannot durably
-					// commit either. Release the Stop request so the runtime still
-					// settles through its own terminal path.
+				if (
+					error instanceof InvalidConversationCommandError ||
+					error instanceof ConversationNotFoundError
+				) {
+					// ==[HUMAN APPROVED]== Nothing durable was stopped: the Active Generation vanished
+					// while this Stop was in flight (the natural-completion race),
+					// or the Conversation is gone and the provider attempt cannot
+					// durably commit either. Release the Stop request so the
+					// runtime still settles through its own terminal path.
 					runtime?.releaseStopRequest();
-					return { outcome: "missing", generationId } as const;
+					return { outcome: "not-stoppable", generationId } as const;
 				}
 				throw error;
 			}
@@ -356,7 +326,7 @@ export class GenerationCoordinator {
 			try {
 				const stopped = conversation.stopGenerations({ conversationId });
 				const unsettled: number[] = [];
-				let reason: string | undefined;
+				let unsettledReason: string | null = null;
 				for (const generationId of stopped.generationIds) {
 					const runtime = runtimes.get(generationId);
 					if (runtime?.state.conversationId !== conversationId) continue;
@@ -365,31 +335,24 @@ export class GenerationCoordinator {
 						runtime.markStopped();
 					} catch (error) {
 						unsettled.push(generationId);
-						reason ??= error instanceof Error
+						unsettledReason ??= error instanceof Error
 							? error.message
 							: "The Generation runtime could not be settled.";
 					}
-				}
-				if (unsettled.length > 0) {
-					return {
-						outcome: "incomplete-settlement",
-						generationIds: stopped.generationIds,
-						unsettled,
-						conversation: stopped.conversation,
-						reason: reason ?? "The Generation runtime could not be settled.",
-					} as const;
 				}
 				return {
 					outcome: "stopped",
 					generationIds: stopped.generationIds,
 					conversation: stopped.conversation,
+					unsettled,
+					unsettledReason,
 				} as const;
 			} catch (error) {
 				if (
 					error instanceof ConversationNotFoundError ||
 					error instanceof InvalidConversationCommandError
 				) {
-					return { outcome: "missing" } as const;
+					return { outcome: "not-stoppable" } as const;
 				}
 				throw error;
 			}
@@ -414,26 +377,20 @@ export class GenerationCoordinator {
 		snapshot: ConversationSnapshot,
 		settlementFailure: string | undefined,
 	): GenerationStopOutcome {
-		if (runtime === undefined) {
-			return { outcome: "stopped", generationId, conversation: snapshot };
-		}
-		let failure = settlementFailure;
-		if (failure === undefined) {
+		// ==[HUMAN APPROVED]== A runtime that already failed its stop request is not asked to
+		// settle again; either way the durable transition committed and the
+		// snapshot is returned.
+		let unsettledReason = settlementFailure ?? null;
+		if (runtime !== undefined && unsettledReason === null) {
 			try {
 				runtime.markStopped();
-				return { outcome: "stopped", generationId, conversation: snapshot };
 			} catch (error) {
-				failure = error instanceof Error
+				unsettledReason = error instanceof Error
 					? error.message
 					: "The Generation runtime could not be settled.";
 			}
 		}
-		return {
-			outcome: "incomplete-settlement",
-			generationId,
-			conversation: snapshot,
-			reason: failure,
-		};
+		return { outcome: "stopped", generationId, conversation: snapshot, unsettledReason };
 	}
 
 	/**

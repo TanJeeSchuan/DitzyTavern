@@ -183,18 +183,15 @@ export const createConversationRoutes = (
 				const outcome = await generationCoordinator.stopGeneration(params.id, params.generationId);
 				// ==[HUMAN APPROVED]== Durable truth wins: a committed interrupted transition always
 				// returns the authoritative Conversation snapshot, even when the
-				// process runtime could not be settled.
-				if (outcome.outcome === "stopped" || outcome.outcome === "incomplete-settlement") {
-					return {
-						outcome: "stopped" as const,
-						generationId: outcome.generationId,
-						conversation: toConversationSummary(outcome.conversation),
-					};
-				}
-				// ==[HUMAN APPROVED]== Missing, conflicting, and already-terminal targets share the
-				// not-found transport outcome: the addressed Conversation has no
+				// process runtime could not be settled. Anything that stopped
+				// nothing is not-found: the addressed Conversation has no
 				// stoppable Generation at that id.
-				return notFoundResponse();
+				if (outcome.outcome !== "stopped") return notFoundResponse();
+				return {
+					outcome: "stopped" as const,
+					generationId: outcome.generationId,
+					conversation: toConversationSummary(outcome.conversation),
+				};
 			},
 			{
 				params: generationIdParams,
@@ -208,14 +205,12 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/stop-all",
 			async ({ params }) => {
 				const outcome = await generationCoordinator.stopAllGenerations(params.id);
-				if (outcome.outcome === "stopped" || outcome.outcome === "incomplete-settlement") {
-					return {
-						outcome: "stopped" as const,
-						generationIds: [...outcome.generationIds],
-						conversation: toConversationSummary(outcome.conversation),
-					};
-				}
-				return notFoundResponse();
+				if (outcome.outcome !== "stopped") return notFoundResponse();
+				return {
+					outcome: "stopped" as const,
+					generationIds: [...outcome.generationIds],
+					conversation: toConversationSummary(outcome.conversation),
+				};
 			},
 			{
 				params: conversationIdParams,
