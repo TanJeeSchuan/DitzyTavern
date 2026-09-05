@@ -32,6 +32,8 @@ const contentEffect = (
 	messageId: 10,
 	variantId: 100,
 	text,
+	generationId: 7,
+	eventId: 1,
 });
 
 const observe = (generationIds: readonly number[]) =>
@@ -52,39 +54,40 @@ describe("Generation session wiring", () => {
 			messageId: 10,
 			variantId: 100,
 			text: "Hello",
+			generationId: 7,
+			eventId: 1,
 		});
 		expect(generationSessionStoryAction({
-			kind: "story-content-replace",
+			kind: "story-state",
 			messageId: 10,
 			variantId: 100,
 			content: "Authoritative",
+			reasoning: "Authoritative plan",
+			generationId: 7,
+			eventId: 2,
 		})).toEqual({
-			type: "generation-content",
+			type: "generation-state",
 			messageId: 10,
 			variantId: 100,
 			content: "Authoritative",
+			reasoning: "Authoritative plan",
+			generationId: 7,
+			eventId: 2,
 		});
 		expect(generationSessionStoryAction({
 			kind: "story-reasoning-delta",
 			messageId: 10,
 			variantId: 100,
 			text: "Plan",
+			generationId: 7,
+			eventId: 3,
 		})).toEqual({
 			type: "generation-reasoning-delta",
 			messageId: 10,
 			variantId: 100,
 			text: "Plan",
-		});
-		expect(generationSessionStoryAction({
-			kind: "story-reasoning-replace",
-			messageId: 10,
-			variantId: 100,
-			reasoning: "Authoritative plan",
-		})).toEqual({
-			type: "generation-reasoning",
-			messageId: 10,
-			variantId: 100,
-			reasoning: "Authoritative plan",
+			generationId: 7,
+			eventId: 3,
 		});
 	});
 

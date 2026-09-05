@@ -20,6 +20,7 @@ import {
 	createConversationModule,
 	type ParticipantDefinition,
 } from "../conversation";
+import { applyCommand } from "../conversation/test-fixtures";
 
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
@@ -490,7 +491,7 @@ describe("Character deletion", () => {
 		if (snapshot === undefined) {
 			throw new Error("Expected the fork Conversation");
 		}
-		snapshot = module.execute({
+		snapshot = applyCommand(module, {
 			conversationId,
 			expectedRevision: snapshot.revision,
 			action: {
@@ -503,7 +504,7 @@ describe("Character deletion", () => {
 			},
 		});
 		const spareId = snapshot.cast.at(-1)?.id ?? 0;
-		snapshot = module.execute({
+		snapshot = applyCommand(module, {
 			conversationId,
 			expectedRevision: snapshot.revision,
 			action: {

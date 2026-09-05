@@ -23,7 +23,9 @@ import type { GenerationStreamResult } from "./conversation-stream";
 // Generation's provisional Variant. It derives from the canonical attempt
 // target (ADR-0032) minus the Conversation id, which the collection tracks
 // once per view rather than per target.
-export type GenerationSessionTarget = Omit<GenerationAttemptTarget, "conversationId">;
+export type GenerationSessionTarget = Omit<GenerationAttemptTarget, "conversationId"> & {
+	readonly initialEventId?: number;
+};
 
 // ==[HUMAN APPROVED]== Subscription lifecycle of one observed Generation:
 // - `subscribing`: a subscribe effect is outstanding (opening or reconnecting).
@@ -96,10 +98,9 @@ export type GenerationSessionsAction =
 // Provisional Variant, an authoritative snapshot replaces it, and Reasoning
 // Content travels separately so ordinary history never joins the two.
 export type GenerationSessionStoryEffect =
-	| { kind: "story-content-delta"; messageId: number; variantId: number; text: string }
-	| { kind: "story-content-replace"; messageId: number; variantId: number; content: string }
-	| { kind: "story-reasoning-delta"; messageId: number; variantId: number; text: string }
-	| { kind: "story-reasoning-replace"; messageId: number; variantId: number; reasoning: string };
+	| { kind: "story-content-delta"; messageId: number; variantId: number; text: string; generationId: number; eventId: number }
+	| { kind: "story-state"; messageId: number; variantId: number; content: string; reasoning: string; generationId: number; eventId: number }
+	| { kind: "story-reasoning-delta"; messageId: number; variantId: number; text: string; generationId: number; eventId: number };
 
 export type GenerationSessionEffect =
 	// ==[HUMAN APPROVED]== Open or reopen this Generation's subscription from the given event
@@ -209,18 +210,30 @@ const reconcileTargets = (
 		knownTargets.add(target.generationId);
 		const existing = sessions.get(target.generationId);
 		if (existing !== undefined && existing.conversationId === action.conversationId) {
+			const initialEventId = target.initialEventId ?? 0;
+			if (
+				existing.terminal === null &&
+				initialEventId > existing.lastEventId
+			) {
+				changed = true;
+				sessions.set(target.generationId, {
+					...existing,
+					lastEventId: initialEventId,
+				});
+			}
 			// ==[HUMAN APPROVED]== A detached session whose Generation is still server-active
 			// reattaches from its own cursor, bounded by the reconnect cap.
 			if (existing.phase === "detached" && existing.reconnects < MAX_SESSION_RECONNECTS) {
 				changed = true;
-				sessions.set(target.generationId, { ...existing, phase: "subscribing" });
+				const current = sessions.get(target.generationId) ?? existing;
+				sessions.set(target.generationId, { ...current, phase: "subscribing" });
 				effects.push({
 					kind: "subscribe",
 					conversationId: action.conversationId,
 					generationId: target.generationId,
 					messageId: target.messageId,
 					variantId: target.variantId,
-					afterEventId: existing.lastEventId,
+					afterEventId: current.lastEventId,
 				});
 			}
 			continue;
@@ -231,7 +244,7 @@ const reconcileTargets = (
 			messageId: target.messageId,
 			variantId: target.variantId,
 			phase: "subscribing",
-			lastEventId: 0,
+			lastEventId: target.initialEventId ?? 0,
 			stopPending: false,
 			error: null,
 			terminal: null,
@@ -244,7 +257,7 @@ const reconcileTargets = (
 			generationId: target.generationId,
 			messageId: target.messageId,
 			variantId: target.variantId,
-			afterEventId: 0,
+			afterEventId: target.initialEventId ?? 0,
 		});
 	}
 	// ==[HUMAN APPROVED]== A non-terminal session the snapshot no longer lists was settled
@@ -331,6 +344,8 @@ const observeEvent = (
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
+			generationId: session.generationId,
+			eventId: action.eventId,
 		});
 	}
 	if (action.event.type === "reasoning") {
@@ -339,6 +354,8 @@ const observeEvent = (
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
+			generationId: session.generationId,
+			eventId: action.eventId,
 		});
 	}
 	const sessions = new Map(state.sessions);
@@ -364,15 +381,12 @@ const observeState = (
 	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason);
 	const effects: GenerationSessionEffect[] = [
 		{
-			kind: "story-content-replace",
+			kind: "story-state",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			content: action.state.content,
-		},
-		{
-			kind: "story-reasoning-replace",
-			messageId: session.messageId,
-			variantId: session.variantId,
+			generationId: session.generationId,
+			eventId: action.state.latestEventId,
 			reasoning: action.state.reasoning,
 		},
 	];

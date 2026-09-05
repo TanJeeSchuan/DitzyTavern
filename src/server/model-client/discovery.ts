@@ -64,41 +64,42 @@ export async function discoverModels(
 		? input.profile.timeoutMs
 		: DISCOVERY_TIMEOUT_MS;
 	try {
-		const response = await fetchWithTimeout(options.fetch ?? fetch, modelsUrl, {
+		return await fetchWithTimeout(options.fetch ?? fetch, modelsUrl, {
 			method: "GET",
 			headers: authenticatedHeaders(undefined, credential, customHeaders),
 			redirect: "error",
-		}, timeoutMs);
-		if (response.status >= 300 && response.status < 400) {
-			return failure("redirect", "The Models endpoint redirected the credentialed request, so it was not followed.");
-		}
-		if (!response.ok) {
-			const snapshot = await snapshotProviderResponse(response);
-			return failure(
-				response.status === 401 || response.status === 403 ? "authentication" : "endpoint",
-				formatProviderError(snapshot, "models"),
-			);
-		}
+		}, timeoutMs, async (response, signal) => {
+			if (response.status >= 300 && response.status < 400) {
+				return failure("redirect", "The Models endpoint redirected the credentialed request, so it was not followed.");
+			}
+			if (!response.ok) {
+				const snapshot = await snapshotProviderResponse(response);
+				return failure(
+					response.status === 401 || response.status === 403 ? "authentication" : "endpoint",
+					formatProviderError(snapshot, "models"),
+				);
+			}
 
-		const bounded = await readBoundedResponse(response, MAX_DISCOVERY_RESPONSE_BYTES);
-		if (bounded.truncated) {
-			return failure("malformed-response", "The Models response is too large to read safely.");
-		}
-		const bytes = bounded.bytes;
-		let parsed: JsonValue;
-		try {
-			// ==[HUMAN APPROVED]== SAFETY: the JSON parser establishes the only boundary at which the
-			// untrusted response enters this module; parseCatalogBody validates the
-			// concrete object shape before any field is consumed.
-			parsed = JSON.parse(new TextDecoder().decode(bytes)) as JsonValue;
-		} catch {
-			return failure("malformed-response", "The Models endpoint returned invalid JSON.");
-		}
-		const catalog = parseCatalogBody(parsed);
-		if (catalog === null) {
-			return failure("malformed-response", "The Models endpoint did not return a data array.");
-		}
-		return { outcome: "success", catalog: normalizeDiscoveryCatalog(catalog.data) };
+			const bounded = await readBoundedResponse(response, MAX_DISCOVERY_RESPONSE_BYTES, signal);
+			if (bounded.truncated) {
+				return failure("malformed-response", "The Models response is too large to read safely.");
+			}
+			const bytes = bounded.bytes;
+			let parsed: JsonValue;
+			try {
+				// ==[HUMAN APPROVED]== SAFETY: the JSON parser establishes the only boundary at which the
+				// untrusted response enters this module; parseCatalogBody validates the
+				// concrete object shape before any field is consumed.
+				parsed = JSON.parse(new TextDecoder().decode(bytes)) as JsonValue;
+			} catch {
+				return failure("malformed-response", "The Models endpoint returned invalid JSON.");
+			}
+			const catalog = parseCatalogBody(parsed);
+			if (catalog === null) {
+				return failure("malformed-response", "The Models endpoint did not return a data array.");
+			}
+			return { outcome: "success", catalog: normalizeDiscoveryCatalog(catalog.data) };
+		});
 	} catch (error) {
 		if (error instanceof ModelFetchTimeoutError) {
 			return failure("timeout", "The Models endpoint did not respond in time.");

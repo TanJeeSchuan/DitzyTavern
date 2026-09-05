@@ -41,7 +41,7 @@ export function saveParticipantAsCharacter(
 ): SaveParticipantAsCharacterResult {
 	const save = database.transaction(() => {
 		const conversation =
-			createConversationModule(database).getSnapshot(input.conversationId);
+			createConversationModule(database).getSummary(input.conversationId);
 		if (conversation === undefined) {
 			throw new ConversationNotFoundError(input.conversationId);
 		}

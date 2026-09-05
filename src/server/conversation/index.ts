@@ -14,7 +14,11 @@ import {
 import { createConversation } from "./create";
 import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
-import { conversationExists, readConversationSnapshot } from "./snapshot";
+import {
+	conversationExists,
+	readConversationSnapshot,
+	readConversationSummary,
+} from "./snapshot";
 import { readConversationData } from "./read-data";
 import {
 	readActiveGenerationDetails,
@@ -120,6 +124,7 @@ export type {
 	ConversationModule,
 	ConversationParticipantSeed,
 	ConversationSnapshot,
+	ConversationSummary,
 	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
@@ -136,6 +141,7 @@ export function createConversationModule(database: Database): ConversationModule
 		create: (input) => createConversation(database, input),
 		exists: (conversationId) => conversationExists(database, conversationId),
 		getSnapshot: (conversationId) => readConversationSnapshot(database, conversationId),
+		getSummary: (conversationId) => readConversationSummary(database, conversationId),
 		getGenerationSettings: (conversationId) =>
 			readConversationGenerationSettings(database, conversationId),
 		readHistory: (conversationId, request) =>

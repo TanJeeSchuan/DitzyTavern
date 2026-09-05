@@ -7,6 +7,7 @@ import { openDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import { sendThroughProvisionalTailGeneration } from ".";
+import { requireSnapshot } from "../conversation/test-fixtures";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -36,6 +37,11 @@ describe("Send through provisional Tail Generation", () => {
 
 	afterEach(() => database.close());
 
+	// Generation results carry the Conversation header; Message assertions
+	// re-read the full snapshot immediately after the attempt they follow.
+	const currentSnapshot = () =>
+		requireSnapshot(createConversationModule(database), conversationId);
+
 	test("accepts the human input and resolves the authoritative provisional target", async () => {
 		let contactedWithActiveTarget = false;
 		const result = await sendThroughProvisionalTailGeneration(database, {
@@ -53,12 +59,12 @@ describe("Send through provisional Tail Generation", () => {
 		});
 
 		expect(contactedWithActiveTarget).toBe(true);
-		expect(result.conversation.messages.map((message) => message.author?.participantId)).toEqual([
+		expect(currentSnapshot().messages.map((message) => message.author?.participantId)).toEqual([
 			humanId,
 			result.conversation.control.modelParticipantId,
 		]);
-		expect(result.conversation.messages[0]?.variants[0]?.content).toBe("Please open the door.");
-		expect(result.conversation.messages[1]?.variants[0]?.content).toBe("The door opens.");
+		expect(currentSnapshot().messages[0]?.variants[0]?.content).toBe("Please open the door.");
+		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("The door opens.");
 		expect(result.conversation.revision).toBe(2);
 		expect(drizzle(database).select().from(activeGenerationTable).all()).toHaveLength(0);
 	});
@@ -73,7 +79,7 @@ describe("Send through provisional Tail Generation", () => {
 				{ type: "finished", finishReason: "stop" },
 			]),
 		});
-		const completedMessage = completed.conversation.messages.at(-1);
+		const completedMessage = currentSnapshot().messages.at(-1);
 		const completedVariant = completedMessage?.variants[0];
 		if (completedMessage === undefined || completedVariant === undefined) {
 			throw new Error("Completed Variant missing.");
@@ -97,7 +103,7 @@ describe("Send through provisional Tail Generation", () => {
 				{ type: "finished", finishReason: "other" },
 			]),
 		});
-		const otherMessage = other.conversation.messages.at(-1);
+		const otherMessage = currentSnapshot().messages.at(-1);
 		const otherVariant = otherMessage?.variants[0];
 		if (otherMessage === undefined || otherVariant === undefined) {
 			throw new Error("Other-finished Variant missing.");
@@ -112,7 +118,7 @@ describe("Send through provisional Tail Generation", () => {
 			interruptionCause: null,
 		});
 
-		const lengthLimited = await sendThroughProvisionalTailGeneration(database, {
+		await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: other.conversation.revision,
 			content: "Reach the output limit.",
@@ -121,7 +127,7 @@ describe("Send through provisional Tail Generation", () => {
 				{ type: "finished", finishReason: "length" },
 			]),
 		});
-		const lengthMessage = lengthLimited.conversation.messages.at(-1);
+		const lengthMessage = currentSnapshot().messages.at(-1);
 		const lengthVariant = lengthMessage?.variants[0];
 		if (lengthMessage === undefined || lengthVariant === undefined) {
 			throw new Error("Length-limited Variant missing.");
@@ -150,7 +156,7 @@ describe("Send through provisional Tail Generation", () => {
 				]),
 			});
 			expectedRevision = interrupted.conversation.revision;
-			const message = interrupted.conversation.messages.at(-1);
+			const message = currentSnapshot().messages.at(-1);
 			const variant = message?.variants[0];
 			if (message === undefined || variant === undefined) {
 				throw new Error(`Interrupted ${cause} Variant missing.`);
@@ -182,15 +188,15 @@ describe("Send through provisional Tail Generation", () => {
 		expect(afterFailure?.messages[0]?.author?.participantId).toBe(humanId);
 		expect(afterFailure?.revision).toBe(2);
 
-		const retried = await sendThroughProvisionalTailGeneration(database, {
+		await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: afterFailure?.revision ?? -1,
 			content: "Please try again.",
 			modelClient: createFakeModelClient(() => "Now it works."),
 		});
-		expect(retried.conversation.messages).toHaveLength(2);
-		expect(retried.conversation.messages[0]?.author?.participantId).toBe(humanId);
-		expect(retried.conversation.messages[1]?.variants[0]?.content).toBe("Now it works.");
+		expect(currentSnapshot().messages).toHaveLength(2);
+		expect(currentSnapshot().messages[0]?.author?.participantId).toBe(humanId);
+		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("Now it works.");
 	});
 
 	test("rejects an oversized candidate before any Message or Active Generation is persisted", async () => {

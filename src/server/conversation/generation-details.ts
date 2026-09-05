@@ -4,6 +4,7 @@
 // compact safe provenance allow-list.
 
 import type { Database } from "bun:sqlite";
+import { Value } from "@sinclair/typebox/value";
 import { and, eq } from "drizzle-orm";
 import {
 	activeGenerationTable,
@@ -41,6 +42,10 @@ import {
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
+import {
+	promptPlan,
+	type PromptPlan,
+} from "../../shared/contract/conversation-schema";
 
 interface SafeConnection {
 	readonly [key: string]: ConversationJsonValue;
@@ -139,6 +144,14 @@ const deriveGenerationStatus = (
 			? terminalStatus
 			: "complete";
 
+const persistedPromptPlan = (value: string): PromptPlan => {
+	const parsed = parseGenerationJson(value, null);
+	if (!Value.Check(promptPlan, parsed)) {
+		throw new Error("Persisted generation prompt plan is invalid.");
+	}
+	return parsed;
+};
+
 export function readActiveGenerationDetails(
 	database: Database,
 	conversationId: number,
@@ -196,7 +209,7 @@ export function readActiveGenerationDetailsFromConnection(
 			human: { id: row.human_participant_id, name: humanName },
 			model: { id: row.model_participant_id, name: row.captured_model_name },
 		},
-		promptPlan: parseGenerationJson(row.prompt_plan_json, {}),
+		promptPlan: persistedPromptPlan(row.prompt_plan_json),
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),

@@ -9,7 +9,7 @@ import {
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 	type AcceptedTailGeneration,
-	type ConversationSnapshot,
+	type ConversationSummary,
 	type StopGenerationInput,
 	type StopGenerationsInput,
 	type StoppedGenerations,
@@ -63,7 +63,7 @@ export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOp
  * transitions and their database invariants; it never learns runtime mechanics.
  */
 export interface GenerationConversationLifecycle {
-	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
+	stopGeneration(input: StopGenerationInput): ConversationSummary;
 	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
 }
 
@@ -101,7 +101,7 @@ export type GenerationStopOutcome =
 	| {
 			readonly outcome: "stopped";
 			readonly generationId: number;
-			readonly conversation: ConversationSnapshot;
+			readonly conversation: ConversationSummary;
 			/**
 			 * ==[HUMAN APPROVED]== Why the process runtime could not be settled, or null when it
 			 * settled cleanly. Either way the durable transition committed and
@@ -119,7 +119,7 @@ export type GenerationStopAllOutcome =
 	| {
 			readonly outcome: "stopped";
 			readonly generationIds: readonly number[];
-			readonly conversation: ConversationSnapshot;
+			readonly conversation: ConversationSummary;
 			/** ==[HUMAN APPROVED]== Generations whose durable transition committed but whose runtime lingers. */
 			readonly unsettled: readonly number[];
 			readonly unsettledReason: string | null;
@@ -294,16 +294,14 @@ export class GenerationCoordinator {
 			if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
 				return { outcome: "not-stoppable", generationId } as const;
 			}
-			// ==[HUMAN APPROVED]== Stop flushes the latest runtime checkpoint before aborting the
-			// provider, so the durable transition below observes every delta the
-			// runtime saw. A settlement failure here is reported after the durable
-			// transition commits: a runtime glitch must never lose a Stop intent.
-			const settlementFailure = this.requestRuntimeStop(runtime);
+			// ==[HUMAN APPROVED]== A failed checkpoint must prevent a Stop from using stale output.
+			runtime?.stop();
 			const conversation = this.conversationLifecycle(database);
 			try {
 				const snapshot = conversation.stopGeneration({ conversationId, generationId });
-				return this.settleStoppedGeneration(generationId, runtime, snapshot, settlementFailure);
+				return this.settleStoppedGeneration(generationId, runtime, snapshot);
 			} catch (error) {
+				runtime?.releaseStopRequest();
 				if (
 					error instanceof InvalidConversationCommandError ||
 					error instanceof ConversationNotFoundError
@@ -313,7 +311,6 @@ export class GenerationCoordinator {
 					// or the Conversation is gone and the provider attempt cannot
 					// durably commit either. Release the Stop request so the
 					// runtime still settles through its own terminal path.
-					runtime?.releaseStopRequest();
 					return { outcome: "not-stoppable", generationId } as const;
 				}
 				throw error;
@@ -372,29 +369,13 @@ export class GenerationCoordinator {
 		});
 	}
 
-	private requestRuntimeStop(runtime: GenerationRuntimeHandle | undefined): string | undefined {
-		if (runtime === undefined) return undefined;
-		try {
-			runtime.stop();
-			return undefined;
-		} catch (error) {
-			return error instanceof Error
-				? error.message
-				: "The Generation runtime could not be stopped.";
-		}
-	}
-
 	private settleStoppedGeneration(
 		generationId: number,
 		runtime: GenerationRuntimeHandle | undefined,
-		snapshot: ConversationSnapshot,
-		settlementFailure: string | undefined,
+		snapshot: ConversationSummary,
 	): GenerationStopOutcome {
-		// ==[HUMAN APPROVED]== A runtime that already failed its stop request is not asked to
-		// settle again; either way the durable transition committed and the
-		// snapshot is returned.
-		let unsettledReason = settlementFailure ?? null;
-		if (runtime !== undefined && unsettledReason === null) {
+		let unsettledReason: string | null = null;
+		if (runtime !== undefined) {
 			try {
 				runtime.markStopped();
 			} catch (error) {
@@ -468,11 +449,12 @@ export class GenerationCoordinator {
 								this.configuredDatabase,
 								accepted.generationId,
 							),
-							onCheckpoint: (output) => checkpointConversationGeneration(database, {
-								conversationId: input.conversationId,
-								generationId: accepted.generationId,
-								...output,
-							}),
+							onCheckpoint: (output) => withDatabase(this.configuredDatabase, (checkpointDatabase) =>
+								checkpointConversationGeneration(checkpointDatabase, {
+									conversationId: input.conversationId,
+									generationId: accepted.generationId,
+									...output,
+								})),
 						});
 					},
 					onEvent: (event) => { runtime?.publish(event); },
@@ -487,7 +469,11 @@ export class GenerationCoordinator {
 					return value;
 				})
 				.catch((error) => {
-					activeRuntime.fail(error instanceof Error ? error.message : "Generation failed.");
+					try {
+						activeRuntime.fail(error instanceof Error ? error.message : "Generation failed.");
+					} catch {
+						// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
+					}
 					throw error;
 				})
 				.finally(release);

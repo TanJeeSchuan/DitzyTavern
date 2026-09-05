@@ -167,6 +167,8 @@ describe("reduceConnectionSettingsController", () => {
 			},
 			deletedDisplayName: "First",
 			replacementProfileId: 2,
+			editorVersion: 0,
+			commandId: 0,
 		});
 
 		expect(next.selectedProfileId).toBe(2);
@@ -177,6 +179,52 @@ describe("reduceConnectionSettingsController", () => {
 		);
 		expect(next.pendingDeletionProfileId).toBeNull();
 		expect(next.notice).toBe("First deleted.");
+	});
+
+	test("late save results preserve a newer profile draft", () => {
+		const editing = reduceConnectionSettingsController(controllerState(), {
+			type: "set-draft",
+			draft: { ...emptyConnectionProfileDraft, displayName: "Newer local edit" },
+		});
+		const next = reduceConnectionSettingsController(editing, {
+			type: "apply-succeeded",
+			settings: {
+				revision: 3,
+				activeProfileId: 1,
+				profiles: [profile(1, "Older saved edit"), profile(2, "Second")],
+			},
+			selectedProfileId: 1,
+			draftDisplayName: "Local edit",
+			credentialWasProvided: false,
+			editorVersion: 0,
+			commandId: 0,
+		});
+
+		expect(next.settings?.revision).toBe(3);
+		expect(next.selectedProfileId).toBe(1);
+		expect(next.draft.displayName).toBe("Newer local edit");
+		expect(next.notice).toBe(editing.notice);
+	});
+
+	test("a stale completion cannot replace newer server settings", () => {
+		const refreshed = reduceConnectionSettingsController(controllerState(), {
+			type: "refresh-succeeded",
+			settings: { revision: 4, activeProfileId: 2, profiles: [profile(1, "Fresh"), profile(2, "Second")] },
+			notice: "refreshed",
+		});
+		const next = reduceConnectionSettingsController(refreshed, {
+			type: "apply-succeeded",
+			settings: { revision: 3, activeProfileId: 1, profiles: [profile(1, "Stale")] },
+			selectedProfileId: 1,
+			draftDisplayName: "Local edit",
+			credentialWasProvided: false,
+			editorVersion: 0,
+			commandId: 0,
+		});
+
+		expect(next.settings?.revision).toBe(4);
+		expect(next.settings?.profiles[0]?.displayName).toBe("Fresh");
+		expect(next.draft.displayName).toBe("Local edit");
 	});
 
 });

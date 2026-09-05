@@ -16,7 +16,7 @@ import type { ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
-	ConversationSnapshot,
+	ConversationSummary,
 	CheckpointGenerationInput,
 	RemoveGenerationInput,
 	StopGenerationsInput,
@@ -252,7 +252,7 @@ function commitDurableTerminalGenerationInTransaction(
 export function resolveConversationGeneration(
 	database: Database,
 	input: ResolveGenerationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) {
@@ -282,13 +282,16 @@ export function resolveConversationGeneration(
 export const removeConversationGeneration = (
 	database: Database,
 	input: RemoveGenerationInput,
-): ConversationSnapshot => {
+): ConversationSummary => {
 	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) {
 			throw new InvalidConversationCommandError(
 				"The Active Generation is no longer available.",
 			);
+		}
+		if (active.checkpoint_content.length > 0 || active.checkpoint_reasoning.length > 0) {
+			throw new InvalidConversationCommandError("A Generation with durable output must be resolved or stopped.");
 		}
 		const transition = removeActiveGenerationTargetInTransaction(db, active);
 		if (transition.removedSibling !== undefined) {
@@ -405,6 +408,13 @@ function removeActiveGenerationTargetInTransaction(
 		if (variant === undefined) {
 			throw new InvalidConversationCommandError("The provisional sibling Variant is no longer available.");
 		}
+		db.update(activeGenerationTable)
+			.set({ prior_variant_id: active.prior_variant_id })
+			.where(and(
+				eq(activeGenerationTable.message_id, active.message_id),
+				eq(activeGenerationTable.prior_variant_id, variant.id),
+			))
+			.run();
 		db.delete(activeGenerationTable)
 			.where(eq(activeGenerationTable.id, active.id))
 			.run();
@@ -497,7 +507,7 @@ function restoreStoppedSiblingSelection(
 export function stopConversationGeneration(
 	database: Database,
 	input: StopGenerationInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	return runConversationTransaction(database, (db) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);

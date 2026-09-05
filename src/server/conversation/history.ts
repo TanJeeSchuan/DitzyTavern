@@ -16,6 +16,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
 	conversationTable,
 	conversationGenerationSettingsTable,
+	activeGenerationTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
@@ -157,6 +158,30 @@ export function readChatHistory(
 					.all()
 					.map((row) => [row.variantId, row.value]),
 	);
+	const liveGenerationByVariant = new Map(
+		variantRows.length === 0
+			? []
+			: db
+					.select({
+						generationId: activeGenerationTable.id,
+						variantId: activeGenerationTable.variant_id,
+						eventId: activeGenerationTable.checkpoint_event_id,
+						content: activeGenerationTable.checkpoint_content,
+						reasoning: activeGenerationTable.checkpoint_reasoning,
+					})
+					.from(activeGenerationTable)
+					.where(inArray(
+						activeGenerationTable.variant_id,
+						variantRows.map((variant) => variant.id),
+					))
+					.all()
+					.map((row) => [row.variantId, {
+						generationId: row.generationId,
+						eventId: row.eventId,
+						content: row.content,
+						reasoning: row.reasoning,
+					}] as const),
+	);
 
 	const variantsByMessage = groupVariantsByMessage(
 		variantRows,
@@ -170,6 +195,8 @@ export function readChatHistory(
 			};
 			const reasoning = reasoningByVariant.get(variant.id);
 			if (reasoning !== undefined) historyVariant.reasoning = reasoning;
+			const liveGeneration = liveGenerationByVariant.get(variant.id);
+			if (liveGeneration !== undefined) historyVariant.liveGeneration = liveGeneration;
 			return historyVariant;
 		},
 	);

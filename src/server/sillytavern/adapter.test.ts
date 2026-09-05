@@ -6,6 +6,7 @@ import {
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
 	VARIANT_KEYS,
+	decodeSillyTavernImportReport,
 	parseSillyTavernChatJsonl,
 } from "./adapter";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
@@ -45,6 +46,42 @@ const importedSeed = (name: string) => ({
 });
 
 describe("SillyTavern JSONL adapter", () => {
+	test("decodes a valid persisted report without trusting JSON prototypes", () => {
+		const report = decodeSillyTavernImportReport(
+			JSON.stringify({
+				importerVersion: IMPORTER_VERSION,
+				constructor: "spoofed prototype field",
+				source: {
+					filename: "lantern-house.jsonl",
+					sha256: meta.sha256,
+					integrity: "integrity",
+					constructor: "spoofed prototype field",
+				},
+				counts: { messages: 2, variants: 3 },
+				warnings: [],
+			}),
+		);
+
+		expect(report).toEqual({
+			importerVersion: IMPORTER_VERSION,
+			source: {
+				filename: "lantern-house.jsonl",
+				sha256: meta.sha256,
+				integrity: "integrity",
+			},
+			counts: { messages: 2, variants: 3 },
+			warnings: [],
+		});
+	});
+
+	test.each([
+		["malformed JSON", "{"],
+		["missing source", JSON.stringify({ importerVersion: IMPORTER_VERSION, counts: { messages: 1, variants: 1 }, warnings: [] })],
+		["missing counts", JSON.stringify({ importerVersion: IMPORTER_VERSION, source: { filename: "x", sha256: "y" }, warnings: [] })],
+	])("returns null for %s reports", (_name, value) => {
+		expect(decodeSillyTavernImportReport(value)).toBeNull();
+	});
+
 	test("maps a header and payload-only records into a generic creation input", () => {
 		const { input } = parseSillyTavernChatJsonl(
 			jsonl([header, first, second, blankName]),

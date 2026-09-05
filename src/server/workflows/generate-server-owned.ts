@@ -182,7 +182,7 @@ export async function runGeneration(
 export interface AcceptedGenerationLifecycle<TResult> {
 	/** ==[HUMAN APPROVED]== Commit the normalized terminal outcome to the accepted target. */
 	resolve(outcome: GenerationOutcome): TResult | Promise<TResult>;
-	/** ==[HUMAN APPROVED]== Remove the accepted target after a zero-output or unexpected failure. */
+	/** ==[HUMAN APPROVED]== Remove the accepted target only after a confirmed zero-output result. */
 	remove(): void | Promise<void>;
 }
 
@@ -200,34 +200,29 @@ export async function runAcceptedGeneration<TResult>(
 	request: Parameters<typeof collectModelClientGeneration>[1],
 	lifecycle: AcceptedGenerationLifecycle<TResult>,
 ): Promise<TResult> {
-	let removed = false;
+	let outcome: GenerationOutcome;
 	try {
-		const outcome = await runGeneration(input.modelClient, request, input.onEvent);
-		if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-			await input.onBeforeTerminal?.();
-			await lifecycle.remove();
-			removed = true;
-			throw new ModelClientGenerationError(
-				"provider",
-				"Generation produced no usable output.",
-			);
-		}
-		await input.onBeforeTerminal?.();
-		return await lifecycle.resolve(outcome);
+		outcome = await runGeneration(input.modelClient, request, input.onEvent);
 	} catch (error) {
-		// ==[HUMAN APPROVED]== runGeneration converts visible provider failures into an interrupted
-		// outcome. This cleanup path is therefore only for empty output and
-		// unexpected failures. A successful empty-output removal must not be
-		// attempted a second time after the synthetic provider error is thrown.
-		if (!removed) {
-			try {
-				await lifecycle.remove();
-			} catch {
-				// Preserve the provider or commit error; recovery can clean an orphan. ==[HUMAN APPROVED]==
-			}
+		// ==[HUMAN APPROVED]== Only a provider failure reaches this path: resolution runs
+		// outside the try, so a persistence error can never delete committed
+		// output. Removal stays a zero-output cleanup because removeGeneration
+		// refuses a target that already holds durable checkpointed output —
+		// such a target survives here for recovery to finish.
+		await input.onBeforeTerminal?.();
+		try {
+			await lifecycle.remove();
+		} catch {
+			// Preserve the provider error; recovery owns any surviving target. ==[HUMAN APPROVED]==
 		}
 		throw error;
 	}
+	await input.onBeforeTerminal?.();
+	if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
+		await lifecycle.remove();
+		throw new ModelClientGenerationError("provider", "Generation produced no usable output.");
+	}
+	return lifecycle.resolve(outcome);
 }
 
 export function generationOutcomeData(input: GenerationOutcome): ConversationDataEntry[] {

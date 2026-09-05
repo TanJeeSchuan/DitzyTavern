@@ -281,7 +281,7 @@ export class GenerationRuntime {
 				envelope.eventId - this.lastCheckpointEventId >= this.checkpointEventInterval ||
 				(elapsed >= this.checkpointIntervalMs && this.checkpointIntervalMs > 0)
 			) {
-				this.flushCheckpoint();
+				try { this.flushCheckpoint(); } catch { /* ==[HUMAN APPROVED]== Retry at the next cadence or forced flush. */ }
 			}
 		}
 		return envelope;
@@ -323,19 +323,14 @@ export class GenerationRuntime {
 	/** ==[HUMAN APPROVED]== Persist the latest accumulated output immediately, including its event position. */
 	flushCheckpoint(): void {
 		if (!this.checkpointPending && this.lastCheckpointEventId === this.stateValue.latestEventId) return;
+		this.onCheckpoint?.({
+			content: this.stateValue.content,
+			reasoning: this.stateValue.reasoning,
+			latestEventId: this.stateValue.latestEventId,
+		});
 		this.checkpointPending = false;
 		this.lastCheckpointEventId = this.stateValue.latestEventId;
 		this.lastCheckpointAt = this.checkpointNow();
-		try {
-			this.onCheckpoint?.({
-				content: this.stateValue.content,
-				reasoning: this.stateValue.reasoning,
-				latestEventId: this.stateValue.latestEventId,
-			});
-		} catch {
-			// ==[HUMAN APPROVED]== A transient checkpoint failure must not stop normalized delivery or
-			// turn a provider stream into a client-visible transport failure.
-		}
 	}
 
 	get isTerminal(): boolean {
@@ -352,11 +347,11 @@ export class GenerationRuntime {
 
 	stop(): void {
 		if (this.stateValue.status !== "active") return;
-		this.stopRequested = true;
 		// ==[HUMAN APPROVED]== Stop is the explicit server-owned cancellation seam. Flush before
 		// aborting so the terminal Conversation transition can use every delta
 		// observed by this runtime, even when the provider ignores the abort.
 		this.flushCheckpoint();
+		this.stopRequested = true;
 		try { this.onStop?.(); } catch { /* provider cancellation remains best effort ==[HUMAN APPROVED]== */ }
 		if (!this.signal.aborted) this.controller.abort();
 	}

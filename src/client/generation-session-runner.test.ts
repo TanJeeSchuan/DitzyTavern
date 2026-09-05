@@ -109,8 +109,8 @@ describe("the Generation session runner", () => {
 		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Hello") });
 		stream.requests[0]!.onEvent({ eventId: 2, event: { type: "reasoning", text: "Plan" } });
 		expect(spy.storyEffects).toEqual([
-			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "Hello" },
-			{ kind: "story-reasoning-delta", messageId: 907, variantId: 9_007, text: "Plan" },
+			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "Hello", generationId: 7, eventId: 1 },
+			{ kind: "story-reasoning-delta", messageId: 907, variantId: 9_007, text: "Plan", generationId: 7, eventId: 2 },
 		]);
 
 		stream.requests[0]!.onState(stateSnapshot({
@@ -119,8 +119,7 @@ describe("the Generation session runner", () => {
 			latestEventId: 2,
 		}));
 		expect(spy.storyEffects.slice(2)).toEqual([
-			{ kind: "story-content-replace", messageId: 907, variantId: 9_007, content: "Hello" },
-			{ kind: "story-reasoning-replace", messageId: 907, variantId: 9_007, reasoning: "Plan" },
+			{ kind: "story-state", messageId: 907, variantId: 9_007, content: "Hello", reasoning: "Plan", generationId: 7, eventId: 2 },
 		]);
 	});
 

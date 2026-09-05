@@ -16,7 +16,9 @@ import {
 	ConversationNotFoundError,
 	createConversationModule,
 	StaleConversationRevisionError,
+	type ConversationSummary,
 } from "../conversation";
+import { requireSnapshot } from "../conversation/test-fixtures";
 import { addCharacterToCast, createNativeConversation } from ".";
 
 const prompt = () => ({
@@ -83,7 +85,9 @@ describe("Add Character to Cast workflow", () => {
 		expect(added?.position).toBe(3);
 		expect(updated.revision).toBe(conversation.revision + 1);
 		// Adding a Character never inserts history or changes Control.
-		expect(updated.messages).toHaveLength(conversation.messages.length);
+		expect(
+			requireSnapshot(createConversationModule(database), conversation.id).messages,
+		).toHaveLength(conversation.messages.length);
 		expect(updated.control).toEqual(conversation.control);
 	});
 
@@ -93,7 +97,7 @@ describe("Add Character to Cast workflow", () => {
 			type: "create",
 			definition: sourceDefinition({ name: "Twins" }),
 		});
-		let conversation = playableConversation();
+		let conversation: ConversationSummary = playableConversation();
 
 		for (const expectedRevision of [source.revision, source.revision]) {
 			conversation = addCharacterToCast(database, {
@@ -154,7 +158,7 @@ describe("Add Character to Cast workflow", () => {
 			type: "create",
 			definition: sourceDefinition(),
 		});
-		let conversation = playableConversation();
+		let conversation: ConversationSummary = playableConversation();
 		conversation = createConversationModule(database).execute({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,

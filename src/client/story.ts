@@ -21,6 +21,8 @@ export interface StoryVariant {
 	// ==[HUMAN APPROVED]== Reasoning Content stays separate from authored Content. Active streams
 	// update it locally and authoritative history restores it after reload.
 	reasoning?: string;
+	generationId?: number;
+	lastEventId?: number;
 	// ==[HUMAN APPROVED]== Presentation-only: true when the stored content is exactly empty. The
 	// placeholder substitutes rendering only; the stored text stays as-is.
 	empty: boolean;
@@ -92,7 +94,7 @@ export type StoryAction =
 	| { type: "chat-opened"; conversationId: number }
 	// ==[HUMAN APPROVED]== The first page arrives: the latest window of history. It replaces any
 	// accumulated messages.
-	| { type: "first-page"; page: ChatHistoryPage }
+	| { type: "first-page"; page: ChatHistoryPage; activeGenerationIds?: readonly number[] }
 	// ==[HUMAN APPROVED]== An older page arrives; its Messages prepend to the accumulated
 	// sequence with no overlap.
 	| { type: "next-page-arrived"; page: ChatHistoryPage }
@@ -105,10 +107,13 @@ export type StoryAction =
 	// local position updates immediately so reading never waits.
 	| { type: "swipe-selected"; messageId: number; variantId: number }
 	| {
-			type: "generation-content";
+			type: "generation-state";
 			messageId: number;
 			variantId: number;
 			content: string;
+			reasoning: string;
+			generationId: number;
+			eventId: number;
 		}
 	// ==[HUMAN APPROVED]== A Content delta from an Active Generation's stream: it appends to the
 	// Provisional Variant's visible content, which the story read model
@@ -118,18 +123,24 @@ export type StoryAction =
 			messageId: number;
 			variantId: number;
 			text: string;
+			generationId: number;
+			eventId: number;
 		}
 	| {
 			type: "generation-reasoning";
 			messageId: number;
 			variantId: number;
 			reasoning: string;
+			generationId: number;
+			eventId: number;
 		}
 	| {
 			type: "generation-reasoning-delta";
 			messageId: number;
 			variantId: number;
 			text: string;
+			generationId: number;
+			eventId: number;
 		}
 	| { type: "preview-started"; messageId: number; variantId: number }
 	// ==[HUMAN APPROVED]== Swiping the already-previewed Message moves the local Preview to another
@@ -155,17 +166,32 @@ export const createStoryState = (): StoryState => ({
 const toStoryVariant = (
 	variant: ChatHistoryVariant,
 	prior?: StoryVariant,
-): StoryVariant => ({
-	id: variant.id,
-	position: variant.position,
-	content: variant.content,
-	reasoning: variant.reasoning ?? prior?.reasoning ?? "",
-	empty: variant.content === "",
-});
+	activeGenerationIds: ReadonlySet<number> = new Set(),
+): StoryVariant => {
+	const live = variant.liveGeneration;
+	if (
+		prior?.generationId !== undefined &&
+		activeGenerationIds.has(prior.generationId) &&
+		(live === undefined || (prior.lastEventId ?? 0) > live.eventId)
+	) {
+		return { ...prior, id: variant.id, position: variant.position };
+	}
+	const content = live?.content ?? variant.content;
+	return {
+		id: variant.id,
+		position: variant.position,
+		content,
+		reasoning: live?.reasoning ?? variant.reasoning ?? prior?.reasoning ?? "",
+		generationId: live?.generationId ?? prior?.generationId,
+		lastEventId: live?.eventId ?? prior?.lastEventId,
+		empty: content === "",
+	};
+};
 
 const toStoryMessage = (
 	message: ChatHistoryPage["messages"][number],
 	prior?: StoryMessage,
+	activeGenerationIds?: ReadonlySet<number>,
 ): StoryMessage => ({
 	id: message.id,
 	position: message.position,
@@ -183,6 +209,7 @@ const toStoryMessage = (
 	swipes: message.variants.map((variant) => toStoryVariant(
 		variant,
 		prior?.swipes.find((entry) => entry.id === variant.id),
+		activeGenerationIds,
 	)),
 });
 
@@ -250,6 +277,16 @@ const updateStoryVariant = (
 	),
 });
 
+const acceptsGenerationObservation = (
+	variant: StoryVariant,
+	generationId: number | undefined,
+	eventId: number | undefined,
+): boolean =>
+	(generationId === undefined ||
+		variant.generationId === undefined ||
+		variant.generationId === generationId) &&
+	(eventId === undefined || eventId > (variant.lastEventId ?? 0));
+
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
 	switch (action.type) {
 		case "chat-opened":
@@ -260,6 +297,7 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			};
 		case "first-page":
 			if (state.conversationId !== action.page.conversationId) return state;
+			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
 			return {
 				...state,
 				title: action.page.name,
@@ -267,6 +305,7 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 				messages: action.page.messages.map((message) => toStoryMessage(
 					message,
 					state.messages.find((entry) => entry.id === message.id),
+					activeGenerationIds,
 				)),
 				page: { ...action.page.page },
 				status: "ready",
@@ -305,27 +344,50 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					return { ...message, activeSwipe: index };
 				}),
 			};
-		case "generation-content":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
-				...variant,
-				content: action.content,
-				empty: action.content === "",
-			}));
+		case "generation-state":
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
+				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
+				return {
+					...variant,
+					content: action.content,
+					reasoning: action.reasoning,
+					empty: action.content === "",
+					generationId: action.generationId,
+					lastEventId: action.eventId,
+				};
+			});
 		case "generation-content-delta":
 			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
+				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
 				const content = variant.content + action.text;
-				return { ...variant, content, empty: content === "" };
+				return {
+					...variant,
+					content,
+					empty: content === "",
+					generationId: action.generationId,
+					lastEventId: action.eventId,
+				};
 			});
 		case "generation-reasoning":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
-				...variant,
-				reasoning: action.reasoning,
-			}));
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
+				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
+				return {
+					...variant,
+					reasoning: action.reasoning,
+					generationId: action.generationId,
+					lastEventId: action.eventId,
+				};
+			});
 		case "generation-reasoning-delta":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => ({
-				...variant,
-				reasoning: (variant.reasoning ?? "") + action.text,
-			}));
+			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
+				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
+				return {
+					...variant,
+					reasoning: (variant.reasoning ?? "") + action.text,
+					generationId: action.generationId,
+					lastEventId: action.eventId,
+				};
+			});
 		case "preview-started": {
 			if (state.preview !== null) return state;
 			const message = state.messages.find((entry) => entry.id === action.messageId);

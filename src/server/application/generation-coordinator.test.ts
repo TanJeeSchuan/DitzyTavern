@@ -7,6 +7,7 @@ import {
 	createConversationModule,
 	type ConversationSnapshot,
 } from "../conversation";
+import { requireSnapshot } from "../conversation/test-fixtures";
 import { openDatabase } from "../database/database";
 import {
 	generationRuntimeFor,
@@ -56,6 +57,11 @@ describe("GenerationCoordinator", () => {
 
 	afterEach(() => database.close());
 
+	// Generation results carry the Conversation header; Message assertions
+	// re-read the full snapshot immediately after the attempt they follow.
+	const currentSnapshot = (conversationId: number) =>
+		requireSnapshot(createConversationModule(database), conversationId);
+
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Coordinator Chat",
@@ -82,15 +88,15 @@ describe("GenerationCoordinator", () => {
 		});
 		const firstResult = await first.result;
 		expect(first.runtime.state.status).toBe("complete");
-		expect(firstResult.conversation.messages).toHaveLength(2);
+		expect(currentSnapshot(conversation.id).messages).toHaveLength(2);
 
 		const continuation = await coordinator.startContinuationGeneration({
 			conversationId: conversation.id,
 			expectedRevision: firstResult.conversation.revision,
 		});
-		const continuationResult = await continuation.result;
+		await continuation.result;
 		expect(continuation.runtime.state.status).toBe("complete");
-		expect(continuationResult.conversation.messages).toHaveLength(3);
+		expect(currentSnapshot(conversation.id).messages).toHaveLength(3);
 
 		const targetMessageId = firstResult.messageId;
 		const sibling = await coordinator.startSiblingGeneration({
@@ -163,8 +169,9 @@ describe("GenerationCoordinator", () => {
 		if (outcome.outcome === "stopped") {
 			expect(outcome.generationId).toBe(started.accepted.generationId);
 			expect(outcome.conversation.activeGenerations).toEqual([]);
-			expect(outcome.conversation.messages).toHaveLength(1);
-			expect(outcome.conversation.messages[0]?.variants[0]?.content).toBe("Stop me.");
+			const stoppedMessages = currentSnapshot(conversation.id).messages;
+			expect(stoppedMessages).toHaveLength(1);
+			expect(stoppedMessages[0]?.variants[0]?.content).toBe("Stop me.");
 		}
 		expect(started.runtime.state.status).toBe("stopped");
 		expect(providerSignal?.aborted).toBe(true);
@@ -418,7 +425,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		]);
 	});
 
-	test("Stop reports the unsettled runtime reason when the runtime cannot stop but still commits the durable transition", async () => {
+	test("Stop does not commit stale output when the runtime checkpoint fails", async () => {
 		const conversation = conversationSnapshot("Stop request failure");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 18, conversation.id, {
@@ -429,18 +436,8 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[18, runtime]]), order),
 		});
 
-		const outcome = await coordinator.stopGeneration(conversation.id, 18);
-
-		const settled = expectOutcome(outcome, "stopped");
-		expect(settled.unsettledReason).toBe("Runtime abort failed.");
-		expect(settled.conversation.id).toBe(conversation.id);
-		// A runtime glitch must never lose the Stop intent: the durable
-		// transition still commits, and settlement is not attempted again
-		// after the failed stop request.
-		expect(order).toEqual([
-			`stop:18`,
-			`durableStop:18`,
-		]);
+		await expect(coordinator.stopGeneration(conversation.id, 18)).rejects.toThrow("Runtime abort failed.");
+		expect(order).toEqual([`stop:18`]);
 	});
 
 	test("Stop All flushes checkpoints, commits the durable transition, then settles each runtime", async () => {
@@ -629,7 +626,7 @@ describe("Generation Coordinator terminal races", () => {
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
-			promptPlan: {},
+		promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -688,7 +685,7 @@ describe("Generation Coordinator terminal races", () => {
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedModelName: input.model.name,
-			promptPlan: {},
+		promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

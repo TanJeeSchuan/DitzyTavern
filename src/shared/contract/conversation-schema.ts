@@ -21,6 +21,70 @@ import type {
 	ProvenanceSettingsField,
 } from "../generation-provenance";
 
+const promptHistoryRole = Type.Union([
+	Type.Literal("human"),
+	Type.Literal("model"),
+	Type.Null(),
+]);
+
+const promptBlock = Type.Union([
+	Type.Object({ kind: Type.Literal("system-instruction"), content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("identity"),
+		role: Type.Union([Type.Literal("human"), Type.Literal("model")]),
+		content: Type.String(),
+	}),
+	Type.Object({ kind: Type.Literal("scenario"), content: Type.String() }),
+	Type.Object({ kind: Type.Literal("example-dialogue"), content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("history"),
+		speakerName: Type.Union([Type.Null(), Type.String()]),
+		content: Type.String(),
+		role: promptHistoryRole,
+	}),
+	Type.Object({ kind: Type.Literal("post-history-instruction"), content: Type.String() }),
+]);
+
+const generationIntent = Type.Union([
+	Type.Object({ type: Type.Literal("sibling") }),
+	Type.Object({
+		type: Type.Literal("continuation"),
+		strategy: Type.Literal("instruction"),
+		instruction: Type.String(),
+	}),
+	Type.Object({
+		type: Type.Literal("continuation"),
+		strategy: Type.Literal("assistant-prefill"),
+		suffix: Type.Union([
+			Type.Literal(""),
+			Type.Literal(" "),
+			Type.Literal("\n"),
+			Type.Literal("\n\n"),
+		]),
+	}),
+]);
+
+// The persisted capture is the provider-neutral PromptPlan, kept typed at
+// the storage and transport boundary so inspection cannot silently discard
+// authorship or continuation intent.
+export const promptPlan = Type.Object({
+	blocks: Type.Array(promptBlock),
+	warnings: Type.Array(Type.Object({
+		block: Type.String(),
+		macro: Type.String(),
+	})),
+	intent: Type.Optional(generationIntent),
+});
+
+export type PromptPlan = Static<typeof promptPlan>;
+export type PromptBlock = PromptPlan["blocks"][number];
+export type PromptWarning = PromptPlan["warnings"][number];
+export type GenerationIntent = NonNullable<PromptPlan["intent"]>;
+export type PromptHistoryRole = Extract<
+	PromptBlock,
+	{ kind: "history" }
+>["role"];
+
 const castParticipant = Type.Object({
 	id: Type.Integer(),
 	position: Type.Integer(),
@@ -216,7 +280,7 @@ export const activeGenerationDetails = Type.Object({
 		human: Type.Object({ id: Type.Integer(), name: Type.String() }),
 		model: Type.Object({ id: Type.Integer(), name: Type.String() }),
 	}),
-	promptPlan: jsonValue,
+	promptPlan,
 	promptContext: jsonValue,
 	generationSettings: jsonValue,
 	connection: jsonValue,
@@ -269,6 +333,12 @@ const chatHistoryVariant = Type.Object({
 	position: Type.Integer(),
 	content: Type.String(),
 	reasoning: Type.Optional(Type.String()),
+	liveGeneration: Type.Optional(Type.Object({
+		generationId: Type.Integer(),
+		eventId: Type.Integer(),
+		content: Type.String(),
+		reasoning: Type.String(),
+	})),
 	timestamp: Type.String(),
 	selected: Type.Boolean(),
 });

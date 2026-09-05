@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import {
 	applyConversationCommand,
 	type ConversationSummary,
@@ -24,7 +24,7 @@ type PreviewControllerOptions = {
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
-	setConversation: Dispatch<SetStateAction<ConversationSummary | null>>;
+	setConversation: (conversation: ConversationSummary | null) => void;
 };
 
 /** ==[HUMAN APPROVED]== Owns the local Preview transaction and its revision-guarded confirmation. */

@@ -1,4 +1,16 @@
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type {
+	PromptHistoryRole,
+	PromptWarning,
+} from "../../shared/contract/conversation-schema";
+
+export type {
+	GenerationIntent,
+	PromptBlock,
+	PromptHistoryRole,
+	PromptPlan,
+	PromptWarning,
+} from "../../shared/contract/conversation-schema";
 
 // Provider-neutral Prompt Compiler contract. This module is pure: it never
 // touches SQLite, HTTP, credentials, or provider vocabulary. It consumes
@@ -18,8 +30,6 @@ export interface CompilePromptDefinition {
 // entry's author matched neither controlled Participant and no captured
 // historical pair claimed it — a preservation import, or a Participant
 // displaced from a seat it once held.
-export type PromptHistoryRole = "human" | "model" | null;
-
 // One entry of the ordered writing context. Every entry carries its own role,
 // so nothing has to align a second list against this one and an entry may be
 // inserted at any position without disturbing the entries around it.
@@ -36,45 +46,10 @@ export type PromptContextEntry = {
 	role: PromptHistoryRole;
 };
 
-// Provider-neutral purpose of one Generation attempt. A continuation is
-// represented as intent metadata rather than a synthetic history Message;
-// adapters may use the instruction to shape their request while the selected
-// Conversation path remains unchanged.
-export type GenerationIntent =
-	| { type: "sibling" }
-	| { type: "continuation"; strategy: "instruction"; instruction: string }
-	| { type: "continuation"; strategy: "assistant-prefill"; suffix: "" | " " | "\n" | "\n\n" };
-
 export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];
-}
-
-// Named, ordered, provider-neutral blocks. The plan keeps blocks separate so
-// a future Prompt Manager can reposition them without changing storage;
-// no vendor role names appear here.
-export type PromptBlock =
-	| { kind: "system-instruction"; content: string }
-	| { kind: "identity"; role: "human" | "model"; content: string }
-	| { kind: "scenario"; content: string }
-	| { kind: "example-dialogue"; content: string }
-	| { kind: "history"; speakerName: string | null; content: string; role: PromptHistoryRole }
-	| { kind: "post-history-instruction"; content: string };
-
-// A preserved unknown macro surfaced by prompt inspection. The block label
-// identifies where the macro appeared; the macro is the exact written text.
-export interface PromptWarning {
-	block: string;
-	macro: string;
-}
-
-export interface PromptPlan {
-	blocks: readonly PromptBlock[];
-	warnings: readonly PromptWarning[];
-	// Omitted for ordinary Tail and Sibling attempts. Continuation workflows
-	// attach this exact editable instruction without adding history.
-	intent?: GenerationIntent;
 }
 
 // Owner-relative macro context. `self` is the name of the Participant whose

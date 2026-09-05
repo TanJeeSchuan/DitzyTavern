@@ -16,6 +16,7 @@ import {
 	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
+import { applyCommand, requireSnapshot } from "./test-fixtures";
 
 // Targeted Swipe (new sibling Variant) eligibility is derived per Message
 // from its captured historical Control pair — never from current Control —
@@ -209,7 +210,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 			throw new Error("Preserved Message or Variant missing.");
 		}
 
-		const edited = module.execute({
+		const edited = applyCommand(module, {
 			conversationId: imported.id,
 			expectedRevision: imported.revision,
 			action: {
@@ -221,7 +222,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 		});
 		expect(edited.messages[0]?.variants[0]?.content).toBe("Edited preservation");
 		expect(
-			module.execute({
+			applyCommand(module, {
 				conversationId: imported.id,
 				expectedRevision: edited.revision,
 				action: {
@@ -274,7 +275,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 			humanParticipantId: control.humanId,
 			modelParticipantId: control.modelId,
 			capturedModelName: control.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -284,13 +285,15 @@ describe("Sibling Generation acceptance and resolution", () => {
 		module: ConversationModule,
 		input: ReturnType<typeof siblingInput>,
 		generationId: number,
-	) =>
+	) => {
 		module.resolveGeneration({
 			conversationId: input.conversationId,
 			generationId,
 			timestamp: input.timestamp,
 			content: input.content,
 		});
+		return requireSnapshot(module, input.conversationId);
+	};
 
 	test("appends a selected sibling Variant without touching Control, the Author Stamp, or the Message timestamp", () => {
 		const { module, snapshot } = setup(database);
@@ -529,7 +532,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 				humanParticipantId: modelId,
 				modelParticipantId: humanId,
 				capturedModelName: "Writer",
-				promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 				promptContext: [],
 				generationSettings: {},
 				connection: {},

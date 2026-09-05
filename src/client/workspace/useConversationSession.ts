@@ -7,6 +7,7 @@ import {
 import type { StoryAction, StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { useAsyncEffect } from "../lib/use-async";
+import { adoptConversationSummary } from "./conversation-session-state";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -25,37 +26,37 @@ export function useConversationSession({
 	dispatchStory,
 }: ConversationSessionOptions) {
 	const [activeChatId, setActiveChatId] = useState(initialWorkspace.activeChat.id);
-	const [conversation, setConversation] = useState<ConversationSummary | null>(null);
+	const [conversation, setConversationState] = useState<ConversationSummary | null>(null);
 	const activeChatIdRef = useRef(activeChatId);
 	activeChatIdRef.current = activeChatId;
+	const setConversation = useCallback((next: ConversationSummary | null) => {
+		setConversationState((current) => {
+			return adoptConversationSummary(current, next, activeChatIdRef.current);
+		});
+	}, []);
 
 	const activeChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
 
 	useAsyncEffect((isCancelled) => {
-		setConversation(null);
-		const conversationId = Number(activeChatId);
-		if (!Number.isInteger(conversationId) || conversationId <= 0) return;
-
-		loadConversation(conversationId)
-			.then((loaded) => {
-				if (!isCancelled()) setConversation(loaded);
-			})
-			.catch(() => {
-				if (!isCancelled()) setConversation(null);
-			});
-	}, [activeChatId]);
-
-	useAsyncEffect((isCancelled) => {
+		setConversationState(null);
 		const conversationId = Number(activeChatId);
 		if (!Number.isInteger(conversationId) || conversationId <= 0) return;
 
 		dispatchStory({ type: "chat-opened", conversationId });
-		void chatHistoryTransport.loadHistory(conversationId, { page: 1 }).then((outcome) => {
+		void Promise.all([
+			loadConversation(conversationId),
+			chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+		]).then(([loaded, outcome]) => {
 			if (isCancelled()) return;
+			setConversation(loaded);
 			if (outcome.status === "available") {
-				dispatchStory({ type: "first-page", page: outcome.page });
+				dispatchStory({
+					type: "first-page",
+					page: outcome.page,
+					activeGenerationIds: loaded?.activeGenerations.map(({ generationId }) => generationId),
+				});
 			} else {
 				dispatchStory({ type: "history-failed" });
 			}
@@ -89,7 +90,11 @@ export function useConversationSession({
 		if (Number(activeChatIdRef.current) !== conversationId) return freshConversation;
 		if (freshConversation !== null) setConversation(freshConversation);
 		if (freshHistory.status === "available") {
-			dispatchStory({ type: "first-page", page: freshHistory.page });
+			dispatchStory({
+				type: "first-page",
+				page: freshHistory.page,
+				activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId),
+			});
 		}
 		return freshConversation;
 	}, [dispatchStory]);

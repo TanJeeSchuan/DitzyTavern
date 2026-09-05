@@ -24,9 +24,13 @@ export async function generateTerminalTailFixture(
 	if (snapshot === undefined) {
 		throw new ConversationNotFoundError(input.conversationId);
 	}
-	const result = await continueGeneration(database, {
+	await continueGeneration(database, {
 		...input,
 		expectedRevision: snapshot.revision,
 	});
-	return result.conversation;
+	const committed = createConversationModule(database).getSnapshot(input.conversationId);
+	if (committed === undefined) {
+		throw new ConversationNotFoundError(input.conversationId);
+	}
+	return committed;
 }

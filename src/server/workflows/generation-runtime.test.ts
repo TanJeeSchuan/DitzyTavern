@@ -8,6 +8,45 @@ import {
 } from "./generation-runtime";
 
 describe("Generation runtime", () => {
+	test("retries a failed cadence checkpoint on forced flush", () => {
+		let attempts = 0;
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
+			startedAt: "2026-09-05T00:00:00Z",
+			checkpoint: { eventInterval: 1 },
+			onCheckpoint: () => {
+				attempts += 1;
+				if (attempts === 1) throw new Error("Checkpoint unavailable.");
+			},
+		});
+		runtime.publish({ type: "content", text: "Keep this." });
+		runtime.flushCheckpoint();
+		expect(attempts).toBe(2);
+		runtime.flushCheckpoint();
+		expect(attempts).toBe(2);
+	});
+
+	test("a failed final checkpoint prevents cancellation and preserves retryable output", () => {
+		let unavailable = true;
+		let persisted = "";
+		const runtime = new GenerationRuntimeRegistry().start({
+			generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
+			startedAt: "2026-09-05T00:00:00Z",
+			onCheckpoint: (output) => {
+				if (unavailable) throw new Error("Checkpoint unavailable.");
+				persisted = output.content;
+			},
+		});
+		runtime.publish({ type: "content", text: "Keep this." });
+		expect(() => runtime.stop()).toThrow("Checkpoint unavailable.");
+		expect(runtime.isStopRequested).toBe(false);
+		expect(runtime.signal.aborted).toBe(false);
+		unavailable = false;
+		runtime.stop();
+		expect(persisted).toBe("Keep this.");
+		expect(runtime.signal.aborted).toBe(true);
+	});
+
 	test("rejects a duplicate active generation id", () => {
 		const registry = new GenerationRuntimeRegistry();
 		const input = {

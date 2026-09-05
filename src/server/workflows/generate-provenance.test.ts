@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { openDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
+import { requireSnapshot } from "../conversation/test-fixtures";
 import type { PromptPlan } from "../prompt-compiler";
 import {
 	createFakeModelClient,
@@ -142,13 +143,13 @@ describe("Generation capture and provenance", () => {
 			profile: { ...profile, displayName: "Edited after start" },
 		});
 		release();
-		const committed = await generation;
+		await generation;
 		expect(receivedInput?.modelId).toBe("custom-before-discovery");
 		expect(receivedInput?.generationSettings).toMatchObject({
 		responseBudget: 128,
 		contextLimit: 8192,
 	});
-		const variant = committed.messages.at(-1)?.variants.at(-1);
+		const variant = requireSnapshot(createConversationModule(database), conversationId).messages.at(-1)?.variants.at(-1);
 		const provenance = variant?.data.find(
 			(entry) => entry.namespace === "generation" && entry.key === "provenance",
 		);
@@ -228,7 +229,7 @@ describe("Generation capture and provenance", () => {
 		if (inspection.effectiveSettings === null) throw new Error("Expected effective settings.");
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
-		const committed = await sendThroughProvisionalTailGeneration(database, {
+		await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: 1,
 			content: "Send with narrowed overrides.",
@@ -248,7 +249,7 @@ describe("Generation capture and provenance", () => {
 		expect(projectModelClientGenerationSettings(inspection.effectiveSettings))
 			.toEqual(receivedSettings);
 
-		const message = committed.conversation.messages.at(-1);
+		const message = requireSnapshot(createConversationModule(database), conversationId).messages.at(-1);
 		const variant = message?.variants[0];
 		if (message === undefined || variant === undefined) throw new Error("Variant missing.");
 		const provenance = variant.data.find(
@@ -329,12 +330,12 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
-		const sibling = (await generateSiblingVariant(database, {
+		await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
 			modelClient: fakeModelClient(() => "sibling generation"),
-		})).conversation;
-		const target = sibling.messages.find((message) => message.id === targetId);
+		});
+		const target = requireSnapshot(createConversationModule(database), conversationId).messages.find((message) => message.id === targetId);
 		if (target === undefined) throw new Error("Target Message disappeared.");
 		const provenance = target.variants.map((variant) => {
 			const entry = variant.data.find((item) => item.key === "provenance");

@@ -42,7 +42,12 @@ describe("Generation detail transport", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
 			promptPlan: {
-				blocks: [{ kind: "history", speakerName: "Writer", content: "Guide the scene." }],
+				blocks: [{
+					kind: "history",
+					speakerName: "Writer",
+					content: "Guide the scene.",
+					role: "human",
+				}],
 				warnings: [],
 			},
 			promptInspection: {

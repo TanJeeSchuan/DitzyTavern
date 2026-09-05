@@ -77,11 +77,9 @@ export const toSillyTavernImportSource = (input: {
 export const decodeSillyTavernImportReport = (
 	value: string,
 ): SillyTavernImportReport | null => {
-	let parsed: JsonValue;
+	let parsed: unknown;
 	try {
-		// ==[HUMAN APPROVED]== SAFETY: JSON.parse output is confined to the JSON value domain;
-		// the field checks below validate the complete report before returning it.
-		parsed = JSON.parse(value) as JsonValue;
+		parsed = JSON.parse(value);
 	} catch {
 		return null;
 	}
@@ -124,17 +122,16 @@ type JsonValue =
 	| number
 	| string
 	| JsonValue[]
-	| { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
+	| { [key: string]: JsonValue | undefined };
+type JsonObject = { [key: string]: JsonValue | undefined };
 
-const isJsonObject = (value: JsonValue): value is JsonObject =>
-	value !== null && !Array.isArray(value) && value.constructor === Object;
+const isJsonObject = (value: unknown): value is JsonObject =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isJsonString = (value: JsonValue): value is string =>
-	value !== null && value.constructor === String;
+const isJsonString = (value: unknown): value is string => typeof value === "string";
 
-const isJsonInteger = (value: JsonValue): value is number =>
-	value !== null && value.constructor === Number && Number.isInteger(value);
+const isJsonInteger = (value: unknown): value is number =>
+	typeof value === "number" && Number.isInteger(value);
 
 // ==[HUMAN APPROVED]== The sealed single-pass source decode shared by the developer import path
 // and the Staged Import: identical validation, counts, archive, and report,

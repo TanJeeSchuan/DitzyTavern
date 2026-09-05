@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, or } from "drizzle-orm";
 import { duplicateLabel } from "../../shared/cast";
 import {
 	activeGenerationTable,
@@ -15,7 +15,6 @@ import {
 	connectConversationDatabase,
 	groupRowsByNumber,
 	groupVariantsByMessage,
-	messageReferencesParticipant,
 	readActiveCast,
 	readControlAssignment,
 	type ConversationDatabase,
@@ -28,6 +27,7 @@ import type {
 	ConversationControlValidity,
 	ConversationMessageSnapshot,
 	ConversationSnapshot,
+	ConversationSummary,
 	ConversationVariantSnapshot,
 	ControlValidityReason,
 	HistoricalControlSnapshot,
@@ -107,18 +107,12 @@ export function deriveMessageSwipeEligibility(
 	}
 	return { eligible: true, reason: null };
 }
-// ==[HUMAN APPROVED]== Derives one Participant's removal eligibility and impact. Seated
-// Participants are protected (a Control seat must change first); every other
-// Cast member is eligible, and the deletion mode states whether removal
-// would hard-delete or tombstone. The affected-generation count states how
-// many Messages currently able to generate a new sibling Variant would lose
-// that ability. Messages are the only retained references, so the same
-// messages array drives both the reference check and the impact count. The
-// derivation covers exactly the Cast it is called with, so no caller ever
-// needs a fallback for a missing result.
-const deriveParticipantRemoval = (
+const deriveParticipantRemovalFromDatabase = (
+	db: ConversationDatabase,
+	conversationId: number,
 	participantId: number,
-	messages: readonly ConversationMessageSnapshot[],
+	castIds: readonly number[],
+	playable: boolean,
 	control: {
 		humanParticipantId: number | null;
 		modelParticipantId: number | null;
@@ -136,32 +130,41 @@ const deriveParticipantRemoval = (
 		};
 	}
 
-	let referenced = false;
-	let affectedGenerationCount = 0;
-	for (const message of messages) {
-		const row = {
-			authorParticipantId: message.author?.participantId ?? null,
-			contextHumanParticipantId:
-				message.historicalContext?.humanParticipantId ?? null,
-			contextModelParticipantId:
-				message.historicalContext?.modelParticipantId ?? null,
-		};
-		// ==[HUMAN APPROVED]== Same retained-reference rule the command enforces, so the derived
-		// impact can never drift from the persisted behavior.
-		if (messageReferencesParticipant(row, participantId)) {
-			referenced = true;
-		}
-		// ==[HUMAN APPROVED]== Author-only references are retained (tombstone required) but never
-		// count as regeneration loss: only Messages whose captured historical
-		// pair includes this Participant and that currently could generate a
-		// new sibling Variant lose that ability when it is removed.
-		const referencesContext =
-			row.contextHumanParticipantId === participantId ||
-			row.contextModelParticipantId === participantId;
-		if (referencesContext && message.swipe.eligible) {
-			affectedGenerationCount += 1;
-		}
-	}
+	const referenced =
+		db
+			.select({ id: messageTable.id })
+			.from(messageTable)
+			.where(
+				and(
+					eq(messageTable.conversation_id, conversationId),
+					or(
+						eq(messageTable.author_participant_id, participantId),
+						eq(messageTable.context_human_participant_id, participantId),
+						eq(messageTable.context_model_participant_id, participantId),
+					),
+				),
+			)
+			.limit(1)
+			.get() !== undefined;
+
+	const affectedGenerationCount =
+		!playable || castIds.length === 0
+			? 0
+			: db
+					.select({ value: count(messageTable.id) })
+					.from(messageTable)
+					.where(
+						and(
+							eq(messageTable.conversation_id, conversationId),
+							or(
+								eq(messageTable.context_human_participant_id, participantId),
+								eq(messageTable.context_model_participant_id, participantId),
+							),
+							inArray(messageTable.context_human_participant_id, castIds),
+							inArray(messageTable.context_model_participant_id, castIds),
+						),
+					)
+					.get()?.value ?? 0;
 
 	return {
 		eligible: true,
@@ -199,10 +202,128 @@ export function readConversationSnapshot(
 	);
 }
 
+export function readConversationSummary(
+	database: Database,
+	conversationId: number,
+): ConversationSummary | undefined {
+	return readConversationSummaryFromConnection(
+		connectConversationDatabase(database),
+		conversationId,
+	);
+}
+
 export function readConversationSnapshotFromConnection(
 	db: ConversationDatabase,
 	conversationId: number,
 ): ConversationSnapshot | undefined {
+	const summary = readConversationSummaryFromConnection(db, conversationId);
+	if (summary === undefined) return undefined;
+
+	const castIds = summary.cast.map((participant) => participant.id);
+	const castIdsSet = new Set(castIds);
+
+	const messageRows = db
+		.select()
+		.from(messageTable)
+		.where(eq(messageTable.conversation_id, conversationId))
+		.orderBy(asc(messageTable.position))
+		.all();
+	const messageIds = messageRows.map((message) => message.id);
+	const variantRows =
+		messageIds.length === 0
+			? []
+			: db
+					.select()
+					.from(messageVariantTable)
+					.where(inArray(messageVariantTable.message_id, messageIds))
+					.orderBy(
+						asc(messageVariantTable.message_id),
+						asc(messageVariantTable.position),
+					)
+					.all();
+	const variantIds = variantRows.map((variant) => variant.id);
+	const messageDataRows =
+		messageIds.length === 0
+			? []
+			: db
+					.select()
+					.from(messageDataTable)
+					.where(inArray(messageDataTable.message_id, messageIds))
+					.orderBy(
+						asc(messageDataTable.message_id),
+						asc(messageDataTable.namespace),
+						asc(messageDataTable.key),
+					)
+					.all();
+	const variantDataRows =
+		variantIds.length === 0
+			? []
+			: db
+					.select()
+					.from(messageVariantDataTable)
+					.where(inArray(messageVariantDataTable.message_variant_id, variantIds))
+					.orderBy(
+						asc(messageVariantDataTable.message_variant_id),
+						asc(messageVariantDataTable.namespace),
+						asc(messageVariantDataTable.key),
+					)
+					.all();
+
+	const variantDataByVariant = groupRowsByNumber(
+		variantDataRows,
+		(row) => row.message_variant_id,
+		toDataEntry,
+	);
+	const variantsByMessage = groupVariantsByMessage(
+		variantRows,
+		(variant): ConversationVariantSnapshot => ({
+			id: variant.id,
+			position: variant.position,
+			content: variant.content,
+			timestamp: variant.timestamp,
+			selected: variant.selected,
+			data: variantDataByVariant.get(variant.id) ?? [],
+		}),
+	);
+	const messageDataByMessage = groupRowsByNumber(
+		messageDataRows,
+		(row) => row.message_id,
+		toDataEntry,
+	);
+	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
+		const author = toAuthorStamp(message, castIdsSet);
+		const historicalContext = toHistoricalContext(message);
+		return {
+			id: message.id,
+			position: message.position,
+			timestamp: message.timestamp,
+			author,
+			historicalContext,
+			swipe: deriveMessageSwipeEligibility(
+				summary.playable,
+				historicalContext,
+				castIds,
+			),
+			variants: variantsByMessage.get(message.id) ?? [],
+			data: messageDataByMessage.get(message.id) ?? [],
+		};
+	});
+
+	const data = db
+		.select()
+		.from(conversationDataTable)
+		.where(eq(conversationDataTable.conversation_id, conversationId))
+		.orderBy(asc(conversationDataTable.namespace), asc(conversationDataTable.key))
+		.all()
+		.map(toDataEntry);
+
+	return { ...summary, messages, data };
+}
+
+export function readConversationSummaryFromConnection(
+	db: ConversationDatabase,
+	conversationId: number,
+): ConversationSummary | undefined {
 	const conversation = db
 		.select()
 		.from(conversationTable)
@@ -215,7 +336,6 @@ export function readConversationSnapshotFromConnection(
 	// part of the Cast and carry no position.
 	const castRows = readActiveCast(db, conversationId);
 	const castIds = castRows.map((participant) => participant.id);
-	const castIdsSet = new Set(castIds);
 
 	const openingRows =
 		castIds.length === 0
@@ -275,104 +395,6 @@ export function readConversationSnapshotFromConnection(
 		labelsById.set(participant.id, duplicateLabel(participant.name, occurrence));
 	}
 
-	const messageRows = db
-		.select()
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.orderBy(asc(messageTable.position))
-		.all();
-	const messageIds = messageRows.map((message) => message.id);
-	const variantRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantTable)
-					.where(inArray(messageVariantTable.message_id, messageIds))
-					.orderBy(
-						asc(messageVariantTable.message_id),
-						asc(messageVariantTable.position),
-					)
-					.all();
-	const variantIds = variantRows.map((variant) => variant.id);
-	const messageDataRows =
-		messageIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageDataTable)
-					.where(inArray(messageDataTable.message_id, messageIds))
-					.orderBy(
-						asc(messageDataTable.message_id),
-						asc(messageDataTable.namespace),
-						asc(messageDataTable.key),
-					)
-					.all();
-	const variantDataRows =
-		variantIds.length === 0
-			? []
-			: db
-					.select()
-					.from(messageVariantDataTable)
-					.where(inArray(messageVariantDataTable.message_variant_id, variantIds))
-					.orderBy(
-						asc(messageVariantDataTable.message_variant_id),
-						asc(messageVariantDataTable.namespace),
-						asc(messageVariantDataTable.key),
-					)
-					.all();
-
-	const variantDataByVariant = groupRowsByNumber(
-		variantDataRows,
-		(row) => row.message_variant_id,
-		toDataEntry,
-	);
-
-	const variantsByMessage = groupVariantsByMessage(
-		variantRows,
-		(variant): ConversationVariantSnapshot => ({
-			id: variant.id,
-			position: variant.position,
-			content: variant.content,
-			timestamp: variant.timestamp,
-			selected: variant.selected,
-			data: variantDataByVariant.get(variant.id) ?? [],
-		}),
-	);
-
-	const messageDataByMessage = groupRowsByNumber(
-		messageDataRows,
-		(row) => row.message_id,
-		toDataEntry,
-	);
-
-	const messages: ConversationMessageSnapshot[] = messageRows.map((message) => {
-		const author = toAuthorStamp(message, castIdsSet);
-		const historicalContext = toHistoricalContext(message);
-		return {
-			id: message.id,
-			position: message.position,
-			timestamp: message.timestamp,
-			author,
-			historicalContext,
-			swipe: deriveMessageSwipeEligibility(
-				playable,
-				historicalContext,
-				castIds,
-			),
-			variants: variantsByMessage.get(message.id) ?? [],
-			data: messageDataByMessage.get(message.id) ?? [],
-		};
-	});
-
-	const data = db
-		.select()
-		.from(conversationDataTable)
-		.where(eq(conversationDataTable.conversation_id, conversationId))
-		.orderBy(asc(conversationDataTable.namespace), asc(conversationDataTable.key))
-		.all()
-		.map(toDataEntry);
-
 	const activeGenerationRows = db
 		.select({
 			generationId: activeGenerationTable.id,
@@ -395,9 +417,12 @@ export function readConversationSnapshotFromConnection(
 		cast: cast.map((participant) => ({
 			...participant,
 			duplicateLabel: labelsById.get(participant.id) ?? participant.name,
-			removal: deriveParticipantRemoval(
+			removal: deriveParticipantRemovalFromDatabase(
+				db,
+				conversationId,
 				participant.id,
-				messages,
+				castIds,
+				playable,
 				control,
 			),
 		})),
@@ -406,7 +431,5 @@ export function readConversationSnapshotFromConnection(
 		playable,
 		capabilities: deriveCapabilities(playable),
 		activeGenerations: activeGenerationRows,
-		messages,
-		data,
 	};
 }

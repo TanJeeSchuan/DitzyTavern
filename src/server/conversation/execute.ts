@@ -33,10 +33,14 @@ import {
 } from "./internal";
 import {
 	advanceConversationRevisionGuarded,
-	requireConversationSnapshot,
+	requireConversationSummary,
 	runConversationTransaction,
 } from "./commands/transaction";
-import type { ConversationAction, ConversationCommand, ConversationSnapshot } from "./types";
+import type {
+	ConversationAction,
+	ConversationCommand,
+	ConversationSummary,
+} from "./types";
 
 // ==[HUMAN APPROVED]== The per-command gate policy: each command declares whether it
 // requires a playable Conversation and whether an Active Generation blocks
@@ -143,10 +147,11 @@ export const conversationCommandPolicy = {
 	[K in ConversationAction["type"]]: ConversationCommandPolicy<K>;
 };
 
-export function executeConversationCommand(
+function executeConversationCommandWithResult<T>(
 	database: Database,
 	command: ConversationCommand,
-): ConversationSnapshot {
+	readResult: (db: ConversationDatabase, conversationId: number) => T,
+): T {
 	return runConversationTransaction(database, (db) => {
 		const conversation = db
 			.select({ revision: conversationTable.revision })
@@ -195,6 +200,19 @@ export function executeConversationCommand(
 			command.expectedRevision,
 			conversation.revision,
 		);
-		return requireConversationSnapshot(db, command.conversationId);
+		return readResult(db, command.conversationId);
 	});
+}
+
+export function executeConversationCommand(
+	database: Database,
+	command: ConversationCommand,
+): ConversationSummary {
+	return executeConversationCommandWithResult(
+		database,
+		command,
+		(db, conversationId) => {
+			return requireConversationSummary(db, conversationId);
+		},
+	);
 }

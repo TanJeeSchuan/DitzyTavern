@@ -26,6 +26,7 @@ import {
 	type ConversationModule,
 	type ConversationDataEntry,
 	type ConversationSnapshot,
+	type ConversationSummary,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
@@ -86,7 +87,7 @@ async function notifyAccepted<Accepted>(
 // without asking the lifecycle anything further.
 interface AcceptedGenerationTarget {
 	generationId: number;
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 }
 
 interface GenerationLifecyclePolicy<
@@ -155,9 +156,14 @@ async function runGenerationLifecycle<
 				generationId: accepted.generationId,
 			});
 		},
-		resolve: (outcome) => ({
-			...accepted,
-			conversation: conversation.resolveGeneration({
+		resolve: (outcome) => {
+			conversation.checkpointGeneration({
+				conversationId: input.conversationId,
+				generationId: accepted.generationId,
+				content: outcome.content,
+				reasoning: outcome.reasoning,
+			});
+			const resolved = conversation.resolveGeneration({
 				conversationId: input.conversationId,
 				generationId: accepted.generationId,
 				timestamp,
@@ -166,8 +172,9 @@ async function runGenerationLifecycle<
 					...(policy.terminalData?.(capture) ?? []),
 					...generationOutcomeData(outcome),
 				],
-			}),
-		}),
+			});
+			return { ...accepted, conversation: resolved };
+		},
 	});
 }
 

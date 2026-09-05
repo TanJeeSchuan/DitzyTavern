@@ -23,6 +23,7 @@ import {
 	StaleConversationRevisionError,
 	type AcceptContinuationGenerationInput,
 } from ".";
+import { applyCommand, requireSnapshot } from "./test-fixtures";
 
 describe("Conversation module", () => {
 	let database: Database;
@@ -73,7 +74,7 @@ describe("Conversation module", () => {
 			throw new Error("Conversation snapshot missing.");
 		}
 
-		const updated = firstBrowser.execute({
+		const updated = applyCommand(firstBrowser, {
 			conversationId,
 			expectedRevision: firstSnapshot.revision,
 			action: {
@@ -112,7 +113,7 @@ describe("Conversation module", () => {
 
 	test("creates Messages with immutable Author Stamps captured server-side", () => {
 		const conversation = createConversationModule(database);
-		const created = conversation.execute({
+		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -130,7 +131,7 @@ describe("Conversation module", () => {
 			inCast: true,
 		});
 
-		const second = conversation.execute({
+		const second = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: created.revision,
 			action: {
@@ -154,7 +155,7 @@ describe("Conversation module", () => {
 		if (message === undefined || message.variants[1] === undefined) {
 			throw new Error("Created Variant missing.");
 		}
-		const edited = conversation.execute({
+		const edited = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: second.revision,
 			action: {
@@ -175,7 +176,7 @@ describe("Conversation module", () => {
 		const initial = module.getSnapshot(conversationId);
 		if (initial === undefined) throw new Error("Conversation snapshot missing.");
 
-		const withThird = module.execute({
+		const withThird = applyCommand(module, {
 			conversationId,
 			expectedRevision: initial.revision,
 			action: {
@@ -186,7 +187,7 @@ describe("Conversation module", () => {
 		const spareId = withThird.cast.at(-1)?.id;
 		if (spareId === undefined) throw new Error("Spare Participant missing.");
 
-		const reassigned = module.execute({
+		const reassigned = applyCommand(module, {
 			conversationId,
 			expectedRevision: withThird.revision,
 			action: {
@@ -195,7 +196,7 @@ describe("Conversation module", () => {
 				participantId: spareId,
 			},
 		});
-		const removed = module.execute({
+		const removed = applyCommand(module, {
 			conversationId,
 			expectedRevision: reassigned.revision,
 			action: { type: "remove-participant", participantId: modelId },
@@ -370,7 +371,7 @@ describe("Conversation module", () => {
 
 	test("compacts Variant positions and selects a replacement after deletion", () => {
 		const conversation = createConversationModule(database);
-		const created = conversation.execute({
+		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -387,7 +388,7 @@ describe("Conversation module", () => {
 			throw new Error("Created Message or Variant missing.");
 		}
 
-		const deleted = conversation.execute({
+		const deleted = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: created.revision,
 			action: {
@@ -405,7 +406,7 @@ describe("Conversation module", () => {
 		expect(variants.filter((variant) => variant.selected)).toHaveLength(1);
 		expect(variants[0]?.selected).toBe(true);
 
-		const withSibling = conversation.execute({
+		const withSibling = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: deleted.revision,
 			action: {
@@ -426,7 +427,7 @@ describe("Conversation module", () => {
 
 	test("protects the final Variant without advancing the revision", () => {
 		const conversation = createConversationModule(database);
-		const created = conversation.execute({
+		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -502,7 +503,7 @@ describe("Conversation module", () => {
 		}
 
 		// Reads, edits, selection, and configuration remain available.
-		const edited = module.execute({
+		const edited = applyCommand(module, {
 			conversationId: incomplete.id,
 			expectedRevision: incomplete.revision,
 			action: {
@@ -517,7 +518,7 @@ describe("Conversation module", () => {
 
 	test("owns scoped data and cascades Message deletion", () => {
 		const conversation = createConversationModule(database);
-		const created = conversation.execute({
+		const created = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -533,7 +534,7 @@ describe("Conversation module", () => {
 			throw new Error("Created Message or Variant missing.");
 		}
 
-		const withData = conversation.execute({
+		const withData = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: created.revision,
 			action: {
@@ -551,7 +552,7 @@ describe("Conversation module", () => {
 			{ namespace: "test", key: "outcome", value: "complete" },
 		]);
 
-		const deleted = conversation.execute({
+		const deleted = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: withData.revision,
 			action: { type: "delete-message", messageId: message.id },
@@ -700,7 +701,7 @@ describe("Conversation module", () => {
 
 		// The reservation is exact-match, not prefix-based: a namespace that
 		// merely extends an import-owned one stays generic.
-		const nearMiss = conversation.execute({
+		const nearMiss = applyCommand(conversation, {
 			conversationId: imported.id,
 			expectedRevision: imported.revision,
 			action: {
@@ -733,7 +734,7 @@ describe("Conversation module", () => {
 				value: "[]",
 			},
 		]);
-		const afterRejections = conversation.execute({
+		const afterRejections = applyCommand(conversation, {
 			conversationId: imported.id,
 			expectedRevision: nearMiss.revision,
 			action: {
@@ -758,7 +759,7 @@ describe("Conversation module", () => {
 		}
 		const originalAuthor = greeting.author;
 
-		const afterSelect = conversation.execute({
+		const afterSelect = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: snapshot.revision,
 			action: {
@@ -771,7 +772,7 @@ describe("Conversation module", () => {
 			afterSelect.messages.find((candidate) => candidate.id === greeting.id)?.author,
 		).toEqual(originalAuthor);
 
-		const afterSibling = conversation.execute({
+		const afterSibling = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: afterSelect.revision,
 			action: {
@@ -810,7 +811,7 @@ describe("Conversation module", () => {
 				modelParticipantId: modelId,
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
-				promptPlan: {},
+				promptPlan: { blocks: [], warnings: [] },
 				promptContext: [],
 				generationSettings: {},
 				connection: {},
@@ -834,7 +835,7 @@ describe("Conversation module", () => {
 			const accepted = accept(conversation);
 			const committed = resolve(conversation, accepted.generationId);
 
-			const message = committed.messages.at(-1);
+			const message = requireSnapshot(conversation, conversationId).messages.at(-1);
 			expect(message?.author).toEqual({
 				participantId: modelId,
 				capturedName: "Maren",

@@ -578,8 +578,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
 		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Once upon " });
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "a time" });
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Once upon ", generationId: 55, eventId: 1 });
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "a time", generationId: 55, eventId: 2 });
 
 		const variant = variantContent(state, 100);
 		expect(variant?.content).toBe("Once upon a time");
@@ -588,8 +588,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("an authoritative Content replace overwrites the accumulated text", () => {
 		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Stale tail" });
-		state = reduceStory(state, { type: "generation-content", messageId: 10, variantId: 100, content: "Authoritative" });
+		state = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 100, text: "Stale tail", generationId: 55, eventId: 1 });
+		state = reduceStory(state, { type: "generation-state", messageId: 10, variantId: 100, content: "Authoritative", reasoning: "", generationId: 55, eventId: 2 });
 
 		expect(variantContent(state, 100)?.content).toBe("Authoritative");
 	});
@@ -601,12 +601,17 @@ describe("streaming Provisional Variant content", () => {
 			messageId: 10,
 			variantId: 100,
 			text: "First thought. ",
+			generationId: 55,
+			eventId: 1,
 		});
 		state = reduceStory(state, {
-			type: "generation-reasoning",
+			type: "generation-state",
 			messageId: 10,
 			variantId: 100,
 			reasoning: "Authoritative thought.",
+			content: "Finished.",
+			generationId: 55,
+			eventId: 2,
 		});
 
 		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
@@ -626,6 +631,51 @@ describe("streaming Provisional Variant content", () => {
 
 		expect(variantContent(state, 100)?.content).toBe("Finished.");
 		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
+	});
+
+	test("history checkpoint and replay resume share one ordered projection", () => {
+		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		state = reduceStory(state, {
+			type: "first-page",
+			page: page({
+				messages: [message({
+					id: 10,
+					variants: [{
+						id: 100,
+						position: 1,
+						content: "Saved",
+						timestamp: "2026-01-01T00:00:00.000Z",
+						selected: true,
+						liveGeneration: {
+							generationId: 55,
+							eventId: 1,
+							content: "Saved",
+							reasoning: "",
+						},
+					}],
+				})],
+			}),
+			activeGenerationIds: [55],
+		});
+		state = reduceStory(state, {
+			type: "generation-content-delta",
+			messageId: 10,
+			variantId: 100,
+			generationId: 55,
+			eventId: 1,
+			text: "Saved",
+		});
+		expect(variantContent(state, 100)?.content).toBe("Saved");
+
+		state = reduceStory(state, {
+			type: "generation-content-delta",
+			messageId: 10,
+			variantId: 100,
+			generationId: 55,
+			eventId: 2,
+			text: " next",
+		});
+		expect(variantContent(state, 100)?.content).toBe("Saved next");
 	});
 
 	test("Reasoning Content reconstructs from authoritative history without prior client state", () => {
@@ -655,8 +705,8 @@ describe("streaming Provisional Variant content", () => {
 
 	test("deltas ignore Variants and Messages that are not in the current read model", () => {
 		const state = stateWithProvisional();
-		const untouched = reduceStory(state, { type: "generation-content-delta", messageId: 999, variantId: 100, text: "x" });
-		const unknownVariant = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 999, text: "x" });
+		const untouched = reduceStory(state, { type: "generation-content-delta", messageId: 999, variantId: 100, text: "x", generationId: 55, eventId: 1 });
+		const unknownVariant = reduceStory(state, { type: "generation-content-delta", messageId: 10, variantId: 999, text: "x", generationId: 55, eventId: 1 });
 
 		expect(variantContent(untouched, 100)?.content).toBe("");
 		expect(variantContent(unknownVariant, 100)?.content).toBe("");

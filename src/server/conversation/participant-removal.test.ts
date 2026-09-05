@@ -21,6 +21,7 @@ import {
 	type ConversationSnapshot,
 	type ParticipantDefinition,
 } from ".";
+import { applyCommand } from "./test-fixtures";
 import { generateSiblingVariant } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
@@ -59,7 +60,7 @@ describe("Participant removal", () => {
 		snapshot: ConversationSnapshot,
 		action: ConversationAction,
 	) =>
-		module.execute({
+		applyCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action,

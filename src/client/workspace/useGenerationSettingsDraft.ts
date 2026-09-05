@@ -153,6 +153,8 @@ export function useGenerationSettingsDraft({
 	const [status, setStatus] = useState<LoadStatus>("loading");
 	const [problem, setProblem] = useState<string | null>(null);
 	const conversationIdRef = useRef<number | null>(conversation?.id ?? null);
+	const draftVersionRef = useRef(0);
+	const saveVersionRef = useRef(0);
 	conversationIdRef.current = conversation?.id ?? null;
 
 	useAsyncEffect((isCancelled) => {
@@ -161,11 +163,17 @@ export function useGenerationSettingsDraft({
 			setStatus("loading");
 			return;
 		}
+		const loadDraftVersion = draftVersionRef.current;
 		setStatus("loading");
 		void loadConversationGenerationSettings(conversation.id)
 			.then((loaded) => {
 				if (isCancelled()) return;
 				setSettings(loaded);
+				if (draftVersionRef.current !== loadDraftVersion) {
+					setProblem(null);
+					setStatus("ready");
+					return;
+				}
 				setInstruction(loaded.continuationInstruction);
 				setStrategy(loaded.continuationStrategy);
 				setPrefillSuffix(loaded.continuationPrefillSuffix);
@@ -221,23 +229,39 @@ export function useGenerationSettingsDraft({
 		instruction.trim() !== "";
 
 	const updateSampling = (field: SamplingField, raw: string) => {
+		draftVersionRef.current += 1;
 		setProblem(null);
 		setSamplingDrafts((current) => ({ ...current, [field]: raw }));
 	};
 
 	const updateBudget = (field: BudgetField, raw: string) => {
+		draftVersionRef.current += 1;
 		setProblem(null);
 		setBudgetDrafts((current) => ({ ...current, [field]: raw }));
 	};
 
 	const updateOverrides = (namespace: OverridesNamespace, value: JsonData) => {
+		draftVersionRef.current += 1;
 		setProblem(null);
 		setOverridesDrafts((current) => ({ ...current, [namespace]: value }));
 	};
 
 	const updateInstruction = (value: string) => {
+		draftVersionRef.current += 1;
 		setProblem(null);
 		setInstruction(value);
+	};
+
+	const updateStrategy = (value: ConversationGenerationSettings["continuationStrategy"]) => {
+		draftVersionRef.current += 1;
+		setProblem(null);
+		setStrategy(value);
+	};
+
+	const updatePrefillSuffix = (value: ContinuationPrefillSuffix) => {
+		draftVersionRef.current += 1;
+		setProblem(null);
+		setPrefillSuffix(value);
 	};
 
 	const save = async () => {
@@ -248,8 +272,14 @@ export function useGenerationSettingsDraft({
 			budgetValues === null ||
 			overridesValues === null
 		) return;
+		const conversationId = conversation.id;
+		const draftVersion = draftVersionRef.current;
+		const saveVersion = ++saveVersionRef.current;
 		setStatus("saving");
-		const showUnreachable = () => setProblem(SAVE_NOTICES.unreachable);
+		const ownsSave = () => saveVersionRef.current === saveVersion && conversationIdRef.current === conversationId;
+		const showUnreachable = () => {
+			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
+		};
 		try {
 			await saveGenerationSettingsDraft({
 				conversation,
@@ -261,8 +291,16 @@ export function useGenerationSettingsDraft({
 					instruction,
 					prefillSuffix,
 				},
-				reconciliation: { adoptSnapshot: onConversationChange, showNotice: setProblem },
+				reconciliation: {
+					adoptSnapshot: (snapshot) => {
+						if (conversationIdRef.current === conversationId) onConversationChange(snapshot);
+					},
+					showNotice: (message) => {
+						if (ownsSave()) setProblem(message);
+					},
+				},
 				onApplied: (next) => {
+					if (!ownsSave() || draftVersionRef.current !== draftVersion) return;
 					setSettings(next);
 					setStrategy(next.continuationStrategy);
 					setPrefillSuffix(next.continuationPrefillSuffix);
@@ -274,7 +312,7 @@ export function useGenerationSettingsDraft({
 					// write itself re-reads the authoritative settings anyway.
 					void loadConversationGenerationSettings(current.id)
 						.then((fresh) => {
-							if (conversationIdRef.current === current.id) setSettings(fresh);
+							if (ownsSave() && conversationIdRef.current === current.id) setSettings(fresh);
 						})
 						.catch(() => undefined);
 				},
@@ -284,9 +322,9 @@ export function useGenerationSettingsDraft({
 		} catch {
 			// ==[HUMAN APPROVED]== The write-time read can fail before any command is sent; this
 			// surface owns the unreachable presentation for that case too.
-			setProblem(SAVE_NOTICES.unreachable);
+			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
 		} finally {
-			setStatus("ready");
+			if (ownsSave()) setStatus("ready");
 		}
 	};
 
@@ -297,9 +335,9 @@ export function useGenerationSettingsDraft({
 		transmittingNamespace,
 		instruction,
 		strategy,
-		setStrategy,
+		setStrategy: updateStrategy,
 		prefillSuffix,
-		setPrefillSuffix,
+		setPrefillSuffix: updatePrefillSuffix,
 		samplingDrafts,
 		updateSampling,
 		budgetDrafts,

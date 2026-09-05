@@ -11,7 +11,7 @@ import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { forkCharacter } from "../character-library";
 import { createConversationModule } from "../conversation";
-import type { ConversationSnapshot } from "../conversation/types";
+import type { ConversationSummary } from "../conversation/types";
 import { addCharacterToCastBody } from "../../shared/contract/conversation-schema";
 
 // ==[HUMAN APPROVED]== The input derives from the canonical add-character-to-cast wire
@@ -25,7 +25,7 @@ export type AddCharacterToCastInput = Static<typeof addCharacterToCastBody> & {
 export function addCharacterToCast(
 	database: Database,
 	input: AddCharacterToCastInput,
-): ConversationSnapshot {
+): ConversationSummary {
 	const add = database.transaction(() => {
 		const fork = forkCharacter(
 			database,

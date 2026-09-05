@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch } from "react";
 import { chatHistoryTransport } from "../chat-history";
 import {
 	applyConversationCommand,
@@ -30,7 +30,7 @@ type StoryMessageActionsOptions = {
 	story: StoryState;
 	conversation: ConversationSummary | null;
 	dispatchStory: Dispatch<StoryAction>;
-	setConversation: Dispatch<SetStateAction<ConversationSummary | null>>;
+	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
 	clearPreviewError: () => void;
 	onEnterPreview: () => void;

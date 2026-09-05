@@ -15,6 +15,7 @@ import {
 	stopConversationGeneration,
 	stopConversationGenerations,
 } from "./commands/active-generation";
+import { requireSnapshot } from "./test-fixtures";
 import { recoverActiveGenerations } from "../workflows";
 
 const prompt = {
@@ -59,7 +60,7 @@ describe("explicit Conversation Generation Stop", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -76,11 +77,12 @@ describe("explicit Conversation Generation Stop", () => {
 			latestEventId: 3,
 		});
 
-		const stopped = stopConversationGeneration(database, {
+		stopConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:01.000Z",
 		});
+		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
 		const modelMessage = stopped.messages.at(-1);
 		const variant = modelMessage?.variants[0];
 		if (modelMessage === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
@@ -140,10 +142,11 @@ describe("explicit Conversation Generation Stop", () => {
 		const input = setup();
 		const accepted = acceptTail(input, "Keep my input.");
 
-		const stopped = stopConversationGeneration(database, {
+		stopConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
+		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
 
 		expect(stopped.activeGenerations).toEqual([]);
 		expect(stopped.messages).toHaveLength(2);
@@ -163,7 +166,7 @@ describe("explicit Conversation Generation Stop", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -180,10 +183,11 @@ describe("explicit Conversation Generation Stop", () => {
 			latestEventId: 1,
 		});
 
-		const stopped = stopConversationGeneration(database, {
+		stopConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
+		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 		const stoppedMessage = stopped.messages[0];
 		const stoppedVariant = variants[1];
@@ -213,10 +217,11 @@ describe("explicit Conversation Generation Stop", () => {
 		const input = setup();
 		const accepted = acceptSibling(input);
 
-		const stopped = stopConversationGeneration(database, {
+		stopConversationGeneration(database, {
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
+		const stopped = createConversationModule(database).getSnapshot(input.created.id)!;
 		const variants = stopped.messages[0]?.variants ?? [];
 
 		expect(stopped.activeGenerations).toEqual([]);
@@ -236,7 +241,7 @@ describe("explicit Conversation Generation Stop", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -253,8 +258,9 @@ describe("explicit Conversation Generation Stop", () => {
 		expect(stopped.generationIds).toEqual([first.generationId, second.generationId]);
 		expect(stopped.conversation.activeGenerations).toEqual([]);
 		expect(stopped.conversation.revision).toBe((revisionBeforeStop ?? 0) + 1);
-		expect(stopped.conversation.messages[0]?.variants).toHaveLength(1);
-		expect(stopped.conversation.messages[0]?.variants[0]?.selected).toBe(true);
-		expect(stopped.conversation.messages[0]?.variants[0]?.content).toBe("Original answer.");
+		const surviving = requireSnapshot(input.module, input.created.id).messages[0]?.variants;
+		expect(surviving).toHaveLength(1);
+		expect(surviving?.[0]?.selected).toBe(true);
+		expect(surviving?.[0]?.content).toBe("Original answer.");
 	});
 });

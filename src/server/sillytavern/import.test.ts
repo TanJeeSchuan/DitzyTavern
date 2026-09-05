@@ -27,6 +27,7 @@ import {
 	SiblingVariantUnavailableError,
 	createConversationModule,
 } from "../conversation";
+import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { createFakeModelClient } from "../model-client";
 import {
 	generateSiblingVariant,
@@ -572,7 +573,7 @@ describe("SillyTavern chat import", () => {
 		// and scoped data commands are never play-gated, and they keep
 		// storing against the preserved history.
 		const variantId = conversation.messages[0]?.variants[0]?.id ?? 0;
-		const edited = module.execute({
+		const edited = applyCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -585,7 +586,7 @@ describe("SillyTavern chat import", () => {
 		expect(edited.messages[0]?.variants[0]?.content).toBe(
 			"Edited preserved text",
 		);
-		const configured = module.execute({
+		const configured = applyCommand(module, {
 			conversationId: edited.id,
 			expectedRevision: edited.revision,
 			action: {
@@ -601,7 +602,7 @@ describe("SillyTavern chat import", () => {
 			key: "note",
 			value: "preserved",
 		});
-		const cleared = module.execute({
+		const cleared = applyCommand(module, {
 			conversationId: configured.id,
 			expectedRevision: configured.revision,
 			action: {
@@ -617,7 +618,7 @@ describe("SillyTavern chat import", () => {
 
 		// Adding the missing Participant derives playability automatically;
 		// no status toggle exists or is needed.
-		const completed = module.execute({
+		const completed = applyCommand(module, {
 			conversationId: cleared.id,
 			expectedRevision: cleared.revision,
 			action: {
@@ -678,7 +679,7 @@ describe("SillyTavern chat import", () => {
 		// Existing Variants remain selectable and editable.
 		const secondVariant = swipeMessage?.variants[1];
 		expect(secondVariant).toBeDefined();
-		const selected = module.execute({
+		const selected = applyCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -690,7 +691,7 @@ describe("SillyTavern chat import", () => {
 		expect(
 			selected.messages[0]?.variants.map((variant) => variant.selected),
 		).toEqual([false, true, false, false]);
-		const edited = module.execute({
+		const edited = applyCommand(module, {
 			conversationId: selected.id,
 			expectedRevision: selected.revision,
 			action: {
@@ -714,7 +715,7 @@ describe("SillyTavern chat import", () => {
 			writeSource([header, first]),
 		);
 		const module = createConversationModule(database);
-		const completed = module.execute({
+		const completed = applyCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -743,14 +744,14 @@ describe("SillyTavern chat import", () => {
 		const model = completed.cast[1];
 		expect(human).toBeDefined();
 		expect(model).toBeDefined();
-		const { conversation: generated, messageId } = await sendThroughProvisionalTailGeneration(database, {
+		const { messageId } = await sendThroughProvisionalTailGeneration(database, {
 			conversationId: completed.id,
 			expectedRevision: completed.revision,
 			content: "The lamp is lit again.",
 			timestamp: "2026-08-08T14:30:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers at last."),
 		});
-		const nativeMessage = generated.messages.find(
+		const nativeMessage = requireSnapshot(module, completed.id).messages.find(
 			(message) => message.id === messageId,
 		);
 		expect(nativeMessage).toBeDefined();
@@ -768,12 +769,13 @@ describe("SillyTavern chat import", () => {
 		// native Message: targeted Swipe generation works and leaves current
 		// Control and the Author Stamp untouched.
 		expect(nativeMessage?.swipe).toEqual({ eligible: true, reason: null });
-		const sibling = (await generateSiblingVariant(database, {
-			conversationId: generated.id,
+		await generateSiblingVariant(database, {
+			conversationId: completed.id,
 			messageId,
 			timestamp: "2026-08-08T14:31:00.000Z",
 			modelClient: createFakeModelClient(() => "The lamp answers differently."),
-		})).conversation;
+		});
+		const sibling = requireSnapshot(module, completed.id);
 		const siblingTarget = sibling.messages.find(
 			(message) => message.id === messageId,
 		);

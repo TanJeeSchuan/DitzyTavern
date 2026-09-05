@@ -24,6 +24,7 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
+import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -612,7 +613,7 @@ describe("Generation runtime behavior", () => {
 		const conversation = createConversationModule(database);
 		let current = conversation.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
-		current = conversation.execute({
+		current = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: current.revision,
 			action: {
@@ -622,7 +623,7 @@ describe("Generation runtime behavior", () => {
 				authorParticipantId: modelId,
 			},
 		});
-		current = conversation.execute({
+		current = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: current.revision,
 			action: {
@@ -651,7 +652,7 @@ describe("Generation runtime behavior", () => {
 
 		const estimates = [200, 100];
 		let receivedPlan: PromptPlan | undefined;
-		const { conversation: committed } = await sendThroughProvisionalTailGeneration(database, {
+		await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: current.revision,
 			content: "Latest human input.",
@@ -666,14 +667,14 @@ describe("Generation runtime behavior", () => {
 			{ kind: "history", speakerName: "Maren Voss", content: "Older model history.", role: "model" },
 			{ kind: "history", speakerName: "Writer", content: "Latest human input.", role: "human" },
 		]);
-		expect(committed.messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
+		expect(requireSnapshot(conversation, conversationId).messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
 	});
 
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
 		const conversation = createConversationModule(database);
 		let current = conversation.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
-		current = conversation.execute({
+		current = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: current.revision,
 			action: {
@@ -753,7 +754,7 @@ describe("Generation runtime behavior", () => {
 		});
 		let current = conversation.getSnapshot(conversationId);
 		if (current === undefined) throw new Error("Snapshot missing.");
-		current = conversation.execute({
+		current = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: current.revision,
 			action: {
@@ -763,7 +764,7 @@ describe("Generation runtime behavior", () => {
 				authorParticipantId: humanId,
 			},
 		});
-		current = conversation.execute({
+		current = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: current.revision,
 			action: {
@@ -792,7 +793,7 @@ describe("Generation runtime behavior", () => {
 
 		let receivedPlan: PromptPlan | undefined;
 		const estimates = [200, 100];
-		const sibling = (await generateSiblingVariant(database, {
+		await generateSiblingVariant(database, {
 			conversationId,
 			messageId: targetId,
 			modelClient: createFakeModelClient(({ promptPlan }) => {
@@ -800,12 +801,12 @@ describe("Generation runtime behavior", () => {
 				return "Budgeted sibling output.";
 			}),
 			tokenEstimator: () => estimates.shift() ?? 100,
-		})).conversation;
+		});
 
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Writer", content: "Human context before target.", role: "human" },
 		]);
-		const siblingTarget = sibling.messages.find((message) => message.id === targetId);
+		const siblingTarget = requireSnapshot(conversation, conversationId).messages.find((message) => message.id === targetId);
 		expect(siblingTarget?.variants.at(-1)?.content).toBe("Budgeted sibling output.");
 	});
 

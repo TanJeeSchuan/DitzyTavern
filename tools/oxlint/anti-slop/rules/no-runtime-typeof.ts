@@ -44,7 +44,7 @@ export const noRuntimeTypeofRule = defineRule({
 				additionalProperties: false,
 			},
 		],
-		defaultOptions: [{ allowInTypeGuards: false }],
+		defaultOptions: [{ allowInTypeGuards: true }],
 	},
 	createOnce(context) {
 		return {

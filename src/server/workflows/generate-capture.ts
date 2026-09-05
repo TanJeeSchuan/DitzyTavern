@@ -26,8 +26,7 @@ import {
 import type {
 	GenerationIntent,
 	PromptBudgetResult,
-	PromptContextEntry,
-	PromptPlan,
+	PromptContextEntry,
 	TokenEstimator,
 } from "../prompt-compiler";
 import {
@@ -284,7 +283,7 @@ export function capturedAcceptanceFields(
 		modelParticipantId: capture.control.modelParticipantId,
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
-		promptPlan: promptPlanJson(capture.plan.promptPlan),
+		promptPlan: capture.plan.promptPlan,
 		promptInspection: promptInspectionJson(capture.plan.budget),
 		promptContext: promptContextJson(capture.context),
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
@@ -365,21 +364,6 @@ export const promptContextJson = (
 // ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
 // provider-neutral captures. These explicit projections keep provider and
 // class instances out of the Conversation domain boundary.
-export const promptPlanJson = (plan: PromptPlan): ConversationJsonValue => {
-	const result = {
-		blocks: plan.blocks.map((block): ConversationJsonValue => block.kind === "identity"
-			? { kind: block.kind, role: block.role, content: block.content }
-			: block.kind === "history"
-				? { kind: block.kind, speakerName: block.speakerName, content: block.content }
-				: { kind: block.kind, content: block.content }),
-		warnings: plan.warnings.map((warning) => ({
-			block: warning.block,
-			macro: warning.macro,
-		})),
-	} satisfies ConversationJsonValue;
-	return plan.intent === undefined ? result : { ...result, intent: plan.intent };
-};
-
 // ==[HUMAN APPROVED]== Active Generation persistence stores the attempt's Effective Generation
 // Settings for inspection. The projection is compile-locked to the canonical
 // vocabulary: adding a canonical field fails typecheck until persistence

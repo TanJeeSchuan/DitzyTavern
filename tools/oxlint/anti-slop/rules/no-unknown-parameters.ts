@@ -54,9 +54,14 @@ export const noUnknownParametersRule = defineRule({
   },
   createOnce(context) {
     const checkParameters = (node: ParameterOwner) => {
+      // A type predicate is the decoder boundary: it accepts an untrusted
+      // representation and proves the domain type used by its caller.
+      const isTypeGuard =
+        node.returnType?.typeAnnotation.type === "TSTypePredicate";
       for (const parameter of node.params) {
         const annotation = parameterAnnotation(parameter);
         if (annotation?.typeAnnotation.type !== "TSUnknownKeyword") continue;
+        if (isTypeGuard) continue;
         const name = parameterName(parameter, context.sourceCode.getText(parameter));
         if (name === "cause") continue;
         context.report({

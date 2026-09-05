@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { ActiveGenerationDetails } from "../shared/contract/conversation-schema";
 
 const originalFetch = globalThis.fetch;
 Object.defineProperty(globalThis, "window", {
@@ -18,19 +19,27 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-const retainedInspection = (status: "active" | "complete" | "length-limited" | "interrupted") => ({
+const retainedInspection = (status: ActiveGenerationDetails["status"]): ActiveGenerationDetails => ({
 	conversationId: 3,
 	generationId: 7,
 	messageId: 11,
 	variantId: 13,
 	startedAt: "2026-08-27T00:00:00.000Z",
 	status,
-	intent: { type: "continuation", strategy: "instruction" },
+	intent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
 	participants: {
 		human: { id: 17, name: "Writer" },
 		model: { id: 19, name: "Maren" },
 	},
-	promptPlan: { blocks: [{ kind: "history", content: "Retained context." }], warnings: [] },
+	promptPlan: {
+		blocks: [{
+			kind: "history",
+			speakerName: null,
+			content: "Retained context.",
+			role: "model",
+		}],
+		warnings: [],
+	},
 	promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
 	generationSettings: { modelId: "test-model" },
 	connection: { profileId: 23 },

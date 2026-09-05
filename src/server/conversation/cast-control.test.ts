@@ -18,6 +18,7 @@ import {
 } from ".";
 import type { ConversationModule } from ".";
 import type { ConversationAction, ParticipantDefinition } from ".";
+import { applyCommand } from "./test-fixtures";
 
 const emptyPrompt = () => ({
 	systemInstruction: "",
@@ -71,7 +72,7 @@ describe("Cast and Control management", () => {
 		snapshot: ConversationSnapshot,
 		action: ConversationAction,
 	) =>
-		module.execute({
+		applyCommand(module, {
 			conversationId: snapshot.id,
 			expectedRevision: snapshot.revision,
 			action,

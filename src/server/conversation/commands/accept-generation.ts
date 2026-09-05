@@ -34,7 +34,7 @@ import {
 import {
 	advanceConversationRevision,
 	advanceConversationRevisionGuarded,
-	requireConversationSnapshot,
+	requireConversationSummary,
 	runConversationTransaction,
 } from "./transaction";
 import { isSiblingGenerationRow } from "./active-generation";
@@ -46,7 +46,7 @@ import type {
 	AcceptContinuationGenerationInput,
 	AcceptTailGenerationInput,
 	ConversationJsonValue,
-	ConversationSnapshot,
+	ConversationSummary,
 } from "../types";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
@@ -268,7 +268,7 @@ interface AcceptGenerationTargetInput<Validation extends AcceptGenerationValidat
 interface AcceptedGenerationTarget<Validation extends AcceptGenerationValidation> {
 	generationId: number;
 	provisional: ProvisionalModelTarget;
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 	validation: Validation;
 }
 
@@ -342,7 +342,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 		return {
 			generationId: activeGenerationId,
 			provisional,
-			conversation: requireConversationSnapshot(db, input.conversationId),
+			conversation: requireConversationSummary(db, input.conversationId),
 			validation,
 		};
 	});

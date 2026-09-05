@@ -55,13 +55,18 @@ export function generationSessionStoryAction(
 				messageId: effect.messageId,
 				variantId: effect.variantId,
 				text: effect.text,
+				generationId: effect.generationId,
+				eventId: effect.eventId,
 			};
-		case "story-content-replace":
+		case "story-state":
 			return {
-				type: "generation-content",
+				type: "generation-state",
 				messageId: effect.messageId,
 				variantId: effect.variantId,
 				content: effect.content,
+				reasoning: effect.reasoning,
+				generationId: effect.generationId,
+				eventId: effect.eventId,
 			};
 		case "story-reasoning-delta":
 			return {
@@ -69,13 +74,8 @@ export function generationSessionStoryAction(
 				messageId: effect.messageId,
 				variantId: effect.variantId,
 				text: effect.text,
-			};
-		case "story-reasoning-replace":
-			return {
-				type: "generation-reasoning",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				reasoning: effect.reasoning,
+				generationId: effect.generationId,
+				eventId: effect.eventId,
 			};
 	}
 }
@@ -148,13 +148,21 @@ export function useGenerationController({
 		runner.dispatch({
 			type: "targets-observed",
 			conversationId: conversation.id,
-			targets: conversation.activeGenerations.map(({ generationId, messageId, variantId }) => ({
-				generationId,
-				messageId,
-				variantId,
-			})),
+			targets: conversation.activeGenerations.map(({ generationId, messageId, variantId }) => {
+				const variant = story.messages
+					.find((message) => message.id === messageId)
+					?.swipes.find((entry) => entry.id === variantId);
+				return {
+					generationId,
+					messageId,
+					variantId,
+					initialEventId: variant?.generationId === generationId
+						? variant.lastEventId
+						: undefined,
+				};
+			}),
 		});
-	}, [runner, conversation]);
+	}, [runner, conversation, story]);
 
 	const sessions = useSyncExternalStore(runner.subscribe, runner.getSnapshot);
 	const hasSessions = hasActiveGenerationSessions(sessions);

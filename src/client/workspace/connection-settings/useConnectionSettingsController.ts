@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import { JsonData } from "json-edit-react";
 import {
 	loadConnectionPresets,
@@ -148,10 +148,12 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		conflict,
 		notice,
 		error,
+		editorVersion,
 	} = state;
 	const [loading, setLoading] = useState(true);
 	const [testPending, setTestPending] = useState(false);
 	const [discoveryPending, setDiscoveryPending] = useState(false);
+	const commandIdRef = useRef(0);
 
 	const setDraft = (value: ConnectionProfileDraft) => dispatch({ type: "set-draft", draft: value });
 	const setCredentialDraft = (value: string) => dispatch({ type: "set-credential-draft", value });
@@ -208,15 +210,17 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const runConnectionCommand = async (
 		command: () => Promise<ConnectionSettingsResult>,
 		conflictError: string,
+		commandId?: number,
 	): Promise<AppliedConnectionSettings | null> => {
 		const result = await command();
 		if (result.outcome === "applied") return result;
 		if (result.outcome === "conflict") {
-			dispatch({ type: "command-conflict", conflict: result, message: conflictError });
+			dispatch({ type: "command-conflict", conflict: result, message: conflictError, commandId });
 		} else {
-			dispatch({
-				type: "set-error",
-				message: result.outcome === "invalid" ? result.reason : PROFILE_NOT_FOUND_ERROR,
+				dispatch({
+					type: "set-error",
+					message: result.outcome === "invalid" ? result.reason : PROFILE_NOT_FOUND_ERROR,
+					commandId,
 			});
 		}
 		return null;
@@ -290,12 +294,16 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		const appliedProfileId = selectedProfileId;
 		const appliedDraftDisplayName = draft.displayName;
 		const credentialWasProvided = credentialDraft.length > 0;
+		const requestEditorVersion = editorVersion;
+		const commandId = ++commandIdRef.current;
+		dispatch({ type: "command-started", commandId });
 		const command: ConnectionSettingsCommand = selectedProfileId === null
 			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
 			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
 		const applied = await runConnectionCommand(
 			() => saveConnectionCommand(command),
 			APPLY_CONFLICT_ERROR,
+			commandId,
 		);
 		if (applied === null) return;
 		dispatch({
@@ -304,18 +312,25 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			selectedProfileId: appliedProfileId,
 			draftDisplayName: appliedDraftDisplayName,
 			credentialWasProvided,
+			editorVersion: requestEditorVersion,
+			commandId,
 		});
 	};
 
 	const updateCredential = async () => {
 		if (settings === null || selectedProfileId === null || credentialDraft.length === 0) return;
 		dispatch({ type: "clear-feedback" });
+		const profileId = selectedProfileId;
+		const requestEditorVersion = editorVersion;
+		const commandId = ++commandIdRef.current;
+		dispatch({ type: "command-started", commandId });
 		const applied = await runConnectionCommand(
-			() => saveConnectionCommand({ type: "set-credential", expectedRevision: settings.revision, profileId: selectedProfileId, credential: credentialDraft }),
+			() => saveConnectionCommand({ type: "set-credential", expectedRevision: settings.revision, profileId, credential: credentialDraft }),
 			CREDENTIAL_CONFLICT_ERROR,
+			commandId,
 		);
 		if (applied === null) return;
-		dispatch({ type: "credential-succeeded", settings: applied.settings });
+		dispatch({ type: "credential-succeeded", settings: applied.settings, profileId, editorVersion: requestEditorVersion, commandId });
 	};
 
 	const activateSelectedProfile = async () => {
@@ -346,9 +361,13 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		if (deletingActive && settings.profiles.length > 1 && replacement === null) { dispatch({ type: "set-error", message: "Choose a replacement Profile before deleting the active Profile." }); return; }
 		dispatch({ type: "clear-feedback" });
 		const deletedDisplayName = pendingDeletionProfile.displayName;
+		const requestEditorVersion = editorVersion;
+		const commandId = ++commandIdRef.current;
+		dispatch({ type: "command-started", commandId });
 		const applied = await runConnectionCommand(
 			() => saveConnectionCommand({ type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id, replacementProfileId: replacement }),
 			APPLY_CONFLICT_ERROR,
+			commandId,
 		);
 		if (applied === null) return;
 		dispatch({
@@ -356,6 +375,8 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			settings: applied.settings,
 			deletedDisplayName,
 			replacementProfileId: replacement,
+			editorVersion: requestEditorVersion,
+			commandId,
 		});
 	};
 

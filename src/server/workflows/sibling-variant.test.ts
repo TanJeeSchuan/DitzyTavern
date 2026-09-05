@@ -19,6 +19,7 @@ import {
 	startServerOwnedSiblingGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
+import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
@@ -104,14 +105,14 @@ describe("Historical sibling Variant generation", () => {
 	const adaptiveControl = async () => {
 		// Current model Control moves to a third Participant while the older
 		// Messages keep their captured Writer/Maren pair.
-		const withJuno = module().execute({
+		const withJuno = applyCommand(module(), {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "add-participant", definition: adHoc("Juno Ashfeld") },
 		});
 		conversation = withJuno;
 		const junoId = withJuno.cast[2]?.id ?? 0;
-		conversation = module().execute({
+		conversation = applyCommand(module(), {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "assign-control", seat: "model", participantId: junoId },
@@ -124,7 +125,7 @@ describe("Historical sibling Variant generation", () => {
 		content: string,
 		options: { timestamp?: string; capture: (plan: PromptPlan) => void },
 	) => {
-		const result = await generateSiblingVariant(database, {
+		await generateSiblingVariant(database, {
 			conversationId: conversation.id,
 			messageId,
 			timestamp: options.timestamp ?? "2026-08-20T14:00:00Z",
@@ -133,7 +134,7 @@ describe("Historical sibling Variant generation", () => {
 				return content;
 			}),
 		});
-		conversation = result.conversation;
+		conversation = requireSnapshot(module(), conversation.id);
 		return conversation;
 	};
 
@@ -207,7 +208,7 @@ describe("Historical sibling Variant generation", () => {
 		await generateOnce(["The keeper answers."]);
 
 		// Rename the historical model Participant and replace its Prompt.
-		const renamed = module().execute({
+		const renamed = applyCommand(module(), {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -217,7 +218,7 @@ describe("Historical sibling Variant generation", () => {
 			},
 		});
 		conversation = renamed;
-		conversation = module().execute({
+		conversation = applyCommand(module(), {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -393,7 +394,7 @@ describe("Historical sibling Variant generation", () => {
 		// sibling plan's history.
 		const selected = first.variants[0];
 		if (selected === undefined) throw new Error("Variant missing.");
-		conversation = module().execute({
+		conversation = applyCommand(module(), {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: {
@@ -580,7 +581,7 @@ describe("Historical sibling Variant generation", () => {
 			messageId: targetId,
 			provisionalVariantId: expect.any(Number),
 		}));
-		const sibling = siblingResult.conversation;
+		const sibling = requireSnapshot(module, conversation.id);
 		const target = sibling.messages.find((message) => message.id === targetId);
 		const variant = target?.variants.at(-1);
 		if (target === undefined || variant === undefined) throw new Error("Variant missing.");
@@ -601,7 +602,7 @@ describe("Historical sibling Variant generation", () => {
 		const greeting = conversation.messages[0];
 		if (greeting === undefined) throw new Error("Greeting missing.");
 
-		const result = await generateSiblingVariant(database, {
+		await generateSiblingVariant(database, {
 			conversationId: conversation.id,
 			messageId: greeting.id,
 			modelClient: createFakeModelClient(() => [
@@ -609,7 +610,7 @@ describe("Historical sibling Variant generation", () => {
 				{ type: "failed", kind: "transport", message: "Connection dropped." },
 			]),
 		});
-		conversation = result.conversation;
+		conversation = requireSnapshot(module(), conversation.id);
 
 		const message = conversation.messages.find((candidate) => candidate.id === greeting.id);
 		expect(message?.variants.map((variant) => variant.content)).toEqual([
@@ -683,7 +684,7 @@ describe("Historical sibling Variant generation", () => {
 		expect(result.messageId).toBe(greeting.id);
 		expect(result.provisionalVariantId).toBeGreaterThan(0);
 		expect(result.conversation.id).toBe(conversation.id);
-		const variant = result.conversation.messages[0]?.variants.at(-1);
+		const variant = requireSnapshot(module(), conversation.id).messages[0]?.variants.at(-1);
 		expect(variant?.id).toBe(result.provisionalVariantId);
 		expect(variant?.content).toBe("Direct result output.");
 	});

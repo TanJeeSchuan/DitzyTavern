@@ -102,7 +102,7 @@ const staleConversationConflict = (
 			currentConversation: ReturnType<typeof toConversationSummary>;
 	  } => {
 	const current = withConversationModule(database, (conversationModule) =>
-		conversationModule.getSnapshot(conversationId),
+		conversationModule.getSummary(conversationId),
 	);
 	if (current === undefined) {
 		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
@@ -242,8 +242,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id",
 			({ params }) =>
 				readConversationOr404(database, (conversationModule) => {
-					const conversation = conversationModule.getSnapshot(params.id);
-					return conversation === undefined ? undefined : toConversationSummary(conversation);
+					return conversationModule.getSummary(params.id);
 				}),
 			{
 				params: conversationIdParams,

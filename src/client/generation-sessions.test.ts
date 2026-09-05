@@ -85,7 +85,7 @@ describe("the Generation session collection", () => {
 		});
 		state = first.state;
 		expect(first.effects).toEqual([
-			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "First " },
+			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "First ", generationId: 7, eventId: 1 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(1);
 		expect(stateText(state, 8)?.lastEventId).toBe(0);
@@ -99,7 +99,7 @@ describe("the Generation session collection", () => {
 		});
 		state = second.state;
 		expect(second.effects).toEqual([
-			{ kind: "story-content-delta", messageId: 908, variantId: 9_008, text: "Second " },
+			{ kind: "story-content-delta", messageId: 908, variantId: 9_008, text: "Second ", generationId: 8, eventId: 1 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(1);
 		expect(stateText(state, 8)?.lastEventId).toBe(1);
@@ -111,13 +111,13 @@ describe("the Generation session collection", () => {
 		const content = run(state, { type: "event-observed", generationId: 7, eventId: 1, event: contentEvent("Text") });
 		state = content.state;
 		expect(content.effects).toEqual([
-			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "Text" },
+			{ kind: "story-content-delta", messageId: 907, variantId: 9_007, text: "Text", generationId: 7, eventId: 1 },
 		]);
 
 		const reasoning = run(state, { type: "event-observed", generationId: 7, eventId: 2, event: reasoningEvent("Thought") });
 		state = reasoning.state;
 		expect(reasoning.effects).toEqual([
-			{ kind: "story-reasoning-delta", messageId: 907, variantId: 9_007, text: "Thought" },
+			{ kind: "story-reasoning-delta", messageId: 907, variantId: 9_007, text: "Thought", generationId: 7, eventId: 2 },
 		]);
 
 		const silent: GenerationEvent[] = [
@@ -208,8 +208,7 @@ describe("the Generation session collection", () => {
 		const applied = run(state, { type: "state-observed", generationId: 7, state: snapshot });
 		state = applied.state;
 		expect(applied.effects).toEqual([
-			{ kind: "story-content-replace", messageId: 907, variantId: 9_007, content: "Checkpointed." },
-			{ kind: "story-reasoning-replace", messageId: 907, variantId: 9_007, reasoning: "Private." },
+			{ kind: "story-state", messageId: 907, variantId: 9_007, content: "Checkpointed.", reasoning: "Private.", generationId: 7, eventId: 4 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(4);
 		expect(stateText(state, 7)?.phase).toBe("observing");
@@ -537,14 +536,14 @@ describe("the Generation session collection", () => {
 			...settledFirst.effects,
 			...secondDelta.effects,
 			...settledSecond.effects,
-		].filter((effect): effect is Extract<GenerationSessionEffect, { kind: "story-content-delta" | "story-content-replace" }> =>
-			effect.kind === "story-content-delta" || effect.kind === "story-content-replace");
+		].filter((effect): effect is Extract<GenerationSessionEffect, { kind: "story-content-delta" | "story-state" }> =>
+			effect.kind === "story-content-delta" || effect.kind === "story-state");
 		// Every story effect is addressed by Variant id; terminal completion
 		// contributes no story effect at all, so completion order cannot
 		// influence Variant positions (those stay server-owned).
 		expect(storyTargets).toEqual([
-			{ kind: "story-content-delta", messageId: 500, variantId: 6_002, text: "Second accepted, first done" },
-			{ kind: "story-content-delta", messageId: 500, variantId: 6_001, text: "First accepted, second done" },
+			{ kind: "story-content-delta", messageId: 500, variantId: 6_002, text: "Second accepted, first done", generationId: 8, eventId: 1 },
+			{ kind: "story-content-delta", messageId: 500, variantId: 6_001, text: "First accepted, second done", generationId: 7, eventId: 1 },
 		]);
 	});
 

@@ -136,9 +136,8 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 				host.refreshConversation(effect.conversationId);
 				return;
 			case "story-content-delta":
-			case "story-content-replace":
 			case "story-reasoning-delta":
-			case "story-reasoning-replace":
+			case "story-state":
 				host.applyStoryEffect(effect);
 				return;
 		}

@@ -1,5 +1,5 @@
 import type { CharacterSnapshot } from "../character-library";
-import type { ConversationSnapshot } from "../conversation";
+import type { ConversationSnapshot, ConversationSummary } from "../conversation";
 
 // ==[HUMAN APPROVED]== Adapts the Character seam's immutable snapshot into the transport shape.
 // The Character Library snapshot keeps its readonly openings declaration
@@ -17,7 +17,9 @@ export const toCharacterPayload = (character: CharacterSnapshot) => ({
 // The projection stays to drop the deliberate deep-only `messages` and
 // `data` reads (divergence (b)): heavy reads go through other seams and
 // must never ride on a summary response.
-export const toConversationSummary = (conversation: ConversationSnapshot) => ({
+export const toConversationSummary = (
+	conversation: ConversationSnapshot | ConversationSummary,
+) => ({
 	id: conversation.id,
 	name: conversation.name,
 	revision: conversation.revision,

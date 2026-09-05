@@ -68,6 +68,8 @@ export type ConnectionSettingsControllerState = {
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
+	editorVersion: number;
+	latestCommandId: number;
 };
 
 export const createConnectionSettingsControllerState = (): ConnectionSettingsControllerState => ({
@@ -86,7 +88,30 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	conflict: null,
 	notice: null,
 	error: null,
+	editorVersion: 0,
+	latestCommandId: 0,
 });
+
+const editorChanged = (
+	state: ConnectionSettingsControllerState,
+	patch: Partial<ConnectionSettingsControllerState>,
+): ConnectionSettingsControllerState => ({
+	...state,
+	...patch,
+	editorVersion: state.editorVersion + 1,
+});
+
+const newerSettings = (
+	current: ConnectionSettings | null,
+	incoming: ConnectionSettings,
+): ConnectionSettings => current === null || incoming.revision >= current.revision ? incoming : current;
+
+const ownsEditorResult = (
+	state: ConnectionSettingsControllerState,
+	result: { editorVersion: number; commandId: number; settings: ConnectionSettings },
+): boolean => result.editorVersion === state.editorVersion &&
+	result.commandId === state.latestCommandId &&
+	(state.settings === null || result.settings.revision >= state.settings.revision);
 
 const profileEditorState = (
 	state: ConnectionSettingsControllerState,
@@ -123,18 +148,19 @@ export type ConnectionSettingsControllerAction =
 	| { type: "set-pending-deletion"; value: number | null }
 	| { type: "request-deletion"; profileId: number; replacementProfileId: number | null }
 	| { type: "clear-feedback" }
-	| { type: "set-error"; message: string }
+	| { type: "set-error"; message: string; commandId?: number }
+	| { type: "command-started"; commandId: number }
 	| { type: "test-started" }
 	| { type: "test-succeeded"; result: TestConnectionResult }
 	| { type: "test-failed"; message: string }
 	| { type: "refresh-started" }
 	| { type: "refresh-succeeded"; settings: ConnectionSettings; notice: string }
 	| { type: "refresh-failed"; message: string }
-	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string }
-	| { type: "apply-succeeded"; settings: ConnectionSettings; selectedProfileId: number | null; draftDisplayName: string; credentialWasProvided: boolean }
-	| { type: "credential-succeeded"; settings: ConnectionSettings }
+	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string; commandId?: number }
+	| { type: "apply-succeeded"; settings: ConnectionSettings; selectedProfileId: number | null; draftDisplayName: string; credentialWasProvided: boolean; editorVersion: number; commandId: number }
+	| { type: "credential-succeeded"; settings: ConnectionSettings; profileId: number; editorVersion: number; commandId: number }
 	| { type: "activate-succeeded"; settings: ConnectionSettings }
-	| { type: "delete-succeeded"; settings: ConnectionSettings; deletedDisplayName: string; replacementProfileId: number | null }
+	| { type: "delete-succeeded"; settings: ConnectionSettings; deletedDisplayName: string; replacementProfileId: number | null; editorVersion: number; commandId: number }
 	| { type: "reset-credential-succeeded"; settings: ConnectionSettings };
 
 export function reduceConnectionSettingsController(
@@ -143,7 +169,8 @@ export function reduceConnectionSettingsController(
 ): ConnectionSettingsControllerState {
 	switch (action.type) {
 		case "load-succeeded": {
-			const next = { ...state, settings: action.settings, presets: action.presets };
+			const next = { ...state, settings: newerSettings(state.settings, action.settings), presets: action.presets };
+			if (state.editorVersion > 0 || state.settings !== null) return next;
 			const active = action.settings.profiles.find(
 				(profile) => profile.id === action.settings.activeProfileId,
 			);
@@ -154,8 +181,7 @@ export function reduceConnectionSettingsController(
 		case "load-failed":
 			return { ...state, error: action.message };
 		case "choose-preset":
-			return {
-				...state,
+			return editorChanged(state, {
 				selectedProfileId: null,
 				draft: copyDraft(action.preset.profile),
 				credentialDraft: "",
@@ -169,15 +195,15 @@ export function reduceConnectionSettingsController(
 				conflict: null,
 				notice: `${action.preset.label} defaults copied into a new editable Profile draft.`,
 				error: null,
-			};
+			});
 		case "choose-profile":
-			return profileEditorState(state, action.profile);
+			return editorChanged(state, profileEditorState(state, action.profile));
 		case "set-draft":
-			return { ...state, draft: action.draft };
+			return editorChanged(state, { draft: action.draft });
 		case "set-credential-draft":
-			return { ...state, credentialDraft: action.value };
+			return editorChanged(state, { credentialDraft: action.value });
 		case "set-header-editor-data":
-			return { ...state, headerEditorData: action.value };
+			return editorChanged(state, { headerEditorData: action.value });
 		case "set-test-model-id":
 			return { ...state, testModelId: action.value };
 		case "set-preset-choices-open":
@@ -200,7 +226,11 @@ export function reduceConnectionSettingsController(
 		case "clear-feedback":
 			return { ...state, notice: null, error: null };
 		case "set-error":
-			return { ...state, error: action.message };
+			return action.commandId !== undefined && action.commandId !== state.latestCommandId
+				? state
+				: { ...state, error: action.message };
+		case "command-started":
+			return { ...state, latestCommandId: action.commandId };
 		case "test-started":
 			return { ...state, testResult: null, notice: null, error: null };
 		case "test-succeeded":
@@ -212,19 +242,29 @@ export function reduceConnectionSettingsController(
 		case "refresh-started":
 			return { ...state, notice: null, error: null };
 		case "refresh-succeeded":
-			return { ...state, settings: action.settings, notice: action.notice, error: null };
+			return { ...state, settings: newerSettings(state.settings, action.settings), notice: action.notice, error: null };
 		case "refresh-failed":
 			return { ...state, error: action.message };
 		case "command-conflict":
-			return { ...state, settings: action.conflict.currentSettings, conflict: action.conflict, error: action.message };
+			return action.commandId !== undefined && action.commandId !== state.latestCommandId
+				|| (state.settings !== null && action.conflict.actualRevision < state.settings.revision)
+				? state
+				: { ...state, settings: newerSettings(state.settings, action.conflict.currentSettings), conflict: action.conflict, error: action.message };
 		case "apply-succeeded": {
-			const saved = action.settings.profiles.find((profile) =>
+			const authoritativeSettings = newerSettings(state.settings, action.settings);
+			if (!ownsEditorResult(state, action) || action.selectedProfileId !== state.selectedProfileId) {
+				return {
+					...state,
+					settings: authoritativeSettings,
+				};
+			}
+			const saved = authoritativeSettings.profiles.find((profile) =>
 				(action.selectedProfileId !== null && profile.id === action.selectedProfileId) ||
 				(action.selectedProfileId === null && profile.displayName === action.draftDisplayName.trim().replace(/\s+/g, " ")),
 			);
 			const next = {
 				...state,
-				settings: action.settings,
+				settings: authoritativeSettings,
 				conflict: null,
 				testResult: null,
 				notice: action.selectedProfileId !== null && action.credentialWasProvided
@@ -243,16 +283,28 @@ export function reduceConnectionSettingsController(
 					};
 		}
 		case "credential-succeeded":
-			return { ...state, settings: action.settings, credentialDraft: "", conflict: null, notice: "Credential updated.", error: null };
+			return !ownsEditorResult(state, action) || action.profileId !== state.selectedProfileId
+				? {
+					...state,
+					settings: newerSettings(state.settings, action.settings),
+				}
+				: { ...state, settings: newerSettings(state.settings, action.settings), credentialDraft: "", conflict: null, notice: "Credential updated.", error: null };
 		case "activate-succeeded":
-			return { ...state, settings: action.settings, conflict: null, notice: "Connection set as active for new generations.", error: null };
+			return { ...state, settings: newerSettings(state.settings, action.settings), conflict: null, notice: "Connection set as active for new generations.", error: null };
 		case "delete-succeeded": {
-			const nextProfile = action.settings.profiles.find(
-				(profile) => profile.id === (action.replacementProfileId ?? action.settings.activeProfileId),
+			if (!ownsEditorResult(state, action)) {
+				return {
+					...state,
+					settings: newerSettings(state.settings, action.settings),
+				};
+			}
+			const authoritativeSettings = newerSettings(state.settings, action.settings);
+			const nextProfile = authoritativeSettings.profiles.find(
+				(profile) => profile.id === (action.replacementProfileId ?? authoritativeSettings.activeProfileId),
 			);
 			const next = {
 				...state,
-				settings: action.settings,
+				settings: authoritativeSettings,
 				conflict: null,
 				pendingDeletionProfileId: null,
 				credentialDraft: "",
@@ -272,7 +324,7 @@ export function reduceConnectionSettingsController(
 				: { ...profileEditorState(next, nextProfile), notice: next.notice };
 		}
 		case "reset-credential-succeeded":
-			return { ...state, settings: action.settings, conflict: null, notice: "Credential reset.", error: null };
+			return { ...state, settings: newerSettings(state.settings, action.settings), conflict: null, notice: "Credential reset.", error: null };
 	}
 }
 

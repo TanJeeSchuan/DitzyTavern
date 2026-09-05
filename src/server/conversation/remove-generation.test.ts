@@ -53,12 +53,41 @@ describe("canonical Conversation Generation removal", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
 		});
 	};
+
+	test("removing earlier siblings preserves the rollback selection of later siblings", () => {
+		const input = setup();
+		const first = acceptSibling(input);
+		const second = acceptSibling(input);
+		input.module.removeGeneration({ conversationId: input.created.id, generationId: first.generationId });
+		input.module.removeGeneration({ conversationId: input.created.id, generationId: second.generationId });
+		const surviving = input.module.getSnapshot(input.created.id)?.messages[0]?.variants;
+		expect(surviving).toHaveLength(1);
+		expect(surviving?.[0]?.content).toBe("Original answer.");
+		expect(surviving?.[0]?.selected).toBe(true);
+	});
+
+	test("removal refuses a checkpointed target so cleanup cannot erase durable output", () => {
+		const input = setup();
+		const accepted = acceptSibling(input);
+		input.module.checkpointGeneration({
+			conversationId: input.created.id,
+			generationId: accepted.generationId,
+			content: "Keep this output.",
+		});
+		expect(() => input.module.removeGeneration({
+			conversationId: input.created.id,
+			generationId: accepted.generationId,
+		})).toThrow("A Generation with durable output must be resolved or stopped.");
+		const after = input.module.getSnapshot(input.created.id);
+		expect(after?.activeGenerations).toHaveLength(1);
+		expect(after?.messages[0]?.variants.at(-1)?.content).toBe("Keep this output.");
+	});
 
 	test("removing a Sibling Generation keeps its owning Message and every surviving Variant", () => {
 		const input = setup();
@@ -96,7 +125,7 @@ describe("canonical Conversation Generation removal", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -129,7 +158,7 @@ describe("canonical Conversation Generation removal", () => {
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedModelName: input.modelName,
-			promptPlan: {},
+			promptPlan: { blocks: [], warnings: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
@@ -158,11 +187,12 @@ describe("canonical Conversation Generation removal", () => {
 
 		// The user explicitly restores the prior Variant while the attempt
 		// runs; that selection outranks the acceptance-time snapshot.
-		const selected = input.module.execute({
+		input.module.execute({
 			conversationId: input.created.id,
 			expectedRevision: accepted.conversation.revision,
 			action: { type: "select-variant", messageId: target.id, variantId: priorVariant.id },
 		});
+		const selected = input.module.getSnapshot(input.created.id)!;
 
 		input.module.removeGeneration({
 			conversationId: input.created.id,
@@ -199,7 +229,7 @@ describe("canonical Conversation Generation removal", () => {
 			"A new Conversation turn, Variant creation, or Control mutation is unavailable while an Active Generation exists.",
 		);
 
-		const selected = input.module.execute({
+		input.module.execute({
 			conversationId: input.created.id,
 			expectedRevision: accepted.conversation.revision,
 			action: {
@@ -208,6 +238,7 @@ describe("canonical Conversation Generation removal", () => {
 				variantId: priorVariant.id,
 			},
 		});
+		const selected = input.module.getSnapshot(input.created.id)!;
 		expect(selected.messages[0]?.variants).toHaveLength(2);
 		expect(selected.messages[0]?.variants[0]?.selected).toBe(true);
 		expect(selected.activeGenerations).toEqual(accepted.conversation.activeGenerations);

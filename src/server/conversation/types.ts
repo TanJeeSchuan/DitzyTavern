@@ -16,6 +16,7 @@ import type {
 	ConversationControl as SharedConversationControl,
 	ConversationControlValidity as SharedConversationControlValidity,
 	ParticipantDefinition as SharedParticipantDefinition,
+	PromptPlan,
 	VariantDetails as SharedVariantDetails,
 } from "../../shared/contract/conversation-schema";
 import type {
@@ -224,6 +225,11 @@ export interface ConversationSnapshot {
 	data: ConversationDataEntry[];
 }
 
+// The normal conversation header read model. It contains the state needed by
+// navigation and mutation responses while deliberately excluding the complete
+// message and conversation-data archives.
+export type ConversationSummary = Omit<ConversationSnapshot, "messages" | "data">;
+
 // One lightweight Variant in a paginated history read. The history read
 // models derive from the canonical shared schemas (ADR-0032): the paginated
 // seam and the wire contract share one declaration, so a read-model field
@@ -284,6 +290,7 @@ export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	exists(conversationId: number): boolean;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
+	getSummary(conversationId: number): ConversationSummary | undefined;
 	getGenerationSettings(
 		conversationId: number,
 	): ConversationGenerationSettings | undefined;
@@ -319,7 +326,7 @@ export interface ConversationModule {
 		messageId: number,
 		variantId: number,
 	): VariantDetails | undefined;
-	execute(command: ConversationCommand): ConversationSnapshot;
+	execute(command: ConversationCommand): ConversationSummary;
 	// Server-owned Send lifecycle. Acceptance creates the ordinary human
 	// Message and provisional model target in one revisioned transaction;
 	// terminal transitions resolve or remove only that target.
@@ -328,11 +335,11 @@ export interface ConversationModule {
 	): AcceptedTailGeneration;
 	resolveGeneration(
 		input: ResolveGenerationInput,
-	): ConversationSnapshot;
+	): ConversationSummary;
 	removeGeneration(
 		input: RemoveGenerationInput,
-	): ConversationSnapshot;
-	stopGeneration(input: StopGenerationInput): ConversationSnapshot;
+	): ConversationSummary;
+	stopGeneration(input: StopGenerationInput): ConversationSummary;
 	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
 	acceptContinuationGeneration(
 		input: AcceptContinuationGenerationInput,
@@ -386,7 +393,7 @@ export interface AcceptTailGenerationInput {
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
-	promptPlan: ConversationJsonValue;
+	promptPlan: PromptPlan;
 	// Active-only budget/omission diagnostics. Older direct callers may omit
 	// this field; workflow callers always capture it before acceptance.
 	promptInspection?: ConversationJsonValue | undefined;
@@ -402,7 +409,7 @@ export interface AcceptedTailGeneration {
 	humanMessageId: number;
 	messageId: number;
 	provisionalVariantId: number;
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 }
 
 export interface ResolveGenerationInput {
@@ -440,7 +447,7 @@ export interface StopGenerationsInput {
 
 export interface StoppedGenerations {
 	generationIds: number[];
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 }
 
 // Continuation acceptance creates only the model-authored provisional target.
@@ -456,7 +463,7 @@ export interface AcceptContinuationGenerationInput {
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
-	promptPlan: ConversationJsonValue;
+	promptPlan: PromptPlan;
 	promptInspection?: ConversationJsonValue | undefined;
 	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
@@ -469,7 +476,7 @@ export interface AcceptedContinuationGeneration {
 	generationId: number;
 	messageId: number;
 	provisionalVariantId: number;
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 }
 
 // Sibling acceptance creates a Provisional Variant on an existing Message.
@@ -483,7 +490,7 @@ export interface AcceptSiblingGenerationInput {
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
 	capturedModelName: string;
-	promptPlan: ConversationJsonValue;
+	promptPlan: PromptPlan;
 	promptInspection?: ConversationJsonValue | undefined;
 	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
@@ -497,7 +504,7 @@ export interface AcceptedSiblingGeneration {
 	messageId: number;
 	provisionalVariantId: number;
 	priorVariantId: number | null;
-	conversation: ConversationSnapshot;
+	conversation: ConversationSummary;
 }
 
 // Checkpointing is mutable execution state, not a Conversation edit. The
