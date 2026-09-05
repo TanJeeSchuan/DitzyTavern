@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	conversationTable,
 	conversationControlTable,
@@ -56,7 +56,7 @@ describe("SillyTavern chat import", () => {
 	let artifactDirectory: string;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

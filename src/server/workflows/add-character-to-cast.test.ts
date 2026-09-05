@@ -5,7 +5,7 @@ import {
 	conversationTable,
 	participantTable,
 } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	CharacterNotFoundError,
@@ -40,7 +40,7 @@ describe("Add Character to Cast workflow", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 	afterEach(() => {
 		database.close();

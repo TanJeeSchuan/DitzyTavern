@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import {
 	artifactTable,
@@ -47,7 +47,7 @@ describe("SillyTavern import artifacts", () => {
 	let artifacts: ArtifactModule;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	cleanupRetainedGenerationInspections,
 	createConversationModule,
@@ -19,7 +19,7 @@ const prompt = {
 describe("Generation detail transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openDatabase({ path: ":memory:" }); });
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {

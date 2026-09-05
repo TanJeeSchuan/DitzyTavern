@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createFakeModelClient } from "../model-client";
 import { generateTerminalTailFixture } from "../workflows/test-fixtures";
 import {
@@ -65,7 +65,7 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 	afterEach(() => {
 		database.close();
@@ -242,7 +242,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 	afterEach(() => {
 		database.close();

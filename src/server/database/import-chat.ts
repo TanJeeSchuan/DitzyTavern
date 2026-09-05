@@ -6,7 +6,7 @@
 // independent exact-byte copy of the selected source is preserved under the
 // managed artifact directory, whose metadata is committed with the Chat.
 
-import { openDatabase } from "./database";
+import { openInitializedDatabase } from "./database";
 import { defaultArtifactDirectory } from "../artifact";
 import { importSillyTavernChat } from "../sillytavern/import";
 import { SillyTavernImportError } from "../sillytavern/errors";
@@ -18,7 +18,7 @@ const printUsage = () => {
 const printSummary = (
 	sourcePath: string,
 ): void => {
-	const database = openDatabase();
+	const database = openInitializedDatabase();
 	try {
 		const { conversation, report, duplicateChatIds, artifact } =
 			importSillyTavernChat(database, sourcePath, defaultArtifactDirectory());

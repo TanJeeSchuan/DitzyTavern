@@ -8,7 +8,7 @@ import {
 	participantPromptTable,
 	participantTable,
 } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import {
 	createConversationModule,
@@ -43,7 +43,7 @@ describe("Cast and Control management", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 	afterEach(() => {
 		database.close();

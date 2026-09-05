@@ -89,9 +89,12 @@ export function recoverActiveGenerations(
 				});
 				removed += 1;
 			}
-		} catch {
-			// ==[HUMAN APPROVED]== Continue a small sweep even if one malformed/orphaned row cannot be
-			// resolved. The next startup can retry that one row with fresh state.
+		} catch (error) {
+			const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+			console.error(
+				`[generation-recovery] Failed ${cause} recovery for generation ${row.id} ` +
+				`in conversation ${row.conversationId}: ${detail}`,
+			);
 			failed += 1;
 		}
 	}

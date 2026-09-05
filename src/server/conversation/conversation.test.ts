@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	conversationGenerationSettingsTable,
 	messageTable,
@@ -32,7 +32,7 @@ describe("Conversation module", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const module = createConversationModule(database);
 		const snapshot = module.create({
 			name: "Test Conversation",

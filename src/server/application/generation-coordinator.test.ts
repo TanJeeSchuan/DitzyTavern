@@ -8,7 +8,7 @@ import {
 	type ConversationSnapshot,
 } from "../conversation";
 import { requireSnapshot } from "../conversation/test-fixtures";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	generationRuntimeFor,
 	type GenerationRuntime,
@@ -52,7 +52,7 @@ describe("GenerationCoordinator", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => database.close());
@@ -290,7 +290,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => database.close());
@@ -596,7 +596,7 @@ describe("Generation Coordinator terminal races", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => database.close());

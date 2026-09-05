@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createImportedConversation } from ".";
 
 const definition = {
@@ -20,7 +20,7 @@ describe("Chat Import workflow", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => {

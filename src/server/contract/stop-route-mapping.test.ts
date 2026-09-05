@@ -10,7 +10,7 @@ import {
 	createConversationModule,
 	type ConversationSnapshot,
 } from "../conversation";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -82,7 +82,7 @@ describe("Generation Stop route mapping", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => database.close());

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createCharacterLibraryModule } from "../character-library";
-import { openDatabase } from "./database";
+import { openInitializedDatabase } from "./database";
 import { characterTable, conversationTable } from "./schema";
 import { seed } from "./seed";
 import { teardown } from "./teardown";
@@ -27,7 +27,7 @@ describe("Database seed and teardown", () => {
 	test("teardown removes seeded rows while preserving user-created characters", () => {
 		seed(databasePath);
 
-		const database = openDatabase({ path: databasePath });
+		const database = openInitializedDatabase({ path: databasePath });
 		const db = drizzle(database);
 		const library = createCharacterLibraryModule(database);
 
@@ -60,7 +60,7 @@ describe("Database seed and teardown", () => {
 
 		teardown(databasePath);
 
-		const afterDb = openDatabase({ path: databasePath });
+		const afterDb = openInitializedDatabase({ path: databasePath });
 		const afterDrizzle = drizzle(afterDb);
 
 		try {
@@ -76,7 +76,7 @@ describe("Database seed and teardown", () => {
 
 		teardown(databasePath);
 
-		const finalDb = openDatabase({ path: databasePath });
+		const finalDb = openInitializedDatabase({ path: databasePath });
 		const finalDrizzle = drizzle(finalDb);
 
 		try {

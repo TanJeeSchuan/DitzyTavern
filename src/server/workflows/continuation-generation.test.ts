@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration, inspectGenerationPrompt } from ".";
@@ -28,7 +28,7 @@ describe("Continuation Generation", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
 			name: "Continuation Chat",
 			participants: [

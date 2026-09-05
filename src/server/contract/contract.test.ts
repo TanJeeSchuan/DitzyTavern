@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	type CharacterDefinition,
@@ -45,7 +45,7 @@ describe("Character Library transport adapters", () => {
 		);
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		app = createCharacterLibraryRoutes(database);
 	});
 
@@ -259,7 +259,7 @@ describe("Native Conversation transport adapter", () => {
 		);
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		app = createNativeConversationRoutes(database);
 	});
 
@@ -428,7 +428,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 	};
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		app = createConversationRoutes(database);
 	});
 
@@ -780,7 +780,7 @@ describe("Save Participant as Character transport adapter", () => {
 	};
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		app = createConversationRoutes(database);
 	});
 

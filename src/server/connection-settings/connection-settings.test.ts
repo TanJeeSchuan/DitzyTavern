@@ -8,7 +8,7 @@ import {
 	conversationTable,
 	messageTable,
 	} from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	connectionSnapshotOf,
 	createConnectionSettingsModule,
@@ -39,7 +39,7 @@ describe("Connection Settings", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
 	afterEach(() => {

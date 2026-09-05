@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { importSillyTavernChat } from "../sillytavern";
 import {
 	clearStagedImportRegistry,
@@ -25,7 +25,7 @@ describe("Chat import transport adapters", () => {
 	let app: ReturnType<typeof createChatImportRoutes>;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-routes-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "./index";
 
 // The narrow Conversation data read is exercised through the same public
@@ -14,7 +14,7 @@ describe("readConversationData", () => {
 	const module = () => createConversationModule(database);
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const created = module().create({
 			name: "Read Data Conversation",
 			participants: [

@@ -18,7 +18,7 @@ import {
 import type { ConversationArtifactSeed } from "../conversation";
 import { createConversationModule, InvalidConversationCreationError } from "../conversation";
 import { artifactTable, conversationTable } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 
 const sha256Hex = (bytes: Buffer) =>
 	createHash("sha256").update(bytes).digest("hex");
@@ -43,7 +43,7 @@ describe("Conversation artifacts", () => {
 	let chatId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		root = mkdtempSync(join(tmpdir(), "ditzytavern-artifact-"));
 		module = createArtifactModule(database, { directory: root });
 		const created = createConversationModule(database).create({

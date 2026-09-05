@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
@@ -41,7 +41,7 @@ const streamResponse = () => new Response(
 describe("Continuation transport contract", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openDatabase({ path: ":memory:" }); });
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
 	test("accepts Continue without a human Message and uses the instruction strategy", async () => {

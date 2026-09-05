@@ -12,7 +12,7 @@ import {
 	writerFixture as writer,
 } from "../server/sillytavern/fixtures";
 import { clearStagedImportRegistry } from "../server/sillytavern/staged";
-import { openDatabase } from "../server/database/database";
+import { openInitializedDatabase } from "../server/database/database";
 import {
 	createChatImportTransport,
 	type ChatImportCommitInput,
@@ -36,7 +36,7 @@ describe("Chat import client boundary", () => {
 	let stageRequestCount: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-client-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

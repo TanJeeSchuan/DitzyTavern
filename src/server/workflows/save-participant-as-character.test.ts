@@ -6,7 +6,7 @@ import {
 	participantPromptTable,
 	participantTable,
 } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	createCharacterLibraryModule,
 	InvalidCharacterDefinitionError,
@@ -47,7 +47,7 @@ describe("Save Participant as Character workflow", () => {
 	let database: Database;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 	});
 	afterEach(() => {
 		database.close();

@@ -16,7 +16,7 @@ import {
 	createCharacterLibraryModule,
 	type CharacterDefinition,
 } from "../character-library";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	artifactTable,
 	characterTable,
@@ -90,7 +90,7 @@ describe("staged SillyTavern chat import commit", () => {
 	let module: ChatImportModule;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-commit-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

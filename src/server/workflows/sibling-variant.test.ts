@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { participantPromptTable } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
@@ -60,7 +60,7 @@ describe("Historical sibling Variant generation", () => {
 	let modelId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
 			name: "Sibling Chat",
 			participants: [

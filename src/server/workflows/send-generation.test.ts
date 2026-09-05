@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import { sendThroughProvisionalTailGeneration } from ".";
@@ -22,7 +22,7 @@ describe("Send through provisional Tail Generation", () => {
 	let humanId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const created = createConversationModule(database).create({
 			name: "Send Chat",
 			participants: [

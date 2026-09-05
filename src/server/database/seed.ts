@@ -16,7 +16,7 @@ import {
 	createNativeConversation,
 	type NewChatSeat,
 } from "../workflows";
-import { openDatabase } from "./database";
+import { openInitializedDatabase } from "./database";
 import { characterTable } from "./schema";
 
 export interface SeedCharacter extends CharacterDefinition {
@@ -181,7 +181,7 @@ const definitionOf = (character: SeedCharacter): CharacterDefinition => ({
 });
 
 export function seed(databasePath?: string) {
-	const database = openDatabase({ path: databasePath });
+	const database = openInitializedDatabase({ path: databasePath });
 	const db = drizzle(database);
 	const library = createCharacterLibraryModule(database);
 	const log = (message: string) => console.log(`[seed] ${message}`);

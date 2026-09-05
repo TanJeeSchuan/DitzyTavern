@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { gracefullyShutdownGenerations } from "./generation-recovery";
 import {
 	defaultGenerationRuntime,
@@ -236,7 +236,7 @@ describe("Generation runtime", () => {
 	});
 
 	test("graceful shutdown flushes and stops the production default registry", () => {
-		const database = openDatabase({ path: ":memory:" });
+		const database = openInitializedDatabase({ path: ":memory:" });
 		const registry = defaultGenerationRuntime();
 		const generationId = 91_234;
 		registry.remove(generationId);
@@ -267,7 +267,7 @@ describe("Generation runtime", () => {
 	});
 
 	test("selects the process registry without a database and reuses injected database scope", () => {
-		const database = openDatabase({ path: ":memory:" });
+		const database = openInitializedDatabase({ path: ":memory:" });
 		try {
 			const processRegistry = generationRuntimeFor(undefined);
 			const databaseRegistry = generationRuntimeFor(database);

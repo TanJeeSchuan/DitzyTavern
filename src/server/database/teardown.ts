@@ -13,7 +13,7 @@ import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptChannelOrder } from "../../shared/definition";
 import { readCharacterSnapshot } from "../character-library/snapshot";
-import { openDatabase } from "./database";
+import { openInitializedDatabase } from "./database";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -23,7 +23,7 @@ import {
 import { characters, conversations } from "./seed";
 
 export function teardown(databasePath?: string) {
-	const database = openDatabase({ path: databasePath });
+	const database = openInitializedDatabase({ path: databasePath });
 	const db = drizzle(database);
 	const log = (message: string) => console.log(`[teardown] ${message}`);
 

@@ -9,7 +9,7 @@ import {
 	createCharacterLibraryModule,
 	type CharacterDefinition,
 } from "../character-library";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { artifactTable, conversationTable, participantTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
@@ -57,7 +57,7 @@ describe("staged SillyTavern chat import", () => {
 	let module: ChatImportModule;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-staged-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

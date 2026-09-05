@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	acceptConversationTailGeneration,
@@ -34,7 +34,7 @@ const profile = {
 describe("Resumable generation transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openDatabase({ path: ":memory:" }); });
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
 	test("separates acceptance from subscription and replays buffered events", async () => {

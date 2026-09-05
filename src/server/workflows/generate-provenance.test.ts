@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import type { ParticipantDefinition } from "../conversation";
 import { requireSnapshot } from "../conversation/test-fixtures";
@@ -49,7 +49,7 @@ describe("Generation capture and provenance", () => {
 	let conversationId: number;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
 			name: "Generating Chat",
 			participants: [

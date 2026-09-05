@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import type { ModelFetch } from "../model-client";
 import type { ConnectionProfileDraft } from "../connection-settings";
@@ -32,7 +32,7 @@ describe("Connection Settings transport adapter", () => {
 	let app: ReturnType<typeof createConnectionSettingsRoutes>;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		app = createConnectionSettingsRoutes(database, { masterKey: key });
 	});
 

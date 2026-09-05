@@ -1,16 +1,22 @@
 import { staticPlugin } from "@elysiajs/static";
 import { registerWireFormats } from "../shared/contract/wire-formats";
 import { contract } from "./contract";
-import { openDatabase } from "./database/database";
+import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
 
 registerWireFormats();
 initializeConnectionSecretKey();
-const database = openDatabase();
+const database = openInitializedDatabase();
 // ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;
 // it never resumes or retries a provider request.
-recoverActiveGenerations(database);
+const startupRecovery = recoverActiveGenerations(database);
+if (startupRecovery.failed > 0) {
+	console.error(
+		`[generation-recovery] Startup recovery left ${startupRecovery.failed} ` +
+		`generation(s) unresolved.`,
+	);
+}
 
 const serveIndex = () => Bun.file("dist/index.html");
 const staticAssets = await staticPlugin({
@@ -36,7 +42,13 @@ const app = contract
 
 const shutdown = () => {
 	app.stop();
-	gracefullyShutdownGenerations(database);
+	const shutdownRecovery = gracefullyShutdownGenerations(database);
+	if (shutdownRecovery.failed > 0) {
+		console.error(
+			`[generation-recovery] Shutdown recovery left ${shutdownRecovery.failed} ` +
+			`generation(s) unresolved.`,
+		);
+	}
 	database.close();
 };
 

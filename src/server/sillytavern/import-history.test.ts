@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createConversationModule } from "../conversation";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import { artifactTable, conversationDataTable } from "../database/schema";
 import { importSillyTavernChat } from "./import";
 import {
@@ -56,7 +56,7 @@ describe("graduated Chat history and Import Details", () => {
 	let details: ChatImportDetailsModule;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-history-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

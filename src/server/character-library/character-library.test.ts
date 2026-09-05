@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openDatabase } from "../database/database";
+import { openInitializedDatabase } from "../database/database";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -48,7 +48,7 @@ describe("Character Library", () => {
 	let library: ReturnType<typeof createCharacterLibraryModule>;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		library = createCharacterLibraryModule(database);
 	});
 
@@ -433,7 +433,7 @@ describe("Character deletion", () => {
 	let library: ReturnType<typeof createCharacterLibraryModule>;
 
 	beforeEach(() => {
-		database = openDatabase({ path: ":memory:" });
+		database = openInitializedDatabase({ path: ":memory:" });
 		library = createCharacterLibraryModule(database);
 	});
 
