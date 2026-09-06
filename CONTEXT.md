@@ -75,6 +75,18 @@ _Avoid_: configuration snapshot, raw Generation Settings
 The provider-neutral, ordered writing context compiled for one Generation attempt, including its named prompt blocks, selected Conversation history, and Generation intent.
 _Avoid_: compiled prompt, provider messages, request payload
 
+**Prompt Preset**:
+A shared, reusable ordered recipe for assembling character information, instructions, and Conversation history into a Prompt Plan. Conversations using the same Prompt Preset share its saved edits; an independent recipe is a copy of the entire preset. Generation Settings and text-processing scripts are outside its scope.
+_Avoid_: Generation Settings, Connection Preset, Prompt Plan
+
+**Referenced Prompt Block**:
+A Prompt Preset slot whose content comes from the Conversation or a Participant Definition rather than text authored in the preset. Its source text is read-only in the preset editor.
+_Avoid_: foreign prompt block
+
+**Prompt Comment**:
+An annotation enclosed in `{{// ... }}` that remains in authored prompt text but contributes no text to the Prompt Plan.
+_Avoid_: instruction block, unknown macro
+
 **Generation Plan**:
 The complete application plan for one Generation attempt: its Prompt Plan, budget decision, and Effective Generation Settings.
 _Avoid_: Prompt Plan, model request, generation configuration

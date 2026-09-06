@@ -1,0 +1,25 @@
+# Introduce Prompt Presets as assembly recipes
+
+Prompt Presets control the ordered assembly of character information, instructions, and Conversation history, extending the Prompt Manager direction deferred in ADR-0007 beyond its fixed compilation order. They own assembly rather than replacing Character or Participant content, and exclude Generation Settings and regex scripts so selecting a writing recipe does not also change generation configuration or activate text processing.
+
+SillyTavern preset import supports an explicitly defined subset rather than promising faithful execution of arbitrary source presets. The first workflow is import, inspect blocks and diagnostics, adjust order, toggles and text, then select for chat; excluded settings, scripts and unsupported behavior must be reported.
+
+Presets are global library objects that each Conversation selects independently, rather than copied into Conversations on selection. Users who want an independent recipe copy the entire preset. Saved edits apply to subsequent Generations using that preset.
+
+The first version supports ordered blocks and a movable history block, but defers history-depth injection. Imported blocks with unsupported history-depth placement remain enabled and are placed immediately after the last history slot with a warning, rather than at the end of the entire recipe. If history is absent, they go at the end with a placement warning. This is ordinary editable placement established during import, with no ongoing attachment to history. All slots, including character information and history, may be edited, disabled, removed or duplicated; no required-context guard forces history or character information into the recipe. Referenced Prompt Blocks display source text read-only in the preset editor; editing the recipe does not edit a Participant Definition.
+
+Retain the existing supported macros. Preset import maps `{{user}}` to `{{self}}` and `{{char}}` to `{{other}}`. This mapping requires preset-authored text to resolve `{{self}}` as the human-controlled Participant and `{{other}}` as the model-controlled Participant. Existing Participant-owned text retains its owner-relative rules. Unsupported or nonexistent macros remain raw text and receive a small warning in the edit dialog; they never block Generation.
+
+Support `{{// ... }}` as a Prompt Comment everywhere macros already work, including Character Definitions and multiline comments. Preserve comments in authored text and the editor, but omit them from the final Prompt Plan. Remove comments before evaluating their contents so enclosed macros neither execute nor produce unknown-macro warnings.
+
+Preserve imported roles on authored instruction blocks and make them editable through a dropdown. Referenced character-content blocks also allow role editing while their source text remains read-only. The history slot has no editable role or raw-text controls: its messages retain their individual roles, and preset selection does not change stored Message authorship. History placement, enablement, duplication and removal remain editable recipe operations.
+
+For imported blocks, enablement in the applicable order list wins over enablement in the block definition. Definitions absent from the imported order are preserved as disabled blocks at the end. [Local source research](../research/sillytavern-prompt-presets.md) found that SillyTavern selects one list by active ID and its OpenAI configuration uses `100001`; it does not merge lists. Import selects `100001` when present, otherwise the sole available list, and asks the user to choose when multiple unfamiliar lists remain. Import does not merge alternative order lists.
+
+Import maps supported source placeholders to native content slots and omits unsupported placeholders, such as World Info, with an import warning. Map `charDescription` to the model-controlled Participant's Identity and `personaDescription` to the human-controlled Participant's Identity. Omit `charPersonality` with an import warning because the native model has one Identity field, and mapping both character placeholders to it would duplicate the same content. Authored instruction text is preserved separately.
+
+New Conversations initially select an ordinary editable Default preset containing the current assembly order. It uses the same recipe mechanism as imported presets. Default may be edited but not deleted. Deleting another preset switches affected Conversations to Default; deletion shows the affected-Conversation count beforehand.
+
+Edit presets in a popup dialog, an explicit exception to the usual primary-panel direction in DESIGN.MD. Each prompt block has its own edit/save boundary. Preset-level ordering and toggles persist immediately rather than waiting for a whole-preset save. Closing the popup or switching presets with unsaved block edits offers Save, Discard and Keep editing; this does not undo already persisted order or toggle changes.
+
+The first version supports creating blank presets, duplicating presets, and exporting and reimporting native DitzyTavern preset JSON. SillyTavern export is outside this version's scope.
