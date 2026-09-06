@@ -16,3 +16,5 @@ test_data/
 # System atlas (scratch, not committed)
 .atlas/
 .scratch/
+
+.sample-format/
