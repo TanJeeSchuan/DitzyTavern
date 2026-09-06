@@ -1,4 +1,5 @@
 # AGENTS.md
+Follow YAGNI principles, and prefer one-liner solutions.
 
 There is `playwright-cli` installed
 
