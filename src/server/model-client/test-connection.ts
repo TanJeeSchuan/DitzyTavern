@@ -110,7 +110,7 @@ export async function testConnection(
 			maxRetries: 0,
 			abortSignal: controller.signal,
 		});
-		if (result.text.trim().length === 0) {
+		if (result.text.trim().length === 0 && !hasReasoning(result)) {
 			return failure("malformed-response", "The provider returned no text for the test response.");
 		}
 		return { outcome: "success", message: "Connection succeeded. The provider answered the test request." };
@@ -173,6 +173,11 @@ function isRedirectError(error: ProviderErrorLike): boolean {
 
 function isAbortError(error: ProviderErrorLike): boolean {
 	return error.name === "AbortError";
+}
+
+function hasReasoning(result: { reasoningText?: string | undefined; reasoning: Array<{ type: string; text?: string | undefined }> }): boolean {
+	if ((result.reasoningText ?? "").trim().length > 0) return true;
+	return result.reasoning.some((part) => part.type === "reasoning" && (part.text ?? "").trim().length > 0);
 }
 
 function failure(kind: TestConnectionFailureKind, message: string): TestConnectionResult {
