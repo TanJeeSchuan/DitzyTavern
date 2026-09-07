@@ -72,11 +72,24 @@ const entry = (
 // Prompt Plan estimates higher, so budget outcomes stay deterministic.
 const transcriptLengthEstimator = (transcript: string) => transcript.length;
 
+// The order the stored Default preset ships with, restated here so the pure
+// compiler can be exercised without a database.
+const defaultRecipe: Parameters<typeof compileGenerationPlan>[0]["recipe"] = [
+	{ reference: "model-system-instruction", enabled: true },
+	{ reference: "human-identity", enabled: true },
+	{ reference: "model-identity", enabled: true },
+	{ reference: "model-scenario", enabled: true },
+	{ reference: "model-example-dialogue", enabled: true },
+	{ reference: "history", enabled: true },
+	{ reference: "model-post-history-instruction", enabled: true },
+];
+
 const compile = (
 	overrides: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ): GenerationPlan => compileGenerationPlan({
 	human,
 	model,
+	recipe: defaultRecipe,
 	context: [entry("Maren", "The lamp turns above you.", "model")],
 	settings: configuredSettings(),
 	connection: { apiFormat: "chat-completions" },
@@ -234,6 +247,7 @@ describe("Generation Plan Compiler", () => {
 		const input = {
 			human,
 			model,
+			recipe: defaultRecipe,
 			context: [entry("Maren", "The lamp turns above you.", "model")],
 			intent: continuationIntentFor(configuredSettings()),
 			settings: configuredSettings(),

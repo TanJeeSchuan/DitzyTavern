@@ -15,6 +15,7 @@ import type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
+import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 
 export type {
 	ActiveGenerationDetails,
@@ -32,6 +33,10 @@ export type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 export type { PromptChannels } from "../shared/contract/prompt-schema";
+export type {
+	ConversationPromptPreset,
+	ResolvedPromptPresetSlot,
+} from "../shared/contract/prompt-preset";
 export type {
 	GenerationStreamDelta,
 	GenerationStreamResult,
@@ -148,6 +153,18 @@ export async function loadConversationGenerationSettings(
 	const { data, error } = await api.api.conversations({ id: conversationId })["generation-settings"].get();
 	if (error) throw new Error("Unable to load Conversation Generation Settings.");
 	return data;
+}
+
+export async function loadConversationPromptPreset(
+	conversationId: number,
+): Promise<ConversationPromptPreset | null> {
+	const { data, error } = await api.api
+		.conversations({ id: conversationId })["prompt-preset"].get();
+	if (error !== null && error !== undefined) {
+		if (error.status === 404) return null;
+		throw new Error("Unable to load the selected Prompt Preset.");
+	}
+	return data ?? null;
 }
 
 export type GenerationDetailsOutcome<T> =

@@ -17,6 +17,45 @@ import {
 } from "../conversation/generation-defaults";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
+// ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
+// only: Generation Settings and text-processing scripts are deliberately not
+// part of it. Exactly one row is the Default preset, which every Conversation
+// selects until it selects another.
+export const promptPresetTable = sqliteTable(
+	"prompt_preset",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		name: text().notNull(),
+		is_default: int({ mode: "boolean" }).notNull().default(false),
+	},
+	(table) => [
+		uniqueIndex("prompt_preset_single_default")
+			.on(table.is_default)
+			.where(sql`${table.is_default} = 1`),
+	],
+);
+
+// ==[HUMAN APPROVED]== One ordered slot of a recipe. Enablement is stored on the slot so a
+// disabled slot keeps its place in the order rather than leaving it.
+export const promptPresetBlockTable = sqliteTable(
+	"prompt_preset_block",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		preset_id: int()
+			.notNull()
+			.references(() => promptPresetTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		reference: text().notNull(),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+	},
+	(table) => [
+		uniqueIndex("prompt_preset_block_position_unique").on(
+			table.preset_id,
+			table.position,
+		),
+	],
+);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
@@ -24,6 +63,22 @@ export const conversationTable = sqliteTable("conversation", {
 	last_message_time: text().notNull(),
 	revision: int().notNull().default(0),
 });
+
+// ==[HUMAN APPROVED]== The Conversation's own selection from the shared preset library. The
+// preset is referenced, never copied: saved edits reach every Conversation
+// that selected it. Every Conversation has exactly one row, written at
+// creation, so no read has to invent a selection.
+export const conversationPromptPresetTable = sqliteTable(
+	"conversation_prompt_preset",
+	{
+		conversation_id: int()
+			.primaryKey()
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
+		prompt_preset_id: int()
+			.notNull()
+			.references(() => promptPresetTable.id),
+	},
+);
 
 export const messageTable = sqliteTable(
 	"messages",

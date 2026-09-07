@@ -1,4 +1,5 @@
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	PromptHistoryRole,
 	PromptWarning,
@@ -50,6 +51,9 @@ export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];
+	// The selected Prompt Preset's ordered recipe. It decides which blocks the
+	// plan contains and in what order; the compiler holds no order of its own.
+	recipe: readonly PromptPresetSlot[];
 }
 
 // Owner-relative macro context. `self` is the name of the Participant whose

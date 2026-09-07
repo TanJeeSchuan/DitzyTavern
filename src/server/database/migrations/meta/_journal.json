@@ -22,6 +22,13 @@
       "when": 1788539953768,
       "tag": "0002_rename_history_roles_to_prompt_context",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788745396199,
+      "tag": "0003_select_prompt_presets",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,20 @@ import {
 	type PromptPlan,
 } from ".";
 
+// The order the stored Default preset ships with, restated here so the pure
+// compiler can be exercised without a database.
+const defaultRecipe: CompilePromptInput["recipe"] = [
+	{ reference: "model-system-instruction", enabled: true },
+	{ reference: "human-identity", enabled: true },
+	{ reference: "model-identity", enabled: true },
+	{ reference: "model-scenario", enabled: true },
+	{ reference: "model-example-dialogue", enabled: true },
+	{ reference: "history", enabled: true },
+	{ reference: "model-post-history-instruction", enabled: true },
+];
+
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
+	recipe: defaultRecipe,
 	human: {
 		name: "Writer",
 		prompt: {

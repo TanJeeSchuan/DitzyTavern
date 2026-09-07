@@ -39,6 +39,7 @@ import type {
 	ModelClientGenerationInput,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
+import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
@@ -282,7 +283,8 @@ export function inspectGenerationPrompt(
 		};
 	}
 	const settings = createConversationModule(database).getGenerationSettings(conversationId);
-	if (settings === undefined) {
+	const recipe = readConversationPromptPresetRecipe(database, conversationId);
+	if (settings === undefined || recipe === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
@@ -294,6 +296,7 @@ export function inspectGenerationPrompt(
 		derivation,
 		{
 			settings,
+			recipe,
 			// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
 			// Overrides are narrowed exactly as an executed attempt would narrow
 			// them.

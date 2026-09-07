@@ -1,10 +1,10 @@
 // ==[HUMAN APPROVED]== Deterministic Prompt compilation.
 //
-// Fixed version-one block order: System Instruction, human Identity, model
-// Identity, Scenario, Example Dialogue, selected history, Post-History
-// Instruction. Both controlled Participants contribute Identity; only the
-// model-controlled Definition contributes the other Definition blocks. Empty
-// blocks are omitted from the rendered plan only — storage keeps exact text.
+// Block order is the selected Prompt Preset's recipe, not a fixed sequence:
+// the compiler walks the recipe's enabled slots in order and resolves each
+// Referenced Prompt Block against the Definitions and selected history it was
+// given. Empty blocks are omitted from the rendered plan only — storage keeps
+// exact text.
 //
 // `{{self}}` and `{{other}}` expand relative to the Definition owner,
 // case-sensitively and in one pass; expansion output is never rescanned. A
@@ -12,7 +12,9 @@
 // Unknown macros remain literal and become prompt-inspection warnings.
 
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type { ReferencedDefinitionBlock } from "../../shared/contract/prompt-preset";
 import type {
+	CompilePromptDefinition,
 	CompilePromptInput,
 	ExpansionResult,
 	MacroContext,
@@ -21,22 +23,64 @@ import type {
 	PromptWarning,
 } from "./types";
 
-// ==[HUMAN APPROVED]== The version-one channel→block-kind correspondence, exhaustive over the
-// shared Prompt contract: a channel added to `promptChannels` without an
-// entry here is a compile error, and every Definition block the plan can
-// contain is named by the channel that compiles into it. `identity` names
-// the role-distinguished identity block; the construction below compiles it
-// once per controlled Definition (human, then model). History blocks are
-// not channel-derived and stay outside this mapping.
-const channelBlockKinds = {
-	systemInstruction: "system-instruction",
-	identity: "identity",
-	scenario: "scenario",
-	exampleDialogue: "example-dialogue",
-	postHistoryInstruction: "post-history-instruction",
+// ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
+// content. Distributing over the block union keeps the identity block's role
+// required while the other kinds reject it.
+type AuthoredBlock = Exclude<PromptBlock, { kind: "history" }>;
+type AuthoredBlockFraming = AuthoredBlock extends infer Block
+	? Block extends AuthoredBlock ? Omit<Block, "content"> : never
+	: never;
+
+// ==[HUMAN APPROVED]== What each Referenced Prompt Block reads: which controlled Definition owns
+// the text, which Prompt channel holds it, the plan block it compiles into,
+// and the label its macro warnings carry. The declaration is exhaustive over
+// the reference vocabulary, so a reference added to the shared contract fails
+// typecheck until this states where its content comes from.
+export const referencedDefinitionBlocks = {
+	"model-system-instruction": {
+		owner: "model",
+		channel: "systemInstruction",
+		block: { kind: "system-instruction" },
+		label: "system-instruction",
+	},
+	"human-identity": {
+		owner: "human",
+		channel: "identity",
+		block: { kind: "identity", role: "human" },
+		label: "identity (human)",
+	},
+	"model-identity": {
+		owner: "model",
+		channel: "identity",
+		block: { kind: "identity", role: "model" },
+		label: "identity (model)",
+	},
+	"model-scenario": {
+		owner: "model",
+		channel: "scenario",
+		block: { kind: "scenario" },
+		label: "scenario",
+	},
+	"model-example-dialogue": {
+		owner: "model",
+		channel: "exampleDialogue",
+		block: { kind: "example-dialogue" },
+		label: "example-dialogue",
+	},
+	"model-post-history-instruction": {
+		owner: "model",
+		channel: "postHistoryInstruction",
+		block: { kind: "post-history-instruction" },
+		label: "post-history-instruction",
+	},
 } as const satisfies Record<
-	keyof PromptChannels,
-	Exclude<PromptBlock["kind"], "history">
+	ReferencedDefinitionBlock,
+	{
+		owner: "human" | "model";
+		channel: keyof PromptChannels;
+		block: AuthoredBlockFraming;
+		label: string;
+	}
 >;
 
 // ==[HUMAN APPROVED]== Version-one recognized macros. Deliberately tiny: general SillyTavern
@@ -151,77 +195,47 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 
-	const humanContext: MacroContext = {
-		self: input.human.name,
-		other: input.model.name,
-	};
-	const modelContext: MacroContext = {
-		self: input.model.name,
-		other: input.human.name,
-	};
+	// ==[HUMAN APPROVED]== Owner-relative macro context: `{{self}}` is the Definition owner and
+	// `{{other}}` the other controlled Participant, whatever order the recipe
+	// places their slots in.
+	const definitions = {
+		human: {
+			definition: input.human,
+			context: { self: input.human.name, other: input.model.name },
+		},
+		model: {
+			definition: input.model,
+			context: { self: input.model.name, other: input.human.name },
+		},
+	} satisfies Record<
+		"human" | "model",
+		{ definition: CompilePromptDefinition; context: MacroContext }
+	>;
 
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.systemInstruction, content: "" },
-		input.model.prompt.systemInstruction,
-		modelContext,
-		"system-instruction",
-	);
-
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.identity, role: "human", content: "" },
-		input.human.prompt.identity,
-		humanContext,
-		"identity (human)",
-	);
-
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.identity, role: "model", content: "" },
-		input.model.prompt.identity,
-		modelContext,
-		"identity (model)",
-	);
-
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.scenario, content: "" },
-		input.model.prompt.scenario,
-		modelContext,
-		"scenario",
-	);
-
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.exampleDialogue, content: "" },
-		input.model.prompt.exampleDialogue,
-		modelContext,
-		"example-dialogue",
-	);
-
-	for (const entry of input.context ?? []) {
-		blocks.push({
-			kind: "history",
-			speakerName: entry.speakerName,
-			content: entry.content,
-			role: entry.role,
-		});
+	for (const slot of input.recipe) {
+		if (!slot.enabled) continue;
+		if (slot.reference === "history") {
+			for (const entry of input.context ?? []) {
+				blocks.push({
+					kind: "history",
+					speakerName: entry.speakerName,
+					content: entry.content,
+					role: entry.role,
+				});
+			}
+			continue;
+		}
+		const referenced = referencedDefinitionBlocks[slot.reference];
+		const owner = definitions[referenced.owner];
+		expandInto(
+			blocks,
+			warnings,
+			{ ...referenced.block, content: "" },
+			owner.definition.prompt[referenced.channel],
+			owner.context,
+			referenced.label,
+		);
 	}
-
-	expandInto(
-		blocks,
-		warnings,
-		{ kind: channelBlockKinds.postHistoryInstruction, content: "" },
-		input.model.prompt.postHistoryInstruction,
-		modelContext,
-		"post-history-instruction",
-	);
 
 	return { blocks, warnings };
 }

@@ -2,7 +2,12 @@
 // and one ordered writing context into a deterministic provider-neutral
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
-export { compileOpening, compilePrompt, expandText } from "./compiler";
+export {
+	compileOpening,
+	compilePrompt,
+	expandText,
+	referencedDefinitionBlocks,
+} from "./compiler";
 export {
 	budgetPromptPlan,
 	PromptBudgetExceededError,
