@@ -10,6 +10,10 @@
 // case-sensitively and in one pass; expansion output is never rescanned. A
 // backslash escapes a recognized macro (`\{{self}}` renders `{{self}}`).
 // Unknown macros remain literal and become prompt-inspection warnings.
+//
+// A Prompt Comment `{{// ... }}` is dropped whole during that same pass, so
+// its body is never evaluated and never warns. Storage keeps the authored
+// comment; only the rendered plan omits it.
 
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import type { ReferencedDefinitionBlock } from "../../shared/contract/prompt-preset";
@@ -113,10 +117,28 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 	return { name: source.slice(start + 2, close), end: close + 2 };
 };
 
+// ==[HUMAN APPROVED]== Matches a Prompt Comment `{{// ... }}` starting exactly at `start`, whose
+// body may span lines and may itself contain macro delimiters. The comment
+// therefore ends at the `}}` that balances its opening `{{`, not at the first
+// one found. Returns the index just past that `}}`, or null when unbalanced.
+const matchComment = (source: string, start: number): number | null => {
+	if (!source.startsWith("{{//", start)) return null;
+	let depth = 0;
+	for (let index = start; index < source.length; index += 1) {
+		if (source.startsWith("{{", index)) depth += 1;
+		else if (source.startsWith("}}", index)) depth -= 1;
+		else continue;
+		if (depth === 0) return index + 2;
+		index += 1;
+	}
+	return null;
+};
+
 // ==[HUMAN APPROVED]== Expands macros in authored text in one left-to-right pass. Recognized
 // macros expand to their context value (never rescanned); `\{{name}}` before
 // a recognized macro renders the macro literally; unknown `{{...}}` stays
-// literal and is reported as a warning labeled by the caller.
+// literal and is reported as a warning labeled by the caller. A Prompt Comment
+// is recognized ahead of a macro, so its body is skipped rather than parsed.
 export function expandText(
 	source: string,
 	context: MacroContext,
@@ -144,6 +166,12 @@ export function expandText(
 			}
 			output += "\\";
 			index += 1;
+			continue;
+		}
+
+		const commentEnd = char === "{" ? matchComment(source, index) : null;
+		if (commentEnd !== null) {
+			index = commentEnd;
 			continue;
 		}
 
@@ -185,8 +213,10 @@ const expandInto = (
 	context: MacroContext,
 	blockLabel: string,
 ) => {
-	if (text === "") return;
+	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
+	// Prompt Comment is omitted exactly like an unauthored one.
 	const expanded = expandText(text, context, blockLabel);
+	if (expanded.text === "") return;
 	blocks.push({ ...block, content: expanded.text });
 	warnings.push(...expanded.warnings);
 };
