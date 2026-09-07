@@ -30,13 +30,17 @@ import {
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	applyPromptPresetCommand,
+	commitSillyTavernPromptPreset,
 	importNativePromptPreset,
 	loadNativePromptPreset,
 	listPromptPresets,
 	parseNativePromptPreset,
+	reviewSillyTavernPromptPreset,
 	type PresetCommandOutcome,
 	type PromptPresetCommand,
 	type PromptPresetSummary,
+	type SillyTavernImportPreview,
+	type SillyTavernJsonValue,
 } from "../prompt-preset-library";
 import {
 	affectedConversationsLabel,
@@ -145,6 +149,13 @@ type BlockDraft =
 // drafts before completing the action, Discard abandons only those drafts,
 // and Keep editing cancels the pending leave.
 type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
+
+type SillyTavernReview = {
+	source: SillyTavernJsonValue;
+	name: string;
+	preview: SillyTavernImportPreview;
+	orderListId: string | null;
+};
 
 const slotTitle = (slot: ResolvedPromptPresetSlot): string =>
 	slot.reference === "instruction"
@@ -383,6 +394,7 @@ export function PromptPresetDialog({
 	const [pending, setPending] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 	const [leaveRequest, setLeaveRequest] = useState<LeaveRequest | null>(null);
+	const [sillyTavernReview, setSillyTavernReview] = useState<SillyTavernReview | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 
 	const load = async (isCancelled?: () => boolean) => {
@@ -416,6 +428,7 @@ export function PromptPresetDialog({
 		setDrafts({});
 		setProblem(null);
 		setLeaveRequest(null);
+		setSillyTavernReview(null);
 		setView({ status: "loading" });
 		void load(isCancelled);
 	}, [open, conversation]);
@@ -550,12 +563,61 @@ export function PromptPresetDialog({
 		setPendingAction("import");
 		setNotice(null);
 		try {
-			const native = parseNativePromptPreset(await file.text());
-			if (native === null) {
-				setNotice("The native Prompt Preset JSON is invalid.");
+			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
+			const source = JSON.parse(await file.text()) as SillyTavernJsonValue;
+			const native = parseNativePromptPreset(JSON.stringify(source));
+			if (native !== null) {
+				const outcome = await importNativePromptPreset(native);
+				if (outcome.status === "invalid") {
+					setNotice(outcome.reason);
+					return;
+				}
+				if (outcome.status === "network") {
+					setNotice(LIBRARY_UNREACHABLE_NOTICE);
+					return;
+				}
+				await load();
+				setNotice(`Imported "${outcome.preset.name}" as a new preset.`);
 				return;
 			}
-			const outcome = await importNativePromptPreset(native);
+			const review = await reviewSillyTavernPromptPreset(
+				source,
+				file.name.replace(/\.json$/i, ""),
+			);
+			if (review.status === "invalid") {
+				setNotice(review.reason);
+				return;
+			}
+			if (review.status === "network") {
+				setNotice(LIBRARY_UNREACHABLE_NOTICE);
+				return;
+			}
+			setSillyTavernReview({
+				source,
+				name: review.preview.name,
+				preview: review.preview,
+				orderListId: review.preview.selectedOrderId,
+			});
+		} catch {
+			setNotice("The selected file is not valid Prompt Preset or SillyTavern JSON.");
+		} finally {
+			setPendingAction(null);
+		}
+	};
+
+	const commitSillyTavernReview = async () => {
+		if (sillyTavernReview === null) return;
+		if (sillyTavernReview.preview.requiresOrderSelection && sillyTavernReview.orderListId === null) {
+			setNotice("Choose an order list before importing.");
+			return;
+		}
+		setPendingAction("import");
+		try {
+			const outcome = await commitSillyTavernPromptPreset(
+				sillyTavernReview.source,
+				sillyTavernReview.name,
+				sillyTavernReview.orderListId ?? undefined,
+			);
 			if (outcome.status === "invalid") {
 				setNotice(outcome.reason);
 				return;
@@ -564,10 +626,28 @@ export function PromptPresetDialog({
 				setNotice(LIBRARY_UNREACHABLE_NOTICE);
 				return;
 			}
+			setSillyTavernReview(null);
 			await load();
-			setNotice(`Imported "${outcome.preset.name}" as a new preset.`);
-		} catch {
-			setNotice("The selected file is not valid native Prompt Preset JSON.");
+			setNotice(`Imported "${outcome.preview.preset.name}" as a new preset.`);
+		} finally {
+			setPendingAction(null);
+		}
+	};
+
+	const selectSillyTavernOrder = async (orderListId: string) => {
+		if (sillyTavernReview === null) return;
+		setPendingAction("review");
+		try {
+			const outcome = await reviewSillyTavernPromptPreset(
+				sillyTavernReview.source,
+				sillyTavernReview.name,
+				orderListId,
+			);
+			if (outcome.status === "review") {
+				setSillyTavernReview({ ...sillyTavernReview, preview: outcome.preview, orderListId });
+			} else if (outcome.status === "invalid") {
+				setNotice(outcome.reason);
+			}
 		} finally {
 			setPendingAction(null);
 		}
@@ -665,6 +745,7 @@ export function PromptPresetDialog({
 		});
 
 	return (
+		<>
 		<Dialog
 			open={open}
 			onOpenChange={(next) => {
@@ -1019,6 +1100,101 @@ export function PromptPresetDialog({
 							finishLeave(leaveRequest);
 						}}
 					/>
+				)}
+			</DialogContent>
+		</Dialog>
+		<SillyTavernImportReviewDialog
+			review={sillyTavernReview}
+			busy={pendingAction !== null}
+			onOrderSelect={(orderListId) => void selectSillyTavernOrder(orderListId)}
+			onCancel={() => setSillyTavernReview(null)}
+			onCommit={() => void commitSillyTavernReview()}
+		/>
+		</>
+	);
+}
+
+const importedSlotTitle = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
+	slot.reference === "instruction"
+		? (slot.name.trim() === "" ? "Instruction" : slot.name)
+		: slot.reference === "history"
+			? "Chat history"
+			: slot.reference.replaceAll("-", " ");
+
+function SillyTavernImportReviewDialog({
+	review,
+	busy,
+	onOrderSelect,
+	onCancel,
+	onCommit,
+}: {
+	review: SillyTavernReview | null;
+	busy: boolean;
+	onOrderSelect: (orderListId: string) => void;
+	onCancel: () => void;
+	onCommit: () => void;
+}) {
+	return (
+		<Dialog open={review !== null} onOpenChange={(next) => { if (!next) onCancel(); }}>
+			<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>Review SillyTavern import</DialogTitle>
+					<DialogDescription>
+						Review the converted blocks and diagnostics before creating an independent native preset.
+					</DialogDescription>
+				</DialogHeader>
+				{review !== null && (
+					<>
+						{review.preview.requiresOrderSelection && (
+							<label className="flex flex-col gap-1 text-sm">
+								<span>Choose an order list</span>
+								<select
+									className={roleSelectClass}
+									value={review.orderListId ?? ""}
+									disabled={busy}
+									onChange={(event) => onOrderSelect(event.target.value)}
+								>
+									<option value="">Choose an order…</option>
+									{review.preview.orderLists.map((order) => (
+										<option key={order.id} value={order.id}>
+											{order.label} ({order.entryCount} entries)
+										</option>
+									))}
+								</select>
+							</label>
+						)}
+						<section aria-label="Converted blocks" className="flex flex-col gap-2">
+							<h2 className="text-sm font-medium">Converted blocks</h2>
+							<ol className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
+								{review.preview.native.slots.map((slot, index) => (
+									<li key={`${slot.reference}-${index}`} className={slot.enabled ? "" : "opacity-60"}>
+										{index + 1}. {importedSlotTitle(slot)}{slot.enabled ? "" : " (disabled)"}
+									</li>
+								))}
+							</ol>
+						</section>
+						<section aria-label="Import diagnostics" className="flex flex-col gap-1">
+							<h2 className="text-sm font-medium">Diagnostics</h2>
+							{review.preview.diagnostics.length === 0 ? (
+								<p className="text-sm text-muted-foreground">No unsupported behavior was detected.</p>
+							) : (
+								<ul className="text-sm text-muted-foreground">
+									{review.preview.diagnostics.map((item, index) => (
+										<li key={`${item.code}-${item.identifier ?? index}`}>{item.message}</li>
+									))}
+								</ul>
+							)}
+						</section>
+						<div className="flex flex-wrap justify-end gap-2">
+							<Button variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
+							<Button
+								disabled={busy || review.preview.requiresOrderSelection}
+								onClick={onCommit}
+							>
+								Import as native preset
+							</Button>
+						</div>
+					</>
 				)}
 			</DialogContent>
 		</Dialog>

@@ -2,6 +2,14 @@ import { Type, type Static } from "@sinclair/typebox";
 import { notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
 
+export type SillyTavernJsonValue =
+	| null
+	| boolean
+	| number
+	| string
+	| SillyTavernJsonValue[]
+	| { [key: string]: SillyTavernJsonValue };
+
 // ==[HUMAN APPROVED]== A Referenced Prompt Block names Conversation or Participant Definition
 // content rather than text authored in the preset. Version one's vocabulary
 // is exactly the content the native five-field Prompt model and the selected
@@ -149,6 +157,41 @@ export const nativePromptPreset = Type.Object({
 });
 export type NativePromptPreset = Static<typeof nativePromptPreset>;
 
+// ==[HUMAN APPROVED]== SillyTavern import is deliberately a review/commit flow. The source is
+// kept as opaque JSON at the wire boundary so the server can validate the supported subset
+// without pretending that unsupported source settings are native recipe fields.
+export const sillyTavernImportRequest = Type.Object({
+	source: Type.Unknown(),
+	name: Type.Optional(Type.String()),
+	orderListId: Type.Optional(Type.String()),
+});
+export type SillyTavernImportRequest = Static<typeof sillyTavernImportRequest>;
+
+export const sillyTavernImportDiagnostic = Type.Object({
+	severity: Type.Union([Type.Literal("warning"), Type.Literal("error")]),
+	code: Type.String(),
+	message: Type.String(),
+	identifier: Type.Optional(Type.String()),
+});
+export type SillyTavernImportDiagnostic = Static<typeof sillyTavernImportDiagnostic>;
+
+export const sillyTavernOrderChoice = Type.Object({
+	id: Type.String(),
+	label: Type.String(),
+	entryCount: Type.Integer(),
+});
+export type SillyTavernOrderChoice = Static<typeof sillyTavernOrderChoice>;
+
+export const sillyTavernImportPreview = Type.Object({
+	name: Type.String(),
+	native: nativePromptPreset,
+	diagnostics: Type.Array(sillyTavernImportDiagnostic),
+	orderLists: Type.Array(sillyTavernOrderChoice),
+	selectedOrderId: Type.Union([Type.String(), Type.Null()]),
+	requiresOrderSelection: Type.Boolean(),
+});
+export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
+
 // ==[HUMAN APPROVED]== The read-only resolution one Chat sees. A Definition slot carries the
 // Participant it reads, that Participant's authored source text, and the
 // outgoing role the slot assembles with; the history slot carries the number
@@ -205,6 +248,17 @@ export const promptPresetSummary = Type.Object({
 	conversationCount: Type.Integer(),
 });
 export type PromptPresetSummary = Static<typeof promptPresetSummary>;
+
+export const sillyTavernImportApplied = Type.Object({
+	name: Type.String(),
+	native: nativePromptPreset,
+	diagnostics: Type.Array(sillyTavernImportDiagnostic),
+	orderLists: Type.Array(sillyTavernOrderChoice),
+	selectedOrderId: Type.Union([Type.String(), Type.Null()]),
+	requiresOrderSelection: Type.Boolean(),
+	preset: promptPresetSummary,
+});
+export type SillyTavernImportApplied = Static<typeof sillyTavernImportApplied>;
 
 export const promptPresetListResponse = Type.Object({
 	presets: Type.Array(promptPresetSummary),

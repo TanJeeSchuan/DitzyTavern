@@ -13,10 +13,16 @@ export {
 } from "./recipe";
 export {
 	executePromptPresetCommand,
+	importSillyTavernPromptPreset,
 	importNativePromptPreset,
 	listPromptPresets,
 	readNativePromptPreset,
 } from "./library";
+export {
+	isSillyTavernJsonValue,
+	normalizeSillyTavernImportRequest,
+	reviewSillyTavernPromptPreset,
+} from "./sillytavern";
 export {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,

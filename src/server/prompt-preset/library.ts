@@ -9,6 +9,8 @@ import {
 import {
 	nativePromptPreset,
 	promptPresetCreateCommand,
+	type SillyTavernImportPreview,
+	type SillyTavernJsonValue,
 	type NativePromptPreset,
 	type PromptPresetCommand,
 	type PromptPresetDeletionResult,
@@ -26,6 +28,9 @@ import {
 	readPromptPresetRecipe,
 	type PromptPresetDatabase,
 } from "./recipe";
+import {
+	importSillyTavernPromptPreset as convertSillyTavernPromptPreset,
+} from "./sillytavern";
 
 // ==[HUMAN APPROVED]== The Prompt Preset library is a Character Library sibling: one
 // revisioned list of named recipes whose deletion impact (the
@@ -174,6 +179,18 @@ export const importNativePromptPreset = (
 		return requireSummary(db, inserted.id);
 	});
 	return execute.immediate();
+};
+
+// ==[HUMAN APPROVED]== SillyTavern conversion completes before the native importer starts its
+// transaction. A source that needs an order choice or contains invalid structure therefore
+// cannot leave a partially-created library row behind.
+export const importSillyTavernPromptPreset = (
+	database: Database,
+	source: SillyTavernJsonValue,
+): SillyTavernImportPreview & { preset: PromptPresetSummary } => {
+	const preview = convertSillyTavernPromptPreset(source);
+	const preset = importNativePromptPreset(database, preview.native);
+	return { ...preview, preset };
 };
 
 // ==[HUMAN APPROVED]== Executes one revisioned library command atomically. Every mutation

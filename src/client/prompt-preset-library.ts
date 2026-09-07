@@ -4,6 +4,9 @@ import { commandOutcome } from "./lib/command-outcome";
 import { nativePromptPreset } from "../shared/contract/prompt-preset";
 import type {
 	NativePromptPreset,
+	SillyTavernImportApplied,
+	SillyTavernImportPreview,
+	SillyTavernJsonValue,
 	PromptPresetCommand,
 	PromptPresetDeletionResult,
 	PromptPresetSummary,
@@ -18,8 +21,17 @@ export type {
 	PromptPresetCommand,
 	PromptPresetDeletionResult,
 	NativePromptPreset,
+	SillyTavernImportPreview,
+	SillyTavernImportApplied,
+	SillyTavernJsonValue,
 	PromptPresetSummary,
 };
+
+interface SillyTavernImportClientRequest {
+	source: SillyTavernJsonValue;
+	name?: string;
+	orderListId?: string;
+}
 
 export type PresetCommandOutcome =
 	| { status: "applied"; preset: PromptPresetSummary }
@@ -79,6 +91,57 @@ export async function importNativePromptPreset(
 		return "preset" in data
 			? { status: "applied", preset: data.preset }
 			: { status: "network" };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export type SillyTavernImportOutcome =
+	| { status: "review"; preview: SillyTavernImportPreview }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function reviewSillyTavernPromptPreset(
+	source: SillyTavernJsonValue,
+	name?: string,
+	orderListId?: string,
+): Promise<SillyTavernImportOutcome> {
+	try {
+		const request: SillyTavernImportClientRequest = { source };
+		if (name !== undefined) request.name = name;
+		if (orderListId !== undefined) request.orderListId = orderListId;
+		const { data, error } = await api.api["prompt-presets"].import.sillytavern.review.post(request);
+		if (error) {
+			// ==[HUMAN APPROVED]== SAFETY: Eden's error envelope is the route's typed invalid/network response.
+			const value = error.value as { outcome?: string; reason?: string } | null;
+			return value?.outcome === "invalid" && value.reason !== undefined
+				? { status: "invalid", reason: value.reason }
+				: { status: "network" };
+		}
+		return { status: "review", preview: data };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export async function commitSillyTavernPromptPreset(
+	source: SillyTavernJsonValue,
+	name?: string,
+	orderListId?: string,
+): Promise<{ status: "applied"; preview: SillyTavernImportApplied } | { status: "invalid"; reason: string } | { status: "network" }> {
+	try {
+		const request: SillyTavernImportClientRequest = { source };
+		if (name !== undefined) request.name = name;
+		if (orderListId !== undefined) request.orderListId = orderListId;
+		const { data, error } = await api.api["prompt-presets"].import.sillytavern.post(request);
+		if (error) {
+			// ==[HUMAN APPROVED]== SAFETY: Eden's error envelope is the route's typed invalid/network response.
+			const value = error.value as { outcome?: string; reason?: string } | null;
+			return value?.outcome === "invalid" && value.reason !== undefined
+				? { status: "invalid", reason: value.reason }
+				: { status: "network" };
+		}
+		return { status: "applied", preview: data };
 	} catch {
 		return { status: "network" };
 	}

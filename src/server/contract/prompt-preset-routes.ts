@@ -4,11 +4,14 @@ import { withDatabase } from "../database/database";
 import {
 	DefaultPromptPresetNotRemovableError,
 	executePromptPresetCommand,
+	importSillyTavernPromptPreset,
 	importNativePromptPreset,
 	InvalidPromptPresetCommandError,
 	listPromptPresets,
 	PromptPresetNotFoundError,
 	readNativePromptPreset,
+	reviewSillyTavernPromptPreset,
+	isSillyTavernJsonValue,
 	StalePromptPresetRevisionError,
 } from "../prompt-preset";
 import {
@@ -20,6 +23,9 @@ import {
 	promptPresetCommandBody,
 	promptPresetCommandConflict,
 	promptPresetListResponse,
+	sillyTavernImportPreview,
+	sillyTavernImportApplied,
+	sillyTavernImportRequest,
 	nativePromptPreset,
 	presetIdParams,
 } from "../../shared/contract/prompt-preset";
@@ -29,6 +35,49 @@ import {
 // production passes undefined to use the default connection per request.
 export const createPromptPresetRoutes = (database: Database | undefined) =>
 	new Elysia()
+		.post(
+			"/api/prompt-presets/import/sillytavern/review",
+			({ body }) => {
+				try {
+					if (!isSillyTavernJsonValue(body)) {
+						return status(422, { outcome: "invalid" as const, reason: "SillyTavern JSON must be valid JSON." });
+					}
+					return reviewSillyTavernPromptPreset(body);
+				} catch (error) {
+					if (error instanceof InvalidPromptPresetCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				body: sillyTavernImportRequest,
+				response: { 200: sillyTavernImportPreview, 422: invalidOutcome },
+			},
+		)
+		.post(
+			"/api/prompt-presets/import/sillytavern",
+			({ body }) => {
+				try {
+					if (!isSillyTavernJsonValue(body)) {
+						return status(422, { outcome: "invalid" as const, reason: "SillyTavern JSON must be valid JSON." });
+					}
+					const imported = withDatabase(database, (connection) =>
+						importSillyTavernPromptPreset(connection, body),
+					);
+					return imported;
+				} catch (error) {
+					if (error instanceof InvalidPromptPresetCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				body: sillyTavernImportRequest,
+				response: { 200: sillyTavernImportApplied, 422: invalidOutcome },
+			},
+		)
 		.get(
 			"/api/prompt-presets/:presetId/export",
 			({ params }) => {
