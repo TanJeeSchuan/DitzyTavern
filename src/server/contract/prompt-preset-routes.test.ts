@@ -14,6 +14,7 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import type {
 	ConversationPromptPreset,
+	NativePromptPreset,
 	PromptPresetCommand,
 	PromptPresetConflict,
 	PromptPresetListResponse,
@@ -80,6 +81,43 @@ const listPresets = async (
 	// SAFETY: the route's response schema is the library list payload.
 	const payload = await response.json() as PromptPresetListResponse;
 	return payload.presets;
+};
+
+const exportPreset = async (
+	app: ReturnType<typeof createPromptPresetRoutes>,
+	presetId: number,
+): Promise<NativePromptPreset> => {
+	const response = await app.handle(
+		new Request(`http://localhost/api/prompt-presets/${presetId}/export`),
+	);
+	expect(response.status).toBe(200);
+	// SAFETY: the route's response schema is the native interchange payload.
+	return await response.json() as NativePromptPreset;
+};
+
+type NativePromptPresetRequest = {
+	name: string;
+	slots: Array<{
+		reference: string;
+		enabled: boolean;
+		role: string | null;
+		name?: string;
+		content?: string;
+	}>;
+};
+
+const importPreset = async (
+	app: ReturnType<typeof createPromptPresetRoutes>,
+	native: NativePromptPresetRequest,
+): Promise<{ status: number; body: unknown }> => {
+	const response = await app.handle(
+		new Request("http://localhost/api/prompt-presets/import", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(native),
+		}),
+	);
+	return { status: response.status, body: await response.json() };
 };
 
 const runPresetCommand = async (
@@ -499,6 +537,139 @@ describe("Prompt Preset library transport", () => {
 		expect(applied.status).toBe(422);
 		// SAFETY: the invalid outcome carries a reason string.
 		expect(applied.body).toMatchObject({ outcome: "invalid" });
+	});
+});
+
+describe("Native Prompt Preset interchange", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	test("round-trips authored text, comments, references, roles, order and disabled repeats", async () => {
+		const routes = createRoutes(database);
+		const native: NativePromptPreset = {
+			name: "Default",
+			slots: [
+				{
+					reference: "instruction",
+					enabled: false,
+					role: "assistant",
+					name: "Keep raw comments",
+					content: "Before {{// {{not-a-macro}} }}\nAfter {{self}}",
+				},
+				{ reference: "model-identity", enabled: true, role: "user" },
+				{ reference: "model-identity", enabled: true, role: "assistant" },
+				{ reference: "history", enabled: false, role: null },
+			],
+		};
+
+		const imported = await importPreset(routes.library, native);
+		expect(imported.status).toBe(200);
+		expect(imported.body).toMatchObject({
+			outcome: "applied",
+			preset: { id: 2, name: "Default", isDefault: false },
+		});
+		const roundTrip = await exportPreset(routes.library, 2);
+		expect(roundTrip).toEqual(native);
+
+		// Export is a stored recipe projection: it has references only, never the
+		// selected Chat's Participant names, resolved content or history entries.
+		const conversation = createChat(database);
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+		const resolved = await readSelectedPreset(routes.conversations, conversation.id);
+		expect(resolved?.slots.map((slot) => slot.reference)).toEqual([
+			"instruction",
+			"model-identity",
+			"model-identity",
+			"history",
+		]);
+		expect(roundTrip).not.toHaveProperty("id");
+		expect(roundTrip).not.toHaveProperty("sourceName");
+		expect(roundTrip).not.toHaveProperty("content", "I am Maren.");
+		expect(resolved?.slots[1]).toMatchObject({ sourceName: "Maren", content: "I am {{self}}." });
+	});
+
+	test("imports as a new independent preset and invalid input leaves the library unchanged", async () => {
+		const routes = createRoutes(database);
+		const native: NativePromptPreset = {
+			name: "Independent",
+			slots: [{
+				reference: "instruction",
+				enabled: true,
+				role: "system",
+				name: "Original",
+				content: "Original source",
+			}],
+		};
+		const imported = await importPreset(routes.library, native);
+		expect(imported.status).toBe(200);
+
+		const invalid = await importPreset(routes.library, {
+			...native,
+			slots: [{
+				reference: "instruction",
+				enabled: true,
+				role: "invalid",
+				name: "Broken",
+				content: "Should not persist",
+			}],
+		});
+		expect(invalid.status).toBe(422);
+		expect((await listPresets(routes.library)).map((preset) => preset.name)).toEqual([
+			"Default",
+			"Independent",
+		]);
+
+		const renamed = await runPresetCommand(routes.library, {
+			type: "rename",
+			presetId: 2,
+			expectedRevision: 0,
+			name: "Independent copy",
+		});
+		expect(renamed.status).toBe(200);
+		expect((await exportPreset(routes.library, 1)).name).toBe("Default");
+		expect((await exportPreset(routes.library, 2)).name).toBe("Independent copy");
+	});
+
+	test("an imported recipe drives the selected Conversation's resolved request", async () => {
+		const routes = createRoutes(database);
+		const conversation = createChat(database);
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0,
+			profile,
+			credential: "preset-secret",
+		});
+		const imported = await importPreset(routes.library, {
+			name: "Captured",
+			slots: [
+				{ reference: "model-system-instruction", enabled: true, role: "system" },
+				{
+					reference: "instruction",
+					enabled: true,
+					role: "assistant",
+					name: "Voice",
+					content: "Speak for {{self}} to {{other}}.",
+				},
+				{ reference: "history", enabled: true, role: null },
+				{ reference: "model-post-history-instruction", enabled: true, role: "system" },
+			],
+		});
+		expect(imported.status).toBe(200);
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+
+		const gate = gatedProvider();
+		const app = createConversationRoutes(database, { masterKey: key, fetch: gate.fetch });
+		const selected = await readConversation(app, conversation.id);
+		const generationId = await startGeneration(app, conversation.id, selected.revision, gate);
+		gate.release();
+		await completeGeneration(app, conversation.id, generationId);
+		expect(gate.requests[0]?.messages).toEqual([
+			{ role: "system", content: "Answer briefly." },
+			{ role: "assistant", content: "Speak for Writer to Maren." },
+			{ role: "user", content: "Writer: Set the scene." },
+			{ role: "system", content: "Continue." },
+		]);
 	});
 });
 

@@ -11,7 +11,12 @@ export {
 	selectConversationPromptPreset,
 	selectDefaultPromptPreset,
 } from "./recipe";
-export { executePromptPresetCommand, listPromptPresets } from "./library";
+export {
+	executePromptPresetCommand,
+	importNativePromptPreset,
+	listPromptPresets,
+	readNativePromptPreset,
+} from "./library";
 export {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,

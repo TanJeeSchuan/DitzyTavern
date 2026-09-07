@@ -7,7 +7,9 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
+	nativePromptPreset,
 	promptPresetCreateCommand,
+	type NativePromptPreset,
 	type PromptPresetCommand,
 	type PromptPresetDeletionResult,
 	type PromptPresetSummary,
@@ -19,7 +21,11 @@ import {
 	PromptPresetNotFoundError,
 	StalePromptPresetRevisionError,
 } from "./errors";
-import { readDefaultPromptPresetId, type PromptPresetDatabase } from "./recipe";
+import {
+	readDefaultPromptPresetId,
+	readPromptPresetRecipe,
+	type PromptPresetDatabase,
+} from "./recipe";
 
 // ==[HUMAN APPROVED]== The Prompt Preset library is a Character Library sibling: one
 // revisioned list of named recipes whose deletion impact (the
@@ -96,6 +102,80 @@ const requireCommandName = (name: string): string => {
 	return normalized;
 };
 
+// ==[HUMAN APPROVED]== Native export is projected from the stored recipe, not from a selected
+// Conversation. Occurrence ids are local database identity and are omitted so
+// reimport always creates fresh independent rows; referenced slots carry no
+// resolved Participant or history content.
+export const readNativePromptPreset = (
+	database: Database,
+	presetId: number,
+): NativePromptPreset | undefined => {
+	const recipe = readPromptPresetRecipe(database, presetId);
+	if (recipe === undefined) return undefined;
+	return {
+		name: recipe.name,
+		slots: recipe.slots.map((slot) => {
+			if (slot.reference === "history") {
+				return { reference: slot.reference, enabled: slot.enabled, role: null };
+			}
+			if (slot.reference === "instruction") {
+				return {
+					reference: slot.reference,
+					enabled: slot.enabled,
+					role: slot.role,
+					name: slot.name,
+					content: slot.content,
+				};
+			}
+			if (slot.role === null) {
+				throw new Error(`Prompt Preset ${presetId} has an invalid native role.`);
+			}
+			return { reference: slot.reference, enabled: slot.enabled, role: slot.role };
+		}),
+	};
+};
+
+// ==[HUMAN APPROVED]== Native import validates the complete recipe before the transaction
+// begins, then inserts a new non-Default library row and fresh occurrence rows
+// together. No source identity or Conversation selection is carried across.
+export const importNativePromptPreset = (
+	database: Database,
+	native: NativePromptPreset,
+): PromptPresetSummary => {
+	if (!Value.Check(nativePromptPreset, native)) {
+		throw new InvalidPromptPresetCommandError("The native Prompt Preset JSON is invalid.");
+	}
+	const name = requireCommandName(native.name);
+	const db = connect(database);
+	const execute = database.transaction(() => {
+		const inserted = db
+			.insert(promptPresetTable)
+			.values({ name })
+			.returning({ id: promptPresetTable.id })
+			.get();
+		if (inserted === undefined) throw new Error("The native Prompt Preset could not be imported.");
+		if (native.slots.length > 0) {
+			const rows = native.slots.map((slot, index) => {
+				const row = {
+					preset_id: inserted.id,
+					position: index + 1,
+					reference: slot.reference,
+					enabled: slot.enabled,
+					role: slot.role,
+				};
+				return slot.reference === "instruction"
+					? { ...row, name: slot.name, content: slot.content }
+					: row;
+			});
+			db.insert(promptPresetBlockTable)
+				.values(rows)
+				.run();
+		}
+		return requireSummary(db, inserted.id);
+	});
+	return execute.immediate();
+};
+
 // ==[HUMAN APPROVED]== Executes one revisioned library command atomically. Every mutation
 // except creation requires the expected revision; a rename advances it
 // exactly once, while duplicating writes an independent preset without
@@ -162,6 +242,8 @@ export function executePromptPresetCommand(
 					reference: promptPresetBlockTable.reference,
 					enabled: promptPresetBlockTable.enabled,
 					role: promptPresetBlockTable.role,
+					name: promptPresetBlockTable.name,
+					content: promptPresetBlockTable.content,
 				})
 				.from(promptPresetBlockTable)
 				.where(eq(promptPresetBlockTable.preset_id, preset.id))

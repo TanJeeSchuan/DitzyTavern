@@ -118,6 +118,37 @@ export const promptPresetRecipe = Type.Object({
 });
 export type PromptPresetRecipe = Static<typeof promptPresetRecipe>;
 
+// ==[HUMAN APPROVED]== Native interchange deliberately omits stored occurrence ids and the
+// Conversation-resolved view. References remain references, while authored
+// instruction occurrences carry only their own source text and metadata.
+// This is the complete supported native recipe format; it does not archive
+// Generation Settings, connection details, Participants, or history.
+const nativePromptPresetSlot = Type.Union([
+	Type.Object({
+		reference: Type.Union([...referencedDefinitionBlocks]),
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+	}),
+	Type.Object({
+		reference: Type.Literal("history"),
+		enabled: Type.Boolean(),
+		role: Type.Null(),
+	}),
+	Type.Object({
+		reference: promptInstructionReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		name: Type.String(),
+		content: Type.String(),
+	}),
+]);
+
+export const nativePromptPreset = Type.Object({
+	name: Type.String(),
+	slots: Type.Array(nativePromptPresetSlot),
+});
+export type NativePromptPreset = Static<typeof nativePromptPreset>;
+
 // ==[HUMAN APPROVED]== The read-only resolution one Chat sees. A Definition slot carries the
 // Participant it reads, that Participant's authored source text, and the
 // outgoing role the slot assembles with; the history slot carries the number

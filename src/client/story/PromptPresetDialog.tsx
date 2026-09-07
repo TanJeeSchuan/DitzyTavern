@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Copy, Download, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -30,7 +30,10 @@ import {
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	applyPromptPresetCommand,
+	importNativePromptPreset,
+	loadNativePromptPreset,
 	listPromptPresets,
+	parseNativePromptPreset,
 	type PresetCommandOutcome,
 	type PromptPresetCommand,
 	type PromptPresetSummary,
@@ -380,6 +383,7 @@ export function PromptPresetDialog({
 	const [pending, setPending] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 	const [leaveRequest, setLeaveRequest] = useState<LeaveRequest | null>(null);
+	const importInput = useRef<HTMLInputElement>(null);
 
 	const load = async (isCancelled?: () => boolean) => {
 		if (conversation === null) {
@@ -520,6 +524,53 @@ export function PromptPresetDialog({
 			expectedRevision: preset.revision,
 			name: edit.name,
 		});
+	};
+
+	const exportSelectedPreset = async (presetId: number, name: string) => {
+		setPendingAction("export");
+		setNotice(null);
+		try {
+			const native = await loadNativePromptPreset(presetId);
+			const blob = new Blob([JSON.stringify(native, null, 2)], { type: "application/json" });
+			const url = URL.createObjectURL(blob);
+			const anchor = document.createElement("a");
+			anchor.href = url;
+			anchor.download = `${name.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "prompt-preset"}.json`;
+			anchor.click();
+			URL.revokeObjectURL(url);
+			setNotice(`Exported "${name}".`);
+		} catch {
+			setNotice("The Prompt Preset could not be exported.");
+		} finally {
+			setPendingAction(null);
+		}
+	};
+
+	const importPresetFile = async (file: File) => {
+		setPendingAction("import");
+		setNotice(null);
+		try {
+			const native = parseNativePromptPreset(await file.text());
+			if (native === null) {
+				setNotice("The native Prompt Preset JSON is invalid.");
+				return;
+			}
+			const outcome = await importNativePromptPreset(native);
+			if (outcome.status === "invalid") {
+				setNotice(outcome.reason);
+				return;
+			}
+			if (outcome.status === "network") {
+				setNotice(LIBRARY_UNREACHABLE_NOTICE);
+				return;
+			}
+			await load();
+			setNotice(`Imported "${outcome.preset.name}" as a new preset.`);
+		} catch {
+			setNotice("The selected file is not valid native Prompt Preset JSON.");
+		} finally {
+			setPendingAction(null);
+		}
 	};
 
 	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live
@@ -676,7 +727,41 @@ export function PromptPresetDialog({
 				{view.status === "ready" && (
 					<>
 						<section aria-label="Shared presets" className="flex flex-col gap-2">
-							<h2 className="text-sm font-medium">Shared presets</h2>
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<h2 className="text-sm font-medium">Shared presets</h2>
+								<div className="flex flex-wrap items-center gap-2">
+									<input
+										ref={importInput}
+										type="file"
+										accept="application/json,.json"
+										className="sr-only"
+										aria-label="Choose native Prompt Preset JSON"
+										onChange={(event) => {
+											const file = event.target.files?.[0];
+											event.target.value = "";
+											if (file !== undefined) void importPresetFile(file);
+										}}
+									/>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={pendingAction !== null}
+										onClick={() => importInput.current?.click()}
+									>
+										<Upload aria-hidden="true" />
+										Import JSON
+									</button>
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={pendingAction !== null}
+										onClick={() => void exportSelectedPreset(view.selected.id, view.selected.name)}
+									>
+										<Download aria-hidden="true" />
+										Export JSON
+									</Button>
+								</div>
+							</div>
 							<ol className="flex flex-col gap-2">
 								{view.presets.map((preset) => (
 									<PresetRow

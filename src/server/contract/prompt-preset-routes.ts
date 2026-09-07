@@ -4,9 +4,11 @@ import { withDatabase } from "../database/database";
 import {
 	DefaultPromptPresetNotRemovableError,
 	executePromptPresetCommand,
+	importNativePromptPreset,
 	InvalidPromptPresetCommandError,
 	listPromptPresets,
 	PromptPresetNotFoundError,
+	readNativePromptPreset,
 	StalePromptPresetRevisionError,
 } from "../prompt-preset";
 import {
@@ -18,6 +20,8 @@ import {
 	promptPresetCommandBody,
 	promptPresetCommandConflict,
 	promptPresetListResponse,
+	nativePromptPreset,
+	presetIdParams,
 } from "../../shared/contract/prompt-preset";
 
 // ==[HUMAN APPROVED]== Thin typed adapter over the Prompt Preset library seam. The database
@@ -25,6 +29,41 @@ import {
 // production passes undefined to use the default connection per request.
 export const createPromptPresetRoutes = (database: Database | undefined) =>
 	new Elysia()
+		.get(
+			"/api/prompt-presets/:presetId/export",
+			({ params }) => {
+				const exported = withDatabase(database, (connection) =>
+					readNativePromptPreset(connection, params.presetId),
+				);
+				return exported === undefined
+					? status(404, { outcome: "not-found" as const })
+					: exported;
+			},
+			{
+				params: presetIdParams,
+				response: { 200: nativePromptPreset, 404: notFoundOutcome },
+			},
+		)
+		.post(
+			"/api/prompt-presets/import",
+			({ body }) => {
+				try {
+					const preset = withDatabase(database, (connection) =>
+						importNativePromptPreset(connection, body),
+					);
+					return { outcome: "applied" as const, preset };
+				} catch (error) {
+					if (error instanceof InvalidPromptPresetCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				body: nativePromptPreset,
+				response: { 200: promptPresetCommandApplied, 422: invalidOutcome },
+			},
+		)
 		.get(
 			"/api/prompt-presets",
 			() => ({

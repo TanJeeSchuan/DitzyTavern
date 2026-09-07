@@ -1,6 +1,9 @@
+import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
+import { nativePromptPreset } from "../shared/contract/prompt-preset";
 import type {
+	NativePromptPreset,
 	PromptPresetCommand,
 	PromptPresetDeletionResult,
 	PromptPresetSummary,
@@ -14,6 +17,7 @@ import type {
 export type {
 	PromptPresetCommand,
 	PromptPresetDeletionResult,
+	NativePromptPreset,
 	PromptPresetSummary,
 };
 
@@ -36,6 +40,48 @@ export async function listPromptPresets(): Promise<PromptPresetSummary[]> {
 		throw new Error("Unable to list Prompt Presets");
 	}
 	return data.presets;
+}
+
+export async function loadNativePromptPreset(presetId: number): Promise<NativePromptPreset> {
+	const { data, error } = await api.api["prompt-presets"]({ presetId }).export.get();
+	if (error || !data) {
+		throw new Error("Unable to export the Prompt Preset.");
+	}
+	return data;
+}
+
+export function parseNativePromptPreset(text: string): NativePromptPreset | null {
+	try {
+		return Value.Parse(nativePromptPreset, JSON.parse(text));
+	} catch {
+		return null;
+	}
+}
+
+export type PromptPresetImportOutcome =
+	| { status: "applied"; preset: PromptPresetSummary }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function importNativePromptPreset(
+	native: NativePromptPreset,
+): Promise<PromptPresetImportOutcome> {
+	try {
+		const { data, error } = await api.api["prompt-presets"].import.post(native);
+		if (error) {
+			// ==[HUMAN APPROVED]== SAFETY: Eden exposes the route's typed error envelope as an unknown value;
+			// only an invalid outcome with a string reason is rendered as import feedback.
+			const value = error.value as { outcome?: string; reason?: string } | null;
+			return value?.outcome === "invalid" && value.reason !== undefined
+				? { status: "invalid", reason: value.reason }
+				: { status: "network" };
+		}
+		return "preset" in data
+			? { status: "applied", preset: data.preset }
+			: { status: "network" };
+	} catch {
+		return { status: "network" };
+	}
 }
 
 export async function applyPromptPresetCommand(
