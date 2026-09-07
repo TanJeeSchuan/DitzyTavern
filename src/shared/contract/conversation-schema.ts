@@ -554,6 +554,15 @@ const removeParticipantAction = Type.Object({
 	participantId: Type.Integer(),
 });
 
+// ==[HUMAN APPROVED]== Selects one shared Prompt Preset for this Conversation. Selection is
+// a reference to the library entry, never a copy, and it deliberately stays
+// available while an Active Generation exists: the running attempt keeps the
+// Prompt Plan it captured, and later attempts use the new selection.
+const selectPromptPresetAction = Type.Object({
+	type: Type.Literal("select-prompt-preset"),
+	promptPresetId: Type.Integer(),
+});
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -571,6 +580,7 @@ const conversationCommandAction = Type.Union([
 	replaceParticipantOpeningsAction,
 	assignControlAction,
 	removeParticipantAction,
+	selectPromptPresetAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

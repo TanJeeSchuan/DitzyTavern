@@ -1,0 +1,29 @@
+import {
+	PromptPresetNotFoundError,
+	selectConversationPromptPreset,
+} from "../../prompt-preset";
+import { InvalidConversationCommandError } from "../errors";
+import type { ConversationDatabase } from "../internal";
+
+// ==[HUMAN APPROVED]== One Conversation's authoritative selection of a shared Prompt
+// Preset. The library reference is validated inside the caller's transaction;
+// a missing preset is a command error, and the selection write is the only
+// Conversation state this command touches — Participant Definitions, Message
+// authorship and Generation Settings stay untouched. The transaction's
+// connected handle joins the open transaction, so the selection commit is
+// atomic with the revision guard.
+export const selectPromptPreset = (
+	db: ConversationDatabase,
+	input: { conversationId: number; promptPresetId: number },
+): void => {
+	try {
+		selectConversationPromptPreset(db, input.conversationId, input.promptPresetId);
+	} catch (error) {
+		if (error instanceof PromptPresetNotFoundError) {
+			throw new InvalidConversationCommandError(
+				`Prompt Preset ${input.promptPresetId} does not exist.`,
+			);
+		}
+		throw error;
+	}
+};

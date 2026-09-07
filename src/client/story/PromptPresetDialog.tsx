@@ -7,16 +7,34 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
+	applyConversationCommand,
 	loadConversationPromptPreset,
 	type ConversationPromptPreset,
+	type ConversationSummary,
 	type ResolvedPromptPresetSlot,
 } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
+import {
+	applyPromptPresetCommand,
+	listPromptPresets,
+	type PresetCommandOutcome,
+	type PromptPresetCommand,
+	type PromptPresetSummary,
+} from "../prompt-preset-library";
+import {
+	affectedConversationsLabel,
+	presetDeletionConfirmationCopy,
+	presetDeletionResultNotice,
+	presetSelectionFeedbackLabel,
+} from "../prompt-preset-presentation";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
 import { useAsyncEffect } from "../lib/use-async";
 
 // ==[HUMAN APPROVED]== The preset editor is a popup rather than a primary panel: the agreed
 // exception in the design direction, because a recipe is edited against the
-// Chat it assembles for. This first surface is read-only; ordering, toggles
-// and authored blocks arrive with the editor tickets.
+// Chat it assembles for. The library section manages the shared presets;
+// ordering, toggles and authored blocks arrive with the editor tickets, so
+// the recipe display stays read-only for now.
 
 const slotLabels = {
 	"model-system-instruction": "System Instruction",
@@ -30,7 +48,7 @@ const slotLabels = {
 
 type PresetView =
 	| { status: "loading" }
-	| { status: "ready"; preset: ConversationPromptPreset }
+	| { status: "ready"; presets: PromptPresetSummary[]; selected: ConversationPromptPreset }
 	| { status: "unavailable" };
 
 const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
@@ -64,35 +82,132 @@ const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
 	);
 };
 
+// ==[HUMAN APPROVED]== The popup's notice wording for the standard Conversation command
+// failures. The runner owns when each notice appears; this surface owns what
+// it says.
+const PRESET_COMMAND_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the current state was loaded.",
+	notFound: "The Conversation no longer exists.",
+	unreachable: "The Conversation could not be reached.",
+};
+
 export function PromptPresetDialog({
-	conversationId,
+	conversation,
+	onConversationChange,
 	open,
 	onOpenChange,
 }: {
-	conversationId: number;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary | null) => void;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const [view, setView] = useState<PresetView>({ status: "loading" });
+	const [notice, setNotice] = useState<string | null>(null);
+	const [pendingAction, setPendingAction] = useState<string | null>(null);
+	const [creating, setCreating] = useState<string | null>(null);
+	const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+	const [duplicating, setDuplicating] = useState<{ id: number; name: string } | null>(null);
+	const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
-	useAsyncEffect(
-		async (isCancelled) => {
-			if (!open) return;
-			setView({ status: "loading" });
-			try {
-				const preset = await loadConversationPromptPreset(conversationId);
-				if (isCancelled()) return;
-				setView(
-					preset === null
-						? { status: "unavailable" }
-						: { status: "ready", preset },
-				);
-			} catch {
-				if (!isCancelled()) setView({ status: "unavailable" });
+	const load = async (isCancelled?: () => boolean) => {
+		if (conversation === null) {
+			setView({ status: "unavailable" });
+			return;
+		}
+		try {
+			const [presets, selected] = await Promise.all([
+				listPromptPresets(),
+				loadConversationPromptPreset(conversation.id),
+			]);
+			if (isCancelled?.()) return;
+			setView(
+				selected === null
+					? { status: "unavailable" }
+					: { status: "ready", presets, selected },
+			);
+		} catch {
+			if (!isCancelled?.()) setView({ status: "unavailable" });
+		}
+	};
+
+	useAsyncEffect((isCancelled) => {
+		if (!open) return;
+		// ==[HUMAN APPROVED]== Every open starts clean: transient forms and notices belong
+		// to one popup visit, not to the Chat's lifetime.
+		setNotice(null);
+		setCreating(null);
+		setRenaming(null);
+		setDuplicating(null);
+		setConfirmingDeleteId(null);
+		setView({ status: "loading" });
+		void load(isCancelled);
+	}, [open, conversation]);
+
+	// ==[HUMAN APPROVED]== One library command execution: pending and notice state live
+	// here, and the outcome's authoritative re-read refreshes the list and the
+	// selected recipe. A success notice is caller-shaped so a rename, a
+	// duplication and a deletion each name what happened.
+	const runPresetCommand = async (
+		action: string,
+		command: PromptPresetCommand,
+		successNotice?: (outcome: PresetCommandOutcome) => string | null,
+	) => {
+		setPendingAction(action);
+		setNotice(null);
+		try {
+			const outcome = await applyPromptPresetCommand(command);
+			switch (outcome.status) {
+				case "applied":
+				case "deleted": {
+					await load();
+					setNotice(successNotice?.(outcome) ?? null);
+					break;
+				}
+				case "conflict":
+					setNotice(`That preset changed elsewhere. It is now "${outcome.currentPreset.name}".`);
+					break;
+				case "not-removable":
+				case "invalid":
+					setNotice(outcome.reason);
+					break;
+				case "not-found":
+					setNotice("That preset is no longer in the Library.");
+					break;
+				default:
+					setNotice(LIBRARY_UNREACHABLE_NOTICE);
 			}
-		},
-		[conversationId, open],
-	);
+		} catch {
+			setNotice(LIBRARY_UNREACHABLE_NOTICE);
+		} finally {
+			setPendingAction(null);
+		}
+	};
+
+	const selectPreset = (presetId: number) => {
+		if (conversation === null) return;
+		runConversationCommand({
+			revision: () => conversation.revision,
+			send: (expectedRevision) =>
+				applyConversationCommand(conversation.id, expectedRevision, {
+					type: "select-prompt-preset",
+					promptPresetId: presetId,
+				}),
+			reconciliation: {
+				adoptSnapshot: onConversationChange,
+				showNotice: setNotice,
+			},
+			notices: PRESET_COMMAND_NOTICES,
+			callbacks: {
+				onNotPlayable: () => setNotice(PRESET_COMMAND_NOTICES.conflict),
+				onNotRemovable: (reason) => setNotice(reason),
+				onApplied: async () => {
+					setNotice(null);
+					await load();
+				},
+			},
+		});
+	};
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -100,22 +215,23 @@ export function PromptPresetDialog({
 				<DialogHeader>
 					<DialogTitle>
 						{view.status === "ready"
-							? `Prompt Preset: ${view.preset.name}`
+							? `Prompt Preset: ${view.selected.name}`
 							: "Prompt Preset"}
 					</DialogTitle>
 					<DialogDescription>
-						The order this Chat assembles its writing context in. Referenced
-						content is read-only here; edit it on the Participant it comes from.
+						Shared recipes live in one library and each Chat selects one. The
+						order below is what this Chat assembles its writing context in;
+						referenced content is read-only here.
 					</DialogDescription>
 				</DialogHeader>
 				{view.status === "loading" && (
 					<div role="status">
-						<span className="sr-only">Loading the selected preset…</span>
+						<span className="sr-only">Loading the Prompt Preset library…</span>
 						<ol aria-hidden="true" className="flex flex-col gap-3">
 							{Array.from({ length: 4 }, (_, index) => (
 								<li
 									key={index}
-									className="h-20 animate-pulse rounded-lg bg-muted/50 ring-1 ring-foreground/10"
+									className="h-16 animate-pulse rounded-lg bg-muted/50 ring-1 ring-foreground/10"
 								/>
 							))}
 						</ol>
@@ -123,31 +239,351 @@ export function PromptPresetDialog({
 				)}
 				{view.status === "unavailable" && (
 					<p className="text-muted-foreground">
-						The selected preset could not be loaded.
+						The Prompt Preset library could not be loaded.
 					</p>
 				)}
 				{view.status === "ready" && (
-					<ol className="flex flex-col gap-3">
-						{view.preset.slots.map((slot, index) => (
-							<li
-								key={`${slot.reference}-${index}`}
-								className="rounded-lg ring-1 ring-foreground/10 p-3"
-								data-enabled={slot.enabled}
-							>
-								<div className="flex items-baseline justify-between gap-2">
-									<h3 className="font-medium">
-										{index + 1}. {slotLabels[slot.reference]}
-									</h3>
-									<span className="text-xs text-muted-foreground">
-										{slot.enabled ? "Enabled" : "Disabled"}
-									</span>
+					<>
+						<section aria-label="Shared presets" className="flex flex-col gap-2">
+							<h2 className="text-sm font-medium">Shared presets</h2>
+							<ol className="flex flex-col gap-2">
+								{view.presets.map((preset) => (
+									<PresetRow
+										key={preset.id}
+										preset={preset}
+										isSelected={preset.id === view.selected.id}
+										renaming={renaming}
+										duplicating={duplicating}
+										confirmingDeleteId={confirmingDeleteId}
+										pendingAction={pendingAction}
+										onRenameStart={() => {
+											setRenaming({ id: preset.id, name: preset.name });
+											setDuplicating(null);
+											setConfirmingDeleteId(null);
+										}}
+										onRenameDraft={(name) => setRenaming({ id: preset.id, name })}
+										onRenameSubmit={() => {
+											const name = renaming?.name ?? preset.name;
+											setRenaming(null);
+											void runPresetCommand("rename", {
+												type: "rename",
+												presetId: preset.id,
+												expectedRevision: preset.revision,
+												name,
+											});
+										}}
+										onDuplicateStart={() => {
+											setDuplicating({ id: preset.id, name: `Copy of ${preset.name}` });
+											setRenaming(null);
+											setConfirmingDeleteId(null);
+										}}
+										onDuplicateDraft={(name) => setDuplicating({ id: preset.id, name })}
+										onDuplicateSubmit={() => {
+											const name = duplicating?.name ?? `Copy of ${preset.name}`;
+											setDuplicating(null);
+											void runPresetCommand("duplicate", {
+												type: "duplicate",
+												presetId: preset.id,
+												expectedRevision: preset.revision,
+												name,
+											});
+										}}
+										onDeleteStart={() => {
+											setConfirmingDeleteId(preset.id);
+											setRenaming(null);
+											setDuplicating(null);
+										}}
+										onDeleteSubmit={() => {
+											setConfirmingDeleteId(null);
+											void runPresetCommand(
+												"delete",
+												{
+													type: "delete",
+													presetId: preset.id,
+													expectedRevision: preset.revision,
+												},
+												(outcome) =>
+													outcome.status === "deleted"
+														? presetDeletionResultNotice(preset.name, outcome.result)
+														: null,
+											);
+										}}
+										onCancelInline={() => {
+											setRenaming(null);
+											setDuplicating(null);
+											setConfirmingDeleteId(null);
+										}}
+										onSelect={() => selectPreset(preset.id)}
+									/>
+								))}
+							</ol>
+							{creating === null ? (
+								<button
+									className="secondary-button justify-self-start"
+									type="button"
+									disabled={pendingAction !== null}
+									onClick={() => setCreating("")}
+								>
+									New blank preset
+								</button>
+							) : (
+								<div className="flex flex-wrap items-center gap-2">
+									<input
+										className="definition-input"
+										type="text"
+										value={creating}
+										placeholder="Preset name"
+										aria-label="New preset name"
+										autoFocus
+										onChange={(event) => setCreating(event.target.value)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" && creating.trim() !== "") {
+												setCreating(null);
+												void runPresetCommand("create", { type: "create", name: creating });
+											}
+											if (event.key === "Escape") setCreating(null);
+										}}
+									/>
+									<button
+										className="primary-button"
+										type="button"
+										disabled={pendingAction !== null || creating.trim() === ""}
+										onClick={() => {
+											setCreating(null);
+											void runPresetCommand("create", { type: "create", name: creating });
+										}}
+									>
+										Create
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={pendingAction !== null}
+										onClick={() => setCreating(null)}
+									>
+										Cancel
+									</button>
 								</div>
-								<SlotBody slot={slot} />
-							</li>
-						))}
-					</ol>
+							)}
+						</section>
+						<section aria-label="Selected recipe" className="flex flex-col gap-3">
+							<h2 className="text-sm font-medium">
+								{view.selected.name}: assembled order
+							</h2>
+							<ol className="flex flex-col gap-3">
+								{view.selected.slots.map((slot, index) => (
+									<li
+										key={`${slot.reference}-${index}`}
+										className="rounded-lg ring-1 ring-foreground/10 p-3"
+										data-enabled={slot.enabled}
+									>
+										<div className="flex items-baseline justify-between gap-2">
+											<h3 className="font-medium">
+												{index + 1}. {slotLabels[slot.reference]}
+											</h3>
+											<span className="text-xs text-muted-foreground">
+												{slot.enabled ? "Enabled" : "Disabled"}
+											</span>
+										</div>
+										<SlotBody slot={slot} />
+									</li>
+								))}
+							</ol>
+						</section>
+					</>
+				)}
+				{notice !== null && (
+					<p className="text-sm text-muted-foreground" role="status">
+						{notice}
+					</p>
 				)}
 			</DialogContent>
 		</Dialog>
 	);
 }
+
+interface PresetRowProps {
+	preset: PromptPresetSummary;
+	isSelected: boolean;
+	renaming: { id: number; name: string } | null;
+	duplicating: { id: number; name: string } | null;
+	confirmingDeleteId: number | null;
+	pendingAction: string | null;
+	onRenameStart: () => void;
+	onRenameDraft: (name: string) => void;
+	onRenameSubmit: () => void;
+	onDuplicateStart: () => void;
+	onDuplicateDraft: (name: string) => void;
+	onDuplicateSubmit: () => void;
+	onDeleteStart: () => void;
+	onDeleteSubmit: () => void;
+	onCancelInline: () => void;
+	onSelect: () => void;
+}
+
+const PresetRow = ({
+	preset,
+	isSelected,
+	renaming,
+	duplicating,
+	confirmingDeleteId,
+	pendingAction,
+	onRenameStart,
+	onRenameDraft,
+	onRenameSubmit,
+	onDuplicateStart,
+	onDuplicateDraft,
+	onDuplicateSubmit,
+	onDeleteStart,
+	onDeleteSubmit,
+	onCancelInline,
+	onSelect,
+}: PresetRowProps) => {
+	const busy = pendingAction !== null;
+	const deleteCopy = presetDeletionConfirmationCopy(preset.name, preset.conversationCount);
+	return (
+		<li className="rounded-lg ring-1 ring-foreground/10 p-3" data-selected={isSelected}>
+			<div className="flex flex-wrap items-baseline justify-between gap-2">
+				<h3 className="font-medium">
+					{preset.name}
+					{preset.isDefault && (
+						// ==[HUMAN APPROVED]== The leading whitespace keeps the badge a separate
+						// accessible name segment, so screen readers never read one fused word.
+						<span className="ml-2 text-xs text-muted-foreground"> Default</span>
+					)}
+				</h3>
+				<span className="text-xs text-muted-foreground">
+					{affectedConversationsLabel(preset.conversationCount)}
+				</span>
+			</div>
+			{renaming?.id === preset.id ? (
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					<input
+						className="definition-input"
+						type="text"
+						value={renaming.name}
+						aria-label={`Rename ${preset.name}`}
+						autoFocus
+						onChange={(event) => onRenameDraft(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" && renaming.name.trim() !== "") onRenameSubmit();
+							if (event.key === "Escape") onCancelInline();
+						}}
+					/>
+					<button
+						className="primary-button"
+						type="button"
+						disabled={busy || renaming.name.trim() === ""}
+						onClick={onRenameSubmit}
+					>
+						Save name
+					</button>
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={busy}
+						onClick={onCancelInline}
+					>
+						Cancel
+					</button>
+				</div>
+			) : duplicating?.id === preset.id ? (
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					<input
+						className="definition-input"
+						type="text"
+						value={duplicating.name}
+						aria-label={`Name the copy of ${preset.name}`}
+						autoFocus
+						onChange={(event) => onDuplicateDraft(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" && duplicating.name.trim() !== "") onDuplicateSubmit();
+							if (event.key === "Escape") onCancelInline();
+						}}
+					/>
+					<button
+						className="primary-button"
+						type="button"
+						disabled={busy || duplicating.name.trim() === ""}
+						onClick={onDuplicateSubmit}
+					>
+						Duplicate
+					</button>
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={busy}
+						onClick={onCancelInline}
+					>
+						Cancel
+					</button>
+				</div>
+			) : confirmingDeleteId === preset.id ? (
+				<div className="mt-2 flex flex-col gap-2">
+					<p className="text-sm text-muted-foreground">
+						{deleteCopy.impact}
+					</p>
+					<div className="flex flex-wrap items-center gap-2">
+						<button
+							className="danger-button"
+							type="button"
+							disabled={busy}
+							onClick={onDeleteSubmit}
+						>
+							{deleteCopy.confirmLabel}
+						</button>
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={busy}
+							onClick={onCancelInline}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			) : (
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					{isSelected ? (
+						<span className="text-xs font-medium" aria-current="true">
+							{presetSelectionFeedbackLabel(true)}
+						</span>
+					) : (
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={busy}
+							onClick={onSelect}
+						>
+							{presetSelectionFeedbackLabel(false)}
+						</button>
+					)}
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={busy}
+						onClick={onRenameStart}
+					>
+						Rename
+					</button>
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={busy}
+						onClick={onDuplicateStart}
+					>
+						Duplicate
+					</button>
+					<button
+						className="danger-button"
+						type="button"
+						disabled={busy}
+						onClick={onDeleteStart}
+					>
+						Delete
+					</button>
+				</div>
+			)}
+		</li>
+	);
+};

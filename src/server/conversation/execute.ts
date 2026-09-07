@@ -16,6 +16,7 @@ import {
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
+import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
@@ -140,6 +141,14 @@ export const conversationCommandPolicy = {
 	},
 	"set-generation-model": {
 		handler: setGenerationModel,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"select-prompt-preset": {
+		handler: selectPromptPreset,
+		// ==[HUMAN APPROVED]== Selection needs neither seat occupied nor a quiet attempt:
+		// an Active Generation keeps the Prompt Plan it captured, so switching
+		// or reassigning its selection never disturbs the running request.
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},

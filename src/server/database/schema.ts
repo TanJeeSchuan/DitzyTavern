@@ -27,6 +27,11 @@ export const promptPresetTable = sqliteTable(
 		id: int().primaryKey({ autoIncrement: true }),
 		name: text().notNull(),
 		is_default: int({ mode: "boolean" }).notNull().default(false),
+		// ==[HUMAN APPROVED]== Optimistic-concurrency revision following the Character
+		// Library convention: every authoritative library command carries the
+		// revision the caller saw, so a stale rename or deletion cannot
+		// silently act on state the caller never confirmed.
+		revision: int().notNull().default(0),
 	},
 	(table) => [
 		uniqueIndex("prompt_preset_single_default")

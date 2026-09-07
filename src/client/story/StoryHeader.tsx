@@ -1,14 +1,19 @@
 import { ChevronDown, Info, ListOrdered } from "lucide-react";
 import { useState } from "react";
+import type { ConversationSummary } from "../conversation";
 import type { ChatSummary } from "../workspace";
 import { PromptPresetDialog } from "./PromptPresetDialog";
 
 export function StoryHeader({
 	chat,
+	conversation,
+	onConversationChange,
 	onOpenCast,
 	onOpenInfo,
 }: {
 	chat: ChatSummary;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary | null) => void;
 	onOpenCast: () => void;
 	onOpenInfo: () => void;
 }) {
@@ -29,7 +34,8 @@ export function StoryHeader({
 				<ListOrdered aria-hidden="true" />
 			</button>
 			<PromptPresetDialog
-				conversationId={Number(chat.id)}
+				conversation={conversation}
+				onConversationChange={onConversationChange}
 				open={presetOpen}
 				onOpenChange={setPresetOpen}
 			/>

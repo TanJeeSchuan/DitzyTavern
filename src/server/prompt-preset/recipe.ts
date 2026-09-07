@@ -11,10 +11,11 @@ import {
 	type PromptBlockReference,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
+import { PromptPresetNotFoundError } from "./errors";
 import { Value } from "@sinclair/typebox/value";
 
 const connect = (database: Database) => drizzle(database);
-type PromptPresetDatabase = ReturnType<typeof connect>;
+export type PromptPresetDatabase = ReturnType<typeof connect>;
 
 export class PromptPresetNotInitializedError extends Error {
 	constructor() {
@@ -55,6 +56,34 @@ export const selectDefaultPromptPreset = (
 		.values({
 			conversation_id: conversationId,
 			prompt_preset_id: readDefaultPromptPresetId(db),
+		})
+		.run();
+};
+
+// ==[HUMAN APPROVED]== Applies one Conversation's authoritative selection of a shared
+// preset. The selection is a reference to the library entry: validation
+// reads the live library row inside the caller's transaction, so a preset
+// deleted concurrently can never become the stored target, and the upsert
+// keeps the exactly-one-selection invariant the creation seam established.
+export const selectConversationPromptPreset = (
+	db: PromptPresetDatabase,
+	conversationId: number,
+	promptPresetId: number,
+): void => {
+	const preset = db
+		.select({ id: promptPresetTable.id })
+		.from(promptPresetTable)
+		.where(eq(promptPresetTable.id, promptPresetId))
+		.get();
+	if (preset === undefined) throw new PromptPresetNotFoundError(promptPresetId);
+	db.insert(conversationPromptPresetTable)
+		.values({
+			conversation_id: conversationId,
+			prompt_preset_id: promptPresetId,
+		})
+		.onConflictDoUpdate({
+			target: conversationPromptPresetTable.conversation_id,
+			set: { prompt_preset_id: promptPresetId },
 		})
 		.run();
 };

@@ -1,0 +1,1 @@
+ALTER TABLE `prompt_preset` ADD `revision` integer DEFAULT 0 NOT NULL;
