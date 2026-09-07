@@ -40,10 +40,10 @@ const sillyTavernImportRequest = (
 	return request;
 };
 
-type SillyTavernImportErrorPayload = { outcome?: string; reason?: string };
+type PromptPresetImportErrorPayload = { outcome?: string; reason?: string };
 
-const sillyTavernImportError = (
-	payload: SillyTavernImportErrorPayload | null,
+const promptPresetImportError = (
+	payload: PromptPresetImportErrorPayload | null,
 ): { status: "invalid"; reason: string } | { status: "network" } =>
 	payload?.outcome === "invalid" && payload.reason !== undefined
 		? { status: "invalid", reason: payload.reason }
@@ -99,10 +99,8 @@ export async function importNativePromptPreset(
 		if (error) {
 			// ==[HUMAN APPROVED]== SAFETY: Eden exposes the route's typed error envelope as an unknown value;
 			// only an invalid outcome with a string reason is rendered as import feedback.
-			const value = error.value as { outcome?: string; reason?: string } | null;
-			return value?.outcome === "invalid" && value.reason !== undefined
-				? { status: "invalid", reason: value.reason }
-				: { status: "network" };
+			const value = error.value as PromptPresetImportErrorPayload | null;
+			return promptPresetImportError(value);
 		}
 		return "preset" in data
 			? { status: "applied", preset: data.preset }
@@ -126,7 +124,7 @@ export async function reviewSillyTavernPromptPreset(
 		const request = sillyTavernImportRequest(source, name, orderListId);
 		const { data, error } = await api.api["prompt-presets"].import.sillytavern.review.post(request);
 		if (error) {
-			return sillyTavernImportError(error.value);
+			return promptPresetImportError(error.value);
 		}
 		return { status: "review", preview: data };
 	} catch {
@@ -143,7 +141,7 @@ export async function commitSillyTavernPromptPreset(
 		const request = sillyTavernImportRequest(source, name, orderListId);
 		const { data, error } = await api.api["prompt-presets"].import.sillytavern.post(request);
 		if (error) {
-			return sillyTavernImportError(error.value);
+			return promptPresetImportError(error.value);
 		}
 		return { status: "applied", preview: data };
 	} catch {

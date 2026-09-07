@@ -466,6 +466,25 @@ describe("Macro expansion", () => {
 		expect(plan.blocks[0]?.content).toBe("\\ and Maren Voss");
 	});
 
+	test("drops a scoped Prompt Comment before evaluating its macros", () => {
+		const plan = compilePrompt(
+			source({
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "Before {{//}} hidden {{self}} {{unknown}} {{///}} after {{other}}",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		expect(plan.blocks[0]?.content).toBe("Before  after Writer");
+		expect(plan.warnings).toEqual([]);
+	});
+
 	test("keeps an unterminated comment open as raw text without swallowing content", () => {
 		const plan = compilePrompt(
 			source({

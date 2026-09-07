@@ -9,10 +9,11 @@
 // `{{self}}` and `{{other}}` expand case-sensitively and in one pass;
 // expansion output is never rescanned. A backslash escapes a recognized
 // macro (`\{{self}}` renders `{{self}}`) and a Prompt Comment
-// (`\{{// note }}` renders the comment literally). A Prompt Comment
-// `{{// ... }}` is dropped whole during that same pass, so its body is never
-// evaluated and never warns. Unknown macros remain literal and are reported
-// as warnings labeled by the caller.
+// (`\{{// note }}` renders the comment literally). A Prompt Comment uses
+// `{{// ... }}` or the scoped `{{//}}...{{///}}` form. It is dropped whole
+// during that same pass, so its body is never evaluated and never warns.
+// Unknown macros remain literal and are reported as warnings labeled by the
+// caller.
 
 import type { PromptWarning } from "./contract/conversation-schema";
 
@@ -62,12 +63,17 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 	return { name: source.slice(start + 2, close), end: close + 2 };
 };
 
-// ==[HUMAN APPROVED]== Matches a Prompt Comment `{{// ... }}` starting exactly at `start`, whose
-// body may span lines and may itself contain macro delimiters. The comment
-// therefore ends at the `}}` that balances its opening `{{`, not at the first
-// one found. Returns the index just past that `}}`, or null when unbalanced.
+// ==[HUMAN APPROVED]== Matches an inline `{{// ... }}` or scoped
+// `{{//}}...{{///}}` Prompt Comment starting exactly at `start`. Inline bodies
+// may span lines and contain macro delimiters, so they end at the `}}` that
+// balances the opening `{{`. Returns the index just past the complete comment,
+// or null when unbalanced.
 const matchComment = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
+	if (source.startsWith("{{//}}", start)) {
+		const close = source.indexOf("{{///}}", start + "{{//}}".length);
+		return close === -1 ? null : close + "{{///}}".length;
+	}
 	let depth = 0;
 	for (let index = start; index < source.length; index += 1) {
 		if (source.startsWith("{{", index)) depth += 1;

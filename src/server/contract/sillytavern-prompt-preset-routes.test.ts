@@ -30,10 +30,33 @@ interface AcceptedGeneration {
 	generationId: number;
 }
 
+const samples = [
+	{
+		path: ".sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json",
+		expectedContentInOrder: [
+			"All prose rules DO_NOT apply to spoken NPC dialogue.",
+			"Describe characters/scenery in 3rd person limited.",
+		],
+	},
+	{
+		path: ".sample-format/prompts/Marinara's Spaghetti Recipe(1).json",
+		expectedContentInOrder: [
+			"{{setvar::prompt::an excellent protagonist.",
+			"{{setvar::tense::past tense}}",
+		],
+	},
+] as const;
+
 const readSillyTavernSample = async (path: string): Promise<SillyTavernJsonValue> => {
 	// ==[HUMAN APPROVED]== SAFETY: the supplied sample files are JSON documents; the public route
 	// performs the authoritative shape validation again before conversion.
 	return await Bun.file(path).json() as SillyTavernJsonValue;
+};
+
+const importRequest = (source: SillyTavernJsonValue, orderListId?: string): ImportRequest => {
+	const request: ImportRequest = { source };
+	if (orderListId !== undefined) request.orderListId = orderListId;
+	return request;
 };
 
 const postReview = async (
@@ -41,12 +64,10 @@ const postReview = async (
 	source: SillyTavernJsonValue,
 	orderListId?: string,
 ): Promise<{ status: number; body: SillyTavernImportPreview | ImportError }> => {
-	const request: ImportRequest = { source };
-	if (orderListId !== undefined) request.orderListId = orderListId;
 	const response = await app.handle(new Request("http://localhost/api/prompt-presets/import/sillytavern/review", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify(request),
+		body: JSON.stringify(importRequest(source, orderListId)),
 	}));
 	// ==[HUMAN APPROVED]== SAFETY: the route response is the declared preview or invalid outcome.
 	return { status: response.status, body: await response.json() as SillyTavernImportPreview | ImportError };
@@ -57,12 +78,10 @@ const postImport = async (
 	source: SillyTavernJsonValue,
 	orderListId?: string,
 ): Promise<{ status: number; body: SillyTavernImportApplied | ImportError }> => {
-	const request: ImportRequest = { source };
-	if (orderListId !== undefined) request.orderListId = orderListId;
 	const response = await app.handle(new Request("http://localhost/api/prompt-presets/import/sillytavern", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify(request),
+		body: JSON.stringify(importRequest(source, orderListId)),
 	}));
 	// ==[HUMAN APPROVED]== SAFETY: the route response is the declared applied or invalid outcome.
 	return { status: response.status, body: await response.json() as SillyTavernImportApplied | ImportError };
@@ -74,6 +93,18 @@ const isPreview = (body: SillyTavernImportPreview | ImportError): body is SillyT
 const isApplied = (body: SillyTavernImportApplied | ImportError): body is SillyTavernImportApplied =>
 	"preset" in body;
 
+const requirePreview = (body: SillyTavernImportPreview | ImportError): SillyTavernImportPreview => {
+	expect(isPreview(body)).toBe(true);
+	if (!isPreview(body)) throw new Error("Expected a SillyTavern import preview.");
+	return body;
+};
+
+const requireApplied = (body: SillyTavernImportApplied | ImportError): SillyTavernImportApplied => {
+	expect(isApplied(body)).toBe(true);
+	if (!isApplied(body)) throw new Error("Expected an applied SillyTavern import.");
+	return body;
+};
+
 describe("SillyTavern Prompt Preset import transport", () => {
 	let database: Database;
 
@@ -82,28 +113,22 @@ describe("SillyTavern Prompt Preset import transport", () => {
 
 	test("reviews and commits both supplied community samples through one selected order", async () => {
 		const app = createPromptPresetRoutes(database);
-		const paths = [
-			".sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json",
-			".sample-format/prompts/Marinara's Spaghetti Recipe(1).json",
-		];
-		for (const path of paths) {
+		for (const { path } of samples) {
 			const source = await readSillyTavernSample(path);
 			const reviewed = await postReview(app, source);
 			expect(reviewed.status).toBe(200);
-			expect(isPreview(reviewed.body)).toBe(true);
-			if (!isPreview(reviewed.body)) continue;
-			expect(reviewed.body.selectedOrderId).toBe("100001");
-			expect(reviewed.body.requiresOrderSelection).toBe(false);
-			expect(reviewed.body.native.slots.length).toBeGreaterThan(0);
-			expect(reviewed.body.native.slots.some((slot) => slot.reference === "instruction")).toBe(true);
-			expect(reviewed.body.diagnostics.some((item) => item.code === "excluded-scripts")).toBe(true);
+			const preview = requirePreview(reviewed.body);
+			expect(preview.selectedOrderId).toBe("100001");
+			expect(preview.requiresOrderSelection).toBe(false);
+			expect(preview.native.slots.length).toBeGreaterThan(0);
+			expect(preview.native.slots.some((slot) => slot.reference === "instruction")).toBe(true);
+			expect(preview.diagnostics.some((item) => item.code === "excluded-scripts")).toBe(true);
 
 			const imported = await postImport(app, source);
 			expect(imported.status).toBe(200);
-			expect(isApplied(imported.body)).toBe(true);
-			if (!isApplied(imported.body)) continue;
-			expect(imported.body.preset.isDefault).toBe(false);
-			expect(imported.body.preset.conversationCount).toBe(0);
+			const applied = requireApplied(imported.body);
+			expect(applied.preset.isDefault).toBe(false);
+			expect(applied.preset.conversationCount).toBe(0);
 		}
 		const listed = await app.handle(new Request("http://localhost/api/prompt-presets"));
 		// ==[HUMAN APPROVED]== SAFETY: the list route's payload is the authoritative library read.
@@ -125,14 +150,13 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		};
 		const ambiguous = await postReview(app, source);
 		expect(ambiguous.status).toBe(200);
-		expect(isPreview(ambiguous.body) && ambiguous.body.requiresOrderSelection).toBe(true);
+		expect(requirePreview(ambiguous.body).requiresOrderSelection).toBe(true);
 		const committedWithoutChoice = await postImport(app, source);
 		expect(committedWithoutChoice.status).toBe(422);
 		const chosen = await postReview(app, source, "7");
 		expect(chosen.status).toBe(200);
-		expect(isPreview(chosen.body)).toBe(true);
-		if (!isPreview(chosen.body)) return;
-		expect(chosen.body.native.slots.map((slot) => "name" in slot ? [slot.name, slot.enabled] : [slot.reference, slot.enabled])).toEqual([
+		const chosenPreview = requirePreview(chosen.body);
+		expect(chosenPreview.native.slots.map((slot) => "name" in slot ? [slot.name, slot.enabled] : [slot.reference, slot.enabled])).toEqual([
 			["Order wins", false],
 			["Also order", true],
 		]);
@@ -158,13 +182,13 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		};
 		const reviewed = await postReview(app, source);
 		expect(reviewed.status).toBe(200);
-		if (!isPreview(reviewed.body)) return;
-		expect(reviewed.body.native.slots).toEqual([
+		const preview = requirePreview(reviewed.body);
+		expect(preview.native.slots).toEqual([
 			{ reference: "instruction", enabled: true, role: "system", name: "Main", content: "main" },
 			{ reference: "instruction", enabled: true, role: "user", name: "Jailbreak", content: "jailbreak" },
 			{ reference: "instruction", enabled: false, role: "assistant", name: "Unlisted", content: "later" },
 		]);
-		expect(reviewed.body.diagnostics.map((item) => item.code)).toEqual([
+		expect(preview.diagnostics.map((item) => item.code)).toEqual([
 			"unsupported-placeholder",
 			"unsupported-placeholder",
 			"missing-definition",
@@ -183,8 +207,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		};
 		const reviewed = await postReview(app, source);
 		expect(reviewed.status).toBe(200);
-		if (!isPreview(reviewed.body)) return;
-		expect(reviewed.body.diagnostics.map((item) => item.code)).toEqual([
+		const preview = requirePreview(reviewed.body);
+		expect(preview.diagnostics.map((item) => item.code)).toEqual([
 			"excluded-generation-settings",
 			"excluded-model-settings",
 			"excluded-tool-settings",
@@ -211,16 +235,16 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		};
 		const reviewed = await postReview(app, source);
 		expect(reviewed.status).toBe(200);
-		if (!isPreview(reviewed.body)) return;
-		expect(reviewed.body.native.slots.map((slot) => slot.reference === "instruction" ? slot.content : slot.reference)).toEqual([
+		const preview = requirePreview(reviewed.body);
+		expect(preview.native.slots.map((slot) => slot.reference === "instruction" ? slot.content : slot.reference)).toEqual([
 			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}}",
 			"history",
 			"history",
 			"one",
 			"two",
 		]);
-		expect(reviewed.body.native.slots.map((slot) => slot.enabled)).toEqual([true, true, false, false, true]);
-		expect(reviewed.body.diagnostics.some((item) => item.code === "depth-placement")).toBe(true);
+		expect(preview.native.slots.map((slot) => slot.enabled)).toEqual([true, true, false, false, true]);
+		expect(preview.diagnostics.some((item) => item.code === "depth-placement")).toBe(true);
 
 		const noHistory: SillyTavernJsonValue = {
 			prompts: [{ identifier: "depth", name: "Depth", content: "depth", role: "system", injection_position: 1 }],
@@ -228,7 +252,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		};
 		const noHistoryReview = await postReview(app, noHistory);
 		expect(noHistoryReview.status).toBe(200);
-		expect(isPreview(noHistoryReview.body) && noHistoryReview.body.diagnostics.some((item) => item.message.includes("no history slot"))).toBe(true);
+		expect(requirePreview(noHistoryReview.body).diagnostics.some((item) => item.message.includes("no history slot"))).toBe(true);
 	});
 
 	test("a committed imported recipe survives selection and reaches the captured model request", async () => {
@@ -241,11 +265,6 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const paths = [
-			".sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json",
-			".sample-format/prompts/Marinara's Spaghetti Recipe(1).json",
-		];
-
 		const key = new Uint8Array(32).fill(19);
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
@@ -272,13 +291,13 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };
-		for (const path of paths) {
+		for (const { path, expectedContentInOrder } of samples) {
 			const source = await readSillyTavernSample(path);
 			const imported = await postImport(library, source);
 			expect(imported.status).toBe(200);
-			if (!isApplied(imported.body)) continue;
-			expect(imported.body.selectedOrderId).toBe("100001");
-			const authoredContent = imported.body.native.slots
+			const applied = requireApplied(imported.body);
+			expect(applied.selectedOrderId).toBe("100001");
+			const authoredContent = applied.native.slots
 				.filter((slot) => slot.reference === "instruction" && slot.enabled)
 				.map((slot) => "content" in slot ? slot.content : "")
 				.find((content) => content.trim() !== "");
@@ -290,7 +309,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const selected = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: latestBody.revision, action: { type: "select-prompt-preset", promptPresetId: imported.body.preset.id } }),
+				body: JSON.stringify({ expectedRevision: latestBody.revision, action: { type: "select-prompt-preset", promptPresetId: applied.preset.id } }),
 			}));
 			expect(selected.status).toBe(200);
 			const afterSelection = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
@@ -307,7 +326,11 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const acceptedBody = await accepted.json() as AcceptedGeneration;
 			const events = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`));
 			await events.text();
-			expect(captured.messages.length).toBeGreaterThan(0);
+			const capturedContent = captured.messages.map((message) => message.content).join("\n");
+			const firstPosition = capturedContent.indexOf(expectedContentInOrder[0]);
+			const secondPosition = capturedContent.indexOf(expectedContentInOrder[1]);
+			expect(firstPosition).toBeGreaterThanOrEqual(0);
+			expect(secondPosition).toBeGreaterThan(firstPosition);
 		}
 	});
 });

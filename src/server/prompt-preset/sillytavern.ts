@@ -69,7 +69,7 @@ const isJsonString = (value: SillyTavernJsonValue): value is string => typeof va
 const isJsonNumber = (value: SillyTavernJsonValue): value is number => typeof value === "number";
 const isJsonBoolean = (value: SillyTavernJsonValue | undefined): value is boolean => typeof value === "boolean";
 
-const record = (value: SillyTavernJsonValue): JsonRecord | null =>
+const asJsonRecord = (value: SillyTavernJsonValue): JsonRecord | null =>
 	isJsonObject(value) ? value : null;
 
 const requiredString = (value: SillyTavernJsonValue | undefined, field: string): string => {
@@ -91,7 +91,7 @@ const sourceName = (source: JsonRecord, requestedName: string | undefined): stri
 };
 
 const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
-	const source = record(value);
+	const source = asJsonRecord(value);
 	if (source === null) {
 		throw new InvalidPromptPresetCommandError("SillyTavern JSON must be an object.");
 	}
@@ -105,7 +105,7 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 	const definitions: SourceDefinition[] = [];
 	const seenDefinitions = new Set<string>();
 	for (const [index, value] of source.prompts.entries()) {
-		const definition = record(value);
+		const definition = asJsonRecord(value);
 		if (definition === null) {
 			throw new InvalidPromptPresetCommandError(`SillyTavern prompt definition ${index + 1} must be an object.`);
 		}
@@ -128,7 +128,7 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 
 	const orders: SourceOrderList[] = [];
 	for (const [index, value] of source.prompt_order.entries()) {
-		const order = record(value);
+		const order = asJsonRecord(value);
 		if (order === null || !Array.isArray(order.order)) {
 			throw new InvalidPromptPresetCommandError(`SillyTavern order list ${index + 1} must provide an order array.`);
 		}
@@ -138,7 +138,7 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 		}
 		const entries: SourceOrderEntry[] = [];
 		for (const [entryIndex, entryValue] of order.order.entries()) {
-			const entry = record(entryValue);
+			const entry = asJsonRecord(entryValue);
 			if (entry === null) {
 				throw new InvalidPromptPresetCommandError(`SillyTavern order entry ${entryIndex + 1} must be an object.`);
 			}
@@ -396,7 +396,7 @@ const buildSillyTavernPreview = (
 };
 
 export const normalizeSillyTavernImportRequest = (value: SillyTavernJsonValue): SillyTavernImportRequest => {
-	const envelope = record(value);
+	const envelope = asJsonRecord(value);
 	if (envelope === null || !Object.hasOwn(envelope, "source")) {
 		throw new InvalidPromptPresetCommandError("SillyTavern import request must provide a source.");
 	}
