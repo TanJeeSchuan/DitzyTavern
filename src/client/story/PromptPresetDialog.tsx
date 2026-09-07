@@ -40,6 +40,7 @@ import {
 	type PromptPresetCommand,
 	type PromptPresetSummary,
 	type SillyTavernImportPreview,
+	type SillyTavernImportRequest,
 	type SillyTavernJsonValue,
 } from "../prompt-preset-library";
 import {
@@ -151,13 +152,16 @@ type BlockDraft =
 type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
 
 type SillyTavernReview = {
-	source: SillyTavernJsonValue;
-	name: string;
+	request: SillyTavernImportRequest & { source: SillyTavernJsonValue };
 	preview: SillyTavernImportPreview;
 	orderListId: string | null;
 };
 
-const slotTitle = (slot: ResolvedPromptPresetSlot): string =>
+type PromptPresetSlotTitleSource =
+	| ResolvedPromptPresetSlot
+	| SillyTavernImportPreview["native"]["slots"][number];
+
+const slotTitle = (slot: PromptPresetSlotTitleSource): string =>
 	slot.reference === "instruction"
 		? (slot.name.trim() === "" ? "Instruction" : slot.name)
 		: slotLabels[slot.reference];
@@ -593,8 +597,7 @@ export function PromptPresetDialog({
 				return;
 			}
 			setSillyTavernReview({
-				source,
-				name: review.preview.name,
+				request: { source, name: review.preview.name },
 				preview: review.preview,
 				orderListId: review.preview.selectedOrderId,
 			});
@@ -614,8 +617,8 @@ export function PromptPresetDialog({
 		setPendingAction("import");
 		try {
 			const outcome = await commitSillyTavernPromptPreset(
-				sillyTavernReview.source,
-				sillyTavernReview.name,
+				sillyTavernReview.request.source,
+				sillyTavernReview.request.name,
 				sillyTavernReview.orderListId ?? undefined,
 			);
 			if (outcome.status === "invalid") {
@@ -639,8 +642,8 @@ export function PromptPresetDialog({
 		setPendingAction("review");
 		try {
 			const outcome = await reviewSillyTavernPromptPreset(
-				sillyTavernReview.source,
-				sillyTavernReview.name,
+				sillyTavernReview.request.source,
+				sillyTavernReview.request.name,
 				orderListId,
 			);
 			if (outcome.status === "review") {
@@ -1114,12 +1117,9 @@ export function PromptPresetDialog({
 	);
 }
 
-const importedSlotTitle = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
-	slot.reference === "instruction"
-		? (slot.name.trim() === "" ? "Instruction" : slot.name)
-		: slot.reference === "history"
-			? "Chat history"
-			: slot.reference.replaceAll("-", " ");
+const importedSlotRole = (
+	slot: SillyTavernImportPreview["native"]["slots"][number],
+): string => slot.role === null ? "History message roles" : outgoingRoleLabels[slot.role];
 
 function SillyTavernImportReviewDialog({
 	review,
@@ -1165,10 +1165,18 @@ function SillyTavernImportReviewDialog({
 						)}
 						<section aria-label="Converted blocks" className="flex flex-col gap-2">
 							<h2 className="text-sm font-medium">Converted blocks</h2>
-							<ol className="flex max-h-64 flex-col gap-1 overflow-y-auto text-sm">
+							<ol className="flex max-h-80 flex-col gap-2 overflow-y-auto text-sm">
 								{review.preview.native.slots.map((slot, index) => (
 									<li key={`${slot.reference}-${index}`} className={slot.enabled ? "" : "opacity-60"}>
-										{index + 1}. {importedSlotTitle(slot)}{slot.enabled ? "" : " (disabled)"}
+										<div className="flex flex-wrap items-baseline gap-x-2">
+											<span>{index + 1}. {slotTitle(slot)}{slot.enabled ? "" : " (disabled)"}</span>
+											<span className="text-xs text-muted-foreground">{importedSlotRole(slot)}</span>
+										</div>
+										{slot.reference === "instruction" && (
+											<pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 text-xs">
+												{slot.content || "(empty authored content)"}
+											</pre>
+										)}
 									</li>
 								))}
 							</ol>

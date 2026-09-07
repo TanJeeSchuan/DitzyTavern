@@ -1,4 +1,4 @@
-import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
+import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
 import { InvalidPromptPresetCommandError } from "./errors";
 
 type JsonRecord = { [key: string]: SillyTavernJsonValue };
@@ -20,12 +20,6 @@ interface SourceOrderEntry {
 interface SourceOrderList {
 	id: string;
 	entries: SourceOrderEntry[];
-}
-
-interface SillyTavernImportRequestValue {
-	source: SillyTavernJsonValue;
-	name?: string;
-	orderListId?: string;
 }
 
 interface NormalizedSource {
@@ -174,12 +168,8 @@ const chooseOrder = (orders: readonly SourceOrderList[], requested: string | und
 	return orders.find((order) => order.id === "100001") ?? (orders.length === 1 ? orders[0] : null);
 };
 
-const diagnostic = (
-	code: string,
-	message: string,
-	identifier?: string,
-): SillyTavernImportDiagnostic => {
-	const value: SillyTavernImportDiagnostic = { severity: "warning", code, message };
+const diagnostic = (code: string, message: string, identifier?: string): SillyTavernImportDiagnostic => {
+	const value: SillyTavernImportDiagnostic = { code, message };
 	if (identifier !== undefined) value.identifier = identifier;
 	return value;
 };
@@ -188,6 +178,15 @@ const translateCommentsAndMacros = (source: string): string => {
 	let output = "";
 	let index = 0;
 	while (index < source.length) {
+		if (source.startsWith("{{//}}", index)) {
+			const end = source.indexOf("{{///}}", index + "{{//}}".length);
+			if (end !== -1) {
+				const endExclusive = end + "{{///}}".length;
+				output += source.slice(index, endExclusive);
+				index = endExclusive;
+				continue;
+			}
+		}
 		if (source.startsWith("{{//", index)) {
 			let depth = 0;
 			let end = -1;
@@ -250,7 +249,7 @@ const pushOnce = (diagnostics: SillyTavernImportDiagnostic[], seen: Set<string>,
 	diagnostics.push(value);
 };
 
-const convert = (
+const buildSillyTavernPreview = (
 	normalized: NormalizedSource,
 	name: string,
 	requestedOrderId: string | undefined,
@@ -396,28 +395,31 @@ const convert = (
 	};
 };
 
-export const normalizeSillyTavernImportRequest = (value: SillyTavernJsonValue): SillyTavernImportRequestValue => {
+export const normalizeSillyTavernImportRequest = (value: SillyTavernJsonValue): SillyTavernImportRequest => {
 	const envelope = record(value);
-	if (envelope !== null && Object.hasOwn(envelope, "source")) {
-		if (envelope.name !== undefined && !isJsonString(envelope.name)) {
-			throw new InvalidPromptPresetCommandError("SillyTavern import name must be text.");
-		}
-		if (envelope.orderListId !== undefined && !isJsonString(envelope.orderListId)) {
-			throw new InvalidPromptPresetCommandError("SillyTavern orderListId must be text.");
-		}
-		return {
-			source: envelope.source,
-			name: envelope.name !== undefined && isJsonString(envelope.name) ? envelope.name : undefined,
-			orderListId: envelope.orderListId !== undefined && isJsonString(envelope.orderListId) ? envelope.orderListId : undefined,
-		};
+	if (envelope === null || !Object.hasOwn(envelope, "source")) {
+		throw new InvalidPromptPresetCommandError("SillyTavern import request must provide a source.");
 	}
-	return { source: value };
+	if (envelope.name !== undefined && !isJsonString(envelope.name)) {
+		throw new InvalidPromptPresetCommandError("SillyTavern import name must be text.");
+	}
+	if (envelope.orderListId !== undefined && !isJsonString(envelope.orderListId)) {
+		throw new InvalidPromptPresetCommandError("SillyTavern orderListId must be text.");
+	}
+	return {
+		source: envelope.source,
+		name: envelope.name !== undefined && isJsonString(envelope.name) ? envelope.name : undefined,
+		orderListId: envelope.orderListId !== undefined && isJsonString(envelope.orderListId) ? envelope.orderListId : undefined,
+	};
 };
 
 export const reviewSillyTavernPromptPreset = (value: SillyTavernJsonValue): SillyTavernImportPreview => {
 	const request = normalizeSillyTavernImportRequest(value);
+	if (!isSillyTavernJsonValue(request.source)) {
+		throw new InvalidPromptPresetCommandError("SillyTavern import source must be valid JSON.");
+	}
 	const normalized = normalizeSource(request.source);
-	return convert(normalized, sourceName(normalized.settings, request.name), request.orderListId);
+	return buildSillyTavernPreview(normalized, sourceName(normalized.settings, request.name), request.orderListId);
 };
 
 export const importSillyTavernPromptPreset = (value: SillyTavernJsonValue): SillyTavernImportPreview => {

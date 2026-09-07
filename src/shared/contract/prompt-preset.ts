@@ -168,7 +168,6 @@ export const sillyTavernImportRequest = Type.Object({
 export type SillyTavernImportRequest = Static<typeof sillyTavernImportRequest>;
 
 export const sillyTavernImportDiagnostic = Type.Object({
-	severity: Type.Union([Type.Literal("warning"), Type.Literal("error")]),
 	code: Type.String(),
 	message: Type.String(),
 	identifier: Type.Optional(Type.String()),

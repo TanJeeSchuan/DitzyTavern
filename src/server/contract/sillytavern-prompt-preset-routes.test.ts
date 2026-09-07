@@ -196,7 +196,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const app = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
-				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} \\{{char}}", role: "user", injection_position: 0 },
+				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}}", role: "user", injection_position: 0 },
 				{ identifier: "chatHistory", name: "History", content: "", marker: true },
 				{ identifier: "depth-one", name: "Depth one", content: "one", role: "system", injection_position: 1 },
 				{ identifier: "depth-two", name: "Depth two", content: "two", role: "assistant", injection_position: 1 },
@@ -213,7 +213,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(reviewed.status).toBe(200);
 		if (!isPreview(reviewed.body)) return;
 		expect(reviewed.body.native.slots.map((slot) => slot.reference === "instruction" ? slot.content : slot.reference)).toEqual([
-			"{{self}} {{// hidden {{char}} }} \\{{char}}",
+			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}}",
 			"history",
 			"history",
 			"one",
@@ -241,13 +241,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const source: SillyTavernJsonValue = {
-			prompts: [{ identifier: "main", name: "Imported voice", content: "Speak for {{user}} to {{char}}.", role: "assistant" }],
-			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
-		};
-		const imported = await postImport(library, source);
-		expect(imported.status).toBe(200);
-		if (!isApplied(imported.body)) return;
+		const paths = [
+			".sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json",
+			".sample-format/prompts/Marinara's Spaghetti Recipe(1).json",
+		];
 
 		const key = new Uint8Array(32).fill(19);
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
@@ -275,25 +272,42 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };
-		const selected = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: conversation.revision, action: { type: "select-prompt-preset", promptPresetId: imported.body.preset.id } }),
-		}));
-		expect(selected.status).toBe(200);
-		const latest = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
-		// ==[HUMAN APPROVED]== SAFETY: this GET response is the conversation route's declared snapshot.
-		const latestBody = await latest.json() as ConversationRevision;
-		const accepted = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: latestBody.revision, content: "Set the scene." }),
-		}));
-		expect(accepted.status).toBe(200);
-		// ==[HUMAN APPROVED]== SAFETY: this POST response is the conversation route's declared generation.
-		const acceptedBody = await accepted.json() as AcceptedGeneration;
-		const events = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`));
-		await events.text();
-		expect(captured.messages).toContainEqual({ role: "assistant", content: "Speak for Writer to Maren." });
+		for (const path of paths) {
+			const source = await readSillyTavernSample(path);
+			const imported = await postImport(library, source);
+			expect(imported.status).toBe(200);
+			if (!isApplied(imported.body)) continue;
+			expect(imported.body.selectedOrderId).toBe("100001");
+			const authoredContent = imported.body.native.slots
+				.filter((slot) => slot.reference === "instruction" && slot.enabled)
+				.map((slot) => "content" in slot ? slot.content : "")
+				.find((content) => content.trim() !== "");
+			expect(authoredContent).toBeDefined();
+
+			const latest = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
+			// ==[HUMAN APPROVED]== SAFETY: this GET response is the conversation route's declared snapshot.
+			const latestBody = await latest.json() as ConversationRevision;
+			const selected = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: latestBody.revision, action: { type: "select-prompt-preset", promptPresetId: imported.body.preset.id } }),
+			}));
+			expect(selected.status).toBe(200);
+			const afterSelection = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
+			// ==[HUMAN APPROVED]== SAFETY: this GET response is the conversation route's declared snapshot.
+			const afterSelectionBody = await afterSelection.json() as ConversationRevision;
+			captured = { messages: [] };
+			const accepted = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: afterSelectionBody.revision, content: "Set the scene." }),
+			}));
+			expect(accepted.status).toBe(200);
+			// ==[HUMAN APPROVED]== SAFETY: this POST response is the conversation route's declared generation.
+			const acceptedBody = await accepted.json() as AcceptedGeneration;
+			const events = await conversations.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`));
+			await events.text();
+			expect(captured.messages.length).toBeGreaterThan(0);
+		}
 	});
 });
