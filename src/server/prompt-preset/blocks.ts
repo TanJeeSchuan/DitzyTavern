@@ -6,6 +6,7 @@ import {
 	defaultOutgoingRoles,
 	type PromptBlockReference,
 	type PromptOutgoingRole,
+	type PromptPresetBlockOccurrence,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
@@ -95,16 +96,24 @@ const requireBlock = (
 
 // ==[HUMAN APPROVED]== One transactional boundary for the occurrence-addressed writes: the
 // occurrence must belong to the preset before any statement of the operation
-// runs, and the response is the stored recipe as a fresh read.
+// runs, the write sees the verified occurrence, and the response is the
+// stored recipe as a fresh read.
 const writePromptPresetBlock = (
 	database: Database,
 	presetId: number,
 	blockId: number,
-	write: (tx: Pick<RecipeDatabase, "select" | "update" | "insert" | "delete">) => void,
+	write: (
+		tx: Pick<RecipeDatabase, "select" | "update" | "insert" | "delete">,
+		occurrence: PromptPresetBlockOccurrence,
+	) => void,
 ): PromptPresetRecipe =>
 	drizzle(database).transaction((tx) => {
-		requireBlock(database, presetId, blockId);
-		write(tx);
+		const occurrence = requireBlock(database, presetId, blockId)
+			.slots.find((slot) => slot.id === blockId);
+		if (occurrence === undefined) {
+			throw new PromptPresetBlockNotFoundError(presetId, blockId);
+		}
+		write(tx, occurrence);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	});
 
@@ -140,7 +149,7 @@ export const movePromptPresetBlock = (
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (tx) => {
 		const ordered = orderedIdsOf(tx, presetId);
-		if (toPosition > ordered.length) {
+		if (toPosition < 1 || toPosition > ordered.length) {
 			throw new InvalidPromptPresetOperationError(
 				`Position ${toPosition} is outside the recipe's ${ordered.length} slots.`,
 			);
@@ -156,26 +165,21 @@ export const setPromptPresetBlockEnabled = (
 	presetId: number,
 	blockId: number,
 	enabled: boolean,
-): PromptPresetRecipe => {
-	requireBlock(database, presetId, blockId);
-	drizzle(database)
-		.update(promptPresetBlockTable)
-		.set({ enabled })
-		.where(eq(promptPresetBlockTable.id, blockId))
-		.run();
-	return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-};
+): PromptPresetRecipe =>
+	writePromptPresetBlock(database, presetId, blockId, (tx) => {
+		tx.update(promptPresetBlockTable)
+			.set({ enabled })
+			.where(eq(promptPresetBlockTable.id, blockId))
+			.run();
+	});
 
 /** ==[HUMAN APPROVED]== Duplicates one occurrence directly after it, copying reference, role and enablement. */
 export const duplicatePromptPresetBlock = (
 	database: Database,
 	presetId: number,
 	blockId: number,
-): PromptPresetRecipe => {
-	const original = requireBlock(database, presetId, blockId)
-		.slots.find((slot) => slot.id === blockId);
-	if (original === undefined) throw new PromptPresetBlockNotFoundError(presetId, blockId);
-	return writePromptPresetBlock(database, presetId, blockId, (tx) => {
+): PromptPresetRecipe =>
+	writePromptPresetBlock(database, presetId, blockId, (tx, original) => {
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.
@@ -198,7 +202,6 @@ export const duplicatePromptPresetBlock = (
 		withCopy.splice(withCopy.indexOf(blockId) + 1, 0, inserted.id);
 		renumber(tx, presetId, withCopy);
 	});
-};
 
 /** ==[HUMAN APPROVED]== Removes one occurrence; no slot is forced to remain. */
 export const removePromptPresetBlock = (
@@ -222,18 +225,15 @@ export const setPromptPresetBlockRole = (
 	presetId: number,
 	blockId: number,
 	role: PromptOutgoingRole,
-): PromptPresetRecipe => {
-	const slot = requireBlock(database, presetId, blockId)
-		.slots.find((entry) => entry.id === blockId);
-	if (slot?.reference === "history") {
-		throw new InvalidPromptPresetOperationError(
-			"The history slot has no outgoing role of its own; its entries keep their Message roles.",
-		);
-	}
-	drizzle(database)
-		.update(promptPresetBlockTable)
-		.set({ role })
-		.where(eq(promptPresetBlockTable.id, blockId))
-		.run();
-	return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-};
+): PromptPresetRecipe =>
+	writePromptPresetBlock(database, presetId, blockId, (tx, occurrence) => {
+		if (occurrence.reference === "history") {
+			throw new InvalidPromptPresetOperationError(
+				"The history slot has no outgoing role of its own; its entries keep their Message roles.",
+			);
+		}
+		tx.update(promptPresetBlockTable)
+			.set({ role })
+			.where(eq(promptPresetBlockTable.id, blockId))
+			.run();
+	});

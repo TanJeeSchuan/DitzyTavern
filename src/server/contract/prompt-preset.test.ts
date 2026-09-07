@@ -8,6 +8,10 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset";
+import {
+	movePromptPresetBlock,
+	InvalidPromptPresetOperationError,
+} from "../prompt-preset";
 import type { ModelFetch } from "../model-client";
 import type {
 	ConversationPromptPreset,
@@ -253,6 +257,22 @@ const completeGeneration = async (
 		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/events`,
 	))).text();
 };
+
+// ==[HUMAN APPROVED]== The owning module guards a move target the transport schema cannot
+// deliver, so a direct caller cannot displace an occurrence either.
+describe("Prompt Preset move bounds", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	test("rejects a move to position 0 with the typed invalid outcome", () => {
+		createChat(database);
+		expect(() => movePromptPresetBlock(database, 1, 1, 0)).toThrow(
+			InvalidPromptPresetOperationError,
+		);
+	});
+});
 
 describe("Prompt Preset transport", () => {
 	let database: Database;
