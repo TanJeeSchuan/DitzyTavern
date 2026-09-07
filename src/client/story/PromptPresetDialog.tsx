@@ -51,6 +51,15 @@ type PresetView =
 	| { status: "ready"; presets: PromptPresetSummary[]; selected: ConversationPromptPreset }
 	| { status: "unavailable" };
 
+// ==[HUMAN APPROVED]== One inline edit at a time across the whole list: the shape pairs
+// the row it belongs to with its draft name, and the kind decides which
+// prefill and submit command it carries.
+interface PresetInlineEdit {
+	id: number;
+	kind: "rename" | "duplicate" | "delete";
+	name: string;
+}
+
 const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
 	if (slot.reference === "history") {
 		return (
@@ -106,9 +115,7 @@ export function PromptPresetDialog({
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<string | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
-	const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
-	const [duplicating, setDuplicating] = useState<{ id: number; name: string } | null>(null);
-	const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+	const [activeEdit, setActiveEdit] = useState<PresetInlineEdit | null>(null);
 
 	const load = async (isCancelled?: () => boolean) => {
 		if (conversation === null) {
@@ -137,9 +144,7 @@ export function PromptPresetDialog({
 		// to one popup visit, not to the Chat's lifetime.
 		setNotice(null);
 		setCreating(null);
-		setRenaming(null);
-		setDuplicating(null);
-		setConfirmingDeleteId(null);
+		setActiveEdit(null);
 		setView({ status: "loading" });
 		void load(isCancelled);
 	}, [open, conversation]);
@@ -209,6 +214,32 @@ export function PromptPresetDialog({
 		});
 	};
 
+	const submitEdit = (preset: PromptPresetSummary, edit: PresetInlineEdit | null) => {
+		if (edit === null) return;
+		setActiveEdit(null);
+		if (edit.kind === "delete") {
+			void runPresetCommand(
+				"delete",
+				{
+					type: "delete",
+					presetId: preset.id,
+					expectedRevision: preset.revision,
+				},
+				(outcome) =>
+					outcome.status === "deleted"
+						? presetDeletionResultNotice(preset.name, outcome.result)
+						: null,
+			);
+			return;
+		}
+		void runPresetCommand(edit.kind, {
+			type: edit.kind,
+			presetId: preset.id,
+			expectedRevision: preset.revision,
+			name: edit.name,
+		});
+	};
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
@@ -252,67 +283,22 @@ export function PromptPresetDialog({
 										key={preset.id}
 										preset={preset}
 										isSelected={preset.id === view.selected.id}
-										renaming={renaming}
-										duplicating={duplicating}
-										confirmingDeleteId={confirmingDeleteId}
+										activeEdit={activeEdit?.id === preset.id ? activeEdit : null}
 										pendingAction={pendingAction}
-										onRenameStart={() => {
-											setRenaming({ id: preset.id, name: preset.name });
-											setDuplicating(null);
-											setConfirmingDeleteId(null);
-										}}
-										onRenameDraft={(name) => setRenaming({ id: preset.id, name })}
-										onRenameSubmit={() => {
-											const name = renaming?.name ?? preset.name;
-											setRenaming(null);
-											void runPresetCommand("rename", {
-												type: "rename",
-												presetId: preset.id,
-												expectedRevision: preset.revision,
-												name,
-											});
-										}}
-										onDuplicateStart={() => {
-											setDuplicating({ id: preset.id, name: `Copy of ${preset.name}` });
-											setRenaming(null);
-											setConfirmingDeleteId(null);
-										}}
-										onDuplicateDraft={(name) => setDuplicating({ id: preset.id, name })}
-										onDuplicateSubmit={() => {
-											const name = duplicating?.name ?? `Copy of ${preset.name}`;
-											setDuplicating(null);
-											void runPresetCommand("duplicate", {
-												type: "duplicate",
-												presetId: preset.id,
-												expectedRevision: preset.revision,
-												name,
-											});
-										}}
-										onDeleteStart={() => {
-											setConfirmingDeleteId(preset.id);
-											setRenaming(null);
-											setDuplicating(null);
-										}}
-										onDeleteSubmit={() => {
-											setConfirmingDeleteId(null);
-											void runPresetCommand(
-												"delete",
-												{
-													type: "delete",
-													presetId: preset.id,
-													expectedRevision: preset.revision,
-												},
-												(outcome) =>
-													outcome.status === "deleted"
-														? presetDeletionResultNotice(preset.name, outcome.result)
-														: null,
-											);
-										}}
-										onCancelInline={() => {
-											setRenaming(null);
-											setDuplicating(null);
-											setConfirmingDeleteId(null);
-										}}
+										onEditStart={(kind) =>
+											setActiveEdit({
+												id: preset.id,
+												kind,
+												name: kind === "duplicate" ? `Copy of ${preset.name}` : preset.name,
+											})
+										}
+										onEditDraft={(name) =>
+											setActiveEdit((current) =>
+												current?.id === preset.id ? { ...current, name } : current,
+											)
+										}
+										onEditSubmit={() => submitEdit(preset, activeEdit)}
+										onEditCancel={() => setActiveEdit(null)}
 										onSelect={() => selectPreset(preset.id)}
 									/>
 								))}
@@ -327,43 +313,20 @@ export function PromptPresetDialog({
 									New blank preset
 								</button>
 							) : (
-								<div className="flex flex-wrap items-center gap-2">
-									<input
-										className="definition-input"
-										type="text"
-										value={creating}
-										placeholder="Preset name"
-										aria-label="New preset name"
-										autoFocus
-										onChange={(event) => setCreating(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key === "Enter" && creating.trim() !== "") {
-												setCreating(null);
-												void runPresetCommand("create", { type: "create", name: creating });
-											}
-											if (event.key === "Escape") setCreating(null);
-										}}
-									/>
-									<button
-										className="primary-button"
-										type="button"
-										disabled={pendingAction !== null || creating.trim() === ""}
-										onClick={() => {
-											setCreating(null);
-											void runPresetCommand("create", { type: "create", name: creating });
-										}}
-									>
-										Create
-									</button>
-									<button
-										className="secondary-button"
-										type="button"
-										disabled={pendingAction !== null}
-										onClick={() => setCreating(null)}
-									>
-										Cancel
-									</button>
-								</div>
+								<InlineNameEdit
+									value={creating}
+									ariaLabel="New preset name"
+									placeholder="Preset name"
+									submitLabel="Create"
+									busy={pendingAction !== null}
+									onChange={setCreating}
+									onSubmit={() => {
+										const name = creating;
+										setCreating(null);
+										void runPresetCommand("create", { type: "create", name });
+									}}
+									onCancel={() => setCreating(null)}
+								/>
 							)}
 						</section>
 						<section aria-label="Selected recipe" className="flex flex-col gap-3">
@@ -405,38 +368,24 @@ export function PromptPresetDialog({
 interface PresetRowProps {
 	preset: PromptPresetSummary;
 	isSelected: boolean;
-	renaming: { id: number; name: string } | null;
-	duplicating: { id: number; name: string } | null;
-	confirmingDeleteId: number | null;
+	activeEdit: PresetInlineEdit | null;
 	pendingAction: string | null;
-	onRenameStart: () => void;
-	onRenameDraft: (name: string) => void;
-	onRenameSubmit: () => void;
-	onDuplicateStart: () => void;
-	onDuplicateDraft: (name: string) => void;
-	onDuplicateSubmit: () => void;
-	onDeleteStart: () => void;
-	onDeleteSubmit: () => void;
-	onCancelInline: () => void;
+	onEditStart: (kind: PresetInlineEdit["kind"]) => void;
+	onEditDraft: (name: string) => void;
+	onEditSubmit: () => void;
+	onEditCancel: () => void;
 	onSelect: () => void;
 }
 
 const PresetRow = ({
 	preset,
 	isSelected,
-	renaming,
-	duplicating,
-	confirmingDeleteId,
+	activeEdit,
 	pendingAction,
-	onRenameStart,
-	onRenameDraft,
-	onRenameSubmit,
-	onDuplicateStart,
-	onDuplicateDraft,
-	onDuplicateSubmit,
-	onDeleteStart,
-	onDeleteSubmit,
-	onCancelInline,
+	onEditStart,
+	onEditDraft,
+	onEditSubmit,
+	onEditCancel,
 	onSelect,
 }: PresetRowProps) => {
 	const busy = pendingAction !== null;
@@ -456,93 +405,7 @@ const PresetRow = ({
 					{affectedConversationsLabel(preset.conversationCount)}
 				</span>
 			</div>
-			{renaming?.id === preset.id ? (
-				<div className="mt-2 flex flex-wrap items-center gap-2">
-					<input
-						className="definition-input"
-						type="text"
-						value={renaming.name}
-						aria-label={`Rename ${preset.name}`}
-						autoFocus
-						onChange={(event) => onRenameDraft(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" && renaming.name.trim() !== "") onRenameSubmit();
-							if (event.key === "Escape") onCancelInline();
-						}}
-					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={busy || renaming.name.trim() === ""}
-						onClick={onRenameSubmit}
-					>
-						Save name
-					</button>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={busy}
-						onClick={onCancelInline}
-					>
-						Cancel
-					</button>
-				</div>
-			) : duplicating?.id === preset.id ? (
-				<div className="mt-2 flex flex-wrap items-center gap-2">
-					<input
-						className="definition-input"
-						type="text"
-						value={duplicating.name}
-						aria-label={`Name the copy of ${preset.name}`}
-						autoFocus
-						onChange={(event) => onDuplicateDraft(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" && duplicating.name.trim() !== "") onDuplicateSubmit();
-							if (event.key === "Escape") onCancelInline();
-						}}
-					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={busy || duplicating.name.trim() === ""}
-						onClick={onDuplicateSubmit}
-					>
-						Duplicate
-					</button>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={busy}
-						onClick={onCancelInline}
-					>
-						Cancel
-					</button>
-				</div>
-			) : confirmingDeleteId === preset.id ? (
-				<div className="mt-2 flex flex-col gap-2">
-					<p className="text-sm text-muted-foreground">
-						{deleteCopy.impact}
-					</p>
-					<div className="flex flex-wrap items-center gap-2">
-						<button
-							className="danger-button"
-							type="button"
-							disabled={busy}
-							onClick={onDeleteSubmit}
-						>
-							{deleteCopy.confirmLabel}
-						</button>
-						<button
-							className="secondary-button"
-							type="button"
-							disabled={busy}
-							onClick={onCancelInline}
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			) : (
+			{activeEdit === null ? (
 				<div className="mt-2 flex flex-wrap items-center gap-2">
 					{isSelected ? (
 						<span className="text-xs font-medium" aria-current="true">
@@ -562,7 +425,7 @@ const PresetRow = ({
 						className="secondary-button"
 						type="button"
 						disabled={busy}
-						onClick={onRenameStart}
+						onClick={() => onEditStart("rename")}
 					>
 						Rename
 					</button>
@@ -570,7 +433,7 @@ const PresetRow = ({
 						className="secondary-button"
 						type="button"
 						disabled={busy}
-						onClick={onDuplicateStart}
+						onClick={() => onEditStart("duplicate")}
 					>
 						Duplicate
 					</button>
@@ -578,12 +441,108 @@ const PresetRow = ({
 						className="danger-button"
 						type="button"
 						disabled={busy}
-						onClick={onDeleteStart}
+						onClick={() => onEditStart("delete")}
 					>
 						Delete
 					</button>
 				</div>
+			) : activeEdit.kind === "delete" ? (
+				<div className="mt-2 flex flex-col gap-2">
+					<p className="text-sm text-muted-foreground">
+						{deleteCopy.impact}
+					</p>
+					<div className="flex flex-wrap items-center gap-2">
+						<button
+							className="danger-button"
+							type="button"
+							disabled={busy}
+							onClick={onEditSubmit}
+						>
+							{deleteCopy.confirmLabel}
+						</button>
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={busy}
+							onClick={onEditCancel}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			) : (
+				<div className="mt-2">
+					<InlineNameEdit
+						value={activeEdit.name}
+						ariaLabel={
+							activeEdit.kind === "rename"
+								? `Rename ${preset.name}`
+								: `Name the copy of ${preset.name}`
+						}
+						placeholder={activeEdit.kind === "rename" ? "Preset name" : "Copy name"}
+						submitLabel={activeEdit.kind === "rename" ? "Save name" : "Duplicate"}
+						busy={busy}
+						onChange={onEditDraft}
+						onSubmit={onEditSubmit}
+						onCancel={onEditCancel}
+					/>
+				</div>
 			)}
 		</li>
+	);
+};
+
+const InlineNameEdit = ({
+	value,
+	ariaLabel,
+	placeholder,
+	submitLabel,
+	busy,
+	onChange,
+	onSubmit,
+	onCancel,
+}: {
+	value: string;
+	ariaLabel: string;
+	placeholder?: string;
+	submitLabel: string;
+	busy: boolean;
+	onChange: (value: string) => void;
+	onSubmit: () => void;
+	onCancel: () => void;
+}) => {
+	const ready = value.trim() !== "";
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			<input
+				className="definition-input"
+				type="text"
+				value={value}
+				placeholder={placeholder}
+				aria-label={ariaLabel}
+				autoFocus
+				onChange={(event) => onChange(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter" && ready) onSubmit();
+					if (event.key === "Escape") onCancel();
+				}}
+			/>
+			<button
+				className="primary-button"
+				type="button"
+				disabled={busy || !ready}
+				onClick={onSubmit}
+			>
+				{submitLabel}
+			</button>
+			<button
+				className="secondary-button"
+				type="button"
+				disabled={busy}
+				onClick={onCancel}
+			>
+				Cancel
+			</button>
+		</div>
 	);
 };

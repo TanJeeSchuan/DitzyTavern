@@ -59,10 +59,33 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 	}));
 };
 
+// ==[HUMAN APPROVED]== Reads one preset's summary with its deletion impact (the
+// Conversation selections currently pointing at it) inside the caller's
+// transaction, so conflicts and results name exactly what a command saw.
 const requireSummary = (db: PromptPresetDatabase, presetId: number): PromptPresetSummary => {
-	const summary = listPresetSummaries(db).find((preset) => preset.id === presetId);
-	if (summary === undefined) throw new PromptPresetNotFoundError(presetId);
-	return summary;
+	const preset = db
+		.select({
+			id: promptPresetTable.id,
+			name: promptPresetTable.name,
+			revision: promptPresetTable.revision,
+			is_default: promptPresetTable.is_default,
+		})
+		.from(promptPresetTable)
+		.where(eq(promptPresetTable.id, presetId))
+		.get();
+	if (preset === undefined) throw new PromptPresetNotFoundError(presetId);
+	const selection = db
+		.select({ total: count() })
+		.from(conversationPromptPresetTable)
+		.where(eq(conversationPromptPresetTable.prompt_preset_id, presetId))
+		.get();
+	return {
+		id: preset.id,
+		name: preset.name,
+		revision: preset.revision,
+		isDefault: preset.is_default,
+		conversationCount: selection?.total ?? 0,
+	};
 };
 
 const requireCommandName = (name: string): string => {
@@ -152,14 +175,10 @@ export function executePromptPresetCommand(
 		}
 
 		db.update(promptPresetTable)
-			.set({ name: requireCommandName(command.name) })
-			.where(eq(promptPresetTable.id, preset.id))
-			.run();
-		// ==[HUMAN APPROVED]== The rename is the only command that changes the guarded
-		// source preset, so it alone advances the revision the next command
-		// must carry.
-		db.update(promptPresetTable)
-			.set({ revision: preset.revision + 1 })
+			// ==[HUMAN APPROVED]== The rename is the only command that changes the guarded
+			// source preset, so it alone advances the revision the next command
+			// must carry.
+			.set({ name: requireCommandName(command.name), revision: preset.revision + 1 })
 			.where(eq(promptPresetTable.id, preset.id))
 			.run();
 		return requireSummary(db, preset.id);

@@ -57,10 +57,3 @@ export async function applyPromptPresetCommand(
 	}
 	return { status: "applied", preset: data.preset };
 }
-
-export {
-	affectedConversationsLabel,
-	presetDeletionConfirmationCopy,
-	presetSelectionFeedbackLabel,
-	type PresetDeletionConfirmationCopy,
-} from "./prompt-preset-presentation";
