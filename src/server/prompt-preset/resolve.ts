@@ -62,6 +62,20 @@ export const resolveConversationPromptPreset = (
 				entryCount: historyEntryCount,
 			};
 		}
+		if (slot.reference === "instruction") {
+			// ==[HUMAN APPROVED]== An instruction occurrence's resolved view is its stored authored
+			// name and text, exactly what the editor shows and Generation
+			// compiles; there is no Conversation-local source to read. The
+			// stored recipe read guarantees its outgoing role.
+			return {
+				id: slot.id,
+				reference: slot.reference,
+				enabled: slot.enabled,
+				role: slot.role,
+				name: slot.name,
+				content: slot.content,
+			};
+		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = owners[referenced.owner];
 		return {

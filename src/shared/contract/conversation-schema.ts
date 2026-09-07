@@ -61,6 +61,15 @@ const promptBlock = Type.Union([
 		role: promptDefinitionRole,
 		content: Type.String(),
 	}),
+	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
+	// blocks it carries its expanded content and the recipe-chosen outgoing
+	// role; unlike them its text was authored in the preset, not resolved from
+	// a Participant.
+	Type.Object({
+		kind: Type.Literal("instruction"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
 ]);
 
 const generationIntent = Type.Union([

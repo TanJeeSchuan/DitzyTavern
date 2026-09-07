@@ -43,6 +43,13 @@
       "when": 1788753387715,
       "tag": "0005_prompt_preset_block_role",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788766080997,
+      "tag": "0006_nosy_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

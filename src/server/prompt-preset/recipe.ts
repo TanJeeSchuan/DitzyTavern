@@ -7,10 +7,10 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
-	promptBlockReference,
 	promptOutgoingRole,
-	type PromptBlockReference,
+	promptPresetBlockReference,
 	type PromptOutgoingRole,
+	type PromptPresetBlockReference,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
 import { PromptPresetNotFoundError } from "./errors";
@@ -29,8 +29,8 @@ export class PromptPresetNotInitializedError extends Error {
 // ==[HUMAN APPROVED]== A stored slot whose reference is outside the supported vocabulary cannot
 // be assembled and cannot be shown; failing here names the offending row
 // instead of silently dropping content from every later Generation.
-const requireReference = (value: string, presetId: number): PromptBlockReference => {
-	if (!Value.Check(promptBlockReference, value)) {
+const requireReference = (value: string, presetId: number): PromptPresetBlockReference => {
+	if (!Value.Check(promptPresetBlockReference, value)) {
 		throw new Error(
 			`Prompt Preset ${presetId} references the unsupported block "${value}".`,
 		);
@@ -115,6 +115,8 @@ const storedOccurrences = (
 			reference: promptPresetBlockTable.reference,
 			enabled: promptPresetBlockTable.enabled,
 			role: promptPresetBlockTable.role,
+			name: promptPresetBlockTable.name,
+			content: promptPresetBlockTable.content,
 		})
 		.from(promptPresetBlockTable)
 		.where(eq(promptPresetBlockTable.preset_id, presetId))
@@ -127,6 +129,21 @@ const storedOccurrences = (
 			// carry the roles of their own Messages. A stray stored value is
 			// ignored rather than presented.
 			return { id: slot.id, reference, enabled: slot.enabled, role: null };
+		}
+		if (reference === "instruction") {
+			// ==[HUMAN APPROVED]== An authored instruction always stores its composed name, text,
+			// and outgoing role. A missing value is a corrupt row that the public
+			// operations never write; an empty fallback keeps the recipe readable
+			// rather than inventing authored text, and the stored value is never
+			// normalized or flattened.
+			return {
+				id: slot.id,
+				reference,
+				enabled: slot.enabled,
+				role: requireOutgoingRole(slot.role, presetId, slot.id, reference),
+				name: slot.name ?? "",
+				content: slot.content ?? "",
+			};
 		}
 		return {
 			id: slot.id,

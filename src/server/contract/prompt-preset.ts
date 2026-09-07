@@ -2,12 +2,14 @@ import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import {
 	addPromptPresetBlock,
+	addPromptPresetInstruction,
 	duplicatePromptPresetBlock,
 	InvalidPromptPresetOperationError,
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,
 	PromptPresetNotFoundError,
 	removePromptPresetBlock,
+	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
 	setPromptPresetBlockRole,
 } from "../prompt-preset/blocks";
@@ -18,6 +20,7 @@ import {
 	movePromptPresetBlockBody,
 	presetIdParams,
 	promptPresetRecipe,
+	setPromptPresetBlockContentBody,
 	setPromptPresetBlockEnabledBody,
 	setPromptPresetBlockRoleBody,
 } from "../../shared/contract/prompt-preset";
@@ -153,6 +156,36 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 			{
 				params: blockIdParams,
 				body: setPromptPresetBlockRoleBody,
+				response: withRecipeResponse,
+			},
+		)
+		.post(
+			"/api/prompt-presets/:presetId/instructions",
+			({ params }) =>
+				withDatabase(database, (connection) =>
+					recipeOperationResponse(runRecipeOperation(() =>
+						addPromptPresetInstruction(connection, params.presetId))),
+				),
+			{
+				params: presetIdParams,
+				response: withRecipeResponse,
+			},
+		)
+		.post(
+			"/api/prompt-presets/:presetId/blocks/:blockId/content",
+			({ params, body }) =>
+				withDatabase(database, (connection) =>
+					recipeOperationResponse(runRecipeOperation(() =>
+						setPromptPresetBlockContent(
+							connection,
+							params.presetId,
+							params.blockId,
+							body,
+						))),
+				),
+			{
+				params: blockIdParams,
+				body: setPromptPresetBlockContentBody,
 				response: withRecipeResponse,
 			},
 		);

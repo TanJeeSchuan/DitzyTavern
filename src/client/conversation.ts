@@ -212,6 +212,16 @@ export function addPromptPresetReference(
 	);
 }
 
+// ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence; its name, text, and
+// role are authored through the block editor's Save boundary.
+export function addPromptPresetInstruction(
+	presetId: number,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).instructions.post()
+	);
+}
+
 export function movePromptPresetBlock(
 	presetId: number,
 	blockId: number,
@@ -257,6 +267,18 @@ export function setPromptPresetBlockRole(
 ): Promise<PromptPresetOperationOutcome> {
 	return applyRecipeOperation(
 		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).role.post({ role }),
+	);
+}
+
+// ==[HUMAN APPROVED]== The one authored-instruction save: name, text, and outgoing role are a
+// single block-level Save boundary persisted against that one occurrence.
+export function setPromptPresetBlockContent(
+	presetId: number,
+	blockId: number,
+	content: { name: string; content: string; role: PromptOutgoingRole },
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).content.post(content),
 	);
 }
 

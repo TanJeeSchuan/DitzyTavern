@@ -140,6 +140,33 @@ export const addPromptPresetBlock = (
 	});
 };
 
+/** ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence. The name, text, and
+ * outgoing role are authored through the block editor's Save boundary; the
+ * defaults are a valid, empty-contributing starting state and never a
+ * whole-recipe write. */
+export const addPromptPresetInstruction = (
+	database: Database,
+	presetId: number,
+): PromptPresetRecipe => {
+	requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+	const db = drizzle(database);
+	return db.transaction((tx) => {
+		const count = orderedIdsOf(tx, presetId).length;
+		tx.insert(promptPresetBlockTable)
+			.values({
+				preset_id: presetId,
+				position: count + 1,
+				reference: "instruction",
+				enabled: true,
+				role: "system",
+				name: "Instruction",
+				content: "",
+			})
+			.run();
+		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+	});
+};
+
 /** ==[HUMAN APPROVED]== Moves one occurrence to a one-based position, shifting the rest. */
 export const movePromptPresetBlock = (
 	database: Database,
@@ -173,7 +200,10 @@ export const setPromptPresetBlockEnabled = (
 			.run();
 	});
 
-/** ==[HUMAN APPROVED]== Duplicates one occurrence directly after it, copying reference, role and enablement. */
+/** ==[HUMAN APPROVED]== Duplicates one occurrence directly after it, copying reference, role,
+ * enablement, and — for an authored instruction — its name and text. The
+ * copy is a separate occurrence, so its text and role can be edited
+ * independently afterward. */
 export const duplicatePromptPresetBlock = (
 	database: Database,
 	presetId: number,
@@ -184,15 +214,23 @@ export const duplicatePromptPresetBlock = (
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.
 		const ordered = orderedIdsOf(tx, presetId);
+		// ==[HUMAN APPROVED]== Authored instruction rows carry their own name and text;
+		// referenced occurrences store none, so only the instruction branch
+		// contributes them to the copy.
+		const duplicatedRow: typeof promptPresetBlockTable.$inferInsert = {
+			preset_id: presetId,
+			position: ordered.length + 1,
+			reference: original.reference,
+			enabled: original.enabled,
+			role: original.role,
+		};
+		if (original.reference === "instruction") {
+			duplicatedRow.name = original.name;
+			duplicatedRow.content = original.content;
+		}
 		const inserted = tx
 			.insert(promptPresetBlockTable)
-			.values({
-				preset_id: presetId,
-				position: ordered.length + 1,
-				reference: original.reference,
-				enabled: original.enabled,
-				role: original.role,
-			})
+			.values(duplicatedRow)
 			.returning({ id: promptPresetBlockTable.id })
 			.get();
 		if (inserted === undefined) {
@@ -234,6 +272,35 @@ export const setPromptPresetBlockRole = (
 		}
 		tx.update(promptPresetBlockTable)
 			.set({ role })
+			.where(eq(promptPresetBlockTable.id, blockId))
+			.run();
+	});
+
+/**
+ * ==[HUMAN APPROVED]== Saves one authored instruction occurrence's name, text, and outgoing
+ * role as one block-level Save boundary. The operation names one occurrence
+ * and writes only its rows, so a stale draft can never overwrite ordering,
+ * toggles, or another block's saved text. Referenced occurrences hold no
+ * authored text and are refused.
+ */
+export const setPromptPresetBlockContent = (
+	database: Database,
+	presetId: number,
+	blockId: number,
+	content: { name: string; content: string; role: PromptOutgoingRole },
+): PromptPresetRecipe =>
+	writePromptPresetBlock(database, presetId, blockId, (tx, occurrence) => {
+		if (occurrence.reference !== "instruction") {
+			throw new InvalidPromptPresetOperationError(
+				"Only an authored instruction block has text to save; referenced blocks stay read-only here.",
+			);
+		}
+		tx.update(promptPresetBlockTable)
+			.set({
+				name: content.name,
+				content: content.content,
+				role: content.role,
+			})
 			.where(eq(promptPresetBlockTable.id, blockId))
 			.run();
 	});

@@ -56,6 +56,11 @@ export const promptPresetBlockTable = sqliteTable(
 		reference: text().notNull(),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 		role: text({ enum: ["system", "user", "assistant"] }),
+		// ==[HUMAN APPROVED]== The authored instruction block's own metadata and text. Null on
+		// every referenced occurrence: the preset stores references, never
+		// rendered Participant or history content.
+		name: text(),
+		content: text(),
 	},
 	(table) => [
 		uniqueIndex("prompt_preset_block_position_unique").on(

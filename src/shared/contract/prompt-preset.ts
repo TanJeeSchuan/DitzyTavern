@@ -49,26 +49,65 @@ export const promptBlockReference = Type.Union([
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
-// ==[HUMAN APPROVED]== One ordered slot of a recipe. Enablement lives on the slot so a disabled
-// slot keeps its place in the order instead of disappearing from it. The
-// outgoing role is null only for the history slot, whose entries keep the
-// roles of their own Messages.
-export const promptPresetSlot = Type.Object({
-	reference: promptBlockReference,
-	enabled: Type.Boolean(),
-	role: Type.Union([promptOutgoingRole, Type.Null()]),
-});
+// ==[HUMAN APPROVED]== An authored instruction block's reference literal. It is not a Referenced
+// Prompt Block: its text is owned by the preset, edited in the block editor,
+// and expanded with the Conversation's current Control pair rather than a
+// Definition owner.
+export const promptInstructionReference = Type.Literal("instruction");
+export type PromptInstructionReference = Static<typeof promptInstructionReference>;
+
+// ==[HUMAN APPROVED]== Every stored slot reference a recipe row can carry, for validation and
+// reads that must not silently drop a future slot kind.
+export const promptPresetBlockReference = Type.Union([
+	promptBlockReference,
+	promptInstructionReference,
+]);
+export type PromptPresetBlockReference = Static<typeof promptPresetBlockReference>;
+
+// ==[HUMAN APPROVED]== One ordered recipe slot as the compiler consumes it. Referenced slots
+// name Conversation or Participant content and carry only their outgoing
+// role; an authored instruction slot carries its own editable name, text,
+// and role. Enablement lives on the slot so a disabled slot keeps its place
+// in the order instead of disappearing from it. The outgoing role is null
+// only for the history slot, whose entries keep the roles of their own
+// Messages.
+export const promptPresetSlot = Type.Union([
+	Type.Object({
+		reference: promptBlockReference,
+		enabled: Type.Boolean(),
+		role: Type.Union([promptOutgoingRole, Type.Null()]),
+	}),
+	Type.Object({
+		reference: promptInstructionReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		name: Type.String(),
+		content: Type.String(),
+	}),
+]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
 // ==[HUMAN APPROVED]== A stored slot with its occurrence identity. Deliberate duplicates of the
 // same reference are separate occurrences, so every editor operation
-// addresses one row by `id` instead of by reference.
-export const promptPresetBlockOccurrence = Type.Object({
-	id: Type.Integer(),
-	reference: promptBlockReference,
-	enabled: Type.Boolean(),
-	role: Type.Union([promptOutgoingRole, Type.Null()]),
-});
+// addresses one row by `id` instead of by reference. An instruction
+// occurrence carries its authored name and text; referenced occurrences
+// never do, because the preset stores references, not rendered content.
+export const promptPresetBlockOccurrence = Type.Union([
+	Type.Object({
+		id: Type.Integer(),
+		reference: promptBlockReference,
+		enabled: Type.Boolean(),
+		role: Type.Union([promptOutgoingRole, Type.Null()]),
+	}),
+	Type.Object({
+		id: Type.Integer(),
+		reference: promptInstructionReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		name: Type.String(),
+		content: Type.String(),
+	}),
+]);
 export type PromptPresetBlockOccurrence = Static<typeof promptPresetBlockOccurrence>;
 
 /** A stored Prompt Preset: the ordered recipe Generation assembles through. */
@@ -99,6 +138,18 @@ export const resolvedPromptPresetSlot = Type.Union([
 		reference: Type.Literal("history"),
 		enabled: Type.Boolean(),
 		entryCount: Type.Integer(),
+	}),
+	// ==[HUMAN APPROVED]== The resolved view of an instruction occurrence is the stored authored
+	// name and text: unlike a referenced block there is no Conversation-local
+	// source, so what the editor shows and what Generation compiles are the
+	// same stored text.
+	Type.Object({
+		id: Type.Integer(),
+		reference: promptInstructionReference,
+		enabled: Type.Boolean(),
+		role: promptOutgoingRole,
+		name: Type.String(),
+		content: Type.String(),
 	}),
 ]);
 export type ResolvedPromptPresetSlot = Static<typeof resolvedPromptPresetSlot>;
@@ -220,6 +271,17 @@ export const movePromptPresetBlockBody = Type.Object({
 });
 export const setPromptPresetBlockEnabledBody = Type.Object({ enabled: Type.Boolean() });
 export const setPromptPresetBlockRoleBody = Type.Object({ role: promptOutgoingRole });
+
+// ==[HUMAN APPROVED]== The one authored-instruction save. Name, text, and outgoing role are a
+// single block-level Save boundary: the operation names one occurrence and
+// writes only its rows, so a stale draft can never overwrite separately
+// saved ordering or toggles.
+export const setPromptPresetBlockContentBody = Type.Object({
+	name: Type.String(),
+	content: Type.String(),
+	role: promptOutgoingRole,
+});
+export type SetPromptPresetBlockContent = Static<typeof setPromptPresetBlockContentBody>;
 
 export const presetIdParams = Type.Object({ presetId: numericWire });
 export const blockIdParams = Type.Object({

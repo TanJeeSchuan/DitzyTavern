@@ -594,3 +594,132 @@ describe("expandText", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 });
+describe("Authored instruction blocks", () => {
+	const instruction = (overrides: Partial<{
+		enabled: boolean;
+		role: "system" | "user" | "assistant";
+		name: string;
+		content: string;
+	}>): CompilePromptInput["recipe"] =>
+		[
+			{
+				reference: "instruction",
+				enabled: true,
+				role: "system",
+				name: "Intro",
+				content: "Write vividly.",
+				...overrides,
+			},
+		];
+
+	test("compiles an instruction block with its authored content and outgoing role", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: instruction({ role: "user" }),
+			}),
+		);
+		expect(plan.blocks).toEqual([
+			{ kind: "instruction", role: "human", content: "Write vividly." },
+		]);
+		expect(plan.warnings).toEqual([]);
+	});
+
+	test("omits a disabled or empty instruction from the rendered plan", () => {
+		const disabled = compilePrompt(source({ recipe: instruction({ enabled: false }) }));
+		expect(disabled.blocks).toEqual([]);
+
+		const empty = compilePrompt(
+			source({ recipe: instruction({ content: "{{// just a note }}" }) }),
+		);
+		// A comment-only instruction contributes no text and is omitted, exactly
+		// like a Definition channel that holds nothing but a comment.
+		expect(empty.blocks).toEqual([]);
+		expect(empty.warnings).toEqual([]);
+	});
+
+	test("resolves {{self}} and {{other}} to the current Control pair, independent of outgoing role", () => {
+		const roleCases = ["system", "user", "assistant"] as const;
+		for (const role of roleCases) {
+			const plan = compilePrompt(
+				source({
+					recipe: instruction({
+						role,
+						content: "{{self}} writes to {{other}}.",
+					}),
+					human: { name: "Rowan", prompt: emptyChannels },
+					model: { name: "Sable", prompt: emptyChannels },
+				}),
+			);
+			// The perspective never follows the outgoing role: self is always
+			// the human-controlled Participant and other the model-controlled
+			// one.
+			expect(plan.blocks[0]).toEqual({
+				kind: "instruction",
+				role: role === "system" ? "system" : role === "user" ? "human" : "model",
+				content: "Rowan writes to Sable.",
+			});
+		}
+	});
+
+	test("keeps owner-relative resolution for Definition slots beside an instruction", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: [
+					{ reference: "model-identity", enabled: true, role: "assistant" },
+					{ reference: "instruction", enabled: true, role: "system", name: "Intro", content: "{{self}} vs {{other}}." },
+				],
+				human: { name: "Rowan", prompt: emptyChannels },
+				model: {
+					name: "Sable",
+					prompt: { ...emptyChannels, identity: "I am {{self}}, you are {{other}}." },
+				},
+			}),
+		);
+		// The model Definition keeps owner-relative meaning while the authored
+		// instruction resolves to the Control pair.
+		expect(plan.blocks).toEqual([
+			{ kind: "identity", role: "model", content: "I am Sable, you are Rowan." },
+			{ kind: "instruction", role: "system", content: "Rowan vs Sable." },
+		]);
+	});
+
+	test("keeps unknown macros literal, labels warnings with the block name, and never throws", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: instruction({
+					name: "Jailbreak",
+					content: "{{random}} stays, but {{self}} works.",
+				}),
+				human: { name: "Rowan", prompt: emptyChannels },
+				model: { name: "Sable", prompt: emptyChannels },
+			}),
+		);
+		expect(plan.blocks[0]?.content).toBe("{{random}} stays, but Rowan works.");
+		expect(plan.warnings).toEqual([{ block: "Jailbreak", macro: "{{random}}" }]);
+	});
+
+	test("uses the shared comment and escaping processor for instruction text", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: instruction({
+					content: "A \\{{self}} literal and {{// note: {{unfinished}} }} done.",
+				}),
+				human: { name: "Rowan", prompt: emptyChannels },
+				model: { name: "Sable", prompt: emptyChannels },
+			}),
+		);
+		// The escaped macro renders literally and the comment is stripped whole
+		// without warning about the macro inside it — the same behavior as
+		// Participant-owned text.
+		expect(plan.blocks[0]?.content).toBe("A {{self}} literal and  done.");
+		expect(plan.warnings).toEqual([]);
+	});
+});
+
+const emptyChannels = {
+	systemInstruction: "",
+	identity: "",
+	scenario: "",
+	exampleDialogue: "",
+	postHistoryInstruction: "",
+};

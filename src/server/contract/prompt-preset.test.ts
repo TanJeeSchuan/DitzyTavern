@@ -8,6 +8,8 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset";
+import { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
+import { expandText } from "../../shared/prompt-macros";
 import {
 	movePromptPresetBlock,
 	InvalidPromptPresetOperationError,
@@ -17,6 +19,7 @@ import type {
 	ConversationPromptPreset,
 	PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
+import type { ConversationAction } from "../../shared/contract/conversation-schema";
 
 const key = new Uint8Array(32).fill(11);
 
@@ -178,6 +181,7 @@ interface RecipeSlot {
 	sourceName?: string | null;
 	content?: string;
 	entryCount?: number;
+	name?: string;
 }
 
 const slotOf = (
@@ -243,7 +247,10 @@ const readInspection = async (
 	expect(inspected.status).toBe(200);
 	// SAFETY: the route's response schema is the active inspection payload.
 	return await inspected.json() as {
-		promptPlan: { blocks: { kind: string; content: string }[] };
+		promptPlan: {
+			blocks: { kind: string; content: string; role: string | null }[];
+			warnings: { block: string; macro: string }[];
+		};
 		budget: { tokenEstimate: number };
 	};
 };
@@ -816,5 +823,659 @@ describe("Prompt Preset durability", () => {
 		} finally {
 			second.close();
 		}
+	});
+});
+describe("Prompt Preset authored instructions", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	// ==[HUMAN APPROVED]== Thin factories over the public route groups; each handle call builds
+	// a stateless instance over the same isolated database, so the same
+	// transport exercises duplication, selection, recipe operations, and
+	// Generation through the public contract.
+	const conversationApp = () => createConversationRoutes(database);
+
+	const addInstruction = (presetId: number) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
+				method: "POST",
+			}),
+		);
+
+	const setInstructionContent = (
+		presetId: number,
+		blockId: number,
+		body: { name: string; content: string; role: string },
+	) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			}),
+		);
+
+	test("add, save, move, toggle, duplicate and remove work for authored instruction blocks", async () => {
+		const conversation = createChat(database);
+		const preset = await readPreset(conversationApp(), conversation.id);
+
+		const added = await readOperation(addInstruction(preset.id));
+		const instruction = added.slots.at(-1);
+		expect(instruction).toEqual({
+			id: expect.any(Number),
+			reference: "instruction",
+			enabled: true,
+			role: "system",
+			name: "Instruction",
+			content: "",
+		});
+
+		// The one block-level save persists name, text, and role together.
+		const saved = await readOperation(setInstructionContent(
+			preset.id,
+			// SAFETY: the occurrence above exists in the response recipe.
+			(instruction as { id: number }).id,
+			{ name: "Tone", content: "Write like {{self}}.", role: "assistant" },
+		));
+		const savedSlot = slotOf(saved, "instruction");
+		if (savedSlot === undefined) throw new Error("The saved instruction is missing.");
+		expect(savedSlot).toEqual({
+			id: expect.any(Number),
+			reference: "instruction",
+			enabled: true,
+			role: "assistant",
+			name: "Tone",
+			content: "Write like {{self}}.",
+		});
+
+		// Instruction blocks participate in the same ordered recipe operations.
+		// Move it to the front, then duplicate it while both copies are enabled.
+		const moved = await readOperation(moveBlock(database, preset.id, savedSlot.id, 1));
+		expect(moved.slots[0]?.reference).toBe("instruction");
+		const duplicated = await readOperation(
+			duplicateBlock(database, preset.id, savedSlot.id),
+		);
+		expect(duplicated.slots.filter((slot) => slot.reference === "instruction")).toHaveLength(2);
+
+		// disabling one occurrence leaves the other enabled and in place.
+		const toggled = await readOperation(
+			toggleBlock(database, preset.id, savedSlot.id, false),
+		);
+		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
+
+		// A deliberate duplicate is independently editable: saving the second
+		// copy's text and role leaves the disabled original untouched.
+		const copy = toggled.slots.filter((slot) => slot.reference === "instruction")[1];
+		if (copy === undefined) throw new Error("The duplicated instruction is missing.");
+		// SAFETY: the copy exists in the response recipe.
+		const copySaved = await readOperation(setInstructionContent(
+			preset.id,
+			copy.id,
+			{ name: "Copy", content: "Independent text.", role: "user" },
+		));
+		const copies = copySaved.slots.filter((slot) => slot.reference === "instruction");
+		expect(copies[0]).toEqual({
+			id: expect.any(Number),
+			reference: "instruction",
+			enabled: false,
+			role: "assistant",
+			name: "Tone",
+			content: "Write like {{self}}.",
+		});
+		expect(copies[1]).toEqual({
+			id: expect.any(Number),
+			reference: "instruction",
+			enabled: true,
+			role: "user",
+			name: "Copy",
+			content: "Independent text.",
+		});
+
+		// Removing one occurrence leaves the other exactly where it was.
+		const removed = await readOperation(removeBlock(database, preset.id, copies[0].id));
+		expect(removed.slots.filter((slot) => slot.reference === "instruction")).toEqual([
+			copies[1],
+		]);
+	});
+
+	test("refuses a text save on a referenced occurrence", async () => {
+		const conversation = createChat(database);
+		const preset = await readPreset(conversationApp(), conversation.id);
+		const identity = slotOf(preset, "human-identity");
+		if (identity === undefined) throw new Error("The Default recipe has no Identity slot.");
+
+		const response = await setInstructionContent(preset.id, identity.id, {
+			name: "Nope",
+			content: "Nope",
+			role: "system",
+		});
+		expect(response.status).toBe(422);
+		// SAFETY: the route's typed invalid outcome.
+		const outcome = await response.json() as { outcome: string; reason: string };
+		expect(outcome.outcome).toBe("invalid");
+		expect(outcome.reason).toContain("instruction");
+	});
+});
+
+describe("Prompt Preset authored instructions, shared and copied", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	const conversationApp = () => createConversationRoutes(database);
+	const libraryApp = () => createPromptPresetLibraryRoutes(database);
+	const presetRevision = async (presetId: number): Promise<number> => {
+		const response = await libraryApp().handle(new Request("http://localhost/api/prompt-presets"));
+		expect(response.status).toBe(200);
+		// SAFETY: the route's response schema is the typed preset list.
+		const payload = await response.json() as { presets: { id: number; revision: number }[] };
+		const summary = payload.presets.find((preset) => preset.id === presetId);
+		if (summary === undefined) throw new Error("The preset is not listed.");
+		return summary.revision;
+	};
+
+	const addInstruction = (presetId: number) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
+				method: "POST",
+			}),
+		);
+
+	const setInstructionContent = (
+		presetId: number,
+		blockId: number,
+		body: { name: string; content: string; role: string },
+	) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			}),
+		);
+
+	const duplicatePreset = async (presetId: number, name: string) => {
+		const expectedRevision = await presetRevision(presetId);
+		const response = await libraryApp().handle(
+			new Request("http://localhost/api/prompt-presets/commands", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ type: "duplicate", presetId, expectedRevision, name }),
+			}),
+		);
+		expect(response.status).toBe(200);
+		// SAFETY: this test controls the typed applied response.
+		return await response.json() as {
+			outcome: "applied";
+			preset: { id: number; name: string; revision: number };
+		};
+	};
+
+	const selectPresetFor = async (
+		conversationId: number,
+		expectedRevision: number,
+		promptPresetId: number,
+	) => {
+		const response = await conversationApp().handle(
+			new Request(`http://localhost/api/conversations/${conversationId}/commands`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision,
+					action: { type: "select-prompt-preset", promptPresetId },
+				}),
+			}),
+		);
+		expect(response.status).toBe(200);
+		// SAFETY: the route's response schema is the conversation applied summary.
+		return await response.json() as { conversation: { revision: number } };
+	};
+
+	const captureMessages = async (conversationId: number, revision: number) => {
+		let captured: CapturedRequest | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversationId, revision);
+		await completeGeneration(generating, conversationId, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		return captured;
+	};
+
+	test("shared authored text reaches every selecting Chat while a duplicated preset stays independent", async () => {
+		const first = createChat(database);
+		const second = createChat(database);
+		const third = createChat(database);
+		withProfile(database);
+		const preset = await readPreset(conversationApp(), first.id);
+
+		// The third Chat uses an independent copy of the shared preset.
+		const duplicated = await duplicatePreset(preset.id, "Copy");
+		const thirdRevision = await selectPresetFor(
+			third.id,
+			third.revision,
+			duplicated.preset.id,
+		);
+
+		// A saved instruction on the shared preset reaches both selecting
+		// Chats and never reaches the copy.
+		const added = await readOperation(addInstruction(preset.id));
+		const instruction = added.slots.at(-1);
+		if (instruction === undefined) throw new Error("The instruction was not added.");
+		await readOperation(setInstructionContent(
+			preset.id,
+			instruction.id,
+			{ name: "Tone", content: "Write like {{self}}.", role: "assistant" },
+		));
+
+		const firstRequest = await captureMessages(first.id, first.revision);
+		const secondRequest = await captureMessages(second.id, second.revision);
+		const thirdRequest = await captureMessages(third.id, thirdRevision.conversation.revision);
+
+		// The two shared-preset Chats assemble the saved instruction with their
+		// own Participant names; the copy's recipe has no instruction at all.
+		expect(firstRequest?.messages).toContainEqual({
+			role: "assistant",
+			content: "Write like Writer.",
+		});
+		expect(secondRequest?.messages).toContainEqual({
+			role: "assistant",
+			content: "Write like Writer.",
+		});
+		expect(
+			thirdRequest?.messages.some((message) => message.content.startsWith("Write like")),
+		).toBe(false);
+	});
+
+	test("the copy's own saved instruction never reaches the shared preset or its Chats", async () => {
+		const shared = createChat(database);
+		const copy = createChat(database);
+		withProfile(database);
+		const preset = await readPreset(conversationApp(), shared.id);
+
+		const duplicated = await duplicatePreset(preset.id, "Copy");
+		const copyRevision = await selectPresetFor(copy.id, copy.revision, duplicated.preset.id);
+
+		// Editing the copy's recipe later is invisible to the shared preset.
+		const added = await readOperation(addInstruction(duplicated.preset.id));
+		const instruction = added.slots.at(-1);
+		if (instruction === undefined) throw new Error("The instruction was not added.");
+		await readOperation(setInstructionContent(
+			duplicated.preset.id,
+			instruction.id,
+			{ name: "CopyOnly", content: "Only the copy has this.", role: "system" },
+		));
+
+		const copyRequest = await captureMessages(copy.id, copyRevision.conversation.revision);
+		const sharedRequest = await captureMessages(shared.id, shared.revision);
+		expect(copyRequest?.messages).toContainEqual({
+			role: "system",
+			content: "Only the copy has this.",
+		});
+		expect(
+			sharedRequest?.messages.some((message) => message.content === "Only the copy has this."),
+		).toBe(false);
+	});
+});
+
+describe("Prompt Preset authored instruction macros", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	const conversationApp = () => createConversationRoutes(database);
+
+	const addInstruction = (presetId: number) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
+				method: "POST",
+			}),
+		);
+
+	const setInstructionContent = (
+		presetId: number,
+		blockId: number,
+		body: { name: string; content: string; role: string },
+	) =>
+		presetRoutes(database).handle(
+			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			}),
+		);
+
+	const runConversationCommand = async (
+		conversationId: number,
+		expectedRevision: number,
+		action: ConversationAction,
+	) => {
+		const response = await conversationApp().handle(
+			new Request(`http://localhost/api/conversations/${conversationId}/commands`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision, action }),
+			}),
+		);
+		expect(response.status).toBe(200);
+		// SAFETY: the route's response schema is the conversation applied summary.
+		return await response.json() as { conversation: { revision: number } };
+	};
+
+	const captureMessages = async (conversationId: number, revision: number) => {
+		let captured: CapturedRequest | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversationId, revision);
+		await completeGeneration(generating, conversationId, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		return captured?.messages ?? [];
+	};
+
+	const conversationRevision = async (conversationId: number): Promise<number> => {
+		const response = await conversationApp().handle(
+			new Request(`http://localhost/api/conversations/${conversationId}`),
+		);
+		expect(response.status).toBe(200);
+		// SAFETY: the route's response schema is the Conversation summary.
+		const summary = await response.json() as { revision: number };
+		return summary.revision;
+	};
+
+	const addAndSaveInstruction = async (
+		presetId: number,
+		name: string,
+		content: string,
+		role: string,
+	): Promise<number> => {
+		const added = await readOperation(addInstruction(presetId));
+		const instruction = added.slots.at(-1);
+		if (instruction === undefined) throw new Error("The instruction was not added.");
+		await readOperation(setInstructionContent(presetId, instruction.id, { name, content, role }));
+		return instruction.id;
+	};
+
+	test("preset-authored names follow each Chat's Control pair and Control reassignment, independent of role", async () => {
+		const first = createChat(database, { human: "Rowan", model: "Sable" });
+		const second = createChat(database, { human: "Iris", model: "Quill" });
+		withProfile(database);
+		const preset = await readPreset(conversationApp(), first.id);
+		const instructionId = await addAndSaveInstruction(
+			preset.id,
+			"Perspective",
+			"You are {{self}}; answer {{other}}.",
+			"system",
+		);
+
+		const firstMessages = await captureMessages(first.id, first.revision);
+		// Authored text: self is the human-controlled Participant. Participant
+		// fields keep owner-relative meaning beside it.
+		expect(firstMessages).toContainEqual({
+			role: "system",
+			content: "You are Rowan; answer Sable.",
+		});
+		expect(firstMessages).toContainEqual({
+			role: "user",
+			content: "I write as Rowan opposite Sable.",
+		});
+		expect(firstMessages).toContainEqual({ role: "assistant", content: "I am Sable." });
+
+		const secondMessages = await captureMessages(second.id, second.revision);
+		expect(secondMessages).toContainEqual({
+			role: "system",
+			content: "You are Iris; answer Quill.",
+		});
+		expect(secondMessages).toContainEqual({
+			role: "user",
+			content: "I write as Iris opposite Quill.",
+		});
+
+		// Control reassignment swaps the seats: the human seat now holds Sable
+		// and the model seat holds Rowan. Participant ids are the cast order
+		// (1 = the human seed, 2 = the model seed).
+		const searchResponse = await conversationApp().handle(
+			new Request(`http://localhost/api/conversations/${first.id}`),
+		);
+		// SAFETY: the route's response schema is the Conversation summary.
+		const summary = await searchResponse.json() as {
+			revision: number;
+			cast: { id: number; name: string }[];
+		};
+		const rowan = summary.cast.find((participant) => participant.name === "Rowan");
+		if (rowan === undefined) throw new Error("Rowan is not in the Cast.");
+		const afterControl = await runConversationCommand(first.id, summary.revision, {
+			type: "assign-control",
+			seat: "model",
+			participantId: rowan.id,
+		});
+
+		// The instruction now resolves to the new Control pair; the model
+		// Definition text follows its new owner's name.
+		const switchedMessages = await captureMessages(
+			first.id,
+			afterControl.conversation.revision,
+		);
+		expect(switchedMessages).toContainEqual({
+			role: "system",
+			content: "You are Sable; answer Rowan.",
+		});
+		// The Definition slots resolve the newly seated Participants, and their
+		// authored text keeps owner-relative resolution: the human seat's
+		// Definition (Sable's "I am {{self}}.") names Sable and the model
+		// seat's Definition (Rowan's "I write as {{self}}.") names Rowan.
+		expect(switchedMessages).toContainEqual({ role: "user", content: "I am Sable." });
+		expect(switchedMessages).toContainEqual({
+			role: "assistant",
+			content: "I write as Rowan opposite Sable.",
+		});
+
+		// Changing the outgoing role to user changes only the presentation:
+		// the same perspective, now sent as a user message.
+		await readOperation(setInstructionContent(
+			preset.id,
+			instructionId,
+			{ name: "Perspective", content: "You are {{self}}; answer {{other}}.", role: "user" },
+		));
+		const userRoleMessages = await captureMessages(
+			first.id,
+			(await conversationRevision(first.id)),
+		);
+		expect(userRoleMessages).toContainEqual({
+			role: "user",
+			content: "You are Sable; answer Rowan.",
+		});
+	});
+
+	test("unknown macros stay literal, warn in the compiled plan, and never block Generation", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const preset = await readPreset(conversationApp(), conversation.id);
+		const content = "{{user}} and {{time}} stay raw; {{self}} works.";
+		await addAndSaveInstruction(preset.id, "Imported", content, "system");
+
+		let captured: CapturedRequest | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversation.id, conversation.revision);
+		const inspection = await readInspection(generating, conversation.id, generationId);
+		await completeGeneration(generating, conversation.id, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// The unknown macros reach the provider literally — Generation is
+		// available — while the plan warns about exactly what the shared
+		// editor warning surface would show.
+		expect(captured?.messages).toContainEqual({
+			role: "system",
+			content: "{{user}} and {{time}} stay raw; Writer works.",
+		});
+		expect(inspection.promptPlan.warnings).toContainEqual({
+			block: "Imported",
+			macro: "{{user}}",
+		});
+		expect(inspection.promptPlan.warnings).toContainEqual({
+			block: "Imported",
+			macro: "{{time}}",
+		});
+		expect(expandText(content, { self: "", other: "" }, "Imported").warnings)
+			.toContainEqual({ block: "Imported", macro: "{{user}}" });
+	});
+
+	test("an instruction save never overwrites separately saved ordering, toggles or roles", async () => {
+		const conversation = createChat(database);
+		const preset = await readPreset(conversationApp(), conversation.id);
+		const scenario = slotOf(preset, "model-scenario");
+		const postHistory = slotOf(preset, "model-post-history-instruction");
+		const identity = slotOf(preset, "model-identity");
+		if (scenario === undefined || postHistory === undefined || identity === undefined) {
+			throw new Error("The Default recipe is missing reference slots.");
+		}
+
+		await readOperation(toggleBlock(database, preset.id, scenario.id, false));
+		await readOperation(moveBlock(database, preset.id, postHistory.id, 1));
+		await readOperation(setBlockRole(database, preset.id, identity.id, "user"));
+
+		const instructionId = await addAndSaveInstruction(
+			preset.id,
+			"Text",
+			"Saved text.",
+			"assistant",
+		);
+
+		// The instruction save named one occurrence; the separately saved
+		// ordering, toggle and role stand exactly as they were saved.
+		const saved = await readPreset(conversationApp(), conversation.id);
+		expect(saved.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
+			["model-post-history-instruction", true],
+			["model-system-instruction", true],
+			["human-identity", true],
+			["model-identity", true],
+			["model-scenario", false],
+			["model-example-dialogue", true],
+			["history", true],
+			["instruction", true],
+		]);
+		expect(slotOf(saved, "model-identity")?.role).toBe("user");
+		expect(slotOf(saved, "instruction")?.content).toBe("Saved text.");
+
+		// And a later toggle of the instruction does not disturb its saved text.
+		const toggled = await readOperation(
+			toggleBlock(database, preset.id, instructionId, false),
+		);
+		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
+		expect(slotOf(toggled, "instruction")?.content).toBe("Saved text.");
+	});
+
+	test("an Active Generation keeps its captured instruction while the next Generation observes the save", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const preset = await readPreset(conversationApp(), conversation.id);
+		const instructionId = await addAndSaveInstruction(
+			preset.id,
+			"Tone",
+			"Original tone.",
+			"system",
+		);
+
+		let captured: CapturedRequest | undefined;
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const gated = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }, gate),
+		});
+		const generationId = await startGeneration(gated, conversation.id, conversation.revision);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// While the attempt streams, the saved instruction changes in text,
+		// role and position.
+		await readOperation(setInstructionContent(
+			preset.id,
+			instructionId,
+			{ name: "Tone", content: "Revised tone.", role: "user" },
+		));
+		await readOperation(moveBlock(database, preset.id, instructionId, 1));
+
+		// The Active Generation keeps the Prompt Plan it captured: the original
+		// text, role and position.
+		const capturedPlan = await readInspection(gated, conversation.id, generationId);
+		const capturedInstruction = capturedPlan.promptPlan.blocks.find(
+			(block) => block.kind === "instruction",
+		);
+		expect(capturedInstruction).toEqual({
+			kind: "instruction",
+			role: "system",
+			content: "Original tone.",
+		});
+		expect(captured?.messages).toContainEqual({ role: "system", content: "Original tone." });
+
+		release();
+		await completeGeneration(gated, conversation.id, generationId);
+
+		// The next Generation compiles the latest saved instruction at its new
+		// position and role.
+		let capturedNext: CapturedRequest | undefined;
+		const subsequent = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { capturedNext = request; }),
+		});
+		const summaryResponse = await conversationApp().handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}`),
+		);
+		// SAFETY: the route's response schema is the Conversation summary.
+		const summary = await summaryResponse.json() as { revision: number };
+		const nextId = await startGeneration(subsequent, conversation.id, summary.revision);
+		await completeGeneration(subsequent, conversation.id, nextId);
+		while (capturedNext === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(capturedNext?.messages[0]).toEqual({ role: "user", content: "Revised tone." });
+	});
+
+	test("token estimates account for authored instruction text", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const fetchApp = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch(() => {}),
+		});
+		const preset = await readPreset(conversationApp(), conversation.id);
+		const instructionId = await addAndSaveInstruction(
+			preset.id,
+			"Tone",
+			"A short instruction.",
+			"system",
+		);
+
+		const firstId = await startGeneration(fetchApp, conversation.id, conversation.revision);
+		const first = await readInspection(fetchApp, conversation.id, firstId);
+		await completeGeneration(fetchApp, conversation.id, firstId);
+
+		await readOperation(setInstructionContent(
+			preset.id,
+			instructionId,
+			{
+				name: "Tone",
+				content: "A much longer instruction that repeats several times to grow the assembled plan beyond the first estimate.",
+				role: "system",
+			},
+		));
+		const secondResponse = await fetchApp.handle(
+			new Request(`http://localhost/api/conversations/${conversation.id}`),
+		);
+		// SAFETY: the route's response schema is the Conversation summary.
+		const secondSummary = await secondResponse.json() as { revision: number };
+		const secondId = await startGeneration(fetchApp, conversation.id, secondSummary.revision);
+		const second = await readInspection(fetchApp, conversation.id, secondId);
+		await completeGeneration(fetchApp, conversation.id, secondId);
+
+		expect(second.budget.tokenEstimate).toBeGreaterThan(first.budget.tokenEstimate);
 	});
 });

@@ -14,11 +14,13 @@ export {
 export { executePromptPresetCommand, listPromptPresets } from "./library";
 export {
 	addPromptPresetBlock,
+	addPromptPresetInstruction,
 	duplicatePromptPresetBlock,
 	InvalidPromptPresetOperationError,
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
+	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
 	setPromptPresetBlockRole,
 } from "./blocks";
