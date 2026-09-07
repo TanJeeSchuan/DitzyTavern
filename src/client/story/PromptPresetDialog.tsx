@@ -819,7 +819,7 @@ export function PromptPresetDialog({
 										type="file"
 										accept="application/json,.json"
 										className="sr-only"
-										aria-label="Choose native Prompt Preset JSON"
+										aria-label="Choose Prompt Preset or SillyTavern JSON"
 										onChange={(event) => {
 											const file = event.target.files?.[0];
 											event.target.value = "";
