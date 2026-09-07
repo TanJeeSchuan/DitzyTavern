@@ -161,6 +161,7 @@ export function executePromptPresetCommand(
 					position: promptPresetBlockTable.position,
 					reference: promptPresetBlockTable.reference,
 					enabled: promptPresetBlockTable.enabled,
+					role: promptPresetBlockTable.role,
 				})
 				.from(promptPresetBlockTable)
 				.where(eq(promptPresetBlockTable.preset_id, preset.id))

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -7,10 +9,19 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import {
+	addPromptPresetReference,
 	applyConversationCommand,
+	duplicatePromptPresetBlock,
 	loadConversationPromptPreset,
+	movePromptPresetBlock,
+	removePromptPresetBlock,
+	setPromptPresetBlockEnabled,
+	setPromptPresetBlockRole,
 	type ConversationPromptPreset,
 	type ConversationSummary,
+	type PromptBlockReference,
+	type PromptOutgoingRole,
+	type PromptPresetOperationOutcome,
 	type ResolvedPromptPresetSlot,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
@@ -32,9 +43,13 @@ import { useAsyncEffect } from "../lib/use-async";
 
 // ==[HUMAN APPROVED]== The preset editor is a popup rather than a primary panel: the agreed
 // exception in the design direction, because a recipe is edited against the
-// Chat it assembles for. The library section manages the shared presets;
-// ordering, toggles and authored blocks arrive with the editor tickets, so
-// the recipe display stays read-only for now.
+// Chat it assembles for. The library section manages the shared presets and
+// the per-Chat selection; ordering and enablement persist immediately through
+// their authoritative operations, a Definition slot's outgoing role is a
+// per-block draft with its own Save and Cancel, and referenced source text is
+// read-only here — it belongs to the Participant it comes from. The history
+// slot exposes no text or role controls at all, because its entries keep the
+// roles of their own Messages.
 
 const slotLabels = {
 	"model-system-instruction": "System Instruction",
@@ -45,6 +60,15 @@ const slotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 } as const satisfies Record<ResolvedPromptPresetSlot["reference"], string>;
+
+const outgoingRoleLabels = {
+	system: "System message",
+	user: "User message",
+	assistant: "Assistant message",
+} as const satisfies Record<PromptOutgoingRole, string>;
+
+const roleSelectClass =
+	"rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
 type PresetView =
 	| { status: "loading" }
@@ -91,6 +115,67 @@ const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
 	);
 };
 
+// ==[HUMAN APPROVED]== The number of Definition occurrences whose outgoing-role draft differs
+// from the saved recipe state; these are the drafts a close must ask about.
+const savedRoleOf = (slot: ResolvedPromptPresetSlot): PromptOutgoingRole | undefined =>
+	slot.reference === "history" ? undefined : slot.role;
+
+const dirtyDraftCount = (
+	preset: ConversationPromptPreset,
+	drafts: Record<number, PromptOutgoingRole>,
+): number =>
+	preset.slots.filter((slot) => {
+		const draft = drafts[slot.id];
+		return draft !== undefined && draft !== savedRoleOf(slot);
+	}).length;
+
+const AddSlotSelect = ({
+	disabled,
+	onAdd,
+}: {
+	disabled: boolean;
+	onAdd: (reference: PromptBlockReference) => void;
+}) => {
+	const [selection, setSelection] = useState<PromptBlockReference | "">("");
+	// ==[HUMAN APPROVED]== The add menu offers exactly the reference vocabulary, so the
+	// selected option value decodes onto the shared contract type at this
+	// boundary.
+	const isReference = (value: string): value is PromptBlockReference =>
+		Object.hasOwn(slotLabels, value);
+	return (
+		<>
+			<select
+				id="prompt-preset-add"
+				className={roleSelectClass}
+				aria-label="Add a slot to the recipe"
+				value={selection}
+				disabled={disabled}
+				onChange={(event) => {
+					const value = event.target.value;
+					setSelection(value === "" || isReference(value) ? value : "");
+				}}
+			>
+				<option value="">Choose a reference…</option>
+				{Object.entries(slotLabels).map(([reference, label]) => (
+					<option key={reference} value={reference}>{label}</option>
+				))}
+			</select>
+			<Button
+				size="xs"
+				disabled={disabled || selection === ""}
+				onClick={() => {
+					if (selection === "") return;
+					onAdd(selection);
+					setSelection("");
+				}}
+			>
+				<Plus aria-hidden="true" />
+				Add
+			</Button>
+		</>
+	);
+};
+
 // ==[HUMAN APPROVED]== The popup's notice wording for the standard Conversation command
 // failures. The runner owns when each notice appears; this surface owns what
 // it says.
@@ -116,6 +201,13 @@ export function PromptPresetDialog({
 	const [pendingAction, setPendingAction] = useState<string | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [activeEdit, setActiveEdit] = useState<PresetInlineEdit | null>(null);
+	// ==[HUMAN APPROVED]== The unsaved outgoing-role drafts, keyed by the block occurrence
+	// they belong to. Ordering and enablement have no draft state: they
+	// persist immediately through their authoritative operations.
+	const [drafts, setDrafts] = useState<Record<number, PromptOutgoingRole>>({});
+	const [pending, setPending] = useState(false);
+	const [problem, setProblem] = useState<string | null>(null);
+	const [confirmClose, setConfirmClose] = useState(false);
 
 	const load = async (isCancelled?: () => boolean) => {
 		if (conversation === null) {
@@ -140,11 +232,14 @@ export function PromptPresetDialog({
 
 	useAsyncEffect((isCancelled) => {
 		if (!open) return;
-		// ==[HUMAN APPROVED]== Every open starts clean: transient forms and notices belong
-		// to one popup visit, not to the Chat's lifetime.
+		// ==[HUMAN APPROVED]== Every open starts clean: transient forms, notices and drafts
+		// belong to one popup visit, not to the Chat's lifetime.
 		setNotice(null);
 		setCreating(null);
 		setActiveEdit(null);
+		setDrafts({});
+		setProblem(null);
+		setConfirmClose(false);
 		setView({ status: "loading" });
 		void load(isCancelled);
 	}, [open, conversation]);
@@ -240,9 +335,82 @@ export function PromptPresetDialog({
 		});
 	};
 
+	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live
+	// here, and the applied response's fresh recipe read refreshes the selected
+	// recipe while leaving the library list and every other saved change
+	// untouched. A draft cannot outlive the occurrence it belongs to. The ready
+	// view is only reachable when a Conversation is selected, so its id is
+	// always available here.
+	const runOperation = async (run: () => Promise<PromptPresetOperationOutcome>) => {
+		if (conversation === null) return;
+		setPending(true);
+		setProblem(null);
+		try {
+			const outcome = await run();
+			if (outcome.status === "invalid") {
+				setProblem(outcome.reason);
+				return;
+			}
+			if (outcome.status === "not-found") {
+				setProblem("The selected preset no longer exists.");
+				return;
+			}
+			const fresh = await loadConversationPromptPreset(conversation.id);
+			if (fresh === null) {
+				setView({ status: "unavailable" });
+				return;
+			}
+			const alive = new Set(fresh.slots.map((slot) => slot.id));
+			setDrafts(Object.fromEntries(
+				Object.entries(drafts).filter(([id]) => alive.has(Number(id))),
+			));
+			setView((current) =>
+				current.status === "ready"
+					? { status: "ready", presets: current.presets, selected: fresh }
+					: current,
+			);
+		} finally {
+			setPending(false);
+		}
+	};
+
+	const ready = view.status === "ready" ? view : null;
+	const dirty =
+		ready !== null &&
+		ready.selected.slots.some((slot) => {
+			const draft = drafts[slot.id];
+			return draft !== undefined && draft !== savedRoleOf(slot);
+		});
+
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next && dirty) {
+					setConfirmClose(true);
+					return;
+				}
+				onOpenChange(next);
+			}}
+		>
+			<DialogContent
+				className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"
+				// ==[HUMAN APPROVED]== Escape and outside clicks take the same unsaved-drafts guard
+				// as the close button, so a dirty block edit is never silently
+				// dropped by any dismissal path.
+				onEscapeKeyDown={(event) => {
+					if (dirty) {
+						event.preventDefault();
+						setConfirmClose(true);
+					}
+				}}
+				onInteractOutside={(event) => {
+					if (dirty) {
+						event.preventDefault();
+						setConfirmClose(true);
+					}
+				}}
+			>
 				<DialogHeader>
 					<DialogTitle>
 						{view.status === "ready"
@@ -250,9 +418,9 @@ export function PromptPresetDialog({
 							: "Prompt Preset"}
 					</DialogTitle>
 					<DialogDescription>
-						Shared recipes live in one library and each Chat selects one. The
-						order below is what this Chat assembles its writing context in;
-						referenced content is read-only here.
+						Shared recipes live in one library and each Chat selects one. Ordering
+						and enablement save immediately; referenced content is read-only here,
+						edited on the Participant it comes from.
 					</DialogDescription>
 				</DialogHeader>
 				{view.status === "loading" && (
@@ -334,24 +502,156 @@ export function PromptPresetDialog({
 								{view.selected.name}: assembled order
 							</h2>
 							<ol className="flex flex-col gap-3">
-								{view.selected.slots.map((slot, index) => (
-									<li
-										key={`${slot.reference}-${index}`}
-										className="rounded-lg ring-1 ring-foreground/10 p-3"
-										data-enabled={slot.enabled}
-									>
-										<div className="flex items-baseline justify-between gap-2">
-											<h3 className="font-medium">
-												{index + 1}. {slotLabels[slot.reference]}
-											</h3>
-											<span className="text-xs text-muted-foreground">
-												{slot.enabled ? "Enabled" : "Disabled"}
-											</span>
-										</div>
-										<SlotBody slot={slot} />
+								{view.selected.slots.map((slot, index) => {
+									const draft = slot.reference === "history" ? undefined : drafts[slot.id];
+									const savedRole = savedRoleOf(slot);
+									const dirtyDraft = draft !== undefined && draft !== savedRole;
+									return (
+										<li
+											key={slot.id}
+											className={`rounded-lg ring-1 ring-foreground/10 p-3${slot.enabled ? "" : " opacity-60"}`}
+										>
+											<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+												<h3 className="font-medium">
+													{index + 1}. {slotLabels[slot.reference]}
+												</h3>
+												<div className="ml-auto flex items-center gap-1">
+													<label className="flex items-center gap-1 text-xs text-muted-foreground">
+														<input
+															type="checkbox"
+															checked={slot.enabled}
+															disabled={pending}
+															onChange={(event) =>
+																void runOperation(() =>
+																	setPromptPresetBlockEnabled(
+																		view.selected.id,
+																		slot.id,
+																		event.target.checked,
+																	))}
+														/>
+														Enabled
+													</label>
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														disabled={pending || index === 0}
+														aria-label={`Move ${slotLabels[slot.reference]} up`}
+														onClick={() => void runOperation(() =>
+															movePromptPresetBlock(view.selected.id, slot.id, index))}
+													>
+														<ChevronUp aria-hidden="true" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														disabled={pending || index === view.selected.slots.length - 1}
+														aria-label={`Move ${slotLabels[slot.reference]} down`}
+														onClick={() => void runOperation(() =>
+															movePromptPresetBlock(view.selected.id, slot.id, index + 2))}
+													>
+														<ChevronDown aria-hidden="true" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														disabled={pending}
+														aria-label={`Duplicate ${slotLabels[slot.reference]}`}
+														onClick={() => void runOperation(() =>
+															duplicatePromptPresetBlock(view.selected.id, slot.id))}
+													>
+														<Copy aria-hidden="true" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon-sm"
+														disabled={pending}
+														aria-label={`Remove ${slotLabels[slot.reference]}`}
+														onClick={() => void runOperation(() =>
+															removePromptPresetBlock(view.selected.id, slot.id))}
+													>
+														<Trash2 aria-hidden="true" />
+													</Button>
+												</div>
+											</div>
+											<SlotBody slot={slot} />
+											{slot.reference !== "history" && (
+												<div className="mt-2 flex flex-wrap items-center gap-2">
+													<label
+														className="text-xs text-muted-foreground"
+														htmlFor={`slot-role-${slot.id}`}
+													>
+														Sent as
+													</label>
+													<select
+														id={`slot-role-${slot.id}`}
+														className={roleSelectClass}
+														value={draft ?? savedRole}
+														disabled={pending}
+														onChange={(event) => {
+															// ==[HUMAN APPROVED]== The outgoing-role options are exactly the role
+															// vocabulary, so the option value decodes onto the shared
+															// contract role.
+															const role = event.target.value;
+															if (role === "system" || role === "user" || role === "assistant") {
+																setDrafts({ ...drafts, [slot.id]: role });
+															}
+														}}
+													>
+														{Object.entries(outgoingRoleLabels).map(([role, label]) => (
+															<option key={role} value={role}>{label}</option>
+														))}
+													</select>
+													{dirtyDraft && (
+														<>
+															<Button
+																size="xs"
+																disabled={pending}
+																onClick={() => void runOperation(() =>
+																	setPromptPresetBlockRole(
+																		view.selected.id,
+																		slot.id,
+																		draft,
+																	))}
+															>
+																Save
+															</Button>
+															<Button
+																variant="ghost"
+																size="xs"
+																disabled={pending}
+																onClick={() => setDrafts(Object.fromEntries(
+																	Object.entries(drafts).filter(([id]) => Number(id) !== slot.id),
+																))}
+															>
+																Cancel
+															</Button>
+														</>
+													)}
+												</div>
+											)}
+										</li>
+									);
+								})}
+								{view.selected.slots.length === 0 && (
+									<li className="rounded-lg ring-1 ring-foreground/10 p-3">
+										<p className="text-muted-foreground">
+											This recipe assembles no context yet. Add a slot below; the Chat
+											still generates, but only from its own submitted writing.
+										</p>
 									</li>
-								))}
+								)}
 							</ol>
+							{problem !== null && (
+								<p className="text-destructive text-sm" role="alert">{problem}</p>
+							)}
+							<div className="flex flex-wrap items-center gap-2">
+								<AddSlotSelect
+									disabled={pending}
+									onAdd={(reference) =>
+										void runOperation(() =>
+											addPromptPresetReference(view.selected.id, reference))}
+								/>
+							</div>
 						</section>
 					</>
 				)}
@@ -359,6 +659,41 @@ export function PromptPresetDialog({
 					<p className="text-sm text-muted-foreground" role="status">
 						{notice}
 					</p>
+				)}
+				{ready !== null && (
+					<UnsavedRoleDraftDialog
+						open={confirmClose}
+						count={dirtyDraftCount(ready.selected, drafts)}
+						onKeepEditing={() => setConfirmClose(false)}
+						onDiscard={() => {
+							setDrafts({});
+							setConfirmClose(false);
+							onOpenChange(false);
+						}}
+						onSave={async () => {
+							const dirtySlots = ready.selected.slots.flatMap((slot) => {
+								const draft = drafts[slot.id];
+								return draft !== undefined && draft !== savedRoleOf(slot)
+									? [[slot, draft] as const]
+									: [];
+							});
+							for (const [slot, draft] of dirtySlots) {
+								const outcome = await setPromptPresetBlockRole(
+									ready.selected.id,
+									slot.id,
+									draft,
+								);
+								if (outcome.status === "invalid") {
+									setProblem(outcome.reason);
+									setConfirmClose(false);
+									return;
+								}
+							}
+							setDrafts({});
+							setConfirmClose(false);
+							onOpenChange(false);
+						}}
+					/>
 				)}
 			</DialogContent>
 		</Dialog>
@@ -546,3 +881,51 @@ const InlineNameEdit = ({
 		</div>
 	);
 };
+
+function UnsavedRoleDraftDialog({
+	open,
+	count,
+	onKeepEditing,
+	onDiscard,
+	onSave,
+}: {
+	open: boolean;
+	count: number;
+	onKeepEditing: () => void;
+	onDiscard: () => void;
+	onSave: () => Promise<void>;
+}) {
+	const [saving, setSaving] = useState(false);
+	return (
+		<Dialog open={open} onOpenChange={(next) => { if (!next) onKeepEditing(); }}>
+			<DialogContent showCloseButton={false} className="sm:max-w-sm">
+				<DialogHeader>
+					<DialogTitle>Unsaved role change{count === 1 ? "" : "s"}</DialogTitle>
+					<DialogDescription>
+						{count === 1
+							? "One referenced block has an unsaved outgoing role."
+							: `${count} referenced blocks have unsaved outgoing roles.`}
+						Ordering and enablement are already saved.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+					<Button variant="ghost" disabled={saving} onClick={onKeepEditing}>
+						Keep editing
+					</Button>
+					<Button variant="outline" disabled={saving} onClick={onDiscard}>
+						Discard
+					</Button>
+					<Button
+						disabled={saving}
+						onClick={() => {
+							setSaving(true);
+							void onSave().finally(() => setSaving(false));
+						}}
+					>
+						Save and close
+					</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}

@@ -97,7 +97,9 @@ describe("Generation runtime behavior", () => {
 			"history",
 			"post-history-instruction",
 		]);
-		// Identities expand owner-relative: self is the Definition owner.
+		// Identities expand owner-relative: self is the Definition owner, and
+		// the stored Default recipe presents the human Identity as user and the
+		// model Identity as assistant.
 		expect(
 			inspection.plan?.blocks.filter((block) => block.kind === "identity"),
 		).toEqual([

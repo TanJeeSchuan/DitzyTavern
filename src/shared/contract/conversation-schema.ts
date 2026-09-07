@@ -27,22 +27,40 @@ const promptHistoryRole = Type.Union([
 	Type.Null(),
 ]);
 
+// ==[HUMAN APPROVED]== Definition-sourced plan blocks carry the provider-neutral presentation
+// role their recipe slot chose; history blocks carry the authorship roles of
+// their own Messages. The Model Client owns the translation into provider
+// vocabulary.
+const promptDefinitionRole = Type.Union([
+	Type.Literal("system"),
+	Type.Literal("human"),
+	Type.Literal("model"),
+]);
+
 const promptBlock = Type.Union([
-	Type.Object({ kind: Type.Literal("system-instruction"), content: Type.String() }),
 	Type.Object({
-		kind: Type.Literal("identity"),
-		role: Type.Union([Type.Literal("human"), Type.Literal("model")]),
+		kind: Type.Literal("system-instruction"),
+		role: promptDefinitionRole,
 		content: Type.String(),
 	}),
-	Type.Object({ kind: Type.Literal("scenario"), content: Type.String() }),
-	Type.Object({ kind: Type.Literal("example-dialogue"), content: Type.String() }),
+	Type.Object({ kind: Type.Literal("identity"), role: promptDefinitionRole, content: Type.String() }),
+	Type.Object({ kind: Type.Literal("scenario"), role: promptDefinitionRole, content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("example-dialogue"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
 	Type.Object({
 		kind: Type.Literal("history"),
 		speakerName: Type.Union([Type.Null(), Type.String()]),
 		content: Type.String(),
 		role: promptHistoryRole,
 	}),
-	Type.Object({ kind: Type.Literal("post-history-instruction"), content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("post-history-instruction"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
 ]);
 
 const generationIntent = Type.Union([

@@ -90,7 +90,7 @@ describe("OpenRouter Model Client", () => {
 
 		const result = await collectModelClientGeneration(client, {
 			promptPlan: {
-				blocks: [{ kind: "system-instruction", content: "Answer." }],
+				blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }],
 				warnings: [],
 			},
 			modelId: "deepseek/deepseek-v4-flash",
@@ -125,7 +125,7 @@ describe("OpenRouter Model Client", () => {
 		try {
 			for await (const _event of client.generate({
 				promptPlan: {
-					blocks: [{ kind: "system-instruction", content: "Answer." }],
+					blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }],
 					warnings: [],
 				},
 				modelId: "deepseek/deepseek-v4-flash",

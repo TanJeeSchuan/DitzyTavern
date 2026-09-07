@@ -7,10 +7,21 @@
 export {
 	readConversationPromptPresetRecipe,
 	readDefaultPromptPresetId,
+	readPromptPresetRecipe,
 	selectConversationPromptPreset,
 	selectDefaultPromptPreset,
 } from "./recipe";
 export { executePromptPresetCommand, listPromptPresets } from "./library";
+export {
+	addPromptPresetBlock,
+	duplicatePromptPresetBlock,
+	InvalidPromptPresetOperationError,
+	movePromptPresetBlock,
+	PromptPresetBlockNotFoundError,
+	removePromptPresetBlock,
+	setPromptPresetBlockEnabled,
+	setPromptPresetBlockRole,
+} from "./blocks";
 export {
 	DefaultPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,

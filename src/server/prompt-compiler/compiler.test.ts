@@ -8,15 +8,16 @@ import {
 } from ".";
 
 // The order the stored Default preset ships with, restated here so the pure
-// compiler can be exercised without a database.
+// compiler can be exercised without a database. The roles are the stored
+// roles the Default starts with: the established assembly presentation.
 const defaultRecipe: CompilePromptInput["recipe"] = [
-	{ reference: "model-system-instruction", enabled: true },
-	{ reference: "human-identity", enabled: true },
-	{ reference: "model-identity", enabled: true },
-	{ reference: "model-scenario", enabled: true },
-	{ reference: "model-example-dialogue", enabled: true },
-	{ reference: "history", enabled: true },
-	{ reference: "model-post-history-instruction", enabled: true },
+	{ reference: "model-system-instruction", enabled: true, role: "system" },
+	{ reference: "human-identity", enabled: true, role: "user" },
+	{ reference: "model-identity", enabled: true, role: "assistant" },
+	{ reference: "model-scenario", enabled: true, role: "system" },
+	{ reference: "model-example-dialogue", enabled: true, role: "user" },
+	{ reference: "history", enabled: true, role: null },
+	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
 
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
@@ -87,7 +88,7 @@ describe("Prompt compiler", () => {
 		]);
 	});
 
-	test("orders the two Identities as human then model", () => {
+	test("orders the two Identities with their stored outgoing roles", () => {
 		const plan = compilePrompt(filled());
 		expect(plan.blocks.filter((block) => block.kind === "identity")).toEqual([
 			{ kind: "identity", role: "human", content: "Human identity line." },
@@ -136,10 +137,12 @@ describe("Prompt compiler", () => {
 		);
 		expect(plan.blocks[0]).toEqual({
 			kind: "example-dialogue",
+			role: "human",
 			content: "<START>\n{{user}}: Who tends the light?\n  indented line with trailing spaces  ",
 		});
 		expect(plan.blocks[1]).toEqual({
 			kind: "post-history-instruction",
+			role: "system",
 			content: "\nPost with leading newline.",
 		});
 	});
@@ -202,11 +205,106 @@ describe("Prompt compiler", () => {
 			}),
 		);
 		expect(plan.blocks).toEqual([
-			{ kind: "system-instruction", content: "Model system." },
-			{ kind: "scenario", content: "Model scenario." },
-			{ kind: "example-dialogue", content: "Model example." },
-			{ kind: "post-history-instruction", content: "Model post." },
+			{ kind: "system-instruction", role: "system", content: "Model system." },
+			{ kind: "scenario", role: "system", content: "Model scenario." },
+			{ kind: "example-dialogue", role: "human", content: "Model example." },
+			{ kind: "post-history-instruction", role: "system", content: "Model post." },
 		]);
+	});
+});
+
+describe("Outgoing roles and repeated occurrences", () => {
+	test("carries each slot's outgoing role onto its compiled block", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: [
+					{ reference: "model-identity", enabled: true, role: "system" },
+					{ reference: "model-scenario", enabled: true, role: "user" },
+				],
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "I am Maren Voss.",
+						scenario: "A quiet room.",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		expect(plan.blocks).toEqual([
+			{ kind: "identity", role: "system", content: "I am Maren Voss." },
+			{ kind: "scenario", role: "human", content: "A quiet room." },
+		]);
+	});
+
+	test("renders one occurrence per recipe position, including deliberate duplicates", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: [
+					{ reference: "model-scenario", enabled: true, role: "system" },
+					{ reference: "history", enabled: true, role: null },
+					{ reference: "model-scenario", enabled: true, role: "system" },
+					{ reference: "history", enabled: true, role: null },
+				],
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "",
+						scenario: "A quiet room.",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+				context: [
+					{ kind: "message", speakerName: "Writer", content: "First.", role: "human" },
+				],
+			}),
+		);
+		expect(plan.blocks).toEqual([
+			{ kind: "scenario", role: "system", content: "A quiet room." },
+			{ kind: "history", speakerName: "Writer", content: "First.", role: "human" },
+			{ kind: "scenario", role: "system", content: "A quiet room." },
+			{ kind: "history", speakerName: "Writer", content: "First.", role: "human" },
+		]);
+	});
+
+	test("re-renders a disabled or later-omitted occurrence without touching the stored text", () => {
+		const plan = compilePrompt(
+			source({
+				recipe: [
+					{ reference: "model-identity", enabled: false, role: "assistant" },
+					{ reference: "model-identity", enabled: true, role: "assistant" },
+				],
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "I am Maren Voss.",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		// The disabled occurrence contributes nothing; the enabled one renders
+		// once. Neither renders the other's emptiness.
+		expect(plan.blocks).toEqual([
+			{ kind: "identity", role: "model", content: "I am Maren Voss." },
+		]);
+	});
+
+	test("rejects a Definition slot without an outgoing role", () => {
+		expect(() =>
+			compilePrompt(
+				source({
+					recipe: [{ reference: "model-scenario", enabled: true, role: null }],
+				}),
+			),
+		).toThrow("model-scenario");
 	});
 });
 

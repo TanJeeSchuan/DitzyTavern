@@ -17,7 +17,10 @@
 // comment; only the rendered plan omits it.
 
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
-import type { ReferencedDefinitionBlock } from "../../shared/contract/prompt-preset";
+import {
+	type PromptOutgoingRole,
+	type ReferencedDefinitionBlock,
+} from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	CompilePromptInput,
@@ -29,11 +32,11 @@ import type {
 } from "./types";
 
 // ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
-// content. Distributing over the block union keeps the identity block's role
-// required while the other kinds reject it.
-type AuthoredBlock = Exclude<PromptBlock, { kind: "history" }>;
-type AuthoredBlockFraming = AuthoredBlock extends infer Block
-	? Block extends AuthoredBlock ? Omit<Block, "content"> : never
+// content and outgoing role. Distributing over the block union keeps the
+// kind required while the other fields arrive from the recipe slot.
+type DefinitionBlock = Exclude<PromptBlock, { kind: "history" }>;
+type DefinitionBlockFraming = DefinitionBlock extends infer Block
+	? Block extends DefinitionBlock ? Omit<Block, "content" | "role"> : never
 	: never;
 
 // ==[HUMAN APPROVED]== What each Referenced Prompt Block reads: which controlled Definition owns
@@ -51,13 +54,13 @@ export const referencedDefinitionBlocks = {
 	"human-identity": {
 		owner: "human",
 		channel: "identity",
-		block: { kind: "identity", role: "human" },
+		block: { kind: "identity" },
 		label: "identity (human)",
 	},
 	"model-identity": {
 		owner: "model",
 		channel: "identity",
-		block: { kind: "identity", role: "model" },
+		block: { kind: "identity" },
 		label: "identity (model)",
 	},
 	"model-scenario": {
@@ -83,7 +86,7 @@ export const referencedDefinitionBlocks = {
 	{
 		owner: "human" | "model";
 		channel: keyof PromptChannels;
-		block: AuthoredBlockFraming;
+		block: DefinitionBlockFraming;
 		label: string;
 	}
 >;
@@ -102,6 +105,16 @@ const recognize = (name: string, context: MacroContext): string | null => {
 			return null;
 	}
 };
+
+// ==[HUMAN APPROVED]== The recipe's outgoing role is the author-chosen presentation in the
+// shared contract's dropdown vocabulary; the plan keeps the established
+// provider-neutral role words, so the Model Client keeps owning the
+// translation into provider vocabulary, exactly as it does for history.
+const planRoleFor = {
+	system: "system",
+	user: "human",
+	assistant: "model",
+} as const satisfies Record<PromptOutgoingRole, "system" | "human" | "model">;
 
 interface MacroMatch {
 	name: string;
@@ -219,7 +232,8 @@ export function compileOpening(
 const expandInto = (
 	blocks: PromptBlock[],
 	warnings: PromptWarning[],
-	block: PromptBlock,
+	block: DefinitionBlockFraming,
+	role: "system" | "human" | "model",
 	text: string,
 	context: MacroContext,
 	blockLabel: string,
@@ -228,7 +242,7 @@ const expandInto = (
 	// Prompt Comment is omitted exactly like an unauthored one.
 	const expanded = expandText(text, context, blockLabel);
 	if (expanded.text === "") return;
-	blocks.push({ ...block, content: expanded.text });
+	blocks.push({ ...block, role, content: expanded.text });
 	warnings.push(...expanded.warnings);
 };
 
@@ -268,10 +282,17 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = definitions[referenced.owner];
+		// ==[HUMAN APPROVED]== The stored recipe keeps an outgoing role on every Definition
+		// occurrence; a missing one cannot be presented, so fail naming the
+		// slot instead of silently choosing a presentation for it.
+		if (slot.role === null) {
+			throw new Error(`Prompt slot "${slot.reference}" has no outgoing role.`);
+		}
 		expandInto(
 			blocks,
 			warnings,
-			{ ...referenced.block, content: "" },
+			referenced.block,
+			planRoleFor[slot.role],
 			owner.definition.prompt[referenced.channel],
 			owner.context,
 			referenced.label,

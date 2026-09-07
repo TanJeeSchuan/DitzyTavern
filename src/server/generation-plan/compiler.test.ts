@@ -75,13 +75,13 @@ const transcriptLengthEstimator = (transcript: string) => transcript.length;
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database.
 const defaultRecipe: Parameters<typeof compileGenerationPlan>[0]["recipe"] = [
-	{ reference: "model-system-instruction", enabled: true },
-	{ reference: "human-identity", enabled: true },
-	{ reference: "model-identity", enabled: true },
-	{ reference: "model-scenario", enabled: true },
-	{ reference: "model-example-dialogue", enabled: true },
-	{ reference: "history", enabled: true },
-	{ reference: "model-post-history-instruction", enabled: true },
+	{ reference: "model-system-instruction", enabled: true, role: "system" },
+	{ reference: "human-identity", enabled: true, role: "user" },
+	{ reference: "model-identity", enabled: true, role: "assistant" },
+	{ reference: "model-scenario", enabled: true, role: "system" },
+	{ reference: "model-example-dialogue", enabled: true, role: "user" },
+	{ reference: "history", enabled: true, role: null },
+	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
 
 const compile = (

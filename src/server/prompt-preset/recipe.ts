@@ -8,7 +8,9 @@ import {
 } from "../database/schema";
 import {
 	promptBlockReference,
+	promptOutgoingRole,
 	type PromptBlockReference,
+	type PromptOutgoingRole,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
 import { PromptPresetNotFoundError } from "./errors";
@@ -34,6 +36,21 @@ const requireReference = (value: string, presetId: number): PromptBlockReference
 		);
 	}
 	return value;
+};
+
+// ==[HUMAN APPROVED]== Every Definition occurrence stores the outgoing role it assembles with;
+// a missing or unknown value cannot be presented, so fail naming the row
+// instead of assembling a request the recipe never chose.
+const requireOutgoingRole = (
+	value: string | null,
+	presetId: number,
+	blockId: number,
+	reference: string,
+): PromptOutgoingRole => {
+	if (Value.Check(promptOutgoingRole, value)) return value;
+	throw new Error(
+		`Prompt Preset ${presetId} block ${blockId} ("${reference}") has no supported outgoing role.`,
+	);
 };
 
 /** ==[HUMAN APPROVED]== The identifier of the one Default preset every Conversation starts on. */
@@ -88,6 +105,69 @@ export const selectConversationPromptPreset = (
 		.run();
 };
 
+const storedOccurrences = (
+	db: PromptPresetDatabase,
+	presetId: number,
+): PromptPresetRecipe["slots"] => {
+	const slots = db
+		.select({
+			id: promptPresetBlockTable.id,
+			reference: promptPresetBlockTable.reference,
+			enabled: promptPresetBlockTable.enabled,
+			role: promptPresetBlockTable.role,
+		})
+		.from(promptPresetBlockTable)
+		.where(eq(promptPresetBlockTable.preset_id, presetId))
+		.orderBy(asc(promptPresetBlockTable.position))
+		.all();
+	return slots.map((slot) => {
+		const reference = requireReference(slot.reference, presetId);
+		if (reference === "history") {
+			// ==[HUMAN APPROVED]== The history slot has no outgoing role of its own; its entries
+			// carry the roles of their own Messages. A stray stored value is
+			// ignored rather than presented.
+			return { id: slot.id, reference, enabled: slot.enabled, role: null };
+		}
+		return {
+			id: slot.id,
+			reference,
+			enabled: slot.enabled,
+			role: requireOutgoingRole(slot.role, presetId, slot.id, reference),
+		};
+	});
+};
+
+/**
+ * ==[HUMAN APPROVED]== One preset's stored header row. Undefined when the preset does not
+ * exist.
+ */
+const readPromptPresetHeader = (
+	db: PromptPresetDatabase,
+	presetId: number,
+): { id: number; name: string } | undefined =>
+	db
+		.select({ id: promptPresetTable.id, name: promptPresetTable.name })
+		.from(promptPresetTable)
+		.where(eq(promptPresetTable.id, presetId))
+		.get();
+
+const presetRecipeOf = (
+	preset: { id: number; name: string } | undefined,
+	db: PromptPresetDatabase,
+): PromptPresetRecipe | undefined =>
+	preset === undefined
+		? undefined
+		: { id: preset.id, name: preset.name, slots: storedOccurrences(db, preset.id) };
+
+/** ==[HUMAN APPROVED]== One stored preset's recipe by identity. Undefined when the preset does not exist. */
+export const readPromptPresetRecipe = (
+	database: Database,
+	presetId: number,
+): PromptPresetRecipe | undefined => {
+	const db = connect(database);
+	return presetRecipeOf(readPromptPresetHeader(db, presetId), db);
+};
+
 /**
  * ==[HUMAN APPROVED]== The recipe a Conversation assembles through. Undefined only when the
  * Conversation itself does not exist; a Conversation always has a selection.
@@ -97,31 +177,11 @@ export const readConversationPromptPresetRecipe = (
 	conversationId: number,
 ): PromptPresetRecipe | undefined => {
 	const db = connect(database);
-	const preset = db
-		.select({ id: promptPresetTable.id, name: promptPresetTable.name })
+	const selection = db
+		.select({ prompt_preset_id: conversationPromptPresetTable.prompt_preset_id })
 		.from(conversationPromptPresetTable)
-		.innerJoin(
-			promptPresetTable,
-			eq(promptPresetTable.id, conversationPromptPresetTable.prompt_preset_id),
-		)
 		.where(eq(conversationPromptPresetTable.conversation_id, conversationId))
 		.get();
-	if (preset === undefined) return undefined;
-	const slots = db
-		.select({
-			reference: promptPresetBlockTable.reference,
-			enabled: promptPresetBlockTable.enabled,
-		})
-		.from(promptPresetBlockTable)
-		.where(eq(promptPresetBlockTable.preset_id, preset.id))
-		.orderBy(asc(promptPresetBlockTable.position))
-		.all();
-	return {
-		id: preset.id,
-		name: preset.name,
-		slots: slots.map((slot) => ({
-			reference: requireReference(slot.reference, preset.id),
-			enabled: slot.enabled,
-		})),
-	};
+	if (selection === undefined) return undefined;
+	return presetRecipeOf(readPromptPresetHeader(db, selection.prompt_preset_id), db);
 };
