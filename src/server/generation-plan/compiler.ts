@@ -122,7 +122,12 @@ export const compileGenerationPlan = (
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan => {
-		const compiled = compilePrompt({ human: input.human, model: input.model, context });
+		const compiled = compilePrompt({
+			human: input.human,
+			model: input.model,
+			context,
+			recipe: input.recipe,
+		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
 	// ==[HUMAN APPROVED]== Intent applicability decides the protected history: an assistant-prefill

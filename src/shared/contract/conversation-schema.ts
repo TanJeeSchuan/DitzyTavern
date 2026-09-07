@@ -27,22 +27,49 @@ const promptHistoryRole = Type.Union([
 	Type.Null(),
 ]);
 
+// ==[HUMAN APPROVED]== Definition-sourced plan blocks carry the provider-neutral presentation
+// role their recipe slot chose; history blocks carry the authorship roles of
+// their own Messages. The Model Client owns the translation into provider
+// vocabulary.
+const promptDefinitionRole = Type.Union([
+	Type.Literal("system"),
+	Type.Literal("human"),
+	Type.Literal("model"),
+]);
+
 const promptBlock = Type.Union([
-	Type.Object({ kind: Type.Literal("system-instruction"), content: Type.String() }),
 	Type.Object({
-		kind: Type.Literal("identity"),
-		role: Type.Union([Type.Literal("human"), Type.Literal("model")]),
+		kind: Type.Literal("system-instruction"),
+		role: promptDefinitionRole,
 		content: Type.String(),
 	}),
-	Type.Object({ kind: Type.Literal("scenario"), content: Type.String() }),
-	Type.Object({ kind: Type.Literal("example-dialogue"), content: Type.String() }),
+	Type.Object({ kind: Type.Literal("identity"), role: promptDefinitionRole, content: Type.String() }),
+	Type.Object({ kind: Type.Literal("scenario"), role: promptDefinitionRole, content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("example-dialogue"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
 	Type.Object({
 		kind: Type.Literal("history"),
 		speakerName: Type.Union([Type.Null(), Type.String()]),
 		content: Type.String(),
 		role: promptHistoryRole,
 	}),
-	Type.Object({ kind: Type.Literal("post-history-instruction"), content: Type.String() }),
+	Type.Object({
+		kind: Type.Literal("post-history-instruction"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
+	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
+	// blocks it carries its expanded content and the recipe-chosen outgoing
+	// role; unlike them its text was authored in the preset, not resolved from
+	// a Participant.
+	Type.Object({
+		kind: Type.Literal("instruction"),
+		role: promptDefinitionRole,
+		content: Type.String(),
+	}),
 ]);
 
 const generationIntent = Type.Union([
@@ -554,6 +581,15 @@ const removeParticipantAction = Type.Object({
 	participantId: Type.Integer(),
 });
 
+// ==[HUMAN APPROVED]== Selects one shared Prompt Preset for this Conversation. Selection is
+// a reference to the library entry, never a copy, and it deliberately stays
+// available while an Active Generation exists: the running attempt keeps the
+// Prompt Plan it captured, and later attempts use the new selection.
+const selectPromptPresetAction = Type.Object({
+	type: Type.Literal("select-prompt-preset"),
+	promptPresetId: Type.Integer(),
+});
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -571,6 +607,7 @@ const conversationCommandAction = Type.Union([
 	replaceParticipantOpeningsAction,
 	assignControlAction,
 	removeParticipantAction,
+	selectPromptPresetAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

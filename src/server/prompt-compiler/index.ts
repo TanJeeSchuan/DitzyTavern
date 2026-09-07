@@ -2,7 +2,15 @@
 // and one ordered writing context into a deterministic provider-neutral
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
-export { compileOpening, compilePrompt, expandText } from "./compiler";
+export {
+	compileOpening,
+	compilePrompt,
+	referencedDefinitionBlocks,
+} from "./compiler";
+// ==[HUMAN APPROVED]== The shared macro processor is the single expansion implementation for
+// Participant text, openings, and authored preset instruction blocks; the
+// deep compiler seam re-exports it beside its own functions.
+export { expandText } from "../../shared/prompt-macros";
 export {
 	budgetPromptPlan,
 	PromptBudgetExceededError,

@@ -23,6 +23,7 @@ import {
 	writeControlAssignment,
 	type ConversationDatabase,
 } from "./internal";
+import { selectDefaultPromptPreset } from "../prompt-preset";
 import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -340,6 +341,10 @@ export function createConversation(
 		db.insert(conversationGenerationSettingsTable)
 			.values({ conversation_id: conversation.id })
 			.run();
+		// ==[HUMAN APPROVED]== A new Conversation selects the shared Default preset. The selection
+		// is persisted rather than derived, so a later Default change never
+		// silently rewrites what an existing Conversation assembles through.
+		selectDefaultPromptPreset(db, conversation.id);
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers. Insertion failures surface as the creation

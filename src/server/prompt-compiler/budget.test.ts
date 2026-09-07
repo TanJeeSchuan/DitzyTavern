@@ -16,9 +16,9 @@ const entry = (
 
 const planFor = (context: readonly PromptContextEntry[]): PromptPlan => ({
 	blocks: [
-		{ kind: "system-instruction", content: "Fixed system prompt." },
+		{ kind: "system-instruction", role: "system", content: "Fixed system prompt." },
 		...context.map(({ kind: _kind, ...rest }) => ({ kind: "history" as const, ...rest })),
-		{ kind: "post-history-instruction", content: "Fixed post-history prompt." },
+		{ kind: "post-history-instruction", role: "system", content: "Fixed post-history prompt." },
 	],
 	warnings: [],
 });
