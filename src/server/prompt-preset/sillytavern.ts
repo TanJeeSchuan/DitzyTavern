@@ -1,4 +1,5 @@
 import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
+import { matchPromptComment } from "../../shared/prompt-macros";
 import { InvalidPromptPresetCommandError } from "./errors";
 
 type JsonRecord = { [key: string]: SillyTavernJsonValue };
@@ -178,38 +179,19 @@ const translateCommentsAndMacros = (source: string): string => {
 	let output = "";
 	let index = 0;
 	while (index < source.length) {
-		if (source.startsWith("{{//}}", index)) {
-			const end = source.indexOf("{{///}}", index + "{{//}}".length);
-			if (end !== -1) {
-				const endExclusive = end + "{{///}}".length;
-				output += source.slice(index, endExclusive);
-				index = endExclusive;
-				continue;
-			}
-		}
-		if (source.startsWith("{{//", index)) {
-			let depth = 0;
-			let end = -1;
-			for (let cursor = index; cursor < source.length - 1; cursor += 1) {
-				if (source.startsWith("{{", cursor)) {
-					depth += 1;
-					cursor += 1;
-				} else if (source.startsWith("}}", cursor)) {
-					depth -= 1;
-					cursor += 1;
-					if (depth === 0) {
-						end = cursor + 1;
-						break;
-					}
-				}
-			}
-			if (end !== -1) {
-				output += source.slice(index, end);
-				index = end;
-				continue;
-			}
+		const commentEnd = matchPromptComment(source, index);
+		if (commentEnd !== null) {
+			output += source.slice(index, commentEnd);
+			index = commentEnd;
+			continue;
 		}
 		if (source[index] === "\\" && source.startsWith("{{", index + 1)) {
+			const escapedCommentEnd = matchPromptComment(source, index + 1);
+			if (escapedCommentEnd !== null) {
+				output += source.slice(index, escapedCommentEnd);
+				index = escapedCommentEnd;
+				continue;
+			}
 			const end = source.indexOf("}}", index + 3);
 			if (end !== -1) {
 				output += source.slice(index, end + 2);

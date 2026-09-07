@@ -220,7 +220,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const app = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
-				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}}", role: "user", injection_position: 0 },
+				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}", role: "user", injection_position: 0 },
 				{ identifier: "chatHistory", name: "History", content: "", marker: true },
 				{ identifier: "depth-one", name: "Depth one", content: "one", role: "system", injection_position: 1 },
 				{ identifier: "depth-two", name: "Depth two", content: "two", role: "assistant", injection_position: 1 },
@@ -237,7 +237,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(reviewed.status).toBe(200);
 		const preview = requirePreview(reviewed.body);
 		expect(preview.native.slots.map((slot) => slot.reference === "instruction" ? slot.content : slot.reference)).toEqual([
-			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}}",
+			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}",
 			"history",
 			"history",
 			"one",

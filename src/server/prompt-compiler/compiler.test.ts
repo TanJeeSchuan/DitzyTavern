@@ -446,6 +446,27 @@ describe("Macro expansion", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 
+	test("renders an escaped scoped Prompt Comment literally without warnings", () => {
+		const plan = compilePrompt(
+			source({
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "Syntax: \\{{//}} mention {{unfinished}} {{///}} end.",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		expect(plan.blocks[0]?.content).toBe(
+			"Syntax: {{//}} mention {{unfinished}} {{///}} end.",
+		);
+		expect(plan.warnings).toEqual([]);
+	});
+
 	test("a double backslash leaves a following Prompt Comment active", () => {
 		const plan = compilePrompt(
 			source({

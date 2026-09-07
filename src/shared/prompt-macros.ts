@@ -68,7 +68,7 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 // may span lines and contain macro delimiters, so they end at the `}}` that
 // balances the opening `{{`. Returns the index just past the complete comment,
 // or null when unbalanced.
-const matchComment = (source: string, start: number): number | null => {
+export const matchPromptComment = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
 	if (source.startsWith("{{//}}", start)) {
 		const close = source.indexOf("{{///}}", start + "{{//}}".length);
@@ -119,7 +119,7 @@ export function expandText(
 			// ==[HUMAN APPROVED]== A backslash before a balanced Prompt Comment keeps the whole comment
 			// as literal text, exactly like an escaped macro; it is no longer an
 			// active comment, so nothing inside it is skipped or warned about.
-			const escapedCommentEnd = matchComment(source, index + 1);
+			const escapedCommentEnd = matchPromptComment(source, index + 1);
 			if (escapedCommentEnd !== null) {
 				output += source.slice(index + 1, escapedCommentEnd);
 				index = escapedCommentEnd;
@@ -130,7 +130,7 @@ export function expandText(
 			continue;
 		}
 
-		const commentEnd = char === "{" ? matchComment(source, index) : null;
+		const commentEnd = char === "{" ? matchPromptComment(source, index) : null;
 		if (commentEnd !== null) {
 			index = commentEnd;
 			continue;
