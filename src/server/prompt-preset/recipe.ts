@@ -14,7 +14,7 @@ import {
 import { Value } from "@sinclair/typebox/value";
 
 const connect = (database: Database) => drizzle(database);
-export type PromptPresetDatabase = ReturnType<typeof connect>;
+type PromptPresetDatabase = ReturnType<typeof connect>;
 
 export class PromptPresetNotInitializedError extends Error {
 	constructor() {

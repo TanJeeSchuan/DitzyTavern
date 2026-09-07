@@ -324,6 +324,71 @@ describe("Macro expansion", () => {
 		expect(plan.blocks[0]?.content).toBe("\\Maren Voss");
 	});
 
+	test("renders an escaped Prompt Comment literally without stripping or warning", () => {
+		const plan = compilePrompt(
+			source({
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "Syntax: \\{{// draft: mention {{unfinished}} }} end.",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		// The backslash removes the comment's activity, so the whole comment
+		// stays in the plan as literal text and its enclosed unknown macro
+		// neither expands nor warns.
+		expect(plan.blocks[0]?.content).toBe(
+			"Syntax: {{// draft: mention {{unfinished}} }} end.",
+		);
+		expect(plan.warnings).toEqual([]);
+	});
+
+	test("a double backslash leaves a following Prompt Comment active", () => {
+		const plan = compilePrompt(
+			source({
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "\\\\{{// note }} and {{self}}",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		// The first backslash escapes the second, so the comment that follows
+		// is still an active comment and the macro after it still expands.
+		expect(plan.blocks[0]?.content).toBe("\\ and Maren Voss");
+	});
+
+	test("keeps an unterminated comment open as raw text without swallowing content", () => {
+		const plan = compilePrompt(
+			source({
+				model: {
+					name: "Maren Voss",
+					prompt: {
+						systemInstruction: "",
+						identity: "{{// oops, never closed",
+						scenario: "",
+						exampleDialogue: "",
+						postHistoryInstruction: "",
+					},
+				},
+			}),
+		);
+		// Without a balancing `}}` there is no comment, so the text renders
+		// literally instead of silently swallowing the rest of the field.
+		expect(plan.blocks[0]?.content).toBe("{{// oops, never closed");
+		expect(plan.warnings).toEqual([]);
+	});
+
 	test("keeps unknown macros literal and reports them as warnings per block", () => {
 		const plan = compilePrompt(
 			source({

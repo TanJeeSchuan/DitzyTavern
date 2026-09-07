@@ -8,7 +8,8 @@
 //
 // `{{self}}` and `{{other}}` expand relative to the Definition owner,
 // case-sensitively and in one pass; expansion output is never rescanned. A
-// backslash escapes a recognized macro (`\{{self}}` renders `{{self}}`).
+// backslash escapes a recognized macro (`\{{self}}` renders `{{self}}`)
+// and a Prompt Comment (`\{{// note }}` renders the comment literally).
 // Unknown macros remain literal and become prompt-inspection warnings.
 //
 // A Prompt Comment `{{// ... }}` is dropped whole during that same pass, so
@@ -136,7 +137,8 @@ const matchComment = (source: string, start: number): number | null => {
 
 // ==[HUMAN APPROVED]== Expands macros in authored text in one left-to-right pass. Recognized
 // macros expand to their context value (never rescanned); `\{{name}}` before
-// a recognized macro renders the macro literally; unknown `{{...}}` stays
+// a recognized macro renders the macro literally, and `\{{// ... }}` renders
+// the whole comment literally; unknown `{{...}}` stays
 // literal and is reported as a warning labeled by the caller. A Prompt Comment
 // is recognized ahead of a macro, so its body is skipped rather than parsed.
 export function expandText(
@@ -162,6 +164,15 @@ export function expandText(
 			if (escaped !== null && recognize(escaped.name, context) !== null) {
 				output += `{{${escaped.name}}}`;
 				index = escaped.end;
+				continue;
+			}
+			// ==[HUMAN APPROVED]== A backslash before a balanced Prompt Comment keeps the whole comment
+			// as literal text, exactly like an escaped macro; it is no longer an
+			// active comment, so nothing inside it is skipped or warned about.
+			const escapedCommentEnd = matchComment(source, index + 1);
+			if (escapedCommentEnd !== null) {
+				output += source.slice(index + 1, escapedCommentEnd);
+				index = escapedCommentEnd;
 				continue;
 			}
 			output += "\\";
