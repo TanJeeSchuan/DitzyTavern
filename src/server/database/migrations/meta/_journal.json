@@ -29,6 +29,13 @@
       "when": 1788745396199,
       "tag": "0003_select_prompt_presets",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788753387715,
+      "tag": "0004_solid_angel",
+      "breakpoints": true
     }
   ]
 }

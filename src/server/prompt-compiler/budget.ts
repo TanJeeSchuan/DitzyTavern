@@ -63,7 +63,10 @@ export interface PromptBudgetResult {
  */
 export function toEstimationTranscript(plan: PromptPlan): string {
 	const blocks = plan.blocks.map((block, index) => {
-		const role = block.kind === "identity" ? block.role : "none";
+		// ==[HUMAN APPROVED]== Definition blocks carry the outgoing role their recipe slot chose;
+		// history blocks carry no presentation role of their own, only a
+		// speaker name.
+		const role = block.kind === "history" ? "none" : block.role;
 		const speaker = block.kind === "history" ? block.speakerName ?? "none" : "none";
 		return [
 			`\u001eBLOCK\u001f${index}\u001f${block.kind}`,
@@ -90,7 +93,7 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 					"\u001eSUFFIX\u001f",
 					plan.intent.suffix,
 				];
-	return ["ditzytavern-estimation-transcript-v1", ...blocks, ...intent].join("\n");
+	return ["ditzytavern-estimation-transcript-v2", ...blocks, ...intent].join("\n");
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {

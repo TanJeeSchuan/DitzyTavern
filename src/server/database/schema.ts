@@ -36,7 +36,10 @@ export const promptPresetTable = sqliteTable(
 );
 
 // ==[HUMAN APPROVED]== One ordered slot of a recipe. Enablement is stored on the slot so a
-// disabled slot keeps its place in the order rather than leaving it.
+// disabled slot keeps its place in the order rather than leaving it. The
+// outgoing role is stored per occurrence so deliberate duplicates can be
+// presented differently; history rows keep it null because their entries
+// carry the roles of their own Messages.
 export const promptPresetBlockTable = sqliteTable(
 	"prompt_preset_block",
 	{
@@ -47,6 +50,7 @@ export const promptPresetBlockTable = sqliteTable(
 		position: int().notNull(),
 		reference: text().notNull(),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
+		role: text({ enum: ["system", "user", "assistant"] }),
 	},
 	(table) => [
 		uniqueIndex("prompt_preset_block_position_unique").on(
