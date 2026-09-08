@@ -10,6 +10,7 @@ import type {
 	SillyTavernJsonValue,
 	PromptPresetCommand,
 	PromptPresetBlockPatch,
+	PromptPresetConflict,
 	PromptPresetDeletionResult,
 	PromptPresetRecipe,
 	PromptPresetSummary,
@@ -58,7 +59,7 @@ export type PresetCommandOutcome =
 	// ==[HUMAN APPROVED]== A confirmed deletion returns the derived reassignment instead of
 	// a summary: the preset no longer exists after the authoritative command.
 	| { status: "deleted"; result: PromptPresetDeletionResult }
-	| { status: "conflict"; currentPreset: PromptPresetSummary }
+	| { status: "conflict"; conflict: PromptPresetConflict }
 	// ==[HUMAN APPROVED]== The Default preset cannot be deleted; the reason states that
 	// policy.
 	| { status: "not-removable"; reason: string }
@@ -159,7 +160,7 @@ export async function applyPromptPresetCommand(
 	const { data, error } = await api.api["prompt-presets"].commands.post(command);
 	if (error) {
 		return commandOutcome(error.value, {
-			conflict: (payload) => ({ status: "conflict", currentPreset: payload.currentPreset }),
+			conflict: (payload) => ({ status: "conflict", conflict: payload }),
 			"not-removable": (payload) => ({ status: "not-removable", reason: payload.reason }),
 			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 		});

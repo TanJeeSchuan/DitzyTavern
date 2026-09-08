@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	affectedConversationsLabel,
 	presetDeletionConfirmationCopy,
+	presetDeletionImpactChangedNotice,
 	presetDeletionResultNotice,
 	presetSelectionFeedbackLabel,
 } from "./prompt-preset-presentation";
@@ -44,6 +45,13 @@ describe("presetSelectionFeedbackLabel", () => {
 	test("the selected row and the selectable row state their states", () => {
 		expect(presetSelectionFeedbackLabel(true)).toBe("Selected for this Chat");
 		expect(presetSelectionFeedbackLabel(false)).toBe("Select for this Chat");
+	});
+});
+
+describe("presetDeletionImpactChangedNotice", () => {
+	test("a rejected deletion states the current impact and that nothing was removed", () => {
+		expect(presetDeletionImpactChangedNotice("Story", 2))
+			.toBe("Deletion impact changed: Selected by 2 Chats. Confirm deletion again to remove \"Story\".");
 	});
 });
 

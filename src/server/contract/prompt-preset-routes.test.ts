@@ -357,10 +357,13 @@ describe("Prompt Preset library transport", () => {
 		expect(applied.status).toBe(409);
 		// SAFETY: the route's conflict schema is the typed stale payload.
 		const conflict = applied.body as PromptPresetConflict;
-		expect(conflict.outcome).toBe("conflict");
-		expect(conflict.expectedRevision).toBe(7);
-		expect(conflict.actualRevision).toBe(0);
-		expect(conflict.currentPreset.name).toBe("Original");
+		expect(conflict).toMatchObject({
+			outcome: "conflict",
+			reason: "stale-revision",
+			expectedRevision: 7,
+			actualRevision: 0,
+			currentPreset: { name: "Original" },
+		});
 	});
 
 	test("duplicates the complete recipe into an independent library object", async () => {
@@ -419,6 +422,7 @@ describe("Prompt Preset library transport", () => {
 			type: "delete",
 			presetId: 2,
 			expectedRevision: 1,
+			expectedConversationCount: 0,
 		});
 		expect(deleted.status).toBe(200);
 
@@ -436,6 +440,7 @@ describe("Prompt Preset library transport", () => {
 			type: "delete",
 			presetId: 1,
 			expectedRevision: 0,
+			expectedConversationCount: 0,
 		});
 		expect(deleted.status).toBe(409);
 		// SAFETY: the not-removable outcome carries a reason string.
@@ -461,6 +466,7 @@ describe("Prompt Preset library transport", () => {
 			type: "delete",
 			presetId: 2,
 			expectedRevision: 0,
+			expectedConversationCount: 2,
 		});
 		expect(deleted.status).toBe(200);
 		expect(deleted.body).toEqual({
@@ -493,14 +499,83 @@ describe("Prompt Preset library transport", () => {
 			type: "delete",
 			presetId: 2,
 			expectedRevision: 5,
+			expectedConversationCount: 1,
 		});
 		expect(deleted.status).toBe(409);
 		// SAFETY: the stale deletion maps onto the typed conflict payload.
 		const conflict = deleted.body as PromptPresetConflict;
-		expect(conflict.currentPreset.conversationCount).toBe(1);
+		expect(conflict).toMatchObject({
+			reason: "stale-revision",
+			expectedRevision: 5,
+			actualRevision: 0,
+			currentPreset: { conversationCount: 1 },
+		});
 
 		const resolved = await readSelectedPreset(routes.conversations, conversation.id);
 		expect(resolved?.id).toBe(2);
+	});
+
+	test("conflicts a deletion when the affected-Conversation count increased without a revision change", async () => {
+		const routes = createRoutes(database);
+		const conversation = createChat(database);
+		await runPresetCommand(routes.library, { type: "create", name: "Story" });
+
+		// The author confirmed an unused preset, then this Chat selected it
+		// without changing the preset's metadata revision.
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+
+		const deleted = await runPresetCommand(routes.library, {
+			type: "delete",
+			presetId: 2,
+			expectedRevision: 0,
+			expectedConversationCount: 0,
+		});
+		expect(deleted.status).toBe(409);
+		// SAFETY: the changed deletion impact maps onto the typed conflict payload.
+		const conflict = deleted.body as PromptPresetConflict;
+		expect(conflict).toMatchObject({
+			reason: "deletion-impact",
+			expectedConversationCount: 0,
+			actualConversationCount: 1,
+			currentPreset: { revision: 0, conversationCount: 1 },
+		});
+
+		expect((await readSelectedPreset(routes.conversations, conversation.id))?.id).toBe(2);
+		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2]);
+	});
+
+	test("conflicts a deletion when the affected-Conversation count decreased without a revision change", async () => {
+		const routes = createRoutes(database);
+		const chatA = createChat(database);
+		const chatB = createChat(database, "Chat B");
+		await runPresetCommand(routes.library, { type: "create", name: "Story" });
+		await selectPreset(routes.conversations, chatA.id, chatA.revision, 2);
+		await selectPreset(routes.conversations, chatB.id, chatB.revision, 2);
+
+		// The author confirmed two affected Chats, then one switched away
+		// without changing the preset's metadata revision.
+		const currentA = await readConversation(routes.conversations, chatA.id);
+		await selectPreset(routes.conversations, chatA.id, currentA.revision, 1);
+
+		const deleted = await runPresetCommand(routes.library, {
+			type: "delete",
+			presetId: 2,
+			expectedRevision: 0,
+			expectedConversationCount: 2,
+		});
+		expect(deleted.status).toBe(409);
+		// SAFETY: the changed deletion impact maps onto the typed conflict payload.
+		const conflict = deleted.body as PromptPresetConflict;
+		expect(conflict).toMatchObject({
+			reason: "deletion-impact",
+			expectedConversationCount: 2,
+			actualConversationCount: 1,
+			currentPreset: { revision: 0, conversationCount: 1 },
+		});
+
+		expect((await readSelectedPreset(routes.conversations, chatA.id))?.id).toBe(1);
+		expect((await readSelectedPreset(routes.conversations, chatB.id))?.id).toBe(2);
+		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2]);
 	});
 
 	test("saves mixed block patches atomically and preserves independently saved recipe fields", async () => {
@@ -894,6 +969,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			type: "delete",
 			presetId: 2,
 			expectedRevision: 0,
+			expectedConversationCount: 1,
 		});
 		expect(deleted.status).toBe(200);
 		expect(deleted.body).toEqual({

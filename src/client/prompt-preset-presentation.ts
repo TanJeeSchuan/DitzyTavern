@@ -41,6 +41,16 @@ export function presetSelectionFeedbackLabel(isSelected: boolean): string {
 	return isSelected ? "Selected for this Chat" : "Select for this Chat";
 }
 
+// ==[HUMAN APPROVED]== The notice after a deletion is rejected because the affected-Conversation
+// count changed: nothing was deleted, and the current impact is stated before
+// the author confirms again.
+export function presetDeletionImpactChangedNotice(
+	name: string,
+	conversationCount: number,
+): string {
+	return `Deletion impact changed: ${affectedConversationsLabel(conversationCount)}. Confirm deletion again to remove "${name}".`;
+}
+
 // Success notice after a confirmed deletion. The typed result carries the
 // ==[HUMAN APPROVED]== derived reassignment, so the wording matches what the server
 // actually did: affected Chats landed on the Default preset, and nothing

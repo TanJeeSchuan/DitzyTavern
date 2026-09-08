@@ -30,6 +30,7 @@ import {
 	type SillyTavernJsonValue,
 } from "../prompt-preset-library";
 import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
+import { presetDeletionImpactChangedNotice } from "../prompt-preset-presentation";
 import { useAsyncEffect } from "../lib/use-async";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
 import { PromptPresetRecipeEditor, dirtyDraftCount, draftIsDirty, type BlockDraft } from "./prompt-preset/PromptPresetRecipeEditor";
@@ -223,9 +224,25 @@ export function PromptPresetDialog({
 					setNotice(successNotice?.(outcome) ?? null);
 					break;
 				}
-				case "conflict":
-					setNotice(`That preset changed elsewhere. It is now "${outcome.currentPreset.name}".`);
+				case "conflict": {
+					if (command.type === "delete") {
+						// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before the
+						// notice so a renewed confirmation shows the current name, revision and
+						// impact instead of the values the author already confirmed. Nothing is
+						// resubmitted automatically.
+						await load(sessionId);
+						if (!ownsSession(sessionId) || operationId !== sessionRef.current.latestOperation) return;
+						setNotice(outcome.conflict.reason === "deletion-impact"
+							? presetDeletionImpactChangedNotice(
+								outcome.conflict.currentPreset.name,
+								outcome.conflict.actualConversationCount,
+							)
+							: `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`);
+						break;
+					}
+					setNotice(`That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`);
 					break;
+				}
 				case "not-removable":
 				case "invalid":
 					setNotice(outcome.reason);

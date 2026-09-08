@@ -107,7 +107,8 @@ export function PromptPresetLibrarySection({
 									type: "delete",
 									presetId: preset.id,
 									expectedRevision: preset.revision,
-							}, (outcome) => outcome.status === "deleted"
+									expectedConversationCount: preset.conversationCount,
+								}, (outcome) => outcome.status === "deleted"
 								? presetDeletionResultNotice(preset.name, outcome.result)
 								: null);
 								return;

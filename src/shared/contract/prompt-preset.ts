@@ -258,13 +258,15 @@ export const promptPresetDuplicateCommand = Type.Object({
 	name: Type.String(),
 });
 
-// ==[HUMAN APPROVED]== Confirmed deletion. The expected revision guards against deleting a
-// preset whose affected-Conversation count the caller has not seen; the
-// outcome derives the authoritative reassignment at command time.
+// ==[HUMAN APPROVED]== Confirmed deletion. The expected revision guards the library metadata
+// and the confirmed affected-Conversation count guards the deletion impact:
+// both must match the authoritative values the author confirmed. The outcome
+// derives the reassignment from the selections present at command time.
 export const promptPresetDeleteCommand = Type.Object({
 	type: Type.Literal("delete"),
 	presetId: Type.Integer(),
 	expectedRevision: Type.Integer(),
+	expectedConversationCount: Type.Integer(),
 });
 
 // ==[HUMAN APPROVED]== Save-on-leave addresses only the authored fields that the editor owns.
@@ -328,18 +330,32 @@ export const promptPresetCommandApplied = Type.Union([
 ]);
 export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplied>;
 
-// Stale-revision conflict carrying the authoritative current preset so the
-// caller can recover without a follow-up read.
-export const promptPresetConflict = Type.Object({
+// ==[HUMAN APPROVED]== The two recoverable command conflicts share one 409 envelope: the
+// preset's library metadata revision is stale, or the deletion impact the
+// author confirmed no longer matches. Both carry the authoritative current
+// preset so the caller can recover without a follow-up read.
+export const promptPresetStaleRevisionConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
+	reason: Type.Literal("stale-revision"),
 	expectedRevision: Type.Integer(),
 	actualRevision: Type.Integer(),
 	currentPreset: promptPresetSummary,
 });
+export const promptPresetDeletionImpactConflict = Type.Object({
+	outcome: Type.Literal("conflict"),
+	reason: Type.Literal("deletion-impact"),
+	expectedConversationCount: Type.Integer(),
+	actualConversationCount: Type.Integer(),
+	currentPreset: promptPresetSummary,
+});
+export const promptPresetConflict = Type.Union([
+	promptPresetStaleRevisionConflict,
+	promptPresetDeletionImpactConflict,
+]);
 export type PromptPresetConflict = Static<typeof promptPresetConflict>;
 
-// ==[HUMAN APPROVED]== The command route's typed 409 payload: the recoverable stale
-// revision conflict, or the refusal of a Default deletion.
+// ==[HUMAN APPROVED]== The command route's typed 409 payload: a recoverable command conflict,
+// or the refusal of a Default deletion.
 export const promptPresetCommandConflict = Type.Union([
 	promptPresetConflict,
 	notRemovableOutcome,

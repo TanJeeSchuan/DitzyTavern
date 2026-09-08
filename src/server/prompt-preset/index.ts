@@ -39,6 +39,7 @@ export {
 export {
 	DefaultPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
+	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
 	StalePromptPresetRevisionError,
 } from "./errors";

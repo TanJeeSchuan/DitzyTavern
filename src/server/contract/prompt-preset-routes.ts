@@ -9,6 +9,7 @@ import {
 	InvalidPromptPresetCommandError,
 	InvalidPromptPresetOperationError,
 	listPromptPresets,
+	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
 	readNativePromptPreset,
 	reviewSillyTavernPromptPreset,
@@ -148,8 +149,18 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					if (error instanceof StalePromptPresetRevisionError) {
 						return status(409, {
 							outcome: "conflict" as const,
+							reason: "stale-revision" as const,
 							expectedRevision: error.expectedRevision,
 							actualRevision: error.actualRevision,
+							currentPreset: error.currentPreset,
+						});
+					}
+					if (error instanceof PromptPresetDeletionImpactChangedError) {
+						return status(409, {
+							outcome: "conflict" as const,
+							reason: "deletion-impact" as const,
+							expectedConversationCount: error.expectedConversationCount,
+							actualConversationCount: error.actualConversationCount,
 							currentPreset: error.currentPreset,
 						});
 					}

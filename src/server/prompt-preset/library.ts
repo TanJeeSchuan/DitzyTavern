@@ -21,6 +21,7 @@ import { Value } from "@sinclair/typebox/value";
 import {
 	DefaultPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
+	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
 	StalePromptPresetRevisionError,
 } from "./errors";
@@ -234,6 +235,16 @@ export function executePromptPresetCommand(
 
 		if (command.type === "delete") {
 			if (preset.isDefault) throw new DefaultPromptPresetNotRemovableError();
+			// ==[HUMAN APPROVED]== The confirmed deletion impact is compared against the
+			// authoritative count in the same transaction that reassigns selections,
+			// so a count the author never saw can never be deleted.
+			if (preset.conversationCount !== command.expectedConversationCount) {
+				throw new PromptPresetDeletionImpactChangedError(
+					command.expectedConversationCount,
+					preset.conversationCount,
+					preset,
+				);
+			}
 			const defaultId = readDefaultPromptPresetId(db);
 			const reassigned = db
 				.update(conversationPromptPresetTable)

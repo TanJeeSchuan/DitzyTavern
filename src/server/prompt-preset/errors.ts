@@ -42,6 +42,30 @@ export class InvalidPromptPresetCommandError extends Error {
 	}
 }
 
+// ==[HUMAN APPROVED]== Typed deletion-impact conflict. The affected-Conversation count changed
+// since the author confirmed deletion even though the preset's metadata
+// revision did not; carries the authoritative current preset so the
+// confirmation can be renewed with the exact impact.
+export class PromptPresetDeletionImpactChangedError extends Error {
+	readonly expectedConversationCount: number;
+	readonly actualConversationCount: number;
+	readonly currentPreset: PromptPresetSummary;
+
+	constructor(
+		expectedConversationCount: number,
+		actualConversationCount: number,
+		currentPreset: PromptPresetSummary,
+	) {
+		super(
+			`Expected Prompt Preset ${currentPreset.id} to affect ${expectedConversationCount} Conversations, but it currently affects ${actualConversationCount}.`,
+		);
+		this.name = "PromptPresetDeletionImpactChangedError";
+		this.expectedConversationCount = expectedConversationCount;
+		this.actualConversationCount = actualConversationCount;
+		this.currentPreset = currentPreset;
+	}
+}
+
 // ==[HUMAN APPROVED]== The Default preset stays available as the nondeletable destination
 // of new Conversations and preset deletions, so removing it is refused no
 // matter which revision the caller saw.
