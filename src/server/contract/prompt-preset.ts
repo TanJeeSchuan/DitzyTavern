@@ -7,12 +7,12 @@ import {
 	InvalidPromptPresetOperationError,
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,
-	PromptPresetNotFoundError,
 	removePromptPresetBlock,
 	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
 	setPromptPresetBlockRole,
 } from "../prompt-preset/blocks";
+import { PromptPresetNotFoundError } from "../prompt-preset/errors";
 import { withDatabase } from "../database/database";
 import {
 	addPromptPresetBlockBody,

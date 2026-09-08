@@ -13,18 +13,12 @@ import {
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
+import { PromptPresetNotFoundError } from "./errors";
 
 // ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
 // fresh read, so a stale block draft can never overwrite separately saved
 // ordering or toggles — there is no whole-recipe write to do it with.
-
-export class PromptPresetNotFoundError extends Error {
-	constructor(presetId: number) {
-		super(`Prompt Preset ${presetId} does not exist.`);
-		this.name = "PromptPresetNotFoundError";
-	}
-}
 
 export class PromptPresetBlockNotFoundError extends Error {
 	constructor(presetId: number, blockId: number) {
