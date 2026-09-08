@@ -11,13 +11,40 @@
 
 .story-header {
 	display: grid;
-	grid-template-columns: 1fr auto auto;
+	grid-template-columns: 1fr auto auto auto;
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
 	padding: 0 1rem 0 1.4rem;
 	border-bottom: 1px solid var(--border);
 	background: color-mix(in oklch, var(--surface) 96%, var(--accent-soft));
+}
+
+.labeled-icon-button {
+	position: relative;
+}
+
+.labeled-icon-button::after {
+	position: absolute;
+	top: calc(100% + 0.4rem);
+	right: 0;
+	z-index: 2;
+	padding: 0.25rem 0.45rem;
+	border-radius: 0.35rem;
+	background: var(--foreground);
+	color: var(--background);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	white-space: nowrap;
+	content: attr(aria-label);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 150ms ease;
+}
+
+.labeled-icon-button:hover::after,
+.labeled-icon-button:focus-visible::after {
+	opacity: 1;
 }
 
 .story-title {

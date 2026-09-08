@@ -219,6 +219,8 @@ export function ActiveWritingWorkspace({
 			<main className="story-stage" aria-label="Active Chat" data-preview-mode={story.preview !== null}>
 				<StoryHeader
 					chat={session.activeChat}
+					conversation={session.conversation}
+					onConversationChange={session.setConversation}
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
 						if (story.preview !== null) return;
