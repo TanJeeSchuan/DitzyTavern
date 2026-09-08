@@ -225,22 +225,30 @@ export function PromptPresetDialog({
 					break;
 				}
 				case "conflict": {
+					let message = `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`;
 					if (command.type === "delete") {
 						// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before the
 						// notice so a renewed confirmation shows the current name, revision and
 						// impact instead of the values the author already confirmed. Nothing is
 						// resubmitted automatically.
-						await load(sessionId);
+						const refresh = await load(sessionId);
 						if (!ownsSession(sessionId) || operationId !== sessionRef.current.latestOperation) return;
-						setNotice(outcome.conflict.reason === "deletion-impact"
-							? presetDeletionImpactChangedNotice(
+						if (refresh === "network") {
+							setNotice(LIBRARY_UNREACHABLE_NOTICE);
+							break;
+						}
+						if (refresh === "not-found") {
+							setNotice("The selected Conversation could not be loaded.");
+							break;
+						}
+						if (outcome.conflict.reason === "deletion-impact") {
+							message = presetDeletionImpactChangedNotice(
 								outcome.conflict.currentPreset.name,
-								outcome.conflict.actualConversationCount,
-							)
-							: `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`);
-						break;
+								outcome.conflict.currentPreset.conversationCount,
+							);
+						}
 					}
-					setNotice(`That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`);
+					setNotice(message);
 					break;
 				}
 				case "not-removable":

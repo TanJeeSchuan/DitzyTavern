@@ -334,21 +334,19 @@ export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplie
 // preset's library metadata revision is stale, or the deletion impact the
 // author confirmed no longer matches. Both carry the authoritative current
 // preset so the caller can recover without a follow-up read.
-export const promptPresetStaleRevisionConflict = Type.Object({
+const promptPresetStaleRevisionConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.Literal("stale-revision"),
 	expectedRevision: Type.Integer(),
 	actualRevision: Type.Integer(),
 	currentPreset: promptPresetSummary,
 });
-export const promptPresetDeletionImpactConflict = Type.Object({
+const promptPresetDeletionImpactConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.Literal("deletion-impact"),
-	expectedConversationCount: Type.Integer(),
-	actualConversationCount: Type.Integer(),
 	currentPreset: promptPresetSummary,
 });
-export const promptPresetConflict = Type.Union([
+const promptPresetConflict = Type.Union([
 	promptPresetStaleRevisionConflict,
 	promptPresetDeletionImpactConflict,
 ]);

@@ -535,8 +535,6 @@ describe("Prompt Preset library transport", () => {
 		const conflict = deleted.body as PromptPresetConflict;
 		expect(conflict).toMatchObject({
 			reason: "deletion-impact",
-			expectedConversationCount: 0,
-			actualConversationCount: 1,
 			currentPreset: { revision: 0, conversationCount: 1 },
 		});
 
@@ -568,8 +566,6 @@ describe("Prompt Preset library transport", () => {
 		const conflict = deleted.body as PromptPresetConflict;
 		expect(conflict).toMatchObject({
 			reason: "deletion-impact",
-			expectedConversationCount: 2,
-			actualConversationCount: 1,
 			currentPreset: { revision: 0, conversationCount: 1 },
 		});
 

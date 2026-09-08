@@ -241,7 +241,6 @@ export function executePromptPresetCommand(
 			if (preset.conversationCount !== command.expectedConversationCount) {
 				throw new PromptPresetDeletionImpactChangedError(
 					command.expectedConversationCount,
-					preset.conversationCount,
 					preset,
 				);
 			}

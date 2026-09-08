@@ -159,8 +159,6 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 						return status(409, {
 							outcome: "conflict" as const,
 							reason: "deletion-impact" as const,
-							expectedConversationCount: error.expectedConversationCount,
-							actualConversationCount: error.actualConversationCount,
 							currentPreset: error.currentPreset,
 						});
 					}

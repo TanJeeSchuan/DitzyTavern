@@ -47,21 +47,13 @@ export class InvalidPromptPresetCommandError extends Error {
 // revision did not; carries the authoritative current preset so the
 // confirmation can be renewed with the exact impact.
 export class PromptPresetDeletionImpactChangedError extends Error {
-	readonly expectedConversationCount: number;
-	readonly actualConversationCount: number;
 	readonly currentPreset: PromptPresetSummary;
 
-	constructor(
-		expectedConversationCount: number,
-		actualConversationCount: number,
-		currentPreset: PromptPresetSummary,
-	) {
+	constructor(expectedConversationCount: number, currentPreset: PromptPresetSummary) {
 		super(
-			`Expected Prompt Preset ${currentPreset.id} to affect ${expectedConversationCount} Conversations, but it currently affects ${actualConversationCount}.`,
+			`Expected Prompt Preset ${currentPreset.id} to affect ${expectedConversationCount} Conversations, but it currently affects ${currentPreset.conversationCount}.`,
 		);
 		this.name = "PromptPresetDeletionImpactChangedError";
-		this.expectedConversationCount = expectedConversationCount;
-		this.actualConversationCount = actualConversationCount;
 		this.currentPreset = currentPreset;
 	}
 }
