@@ -6,8 +6,6 @@ import { createCharacterLibraryRoutes } from "./character-library";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import { createConversationRoutes } from "./conversation";
 import { createNativeConversationRoutes } from "./native-conversation";
-import { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
-import { createPromptPresetRoutes } from "./prompt-preset";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 
 export { createChatImportRoutes } from "./chat-import";
@@ -15,8 +13,6 @@ export { createCharacterLibraryRoutes } from "./character-library";
 export { createConnectionSettingsRoutes } from "./connection-settings";
 export { createConversationRoutes } from "./conversation";
 export { createNativeConversationRoutes } from "./native-conversation";
-export { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
-export { createPromptPresetRoutes } from "./prompt-preset";
 
 export const contract = new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
@@ -24,9 +20,7 @@ export const contract = new Elysia()
 	.use(createCharacterLibraryRoutes(undefined))
 	.use(createNativeConversationRoutes(undefined))
 	.use(createConversationRoutes(undefined))
-	.use(createPromptPresetLibraryRoutes(undefined))
 	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()))
-	.use(createConnectionSettingsRoutes(undefined))
-	.use(createPromptPresetRoutes(undefined));
+	.use(createConnectionSettingsRoutes(undefined));
 
 export type Contract = typeof contract;

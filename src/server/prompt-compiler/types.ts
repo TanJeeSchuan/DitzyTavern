@@ -1,16 +1,9 @@
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
-import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	PromptHistoryRole,
+	PromptWarning,
 } from "../../shared/contract/conversation-schema";
 
-// ==[HUMAN APPROVED]== The macro language types live with the shared processor in
-// `src/shared/prompt-macros.ts`; this barrel re-exports them so the deep
-// Prompt Compiler seam keeps one surface for its callers.
-export type {
-	ExpansionResult,
-	MacroContext,
-} from "../../shared/prompt-macros";
 export type {
 	GenerationIntent,
 	PromptBlock,
@@ -57,9 +50,17 @@ export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];
-	// The selected Prompt Preset's ordered recipe. It decides which blocks the
-	// plan contains and in what order; the compiler holds no order of its own.
-	recipe: readonly PromptPresetSlot[];
 }
 
+// Owner-relative macro context. `self` is the name of the Participant whose
+// Definition (or opening) is being compiled; `other` is the name of the other
+// controlled Participant.
+export interface MacroContext {
+	self: string;
+	other: string;
+}
 
+export interface ExpansionResult {
+	text: string;
+	warnings: readonly PromptWarning[];
+}

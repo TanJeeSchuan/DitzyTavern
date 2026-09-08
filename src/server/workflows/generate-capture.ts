@@ -14,8 +14,6 @@ import {
 	type ConversationSnapshot,
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
-import type { PromptPresetRecipe } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
 	assertGenerationPlan,
@@ -152,7 +150,6 @@ export const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
 		settings: ConversationGenerationSettings;
-		recipe: PromptPresetRecipe;
 		connection: GenerationConnectionFacts | null;
 	},
 	options: {
@@ -163,7 +160,6 @@ export const compilePlanFrom = (
 	human: toCompilerDefinition(derivation.human),
 	model: toCompilerDefinition(derivation.model),
 	context: derivation.context,
-	recipe: configuration.recipe.slots,
 	intent: options.intent,
 	settings: configuration.settings,
 	connection: configuration.connection,
@@ -194,7 +190,6 @@ export const resolveConnectionApiFormat = (
 
 interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
-	recipe: PromptPresetRecipe;
 	connection: ModelClientConnectionSnapshot | null;
 }
 
@@ -206,14 +201,13 @@ function captureConfiguration(
 ): AttemptConfiguration {
 	const conversation = createConversationModule(database);
 	const settings = conversation.getGenerationSettings(conversationId);
-	const recipe = readConversationPromptPresetRecipe(database, conversationId);
-	if (settings === undefined || recipe === undefined) {
+	if (settings === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}
 	const capturedConnection = connection === undefined
 		? resolveConnectionSnapshot(database, connectionSettingsOptions)
 		: connection;
-	return { settings, recipe, connection: capturedConnection };
+	return { settings, connection: capturedConnection };
 }
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
