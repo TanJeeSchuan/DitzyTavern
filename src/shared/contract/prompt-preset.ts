@@ -267,11 +267,38 @@ export const promptPresetDeleteCommand = Type.Object({
 	expectedRevision: Type.Integer(),
 });
 
+// ==[HUMAN APPROVED]== Save-on-leave addresses only the authored fields that the editor owns.
+// Occurrence identity is mandatory so a draft can never accidentally target a
+// duplicate occurrence or rewrite ordering and enablement.
+export const promptPresetBlockPatch = Type.Union([
+	Type.Object({
+		occurrenceId: Type.Integer(),
+		type: Type.Literal("role"),
+		role: promptOutgoingRole,
+	}),
+	Type.Object({
+		occurrenceId: Type.Integer(),
+		type: Type.Literal("content"),
+		name: Type.String(),
+		content: Type.String(),
+		role: promptOutgoingRole,
+	}),
+]);
+export type PromptPresetBlockPatch = Static<typeof promptPresetBlockPatch>;
+
+export const promptPresetSaveBlockPatchesCommand = Type.Object({
+	type: Type.Literal("save-block-patches"),
+	presetId: Type.Integer(),
+	patches: Type.Array(promptPresetBlockPatch),
+});
+export type PromptPresetSaveBlockPatchesCommand = Static<typeof promptPresetSaveBlockPatchesCommand>;
+
 export const promptPresetCommandBody = Type.Union([
 	promptPresetCreateCommand,
 	promptPresetRenameCommand,
 	promptPresetDuplicateCommand,
 	promptPresetDeleteCommand,
+	promptPresetSaveBlockPatchesCommand,
 ]);
 export type PromptPresetCommand = Static<typeof promptPresetCommandBody>;
 
@@ -293,6 +320,10 @@ export const promptPresetCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
 		result: promptPresetDeletionResult,
+	}),
+	Type.Object({
+		outcome: Type.Literal("applied"),
+		recipe: promptPresetRecipe,
 	}),
 ]);
 export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplied>;

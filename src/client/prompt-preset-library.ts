@@ -9,7 +9,9 @@ import type {
 	SillyTavernImportRequest,
 	SillyTavernJsonValue,
 	PromptPresetCommand,
+	PromptPresetBlockPatch,
 	PromptPresetDeletionResult,
+	PromptPresetRecipe,
 	PromptPresetSummary,
 } from "../shared/contract/prompt-preset";
 
@@ -20,6 +22,7 @@ import type {
 
 export type {
 	PromptPresetCommand,
+	PromptPresetBlockPatch,
 	PromptPresetDeletionResult,
 	NativePromptPreset,
 	SillyTavernImportPreview,
@@ -51,6 +54,7 @@ const promptPresetImportError = (
 
 export type PresetCommandOutcome =
 	| { status: "applied"; preset: PromptPresetSummary }
+	| { status: "saved"; recipe: PromptPresetRecipe }
 	// ==[HUMAN APPROVED]== A confirmed deletion returns the derived reassignment instead of
 	// a summary: the preset no longer exists after the authoritative command.
 	| { status: "deleted"; result: PromptPresetDeletionResult }
@@ -166,5 +170,34 @@ export async function applyPromptPresetCommand(
 	if ("result" in data) {
 		return { status: "deleted", result: data.result };
 	}
+	if ("recipe" in data) {
+		return { status: "saved", recipe: data.recipe };
+	}
 	return { status: "applied", preset: data.preset };
+}
+
+export type PromptPresetBlockPatchesOutcome =
+	| { status: "applied"; recipe: PromptPresetRecipe }
+	| { status: "invalid"; reason: string }
+	| { status: "not-found" }
+	| { status: "network" };
+
+export async function savePromptPresetBlockPatches(
+	presetId: number,
+	patches: readonly PromptPresetBlockPatch[],
+): Promise<PromptPresetBlockPatchesOutcome> {
+	try {
+		const outcome = await applyPromptPresetCommand({
+			type: "save-block-patches",
+			presetId,
+			patches: [...patches],
+		});
+		if (outcome.status === "saved") return { status: "applied", recipe: outcome.recipe };
+		if (outcome.status === "invalid" || outcome.status === "not-found" || outcome.status === "network") {
+			return outcome;
+		}
+		return { status: "network" };
+	} catch {
+		return { status: "network" };
+	}
 }

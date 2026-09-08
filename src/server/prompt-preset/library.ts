@@ -14,6 +14,7 @@ import {
 	type NativePromptPreset,
 	type PromptPresetCommand,
 	type PromptPresetDeletionResult,
+	type PromptPresetRecipe,
 	type PromptPresetSummary,
 } from "../../shared/contract/prompt-preset";
 import { Value } from "@sinclair/typebox/value";
@@ -31,6 +32,7 @@ import {
 import {
 	importSillyTavernPromptPreset as convertSillyTavernPromptPreset,
 } from "./sillytavern";
+import { savePromptPresetBlockPatches } from "./blocks";
 
 // ==[HUMAN APPROVED]== The Prompt Preset library is a Character Library sibling: one
 // revisioned list of named recipes whose deletion impact (the
@@ -200,7 +202,10 @@ export const importSillyTavernPromptPreset = (
 export function executePromptPresetCommand(
 	database: Database,
 	command: PromptPresetCommand,
-): PromptPresetSummary | PromptPresetDeletionResult {
+): PromptPresetSummary | PromptPresetDeletionResult | PromptPresetRecipe {
+	if (command.type === "save-block-patches") {
+		return savePromptPresetBlockPatches(database, command.presetId, command.patches);
+	}
 	if (Value.Check(promptPresetCreateCommand, command)) {
 		const db = connect(database);
 		const create = database.transaction(() => {

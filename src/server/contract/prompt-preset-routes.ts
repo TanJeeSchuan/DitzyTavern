@@ -7,6 +7,7 @@ import {
 	importSillyTavernPromptPreset,
 	importNativePromptPreset,
 	InvalidPromptPresetCommandError,
+	InvalidPromptPresetOperationError,
 	listPromptPresets,
 	PromptPresetNotFoundError,
 	readNativePromptPreset,
@@ -139,6 +140,9 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 							},
 						};
 					}
+					if ("slots" in outcome) {
+						return { outcome: "applied" as const, recipe: outcome };
+					}
 					return { outcome: "applied" as const, preset: outcome };
 				} catch (error) {
 					if (error instanceof StalePromptPresetRevisionError) {
@@ -159,6 +163,9 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 						return status(404, { outcome: "not-found" as const });
 					}
 					if (error instanceof InvalidPromptPresetCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					if (error instanceof InvalidPromptPresetOperationError) {
 						return status(422, { outcome: "invalid" as const, reason: error.message });
 					}
 					throw error;

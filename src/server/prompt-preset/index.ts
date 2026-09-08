@@ -31,6 +31,7 @@ export {
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
+	savePromptPresetBlockPatches,
 	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
 	setPromptPresetBlockRole,
@@ -44,6 +45,7 @@ export {
 export { resolveConversationPromptPreset } from "./resolve";
 export type {
 	PromptBlockReference,
+	PromptPresetBlockPatch,
 	PromptPresetRecipe,
 	PromptPresetSlot,
 	ReferencedDefinitionBlock,

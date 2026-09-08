@@ -1,9 +1,12 @@
 import type { Database } from "bun:sqlite";
+import { Value } from "@sinclair/typebox/value";
 import { asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
+	promptPresetBlockPatch,
+	type PromptPresetBlockPatch,
 	type PromptBlockReference,
 	type PromptOutgoingRole,
 	type PromptPresetBlockOccurrence,
@@ -36,6 +39,58 @@ export class InvalidPromptPresetOperationError extends Error {
 		this.name = "InvalidPromptPresetOperationError";
 	}
 }
+
+const validateBlockPatches = (
+	recipe: PromptPresetRecipe,
+	patches: readonly PromptPresetBlockPatch[],
+): void => {
+	const occurrences = new Map(recipe.slots.map((slot) => [slot.id, slot]));
+	const seen = new Set<number>();
+	for (const patch of patches) {
+		if (!Value.Check(promptPresetBlockPatch, patch)) {
+			throw new InvalidPromptPresetOperationError("The Prompt Preset block patch is invalid.");
+		}
+		if (seen.has(patch.occurrenceId)) {
+			throw new InvalidPromptPresetOperationError(
+				`Occurrence ${patch.occurrenceId} is patched more than once.`,
+			);
+		}
+		seen.add(patch.occurrenceId);
+		const occurrence = occurrences.get(patch.occurrenceId);
+		if (occurrence === undefined) {
+			throw new InvalidPromptPresetOperationError(
+				`Occurrence ${patch.occurrenceId} does not belong to this Prompt Preset.`,
+			);
+		}
+		if (patch.type === "role" && occurrence.reference === "history") {
+			throw new InvalidPromptPresetOperationError(
+				"The history slot has no outgoing role of its own; its entries keep their Message roles.",
+			);
+		}
+		if (patch.type === "content" && occurrence.reference !== "instruction") {
+			throw new InvalidPromptPresetOperationError(
+				"Only an authored instruction block has text to save; referenced blocks stay read-only here.",
+			);
+		}
+	}
+};
+
+const applyBlockPatch = (
+	tx: Pick<RecipeDatabase, "update">,
+	patch: PromptPresetBlockPatch,
+): void => {
+	if (patch.type === "role") {
+		tx.update(promptPresetBlockTable)
+			.set({ role: patch.role })
+			.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
+			.run();
+		return;
+	}
+	tx.update(promptPresetBlockTable)
+		.set({ name: patch.name, content: patch.content, role: patch.role })
+		.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
+		.run();
+};
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
@@ -92,6 +147,25 @@ const requireBlock = (
 		throw new PromptPresetBlockNotFoundError(presetId, blockId);
 	}
 	return recipe;
+};
+
+/** ==[HUMAN APPROVED]==
+ * Saves all occurrence-addressed editor patches as one transaction. Every patch is checked
+ * against the same authoritative recipe before the first write, so an invalid later patch
+ * cannot leave earlier edits behind.
+ */
+export const savePromptPresetBlockPatches = (
+	database: Database,
+	presetId: number,
+	patches: readonly PromptPresetBlockPatch[],
+): PromptPresetRecipe => {
+	const db = drizzle(database);
+	return db.transaction((tx) => {
+		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		validateBlockPatches(recipe, patches);
+		patches.forEach((patch) => applyBlockPatch(tx, patch));
+		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+	});
 };
 
 // ==[HUMAN APPROVED]== One transactional boundary for the occurrence-addressed writes: the
@@ -263,18 +337,11 @@ export const setPromptPresetBlockRole = (
 	presetId: number,
 	blockId: number,
 	role: PromptOutgoingRole,
-): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx, occurrence) => {
-		if (occurrence.reference === "history") {
-			throw new InvalidPromptPresetOperationError(
-				"The history slot has no outgoing role of its own; its entries keep their Message roles.",
-			);
-		}
-		tx.update(promptPresetBlockTable)
-			.set({ role })
-			.where(eq(promptPresetBlockTable.id, blockId))
-			.run();
-	});
+): PromptPresetRecipe => savePromptPresetBlockPatches(database, presetId, [{
+		occurrenceId: blockId,
+		type: "role",
+		role,
+	}]);
 
 /**
  * ==[HUMAN APPROVED]== Saves one authored instruction occurrence's name, text, and outgoing
@@ -288,19 +355,8 @@ export const setPromptPresetBlockContent = (
 	presetId: number,
 	blockId: number,
 	content: { name: string; content: string; role: PromptOutgoingRole },
-): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx, occurrence) => {
-		if (occurrence.reference !== "instruction") {
-			throw new InvalidPromptPresetOperationError(
-				"Only an authored instruction block has text to save; referenced blocks stay read-only here.",
-			);
-		}
-		tx.update(promptPresetBlockTable)
-			.set({
-				name: content.name,
-				content: content.content,
-				role: content.role,
-			})
-			.where(eq(promptPresetBlockTable.id, blockId))
-			.run();
-	});
+): PromptPresetRecipe => savePromptPresetBlockPatches(database, presetId, [{
+		occurrenceId: blockId,
+		type: "content",
+		...content,
+	}]);

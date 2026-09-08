@@ -20,6 +20,7 @@ import type {
 	PromptPresetListResponse,
 	PromptPresetSummary,
 } from "../../shared/contract/prompt-preset";
+import { addPromptPresetInstruction, readPromptPresetRecipe } from "../prompt-preset";
 
 const key = new Uint8Array(32).fill(11);
 
@@ -500,6 +501,61 @@ describe("Prompt Preset library transport", () => {
 
 		const resolved = await readSelectedPreset(routes.conversations, conversation.id);
 		expect(resolved?.id).toBe(2);
+	});
+
+	test("saves mixed block patches atomically and preserves independently saved recipe fields", async () => {
+		const app = createPromptPresetRoutes(database);
+		createChat(database);
+		// The library route intentionally owns only library commands; seed one occurrence
+		// through the domain operation before exercising the command route.
+		const addedRecipe = addPromptPresetInstruction(database, 1);
+		const instruction = addedRecipe.slots.find((slot) => slot.reference === "instruction");
+		const storedBefore = readPromptPresetRecipe(database, 1);
+		if (instruction === undefined || storedBefore === undefined) throw new Error("The instruction fixture is missing.");
+		const humanIdentity = storedBefore.slots.find((slot) => slot.reference === "human-identity");
+		if (humanIdentity === undefined) throw new Error("The identity fixture is missing.");
+
+		const applied = await runPresetCommand(app, {
+			type: "save-block-patches",
+			presetId: 1,
+			patches: [
+				{ occurrenceId: humanIdentity.id, type: "role", role: "assistant" },
+				{ occurrenceId: instruction.id, type: "content", name: "Tone", content: "Be concise.", role: "user" },
+			],
+		});
+		expect(applied.status).toBe(200);
+		const saved = readPromptPresetRecipe(database, 1);
+		expect(saved?.slots.find((slot) => slot.id === humanIdentity.id)).toMatchObject({
+			reference: "human-identity",
+			enabled: true,
+			role: "assistant",
+		});
+		expect(saved?.slots.find((slot) => slot.id === instruction.id)).toMatchObject({
+			reference: "instruction",
+			name: "Tone",
+			content: "Be concise.",
+			role: "user",
+		});
+		expect(saved?.slots.map((slot) => slot.id)).toEqual(storedBefore.slots.map((slot) => slot.id));
+
+		const beforeRejected = readPromptPresetRecipe(database, 1);
+		const rejected = await runPresetCommand(app, {
+			type: "save-block-patches",
+			presetId: 1,
+			patches: [
+				{ occurrenceId: instruction.id, type: "content", name: "Should not persist", content: "Nope", role: "system" },
+				{ occurrenceId: 999999, type: "role", role: "system" },
+			],
+		});
+		expect(rejected.status).toBe(422);
+		expect(readPromptPresetRecipe(database, 1)).toEqual(beforeRejected);
+
+		const noOp = await runPresetCommand(app, {
+			type: "save-block-patches",
+			presetId: 1,
+			patches: [],
+		});
+		expect(noOp.status).toBe(200);
 	});
 
 	test("selects independently for each Conversation and survives a fresh read", async () => {
