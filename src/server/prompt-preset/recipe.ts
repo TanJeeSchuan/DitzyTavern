@@ -6,6 +6,7 @@ import {
 	promptPresetBlockTable,
 	promptPresetTable,
 } from "../database/schema";
+import { Type } from "@sinclair/typebox";
 import {
 	promptOutgoingRole,
 	promptPresetBlockReference,
@@ -38,9 +39,9 @@ const requireReference = (value: string, presetId: number): PromptPresetBlockRef
 	return value;
 };
 
-// ==[HUMAN APPROVED]== Every Definition occurrence stores the outgoing role it assembles with;
-// a missing or unknown value cannot be presented, so fail naming the row
-// instead of assembling a request the recipe never chose.
+// ==[HUMAN APPROVED]== Every Definition and authored-instruction occurrence stores the outgoing
+// role it assembles with; a missing or unknown value cannot be presented, so
+// fail naming the row instead of assembling a request the recipe never chose.
 const requireOutgoingRole = (
 	value: string | null,
 	presetId: number,
@@ -50,6 +51,21 @@ const requireOutgoingRole = (
 	if (Value.Check(promptOutgoingRole, value)) return value;
 	throw new Error(
 		`Prompt Preset ${presetId} block ${blockId} ("${reference}") has no supported outgoing role.`,
+	);
+};
+
+// ==[HUMAN APPROVED]== Authored instruction text is required at the storage boundary, while an
+// empty string remains valid authored content. A missing value is corrupt
+// persisted state and must not be replaced with fabricated text.
+const requireInstructionText = (
+	value: string | null,
+	field: "name" | "content",
+	presetId: number,
+	blockId: number,
+): string => {
+	if (Value.Check(Type.String(), value)) return value;
+	throw new Error(
+		`Prompt Preset ${presetId} block ${blockId} ("instruction") has no ${field}.`,
 	);
 };
 
@@ -126,23 +142,26 @@ const storedOccurrences = (
 		const reference = requireReference(slot.reference, presetId);
 		if (reference === "history") {
 			// ==[HUMAN APPROVED]== The history slot has no outgoing role of its own; its entries
-			// carry the roles of their own Messages. A stray stored value is
-			// ignored rather than presented.
-			return { id: slot.id, reference, enabled: slot.enabled, role: null };
+			// carry the roles of their own Messages. A non-null persisted role is
+			// invalid state rather than a value to silently discard.
+			if (slot.role !== null) {
+				throw new Error(
+					`Prompt Preset ${presetId} block ${slot.id} ("history") has an outgoing role.`,
+				);
+			}
+			return { id: slot.id, reference, enabled: slot.enabled };
 		}
 		if (reference === "instruction") {
 			// ==[HUMAN APPROVED]== An authored instruction always stores its composed name, text,
-			// and outgoing role. A missing value is a corrupt row that the public
-			// operations never write; an empty fallback keeps the recipe readable
-			// rather than inventing authored text, and the stored value is never
-			// normalized or flattened.
+			// and outgoing role. The stored value is never normalized or
+			// flattened, including when its content is legitimately empty.
 			return {
 				id: slot.id,
 				reference,
 				enabled: slot.enabled,
 				role: requireOutgoingRole(slot.role, presetId, slot.id, reference),
-				name: slot.name ?? "",
-				content: slot.content ?? "",
+				name: requireInstructionText(slot.name, "name", presetId, slot.id),
+				content: requireInstructionText(slot.content, "content", presetId, slot.id),
 			};
 		}
 		return {

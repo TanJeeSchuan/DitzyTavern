@@ -80,7 +80,7 @@ const defaultRecipe: Parameters<typeof compileGenerationPlan>[0]["recipe"] = [
 	{ reference: "model-identity", enabled: true, role: "assistant" },
 	{ reference: "model-scenario", enabled: true, role: "system" },
 	{ reference: "model-example-dialogue", enabled: true, role: "user" },
-	{ reference: "history", enabled: true, role: null },
+	{ reference: "history", enabled: true },
 	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
 

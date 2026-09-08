@@ -1119,7 +1119,7 @@ export function PromptPresetDialog({
 
 const importedSlotRole = (
 	slot: SillyTavernImportPreview["native"]["slots"][number],
-): string => slot.role === null ? "History message roles" : outgoingRoleLabels[slot.role];
+): string => slot.reference === "history" ? "History message roles" : outgoingRoleLabels[slot.role];
 
 function SillyTavernImportReviewDialog({
 	review,

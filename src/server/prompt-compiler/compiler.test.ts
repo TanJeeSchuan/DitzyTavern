@@ -16,7 +16,7 @@ const defaultRecipe: CompilePromptInput["recipe"] = [
 	{ reference: "model-identity", enabled: true, role: "assistant" },
 	{ reference: "model-scenario", enabled: true, role: "system" },
 	{ reference: "model-example-dialogue", enabled: true, role: "user" },
-	{ reference: "history", enabled: true, role: null },
+	{ reference: "history", enabled: true },
 	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 ];
 
@@ -244,9 +244,9 @@ describe("Outgoing roles and repeated occurrences", () => {
 			source({
 				recipe: [
 					{ reference: "model-scenario", enabled: true, role: "system" },
-					{ reference: "history", enabled: true, role: null },
+					{ reference: "history", enabled: true },
 					{ reference: "model-scenario", enabled: true, role: "system" },
-					{ reference: "history", enabled: true, role: null },
+					{ reference: "history", enabled: true },
 				],
 				model: {
 					name: "Maren Voss",
@@ -297,15 +297,6 @@ describe("Outgoing roles and repeated occurrences", () => {
 		]);
 	});
 
-	test("rejects a Definition slot without an outgoing role", () => {
-		expect(() =>
-			compilePrompt(
-				source({
-					recipe: [{ reference: "model-scenario", enabled: true, role: null }],
-				}),
-			),
-		).toThrow("model-scenario");
-	});
 });
 
 describe("Macro expansion", () => {

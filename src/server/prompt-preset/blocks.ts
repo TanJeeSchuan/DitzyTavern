@@ -222,7 +222,7 @@ export const duplicatePromptPresetBlock = (
 			position: ordered.length + 1,
 			reference: original.reference,
 			enabled: original.enabled,
-			role: original.role,
+			role: original.reference === "history" ? null : original.role,
 		};
 		if (original.reference === "instruction") {
 			duplicatedRow.name = original.name;

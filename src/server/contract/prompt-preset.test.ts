@@ -11,8 +11,10 @@ import { createPromptPresetRoutes } from "./prompt-preset";
 import { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
 import { expandText } from "../../shared/prompt-macros";
 import {
+	addPromptPresetInstruction,
 	movePromptPresetBlock,
 	InvalidPromptPresetOperationError,
+	readPromptPresetRecipe,
 } from "../prompt-preset";
 import type { ModelFetch } from "../model-client";
 import type {
@@ -281,6 +283,33 @@ describe("Prompt Preset move bounds", () => {
 	});
 });
 
+describe("Prompt Preset stored contract boundary", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	test("keeps empty authored text and rejects missing required instruction fields", () => {
+		const recipe = addPromptPresetInstruction(database, 1);
+		const instruction = recipe.slots.find((slot) => slot.reference === "instruction");
+		if (instruction === undefined) throw new Error("The instruction fixture is missing.");
+
+		database.exec(`UPDATE prompt_preset_block SET name = '', content = '' WHERE id = ${instruction.id}`);
+		const empty = readPromptPresetRecipe(database, 1);
+		const emptyInstruction = empty?.slots.find((slot) => slot.reference === "instruction");
+		expect(emptyInstruction).toMatchObject({ name: "", content: "", role: "system" });
+
+		database.exec(`UPDATE prompt_preset_block SET name = NULL WHERE id = ${instruction.id}`);
+		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no name");
+
+		database.exec(`UPDATE prompt_preset_block SET name = '', content = NULL WHERE id = ${instruction.id}`);
+		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no content");
+
+		database.exec(`UPDATE prompt_preset_block SET content = '', role = NULL WHERE id = ${instruction.id}`);
+		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no supported outgoing role");
+	});
+});
+
 describe("Prompt Preset transport", () => {
 	let database: Database;
 
@@ -438,9 +467,11 @@ describe("Prompt Preset transport", () => {
 		// Add a fresh Scenario occurrence: a deliberate duplicate the recipe
 		// keeps alongside the disabled original.
 		const added = await readOperation(addBlock(database, preset.id, "model-scenario"));
-		expect(added.slots.at(-1)?.reference).toBe("model-scenario");
-		expect(added.slots.at(-1)?.enabled).toBe(true);
-		expect(added.slots.at(-1)?.role).toBe("system");
+		const addedSlot = added.slots.at(-1);
+		expect(addedSlot?.reference).toBe("model-scenario");
+		if (addedSlot?.reference !== "model-scenario") throw new Error("The added Scenario is missing.");
+		expect(addedSlot.enabled).toBe(true);
+		expect(addedSlot.role).toBe("system");
 
 		// A fresh read reports exactly the saved state.
 		const reread = await readPreset(app, conversation.id);
@@ -480,10 +511,10 @@ describe("Prompt Preset transport", () => {
 
 		// Removing the added Scenario occurrence leaves the disabled original
 		// and the repeated history exactly where they were.
-		const addedSlot = added.slots.at(-1);
-		if (addedSlot === undefined) throw new Error("The added slot disappeared.");
+		const addedForRemoval = added.slots.at(-1);
+		if (addedForRemoval === undefined) throw new Error("The added slot disappeared.");
 		const removed = await readOperation(
-			removeBlock(database, preset.id, addedSlot.id),
+			removeBlock(database, preset.id, addedForRemoval.id),
 		);
 		expect(removed.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
 			["model-post-history-instruction", true],

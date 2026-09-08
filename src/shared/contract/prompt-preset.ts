@@ -72,18 +72,21 @@ export const promptPresetBlockReference = Type.Union([
 ]);
 export type PromptPresetBlockReference = Static<typeof promptPresetBlockReference>;
 
-// ==[HUMAN APPROVED]== One ordered recipe slot as the compiler consumes it. Referenced slots
-// name Conversation or Participant content and carry only their outgoing
-// role; an authored instruction slot carries its own editable name, text,
-// and role. Enablement lives on the slot so a disabled slot keeps its place
-// in the order instead of disappearing from it. The outgoing role is null
-// only for the history slot, whose entries keep the roles of their own
-// Messages.
+// ==[HUMAN APPROVED]== One ordered recipe slot as the compiler consumes it. A referenced
+// Definition slot carries its required outgoing role; history carries no
+// slot-owned role because its entries keep the roles of their own Messages;
+// and an authored instruction carries its editable name, text, and role.
+// Enablement lives on the slot so a disabled slot keeps its place in the
+// order instead of disappearing from it.
 export const promptPresetSlot = Type.Union([
 	Type.Object({
-		reference: promptBlockReference,
+		reference: referencedDefinitionBlock,
 		enabled: Type.Boolean(),
-		role: Type.Union([promptOutgoingRole, Type.Null()]),
+		role: promptOutgoingRole,
+	}),
+	Type.Object({
+		reference: Type.Literal("history"),
+		enabled: Type.Boolean(),
 	}),
 	Type.Object({
 		reference: promptInstructionReference,
@@ -95,26 +98,12 @@ export const promptPresetSlot = Type.Union([
 ]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
-// ==[HUMAN APPROVED]== A stored slot with its occurrence identity. Deliberate duplicates of the
-// same reference are separate occurrences, so every editor operation
-// addresses one row by `id` instead of by reference. An instruction
-// occurrence carries its authored name and text; referenced occurrences
-// never do, because the preset stores references, not rendered content.
-export const promptPresetBlockOccurrence = Type.Union([
-	Type.Object({
-		id: Type.Integer(),
-		reference: promptBlockReference,
-		enabled: Type.Boolean(),
-		role: Type.Union([promptOutgoingRole, Type.Null()]),
-	}),
-	Type.Object({
-		id: Type.Integer(),
-		reference: promptInstructionReference,
-		enabled: Type.Boolean(),
-		role: promptOutgoingRole,
-		name: Type.String(),
-		content: Type.String(),
-	}),
+// ==[HUMAN APPROVED]== A stored occurrence derives from the canonical slot and adds only local
+// database identity. Deliberate duplicates are separate occurrences, so
+// editor operations address one row by `id` instead of by reference.
+export const promptPresetBlockOccurrence = Type.Intersect([
+	Type.Object({ id: Type.Integer() }),
+	promptPresetSlot,
 ]);
 export type PromptPresetBlockOccurrence = Static<typeof promptPresetBlockOccurrence>;
 
@@ -127,33 +116,14 @@ export const promptPresetRecipe = Type.Object({
 export type PromptPresetRecipe = Static<typeof promptPresetRecipe>;
 
 // ==[HUMAN APPROVED]== Native interchange deliberately omits stored occurrence ids and the
-// Conversation-resolved view. References remain references, while authored
-// instruction occurrences carry only their own source text and metadata.
-// This is the complete supported native recipe format; it does not archive
-// Generation Settings, connection details, Participants, or history.
-const nativePromptPresetSlot = Type.Union([
-	Type.Object({
-		reference: Type.Union([...referencedDefinitionBlocks]),
-		enabled: Type.Boolean(),
-		role: promptOutgoingRole,
-	}),
-	Type.Object({
-		reference: Type.Literal("history"),
-		enabled: Type.Boolean(),
-		role: Type.Null(),
-	}),
-	Type.Object({
-		reference: promptInstructionReference,
-		enabled: Type.Boolean(),
-		role: promptOutgoingRole,
-		name: Type.String(),
-		content: Type.String(),
-	}),
-]);
-
+// Conversation-resolved view by reusing the canonical slot contract. References
+// remain references, while authored instruction occurrences carry only their
+// own source text and metadata. This is the complete supported native recipe
+// format; it does not archive Generation Settings, connection details,
+// Participants, or history.
 export const nativePromptPreset = Type.Object({
 	name: Type.String(),
-	slots: Type.Array(nativePromptPresetSlot),
+	slots: Type.Array(promptPresetSlot),
 });
 export type NativePromptPreset = Static<typeof nativePromptPreset>;
 

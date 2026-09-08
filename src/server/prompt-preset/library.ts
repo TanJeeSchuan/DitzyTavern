@@ -121,7 +121,7 @@ export const readNativePromptPreset = (
 		name: recipe.name,
 		slots: recipe.slots.map((slot) => {
 			if (slot.reference === "history") {
-				return { reference: slot.reference, enabled: slot.enabled, role: null };
+				return { reference: slot.reference, enabled: slot.enabled };
 			}
 			if (slot.reference === "instruction") {
 				return {
@@ -131,9 +131,6 @@ export const readNativePromptPreset = (
 					name: slot.name,
 					content: slot.content,
 				};
-			}
-			if (slot.role === null) {
-				throw new Error(`Prompt Preset ${presetId} has an invalid native role.`);
 			}
 			return { reference: slot.reference, enabled: slot.enabled, role: slot.role };
 		}),
@@ -166,7 +163,7 @@ export const importNativePromptPreset = (
 					position: index + 1,
 					reference: slot.reference,
 					enabled: slot.enabled,
-					role: slot.role,
+					role: slot.reference === "history" ? null : slot.role,
 				};
 				return slot.reference === "instruction"
 					? { ...row, name: slot.name, content: slot.content }

@@ -5,22 +5,8 @@ import { referencedDefinitionBlocks } from "../prompt-compiler";
 import { readConversationPromptPresetRecipe } from "./recipe";
 import type {
 	ConversationPromptPreset,
-	PromptPresetBlockOccurrence,
-	PromptOutgoingRole,
-	PromptPresetRecipe,
 	ResolvedPromptPresetSlot,
 } from "../../shared/contract/prompt-preset";
-
-// ==[HUMAN APPROVED]== Unreachable when the recipe read did its job; kept so the resolved view
-// cannot show a slot the compiler would refuse to assemble.
-const requireOutgoingRole = (
-	recipe: PromptPresetRecipe,
-	slot: PromptPresetBlockOccurrence,
-): PromptOutgoingRole => {
-	throw new Error(
-		`Prompt Preset ${recipe.id} slot "${slot.reference}" has no outgoing role.`,
-	);
-};
 
 /**
  * ==[HUMAN APPROVED]== The Chat's selected recipe with each Referenced Prompt Block resolved
@@ -82,10 +68,7 @@ export const resolveConversationPromptPreset = (
 			id: slot.id,
 			reference: slot.reference,
 			enabled: slot.enabled,
-			// ==[HUMAN APPROVED]== The stored recipe read guarantees a supported outgoing role on
-			// every Definition occurrence; the fallback names the preset rather
-			// than silently choosing a presentation.
-			role: slot.role ?? requireOutgoingRole(recipe, slot),
+			role: slot.role,
 			sourceName: owner?.name ?? null,
 			content: owner?.prompt[referenced.channel] ?? "",
 		};

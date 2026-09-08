@@ -179,12 +179,6 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = definitions[referenced.owner];
-		// ==[HUMAN APPROVED]== The stored recipe keeps an outgoing role on every Definition
-		// occurrence; a missing one cannot be presented, so fail naming the
-		// slot instead of silently choosing a presentation for it.
-		if (slot.role === null) {
-			throw new Error(`Prompt slot "${slot.reference}" has no outgoing role.`);
-		}
 		expandInto(
 			blocks,
 			warnings,

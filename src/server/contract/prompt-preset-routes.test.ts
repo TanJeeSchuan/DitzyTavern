@@ -100,7 +100,7 @@ type NativePromptPresetRequest = {
 	slots: Array<{
 		reference: string;
 		enabled: boolean;
-		role: string | null;
+		role?: string | null;
 		name?: string;
 		content?: string;
 	}>;
@@ -560,7 +560,7 @@ describe("Native Prompt Preset interchange", () => {
 				},
 				{ reference: "model-identity", enabled: true, role: "user" },
 				{ reference: "model-identity", enabled: true, role: "assistant" },
-				{ reference: "history", enabled: false, role: null },
+				{ reference: "history", enabled: false },
 			],
 		};
 
@@ -651,7 +651,7 @@ describe("Native Prompt Preset interchange", () => {
 					name: "Voice",
 					content: "Speak for {{self}} to {{other}}.",
 				},
-				{ reference: "history", enabled: true, role: null },
+				{ reference: "history", enabled: true },
 				{ reference: "model-post-history-instruction", enabled: true, role: "system" },
 			],
 		});

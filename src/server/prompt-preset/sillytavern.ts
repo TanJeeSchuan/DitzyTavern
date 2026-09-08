@@ -264,7 +264,7 @@ const buildSillyTavernPreview = (
 		if (referenceName !== null) {
 			const reference = supportedReferences[referenceName];
 			if (reference === "history") {
-				regular.push({ reference, enabled: entry.enabled, role: null });
+				regular.push({ reference, enabled: entry.enabled });
 				return;
 			}
 			regular.push({ reference, enabled: entry.enabled, role: defaultOutgoingRoles[reference] });

@@ -30,28 +30,72 @@ interface AcceptedGeneration {
 	generationId: number;
 }
 
-const samples = [
+// These compact sources intentionally stay with the transport tests. They represent the
+// supported import behavior without depending on ignored samples or network downloads.
+const samples: Array<{
+	source: SillyTavernJsonValue;
+	expectedContentInOrder: readonly [string, string];
+	expectedReferences: Array<SillyTavernImportPreview["native"]["slots"][number]["reference"]>;
+}> = [
 	{
-		path: ".sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json",
+		source: {
+			name: "Tracked Internal States",
+			prompts: [
+				{ identifier: "main", name: "Prose rules", content: "All prose rules DO_NOT apply to spoken NPC dialogue.", role: "system" },
+				{ identifier: "charDescription", name: "Character", content: "Model identity source.", role: "assistant" },
+				{ identifier: "personaDescription", name: "Writer", content: "The writer observes carefully.", role: "user" },
+				{ identifier: "scenario", name: "Scene", content: "The room is quiet.", role: "system" },
+				{ identifier: "dialogueExamples", name: "Examples", content: "Writer: Hello\nMaren: Hello back", role: "user" },
+				{ identifier: "chatHistory", name: "History", content: "", marker: true },
+				{ identifier: "tail", name: "Tail", content: "Describe characters/scenery in 3rd person limited.", role: "system" },
+			],
+			prompt_order: [{ character_id: 100001, order: [
+				{ identifier: "main", enabled: true },
+				{ identifier: "charDescription", enabled: true },
+				{ identifier: "personaDescription", enabled: true },
+				{ identifier: "scenario", enabled: true },
+				{ identifier: "dialogueExamples", enabled: true },
+				{ identifier: "chatHistory", enabled: true },
+				{ identifier: "tail", enabled: true },
+			] }],
+			regex_scripts: [],
+		},
 		expectedContentInOrder: [
 			"All prose rules DO_NOT apply to spoken NPC dialogue.",
 			"Describe characters/scenery in 3rd person limited.",
 		],
+		expectedReferences: [
+			"instruction",
+			"model-identity",
+			"human-identity",
+			"model-scenario",
+			"model-example-dialogue",
+			"history",
+			"instruction",
+		],
 	},
 	{
-		path: ".sample-format/prompts/Marinara's Spaghetti Recipe(1).json",
+		source: {
+			name: "Tracked Macro Recipe",
+			prompts: [
+				{ identifier: "main", name: "Prompt variables", content: "{{setvar::prompt::an excellent protagonist.", role: "system" },
+				{ identifier: "jailbreak", name: "Tense", content: "{{setvar::tense::past tense}}", role: "user" },
+				{ identifier: "chatHistory", name: "History", content: "", marker: true },
+			],
+			prompt_order: [{ character_id: 100001, order: [
+				{ identifier: "main", enabled: true },
+				{ identifier: "jailbreak", enabled: true },
+				{ identifier: "chatHistory", enabled: true },
+			] }],
+			regex_scripts: [{ name: "preserved diagnostic source" }],
+		},
 		expectedContentInOrder: [
 			"{{setvar::prompt::an excellent protagonist.",
 			"{{setvar::tense::past tense}}",
 		],
+		expectedReferences: ["instruction", "instruction", "history"],
 	},
-] as const;
-
-const readSillyTavernSample = async (path: string): Promise<SillyTavernJsonValue> => {
-	// ==[HUMAN APPROVED]== SAFETY: the supplied sample files are JSON documents; the public route
-	// performs the authoritative shape validation again before conversion.
-	return await Bun.file(path).json() as SillyTavernJsonValue;
-};
+];
 
 const importRequest = (source: SillyTavernJsonValue, orderListId?: string): ImportRequest => {
 	const request: ImportRequest = { source };
@@ -111,10 +155,9 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	test("reviews and commits both supplied community samples through one selected order", async () => {
+	test("reviews and commits both tracked samples through one selected order", async () => {
 		const app = createPromptPresetRoutes(database);
-		for (const { path } of samples) {
-			const source = await readSillyTavernSample(path);
+		for (const { source, expectedReferences } of samples) {
 			const reviewed = await postReview(app, source);
 			expect(reviewed.status).toBe(200);
 			const preview = requirePreview(reviewed.body);
@@ -122,6 +165,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			expect(preview.requiresOrderSelection).toBe(false);
 			expect(preview.native.slots.length).toBeGreaterThan(0);
 			expect(preview.native.slots.some((slot) => slot.reference === "instruction")).toBe(true);
+			expect(preview.native.slots.map((slot) => slot.reference)).toEqual(expectedReferences);
 			expect(preview.diagnostics.some((item) => item.code === "excluded-scripts")).toBe(true);
 
 			const imported = await postImport(app, source);
@@ -291,8 +335,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };
-		for (const { path, expectedContentInOrder } of samples) {
-			const source = await readSillyTavernSample(path);
+		for (const { source, expectedContentInOrder } of samples) {
 			const imported = await postImport(library, source);
 			expect(imported.status).toBe(200);
 			const applied = requireApplied(imported.body);
