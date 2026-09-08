@@ -33,7 +33,7 @@ import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
 import { presetDeletionImpactChangedNotice } from "../prompt-preset-presentation";
 import { useAsyncEffect } from "../lib/use-async";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
-import { PromptPresetRecipeEditor, dirtyDraftCount, draftIsDirty, type BlockDraft } from "./prompt-preset/PromptPresetRecipeEditor";
+import { PromptPresetRecipeEditor, blockDraftEquals, dirtyDraftCount, draftIsDirty, type BlockDraft } from "./prompt-preset/PromptPresetRecipeEditor";
 import { PromptPresetImportReviewDialog, type SillyTavernReview } from "./prompt-preset/PromptPresetImportReviewDialog";
 import { UnsavedBlockEditDialog } from "./prompt-preset/UnsavedBlockEditDialog";
 
@@ -87,6 +87,11 @@ export function PromptPresetDialog({
 	const [sillyTavernReview, setSillyTavernReview] = useState<SillyTavernReview | null>(null);
 	const sessionKey = open ? `open:${conversation?.id ?? "none"}` : "closed";
 	const draftPresetRef = useRef<number | null>(null);
+	// ==[HUMAN APPROVED]== Draft versions a successful save submitted, held until the next
+	// accepted reconciliation retires them. A save's own reload may be dropped
+	// by a newer read, so retirement is tied to whichever read is accepted,
+	// not to the request that submitted the save.
+	const pendingRetireRef = useRef<Record<number, BlockDraft> | null>(null);
 	const sessionRef = useRef({
 		key: "",
 		id: 0,
@@ -123,6 +128,53 @@ export function PromptPresetDialog({
 		operationId === sessionRef.current.latestOperation &&
 		conversationOperationId === sessionRef.current.latestConversationOperation;
 
+	// ==[HUMAN APPROVED]== The one session-owned acceptance rule for a selected-recipe read.
+	// Every read that can become the displayed recipe — initial loads,
+	// Conversation refreshes and mutation reloads — adopts the fresh recipe
+	// through here and nowhere else, so ordering and draft reconciliation can
+	// never diverge. A read is accepted only while it still owns the session,
+	// the Conversation and the newest read epoch; anything older is dropped.
+	// Drafts are reconciled against the adopted recipe: switching presets
+	// clears the draft set, a reload prunes drafts for occurrences the recipe
+	// no longer contains, and drafts a successful save submitted are retired
+	// once the reconciled recipe is accepted — but only the submitted version,
+	// never a newer local edit.
+	const acceptSelectedRecipe = (
+		selected: ConversationPromptPreset,
+		readId: number,
+		options: { presets?: PromptPresetSummary[] } = {},
+	): void => {
+		if (!ownsSession(sessionId, conversation?.id) || readId !== sessionRef.current.latestLoad) return;
+		if (draftPresetRef.current !== selected.id) {
+			draftPresetRef.current = selected.id;
+			pendingRetireRef.current = null;
+			setDrafts({});
+		} else {
+			const retire = pendingRetireRef.current;
+			pendingRetireRef.current = null;
+			const alive = new Set(selected.slots.map((slot) => slot.id));
+			setDrafts((current) => {
+				let kept = current;
+				if (retire !== null) {
+					for (const key of Object.keys(current)) {
+						const blockId = Number(key);
+						const submitted = retire[blockId];
+						if (submitted !== undefined && blockDraftEquals(submitted, current[blockId])) {
+							kept = { ...kept };
+							delete kept[blockId];
+						}
+					}
+				}
+				return Object.fromEntries(Object.entries(kept).filter(([draftId]) => alive.has(Number(draftId))));
+			});
+		}
+		setView((current) => ({
+			status: "ready",
+			presets: options.presets ?? (current.status === "ready" ? current.presets : []),
+			selected,
+		}));
+	};
+
 	const load = async (id = sessionRef.current.id, isCancelled?: () => boolean): Promise<LoadResult> => {
 		if (!open || !ownsSession(id)) return "stale";
 		if (conversation === null) {
@@ -147,18 +199,7 @@ export function PromptPresetDialog({
 				setView({ status: "unavailable" });
 				return "not-found";
 			}
-			if (draftPresetRef.current !== selected.id) {
-				draftPresetRef.current = selected.id;
-				setDrafts({});
-			} else {
-				const alive = new Set(selected.slots.map((slot) => slot.id));
-				setDrafts((current) => Object.fromEntries(
-					Object.entries(current).filter(([draftId]) => alive.has(Number(draftId))),
-				));
-			}
-			setView(
-				{ status: "ready", presets, selected },
-			);
+			acceptSelectedRecipe(selected, loadId, { presets });
 			return "ready";
 		} catch {
 			if (!isCancelled?.() && ownsSession(id, conversationId) && loadId === sessionRef.current.latestLoad) {
@@ -176,6 +217,7 @@ export function PromptPresetDialog({
 			// the Chat's lifetime. Same-session revision refreshes keep drafts.
 			setNotice(null);
 			draftPresetRef.current = null;
+			pendingRetireRef.current = null;
 			setDrafts({});
 			setProblem(null);
 			setLeaveRequest(null);
@@ -203,6 +245,7 @@ export function PromptPresetDialog({
 			return;
 		}
 		const operationId = ++sessionRef.current.latestOperation;
+		sessionRef.current.latestLoad += 1;
 		setOperation("busy");
 		setNotice(null);
 		try {
@@ -282,6 +325,7 @@ export function PromptPresetDialog({
 		const conversationId = conversation.id;
 		const operationId = ++sessionRef.current.latestOperation;
 		const conversationOperationId = ++sessionRef.current.latestConversationOperation;
+		sessionRef.current.latestLoad += 1;
 		setOperation("busy");
 		void runConversationCommand({
 			revision: () => conversation.revision,
@@ -366,6 +410,7 @@ export function PromptPresetDialog({
 		if (sessionRef.current.id !== sessionId || operation !== null) return;
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
+		sessionRef.current.latestLoad += 1;
 		setOperation("busy");
 		setNotice(null);
 		try {
@@ -432,6 +477,7 @@ export function PromptPresetDialog({
 		}
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
+		sessionRef.current.latestLoad += 1;
 		setOperation("busy");
 		try {
 			const outcome = await commitSillyTavernPromptPreset(
@@ -490,16 +536,22 @@ export function PromptPresetDialog({
 
 	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live
 	// here, and the applied response's fresh recipe read refreshes the selected
-	// recipe while leaving the library list and every other saved change
-	// untouched. A draft cannot outlive the occurrence it belongs to. The ready
-	// view is only reachable when a Conversation is selected, so its id is
-	// always available here.
-	const runOperation = async (run: () => Promise<PromptPresetOperationOutcome>) => {
+	// recipe through the shared acceptance rule while leaving the library list
+	// and every other saved change untouched. A draft cannot outlive the
+	// occurrence it belongs to. When the operation submitted one occurrence's
+	// draft, that exact version is retired on acceptance so saved content never
+	// resurfaces as an unsaved edit. The ready view is only reachable when a
+	// Conversation is selected, so its id is always available here.
+	const runOperation = async (
+		run: () => Promise<PromptPresetOperationOutcome>,
+		submitted?: { blockId: number; draft: BlockDraft },
+	) => {
 		if (conversation === null) return;
 		if (operation !== null) return;
 		const id = sessionId;
 		const conversationId = conversation.id;
 		const operationId = ++sessionRef.current.latestOperation;
+		const readId = ++sessionRef.current.latestLoad;
 		setOperation("busy");
 		setProblem(null);
 		try {
@@ -512,6 +564,9 @@ export function PromptPresetDialog({
 						? "The selected preset no longer exists."
 						: "The Prompt Preset change could not be reached.");
 				return;
+			}
+			if (submitted !== undefined) {
+				pendingRetireRef.current = { ...pendingRetireRef.current, [submitted.blockId]: submitted.draft };
 			}
 			let fresh: ConversationPromptPreset | null;
 			try {
@@ -527,20 +582,7 @@ export function PromptPresetDialog({
 				setView({ status: "unavailable" });
 				return;
 			}
-			if (draftPresetRef.current !== fresh.id) {
-				draftPresetRef.current = fresh.id;
-				setDrafts({});
-			} else {
-				const alive = new Set(fresh.slots.map((slot) => slot.id));
-				setDrafts((current) => Object.fromEntries(
-					Object.entries(current).filter(([draftId]) => alive.has(Number(draftId))),
-				));
-			}
-			setView((current) =>
-				current.status === "ready"
-					? { status: "ready", presets: current.presets, selected: fresh }
-					: current,
-			);
+			acceptSelectedRecipe(fresh, readId);
 		} finally {
 			if (ownsSession(id, conversationId) && operationId === sessionRef.current.latestOperation) setOperation(null);
 		}
@@ -552,8 +594,10 @@ export function PromptPresetDialog({
 		));
 
 	// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain
-	// command. The authoritative recipe is read again before the leave completes,
-	// while the local drafts remain available if either request fails.
+	// command. The authoritative recipe is read again before the leave completes
+	// and adopted through the shared acceptance rule, retiring exactly the
+	// submitted draft versions, while the local drafts remain available if
+	// either request fails.
 	const saveDrafts = async (
 		preset: ConversationPromptPreset,
 		id: number,
@@ -561,7 +605,9 @@ export function PromptPresetDialog({
 		conversationId: number,
 	): Promise<string | null> => {
 		if (draftPresetRef.current !== preset.id) return "The selected Prompt Preset is no longer current.";
+		sessionRef.current.latestLoad += 1;
 		const patches: PromptPresetBlockPatch[] = [];
+		const submitted: Record<number, BlockDraft> = {};
 		for (const slot of preset.slots) {
 			const draft = drafts[slot.id];
 			if (draft === undefined || !draftIsDirty(slot, draft)) continue;
@@ -573,8 +619,10 @@ export function PromptPresetDialog({
 					content: draft.content,
 					role: draft.role,
 				});
+				submitted[slot.id] = { kind: "content", name: draft.name, content: draft.content, role: draft.role };
 			} else if (slot.reference !== "history" && draft.kind === "role") {
 				patches.push({ occurrenceId: slot.id, type: "role", role: draft.role });
+				submitted[slot.id] = { kind: "role", role: draft.role };
 			}
 		}
 		const outcome = await savePromptPresetBlockPatches(preset.id, patches);
@@ -586,19 +634,13 @@ export function PromptPresetDialog({
 					? "The selected preset no longer exists."
 					: "The Prompt Preset change could not be saved.";
 		}
+		pendingRetireRef.current = { ...pendingRetireRef.current, ...submitted };
+		const readId = ++sessionRef.current.latestLoad;
 		try {
 			const fresh = await loadConversationPromptPreset(conversationId);
 			if (!ownsSession(id) || operationId !== sessionRef.current.latestOperation) return null;
 			if (fresh === null) return "The selected preset could not be reloaded.";
-			if (draftPresetRef.current !== fresh.id) {
-				draftPresetRef.current = fresh.id;
-				setDrafts({});
-			}
-			setView((current) =>
-				current.status === "ready"
-					? { status: "ready", presets: current.presets, selected: fresh }
-					: current,
-			);
+			acceptSelectedRecipe(fresh, readId);
 			return null;
 		} catch {
 			return "The saved Prompt Preset could not be reloaded.";
@@ -610,6 +652,7 @@ export function PromptPresetDialog({
 	// pending selection — runs.
 	const finishLeave = (request: LeaveRequest) => {
 		draftPresetRef.current = null;
+		pendingRetireRef.current = null;
 		setDrafts({});
 		setLeaveRequest(null);
 		if (request.kind === "close") {
@@ -710,7 +753,7 @@ export function PromptPresetDialog({
 								setDrafts((current) => ({ ...current, [blockId]: draft }));
 							}}
 							onDraftCancel={clearDraft}
-							onOperation={(run) => void runOperation(run)}
+							onOperation={(run, submitted) => void runOperation(run, submitted)}
 						/>
 					</>
 				)}

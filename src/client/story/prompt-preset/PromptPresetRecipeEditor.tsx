@@ -39,6 +39,14 @@ export const dirtyDraftCount = (
 	return draft !== undefined && draftIsDirty(slot, draft);
 }).length;
 
+// ==[HUMAN APPROVED]== A save finishes exactly the submitted draft version: after a
+// successful save the editor retires an occurrence's draft only when it still
+// equals what was submitted, so a newer local edit made while saving survives.
+export const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
+	if (a.kind === "role") return b.kind === "role" && a.role === b.role;
+	return b.kind === "content" && a.name === b.name && a.content === b.content && a.role === b.role;
+};
+
 const slotLabels = {
 	"model-system-instruction": "System Instruction",
 	"human-identity": "Identity (you)",
@@ -189,7 +197,10 @@ export function PromptPresetRecipeEditor({
 	problem: string | null;
 	onDraftChange: (blockId: number, draft: BlockDraft) => void;
 	onDraftCancel: (blockId: number) => void;
-	onOperation: (run: () => Promise<PromptPresetOperationOutcome>) => void;
+	onOperation: (
+		run: () => Promise<PromptPresetOperationOutcome>,
+		submitted?: { blockId: number; draft: BlockDraft },
+	) => void;
 }) {
 	return <section aria-label="Selected recipe" className="flex flex-col gap-3">
 		<h2 className="text-sm font-medium">{preset.name}: assembled order</h2>
@@ -205,7 +216,7 @@ export function PromptPresetRecipeEditor({
 						<Button variant="ghost" size="icon-sm" disabled={pending} aria-label={`Remove ${slotTitle(slot)}`} onClick={() => onOperation(() => removePromptPresetBlock(preset.id, slot.id))}><Trash2 aria-hidden="true" /></Button>
 					</div>
 				</div>
-				{slot.reference === "instruction" ? <InstructionFieldEditor slot={slot} draft={drafts[slot.id]} disabled={pending} onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })} onCancel={() => onDraftCancel(slot.id)} onSave={(fields) => onOperation(() => setPromptPresetBlockContent(preset.id, slot.id, fields))} /> : <><SlotBody slot={slot} />{slot.reference !== "history" && <div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label><OutgoingRoleSelect id={`slot-role-${slot.id}`} value={drafts[slot.id]?.kind === "role" ? drafts[slot.id].role : slot.role} disabled={pending} onChange={(role) => onDraftChange(slot.id, { kind: "role", role })} />{drafts[slot.id]?.kind === "role" && draftIsDirty(slot, drafts[slot.id]) && <><Button size="xs" disabled={pending} onClick={() => onOperation(() => setPromptPresetBlockRole(preset.id, slot.id, drafts[slot.id]!.role))}>Save</Button><Button variant="ghost" size="xs" disabled={pending} onClick={() => onDraftCancel(slot.id)}>Cancel</Button></>}</div>}</>}
+				{slot.reference === "instruction" ? <InstructionFieldEditor slot={slot} draft={drafts[slot.id]} disabled={pending} onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })} onCancel={() => onDraftCancel(slot.id)} onSave={(fields) => onOperation(() => setPromptPresetBlockContent(preset.id, slot.id, fields), { blockId: slot.id, draft: { kind: "content", ...fields } })} /> : <><SlotBody slot={slot} />{slot.reference !== "history" && <div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label><OutgoingRoleSelect id={`slot-role-${slot.id}`} value={drafts[slot.id]?.kind === "role" ? drafts[slot.id].role : slot.role} disabled={pending} onChange={(role) => onDraftChange(slot.id, { kind: "role", role })} />{drafts[slot.id]?.kind === "role" && draftIsDirty(slot, drafts[slot.id]) && <><Button size="xs" disabled={pending} onClick={() => onOperation(() => setPromptPresetBlockRole(preset.id, slot.id, drafts[slot.id]!.role), { blockId: slot.id, draft: drafts[slot.id]! })}>Save</Button><Button variant="ghost" size="xs" disabled={pending} onClick={() => onDraftCancel(slot.id)}>Cancel</Button></>}</div>}</>}
 			</li>)}
 			{preset.slots.length === 0 && <li className="rounded-lg ring-1 ring-foreground/10 p-3"><p className="text-muted-foreground">This recipe assembles no context yet. Add a slot below; the Chat still generates, but only from its own submitted writing.</p></li>}
 		</ol>
