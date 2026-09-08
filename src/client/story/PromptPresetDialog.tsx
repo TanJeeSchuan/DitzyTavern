@@ -551,7 +551,6 @@ export function PromptPresetDialog({
 		const id = sessionId;
 		const conversationId = conversation.id;
 		const operationId = ++sessionRef.current.latestOperation;
-		const readId = ++sessionRef.current.latestLoad;
 		setOperation("busy");
 		setProblem(null);
 		try {
@@ -569,6 +568,7 @@ export function PromptPresetDialog({
 				pendingRetireRef.current = { ...pendingRetireRef.current, [submitted.blockId]: submitted.draft };
 			}
 			let fresh: ConversationPromptPreset | null;
+			const readId = ++sessionRef.current.latestLoad;
 			try {
 				fresh = await loadConversationPromptPreset(conversationId);
 			} catch {
