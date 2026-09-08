@@ -7,21 +7,7 @@ import {
 	type PromptPlan,
 } from ".";
 
-// The order the stored Default preset ships with, restated here so the pure
-// compiler can be exercised without a database. The roles are the stored
-// roles the Default starts with: the established assembly presentation.
-const defaultRecipe: CompilePromptInput["recipe"] = [
-	{ reference: "model-system-instruction", enabled: true, role: "system" },
-	{ reference: "human-identity", enabled: true, role: "user" },
-	{ reference: "model-identity", enabled: true, role: "assistant" },
-	{ reference: "model-scenario", enabled: true, role: "system" },
-	{ reference: "model-example-dialogue", enabled: true, role: "user" },
-	{ reference: "history", enabled: true, role: null },
-	{ reference: "model-post-history-instruction", enabled: true, role: "system" },
-];
-
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
-	recipe: defaultRecipe,
 	human: {
 		name: "Writer",
 		prompt: {
@@ -88,7 +74,7 @@ describe("Prompt compiler", () => {
 		]);
 	});
 
-	test("orders the two Identities with their stored outgoing roles", () => {
+	test("orders the two Identities as human then model", () => {
 		const plan = compilePrompt(filled());
 		expect(plan.blocks.filter((block) => block.kind === "identity")).toEqual([
 			{ kind: "identity", role: "human", content: "Human identity line." },
@@ -137,12 +123,10 @@ describe("Prompt compiler", () => {
 		);
 		expect(plan.blocks[0]).toEqual({
 			kind: "example-dialogue",
-			role: "human",
 			content: "<START>\n{{user}}: Who tends the light?\n  indented line with trailing spaces  ",
 		});
 		expect(plan.blocks[1]).toEqual({
 			kind: "post-history-instruction",
-			role: "system",
 			content: "\nPost with leading newline.",
 		});
 	});
@@ -205,106 +189,11 @@ describe("Prompt compiler", () => {
 			}),
 		);
 		expect(plan.blocks).toEqual([
-			{ kind: "system-instruction", role: "system", content: "Model system." },
-			{ kind: "scenario", role: "system", content: "Model scenario." },
-			{ kind: "example-dialogue", role: "human", content: "Model example." },
-			{ kind: "post-history-instruction", role: "system", content: "Model post." },
+			{ kind: "system-instruction", content: "Model system." },
+			{ kind: "scenario", content: "Model scenario." },
+			{ kind: "example-dialogue", content: "Model example." },
+			{ kind: "post-history-instruction", content: "Model post." },
 		]);
-	});
-});
-
-describe("Outgoing roles and repeated occurrences", () => {
-	test("carries each slot's outgoing role onto its compiled block", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: [
-					{ reference: "model-identity", enabled: true, role: "system" },
-					{ reference: "model-scenario", enabled: true, role: "user" },
-				],
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "I am Maren Voss.",
-						scenario: "A quiet room.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		expect(plan.blocks).toEqual([
-			{ kind: "identity", role: "system", content: "I am Maren Voss." },
-			{ kind: "scenario", role: "human", content: "A quiet room." },
-		]);
-	});
-
-	test("renders one occurrence per recipe position, including deliberate duplicates", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: [
-					{ reference: "model-scenario", enabled: true, role: "system" },
-					{ reference: "history", enabled: true, role: null },
-					{ reference: "model-scenario", enabled: true, role: "system" },
-					{ reference: "history", enabled: true, role: null },
-				],
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "",
-						scenario: "A quiet room.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-				context: [
-					{ kind: "message", speakerName: "Writer", content: "First.", role: "human" },
-				],
-			}),
-		);
-		expect(plan.blocks).toEqual([
-			{ kind: "scenario", role: "system", content: "A quiet room." },
-			{ kind: "history", speakerName: "Writer", content: "First.", role: "human" },
-			{ kind: "scenario", role: "system", content: "A quiet room." },
-			{ kind: "history", speakerName: "Writer", content: "First.", role: "human" },
-		]);
-	});
-
-	test("re-renders a disabled or later-omitted occurrence without touching the stored text", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: [
-					{ reference: "model-identity", enabled: false, role: "assistant" },
-					{ reference: "model-identity", enabled: true, role: "assistant" },
-				],
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "I am Maren Voss.",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		// The disabled occurrence contributes nothing; the enabled one renders
-		// once. Neither renders the other's emptiness.
-		expect(plan.blocks).toEqual([
-			{ kind: "identity", role: "model", content: "I am Maren Voss." },
-		]);
-	});
-
-	test("rejects a Definition slot without an outgoing role", () => {
-		expect(() =>
-			compilePrompt(
-				source({
-					recipe: [{ reference: "model-scenario", enabled: true, role: null }],
-				}),
-			),
-		).toThrow("model-scenario");
 	});
 });
 
@@ -422,111 +311,6 @@ describe("Macro expansion", () => {
 		expect(plan.blocks[0]?.content).toBe("\\Maren Voss");
 	});
 
-	test("renders an escaped Prompt Comment literally without stripping or warning", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Syntax: \\{{// draft: mention {{unfinished}} }} end.",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		// The backslash removes the comment's activity, so the whole comment
-		// stays in the plan as literal text and its enclosed unknown macro
-		// neither expands nor warns.
-		expect(plan.blocks[0]?.content).toBe(
-			"Syntax: {{// draft: mention {{unfinished}} }} end.",
-		);
-		expect(plan.warnings).toEqual([]);
-	});
-
-	test("renders an escaped scoped Prompt Comment literally without warnings", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Syntax: \\{{//}} mention {{unfinished}} {{///}} end.",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		expect(plan.blocks[0]?.content).toBe(
-			"Syntax: {{//}} mention {{unfinished}} {{///}} end.",
-		);
-		expect(plan.warnings).toEqual([]);
-	});
-
-	test("a double backslash leaves a following Prompt Comment active", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "\\\\{{// note }} and {{self}}",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		// The first backslash escapes the second, so the comment that follows
-		// is still an active comment and the macro after it still expands.
-		expect(plan.blocks[0]?.content).toBe("\\ and Maren Voss");
-	});
-
-	test("drops a scoped Prompt Comment before evaluating its macros", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Before {{//}} hidden {{self}} {{unknown}} {{///}} after {{other}}",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		expect(plan.blocks[0]?.content).toBe("Before  after Writer");
-		expect(plan.warnings).toEqual([]);
-	});
-
-	test("keeps an unterminated comment open as raw text without swallowing content", () => {
-		const plan = compilePrompt(
-			source({
-				model: {
-					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "{{// oops, never closed",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-				},
-			}),
-		);
-		// Without a balancing `}}` there is no comment, so the text renders
-		// literally instead of silently swallowing the rest of the field.
-		expect(plan.blocks[0]?.content).toBe("{{// oops, never closed");
-		expect(plan.warnings).toEqual([]);
-	});
-
 	test("keeps unknown macros literal and reports them as warnings per block", () => {
 		const plan = compilePrompt(
 			source({
@@ -634,132 +418,3 @@ describe("expandText", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 });
-describe("Authored instruction blocks", () => {
-	const instruction = (overrides: Partial<{
-		enabled: boolean;
-		role: "system" | "user" | "assistant";
-		name: string;
-		content: string;
-	}>): CompilePromptInput["recipe"] =>
-		[
-			{
-				reference: "instruction",
-				enabled: true,
-				role: "system",
-				name: "Intro",
-				content: "Write vividly.",
-				...overrides,
-			},
-		];
-
-	test("compiles an instruction block with its authored content and outgoing role", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: instruction({ role: "user" }),
-			}),
-		);
-		expect(plan.blocks).toEqual([
-			{ kind: "instruction", role: "human", content: "Write vividly." },
-		]);
-		expect(plan.warnings).toEqual([]);
-	});
-
-	test("omits a disabled or empty instruction from the rendered plan", () => {
-		const disabled = compilePrompt(source({ recipe: instruction({ enabled: false }) }));
-		expect(disabled.blocks).toEqual([]);
-
-		const empty = compilePrompt(
-			source({ recipe: instruction({ content: "{{// just a note }}" }) }),
-		);
-		// A comment-only instruction contributes no text and is omitted, exactly
-		// like a Definition channel that holds nothing but a comment.
-		expect(empty.blocks).toEqual([]);
-		expect(empty.warnings).toEqual([]);
-	});
-
-	test("resolves {{self}} and {{other}} to the current Control pair, independent of outgoing role", () => {
-		const roleCases = ["system", "user", "assistant"] as const;
-		for (const role of roleCases) {
-			const plan = compilePrompt(
-				source({
-					recipe: instruction({
-						role,
-						content: "{{self}} writes to {{other}}.",
-					}),
-					human: { name: "Rowan", prompt: emptyChannels },
-					model: { name: "Sable", prompt: emptyChannels },
-				}),
-			);
-			// The perspective never follows the outgoing role: self is always
-			// the human-controlled Participant and other the model-controlled
-			// one.
-			expect(plan.blocks[0]).toEqual({
-				kind: "instruction",
-				role: role === "system" ? "system" : role === "user" ? "human" : "model",
-				content: "Rowan writes to Sable.",
-			});
-		}
-	});
-
-	test("keeps owner-relative resolution for Definition slots beside an instruction", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: [
-					{ reference: "model-identity", enabled: true, role: "assistant" },
-					{ reference: "instruction", enabled: true, role: "system", name: "Intro", content: "{{self}} vs {{other}}." },
-				],
-				human: { name: "Rowan", prompt: emptyChannels },
-				model: {
-					name: "Sable",
-					prompt: { ...emptyChannels, identity: "I am {{self}}, you are {{other}}." },
-				},
-			}),
-		);
-		// The model Definition keeps owner-relative meaning while the authored
-		// instruction resolves to the Control pair.
-		expect(plan.blocks).toEqual([
-			{ kind: "identity", role: "model", content: "I am Sable, you are Rowan." },
-			{ kind: "instruction", role: "system", content: "Rowan vs Sable." },
-		]);
-	});
-
-	test("keeps unknown macros literal, labels warnings with the block name, and never throws", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: instruction({
-					name: "Jailbreak",
-					content: "{{random}} stays, but {{self}} works.",
-				}),
-				human: { name: "Rowan", prompt: emptyChannels },
-				model: { name: "Sable", prompt: emptyChannels },
-			}),
-		);
-		expect(plan.blocks[0]?.content).toBe("{{random}} stays, but Rowan works.");
-		expect(plan.warnings).toEqual([{ block: "Jailbreak", macro: "{{random}}" }]);
-	});
-
-	test("uses the shared comment and escaping processor for instruction text", () => {
-		const plan = compilePrompt(
-			source({
-				recipe: instruction({
-					content: "A \\{{self}} literal and {{// note: {{unfinished}} }} done.",
-				}),
-				human: { name: "Rowan", prompt: emptyChannels },
-				model: { name: "Sable", prompt: emptyChannels },
-			}),
-		);
-		// The escaped macro renders literally and the comment is stripped whole
-		// without warning about the macro inside it — the same behavior as
-		// Participant-owned text.
-		expect(plan.blocks[0]?.content).toBe("A {{self}} literal and  done.");
-		expect(plan.warnings).toEqual([]);
-	});
-});
-
-const emptyChannels = {
-	systemInstruction: "",
-	identity: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};

@@ -97,9 +97,7 @@ describe("Generation runtime behavior", () => {
 			"history",
 			"post-history-instruction",
 		]);
-		// Identities expand owner-relative: self is the Definition owner, and
-		// the stored Default recipe presents the human Identity as user and the
-		// model Identity as assistant.
+		// Identities expand owner-relative: self is the Definition owner.
 		expect(
 			inspection.plan?.blocks.filter((block) => block.kind === "identity"),
 		).toEqual([
@@ -812,94 +810,4 @@ describe("Generation runtime behavior", () => {
 		expect(siblingTarget?.variants.at(-1)?.content).toBe("Budgeted sibling output.");
 	});
 
-});
-
-describe("Prompt Comments", () => {
-	let database: Database;
-	let conversationId: number;
-
-	// A comment body may span lines and may contain macro delimiters, so this
-	// Definition puts one of each in a prompt field and one in an opening, each
-	// enclosing a macro that would otherwise expand or warn.
-	const inlineComment = "{{// tone note: mention {{lighthouse}} later }}";
-	const multilineComment =
-		"{{// draft notes:\n- keep the lantern lit\n- the {{unfinished}} idea\n}}";
-	const openingComment = "{{// greet warmly, never as {{other}} }}";
-
-	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		conversationId = createConversationModule(database).create({
-			name: "Annotated Chat",
-			participants: [
-				{ definition: adHoc("Writer") },
-				{
-					definition: adHoc(
-						"Maren Voss",
-						[`The lamp turns above you.${openingComment}`],
-						{
-							systemInstruction: `Keep it terse. ${inlineComment}`,
-							scenario: `The fog closes in.\n${multilineComment}\nWind rises.`,
-							postHistoryInstruction: inlineComment,
-						},
-					),
-				},
-			],
-			control: { human: 0, model: 1 },
-		}).id;
-	});
-
-	afterEach(() => {
-		database.close();
-	});
-
-	test("inspection renders authored text without its comments and without warning about their contents", () => {
-		const inspection = inspectGenerationPrompt(database, conversationId);
-		const content = (kind: string) =>
-			inspection.plan?.blocks.find((block) => block.kind === kind)?.content;
-
-		expect(content("system-instruction")).toBe("Keep it terse. ");
-		expect(content("scenario")).toBe("The fog closes in.\n\nWind rises.");
-		// The opening became the greeting Message at creation, already stripped.
-		expect(content("history")).toBe("The lamp turns above you.");
-		// A channel holding nothing but a comment renders empty and is omitted.
-		expect(content("post-history-instruction")).toBeUndefined();
-
-		// Macros outside comments still resolve owner-relative, and only the
-		// ordinary unknown macro in Example Dialogue warns: the unknown macros
-		// enclosed by the two comments neither expanded nor warned.
-		expect(
-			inspection.plan?.blocks.find(
-				(block) => block.kind === "identity" && block.role === "model",
-			)?.content,
-		).toBe("I am Maren Voss, speaking to Writer.");
-		expect(inspection.plan?.warnings).toEqual([
-			{ block: "example-dialogue", macro: "{{user}}" },
-		]);
-	});
-
-	test("comments survive in storage while the model request omits them", async () => {
-		let receivedPlan: PromptPlan | undefined;
-		await generateTerminalTailFixture(database, {
-			conversationId,
-			timestamp: "2026-08-20T13:00:00Z",
-			modelClient: fakeModelClient((plan) => {
-				receivedPlan = plan;
-				return "The light understands you.";
-			}),
-		});
-
-		// Nothing the transport receives carries comment text — and so nothing
-		// budgeting measures does either, since the budget reads this same plan.
-		expect(JSON.stringify(receivedPlan)).not.toContain("{{//");
-
-		const model = requireSnapshot(
-			createConversationModule(database),
-			conversationId,
-		).cast[1];
-		expect(model?.prompt.systemInstruction).toBe(`Keep it terse. ${inlineComment}`);
-		expect(model?.prompt.scenario).toBe(
-			`The fog closes in.\n${multilineComment}\nWind rises.`,
-		);
-		expect(model?.openings).toEqual([`The lamp turns above you.${openingComment}`]);
-	});
 });

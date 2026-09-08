@@ -10,7 +10,6 @@ import type {
 	CanonicalGenerationSettings,
 	GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
-import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	GenerationIntent,
@@ -77,9 +76,6 @@ export interface CompileGenerationPlanInput {
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];
-	// The selected Prompt Preset's ordered recipe, captured with the rest of
-	// the attempt's inputs so execution never rereads mutable preset state.
-	readonly recipe: readonly PromptPresetSlot[];
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;

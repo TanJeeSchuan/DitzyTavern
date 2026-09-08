@@ -359,13 +359,22 @@ function toMessages(input: ModelClientGenerationInput) {
 			continue;
 		}
 		if (block.content.length === 0) continue;
-		// ==[HUMAN APPROVED]== The compiled presentation role is presentation truth: the recipe
-		// slot chose it and the plan kept it provider-neutral, so the adapter
-		// owns the same translation it applies to history authorship.
-		messages.push({
-			role: block.role === "model" ? "assistant" : block.role === "human" ? "user" : "system",
-			content: block.content,
-		});
+		switch (block.kind) {
+			case "system-instruction":
+			case "scenario":
+			case "post-history-instruction":
+				messages.push({ role: "system", content: block.content });
+				break;
+			case "identity":
+				messages.push({
+					role: block.role === "model" ? "assistant" : "user",
+					content: block.content,
+				});
+				break;
+			case "example-dialogue":
+				messages.push({ role: "user", content: block.content });
+				break;
+		}
 	}
 	// ==[HUMAN APPROVED]== Continuation instructions are request intent, not Conversation history.
 	// Keep them as an adapter-owned system message so no synthetic user turn

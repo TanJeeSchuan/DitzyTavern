@@ -10,7 +10,6 @@ const plan: PromptPlan = {
 	blocks: [
 		{
 			kind: "system-instruction",
-			role: "system",
 			content: "Keep this plan opaque to the transport.",
 		},
 	],

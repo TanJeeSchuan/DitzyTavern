@@ -83,7 +83,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 
 		const result = await collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -115,7 +115,7 @@ describe("OpenAI Compatible Model Client", () => {
 			},
 		});
 		await collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -124,7 +124,7 @@ describe("OpenAI Compatible Model Client", () => {
 		expect(body?.max_completion_tokens).toBeUndefined();
 	});
 
-	test("preserves prompt block presentation roles and history authorship at the transport boundary", async () => {
+	test("preserves prompt block roles and history authorship at the transport boundary", async () => {
 		let body: CapturedBody | undefined;
 		const client = createOpenAICompatibleModelClient({
 			profile: { ...profile, outputTokenRepresentation: "omit" },
@@ -140,15 +140,15 @@ describe("OpenAI Compatible Model Client", () => {
 		await collectModelClientGeneration(client, {
 			promptPlan: {
 				blocks: [
-					{ kind: "system-instruction", role: "system", content: "System" },
+					{ kind: "system-instruction", content: "System" },
 					{ kind: "identity", role: "human", content: "Identity" },
 					{ kind: "identity", role: "model", content: "Model identity" },
-					{ kind: "scenario", role: "system", content: "Scenario" },
-					{ kind: "example-dialogue", role: "system", content: "Example" },
+					{ kind: "scenario", content: "Scenario" },
+					{ kind: "example-dialogue", content: "Example" },
 					{ kind: "history", speakerName: "Human", content: "Hello", role: "human" },
 					{ kind: "history", speakerName: "Model", content: "Hi", role: "model" },
 					{ kind: "history", speakerName: null, content: "Unattributed", role: null },
-					{ kind: "post-history-instruction", role: "system", content: "Continue" },
+					{ kind: "post-history-instruction", content: "Continue" },
 				],
 				warnings: [],
 			},
@@ -161,7 +161,7 @@ describe("OpenAI Compatible Model Client", () => {
 			{ role: "user", content: "Identity" },
 			{ role: "assistant", content: "Model identity" },
 			{ role: "system", content: "Scenario" },
-			{ role: "system", content: "Example" },
+			{ role: "user", content: "Example" },
 			{ role: "user", content: "Human: Hello" },
 			{ role: "assistant", content: "Model: Hi" },
 			{ role: "user", content: "Unattributed" },
@@ -181,7 +181,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 
 		await expect(collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", content: "Answer." }], warnings: [] },
 			modelId: "local-model",
 			generationSettings: {
 				...settings,
@@ -212,7 +212,7 @@ describe("OpenAI Compatible Model Client", () => {
 			await collectModelClientGeneration(client, {
 				promptPlan: {
 					blocks: [
-						{ kind: "system-instruction", role: "system", content: "System" },
+						{ kind: "system-instruction", content: "System" },
 						{ kind: "history", speakerName: "Maren", content: "Previous model text.", role: "model" },
 					],
 					warnings: [],
