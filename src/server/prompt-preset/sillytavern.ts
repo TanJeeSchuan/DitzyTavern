@@ -1,5 +1,5 @@
 import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
-import { matchPromptComment } from "../../shared/prompt-macros";
+import { scanMacroToken } from "../../shared/prompt-macros";
 import { InvalidPromptPresetCommandError } from "./errors";
 
 type JsonRecord = { [key: string]: SillyTavernJsonValue };
@@ -175,42 +175,26 @@ const diagnostic = (code: string, message: string, identifier?: string): SillyTa
 	return value;
 };
 
+// ==[HUMAN APPROVED]== Translation walks the same token stream as expansion (the shared
+// scan in `prompt-macros.ts`), so escaping, Prompt Comments and malformed
+// delimiters mean the same thing in both passes. Only an active `{{user}}`
+// or `{{char}}` macro is rewritten to the native names; a backslash pair,
+// an escaped macro or comment, an active comment, an unknown macro and
+// every other character are preserved verbatim, so authored formatting
+// outside the translation is never rewritten.
 const translateCommentsAndMacros = (source: string): string => {
 	let output = "";
 	let index = 0;
 	while (index < source.length) {
-		const commentEnd = matchPromptComment(source, index);
-		if (commentEnd !== null) {
-			output += source.slice(index, commentEnd);
-			index = commentEnd;
-			continue;
+		const token = scanMacroToken(source, index, (name) => name === "user" || name === "char");
+		if (token.kind === "macro") {
+			if (token.name === "user") output += "{{self}}";
+			else if (token.name === "char") output += "{{other}}";
+			else output += source.slice(index, token.end);
+		} else {
+			output += source.slice(index, token.end);
 		}
-		if (source[index] === "\\" && source.startsWith("{{", index + 1)) {
-			const escapedCommentEnd = matchPromptComment(source, index + 1);
-			if (escapedCommentEnd !== null) {
-				output += source.slice(index, escapedCommentEnd);
-				index = escapedCommentEnd;
-				continue;
-			}
-			const end = source.indexOf("}}", index + 3);
-			if (end !== -1) {
-				output += source.slice(index, end + 2);
-				index = end + 2;
-				continue;
-			}
-		}
-		if (source.startsWith("{{user}}", index)) {
-			output += "{{self}}";
-			index += "{{user}}".length;
-			continue;
-		}
-		if (source.startsWith("{{char}}", index)) {
-			output += "{{other}}";
-			index += "{{char}}".length;
-			continue;
-		}
-		output += source[index];
-		index += 1;
+		index = token.end;
 	}
 	return output;
 };
@@ -229,6 +213,75 @@ const pushOnce = (diagnostics: SillyTavernImportDiagnostic[], seen: Set<string>,
 	if (seen.has(key)) return;
 	seen.add(key);
 	diagnostics.push(value);
+};
+
+// ==[HUMAN APPROVED]== One converted definition, used identically by listed occurrences and
+// unlisted definitions so the two paths can never classify the same source
+// differently. Conversion decides what the definition is (a supported
+// reference with its default outgoing role, an authored instruction with its
+// translated text, or an omitted unsupported placeholder); enablement and
+// placement are applied separately by the caller.
+type ConvertedDefinition =
+	| { slot: { reference: "history" } }
+	| { slot: { reference: "model-identity" | "human-identity" | "model-scenario" | "model-example-dialogue"; role: PromptOutgoingRole } }
+	| { slot: { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string } }
+	| { unsupported: SillyTavernImportDiagnostic };
+
+const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition => {
+	const sourceReference = supportedReference(definition.identifier);
+	if (sourceReference !== null) {
+		const reference = supportedReferences[sourceReference];
+		if (reference === "history") return { slot: { reference } };
+		return { slot: { reference, role: defaultOutgoingRoles[reference] } };
+	}
+	if (definition.identifier === "charPersonality") {
+		return {
+			unsupported: diagnostic(
+				"unsupported-placeholder",
+				"Character personality was omitted because DitzyTavern has one native Identity field.",
+				definition.identifier,
+			),
+		};
+	}
+	if (!authoredBuiltIns.has(definition.identifier) && (unsupportedPlaceholders.has(definition.identifier) || definition.marker)) {
+		return {
+			unsupported: diagnostic(
+				"unsupported-placeholder",
+				`Unsupported SillyTavern placeholder "${definition.identifier}" was omitted.`,
+				definition.identifier,
+			),
+		};
+	}
+	return {
+		slot: {
+			reference: "instruction",
+			role: definition.role,
+			name: definition.name,
+			content: translateCommentsAndMacros(definition.content),
+		},
+	};
+};
+
+// ==[HUMAN APPROVED]== Enablement is applied after conversion: listed occurrences take the
+// chosen order's enabled value, unlisted definitions become disabled trailing
+// slots. References never embed resolved Participant content.
+const withEnablement = (
+	converted: Extract<ConvertedDefinition, { slot: unknown }>,
+	enabled: boolean,
+): NativePromptPreset["slots"][number] => {
+	if (converted.slot.reference === "history") {
+		return { reference: "history", enabled };
+	}
+	if (converted.slot.reference === "instruction") {
+		return {
+			reference: "instruction",
+			enabled,
+			role: converted.slot.role,
+			name: converted.slot.name,
+			content: converted.slot.content,
+		};
+	}
+	return { reference: converted.slot.reference, enabled, role: converted.slot.role };
 };
 
 const buildSillyTavernPreview = (
@@ -259,35 +312,6 @@ const buildSillyTavernPreview = (
 	const regular: NativePromptPreset["slots"] = [];
 	const depthPlaced: NativePromptPreset["slots"] = [];
 	const unlisted: NativePromptPreset["slots"] = [];
-	const addDefinition = (entry: SourceOrderEntry, definition: SourceDefinition): void => {
-		const referenceName = supportedReference(definition.identifier);
-		if (referenceName !== null) {
-			const reference = supportedReferences[referenceName];
-			if (reference === "history") {
-				regular.push({ reference, enabled: entry.enabled });
-				return;
-			}
-			regular.push({ reference, enabled: entry.enabled, role: defaultOutgoingRoles[reference] });
-			return;
-		}
-		if (definition.identifier === "charPersonality") {
-			pushOnce(diagnostics, diagnosticKeys, diagnostic("unsupported-placeholder", "Character personality was omitted because DitzyTavern has one native Identity field.", definition.identifier));
-			return;
-		}
-		if (!authoredBuiltIns.has(definition.identifier) && (unsupportedPlaceholders.has(definition.identifier) || definition.marker)) {
-			pushOnce(diagnostics, diagnosticKeys, diagnostic("unsupported-placeholder", `Unsupported SillyTavern placeholder "${definition.identifier}" was omitted.`, definition.identifier));
-			return;
-		}
-		const slot = {
-			reference: "instruction" as const,
-			enabled: entry.enabled,
-			role: definition.role,
-			name: definition.name,
-			content: translateCommentsAndMacros(definition.content),
-		};
-		if (definition.injectionPosition === 1) depthPlaced.push(slot);
-		else regular.push(slot);
-	};
 
 	for (const entry of order.entries) {
 		const definition = definitions.get(entry.identifier);
@@ -295,28 +319,31 @@ const buildSillyTavernPreview = (
 			pushOnce(diagnostics, diagnosticKeys, diagnostic("missing-definition", `Order entry "${entry.identifier}" has no matching prompt definition and was omitted.`, entry.identifier));
 			continue;
 		}
-		addDefinition(entry, definition);
+		const converted = classifyDefinition(definition);
+		if ("unsupported" in converted) {
+			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
+			continue;
+		}
+		const slot = withEnablement(converted, entry.enabled);
+		if (converted.slot.reference === "instruction" && definition.injectionPosition === 1) {
+			depthPlaced.push(slot);
+		} else {
+			regular.push(slot);
+		}
 	}
 
+	// ==[HUMAN APPROVED]== Unlisted definitions become disabled trailing slots in source
+	// definition order, so an author can inspect and enable any supported
+	// reference absent from the chosen order list. Unsupported placeholders
+	// are omitted with the same deduplicated diagnostics in either path.
 	for (const definition of normalized.definitions) {
 		if (listedIdentifiers.has(definition.identifier)) continue;
-		if (supportedReference(definition.identifier) !== null || definition.identifier === "charPersonality") {
-			if (definition.identifier === "charPersonality") {
-				pushOnce(diagnostics, diagnosticKeys, diagnostic("unsupported-placeholder", "Character personality was omitted because DitzyTavern has one native Identity field.", definition.identifier));
-			}
+		const converted = classifyDefinition(definition);
+		if ("unsupported" in converted) {
+			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
 			continue;
 		}
-		if (!authoredBuiltIns.has(definition.identifier) && (unsupportedPlaceholders.has(definition.identifier) || definition.marker)) {
-			pushOnce(diagnostics, diagnosticKeys, diagnostic("unsupported-placeholder", `Unsupported SillyTavern placeholder "${definition.identifier}" was omitted.`, definition.identifier));
-			continue;
-		}
-		unlisted.push({
-			reference: "instruction",
-			enabled: false,
-			role: definition.role,
-			name: definition.name,
-			content: translateCommentsAndMacros(definition.content),
-		});
+		unlisted.push(withEnablement(converted, false));
 	}
 
 	if (depthPlaced.length > 0) {
