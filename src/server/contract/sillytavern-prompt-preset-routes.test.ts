@@ -11,6 +11,21 @@ import type {
 	SillyTavernImportPreview,
 	SillyTavernJsonValue,
 } from "../../shared/contract/prompt-preset";
+import {
+	captureModelFetch,
+	completeGeneration,
+	createChat,
+	exportPreset,
+	importPreset as importNativePreset,
+	key,
+	readConversation,
+	readOperation,
+	readPreset,
+	selectPreset,
+	startGeneration,
+	toggleBlock,
+	withProfile,
+} from "./prompt-preset-test-fixtures";
 
 type ImportError = { outcome: "invalid"; reason: string };
 interface ImportRequest {
@@ -375,5 +390,305 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			expect(firstPosition).toBeGreaterThanOrEqual(0);
 			expect(secondPosition).toBeGreaterThan(firstPosition);
 		}
+	});
+
+	test("preserves unlisted supported references as disabled trailing slots in source order through review, commit and native reimport", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{ identifier: "main", name: "Main", content: "listed instruction", role: "system" },
+				{ identifier: "personaDescription", name: "Writer", content: "writer identity", role: "user" },
+				{ identifier: "charDescription", name: "Character", content: "model identity", role: "assistant" },
+				{ identifier: "chatHistory", name: "History", content: "", marker: true },
+				{ identifier: "scenario", name: "Scene", content: "scene", role: "system" },
+				{ identifier: "unlisted", name: "Unlisted", content: "instruction", role: "assistant" },
+				{ identifier: "charPersonality", name: "Personality", content: "personality", role: "system" },
+				{ identifier: "worldInfoBefore", name: "World", content: "world", role: "system" },
+			],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		// The unlisted supported references become disabled trailing slots in
+		// source definition order; unlisted authored text joins them, and the
+		// unsupported placeholders are omitted with one diagnostic each.
+		expect(preview.native.slots).toEqual([
+			{ reference: "instruction", enabled: true, role: "system", name: "Main", content: "listed instruction" },
+			{ reference: "human-identity", enabled: false, role: "user" },
+			{ reference: "model-identity", enabled: false, role: "assistant" },
+			{ reference: "history", enabled: false },
+			{ reference: "model-scenario", enabled: false, role: "system" },
+			{ reference: "instruction", enabled: false, role: "assistant", name: "Unlisted", content: "instruction" },
+		]);
+		expect(preview.diagnostics.map((item) => item.code)).toEqual([
+			"unsupported-placeholder",
+			"unsupported-placeholder",
+		]);
+
+		const imported = await postImport(app, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+		expect(applied.native.slots).toEqual(preview.native.slots);
+
+		// The stored disabled slots survive native export and reimport as
+		// references only — no resolved Participant content is embedded.
+		const exported = await exportPreset(app, applied.preset.id);
+		expect(exported).toEqual(applied.native);
+		const reimported = await importNativePreset(app, exported);
+		expect(reimported.status).toBe(200);
+		// SAFETY: the applied native import response carries the new preset id.
+		const reread = await exportPreset(app, (reimported.body as { preset: { id: number } }).preset.id);
+		expect(reread).toEqual(exported);
+	});
+
+	test("translates active user and character macros after even backslash runs and keeps odd-run escapes", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{
+					identifier: "main",
+					name: "Escapes",
+					content: "\\\\{{user}} \\\\\\\\{{char}} \\\\\\{{user}} \\{{char}} {{user}} {{char}}",
+					role: "system",
+				},
+			],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		// A backslash pair is an escaped backslash that leaves the following
+		// macro active; an odd run escapes the macro, which stays verbatim.
+		expect(preview.native.slots).toEqual([
+			{
+				reference: "instruction",
+				enabled: true,
+				role: "system",
+				name: "Escapes",
+				content: "\\\\{{self}} \\\\\\\\{{other}} \\\\\\{{user}} \\{{char}} {{self}} {{other}}",
+			},
+		]);
+
+		const imported = await postImport(app, source);
+		expect(imported.status).toBe(200);
+		expect(requireApplied(imported.body).native.slots).toEqual(preview.native.slots);
+	});
+
+	test("the reproduced two-backslash source reaches the captured Generation request with the escaped backslash and the translated name", async () => {
+		const library = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [{ identifier: "main", name: "Two slash", content: "\\\\{{user}} precedes {{self}}.", role: "system" }],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const imported = await postImport(library, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+
+		const conversation = createChat(database);
+		withProfile(database);
+		const conversations = createConversationRoutes(database);
+		const revision = (await readConversation(conversations, conversation.id)).revision;
+		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
+		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
+
+		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
+		await completeGeneration(generating, conversation.id, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// `\\` renders one backslash, then the active `{{self}}` names the
+		// human-controlled Participant.
+		expect(captured?.messages).toContainEqual({
+			role: "system",
+			content: "\\Writer precedes Writer.",
+		});
+	});
+
+	test("enabling a retained disabled reference reaches the Conversation's own Participant content in the captured request", async () => {
+		const library = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{ identifier: "main", name: "Main", content: "main", role: "system" },
+				{ identifier: "charDescription", name: "Character", content: "model identity", role: "assistant" },
+				{ identifier: "personaDescription", name: "Writer", content: "writer identity", role: "user" },
+				{ identifier: "chatHistory", name: "History", content: "", marker: true },
+			],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const imported = await postImport(library, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+		expect(applied.native.slots.map((slot) => "name" in slot ? slot.name : slot.reference)).toEqual([
+			"Main",
+			"model-identity",
+			"human-identity",
+			"history",
+		]);
+		expect(applied.native.slots.map((slot) => slot.enabled)).toEqual([true, false, false, false]);
+
+		const conversation = createChat(database);
+		withProfile(database);
+		const conversations = createConversationRoutes(database);
+		const revision = (await readConversation(conversations, conversation.id)).revision;
+		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
+
+		// The retained model Identity reference is enabled through the existing
+		// block toggle; the recipe still stores a reference, never content.
+		const resolved = await readPreset(conversations, conversation.id);
+		const retained = resolved.slots.find((slot) => slot.reference === "model-identity");
+		if (retained === undefined) throw new Error("The retained model Identity slot is missing.");
+		await readOperation(toggleBlock(database, applied.preset.id, retained.id, true));
+		const afterToggle = await readPreset(conversations, conversation.id);
+		expect(afterToggle.slots.find((slot) => slot.id === retained.id)).toMatchObject({
+			reference: "model-identity",
+			enabled: true,
+			sourceName: "Maren",
+			content: "I am {{self}}.",
+		});
+		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
+
+		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
+		await completeGeneration(generating, conversation.id, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// This Conversation's own model Participant content reaches the request
+		// with the reference's default outgoing role; the disabled history and
+		// human Identity slots contribute nothing.
+		expect(captured?.messages).toEqual([
+			{ role: "system", content: "main" },
+			{ role: "assistant", content: "I am Maren." },
+		]);
+	});
+
+	test("preserves inline and scoped comments, multiline bodies, nested delimiters and escaped comments in stored text", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{
+					identifier: "main",
+					name: "Comments",
+					content: "Start {{// hidden {{user}} {{char}} }} inline {{//}}{{user}} {{char}}{{///}} scoped {{// line1\nline2 {{user}} }} multi \\{{// kept {{user}} }} \\{{//}} kept {{char}} {{///}} end",
+					role: "system",
+				},
+			],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		const stored = preview.native.slots[0];
+		// The comments are preserved verbatim, including their bodies and the
+		// escaping backslashes: no active macro translation happens inside them.
+		expect(stored).toEqual({
+			reference: "instruction",
+			enabled: true,
+			role: "system",
+			name: "Comments",
+			content: "Start {{// hidden {{user}} {{char}} }} inline {{//}}{{user}} {{char}}{{///}} scoped {{// line1\nline2 {{user}} }} multi \\{{// kept {{user}} }} \\{{//}} kept {{char}} {{///}} end",
+		});
+
+		const conversation = createChat(database);
+		withProfile(database);
+		const imported = await postImport(app, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+		const conversations = createConversationRoutes(database);
+		const revision = (await readConversation(conversations, conversation.id)).revision;
+		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
+		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
+
+		let captured: { messages: { role: string; content: string }[] } | undefined;
+		let inspection: {
+			promptPlan: { warnings: { block: string; macro: string }[] };
+		} | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
+		const inspected = await generating.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`,
+		));
+		// SAFETY: the route's response schema is the active inspection payload.
+		inspection = await inspected.json() as typeof inspection;
+		await completeGeneration(generating, conversation.id, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// Compilation drops the active comments whole without evaluating or
+		// warning about their contents; the escaped comments stay literal.
+		expect(captured?.messages).toEqual([{
+			role: "system",
+			content: "Start  inline  scoped  multi {{// kept {{user}} }} {{//}} kept {{char}} {{///}} end",
+		}]);
+		expect(inspection?.promptPlan.warnings).toEqual([]);
+	});
+
+	test("preserves unknown macros and malformed delimiters; unknown active macros remain literal and warn", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{ identifier: "main", name: "Unknowns", content: "{{time}} stays and {{user stays open", role: "system" },
+			],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		// Neither macro is translated: {{time}} is unknown and the unterminated
+		// {{user is not a balanced macro at all.
+		expect(preview.native.slots[0]).toEqual({
+			reference: "instruction",
+			enabled: true,
+			role: "system",
+			name: "Unknowns",
+			content: "{{time}} stays and {{user stays open",
+		});
+
+		const conversation = createChat(database);
+		withProfile(database);
+		const imported = await postImport(app, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+		const conversations = createConversationRoutes(database);
+		const revision = (await readConversation(conversations, conversation.id)).revision;
+		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
+		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
+
+		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const generating = createConversationRoutes(database, {
+			masterKey: key,
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
+		const inspected = await generating.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`,
+		));
+		// SAFETY: the route's response schema is the active inspection payload.
+		const inspection = await inspected.json() as {
+			promptPlan: { warnings: { block: string; macro: string }[] };
+		};
+		await completeGeneration(generating, conversation.id, generationId);
+		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// The balanced unknown macro stays literal and warns; the malformed
+		// delimiter stays raw text without a warning, and Generation is
+		// available throughout.
+		expect(captured?.messages).toEqual([{
+			role: "system",
+			content: "{{time}} stays and {{user stays open",
+		}]);
+		expect(inspection.promptPlan.warnings).toEqual([
+			{ block: "Unknowns", macro: "{{time}}" },
+		]);
 	});
 });

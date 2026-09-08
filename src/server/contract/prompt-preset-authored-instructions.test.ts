@@ -1,228 +1,35 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
-import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRoutes } from "./prompt-preset";
-import { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
-import type { ModelFetch } from "../model-client";
-import type {
-	ConversationPromptPreset,
-	PromptPresetRecipe,
-} from "../../shared/contract/prompt-preset";
+import {
+	CapturedRequest,
+	completeGeneration,
+	conversationApp,
+	captureModelFetch,
+	createChat,
+	duplicateBlock,
+	key,
+	libraryRoutes,
+	moveBlock,
+	presetRoutes,
+	readOperation,
+	readPreset,
+	removeBlock,
+	slotOf,
+	startGeneration,
+	toggleBlock,
+	withProfile,
+} from "./prompt-preset-test-fixtures";
 
-const key = new Uint8Array(32).fill(11);
-
-const humanPrompt = {
-	systemInstruction: "Human system text never reaches the plan.",
-	identity: "I write as {{self}} opposite {{other}}.",
-	scenario: "Human scenario never reaches the plan.",
-	exampleDialogue: "Human examples never reach the plan.",
-	postHistoryInstruction: "Human post-history never reaches the plan.",
-};
-
-const modelPrompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	scenario: "A quiet room.",
-	exampleDialogue: "Writer: Hello\nMaren: Hello back",
-	postHistoryInstruction: "Continue.",
-};
-
-const profile = {
-	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43129/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
-
-interface CapturedRequest {
-	messages: { role: string; content: string }[];
-}
-
-const createChat = (
-	database: Database,
-	names: { human?: string; model?: string } = {},
-) =>
-	createConversationModule(database).create({
-		name: "Preset Chat",
-		participants: [
-			{
-				definition: {
-					name: names.human ?? "Writer",
-					prompt: humanPrompt,
-					openings: [],
-				},
-			},
-			{
-				definition: {
-					name: names.model ?? "Maren",
-					prompt: modelPrompt,
-					openings: [],
-				},
-			},
-		],
-		control: { human: 0, model: 1 },
-	});
-
-const withProfile = (database: Database) =>
-	createConnectionSettingsModule(database, { masterKey: key }).createProfile({
-		expectedRevision: 0,
-		profile,
-		credential: "preset-secret",
-	});
-
-const readPreset = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-): Promise<ConversationPromptPreset> => {
-	const response = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/prompt-preset`),
-	);
-	expect(response.status).toBe(200);
-	// SAFETY: the route's response schema is the resolved preset payload.
-	return await response.json() as ConversationPromptPreset;
-};
-
-const readOperation = async (operation: Promise<Response>): Promise<PromptPresetRecipe> => {
-	const response = await operation;
-	expect(response.status).toBe(200);
-	// SAFETY: each recipe operation responds with the stored recipe as a fresh
-	// read; this test controls the typed response.
-	return await response.json() as PromptPresetRecipe;
-};
-
-const presetRoutes = (database: Database) => createPromptPresetRoutes(database);
-
-const moveBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	toPosition: number,
-) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/move`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ toPosition }),
-		}),
-	);
-
-const toggleBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	enabled: boolean,
-) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/toggle`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ enabled }),
-		}),
-	);
-
-const duplicateBlock = (database: Database, presetId: number, blockId: number) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/duplicate`,
-			{ method: "POST" }),
-	);
-
-const removeBlock = (database: Database, presetId: number, blockId: number) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}`, {
-			method: "DELETE",
-		}),
-	);
-
-interface RecipeSlot {
-	id: number;
-	reference: string;
-	enabled: boolean;
-	role?: string | null;
-	sourceName?: string | null;
-	content?: string;
-	entryCount?: number;
-	name?: string;
-}
-
-const slotOf = (
-	recipe: { slots: RecipeSlot[] },
-	reference: string,
-	occurrence = 0,
-) => recipe.slots.filter((slot) => slot.reference === reference)[occurrence];
-
-// SAFETY: the controlled fake receives the AI SDK Chat Completions body and
-// answers with a single completed delta.
-const captureModelFetch = (
-	onCapture: (captured: CapturedRequest) => void,
-	waitFor?: Promise<void>,
-): ModelFetch => {
-	const encoder = new TextEncoder();
-	const payload = [
-		{ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] },
-		{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-	]
-		.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-		.join("") + "data: [DONE]\n\n";
-	return async (_input, init) => {
-		// SAFETY: this test's fake owns the request body shape.
-		onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-		return new Response(new ReadableStream({
-			async start(controller) {
-				if (waitFor !== undefined) await waitFor;
-				controller.enqueue(encoder.encode(payload));
-				controller.close();
-			},
-		}), { headers: { "content-type": "text/event-stream" } });
-	};
-};
-
-const startGeneration = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	expectedRevision: number,
-): Promise<number> => {
-	const started = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision, content: "Set the scene." }),
-		}),
-	);
-	expect(started.status).toBe(200);
-	// SAFETY: this contract test controls the typed acceptance response.
-	const accepted = await started.json() as { generationId: number };
-	return accepted.generationId;
-};
-
-const completeGeneration = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	generationId: number,
-) => {
-	await (await app.handle(new Request(
-		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/events`,
-	))).text();
-};
-
+// ==[HUMAN APPROVED]== Authored instruction coverage through the public routes and captured
+// Generation requests: recipe operations on authored instruction blocks,
+// and the shared-and-copied recipe lifecycle. The authored instruction
+// macro language and its warnings live in the instruction macros suite.
 describe("Prompt Preset authored instructions", () => {
 	let database: Database;
 
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
-
-	// ==[HUMAN APPROVED]== Thin factories over the public route groups; each handle call builds
-	// a stateless instance over the same isolated database, so the same
-	// transport exercises duplication, selection, recipe operations, and
-	// Generation through the public contract.
-	const conversationApp = () => createConversationRoutes(database);
 
 	const addInstruction = (presetId: number) =>
 		presetRoutes(database).handle(
@@ -246,7 +53,7 @@ describe("Prompt Preset authored instructions", () => {
 
 	test("add, save, move, toggle, duplicate and remove work for authored instruction blocks", async () => {
 		const conversation = createChat(database);
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 
 		const added = await readOperation(addInstruction(preset.id));
 		const instruction = added.slots.at(-1);
@@ -329,7 +136,7 @@ describe("Prompt Preset authored instructions", () => {
 
 	test("refuses a text save on a referenced occurrence", async () => {
 		const conversation = createChat(database);
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 		const identity = slotOf(preset, "human-identity");
 		if (identity === undefined) throw new Error("The Default recipe has no Identity slot.");
 
@@ -345,17 +152,14 @@ describe("Prompt Preset authored instructions", () => {
 		expect(outcome.reason).toContain("instruction");
 	});
 });
-
 describe("Prompt Preset authored instructions, shared and copied", () => {
 	let database: Database;
 
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	const conversationApp = () => createConversationRoutes(database);
-	const libraryApp = () => createPromptPresetLibraryRoutes(database);
 	const presetRevision = async (presetId: number): Promise<number> => {
-		const response = await libraryApp().handle(new Request("http://localhost/api/prompt-presets"));
+		const response = await libraryRoutes(database).handle(new Request("http://localhost/api/prompt-presets"));
 		expect(response.status).toBe(200);
 		// SAFETY: the route's response schema is the typed preset list.
 		const payload = await response.json() as { presets: { id: number; revision: number }[] };
@@ -386,7 +190,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 
 	const duplicatePreset = async (presetId: number, name: string) => {
 		const expectedRevision = await presetRevision(presetId);
-		const response = await libraryApp().handle(
+		const response = await libraryRoutes(database).handle(
 			new Request("http://localhost/api/prompt-presets/commands", {
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -406,7 +210,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		expectedRevision: number,
 		promptPresetId: number,
 	) => {
-		const response = await conversationApp().handle(
+		const response = await conversationApp(database).handle(
 			new Request(`http://localhost/api/conversations/${conversationId}/commands`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -423,7 +227,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 
 	const captureMessages = async (conversationId: number, revision: number) => {
 		let captured: CapturedRequest | undefined;
-		const generating = createConversationRoutes(database, {
+		const generating = conversationApp(database, {
 			masterKey: key,
 			fetch: captureModelFetch((request) => { captured = request; }),
 		});
@@ -438,7 +242,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		const second = createChat(database);
 		const third = createChat(database);
 		withProfile(database);
-		const preset = await readPreset(conversationApp(), first.id);
+		const preset = await readPreset(conversationApp(database), first.id);
 
 		// The third Chat uses an independent copy of the shared preset.
 		const duplicated = await duplicatePreset(preset.id, "Copy");
@@ -482,7 +286,7 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		const shared = createChat(database);
 		const copy = createChat(database);
 		withProfile(database);
-		const preset = await readPreset(conversationApp(), shared.id);
+		const preset = await readPreset(conversationApp(database), shared.id);
 
 		const duplicated = await duplicatePreset(preset.id, "Copy");
 		const copyRevision = await selectPresetFor(copy.id, copy.revision, duplicated.preset.id);
