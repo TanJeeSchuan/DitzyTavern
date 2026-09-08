@@ -53,14 +53,7 @@ type PresetView =
 
 type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
 
-type EditorOperation =
-	| { type: "library"; action: string }
-	| { type: "selection" }
-	| { type: "recipe" }
-	| { type: "export" }
-	| { type: "import" }
-	| { type: "review" }
-	| { type: "leave" };
+type EditorOperation = "busy" | "leave";
 
 type LoadResult = "ready" | "not-found" | "network" | "stale";
 
@@ -98,6 +91,7 @@ export function PromptPresetDialog({
 		id: 0,
 		latestLoad: 0,
 		latestOperation: 0,
+		latestConversationOperation: 0,
 		knownRevision: conversation?.revision ?? null,
 	});
 	const sessionChanged = sessionRef.current.key !== sessionKey;
@@ -107,16 +101,26 @@ export function PromptPresetDialog({
 			id: sessionRef.current.id + 1,
 			latestLoad: 0,
 			latestOperation: 0,
+			latestConversationOperation: 0,
 			knownRevision: conversation?.revision ?? null,
 		};
 	} else if (open && sessionRef.current.knownRevision !== (conversation?.revision ?? null)) {
 		sessionRef.current.knownRevision = conversation?.revision ?? null;
 		sessionRef.current.latestLoad += 1;
-		sessionRef.current.latestOperation += 1;
+		sessionRef.current.latestConversationOperation += 1;
 	}
 	const sessionId = sessionRef.current.id;
 	const ownsSession = (id: number, conversationId = conversation?.id): boolean =>
 		sessionRef.current.id === id && open && conversationId === conversation?.id;
+	const ownsConversationOperation = (
+		id: number,
+		conversationId: number,
+		operationId: number,
+		conversationOperationId: number,
+	): boolean =>
+		ownsSession(id, conversationId) &&
+		operationId === sessionRef.current.latestOperation &&
+		conversationOperationId === sessionRef.current.latestConversationOperation;
 
 	const load = async (id = sessionRef.current.id, isCancelled?: () => boolean): Promise<LoadResult> => {
 		if (!open || !ownsSession(id)) return "stale";
@@ -180,7 +184,6 @@ export function PromptPresetDialog({
 		} else {
 			// ==[HUMAN APPROVED]== A newer Conversation snapshot invalidates pending responses, but its refresh is
 			// unrelated to the block drafts owned by this editor session.
-			setOperation(null);
 		}
 		void load(sessionRef.current.id, isCancelled);
 	}, [open, conversation?.id, conversation?.revision]);
@@ -190,7 +193,6 @@ export function PromptPresetDialog({
 	// selected recipe. A success notice is caller-shaped so a rename, a
 	// duplication and a deletion each name what happened.
 	const runPresetCommand = async (
-		action: string,
 		command: PromptPresetCommand,
 		successNotice?: (outcome: PresetCommandOutcome) => string | null,
 	) => {
@@ -200,20 +202,22 @@ export function PromptPresetDialog({
 			return;
 		}
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "library", action });
+		setOperation("busy");
 		setNotice(null);
 		try {
 			const outcome = await applyPromptPresetCommand(command);
 			if (!ownsSession(sessionId) || operationId !== sessionRef.current.latestOperation) return;
-				switch (outcome.status) {
+			switch (outcome.status) {
 				case "applied":
 				case "deleted": {
 					const refresh = await load(sessionId);
 					if (!ownsSession(sessionId) || operationId !== sessionRef.current.latestOperation) return;
-					if (refresh !== "ready") {
-						setNotice(refresh === "network"
-							? LIBRARY_UNREACHABLE_NOTICE
-							: "The selected Conversation could not be loaded.");
+					if (refresh === "network") {
+						setNotice(LIBRARY_UNREACHABLE_NOTICE);
+						break;
+					}
+					if (refresh === "not-found") {
+						setNotice("The selected Conversation could not be loaded.");
 						break;
 					}
 					setNotice(successNotice?.(outcome) ?? null);
@@ -248,11 +252,12 @@ export function PromptPresetDialog({
 	// first.
 	const applySelection = (presetId: number, resolvingLeave = false) => {
 		if (conversation === null) return;
-		if (operation !== null && !(resolvingLeave && operation.type === "leave")) return;
+		if (operation !== null && !(resolvingLeave && operation === "leave")) return;
 		const id = sessionId;
 		const conversationId = conversation.id;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "selection" });
+		const conversationOperationId = ++sessionRef.current.latestConversationOperation;
+		setOperation("busy");
 		void runConversationCommand({
 			revision: () => conversation.revision,
 			send: (expectedRevision) =>
@@ -262,27 +267,30 @@ export function PromptPresetDialog({
 				}),
 			reconciliation: {
 				adoptSnapshot: (next) => {
-					if (ownsSession(id, conversationId) && operationId === sessionRef.current.latestOperation) {
+					if (ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) {
 						sessionRef.current.knownRevision = next.revision;
 						onConversationChange(next);
 					}
 				},
 				showNotice: (message) => {
-					if (ownsSession(id, conversationId) && operationId === sessionRef.current.latestOperation) setNotice(message);
+					if (ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) setNotice(message);
 				},
 			},
 			notices: PRESET_COMMAND_NOTICES,
 			callbacks: {
 				onNotPlayable: () => {
-					if (ownsSession(id, conversationId) && operationId === sessionRef.current.latestOperation) setNotice(PRESET_COMMAND_NOTICES.conflict);
+					if (ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) setNotice(PRESET_COMMAND_NOTICES.conflict);
 				},
 				onNotRemovable: (reason) => {
-					if (ownsSession(id, conversationId) && operationId === sessionRef.current.latestOperation) setNotice(reason);
+					if (ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) setNotice(reason);
 				},
-					onApplied: async () => {
-					if (!ownsSession(id, conversationId) || operationId !== sessionRef.current.latestOperation) return;
+				onApplied: async () => {
+					if (!ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) return;
 					setNotice(null);
-					await load(id);
+					const refresh = await load(id);
+					if (!ownsConversationOperation(id, conversationId, operationId, conversationOperationId)) return;
+					if (refresh === "network") setNotice(PRESET_COMMAND_NOTICES.unreachable);
+					else if (refresh === "not-found") setNotice(PRESET_COMMAND_NOTICES.notFound);
 				},
 			},
 		}).finally(() => {
@@ -307,7 +315,7 @@ export function PromptPresetDialog({
 		if (sessionRef.current.id !== sessionId || operation !== null) return;
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "export" });
+		setOperation("busy");
 		setNotice(null);
 		try {
 			const native = await loadNativePromptPreset(presetId);
@@ -333,7 +341,7 @@ export function PromptPresetDialog({
 		if (sessionRef.current.id !== sessionId || operation !== null) return;
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "import" });
+		setOperation("busy");
 		setNotice(null);
 		try {
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
@@ -352,8 +360,12 @@ export function PromptPresetDialog({
 				}
 				const refresh = await load(id);
 				if (!ownsSession(id) || operationId !== sessionRef.current.latestOperation) return;
-				if (refresh !== "ready") {
-					setNotice(refresh === "network" ? LIBRARY_UNREACHABLE_NOTICE : "The selected Conversation could not be loaded.");
+				if (refresh === "network") {
+					setNotice(LIBRARY_UNREACHABLE_NOTICE);
+					return;
+				}
+				if (refresh === "not-found") {
+					setNotice("The selected Conversation could not be loaded.");
 					return;
 				}
 				setNotice(`Imported "${outcome.preset.name}" as a new preset.`);
@@ -395,7 +407,7 @@ export function PromptPresetDialog({
 		}
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "import" });
+		setOperation("busy");
 		try {
 			const outcome = await commitSillyTavernPromptPreset(
 				sillyTavernReview.request.source,
@@ -414,8 +426,12 @@ export function PromptPresetDialog({
 			setSillyTavernReview(null);
 			const refresh = await load(id);
 			if (!ownsSession(id) || operationId !== sessionRef.current.latestOperation) return;
-			if (refresh !== "ready") {
-				setNotice(refresh === "network" ? LIBRARY_UNREACHABLE_NOTICE : "The selected Conversation could not be loaded.");
+			if (refresh === "network") {
+				setNotice(LIBRARY_UNREACHABLE_NOTICE);
+				return;
+			}
+			if (refresh === "not-found") {
+				setNotice("The selected Conversation could not be loaded.");
 				return;
 			}
 			setNotice(`Imported "${outcome.preview.preset.name}" as a new preset.`);
@@ -429,7 +445,7 @@ export function PromptPresetDialog({
 		if (sessionRef.current.id !== sessionId || operation !== null) return;
 		const id = sessionId;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "review" });
+		setOperation("busy");
 		try {
 			const outcome = await reviewSillyTavernPromptPreset(
 				sillyTavernReview.request.source,
@@ -459,7 +475,7 @@ export function PromptPresetDialog({
 		const id = sessionId;
 		const conversationId = conversation.id;
 		const operationId = ++sessionRef.current.latestOperation;
-		setOperation({ type: "recipe" });
+		setOperation("busy");
 		setProblem(null);
 		try {
 			const outcome = await run();
@@ -648,16 +664,14 @@ export function PromptPresetDialog({
 						The Prompt Preset library could not be loaded.
 					</p>
 				)}
-{view.status === "ready" && (
+				{view.status === "ready" && (
 					<>
 						<PromptPresetLibrarySection
 							presets={view.presets}
 							selectedId={view.selected.id}
-							pendingAction={operation === null
-								? null
-								: operation.type === "library" ? operation.action : "busy"}
+							pending={operation !== null}
 							onSelect={selectPreset}
-							onCommand={(action, command, successNotice) => void runPresetCommand(action, command, successNotice)}
+							onCommand={(command, successNotice) => void runPresetCommand(command, successNotice)}
 							onImportFile={(file) => void importPresetFile(file)}
 							onExport={(presetId, name) => void exportSelectedPreset(presetId, name)}
 						/>
@@ -692,24 +706,25 @@ export function PromptPresetDialog({
 							// and toggles were already persisted and stay.
 							finishLeave(request);
 						}}
-							onSave={async () => {
-								if (operation !== null || conversation === null) return;
-								const request = leaveRequest;
-								const id = sessionId;
-								const operationId = ++sessionRef.current.latestOperation;
-								setOperation({ type: "leave" });
-								try {
-									const failure = await saveDrafts(ready.selected, id, operationId, conversation.id);
-									if (!ownsSession(id) || operationId !== sessionRef.current.latestOperation || request === null) return;
-									if (failure !== null) {
-										setProblem(failure);
-										return;
-									}
-									finishLeave(request);
-								} finally {
-									if (ownsSession(id) && operationId === sessionRef.current.latestOperation) setOperation(null);
+						onSave={async () => {
+							if (operation !== null || conversation === null) return;
+							const request = leaveRequest;
+							const id = sessionId;
+							const operationId = ++sessionRef.current.latestOperation;
+							setOperation("leave");
+							try {
+								const failure = await saveDrafts(ready.selected, id, operationId, conversation.id);
+								if (!ownsSession(id) || operationId !== sessionRef.current.latestOperation || request === null) return;
+								if (failure !== null) {
+									setProblem(failure);
+									setLeaveRequest(null);
+									return;
 								}
-							}}
+								finishLeave(request);
+							} finally {
+								if (ownsSession(id) && operationId === sessionRef.current.latestOperation) setOperation(null);
+							}
+						}}
 					/>
 				)}
 			</DialogContent>

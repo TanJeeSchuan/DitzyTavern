@@ -22,7 +22,7 @@ type PresetInlineEdit = {
 export function PromptPresetLibrarySection({
 	presets,
 	selectedId,
-	pendingAction,
+	pending,
 	onSelect,
 	onCommand,
 	onImportFile,
@@ -30,10 +30,9 @@ export function PromptPresetLibrarySection({
 }: {
 	presets: PromptPresetSummary[];
 	selectedId: number;
-	pendingAction: string | null;
+	pending: boolean;
 	onSelect: (presetId: number) => void;
 	onCommand: (
-		action: string,
 		command: PromptPresetCommand,
 		successNotice?: (outcome: PresetCommandOutcome) => string | null,
 	) => void;
@@ -43,7 +42,7 @@ export function PromptPresetLibrarySection({
 	const [creating, setCreating] = useState<string | null>(null);
 	const [activeEdit, setActiveEdit] = useState<PresetInlineEdit | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
-	const busy = pendingAction !== null;
+	const busy = pending;
 	return (
 		<section aria-label="Shared presets" className="flex flex-col gap-2">
 			<div className="flex flex-wrap items-center justify-between gap-2">
@@ -104,7 +103,7 @@ export function PromptPresetLibrarySection({
 							setActiveEdit(null);
 							if (edit === null) return;
 							if (edit.kind === "delete") {
-								onCommand("delete", {
+								onCommand({
 									type: "delete",
 									presetId: preset.id,
 									expectedRevision: preset.revision,
@@ -113,7 +112,7 @@ export function PromptPresetLibrarySection({
 								: null);
 								return;
 							}
-							onCommand(edit.kind, {
+							onCommand({
 								type: edit.kind,
 								presetId: preset.id,
 								expectedRevision: preset.revision,
@@ -145,7 +144,7 @@ export function PromptPresetLibrarySection({
 					onSubmit={() => {
 						const name = creating;
 						setCreating(null);
-						onCommand("create", { type: "create", name });
+						onCommand({ type: "create", name });
 					}}
 					onCancel={() => setCreating(null)}
 				/>
