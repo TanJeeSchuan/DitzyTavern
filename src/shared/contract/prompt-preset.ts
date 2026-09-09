@@ -15,7 +15,7 @@ export type SillyTavernJsonValue =
 // is exactly the content the native five-field Prompt model and the selected
 // narrative path can supply; the owner prefix states which controlled
 // Participant's Definition supplies the slot.
-const referencedDefinitionBlocks = [
+const referencedDefinitionBlockKinds = [
 	Type.Literal("model-system-instruction"),
 	Type.Literal("human-identity"),
 	Type.Literal("model-identity"),
@@ -24,7 +24,7 @@ const referencedDefinitionBlocks = [
 	Type.Literal("model-post-history-instruction"),
 ] as const;
 
-export const referencedDefinitionBlock = Type.Union([...referencedDefinitionBlocks]);
+export const referencedDefinitionBlock = Type.Union([...referencedDefinitionBlockKinds]);
 export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>;
 
 // ==[HUMAN APPROVED]== The outgoing presentation role a Definition slot's content is sent as.
@@ -52,7 +52,7 @@ export const defaultOutgoingRoles = {
 } as const satisfies Record<ReferencedDefinitionBlock, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
-	...referencedDefinitionBlocks,
+	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;

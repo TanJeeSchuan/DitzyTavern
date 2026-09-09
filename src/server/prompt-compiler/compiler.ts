@@ -29,12 +29,10 @@ import type {
 } from "./types";
 
 // ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
-// content and outgoing role. Distributing over the block union keeps the
-// kind required while the other fields arrive from the recipe slot.
+// content and outgoing role: the plan kind the recipe slot compiles into. The
+// other fields arrive from the slot at push time.
 type DefinitionBlock = Exclude<PromptBlock, { kind: "history" }>;
-type DefinitionBlockFraming = DefinitionBlock extends infer Block
-	? Block extends DefinitionBlock ? Omit<Block, "content" | "role"> : never
-	: never;
+type DefinitionBlockFraming = { kind: DefinitionBlock["kind"] };
 
 // ==[HUMAN APPROVED]== What each Referenced Prompt Block reads: which controlled Definition owns
 // the text, which Prompt channel holds it, the plan block it compiles into,

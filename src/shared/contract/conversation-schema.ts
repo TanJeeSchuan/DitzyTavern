@@ -30,23 +30,30 @@ const promptHistoryRole = Type.Union([
 // ==[HUMAN APPROVED]== Definition-sourced plan blocks carry the provider-neutral presentation
 // role their recipe slot chose; history blocks carry the authorship roles of
 // their own Messages. The Model Client owns the translation into provider
-// vocabulary.
+// vocabulary. Every Definition-sourced kind has the same fields, so the kind
+// is a label union rather than a discriminated set of identical shapes.
 const promptDefinitionRole = Type.Union([
 	Type.Literal("system"),
 	Type.Literal("human"),
 	Type.Literal("model"),
 ]);
 
+const promptDefinitionBlockKind = Type.Union([
+	Type.Literal("system-instruction"),
+	Type.Literal("identity"),
+	Type.Literal("scenario"),
+	Type.Literal("example-dialogue"),
+	Type.Literal("post-history-instruction"),
+	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
+	// blocks it carries its expanded content and the recipe-chosen outgoing
+	// role; unlike them its text was authored in the preset, not resolved from
+	// a Participant.
+	Type.Literal("instruction"),
+]);
+
 const promptBlock = Type.Union([
 	Type.Object({
-		kind: Type.Literal("system-instruction"),
-		role: promptDefinitionRole,
-		content: Type.String(),
-	}),
-	Type.Object({ kind: Type.Literal("identity"), role: promptDefinitionRole, content: Type.String() }),
-	Type.Object({ kind: Type.Literal("scenario"), role: promptDefinitionRole, content: Type.String() }),
-	Type.Object({
-		kind: Type.Literal("example-dialogue"),
+		kind: promptDefinitionBlockKind,
 		role: promptDefinitionRole,
 		content: Type.String(),
 	}),
@@ -55,20 +62,6 @@ const promptBlock = Type.Union([
 		speakerName: Type.Union([Type.Null(), Type.String()]),
 		content: Type.String(),
 		role: promptHistoryRole,
-	}),
-	Type.Object({
-		kind: Type.Literal("post-history-instruction"),
-		role: promptDefinitionRole,
-		content: Type.String(),
-	}),
-	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
-	// blocks it carries its expanded content and the recipe-chosen outgoing
-	// role; unlike them its text was authored in the preset, not resolved from
-	// a Participant.
-	Type.Object({
-		kind: Type.Literal("instruction"),
-		role: promptDefinitionRole,
-		content: Type.String(),
 	}),
 ]);
 

@@ -306,6 +306,15 @@ function normalizeProviderStreamError(
 	);
 }
 
+// ==[HUMAN APPROVED]== The plan keeps provider-neutral presentation roles; this adapter owns the
+// translation into provider vocabulary, exactly as it does for history
+// authorship.
+const providerRoleFor = {
+	system: "system",
+	human: "user",
+	model: "assistant",
+} as const satisfies Record<"system" | "human" | "model", "system" | "user" | "assistant">;
+
 function toMessages(input: ModelClientGenerationInput) {
 	type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 	const messages: ChatMessage[] = [];
@@ -363,7 +372,7 @@ function toMessages(input: ModelClientGenerationInput) {
 		// slot chose it and the plan kept it provider-neutral, so the adapter
 		// owns the same translation it applies to history authorship.
 		messages.push({
-			role: block.role === "model" ? "assistant" : block.role === "human" ? "user" : "system",
+			role: providerRoleFor[block.role],
 			content: block.content,
 		});
 	}
