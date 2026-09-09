@@ -2,7 +2,7 @@ import { CastPanel } from "../CastPanel";
 import { CharacterLibraryPanel } from "../CharacterLibraryPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
-import { PromptPresetPanel } from "../story/PromptPresetPanel";
+import { PromptPresetPanel } from "./PromptPresetPanel";
 import type { ConversationSummary } from "../conversation";
 import type {
 	ChatSummary,
@@ -16,6 +16,18 @@ import type { ConnectionSettingsController } from "./connection-settings/useConn
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
 import type { SplitInspector } from "./panel-coordination";
 import type { PrimaryPanel } from "./types";
+
+// ==[HUMAN APPROVED]== Panels that share the parent-rendered header state their title here. Chats and
+// Prompt Presets render their own header (the preset panel owns the
+// unsaved-edit close guard), so they are excluded by the type rather than by a
+// branch at the render site.
+const sharedHeaderTitles = {
+	cast: "Cast",
+	library: "Character Library",
+	models: "Model Settings",
+	generation: "Generation Settings",
+	settings: "Settings",
+} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | null>, string>;
 
 export function PrimaryPanelView({
 	panel,
@@ -56,6 +68,9 @@ export function PrimaryPanelView({
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
+	const headerTitle = panel === null || panel === "chats" || panel === "prompts"
+		? undefined
+		: sharedHeaderTitles[panel];
 	return (
 		<aside
 			className="primary-panel"
@@ -78,21 +93,8 @@ export function PrimaryPanelView({
 			/>
 			{panel !== null && panel !== "chats" && (
 				<>
-					{panel !== "prompts" && (
-						<PanelHeader
-							title={
-								panel === "cast"
-									? "Cast"
-									: panel === "library"
-										? "Character Library"
-										: panel === "models"
-											? "Model Settings"
-											: panel === "generation"
-												? "Generation Settings"
-												: "Settings"
-							}
-							onClose={onClose}
-						/>
+					{headerTitle !== undefined && (
+						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
 					{panel === "cast" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
