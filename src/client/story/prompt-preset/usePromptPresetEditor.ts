@@ -114,6 +114,31 @@ export function usePromptPresetEditor({
 			notice: outcome.status === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
 		});
 	};
+	// ==[HUMAN APPROVED]== The shared mutation reload epilogue: bump the read epoch, read the
+	// fresh selected recipe and adopt it through the shared acceptance rule. A
+	// vanished recipe ends in the unavailable view; the caller reports the
+	// returned failure through its own feedback channel, so wordings stay per-flow.
+	const reloadSelectedRecipe = async (
+		claim: OperationClaim,
+		conversationId: number,
+		failure: { network: string; missing: string | null },
+	): Promise<string | null> => {
+		dispatch({ type: "read-started" });
+		const read = readClaim(stateRef.current);
+		let fresh: ConversationPromptPreset | null;
+		try {
+			fresh = await loadConversationPromptPreset(conversationId);
+		} catch {
+			return ownsOperation(claim) ? failure.network : null;
+		}
+		if (!ownsOperation(claim)) return null;
+		if (fresh === null) {
+			dispatch({ type: "recipe-unavailable" });
+			return failure.missing;
+		}
+		dispatch({ type: "recipe-adopted", claim: read, selected: fresh });
+		return null;
+	};
 	// ==[HUMAN APPROVED]== The shared import epilogue: reload the library and the selected recipe,
 	// then report the imported name once the fresh state is accepted.
 	const reloadAfterImport = async (claim: OperationClaim, notice: string): Promise<void> => {
@@ -445,26 +470,13 @@ export function usePromptPresetEditor({
 			if (submitted !== undefined) {
 				dispatch({ type: "drafts-submitted", submitted: { [submitted.blockId]: submitted.draft } });
 			}
-			dispatch({ type: "read-started" });
-			const read = readClaim(stateRef.current);
-			let fresh: ConversationPromptPreset | null;
-			try {
-				fresh = await loadConversationPromptPreset(conversationId);
-			} catch {
-				if (ownsOperation(claim)) {
-					dispatch({
-						type: "problem-changed",
-						problem: "The Prompt Preset change could not be reloaded.",
-					});
-				}
-				return;
+			const failure = await reloadSelectedRecipe(claim, conversationId, {
+				network: "The Prompt Preset change could not be reloaded.",
+				missing: null,
+			});
+			if (failure !== null && ownsOperation(claim)) {
+				dispatch({ type: "problem-changed", problem: failure });
 			}
-			if (!ownsOperation(claim)) return;
-			if (fresh === null) {
-				dispatch({ type: "recipe-unavailable" });
-				return;
-			}
-			dispatch({ type: "recipe-adopted", claim: read, selected: fresh });
 		} finally {
 			settleOperation(claim);
 		}
@@ -500,17 +512,10 @@ export function usePromptPresetEditor({
 					: "The Prompt Preset change could not be saved.";
 		}
 		dispatch({ type: "drafts-submitted", submitted });
-		dispatch({ type: "read-started" });
-		const read = readClaim(stateRef.current);
-		try {
-			const fresh = await loadConversationPromptPreset(conversationId);
-			if (!ownsOperation(claim)) return null;
-			if (fresh === null) return "The selected preset could not be reloaded.";
-			dispatch({ type: "recipe-adopted", claim: read, selected: fresh });
-			return null;
-		} catch {
-			return "The saved Prompt Preset could not be reloaded.";
-		}
+		return reloadSelectedRecipe(claim, conversationId, {
+			network: "The saved Prompt Preset could not be reloaded.",
+			missing: "The selected preset could not be reloaded.",
+		});
 	};
 
 	// ==[HUMAN APPROVED]== Completes a resolved leave: the drafts are gone and the deferred action
