@@ -296,7 +296,7 @@ export function usePromptPresetEditor({
 
 	const exportSelectedPreset = async (presetId: number, name: string): Promise<void> => {
 		if (busy) return;
-		dispatch({ type: "operation-started", kind: "export" });
+		dispatch({ type: "operation-started", kind: "preset-export" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const native = await loadNativePromptPreset(presetId);
@@ -394,7 +394,7 @@ export function usePromptPresetEditor({
 		const currentReview = review;
 		if (currentReview === null) return;
 		if (busy) return;
-		dispatch({ type: "operation-started", kind: "order-selection" });
+		dispatch({ type: "operation-started", kind: "import-order" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await reviewSillyTavernPromptPreset(

@@ -134,8 +134,8 @@ export type EditorOperationKind =
 	| "conversation-selection"
 	| "library-write"
 	| "import-commit"
-	| "export"
-	| "order-selection"
+	| "import-order"
+	| "preset-export"
 	| "recipe-operation"
 	| "save-on-leave";
 
@@ -165,16 +165,16 @@ const OPERATION_POLICY = {
 		replacesFeedback: "none",
 		leaveHandoff: false,
 	},
-	export: {
-		supersedesReads: false,
-		ownsConversation: false,
-		replacesFeedback: "notice",
-		leaveHandoff: false,
-	},
-	"order-selection": {
+	"import-order": {
 		supersedesReads: false,
 		ownsConversation: false,
 		replacesFeedback: "none",
+		leaveHandoff: false,
+	},
+	"preset-export": {
+		supersedesReads: false,
+		ownsConversation: false,
+		replacesFeedback: "notice",
 		leaveHandoff: false,
 	},
 	"recipe-operation": {
