@@ -28,7 +28,7 @@ import {
 import type {
 	GenerationIntent,
 	PromptBudgetResult,
-	PromptContextEntry,
+	PromptContextEntry,
 	TokenEstimator,
 } from "../prompt-compiler";
 import {
