@@ -5,7 +5,11 @@
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
 
-import type { PromptOutgoingRole, PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+import type {
+	PromptBlockReference,
+	PromptOutgoingRole,
+	PromptPresetBlockReference,
+} from "../shared/contract/prompt-preset";
 
 // ==[HUMAN APPROVED]== One vocabulary for both the recipe editor and the SillyTavern import
 // review, so a slot label or outgoing-role label can never drift between
@@ -26,6 +30,21 @@ export const outgoingRoleLabels = {
 	user: "User message",
 	assistant: "Assistant message",
 } as const satisfies Record<PromptOutgoingRole, string>;
+
+// ==[HUMAN APPROVED]== One select surface shared by every preset select, so parent sections never
+// import styling from a child row.
+export const promptPresetSelectClass =
+	"rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+
+// ==[HUMAN APPROVED]== The typed narrowing every preset select reuses: a change value is accepted
+// only when it names one of the canonical labels, so no caller hand-rolls its own guard.
+export const isPromptOutgoingRole = (value: string): value is PromptOutgoingRole =>
+	Object.hasOwn(outgoingRoleLabels, value);
+
+// The authored instruction is excluded because the add-slot select never offers it; adding one
+// ==[HUMAN APPROVED]== travels its own dedicated action.
+export const isPromptBlockReference = (value: string): value is PromptBlockReference =>
+	value !== "instruction" && Object.hasOwn(slotLabels, value);
 
 type TitledSlot =
 	| { reference: "instruction"; name: string }

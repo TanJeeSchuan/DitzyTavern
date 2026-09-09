@@ -10,12 +10,10 @@ import {
 	setPromptPresetBlockEnabled,
 	type PromptPresetOperationOutcome,
 } from "../../prompt-preset-library";
-import { outgoingRoleLabels, slotTitle } from "../../prompt-preset-presentation";
+import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../prompt-preset-presentation";
 import { draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
+import { PromptPresetSelect } from "./PromptPresetSelect";
 
-// ==[HUMAN APPROVED]== Shared with the editor's add-slot select so the two recipe selects render
-// identically.
-export const roleSelectClass = "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 const nameInputClass = "rounded-lg border border-border bg-background px-2 py-1 font-medium text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 const textInputClass = "min-h-20 w-full rounded-lg border border-border bg-background px-2 py-1 text-xs leading-relaxed outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
@@ -35,18 +33,16 @@ const OutgoingRoleSelect = ({
 	disabled: boolean;
 	onChange: (role: PromptOutgoingRole) => void;
 }) => (
-	<select
+	<PromptPresetSelect
 		id={id}
-		className={roleSelectClass}
 		value={value}
+		labels={outgoingRoleLabels}
+		isOption={isPromptOutgoingRole}
 		disabled={disabled}
-		onChange={(event) => {
-			const role = event.target.value;
-			if (role === "system" || role === "user" || role === "assistant") onChange(role);
+		onChange={(role) => {
+			if (role !== "") onChange(role);
 		}}
-	>
-		{Object.entries(outgoingRoleLabels).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
-	</select>
+	/>
 );
 
 const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {

@@ -4,6 +4,9 @@ import type {
 	PromptPresetBlockPatch,
 	PromptPresetSummary,
 	ResolvedPromptPresetSlot,
+	SillyTavernImportPreview,
+	SillyTavernImportRequest,
+	SillyTavernJsonValue,
 } from "../shared/contract/prompt-preset";
 
 // ==[HUMAN APPROVED]== The Prompt Preset popup's decision rules, separated from its rendering and
@@ -78,6 +81,15 @@ export type PresetView =
 
 export type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
 
+// ==[HUMAN APPROVED]== The SillyTavern import review is transient editor state: opening, closing
+// or switching Chat clears it through the same session transition as every
+// other form, so no dismissal path can strand a review.
+export interface SillyTavernReview {
+	request: SillyTavernImportRequest & { source: SillyTavernJsonValue };
+	preview: SillyTavernImportPreview;
+	orderListId: string | null;
+}
+
 export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 
 // ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the popup
@@ -121,6 +133,7 @@ export interface PromptPresetEditorState {
 	notice: string | null;
 	problem: string | null;
 	leaveRequest: LeaveRequest | null;
+	review: SillyTavernReview | null;
 }
 
 // ==[HUMAN APPROVED]== An operation names the flow it starts; the policy table owns what that means
@@ -202,6 +215,7 @@ export type PromptPresetEditorEvent =
 	| { type: "recipe-unavailable" }
 	| { type: "load-failed" }
 	| { type: "drafts-submitted"; submitted: Record<number, BlockDraft> }
+	| { type: "review-changed"; review: SillyTavernReview | null }
 	| { type: "leave-requested"; request: LeaveRequest }
 	| { type: "leave-kept" }
 	| { type: "leave-resolved" }
@@ -232,6 +246,7 @@ function cleanEditorState(session: EditorSession): PromptPresetEditorState {
 		notice: null,
 		problem: null,
 		leaveRequest: null,
+		review: null,
 	};
 }
 
@@ -404,6 +419,8 @@ export function reducePromptPresetEditorState(
 					pendingRetire: { ...state.session.pendingRetire, ...event.submitted },
 				},
 			};
+		case "review-changed":
+			return { ...state, review: event.review };
 		case "leave-requested":
 			return { ...state, leaveRequest: event.request };
 		case "leave-kept":

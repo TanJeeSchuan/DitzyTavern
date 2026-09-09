@@ -6,9 +6,10 @@ import {
 	addPromptPresetReference,
 } from "../../prompt-preset-library";
 import type { ConversationPromptPreset, PromptBlockReference } from "../../../shared/contract/prompt-preset";
-import { slotLabels } from "../../prompt-preset-presentation";
+import { isPromptBlockReference, slotLabels } from "../../prompt-preset-presentation";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
-import { PromptPresetRecipeRow, roleSelectClass, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
+import { PromptPresetSelect } from "./PromptPresetSelect";
+import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
 
 const AddSlotSelect = ({
 	disabled,
@@ -18,24 +19,18 @@ const AddSlotSelect = ({
 	onAdd: (reference: PromptBlockReference) => void;
 }) => {
 	const [selection, setSelection] = useState<PromptBlockReference | "">("");
-	const addableLabels = Object.fromEntries(Object.entries(slotLabels).filter(([reference]) => reference !== "instruction"));
-	const isReference = (value: string): value is PromptBlockReference => Object.hasOwn(addableLabels, value);
 	return (
 		<>
-			<select
+			<PromptPresetSelect
 				id="prompt-preset-add"
-				className={roleSelectClass}
-				aria-label="Add a slot to the recipe"
+				label="Add a slot to the recipe"
 				value={selection}
+				emptyLabel="Choose a reference…"
+				labels={slotLabels}
+				isOption={isPromptBlockReference}
 				disabled={disabled}
-				onChange={(event) => {
-					const value = event.target.value;
-					setSelection(value === "" || isReference(value) ? value : "");
-				}}
-			>
-				<option value="">Choose a reference…</option>
-				{Object.entries(addableLabels).map(([reference, label]) => <option key={reference} value={reference}>{label}</option>)}
-			</select>
+				onChange={setSelection}
+			/>
 			<Button size="xs" disabled={disabled || selection === ""} onClick={() => {
 				if (selection === "") return;
 				onAdd(selection);

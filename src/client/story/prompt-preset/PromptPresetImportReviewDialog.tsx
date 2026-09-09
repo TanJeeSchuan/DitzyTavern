@@ -1,13 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { SillyTavernImportPreview, SillyTavernImportRequest, SillyTavernJsonValue } from "../../prompt-preset-library";
-import { outgoingRoleLabels, slotTitle } from "../../prompt-preset-presentation";
-
-export type SillyTavernReview = {
-	request: SillyTavernImportRequest & { source: SillyTavernJsonValue };
-	preview: SillyTavernImportPreview;
-	orderListId: string | null;
-};
+import type { SillyTavernImportPreview } from "../../prompt-preset-library";
+import { outgoingRoleLabels, promptPresetSelectClass, slotTitle } from "../../prompt-preset-presentation";
+import type { SillyTavernReview } from "../../prompt-preset-editor-state";
 
 const importedSlotRole = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
 	slot.reference === "history" ? "History message roles" : outgoingRoleLabels[slot.role];
@@ -40,7 +35,7 @@ export function PromptPresetImportReviewDialog({
 							<label className="flex flex-col gap-1 text-sm">
 								<span>Choose an order list</span>
 								<select
-									className="rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+									className={promptPresetSelectClass}
 									value={review.orderListId ?? ""}
 									disabled={busy}
 									onChange={(event) => onOrderSelect(event.target.value)}

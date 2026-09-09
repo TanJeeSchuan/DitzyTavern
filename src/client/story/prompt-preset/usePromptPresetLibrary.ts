@@ -1,0 +1,343 @@
+import {
+	applyConversationCommand,
+	type ConversationSummary,
+} from "../../conversation";
+import { runConversationCommand } from "../../conversation-command-runner";
+import {
+	applyPromptPresetCommand,
+	commitSillyTavernPromptPreset,
+	importNativePromptPreset,
+	loadNativePromptPreset,
+	parseNativePromptPreset,
+	reviewSillyTavernPromptPreset,
+	type PresetCommandOutcome,
+	type PromptPresetCommand,
+	type SillyTavernJsonValue,
+} from "../../prompt-preset-library";
+import { downloadNativePromptPreset } from "../../prompt-preset-download";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../../lib/command-outcome";
+import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
+import {
+	conversationOperationApplies,
+	conversationOperationClaim,
+	type EditorLoadResult,
+	type OperationClaim,
+} from "../../prompt-preset-editor-state";
+import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
+
+const PRESET_COMMAND_NOTICES = {
+	conflict: "The Conversation changed elsewhere; the current state was loaded.",
+	notFound: "The Conversation no longer exists.",
+	unreachable: "The Conversation could not be reached.",
+};
+
+export interface PromptPresetLibraryUnit {
+	applySelection: (presetId: number, resolvingLeave?: boolean) => void;
+	selectPreset: (presetId: number) => void;
+	runPresetCommand: (
+		command: PromptPresetCommand,
+		successNotice?: (outcome: PresetCommandOutcome) => string | null,
+	) => Promise<void>;
+	exportSelectedPreset: (presetId: number, name: string) => Promise<void>;
+	importPresetFile: (file: File) => Promise<void>;
+	commitSillyTavernReview: () => Promise<void>;
+	selectSillyTavernOrder: (orderListId: string) => Promise<void>;
+	cancelSillyTavernReview: () => void;
+}
+
+// ==[HUMAN APPROVED]== The library unit: the shared preset list, the per-Chat selection, native and
+// SillyTavern interchange. It shares the runtime's settlement and reload helpers, so its flows
+// cannot drift from the recipe unit's ownership rules.
+export function usePromptPresetLibrary({
+	runtime,
+	conversation,
+	onConversationChange,
+}: {
+	runtime: PromptPresetEditorRuntime;
+	conversation: ConversationSummary | null;
+	onConversationChange: (conversation: ConversationSummary | null) => void;
+}): PromptPresetLibraryUnit {
+	const { state, ready, dirty, dispatch, load, runOperation, ownsOperation } = runtime;
+	const { busy, leaving } = state;
+
+	const reportRefreshFailure = (refresh: EditorLoadResult): boolean => {
+		if (refresh === "network") {
+			dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+			return true;
+		}
+		if (refresh === "not-found") {
+			dispatch({ type: "notice-changed", notice: "The selected Conversation could not be loaded." });
+			return true;
+		}
+		return false;
+	};
+	const reportImportFailure = (
+		outcome: { status: "invalid"; reason: string } | { status: "network" },
+	): void => {
+		dispatch({
+			type: "notice-changed",
+			notice: outcome.status === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
+		});
+	};
+	// ==[HUMAN APPROVED]== The shared import epilogue: reload the library and the selected recipe,
+	// then report the imported name once the fresh state is accepted.
+	const reloadAfterImport = async (claim: OperationClaim, notice: string): Promise<void> => {
+		const refresh = await load();
+		if (!ownsOperation(claim)) return;
+		if (reportRefreshFailure(refresh)) return;
+		dispatch({ type: "notice-changed", notice });
+	};
+
+	// ==[HUMAN APPROVED]== Applies one selection through the authoritative Conversation command;
+	// `selectPreset` decides whether a pending leave must resolve first.
+	const applySelection = (presetId: number, resolvingLeave = false): void => {
+		if (conversation === null) return;
+		if (busy && !(resolvingLeave && leaving)) return;
+		const conversationId = conversation.id;
+		void runOperation("conversation-selection", async () => {
+			const conversationClaim = conversationOperationClaim(runtime.current());
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversationId, expectedRevision, {
+						type: "select-prompt-preset",
+						promptPresetId: presetId,
+					}),
+				reconciliation: {
+					adoptSnapshot: (next) => {
+						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
+						dispatch({ type: "conversation-adopted", conversationRevision: next.revision });
+						onConversationChange(next);
+					},
+					showNotice: (message) => {
+						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
+							dispatch({ type: "notice-changed", notice: message });
+						}
+					},
+				},
+				notices: PRESET_COMMAND_NOTICES,
+				callbacks: {
+					onNotPlayable: () => {
+						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
+							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.conflict });
+						}
+					},
+					onNotRemovable: (reason) => {
+						if (conversationOperationApplies(runtime.current(), conversationClaim)) {
+							dispatch({ type: "notice-changed", notice: reason });
+						}
+					},
+					onApplied: async () => {
+						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
+						dispatch({ type: "notice-changed", notice: null });
+						const refresh = await load();
+						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
+						if (refresh === "network") {
+							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.unreachable });
+						} else if (refresh === "not-found") {
+							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.notFound });
+						}
+					},
+				},
+			});
+		});
+	};
+
+	// ==[HUMAN APPROVED]== One library command execution: pending and notice state live here, and
+	// the outcome's authoritative re-read refreshes the list and the selected
+	// recipe. A success notice is caller-shaped so a rename, a duplication and
+	// a deletion each name what happened.
+	const runPresetCommand = async (
+		command: PromptPresetCommand,
+		successNotice?: (outcome: PresetCommandOutcome) => string | null,
+	): Promise<void> => {
+		if (busy) return;
+		if (dirty && command.type === "delete" && ready?.selected.id === command.presetId) {
+			dispatch({
+				type: "notice-changed",
+				notice: "Save or discard the current block edit before deleting its preset.",
+			});
+			return;
+		}
+		await runOperation("library-write", async (claim) => {
+			try {
+				const outcome = await applyPromptPresetCommand(command);
+				if (!ownsOperation(claim)) return;
+				switch (outcome.status) {
+					case "applied":
+					case "deleted": {
+						const refresh = await load();
+						if (!ownsOperation(claim)) return;
+						if (reportRefreshFailure(refresh)) break;
+						dispatch({ type: "notice-changed", notice: successNotice?.(outcome) ?? null });
+						break;
+					}
+					case "conflict": {
+						let message = `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`;
+						if (command.type === "delete") {
+							// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before
+							// the notice so a renewed confirmation shows the current name, revision
+							// and impact instead of the values the author already confirmed.
+							const refresh = await load();
+							if (!ownsOperation(claim)) return;
+							if (reportRefreshFailure(refresh)) break;
+							if (outcome.conflict.reason === "deletion-impact") {
+								message = presetDeletionImpactChangedNotice(
+									outcome.conflict.currentPreset.name,
+									outcome.conflict.currentPreset.conversationCount,
+								);
+							}
+						}
+						dispatch({ type: "notice-changed", notice: message });
+						break;
+					}
+					case "not-removable":
+					case "invalid":
+						dispatch({ type: "notice-changed", notice: outcome.reason });
+						break;
+					case "not-found":
+						dispatch({ type: "notice-changed", notice: "That preset is no longer in the Library." });
+						break;
+					default:
+						dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+				}
+			} catch {
+				if (ownsOperation(claim)) {
+					dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+				}
+			}
+		});
+	};
+
+	// ==[HUMAN APPROVED]== Switching presets with unsaved block edits defers the selection until
+	// Save, Discard or Keep editing resolves the drafts, so a switch never
+	// silently drops a block draft.
+	const selectPreset = (presetId: number): void => {
+		if (conversation === null) return;
+		if (dirty) {
+			dispatch({ type: "leave-requested", request: { kind: "select", presetId } });
+			return;
+		}
+		applySelection(presetId);
+	};
+
+	const exportSelectedPreset = async (presetId: number, name: string): Promise<void> => {
+		if (busy) return;
+		await runOperation("preset-export", async (claim) => {
+			try {
+				const native = await loadNativePromptPreset(presetId);
+				if (!ownsOperation(claim)) return;
+				downloadNativePromptPreset(name, native);
+				dispatch({ type: "notice-changed", notice: `Exported "${name}".` });
+			} catch {
+				if (ownsOperation(claim)) {
+					dispatch({ type: "notice-changed", notice: "The Prompt Preset could not be exported." });
+				}
+			}
+		});
+	};
+
+	const importPresetFile = async (file: File): Promise<void> => {
+		if (busy) return;
+		await runOperation("library-write", async (claim) => {
+			try {
+				// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
+				const source = JSON.parse(await file.text()) as SillyTavernJsonValue;
+				const native = parseNativePromptPreset(JSON.stringify(source));
+				if (native !== null) {
+					const outcome = await importNativePromptPreset(native);
+					if (!ownsOperation(claim)) return;
+					if (outcome.status !== "applied") {
+						reportImportFailure(outcome);
+						return;
+					}
+					await reloadAfterImport(claim, `Imported "${outcome.preset.name}" as a new preset.`);
+					return;
+				}
+				const reviewOutcome = await reviewSillyTavernPromptPreset(
+					source,
+					file.name.replace(/\.json$/i, ""),
+				);
+				if (!ownsOperation(claim)) return;
+				if (reviewOutcome.status !== "review") {
+					reportImportFailure(reviewOutcome);
+					return;
+				}
+				dispatch({
+					type: "review-changed",
+					review: {
+						request: { source, name: reviewOutcome.preview.name },
+						preview: reviewOutcome.preview,
+						orderListId: reviewOutcome.preview.selectedOrderId,
+					},
+				});
+			} catch {
+				if (ownsOperation(claim)) {
+					dispatch({
+						type: "notice-changed",
+						notice: "The selected file is not valid Prompt Preset or SillyTavern JSON.",
+					});
+				}
+			}
+		});
+	};
+
+	const commitSillyTavernReview = async (): Promise<void> => {
+		const currentReview = state.review;
+		if (currentReview === null) return;
+		if (busy) return;
+		if (currentReview.preview.requiresOrderSelection && currentReview.orderListId === null) {
+			dispatch({ type: "notice-changed", notice: "Choose an order list before importing." });
+			return;
+		}
+		await runOperation("import-commit", async (claim) => {
+			const outcome = await commitSillyTavernPromptPreset(
+				currentReview.request.source,
+				currentReview.request.name,
+				currentReview.orderListId ?? undefined,
+			);
+			if (!ownsOperation(claim)) return;
+			if (outcome.status !== "applied") {
+				reportImportFailure(outcome);
+				return;
+			}
+			dispatch({ type: "review-changed", review: null });
+			await reloadAfterImport(claim, `Imported "${outcome.preview.preset.name}" as a new preset.`);
+		});
+	};
+
+	const selectSillyTavernOrder = async (orderListId: string): Promise<void> => {
+		const currentReview = state.review;
+		if (currentReview === null) return;
+		if (busy) return;
+		await runOperation("import-order", async (claim) => {
+			const outcome = await reviewSillyTavernPromptPreset(
+				currentReview.request.source,
+				currentReview.request.name,
+				orderListId,
+			);
+			if (!ownsOperation(claim)) return;
+			if (outcome.status === "review") {
+				dispatch({
+					type: "review-changed",
+					review: { ...currentReview, preview: outcome.preview, orderListId },
+				});
+			} else if (outcome.status === "invalid") {
+				dispatch({ type: "notice-changed", notice: outcome.reason });
+			}
+		});
+	};
+
+	const cancelSillyTavernReview = (): void => dispatch({ type: "review-changed", review: null });
+
+	return {
+		applySelection,
+		selectPreset,
+		runPresetCommand,
+		exportSelectedPreset,
+		importPresetFile,
+		commitSillyTavernReview,
+		selectSillyTavernOrder,
+		cancelSillyTavernReview,
+	};
+}
