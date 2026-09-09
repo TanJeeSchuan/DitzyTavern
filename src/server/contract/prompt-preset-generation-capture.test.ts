@@ -274,7 +274,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		});
 		expect(deleted.status).toBe(200);
 		expect(deleted.body).toEqual({
-			outcome: "applied",
+			outcome: "deleted",
 			result: { presetId: 2, reassignedConversationCount: 1 },
 		});
 		const reassigned = await readSelectedPreset(app, conversation.id);

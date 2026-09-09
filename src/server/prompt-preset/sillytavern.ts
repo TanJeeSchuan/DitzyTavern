@@ -431,7 +431,9 @@ export const reviewSillyTavernPromptPreset = (value: SillyTavernJsonValue): Sill
 	return buildSillyTavernPreview(normalized, sourceName(normalized.settings, request.name), request.orderListId);
 };
 
-export const importSillyTavernPromptPreset = (value: SillyTavernJsonValue): SillyTavernImportPreview => {
+// ==[HUMAN APPROVED]== Converts one SillyTavern source into the review preview the import flow
+// commits; a source that needs an order choice is refused rather than guessed.
+export const convertSillyTavernPromptPreset = (value: SillyTavernJsonValue): SillyTavernImportPreview => {
 	const preview = reviewSillyTavernPromptPreset(value);
 	if (preview.requiresOrderSelection) {
 		throw new InvalidPromptPresetCommandError("Choose one SillyTavern order list before importing.");

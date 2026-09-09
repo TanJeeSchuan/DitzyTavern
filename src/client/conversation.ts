@@ -15,7 +15,7 @@ import type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
-import type { ConversationPromptPreset, PromptBlockReference, PromptOutgoingRole, PromptPresetRecipe } from "../shared/contract/prompt-preset";
+import type { ConversationPromptPreset, PromptBlockReference, PromptOutgoingRole, PromptPresetBlockPatch, PromptPresetRecipe } from "../shared/contract/prompt-preset";
 
 export type {
 	ActiveGenerationDetails,
@@ -181,21 +181,21 @@ export type PromptPresetOperationOutcome =
 
 // ==[HUMAN APPROVED]== Every recipe operation responds with the stored recipe as a fresh
 // read plus the shared not-found/invalid envelopes, so one adapter maps the
-// treaty union for all of them.
+// treaty union for all of them. The shared command-outcome helper classifies an
+// envelope the route never declares as unreachable, never as bad input.
+type RecipeOperationError =
+	| { outcome: "not-found" }
+	| { outcome: "invalid"; reason: string };
+
 const applyRecipeOperation = async (
-	request: EdenResponse<PromptPresetRecipe, { status: number; value: unknown }>,
+	request: EdenResponse<PromptPresetRecipe, { status: number; value: RecipeOperationError }>,
 ): Promise<PromptPresetOperationOutcome> => {
 	try {
 		const { data, error } = await request;
 		if (error) {
-			if (error.status === 404) return { status: "not-found" };
-			// ==[HUMAN APPROVED]== SAFETY: Eden's typed error value is untyped here because this
-			// adapter accepts every route's error envelope; the recipe routes
-			// respond with the shared typed outcomes only.
-			const value = error.value as { outcome?: string; reason?: string } | null;
-			return value?.outcome === "invalid" && value.reason !== undefined
-				? { status: "invalid", reason: value.reason }
-				: { status: "invalid", reason: "The Prompt Preset change could not be applied." };
+			return commandOutcome(error.value, {
+				invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+			});
 		}
 		return { status: "applied", recipe: data };
 	} catch {
@@ -279,6 +279,18 @@ export function setPromptPresetBlockContent(
 ): Promise<PromptPresetOperationOutcome> {
 	return applyRecipeOperation(
 		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).content.post(content),
+	);
+}
+
+// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence as one occurrence-addressed
+// batch through the same recipe transport as ordering and toggles, so saving
+// drafts can never bypass the preset's concurrency guard.
+export function savePromptPresetBlockPatches(
+	presetId: number,
+	patches: readonly PromptPresetBlockPatch[],
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks.patches.post({ patches: [...patches] }),
 	);
 }
 

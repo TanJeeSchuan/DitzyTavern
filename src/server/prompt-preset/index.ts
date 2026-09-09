@@ -20,7 +20,6 @@ export {
 } from "./library";
 export {
 	isSillyTavernJsonValue,
-	normalizeSillyTavernImportRequest,
 	reviewSillyTavernPromptPreset,
 } from "./sillytavern";
 export {

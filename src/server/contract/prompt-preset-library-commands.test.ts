@@ -3,7 +3,6 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
-import { addPromptPresetInstruction, readPromptPresetRecipe } from "../prompt-preset";
 import {
 	createChat,
 	createRoutes,
@@ -218,7 +217,7 @@ describe("Prompt Preset library transport", () => {
 		});
 		expect(deleted.status).toBe(200);
 		expect(deleted.body).toEqual({
-			outcome: "applied",
+			outcome: "deleted",
 			result: { presetId: 2, reassignedConversationCount: 2 },
 		});
 
@@ -322,108 +321,16 @@ describe("Prompt Preset library transport", () => {
 		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2]);
 	});
 
-	test("saves mixed block patches atomically and preserves independently saved recipe fields", async () => {
+	test("refuses a patch batch on the library command route", async () => {
 		const app = libraryRoutes(database);
-		createChat(database);
-		// The library route intentionally owns only library commands; seed one occurrence
-		// through the domain operation before exercising the command route.
-		const addedRecipe = addPromptPresetInstruction(database, 1);
-		const instruction = addedRecipe.slots.find((slot) => slot.reference === "instruction");
-		const storedBefore = readPromptPresetRecipe(database, 1);
-		if (instruction === undefined || storedBefore === undefined) throw new Error("The instruction fixture is missing.");
-		const humanIdentity = storedBefore.slots.find((slot) => slot.reference === "human-identity");
-		if (humanIdentity === undefined) throw new Error("The identity fixture is missing.");
-
-		const applied = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 1,
-			patches: [
-				{ occurrenceId: humanIdentity.id, type: "role", role: "assistant" },
-				{ occurrenceId: instruction.id, type: "content", name: "Tone", content: "Be concise.", role: "user" },
-			],
-		});
-		expect(applied.status).toBe(200);
-		const saved = readPromptPresetRecipe(database, 1);
-		expect(saved?.slots.find((slot) => slot.id === humanIdentity.id)).toMatchObject({
-			reference: "human-identity",
-			enabled: true,
-			role: "assistant",
-		});
-		expect(saved?.slots.find((slot) => slot.id === instruction.id)).toMatchObject({
-			reference: "instruction",
-			name: "Tone",
-			content: "Be concise.",
-			role: "user",
-		});
-		expect(saved?.slots.map((slot) => slot.id)).toEqual(storedBefore.slots.map((slot) => slot.id));
-
-		const beforeRejected = readPromptPresetRecipe(database, 1);
-		const rejected = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 1,
-			patches: [
-				{ occurrenceId: instruction.id, type: "content", name: "Should not persist", content: "Nope", role: "system" },
-				{ occurrenceId: 999999, type: "role", role: "system" },
-			],
-		});
-		expect(rejected.status).toBe(422);
-		expect(readPromptPresetRecipe(database, 1)).toEqual(beforeRejected);
-
-		const noOp = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 1,
-			patches: [],
-		});
-		expect(noOp.status).toBe(200);
-	});
-
-	test("returns not-found when saving patches against a nonexistent preset, for empty and nonempty patches", async () => {
-		const app = libraryRoutes(database);
-
-		const empty = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 424242,
-			patches: [],
-		});
-		expect(empty.status).toBe(404);
-		// SAFETY: the route's shared not-found envelope.
-		expect(empty.body).toEqual({ outcome: "not-found" });
-
-		const nonempty = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 424242,
-			patches: [{ occurrenceId: 999999, type: "role", role: "system" }],
-		});
-		expect(nonempty.status).toBe(404);
-		expect(nonempty.body).toEqual({ outcome: "not-found" });
-	});
-
-	test("returns not-found when saving patches against a deleted preset", async () => {
-		const app = libraryRoutes(database);
-		await runPresetCommand(app, { type: "create", name: "Disposable" });
-		await runPresetCommand(app, {
-			type: "delete",
-			presetId: 2,
-			expectedRevision: 0,
-			expectedConversationCount: 0,
-		});
-
-		const empty = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 2,
-			patches: [],
-		});
-		expect(empty.status).toBe(404);
-		// SAFETY: the route's shared not-found envelope.
-		expect(empty.body).toEqual({ outcome: "not-found" });
-
-		const nonempty = await runPresetCommand(app, {
-			type: "save-block-patches",
-			presetId: 2,
-			patches: [{ occurrenceId: 999999, type: "role", role: "system" }],
-		});
-		expect(nonempty.status).toBe(404);
-		expect(nonempty.body).toEqual({ outcome: "not-found" });
+		const response = await app.handle(
+			new Request("http://localhost/api/prompt-presets/commands", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ type: "save-block-patches", presetId: 1, patches: [] }),
+			}),
+		);
+		expect(response.status).toBe(422);
 	});
 
 	test("selects independently for each Conversation and survives a fresh read", async () => {

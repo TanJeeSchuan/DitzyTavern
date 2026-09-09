@@ -14,7 +14,6 @@ import {
 	type NativePromptPreset,
 	type PromptPresetCommand,
 	type PromptPresetDeletionResult,
-	type PromptPresetRecipe,
 	type PromptPresetSummary,
 } from "../../shared/contract/prompt-preset";
 import { Value } from "@sinclair/typebox/value";
@@ -31,9 +30,8 @@ import {
 	type PromptPresetDatabase,
 } from "./recipe";
 import {
-	importSillyTavernPromptPreset as convertSillyTavernPromptPreset,
+	convertSillyTavernPromptPreset,
 } from "./sillytavern";
-import { savePromptPresetBlockPatches } from "./blocks";
 
 // ==[HUMAN APPROVED]== The Prompt Preset library is a Character Library sibling: one
 // revisioned list of named recipes whose deletion impact (the
@@ -193,20 +191,23 @@ export const importSillyTavernPromptPreset = (
 	return { ...preview, preset };
 };
 
-// ==[HUMAN APPROVED]== Executes one revisioned library command atomically. Every mutation
-// except creation requires the expected revision; a rename advances it
-// exactly once, while duplicating writes an independent preset without
-// touching the guarded source. Confirmed deletion reassigns every
-// Conversation that selected the preset to Default in the same transaction
-// before the preset row (and its blocks) goes away, so no selection is ever
-// left dangling.
+// ==[HUMAN APPROVED]== Executes one revisioned library command atomically. Rename, duplicate and
+// delete each require the expected revision; creation carries none because it
+// addresses no existing preset. A rename advances the revision exactly once,
+// while duplicating writes an independent preset without touching the guarded
+// source. Block patches are occurrence-addressed and travel the recipe route,
+// so every command this executor accepts is revision-guarded. Confirmed
+// deletion reassigns every Conversation that selected the preset to Default in
+// the same transaction before the preset row (and its blocks) goes away, so no
+// selection is ever left dangling.
+export type PromptPresetCommandResult =
+	| { kind: "preset"; preset: PromptPresetSummary }
+	| { kind: "deleted"; result: PromptPresetDeletionResult };
+
 export function executePromptPresetCommand(
 	database: Database,
 	command: PromptPresetCommand,
-): PromptPresetSummary | PromptPresetDeletionResult | PromptPresetRecipe {
-	if (command.type === "save-block-patches") {
-		return savePromptPresetBlockPatches(database, command.presetId, command.patches);
-	}
+): PromptPresetCommandResult {
 	if (Value.Check(promptPresetCreateCommand, command)) {
 		const db = connect(database);
 		const create = database.transaction(() => {
@@ -218,11 +219,11 @@ export function executePromptPresetCommand(
 			if (inserted === undefined) throw new Error("The Prompt Preset could not be created.");
 			return requireSummary(db, inserted.id);
 		});
-		return create.immediate();
+		return { kind: "preset", preset: create.immediate() };
 	}
 
 	const db = connect(database);
-	const execute = database.transaction(() => {
+	const execute = database.transaction((): PromptPresetCommandResult => {
 		const preset = requireSummary(db, command.presetId);
 		if (preset.revision !== command.expectedRevision) {
 			throw new StalePromptPresetRevisionError(
@@ -253,9 +254,12 @@ export function executePromptPresetCommand(
 				.all();
 			db.delete(promptPresetTable).where(eq(promptPresetTable.id, preset.id)).run();
 			return {
-				presetId: preset.id,
-				reassignedConversationCount: reassigned.length,
-			} satisfies PromptPresetDeletionResult;
+				kind: "deleted",
+				result: {
+					presetId: preset.id,
+					reassignedConversationCount: reassigned.length,
+				},
+			};
 		}
 
 		if (command.type === "duplicate") {
@@ -283,7 +287,7 @@ export function executePromptPresetCommand(
 					.values(blocks.map((block) => ({ preset_id: inserted.id, ...block })))
 					.run();
 			}
-			return requireSummary(db, inserted.id);
+			return { kind: "preset", preset: requireSummary(db, inserted.id) };
 		}
 
 		db.update(promptPresetTable)
@@ -293,7 +297,7 @@ export function executePromptPresetCommand(
 			.set({ name: requireCommandName(command.name), revision: preset.revision + 1 })
 			.where(eq(promptPresetTable.id, preset.id))
 			.run();
-		return requireSummary(db, preset.id);
+		return { kind: "preset", preset: requireSummary(db, preset.id) };
 	});
 
 	return execute.immediate();

@@ -4,7 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRoutes } from "./prompt-preset-routes";
+import { createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
 import type { ModelFetch } from "../model-client";
 import type {
 	SillyTavernImportApplied,
@@ -119,7 +119,7 @@ const importRequest = (source: SillyTavernJsonValue, orderListId?: string): Impo
 };
 
 const postReview = async (
-	app: ReturnType<typeof createPromptPresetRoutes>,
+	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
 	source: SillyTavernJsonValue,
 	orderListId?: string,
 ): Promise<{ status: number; body: SillyTavernImportPreview | ImportError }> => {
@@ -133,7 +133,7 @@ const postReview = async (
 };
 
 const postImport = async (
-	app: ReturnType<typeof createPromptPresetRoutes>,
+	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
 	source: SillyTavernJsonValue,
 	orderListId?: string,
 ): Promise<{ status: number; body: SillyTavernImportApplied | ImportError }> => {
@@ -171,7 +171,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	afterEach(() => database.close());
 
 	test("reviews and commits both tracked samples through one selected order", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		for (const { source, expectedReferences } of samples) {
 			const reviewed = await postReview(app, source);
 			expect(reviewed.status).toBe(200);
@@ -196,7 +196,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("requires an explicit unfamiliar-list choice and keeps conflicting toggles", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "enabled-by-order", name: "Order wins", content: "one", enabled: false, role: "user" },
@@ -222,7 +222,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("reports absent definitions, omits markers, keeps authored built-ins and unlisted text", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "main", name: "Main", content: "main", role: "system", marker: true },
@@ -255,7 +255,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("reports every excluded settings family without importing its behavior", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [{ identifier: "main", name: "Main", content: "main", role: "system" }],
 			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
@@ -276,7 +276,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("translates executable names, preserves comments and converts depth placement", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "before", name: "Before", content: "{{user}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}", role: "user", injection_position: 0 },
@@ -315,7 +315,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("a committed imported recipe survives selection and reaches the captured model request", async () => {
-		const library = createPromptPresetRoutes(database);
+		const library = createPromptPresetLibraryRoutes(database);
 		const conversation = createConversationModule(database).create({
 			name: "Imported preset chat",
 			participants: [
@@ -393,7 +393,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("preserves unlisted supported references as disabled trailing slots in source order through review, commit and native reimport", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "main", name: "Main", content: "listed instruction", role: "system" },
@@ -443,7 +443,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("translates active user and character macros after even backslash runs and keeps odd-run escapes", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{
@@ -476,7 +476,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("the reproduced two-backslash source reaches the captured Generation request with the escaped backslash and the translated name", async () => {
-		const library = createPromptPresetRoutes(database);
+		const library = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [{ identifier: "main", name: "Two slash", content: "\\\\{{user}} precedes {{self}}.", role: "system" }],
 			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
@@ -510,7 +510,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("enabling a retained disabled reference reaches the Conversation's own Participant content in the captured request", async () => {
-		const library = createPromptPresetRoutes(database);
+		const library = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "main", name: "Main", content: "main", role: "system" },
@@ -571,7 +571,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("preserves inline and scoped comments, multiline bodies, nested delimiters and escaped comments in stored text", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{
@@ -634,7 +634,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	});
 
 	test("preserves unknown macros and malformed delimiters; unknown active macros remain literal and warn", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = createPromptPresetLibraryRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
 				{ identifier: "main", name: "Unknowns", content: "{{time}} stays and {{user stays open", role: "system" },

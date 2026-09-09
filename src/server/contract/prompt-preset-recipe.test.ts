@@ -4,10 +4,12 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import {
 	addPromptPresetInstruction,
+	executePromptPresetCommand,
 	movePromptPresetBlock,
 	InvalidPromptPresetOperationError,
 	readPromptPresetRecipe,
 } from "../prompt-preset";
+import type { PromptPresetRecipe } from "../../shared/contract/prompt-preset";
 import {
 	CapturedRequest,
 	addBlock,
@@ -22,6 +24,7 @@ import {
 	readOperation,
 	readPreset,
 	removeBlock,
+	saveBlockPatches,
 	setBlockRole,
 	slotOf,
 	startGeneration,
@@ -396,6 +399,135 @@ describe("Prompt Preset transport", () => {
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
 		const missingBlock = await toggleBlock(database, preset.id, 987654, false);
 		expect(missingBlock.status).toBe(404);
+	});
+});
+
+describe("Prompt Preset block patch batch", () => {
+	let database: Database;
+
+	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	afterEach(() => database.close());
+
+	// ==[HUMAN APPROVED]== The batch route addresses stored occurrences, so the fixture seeds one
+	// authored instruction beside the Default recipe's referenced slots.
+	const seedSlots = () => {
+		createChat(database);
+		const stored = addPromptPresetInstruction(database, 1);
+		const instruction = stored.slots.find((slot) => slot.reference === "instruction");
+		const identity = stored.slots.find((slot) => slot.reference === "human-identity");
+		if (instruction === undefined || identity === undefined) {
+			throw new Error("The Default recipe is missing its slots.");
+		}
+		return { stored, instruction, identity };
+	};
+
+	test("saves an occurrence-addressed batch and responds with the stored recipe as a fresh read", async () => {
+		const { stored, instruction, identity } = seedSlots();
+
+		const response = await saveBlockPatches(database, 1, [
+			{ occurrenceId: identity.id, type: "role", role: "assistant" },
+			{
+				occurrenceId: instruction.id,
+				type: "content",
+				name: "Tone",
+				content: "Be concise.",
+				role: "user",
+			},
+		]);
+
+		expect(response.status).toBe(200);
+		// SAFETY: the recipe route responds with the stored recipe as a fresh read.
+		const saved = await response.json() as PromptPresetRecipe;
+		expect(slotOf(saved, "human-identity")?.role).toBe("assistant");
+		expect(slotOf(saved, "instruction")).toMatchObject({
+			name: "Tone",
+			content: "Be concise.",
+			role: "user",
+		});
+		// The batch changed only the addressed fields, never the stored order.
+		expect(saved.slots.map((slot) => slot.id)).toEqual(stored.slots.map((slot) => slot.id));
+	});
+
+	test("treats an empty batch as a successful no-op", async () => {
+		const { stored } = seedSlots();
+
+		const response = await saveBlockPatches(database, 1, []);
+
+		expect(response.status).toBe(200);
+		// SAFETY: the recipe route responds with the stored recipe as a fresh read.
+		const saved = await response.json() as PromptPresetRecipe;
+		expect(saved).toEqual(stored);
+	});
+
+	test("rolls back a mixed invalid batch entirely", async () => {
+		const { stored, instruction } = seedSlots();
+
+		const response = await saveBlockPatches(database, 1, [
+			{
+				occurrenceId: instruction.id,
+				type: "content",
+				name: "Should not persist",
+				content: "Nope",
+				role: "system",
+			},
+			{ occurrenceId: 999999, type: "role", role: "system" },
+		]);
+
+		expect(response.status).toBe(422);
+		// SAFETY: the recipe route's shared invalid envelope carries the reason.
+		const outcome = await response.json() as { outcome: string; reason: string };
+		expect(outcome.outcome).toBe("invalid");
+		expect(outcome.reason).toContain("does not belong");
+		expect(readPromptPresetRecipe(database, 1)).toEqual(stored);
+	});
+
+	test("refuses a batch that patches one occurrence twice", async () => {
+		const { stored, identity } = seedSlots();
+
+		const response = await saveBlockPatches(database, 1, [
+			{ occurrenceId: identity.id, type: "role", role: "assistant" },
+			{ occurrenceId: identity.id, type: "role", role: "user" },
+		]);
+
+		expect(response.status).toBe(422);
+		// SAFETY: the recipe route's shared invalid envelope carries the reason.
+		const outcome = await response.json() as { outcome: string; reason: string };
+		expect(outcome.outcome).toBe("invalid");
+		expect(outcome.reason).toContain("more than once");
+		expect(readPromptPresetRecipe(database, 1)).toEqual(stored);
+	});
+
+	test("returns not-found when the preset is missing, for empty and nonempty batches", async () => {
+		const empty = await saveBlockPatches(database, 424242, []);
+		expect(empty.status).toBe(404);
+		// SAFETY: the recipe route's shared not-found envelope.
+		expect(await empty.json()).toEqual({ outcome: "not-found" });
+
+		const nonempty = await saveBlockPatches(database, 424242, [
+			{ occurrenceId: 999999, type: "role", role: "system" },
+		]);
+		expect(nonempty.status).toBe(404);
+		expect(await nonempty.json()).toEqual({ outcome: "not-found" });
+	});
+
+	test("returns not-found when the preset was deleted after the draft was made", async () => {
+		const created = executePromptPresetCommand(database, { type: "create", name: "Disposable" });
+		if (created.kind !== "preset") throw new Error("The Disposable preset was not created.");
+		const deleted = executePromptPresetCommand(database, {
+			type: "delete",
+			presetId: created.preset.id,
+			expectedRevision: 0,
+			expectedConversationCount: 0,
+		});
+		if (deleted.kind !== "deleted") throw new Error("The Disposable preset was not deleted.");
+
+		const response = await saveBlockPatches(database, created.preset.id, [
+			{ occurrenceId: 999999, type: "role", role: "system" },
+		]);
+
+		expect(response.status).toBe(404);
+		// SAFETY: the recipe route's shared not-found envelope.
+		expect(await response.json()).toEqual({ outcome: "not-found" });
 	});
 });
 

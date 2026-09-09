@@ -3,12 +3,13 @@ import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRoutes } from "./prompt-preset";
-import { createPromptPresetRoutes as createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
+import { createPromptPresetRecipeRoutes } from "./prompt-preset";
+import { createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
 import type { ModelFetch } from "../model-client";
 import type {
 	ConversationPromptPreset,
 	NativePromptPreset,
+	PromptPresetBlockPatch,
 	PromptPresetCommand,
 	PromptPresetListResponse,
 	PromptPresetRecipe,
@@ -94,7 +95,7 @@ export const createRoutes = (database: Database) => ({
 	conversations: createConversationRoutes(database),
 });
 
-export const presetRoutes = (database: Database) => createPromptPresetRoutes(database);
+export const recipeRoutes = (database: Database) => createPromptPresetRecipeRoutes(database);
 
 export const libraryRoutes = (database: Database) => createPromptPresetLibraryRoutes(database);
 
@@ -362,7 +363,7 @@ export const readOperation = async (operation: Promise<Response>): Promise<Promp
 };
 
 export const addBlock = (database: Database, presetId: number, reference: string) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -376,7 +377,7 @@ export const moveBlock = (
 	blockId: number,
 	toPosition: number,
 ) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/move`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -390,7 +391,7 @@ export const toggleBlock = (
 	blockId: number,
 	enabled: boolean,
 ) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/toggle`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -399,15 +400,28 @@ export const toggleBlock = (
 	);
 
 export const duplicateBlock = (database: Database, presetId: number, blockId: number) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/duplicate`,
 			{ method: "POST" }),
 	);
 
 export const removeBlock = (database: Database, presetId: number, blockId: number) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}`, {
 			method: "DELETE",
+		}),
+	);
+
+export const saveBlockPatches = (
+	database: Database,
+	presetId: number,
+	patches: PromptPresetBlockPatch[],
+) =>
+	recipeRoutes(database).handle(
+		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/patches`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ patches }),
 		}),
 	);
 
@@ -417,7 +431,7 @@ export const setBlockRole = (
 	blockId: number,
 	role: string,
 ) =>
-	presetRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/role`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },

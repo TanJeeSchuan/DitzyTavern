@@ -15,7 +15,7 @@ import {
 	readInspection,
 	readOperation,
 	readPreset,
-	presetRoutes,
+	recipeRoutes,
 	setBlockRole,
 	slotOf,
 	startGeneration,
@@ -30,7 +30,7 @@ describe("Prompt Preset authored instruction macros", () => {
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
-		presetRoutes(database).handle(
+		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
@@ -41,7 +41,7 @@ describe("Prompt Preset authored instruction macros", () => {
 		blockId: number,
 		body: { name: string; content: string; role: string },
 	) =>
-		presetRoutes(database).handle(
+		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },

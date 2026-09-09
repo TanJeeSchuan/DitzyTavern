@@ -241,9 +241,11 @@ export const promptPresetCreateCommand = Type.Object({
 	name: Type.String(),
 });
 
-// ==[HUMAN APPROVED]== Every mutation except creation guards the revision the caller saw,
-// matching the Character Library convention. Duplicate carries the new
-// preset's name so naming stays an explicit library operation.
+// ==[HUMAN APPROVED]== Rename, duplicate and delete each carry the expected revision the caller
+// saw; creation carries none because it addresses no existing preset. Duplicate
+// carries the new preset's name so naming stays an explicit library operation.
+// Block patches are occurrence-addressed and travel the recipe route, so every
+// command here is revision-guarded.
 export const promptPresetRenameCommand = Type.Object({
 	type: Type.Literal("rename"),
 	presetId: Type.Integer(),
@@ -288,19 +290,17 @@ export const promptPresetBlockPatch = Type.Union([
 ]);
 export type PromptPresetBlockPatch = Static<typeof promptPresetBlockPatch>;
 
-export const promptPresetSaveBlockPatchesCommand = Type.Object({
-	type: Type.Literal("save-block-patches"),
-	presetId: Type.Integer(),
+// ==[HUMAN APPROVED]== The recipe route's patch batch: one occurrence-addressed save-on-leave
+// submission, applied atomically or refused entirely.
+export const promptPresetBlockPatchesBody = Type.Object({
 	patches: Type.Array(promptPresetBlockPatch),
 });
-export type PromptPresetSaveBlockPatchesCommand = Static<typeof promptPresetSaveBlockPatchesCommand>;
 
 export const promptPresetCommandBody = Type.Union([
 	promptPresetCreateCommand,
 	promptPresetRenameCommand,
 	promptPresetDuplicateCommand,
 	promptPresetDeleteCommand,
-	promptPresetSaveBlockPatchesCommand,
 ]);
 export type PromptPresetCommand = Static<typeof promptPresetCommandBody>;
 
@@ -312,20 +312,18 @@ export const promptPresetDeletionResult = Type.Object({
 });
 export type PromptPresetDeletionResult = Static<typeof promptPresetDeletionResult>;
 
-// Deletion returns the typed reassignment result instead of a summary; every
-// other command returns the authoritative updated preset.
+// ==[HUMAN APPROVED]== The applied-command wire union states its variant: a summary for every
+// metadata command, or the deletion's derived reassignment. Deletion returns
+// the typed result instead of a summary because the preset no longer exists.
+// Block patches respond through the recipe route with the stored recipe.
 export const promptPresetCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
 		preset: promptPresetSummary,
 	}),
 	Type.Object({
-		outcome: Type.Literal("applied"),
+		outcome: Type.Literal("deleted"),
 		result: promptPresetDeletionResult,
-	}),
-	Type.Object({
-		outcome: Type.Literal("applied"),
-		recipe: promptPresetRecipe,
 	}),
 ]);
 export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplied>;

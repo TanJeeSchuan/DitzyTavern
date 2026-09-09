@@ -20,6 +20,7 @@ import {
 	notFoundOutcome,
 	invalidOutcome,
 } from "../../shared/contract/outcomes";
+import { invalidResponse, notFoundResponse } from "./responses";
 import {
 	promptPresetCommandApplied,
 	promptPresetCommandBody,
@@ -35,19 +36,19 @@ import {
 // ==[HUMAN APPROVED]== Thin typed adapter over the Prompt Preset library seam. The database
 // is injected so tests can mount the same routes against a temporary store;
 // production passes undefined to use the default connection per request.
-export const createPromptPresetRoutes = (database: Database | undefined) =>
+export const createPromptPresetLibraryRoutes = (database: Database | undefined) =>
 	new Elysia()
 		.post(
 			"/api/prompt-presets/import/sillytavern/review",
 			({ body }) => {
 				try {
 					if (!isSillyTavernJsonValue(body)) {
-						return status(422, { outcome: "invalid" as const, reason: "SillyTavern JSON must be valid JSON." });
+						return invalidResponse("SillyTavern JSON must be valid JSON.");
 					}
 					return reviewSillyTavernPromptPreset(body);
 				} catch (error) {
 					if (error instanceof InvalidPromptPresetCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -62,7 +63,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 			({ body }) => {
 				try {
 					if (!isSillyTavernJsonValue(body)) {
-						return status(422, { outcome: "invalid" as const, reason: "SillyTavern JSON must be valid JSON." });
+						return invalidResponse("SillyTavern JSON must be valid JSON.");
 					}
 					const imported = withDatabase(database, (connection) =>
 						importSillyTavernPromptPreset(connection, body),
@@ -70,7 +71,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					return imported;
 				} catch (error) {
 					if (error instanceof InvalidPromptPresetCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -87,7 +88,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					readNativePromptPreset(connection, params.presetId),
 				);
 				return exported === undefined
-					? status(404, { outcome: "not-found" as const })
+					? notFoundResponse()
 					: exported;
 			},
 			{
@@ -105,7 +106,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					return { outcome: "applied" as const, preset };
 				} catch (error) {
 					if (error instanceof InvalidPromptPresetCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}
@@ -132,19 +133,9 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					const outcome = withDatabase(database, (connection) =>
 						executePromptPresetCommand(connection, body),
 					);
-					if ("reassignedConversationCount" in outcome) {
-						return {
-							outcome: "applied" as const,
-							result: {
-								presetId: outcome.presetId,
-								reassignedConversationCount: outcome.reassignedConversationCount,
-							},
-						};
-					}
-					if ("slots" in outcome) {
-						return { outcome: "applied" as const, recipe: outcome };
-					}
-					return { outcome: "applied" as const, preset: outcome };
+					return outcome.kind === "deleted"
+						? { outcome: "deleted" as const, result: outcome.result }
+						: { outcome: "applied" as const, preset: outcome.preset };
 				} catch (error) {
 					if (error instanceof StalePromptPresetRevisionError) {
 						return status(409, {
@@ -169,13 +160,13 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 						});
 					}
 					if (error instanceof PromptPresetNotFoundError) {
-						return status(404, { outcome: "not-found" as const });
+						return notFoundResponse();
 					}
 					if (error instanceof InvalidPromptPresetCommandError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
+						return invalidResponse(error.message);
 					}
 					if (error instanceof InvalidPromptPresetOperationError) {
-						return status(422, { outcome: "invalid" as const, reason: error.message });
+						return invalidResponse(error.message);
 					}
 					throw error;
 				}

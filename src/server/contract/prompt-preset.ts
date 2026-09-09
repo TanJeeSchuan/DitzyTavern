@@ -8,6 +8,7 @@ import {
 	movePromptPresetBlock,
 	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
+	savePromptPresetBlockPatches,
 	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
 	setPromptPresetBlockRole,
@@ -19,6 +20,7 @@ import {
 	blockIdParams,
 	movePromptPresetBlockBody,
 	presetIdParams,
+	promptPresetBlockPatchesBody,
 	promptPresetRecipe,
 	setPromptPresetBlockContentBody,
 	setPromptPresetBlockEnabledBody,
@@ -66,8 +68,21 @@ const withRecipeResponse = {
 	422: invalidOutcome,
 };
 
-export const createPromptPresetRoutes = (database: Database | undefined) =>
+export const createPromptPresetRecipeRoutes = (database: Database | undefined) =>
 	new Elysia()
+		.post(
+			"/api/prompt-presets/:presetId/blocks/patches",
+			({ params, body }) =>
+				withDatabase(database, (connection) =>
+					recipeOperationResponse(runRecipeOperation(() =>
+						savePromptPresetBlockPatches(connection, params.presetId, body.patches))),
+				),
+			{
+				params: presetIdParams,
+				body: promptPresetBlockPatchesBody,
+				response: withRecipeResponse,
+			},
+		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
 			({ params, body }) =>
