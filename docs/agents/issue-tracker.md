@@ -10,6 +10,7 @@ Issues and specs live in [Plane](https://plane.tanjs.dev), workspace `personal`,
 - Apply the project labels defined in [triage-labels.md](triage-labels.md). Resolve label names to UUIDs with `label(action="list")`; use `workitem(action="manage_label")` to preserve unrelated labels.
 - Track implementation progress with Plane workflow states and update checklists in the description as work proceeds. Resolve state names and groups with `state(action="list")`.
 - Add conversation history as work item comments.
+- When moving a work item into the `completed` group, auto-complete its parent: list the parent's children (`workitem(action="list", pql="parent = <uuid>")`); if every child is now in the `completed` or `cancelled` group, move the parent to the project's `completed` state (e.g. `Done`) as well. Recurse up if the parent itself has a parent.
 
 ## When a skill says "publish to the issue tracker"
 
@@ -28,4 +29,4 @@ Used by `/wayfinder`. The map is a parent work item with one child work item per
 - **Blocking**: use Plane's `blocked_by` work item relations. A ticket is unblocked when all its blockers are in the `completed` state group.
 - **Frontier**: list the map's children, following pagination, and select open, unblocked tickets in the `backlog` or `unstarted` state groups; lowest issue number wins.
 - **Claim**: move the ticket to a state in the `started` group before any work. Tickets in this group are claimed.
-- **Resolve**: append the answer under an Answer heading in the ticket's description, move it to a state in the `completed` group, then append a context pointer (gist + ticket link) to the map's Decisions-so-far.
+- **Resolve**: append the answer under an Answer heading in the ticket's description, move it to a state in the `completed` group (then auto-complete the parent per the Conventions rule), and append a context pointer (gist + ticket link) to the map's Decisions-so-far.
