@@ -15,7 +15,7 @@ import {
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipe } from "../prompt-preset";
-import type { PromptPresetRecipe } from "../prompt-preset";
+import type { PromptPresetSlot } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
 	assertGenerationPlan,
@@ -29,6 +29,7 @@ import type {
 	GenerationIntent,
 	PromptBudgetResult,
 	PromptContextEntry,
+
 	TokenEstimator,
 } from "../prompt-compiler";
 import {
@@ -152,7 +153,7 @@ export const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
 		settings: ConversationGenerationSettings;
-		recipe: PromptPresetRecipe;
+		slots: readonly PromptPresetSlot[];
 		connection: GenerationConnectionFacts | null;
 	},
 	options: {
@@ -163,7 +164,7 @@ export const compilePlanFrom = (
 	human: toCompilerDefinition(derivation.human),
 	model: toCompilerDefinition(derivation.model),
 	context: derivation.context,
-	recipe: configuration.recipe.slots,
+	recipe: configuration.slots,
 	intent: options.intent,
 	settings: configuration.settings,
 	connection: configuration.connection,
@@ -181,24 +182,16 @@ export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	},
 });
 
-// ==[HUMAN APPROVED]== Safe Connection resolution for inspection: the active Profile's API Format
-// fact only, resolved before compilation so Request Overrides narrow exactly
-// as an executed attempt would narrow them.
-export const resolveConnectionApiFormat = (
-	database: Database,
-	options: ConnectionSettingsModuleOptions | undefined,
-): GenerationConnectionFacts | null => {
-	const connection = resolveConnectionSnapshot(database, options);
-	return connection === null ? null : { apiFormat: connection.apiFormat };
-};
-
 interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
-	recipe: PromptPresetRecipe;
+	slots: readonly PromptPresetSlot[];
 	connection: ModelClientConnectionSnapshot | null;
 }
 
-function captureConfiguration(
+// ==[HUMAN APPROVED]== The one attempt-configuration read: every Generation start and the
+// read-only inspection capture the same settings and the same recipe slots, so
+// a missing Conversation fails identically wherever an attempt is captured.
+export function captureConfiguration(
 	database: Database,
 	conversationId: number,
 	connection: ModelClientConnectionSnapshot | null | undefined,
@@ -213,7 +206,7 @@ function captureConfiguration(
 	const capturedConnection = connection === undefined
 		? resolveConnectionSnapshot(database, connectionSettingsOptions)
 		: connection;
-	return { settings, recipe, connection: capturedConnection };
+	return { settings, slots: recipe.slots, connection: capturedConnection };
 }
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,

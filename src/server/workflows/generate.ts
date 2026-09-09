@@ -39,7 +39,6 @@ import type {
 	ModelClientGenerationInput,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
@@ -52,11 +51,11 @@ import {
 	captureSendGeneration,
 	captureContinuationGeneration,
 	captureSiblingGeneration,
+	captureConfiguration,
 	capturedAcceptanceFields,
 	compilePlanFrom,
 	modelRequestFor,
 	deriveGeneration,
-	resolveConnectionApiFormat,
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
@@ -282,11 +281,12 @@ export function inspectGenerationPrompt(
 			budgetFailure: null,
 		};
 	}
-	const settings = createConversationModule(database).getGenerationSettings(conversationId);
-	const recipe = readConversationPromptPresetRecipe(database, conversationId);
-	if (settings === undefined || recipe === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
+	const configuration = captureConfiguration(
+		database,
+		conversationId,
+		undefined,
+		options.connectionSettings,
+	);
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
@@ -295,16 +295,18 @@ export function inspectGenerationPrompt(
 	const plan = compilePlanFrom(
 		derivation,
 		{
-			settings,
-			recipe,
-			// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
+			settings: configuration.settings,
+			slots: configuration.slots,
+			// ==[HUMAN APPROVED]== The safe Connection fact narrows before compilation so Request
 			// Overrides are narrowed exactly as an executed attempt would narrow
 			// them.
-			connection: resolveConnectionApiFormat(database, options.connectionSettings),
+			connection: configuration.connection === null
+				? null
+				: { apiFormat: configuration.connection.apiFormat },
 		},
 		{ estimator: options.tokenEstimator },
 	);
-	const continuationIntent = continuationIntentFor(settings);
+	const continuationIntent = continuationIntentFor(configuration.settings);
 
 	return {
 		conversationId,
