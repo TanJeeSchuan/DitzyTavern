@@ -103,7 +103,7 @@ export async function importNativePromptPreset(
 			const value = error.value as PromptPresetImportErrorPayload | null;
 			return promptPresetImportError(value);
 		}
-		return "preset" in data
+		return data.outcome === "applied"
 			? { status: "applied", preset: data.preset }
 			: { status: "network" };
 	} catch {
