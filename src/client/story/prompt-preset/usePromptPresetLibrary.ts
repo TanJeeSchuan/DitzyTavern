@@ -22,6 +22,7 @@ import {
 	conversationOperationClaim,
 	type EditorLoadResult,
 	type OperationClaim,
+	type OperationStartEffects,
 } from "../../prompt-preset-editor-state";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
@@ -31,8 +32,43 @@ const PRESET_COMMAND_NOTICES = {
 	unreachable: "The Conversation could not be reached.",
 };
 
+// ==[HUMAN APPROVED]== Each flow declares its own start effects at the call site, so adding a flow
+// never requires editing a global registry: a selection supersedes reads and owns the Conversation
+// race; a library command supersedes reads and clears the notice channel; committing an import
+// supersedes reads; an order choice and an export keep reads current; the export clears the notice.
+const SELECTION_EFFECTS: OperationStartEffects = {
+	supersedesReads: true,
+	ownsConversation: true,
+	clearNotice: false,
+	clearProblem: false,
+};
+const LIBRARY_WRITE_EFFECTS: OperationStartEffects = {
+	supersedesReads: true,
+	ownsConversation: false,
+	clearNotice: true,
+	clearProblem: false,
+};
+const IMPORT_COMMIT_EFFECTS: OperationStartEffects = {
+	supersedesReads: true,
+	ownsConversation: false,
+	clearNotice: false,
+	clearProblem: false,
+};
+const IMPORT_ORDER_EFFECTS: OperationStartEffects = {
+	supersedesReads: false,
+	ownsConversation: false,
+	clearNotice: false,
+	clearProblem: false,
+};
+const EXPORT_EFFECTS: OperationStartEffects = {
+	supersedesReads: false,
+	ownsConversation: false,
+	clearNotice: true,
+	clearProblem: false,
+};
+
 export interface PromptPresetLibraryUnit {
-	applySelection: (presetId: number, resolvingLeave?: boolean) => void;
+	applySelection: (presetId: number) => void;
 	selectPreset: (presetId: number) => void;
 	runPresetCommand: (
 		command: PromptPresetCommand,
@@ -46,8 +82,8 @@ export interface PromptPresetLibraryUnit {
 }
 
 // ==[HUMAN APPROVED]== The library unit: the shared preset list, the per-Chat selection, native and
-// SillyTavern interchange. It shares the runtime's settlement and reload helpers, so its flows
-// cannot drift from the recipe unit's ownership rules.
+// SillyTavern interchange. It shares the runtime's settlement and one unified refresh path, so its
+// flows cannot drift from the recipe unit's ownership rules.
 export function usePromptPresetLibrary({
 	runtime,
 	conversation,
@@ -57,8 +93,7 @@ export function usePromptPresetLibrary({
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 }): PromptPresetLibraryUnit {
-	const { state, ready, dirty, dispatch, load, runOperation, ownsOperation } = runtime;
-	const { busy, leaving } = state;
+	const { current, ready, dirty, dispatch, load, runOperation, ownsOperation } = runtime;
 
 	const reportRefreshFailure = (refresh: EditorLoadResult): boolean => {
 		if (refresh === "network") {
@@ -88,13 +123,14 @@ export function usePromptPresetLibrary({
 		dispatch({ type: "notice-changed", notice });
 	};
 
-	// ==[HUMAN APPROVED]== Applies one selection through the authoritative Conversation command;
-	// `selectPreset` decides whether a pending leave must resolve first.
-	const applySelection = (presetId: number, resolvingLeave = false): void => {
+	// ==[HUMAN APPROVED]== Applies one selection through the authoritative Conversation command.
+	// `selectPreset` decides whether a pending leave must resolve first; a selection starts only
+	// when busy is free, which a resolved leave guarantees because it runs after the save settles.
+	const applySelection = (presetId: number): void => {
 		if (conversation === null) return;
-		if (busy && !(resolvingLeave && leaving)) return;
+		if (current().busy) return;
 		const conversationId = conversation.id;
-		void runOperation("conversation-selection", async () => {
+		void runOperation(SELECTION_EFFECTS, async () => {
 			const conversationClaim = conversationOperationClaim(runtime.current());
 			await runConversationCommand({
 				revision: () => conversation.revision,
@@ -151,7 +187,7 @@ export function usePromptPresetLibrary({
 		command: PromptPresetCommand,
 		successNotice?: (outcome: PresetCommandOutcome) => string | null,
 	): Promise<void> => {
-		if (busy) return;
+		if (current().busy) return;
 		if (dirty && command.type === "delete" && ready?.selected.id === command.presetId) {
 			dispatch({
 				type: "notice-changed",
@@ -159,7 +195,7 @@ export function usePromptPresetLibrary({
 			});
 			return;
 		}
-		await runOperation("library-write", async (claim) => {
+		await runOperation(LIBRARY_WRITE_EFFECTS, async (claim) => {
 			try {
 				const outcome = await applyPromptPresetCommand(command);
 				if (!ownsOperation(claim)) return;
@@ -222,8 +258,8 @@ export function usePromptPresetLibrary({
 	};
 
 	const exportSelectedPreset = async (presetId: number, name: string): Promise<void> => {
-		if (busy) return;
-		await runOperation("preset-export", async (claim) => {
+		if (current().busy) return;
+		await runOperation(EXPORT_EFFECTS, async (claim) => {
 			try {
 				const native = await loadNativePromptPreset(presetId);
 				if (!ownsOperation(claim)) return;
@@ -238,8 +274,8 @@ export function usePromptPresetLibrary({
 	};
 
 	const importPresetFile = async (file: File): Promise<void> => {
-		if (busy) return;
-		await runOperation("library-write", async (claim) => {
+		if (current().busy) return;
+		await runOperation(LIBRARY_WRITE_EFFECTS, async (claim) => {
 			try {
 				// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
 				const source = JSON.parse(await file.text()) as SillyTavernJsonValue;
@@ -283,14 +319,14 @@ export function usePromptPresetLibrary({
 	};
 
 	const commitSillyTavernReview = async (): Promise<void> => {
-		const currentReview = state.review;
+		const currentReview = current().review;
 		if (currentReview === null) return;
-		if (busy) return;
+		if (current().busy) return;
 		if (currentReview.preview.requiresOrderSelection && currentReview.orderListId === null) {
 			dispatch({ type: "notice-changed", notice: "Choose an order list before importing." });
 			return;
 		}
-		await runOperation("import-commit", async (claim) => {
+		await runOperation(IMPORT_COMMIT_EFFECTS, async (claim) => {
 			const outcome = await commitSillyTavernPromptPreset(
 				currentReview.request.source,
 				currentReview.request.name,
@@ -307,10 +343,10 @@ export function usePromptPresetLibrary({
 	};
 
 	const selectSillyTavernOrder = async (orderListId: string): Promise<void> => {
-		const currentReview = state.review;
+		const currentReview = current().review;
 		if (currentReview === null) return;
-		if (busy) return;
-		await runOperation("import-order", async (claim) => {
+		if (current().busy) return;
+		await runOperation(IMPORT_ORDER_EFFECTS, async (claim) => {
 			const outcome = await reviewSillyTavernPromptPreset(
 				currentReview.request.source,
 				currentReview.request.name,

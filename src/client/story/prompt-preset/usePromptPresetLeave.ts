@@ -1,6 +1,7 @@
 import type { ConversationSummary } from "../../conversation";
 import type { ConversationPromptPreset } from "../../../shared/contract/prompt-preset";
-import type { LeaveRequest, OperationClaim } from "../../prompt-preset-editor-state";
+import type { LeaveRequest, OperationClaim, OperationStartEffects } from "../../prompt-preset-editor-state";
+import type { SaveDraftsResult } from "./usePromptPresetRecipe";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
 export interface PromptPresetLeaveUnit {
@@ -11,8 +12,22 @@ export interface PromptPresetLeaveUnit {
 	discardAndLeave: () => void;
 }
 
+// ==[HUMAN APPROVED]== The save-on-leave operation's declared start effects: it keeps any in-flight
+// read current until its own unified refresh cancels it, owns no Conversation race, and clears no
+// feedback channel as it starts. The leave handoff is the hook's settle-then-resolve sequencing
+// below, not a state flag.
+const SAVE_ON_LEAVE_EFFECTS: OperationStartEffects = {
+	supersedesReads: false,
+	ownsConversation: false,
+	clearNotice: false,
+	clearProblem: false,
+};
+
 // ==[HUMAN APPROVED]== The leave unit: the unsaved-drafts guard every dismissal path shares, and the
-// deferred close or selection that only runs after the atomic save settles.
+// deferred close or selection that only runs after the atomic save settles. Save-on-leave is
+// linearized: the batch is submitted, a current refresh is accepted, the save settles and releases
+// busy, and only then does the leave resolve to close or start a selection — so no selection ever
+// starts while the save owns busy and no busy bypass is needed.
 export function usePromptPresetLeave({
 	runtime,
 	conversation,
@@ -23,24 +38,23 @@ export function usePromptPresetLeave({
 	runtime: PromptPresetEditorRuntime;
 	conversation: ConversationSummary | null;
 	onOpenChange: (open: boolean) => void;
-	applySelection: (presetId: number, resolvingLeave?: boolean) => void;
+	applySelection: (presetId: number) => void;
 	saveDrafts: (
 		preset: ConversationPromptPreset,
 		claim: OperationClaim,
-		conversationId: number,
-	) => Promise<string | null>;
+	) => Promise<SaveDraftsResult>;
 }): PromptPresetLeaveUnit {
-	const { state, current, dirty, dispatch, runOperation, ownsOperation } = runtime;
-	const { leaveRequest } = state;
+	const { current, dirty, dispatch, runOperation, ownsOperation } = runtime;
 
 	// ==[HUMAN APPROVED]== Completes a resolved leave: the drafts are gone and the deferred action
-	// — closing the popup or applying the pending selection — runs.
+	// — closing the popup or applying the pending selection — runs. Called only after the save
+	// operation has settled, so busy is already released when a selection starts.
 	const finishLeave = (request: LeaveRequest): void => {
 		dispatch({ type: "leave-resolved" });
 		if (request.kind === "close") {
 			onOpenChange(false);
 		} else {
-			applySelection(request.presetId, true);
+			applySelection(request.presetId);
 		}
 	};
 
@@ -49,22 +63,33 @@ export function usePromptPresetLeave({
 		const request = live.leaveRequest;
 		const currentReady = live.view.status === "ready" ? live.view : null;
 		if (live.busy || conversation === null || currentReady === null || request === null) return;
-		const conversationId = conversation.id;
-		await runOperation("save-on-leave", async (claim) => {
-			const failure = await saveDrafts(currentReady.selected, claim, conversationId);
-			if (!ownsOperation(claim)) return;
-			if (failure !== null) {
-				dispatch({ type: "leave-failed", problem: failure });
-				return;
-			}
-			finishLeave(request);
+		// ==[HUMAN APPROVED]== The save operation settles and releases busy before `runOperation`
+		// resolves, so the outcome below is read with busy already free. Only a still-current
+		// successful save resolves the leave; a failed save reports and stays open, a superseded
+		// refresh aborts without completing the leave, and reconciliation that left newer dirty
+		// drafts keeps the popup open.
+		const outcome = await runOperation(SAVE_ON_LEAVE_EFFECTS, async (claim) => {
+			const result = await saveDrafts(currentReady.selected, claim);
+			if (!ownsOperation(claim)) return { status: "aborted" as const };
+			return result;
 		});
+		if (outcome.status === "failed") {
+			dispatch({ type: "leave-failed", problem: outcome.problem });
+			return;
+		}
+		if (outcome.status === "saved") {
+			finishLeave(request);
+			return;
+		}
+		if (outcome.status === "kept") {
+			dispatch({ type: "leave-kept" });
+		}
 	};
 
 	const keepEditing = (): void => dispatch({ type: "leave-kept" });
 
 	const discardAndLeave = (): void => {
-		const request = leaveRequest;
+		const request = current().leaveRequest;
 		if (request === null) return;
 		finishLeave(request);
 	};

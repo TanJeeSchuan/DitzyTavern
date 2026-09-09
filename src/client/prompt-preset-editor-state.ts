@@ -19,22 +19,49 @@ export type BlockDraft =
 	| { kind: "role"; role: PromptOutgoingRole }
 	| { kind: "content"; name: string; content: string; role: PromptOutgoingRole };
 
-export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft): boolean => {
+// ==[HUMAN APPROVED]== One slot-kind-safe draft-to-patch rule. A referenced Definition slot
+// accepts only role drafts, an authored instruction accepts only name/text/role drafts, and
+// history accepts none. The rule returns the exact occurrence-addressed patch a dirty draft
+// submits, or null when the draft is clean, the wrong kind for its slot, or the slot accepts
+// no drafts — so dirtiness, per-block Save, batch building and submitted-version retirement
+// all flow from one source and the silent-clean and wrong-field Save paths cannot exist.
+export function draftToPatch(
+	slot: ResolvedPromptPresetSlot,
+	draft: BlockDraft,
+): PromptPresetBlockPatch | null {
+	if (slot.reference === "history") return null;
 	if (slot.reference === "instruction") {
-		return draft.kind !== "content"
-			? true
-			: draft.name !== slot.name || draft.content !== slot.content || draft.role !== slot.role;
+		if (draft.kind !== "content") return null;
+		const { name, content, role } = draft;
+		if (name === slot.name && content === slot.content && role === slot.role) return null;
+		return { occurrenceId: slot.id, type: "content", name, content, role };
 	}
-	return slot.reference !== "history" && draft.kind === "role" && draft.role !== slot.role;
-};
+	if (draft.kind !== "role") return null;
+	if (draft.role === slot.role) return null;
+	return { occurrenceId: slot.id, type: "role", role: draft.role };
+}
 
-export const dirtyDraftCount = (
+export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft): boolean =>
+	draftToPatch(slot, draft) !== null;
+
+// ==[HUMAN APPROVED]== The one-pass dirty summary: `dirty` is the guard every dismissal path
+// consults and `count` is what the unsaved-drafts dialog shows, both from one scan.
+export interface DirtyDraftSummary {
+	dirty: boolean;
+	count: number;
+}
+
+export function dirtyDraftSummary(
 	preset: ConversationPromptPreset,
 	drafts: Record<number, BlockDraft>,
-): number => preset.slots.filter((slot) => {
-	const draft = drafts[slot.id];
-	return draft !== undefined && draftIsDirty(slot, draft);
-}).length;
+): DirtyDraftSummary {
+	let count = 0;
+	for (const slot of preset.slots) {
+		const draft = drafts[slot.id];
+		if (draft !== undefined && draftToPatch(slot, draft) !== null) count += 1;
+	}
+	return { dirty: count > 0, count };
+}
 
 // ==[HUMAN APPROVED]== A save finishes exactly the submitted draft version: after a successful
 // save the editor retires an occurrence's draft only when it still equals
@@ -60,16 +87,10 @@ export function dirtyBlockPatches(
 	const submitted: Record<number, BlockDraft> = {};
 	for (const slot of preset.slots) {
 		const draft = drafts[slot.id];
-		if (draft === undefined || !draftIsDirty(slot, draft)) continue;
-		if (slot.reference === "instruction" && draft.kind === "content") {
-			const { name, content, role } = draft;
-			patches.push({ occurrenceId: slot.id, type: "content", name, content, role });
-			submitted[slot.id] = { kind: "content", name, content, role };
-		} else if (slot.reference !== "history" && draft.kind === "role") {
-			const { role } = draft;
-			patches.push({ occurrenceId: slot.id, type: "role", role });
-			submitted[slot.id] = { kind: "role", role };
-		}
+		const patch = draft === undefined ? null : draftToPatch(slot, draft);
+		if (patch === null) continue;
+		patches.push(patch);
+		submitted[slot.id] = draft;
 	}
 	return { patches, submitted };
 }
@@ -126,86 +147,35 @@ export interface PromptPresetEditorState {
 	session: EditorSession;
 	view: PresetView;
 	drafts: Record<number, BlockDraft>;
-	// ==[HUMAN APPROVED]== `busy` holds the popup against a second operation; `leaving` marks the
-	// one operation a pending selection may resolve, the deferred save-on-leave.
+	// ==[HUMAN APPROVED]== `busy` holds the popup against a second operation. The deferred
+	// save-on-leave needs no flag: the leave resolves only after the save operation settles,
+	// so the next selection starts with busy already released.
 	busy: boolean;
-	leaving: boolean;
 	notice: string | null;
 	problem: string | null;
 	leaveRequest: LeaveRequest | null;
 	review: SillyTavernReview | null;
 }
 
-// ==[HUMAN APPROVED]== An operation names the flow it starts; the policy table owns what that means
-// for read invalidation, Conversation ownership, the save-on-leave handoff and feedback clearing,
-// so no caller assembles those rules itself.
-export type EditorOperationKind =
-	| "conversation-selection"
-	| "library-write"
-	| "import-commit"
-	| "import-order"
-	| "preset-export"
-	| "recipe-operation"
-	| "save-on-leave";
-
-interface OperationPolicy {
+// ==[HUMAN APPROVED]== The start effects one operation declares at the call site where the flow
+// starts: whether it supersedes the in-flight read, whether it owns the Conversation race, and
+// which feedback channels it clears. There is no global operation registry or policy table —
+// every flow states its own effects, so clearing either or both feedback channels needs no new
+// closed enum, and the leave handoff needs no state flag because it is the hook's
+// settle-then-resolve sequencing.
+export interface OperationStartEffects {
 	supersedesReads: boolean;
 	ownsConversation: boolean;
-	replacesFeedback: "none" | "notice" | "problem";
-	leaveHandoff: boolean;
+	clearNotice: boolean;
+	clearProblem: boolean;
 }
-
-const OPERATION_POLICY = {
-	"conversation-selection": {
-		supersedesReads: true,
-		ownsConversation: true,
-		replacesFeedback: "none",
-		leaveHandoff: false,
-	},
-	"library-write": {
-		supersedesReads: true,
-		ownsConversation: false,
-		replacesFeedback: "notice",
-		leaveHandoff: false,
-	},
-	"import-commit": {
-		supersedesReads: true,
-		ownsConversation: false,
-		replacesFeedback: "none",
-		leaveHandoff: false,
-	},
-	"import-order": {
-		supersedesReads: false,
-		ownsConversation: false,
-		replacesFeedback: "none",
-		leaveHandoff: false,
-	},
-	"preset-export": {
-		supersedesReads: false,
-		ownsConversation: false,
-		replacesFeedback: "notice",
-		leaveHandoff: false,
-	},
-	"recipe-operation": {
-		supersedesReads: false,
-		ownsConversation: false,
-		replacesFeedback: "problem",
-		leaveHandoff: false,
-	},
-	"save-on-leave": {
-		supersedesReads: false,
-		ownsConversation: false,
-		replacesFeedback: "none",
-		leaveHandoff: true,
-	},
-} as const satisfies Record<EditorOperationKind, OperationPolicy>;
 
 export type PromptPresetEditorEvent =
 	| { type: "session-changed"; sessionKey: string; conversationRevision: number | null }
 	| { type: "conversation-revision-changed"; conversationRevision: number | null }
 	| { type: "conversation-adopted"; conversationRevision: number }
 	| { type: "read-started" }
-	| { type: "operation-started"; kind: EditorOperationKind }
+	| { type: "operation-started"; effects: OperationStartEffects }
 	| { type: "operation-settled"; claim: OperationClaim }
 	| { type: "notice-changed"; notice: string | null }
 	| { type: "problem-changed"; problem: string | null }
@@ -242,7 +212,6 @@ function cleanEditorState(session: EditorSession): PromptPresetEditorState {
 		view: { status: "loading" },
 		drafts: {},
 		busy: false,
-		leaving: false,
 		notice: null,
 		problem: null,
 		leaveRequest: null,
@@ -290,39 +259,55 @@ export const conversationOperationApplies = (
 	operationApplies(state, claim) &&
 	claim.conversationOperationId === state.session.latestConversationOperation;
 
+// ==[HUMAN APPROVED]== Whether a fresh recipe slot reflects what a submitted draft saved. A role
+// draft is reflected by the matching referenced slot role; a content draft by the matching
+// authored instruction name, text and role. A read that predates a save never reflects the
+// submitted version, so it cannot retire it against an older recipe.
+function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockDraft): boolean {
+	if (submitted.kind === "role") {
+		return slot.reference !== "history" && slot.reference !== "instruction" && slot.role === submitted.role;
+	}
+	return slot.reference === "instruction"
+		&& slot.name === submitted.name
+		&& slot.content === submitted.content
+		&& slot.role === submitted.role;
+}
+
 // ==[HUMAN APPROVED]== One selected-recipe acceptance rule: the fresh recipe replaces the view and
-// the drafts reconcile against it. Switching presets clears the draft set, a
-// reload prunes drafts for occurrences the recipe no longer contains, and
-// drafts a successful save submitted retire once accepted — but only the
-// submitted version, never a newer local edit.
+// the drafts reconcile against it in one pass. Switching presets clears the draft set scoped to
+// the old preset; a reload prunes drafts for occurrences the recipe no longer contains and
+// retires exactly the submitted versions a successful save wrote — only when the fresh recipe
+// reflects them and the current draft still equals what was submitted, never a newer local edit.
 function adoptRecipe(
 	state: PromptPresetEditorState,
 	selected: ConversationPromptPreset,
 	presets: PromptPresetSummary[] | undefined,
 ): PromptPresetEditorState {
 	let session = state.session;
-	let drafts = state.drafts;
+	let drafts: Record<number, BlockDraft>;
 	if (state.session.draftPresetId !== selected.id) {
 		session = { ...session, draftPresetId: selected.id, pendingRetire: null };
 		drafts = {};
 	} else {
 		const retire = session.pendingRetire;
 		session = { ...session, pendingRetire: null };
-		const alive = new Set(selected.slots.map((slot) => slot.id));
-		let kept = drafts;
-		if (retire !== null) {
-			for (const key of Object.keys(drafts)) {
-				const blockId = Number(key);
-				const submitted = retire[blockId];
-				if (submitted !== undefined && blockDraftEquals(submitted, drafts[blockId])) {
-					kept = { ...kept };
-					delete kept[blockId];
-				}
+		const byId = new Map(selected.slots.map((slot) => [slot.id, slot]));
+		drafts = {};
+		for (const key of Object.keys(state.drafts)) {
+			const blockId = Number(key);
+			const slot = byId.get(blockId);
+			if (slot === undefined) continue;
+			const draft = state.drafts[blockId];
+			const submitted = retire?.[blockId];
+			if (
+				submitted !== undefined
+				&& slotReflectsSubmitted(slot, submitted)
+				&& blockDraftEquals(submitted, draft)
+			) {
+				continue;
 			}
+			drafts[blockId] = draft;
 		}
-		drafts = Object.fromEntries(
-			Object.entries(kept).filter(([draftId]) => alive.has(Number(draftId))),
-		);
 	}
 	return {
 		...state,
@@ -366,25 +351,22 @@ export function reducePromptPresetEditorState(
 			};
 		case "read-started":
 			return { ...state, session: { ...state.session, latestRead: state.session.latestRead + 1 } };
-		case "operation-started": {
-			const policy = OPERATION_POLICY[event.kind];
+		case "operation-started":
 			return {
 				...state,
 				session: {
 					...state.session,
 					latestOperation: state.session.latestOperation + 1,
-					latestRead: state.session.latestRead + (policy.supersedesReads ? 1 : 0),
+					latestRead: state.session.latestRead + (event.effects.supersedesReads ? 1 : 0),
 					latestConversationOperation: state.session.latestConversationOperation +
-						(policy.ownsConversation ? 1 : 0),
+						(event.effects.ownsConversation ? 1 : 0),
 				},
 				busy: true,
-				leaving: policy.leaveHandoff,
-				notice: policy.replacesFeedback === "notice" ? null : state.notice,
-				problem: policy.replacesFeedback === "problem" ? null : state.problem,
+				notice: event.effects.clearNotice ? null : state.notice,
+				problem: event.effects.clearProblem ? null : state.problem,
 			};
-		}
 		case "operation-settled":
-			return operationApplies(state, event.claim) ? { ...state, busy: false, leaving: false } : state;
+			return operationApplies(state, event.claim) ? { ...state, busy: false } : state;
 		case "notice-changed":
 			return { ...state, notice: event.notice };
 		case "problem-changed":
@@ -416,7 +398,12 @@ export function reducePromptPresetEditorState(
 				...state,
 				session: {
 					...state.session,
-					pendingRetire: { ...state.session.pendingRetire, ...event.submitted },
+					// ==[HUMAN APPROVED]== Merge pending retirement explicitly: each submitted
+					// occurrence's version joins (or replaces) the pending set, with the null case
+					// stated rather than relying on spreading a nullable map.
+					pendingRetire: state.session.pendingRetire === null
+						? { ...event.submitted }
+						: { ...state.session.pendingRetire, ...event.submitted },
 				},
 			};
 		case "review-changed":

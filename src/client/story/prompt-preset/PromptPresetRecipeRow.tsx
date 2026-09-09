@@ -11,7 +11,7 @@ import {
 	type PromptPresetOperationOutcome,
 } from "../../prompt-preset-library";
 import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../prompt-preset-presentation";
-import { draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
+import { draftIsDirty, draftToPatch, type BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetSelect } from "./PromptPresetSelect";
 
 const nameInputClass = "rounded-lg border border-border bg-background px-2 py-1 font-medium text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -100,6 +100,20 @@ export interface RecipeOperationHandlers {
 	) => void;
 }
 
+// ==[HUMAN APPROVED]== A block's Save submits exactly the occurrence-addressed patch the one
+// slot-kind-safe draft-to-patch rule derives from the slot and its draft, so per-block Save and
+// the save-on-leave batch can never construct different patches for the same draft.
+const saveDraftPatch = (
+	presetId: number,
+	slot: ResolvedPromptPresetSlot,
+	draft: BlockDraft,
+	onOperation: RecipeOperationHandlers["onOperation"],
+): void => {
+	const patch = draftToPatch(slot, draft);
+	if (patch === null) return;
+	onOperation(() => savePromptPresetBlockPatches(presetId, [patch]), { blockId: slot.id, draft });
+};
+
 // ==[HUMAN APPROVED]== One recipe row: the ordered slot header, its read-only or authored body,
 // and the immediate ordering and toggle controls. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
@@ -145,10 +159,7 @@ export function PromptPresetRecipeRow({
 				disabled={pending}
 				onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 				onCancel={() => onDraftCancel(slot.id)}
-				onSave={(fields) => onOperation(
-					() => savePromptPresetBlockPatches(presetId, [{ ...fields, occurrenceId: slot.id, type: "content" }]),
-					{ blockId: slot.id, draft: { kind: "content", ...fields } },
-				)}
+				onSave={(fields) => saveDraftPatch(presetId, slot, { kind: "content", ...fields }, onOperation)}
 			/>
 		) : (
 			<>
@@ -167,10 +178,7 @@ export function PromptPresetRecipeRow({
 								<Button
 									size="xs"
 									disabled={pending}
-									onClick={() => onOperation(
-										() => savePromptPresetBlockPatches(presetId, [{ occurrenceId: slot.id, type: "role", role: roleDraft.role }]),
-										{ blockId: slot.id, draft: roleDraft },
-									)}
+									onClick={() => saveDraftPatch(presetId, slot, roleDraft, onOperation)}
 								>
 									Save
 								</Button>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	loadConversationPromptPreset,
 	type ConversationSummary,
@@ -7,16 +7,15 @@ import { listPromptPresets } from "../../prompt-preset-library";
 import { useAsyncEffect } from "../../lib/use-async";
 import {
 	createPromptPresetEditorState,
-	dirtyDraftCount,
-	draftIsDirty,
+	dirtyDraftSummary,
 	operationApplies,
 	operationClaim,
 	readApplies,
 	readClaim,
 	reducePromptPresetEditorState,
 	type EditorLoadResult,
-	type EditorOperationKind,
 	type OperationClaim,
+	type OperationStartEffects,
 	type PresetView,
 	type PromptPresetEditorEvent,
 	type PromptPresetEditorState,
@@ -33,10 +32,10 @@ export interface PromptPresetEditorRuntime {
 	dirtyCount: number;
 	dispatch: (event: PromptPresetEditorEvent) => void;
 	load: (isCancelled?: () => boolean) => Promise<EditorLoadResult>;
-	runOperation: (
-		kind: EditorOperationKind,
-		body: (claim: OperationClaim) => Promise<void>,
-	) => Promise<void>;
+	runOperation: <R>(
+		effects: OperationStartEffects,
+		body: (claim: OperationClaim) => Promise<R>,
+	) => Promise<R>;
 	ownsOperation: (claim: OperationClaim) => boolean;
 }
 
@@ -52,32 +51,48 @@ export function usePromptPresetEditorRuntime({
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
 	const stateRef = useRef(state);
 
+	// ==[HUMAN APPROVED]== Unmounting the popup invalidates every in-flight response, callback,
+	// download and deferred leave: once the editor is gone no operation may settle or continue,
+	// and dispatch becomes a no-op so no state update or deferred action can escape it.
+	const alive = useRef(true);
+	useEffect(() => () => { alive.current = false; }, []);
+
 	const current = (): PromptPresetEditorState => stateRef.current;
 
 	const dispatch = (event: PromptPresetEditorEvent): void => {
+		if (!alive.current) return;
 		const next = reducePromptPresetEditorState(stateRef.current, event);
 		stateRef.current = next;
 		setState(next);
 	};
 
 	const ownsOperation = (claim: OperationClaim): boolean =>
-		operationApplies(stateRef.current, claim);
+		alive.current && operationApplies(stateRef.current, claim);
 
-	// ==[HUMAN APPROVED]== One operation settlement owner: a flow names its kind and hands over its
-	// body, and this wrapper claims the epoch, runs the body and settles only its own busy state.
-	const runOperation = async (
-		kind: EditorOperationKind,
-		body: (claim: OperationClaim) => Promise<void>,
-	): Promise<void> => {
-		dispatch({ type: "operation-started", kind });
+	// ==[HUMAN APPROVED]== One operation settlement owner: a flow declares its start effects and
+	// hands over its body, and this wrapper bumps the operation epoch, runs the body and settles
+	// only its own busy state. Because the settle happens synchronously before `runOperation`
+	// resolves, a leave that starts its selection after `await runOperation(...)` runs with busy
+	// already released — no busy bypass is needed and no operation overlaps another.
+	const runOperation = async <R>(
+		effects: OperationStartEffects,
+		body: (claim: OperationClaim) => Promise<R>,
+	): Promise<R> => {
+		dispatch({ type: "operation-started", effects });
 		const claim = operationClaim(stateRef.current);
 		try {
-			await body(claim);
+			return await body(claim);
 		} finally {
 			if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
 		}
 	};
 
+	// ==[HUMAN APPROVED]== The one refresh path for initial load, revision refreshes and every
+	// post-mutation reload: it fetches the library list and the Conversation-resolved recipe,
+	// requires both successes for ready, and classifies a current response under one acceptance
+	// rule. An authoritative null recipe takes precedence over a library-list failure; otherwise
+	// either request failure is a network outcome that retains the last ready view (or shows
+	// unavailable on initial load). Every call cancels the previous read regardless of caller.
 	const load = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
 		if (!open) return "stale";
 		if (conversation === null) {
@@ -87,33 +102,38 @@ export function usePromptPresetEditorRuntime({
 		const conversationId = conversation.id;
 		dispatch({ type: "read-started" });
 		const claim = readClaim(stateRef.current);
-		try {
-			const [presets, selected] = await Promise.all([
-				listPromptPresets(),
-				loadConversationPromptPreset(conversationId),
-			]);
-			if (isCancelled?.() || !readApplies(stateRef.current, claim)) return "stale";
+		const [presetsResult, selectedResult] = await Promise.allSettled([
+			listPromptPresets(),
+			loadConversationPromptPreset(conversationId),
+		]);
+		if (isCancelled?.() || !readApplies(stateRef.current, claim)) return "stale";
+		if (selectedResult.status === "fulfilled") {
+			const selected = selectedResult.value;
 			if (selected === null) {
+				// ==[HUMAN APPROVED]== An authoritative null recipe takes precedence over a list failure.
 				dispatch({ type: "recipe-unavailable" });
 				return "not-found";
 			}
-			dispatch({ type: "recipe-adopted", claim, selected, presets });
-			return "ready";
-		} catch {
-			if (!isCancelled?.() && readApplies(stateRef.current, claim)) {
-				dispatch({ type: "load-failed" });
+			if (presetsResult.status === "fulfilled") {
+				dispatch({
+					type: "recipe-adopted",
+					claim,
+					selected,
+					presets: presetsResult.value,
+				});
+				return "ready";
 			}
-			return "network";
 		}
+		dispatch({ type: "load-failed" });
+		return "network";
 	};
 
 	const { view, drafts } = state;
 	const ready = view.status === "ready" ? view : null;
-	const dirty = ready !== null && ready.selected.slots.some((slot) => {
-		const draft = drafts[slot.id];
-		return draft !== undefined && draftIsDirty(slot, draft);
-	});
-	const dirtyCount = ready === null ? 0 : dirtyDraftCount(ready.selected, drafts);
+	const { dirty, count } = ready === null
+		? { dirty: false, count: 0 }
+		: dirtyDraftSummary(ready.selected, drafts);
+	const dirtyCount = count;
 
 	useAsyncEffect((isCancelled) => {
 		const currentState = stateRef.current;

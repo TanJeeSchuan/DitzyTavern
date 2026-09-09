@@ -1,18 +1,16 @@
 import {
-	loadConversationPromptPreset,
-	type ConversationSummary,
-} from "../../conversation";
-import {
 	savePromptPresetBlockPatches,
 	type PromptPresetOperationOutcome,
 } from "../../prompt-preset-library";
 import type { ConversationPromptPreset } from "../../../shared/contract/prompt-preset";
 import {
 	dirtyBlockPatches,
-	readClaim,
+	dirtyDraftSummary,
 	type BlockDraft,
 	type OperationClaim,
+	type OperationStartEffects,
 } from "../../prompt-preset-editor-state";
+import type { ConversationSummary } from "../../conversation";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
 export interface PromptPresetRecipeUnit {
@@ -25,13 +23,32 @@ export interface PromptPresetRecipeUnit {
 	saveDrafts: (
 		preset: ConversationPromptPreset,
 		claim: OperationClaim,
-		conversationId: number,
-	) => Promise<string | null>;
+	) => Promise<SaveDraftsResult>;
 }
 
+// ==[HUMAN APPROVED]== The recipe operation's declared start effects: it keeps any in-flight read
+// current (a failed or superseded recipe operation leaves the last view intact), owns no
+// Conversation race, and clears the problem channel as it starts so its own outcome owns the copy.
+const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
+	supersedesReads: false,
+	ownsConversation: false,
+	clearNotice: false,
+	clearProblem: true,
+};
+
+// ==[HUMAN APPROVED]== The save-on-leave result a leave resolution acts on: a successful save whose
+// refresh accepted may resolve the leave, `kept` stays open with newer dirty drafts retained,
+// `failed` reports a problem while retaining drafts, and `aborted` makes no state or feedback
+// change because the save-on-leave's refresh was superseded.
+export type SaveDraftsResult =
+	| { status: "saved" }
+	| { status: "kept" }
+	| { status: "failed"; problem: string }
+	| { status: "aborted" };
+
 // ==[HUMAN APPROVED]== The recipe unit: immediate ordering and enablement, per-block authored saves
-// and the atomic save-on-leave batch. It shares the runtime's settlement owner and one
-// selected-recipe reload epilogue.
+// and the atomic save-on-leave batch. It shares the runtime's settlement owner and the one unified
+// refresh path, so its flows cannot diverge from the library unit's ownership rules.
 export function usePromptPresetRecipe({
 	runtime,
 	conversation,
@@ -39,49 +56,21 @@ export function usePromptPresetRecipe({
 	runtime: PromptPresetEditorRuntime;
 	conversation: ConversationSummary | null;
 }): PromptPresetRecipeUnit {
-	const { state, current, dispatch, runOperation, ownsOperation } = runtime;
-	const { busy } = state;
-
-	// ==[HUMAN APPROVED]== The shared mutation reload epilogue: bump the read epoch, read the
-	// fresh selected recipe and adopt it through the shared acceptance rule. A
-	// vanished recipe ends in the unavailable view; the caller reports the
-	// returned failure through its own feedback channel, so wordings stay per-flow.
-	const reloadSelectedRecipe = async (
-		claim: OperationClaim,
-		conversationId: number,
-		failure: { network: string; missing: string | null },
-	): Promise<string | null> => {
-		dispatch({ type: "read-started" });
-		const read = readClaim(current());
-		let fresh: ConversationPromptPreset | null;
-		try {
-			fresh = await loadConversationPromptPreset(conversationId);
-		} catch {
-			return ownsOperation(claim) ? failure.network : null;
-		}
-		if (!ownsOperation(claim)) return null;
-		if (fresh === null) {
-			dispatch({ type: "recipe-unavailable" });
-			return failure.missing;
-		}
-		dispatch({ type: "recipe-adopted", claim: read, selected: fresh });
-		return null;
-	};
+	const { current, dispatch, load, runOperation, ownsOperation } = runtime;
 
 	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live here, and
-	// the applied response's fresh recipe read refreshes the selected recipe
-	// through the shared acceptance rule while leaving the library list and
-	// every other saved change untouched. When the operation submitted one
-	// occurrence's draft, that exact version is retired on acceptance so saved
-	// content never resurfaces as an unsaved edit.
+	// the applied response reloads through the shared unified refresh path, which also refreshes
+	// the library list. When the operation submitted one occurrence's draft, that exact version is
+	// retired on acceptance so saved content never resurfaces as an unsaved edit. An authoritative
+	// null recipe stays silent here (the view is already unavailable); network failure reports the
+	// recipe reload problem.
 	const runRecipeOperation = async (
 		run: () => Promise<PromptPresetOperationOutcome>,
 		submitted?: { blockId: number; draft: BlockDraft },
 	): Promise<void> => {
 		if (conversation === null) return;
-		if (busy) return;
-		const conversationId = conversation.id;
-		await runOperation("recipe-operation", async (claim) => {
+		if (current().busy) return;
+		await runOperation(RECIPE_OPERATION_EFFECTS, async (claim) => {
 			const outcome = await run();
 			if (!ownsOperation(claim)) return;
 			if (outcome.status !== "applied") {
@@ -98,12 +87,13 @@ export function usePromptPresetRecipe({
 			if (submitted !== undefined) {
 				dispatch({ type: "drafts-submitted", submitted: { [submitted.blockId]: submitted.draft } });
 			}
-			const failure = await reloadSelectedRecipe(claim, conversationId, {
-				network: "The Prompt Preset change could not be reloaded.",
-				missing: null,
-			});
-			if (failure !== null && ownsOperation(claim)) {
-				dispatch({ type: "problem-changed", problem: failure });
+			const refresh = await load();
+			if (!ownsOperation(claim)) return;
+			if (refresh === "network") {
+				dispatch({
+					type: "problem-changed",
+					problem: "The Prompt Preset change could not be reloaded.",
+				});
 			}
 		});
 	};
@@ -113,35 +103,49 @@ export function usePromptPresetRecipe({
 
 	const clearDraft = (blockId: number): void => dispatch({ type: "draft-cleared", blockId });
 
-	// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain
-	// command. The authoritative recipe is read again before the leave completes
-	// and adopted through the shared acceptance rule, retiring exactly the
-	// submitted draft versions, while the local drafts remain available if
-	// either request fails.
+	// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain command,
+	// then reloads through the shared unified refresh path. The save's own refresh (not a pre-save
+	// read) accepts the fresh recipe and retires exactly the submitted draft versions; the local
+	// drafts remain available if the save is rejected or either request fails, and a superseded
+	// refresh aborts without completing the leave.
 	const saveDrafts = async (
 		preset: ConversationPromptPreset,
 		claim: OperationClaim,
-		conversationId: number,
-	): Promise<string | null> => {
+	): Promise<SaveDraftsResult> => {
 		if (current().session.draftPresetId !== preset.id) {
-			return "The selected Prompt Preset is no longer current.";
+			return { status: "failed", problem: "The selected Prompt Preset is no longer current." };
 		}
-		dispatch({ type: "read-started" });
 		const { patches, submitted } = dirtyBlockPatches(preset, current().drafts);
 		const outcome = await savePromptPresetBlockPatches(preset.id, patches);
-		if (!ownsOperation(claim)) return null;
+		if (!ownsOperation(claim)) return { status: "aborted" };
 		if (outcome.status !== "applied") {
-			return outcome.status === "invalid"
-				? outcome.reason
-				: outcome.status === "not-found"
-					? "The selected preset no longer exists."
-					: "The Prompt Preset change could not be saved.";
+			return {
+				status: "failed",
+				problem: outcome.status === "invalid"
+					? outcome.reason
+					: outcome.status === "not-found"
+						? "The selected preset no longer exists."
+						: "The Prompt Preset change could not be saved.",
+			};
 		}
 		dispatch({ type: "drafts-submitted", submitted });
-		return reloadSelectedRecipe(claim, conversationId, {
-			network: "The saved Prompt Preset could not be reloaded.",
-			missing: "The selected preset could not be reloaded.",
-		});
+		const refresh = await load();
+		if (!ownsOperation(claim)) return { status: "aborted" };
+		if (refresh === "network") {
+			return { status: "failed", problem: "The saved Prompt Preset could not be reloaded." };
+		}
+		if (refresh === "not-found") {
+			return { status: "failed", problem: "The selected preset could not be reloaded." };
+		}
+		if (refresh === "stale") return { status: "aborted" };
+		const live = current();
+		const freshReady = live.view.status === "ready" ? live.view : null;
+		if (freshReady !== null && dirtyDraftSummary(freshReady.selected, live.drafts).count > 0) {
+			// ==[HUMAN APPROVED]== The save settled but reconciliation left newer dirty drafts: retain
+			// them and keep the popup open instead of clearing them through leave resolution.
+			return { status: "kept" };
+		}
+		return { status: "saved" };
 	};
 
 	return { runRecipeOperation, setDraft, clearDraft, saveDrafts };
