@@ -1,6 +1,13 @@
 import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { expandText } from "../../../shared/prompt-macros";
 import type { PromptOutgoingRole, ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
 import {
@@ -15,8 +22,8 @@ import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../promp
 import { draftIsDirty, draftToPatch, type BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetSelect } from "./PromptPresetSelect";
 
-const nameInputClass = "rounded-lg border border-border bg-background px-2 py-1 font-medium text-xs outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
-const textInputClass = "min-h-20 w-full rounded-lg border border-border bg-background px-2 py-1 text-xs leading-relaxed outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+const nameInputClass = "h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+const textInputClass = "min-h-56 max-h-[55vh] w-full resize-y overflow-y-auto rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none [field-sizing:content] focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const unknownMacrosOf = (text: string, label: string): string[] => {
 	const { warnings } = expandText(text, { self: "", other: "" }, label);
@@ -63,28 +70,22 @@ const InstructionFieldEditor = ({
 	draft,
 	disabled,
 	onChange,
-	onCancel,
-	onSave,
 }: {
 	slot: ResolvedPromptPresetSlot & { reference: "instruction" };
 	draft: BlockDraft | undefined;
 	disabled: boolean;
 	onChange: (fields: { name: string; content: string; role: PromptOutgoingRole }) => void;
-	onCancel: () => void;
-	onSave: (fields: { name: string; content: string; role: PromptOutgoingRole }) => void;
 }) => {
 	const fields = draft?.kind === "content"
 		? { name: draft.name, content: draft.content, role: draft.role }
 		: { name: slot.name, content: slot.content, role: slot.role };
-	const dirty = draft !== undefined && draftIsDirty(slot, draft);
 	const warnings = unknownMacrosOf(fields.content, slot.name === "" ? "instruction" : slot.name);
-	return <div className="mt-2 flex flex-col gap-2">
+	return <div className="flex flex-col gap-3">
 		<label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Name</span><input type="text" className={nameInputClass} value={fields.name} disabled={disabled} onChange={(event) => onChange({ ...fields, name: event.target.value })} /></label>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Instruction text</span><textarea className={textInputClass} rows={3} value={fields.content} disabled={disabled} placeholder="Write the reusable instruction…" onChange={(event) => onChange({ ...fields, content: event.target.value })} /></label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground"><span>Instruction text</span><textarea className={textInputClass} rows={8} spellCheck={false} value={fields.content} disabled={disabled} placeholder="Write the reusable instruction…" onChange={(event) => onChange({ ...fields, content: event.target.value })} /></label>
 		<div className="flex flex-wrap items-center gap-2">
 			<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
 			<OutgoingRoleSelect id={`slot-role-${slot.id}`} value={fields.role} disabled={disabled} onChange={(role) => onChange({ ...fields, role })} />
-			{dirty && <><Button size="xs" disabled={disabled} onClick={() => onSave(fields)}>Save</Button><Button variant="ghost" size="xs" disabled={disabled} onClick={onCancel}>Cancel</Button></>}
 		</div>
 		{warnings.length > 0 && <ul className="text-xs text-muted-foreground" role="note">{warnings.map((macro) => <li key={macro}>Unknown macro {macro} stays literal.</li>)}</ul>}
 	</div>;
@@ -115,8 +116,8 @@ const saveDraftPatch = (
 	onOperation(() => savePromptPresetBlockPatches(presetId, [patch]), { blockId: slot.id, draft });
 };
 
-// ==[HUMAN APPROVED]== One recipe row: the ordered slot header, its read-only or authored body,
-// and the immediate ordering and toggle controls. The draft it shows belongs
+// ==[HUMAN APPROVED]== One recipe row: the ordered slot header, immediate ordering and toggle
+// controls, and a focused modal editor. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
 // reference.
 export function PromptPresetRecipeRow({
@@ -138,14 +139,33 @@ export function PromptPresetRecipeRow({
 	pending: boolean;
 } & RecipeOperationHandlers) {
 	const [editing, setEditing] = useState(false);
+	const [confirmingRemove, setConfirmingRemove] = useState(false);
 	const title = slotTitle(slot);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
-	const actions = <div className="ml-auto flex items-center gap-0.5" role="group" aria-label={`${title} actions`}>
-		<Button variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
-		<Button variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
-		<Button variant="ghost" size="icon-sm" disabled={pending} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
-		<Button variant="destructive" size="icon-sm" disabled={pending} aria-label={`Remove ${title}`} onClick={() => onOperation(() => removePromptPresetBlock(presetId, slot.id))}><Trash2 aria-hidden="true" /></Button>
+	const closeAndDiscard = (): void => {
+		onDraftCancel(slot.id);
+		setEditing(false);
+	};
+	const saveAndClose = (): void => {
+		if (draft !== undefined) saveDraftPatch(presetId, slot, draft, onOperation);
+		setEditing(false);
+	};
+	const actions = <div className="flex items-center gap-0.5" role="group" aria-label={`${title} actions`}>
+		<Button title="Move up" variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
+		<Button title="Move down" variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
+		<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
+		{confirmingRemove ? (
+			<div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
+				<span className="text-xs text-muted-foreground">Remove this block?</span>
+				<Button variant="destructive" size="xs" disabled={pending} onClick={() => { setEditing(false); onOperation(() => removePromptPresetBlock(presetId, slot.id)); }}>Remove</Button>
+				<Button variant="ghost" size="xs" disabled={pending} onClick={() => setConfirmingRemove(false)}>Keep</Button>
+			</div>
+		) : (
+			<div className="ml-3 border-l border-border pl-3">
+				<Button title="Remove block" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Remove ${title}`} onClick={() => setConfirmingRemove(true)}><Trash2 aria-hidden="true" /></Button>
+			</div>
+		)}
 	</div>;
 	return <li
 		className={`py-2.5${slot.enabled ? "" : " opacity-60"}`}
@@ -188,12 +208,15 @@ export function PromptPresetRecipeRow({
 				<Button
 					variant="ghost"
 					size="xs"
-					disabled={pending || (editing && dirty)}
-					aria-expanded={editing}
-					onClick={() => setEditing((current) => !current)}
+					disabled={pending}
+					aria-haspopup="dialog"
+					onClick={() => {
+						setConfirmingRemove(false);
+						setEditing(true);
+					}}
 				>
 					<Pencil aria-hidden="true" />
-					{editing ? "Done" : "Edit"}
+					Edit
 				</Button>
 				<button
 					type="button"
@@ -208,48 +231,51 @@ export function PromptPresetRecipeRow({
 				</button>
 			</div>
 		</div>
-		{editing && (slot.reference === "instruction" ? (
-			<>
-				<InstructionFieldEditor
-					slot={slot}
-					draft={draft}
-					disabled={pending}
-					onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
-					onCancel={() => onDraftCancel(slot.id)}
-					onSave={(fields) => saveDraftPatch(presetId, slot, { kind: "content", ...fields }, onOperation)}
-				/>
-				<div className="mt-2 flex">{actions}</div>
-			</>
-		) : (
-			<>
-				<SlotBody slot={slot} />
-				<div className="mt-2 flex flex-wrap items-center gap-2">
-					{slot.reference !== "history" && (
-						<>
-						<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
-						<OutgoingRoleSelect
-							id={`slot-role-${slot.id}`}
-							value={roleDraft?.role ?? slot.role}
-							disabled={pending}
-							onChange={(role) => onDraftChange(slot.id, { kind: "role", role })}
-						/>
-						{roleDraft !== null && draftIsDirty(slot, roleDraft) && (
-							<>
-								<Button
-									size="xs"
+		<Dialog open={editing} onOpenChange={(open) => { if (open || !dirty) setEditing(open); }}>
+			<DialogContent showCloseButton={!dirty} className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>{slot.reference === "instruction" ? "Edit prompt block" : `Edit ${title}`}</DialogTitle>
+					<DialogDescription>
+						{slot.reference === "history"
+							? "This block has no editable fields. Use the actions below to manage it."
+							: <>Changes are applied only when you choose Save &amp; Close.</>}
+					</DialogDescription>
+				</DialogHeader>
+				<div className="min-h-0 overflow-y-auto pr-1">
+				{slot.reference === "instruction" ? (
+					<InstructionFieldEditor
+						slot={slot}
+						draft={draft}
+						disabled={pending}
+						onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
+					/>
+				) : (
+					<div className="flex flex-col gap-3">
+						<SlotBody slot={slot} />
+						{slot.reference !== "history" && (
+							<div className="flex flex-wrap items-center gap-2">
+								<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
+								<OutgoingRoleSelect
+									id={`slot-role-${slot.id}`}
+									value={roleDraft?.role ?? slot.role}
 									disabled={pending}
-									onClick={() => saveDraftPatch(presetId, slot, roleDraft, onOperation)}
-								>
-									Save
-								</Button>
-								<Button variant="ghost" size="xs" disabled={pending} onClick={() => onDraftCancel(slot.id)}>Cancel</Button>
-							</>
+									onChange={(role) => onDraftChange(slot.id, { kind: "role", role })}
+								/>
+							</div>
 						)}
-						</>
-					)}
-					{actions}
+					</div>
+				)}
 				</div>
-			</>
-		))}
+				<div className="flex items-center justify-between border-t border-border pt-3">
+					{actions}
+					{dirty && (
+						<div className="ml-auto flex items-center gap-2">
+							<Button variant="ghost" size="sm" disabled={pending} onClick={closeAndDiscard}>Cancel</Button>
+							<Button size="sm" disabled={pending} onClick={saveAndClose}>Save &amp; Close</Button>
+						</div>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
 	</li>;
 }
