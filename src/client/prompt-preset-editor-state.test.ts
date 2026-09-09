@@ -79,18 +79,18 @@ describe("response ownership", () => {
 
 	test("an older mutation response is dropped", () => {
 		let state = openState();
-		state = reducePromptPresetEditorState(state, { type: "operation-started", operation: "busy" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started" });
 		const older = operationClaim(state);
-		state = reducePromptPresetEditorState(state, { type: "operation-started", operation: "busy" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started" });
 		const newer = operationClaim(state);
 
 		expect(operationApplies(state, older)).toBe(false);
 		expect(operationApplies(state, newer)).toBe(true);
 
 		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim: older });
-		expect(state.operation).toBe("busy");
+		expect(state.busy).toBe(true);
 		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim: newer });
-		expect(state.operation).toBeNull();
+		expect(state.busy).toBe(false);
 	});
 
 	test("a response from a replaced popup session is rejected", () => {
@@ -116,7 +116,6 @@ describe("response ownership", () => {
 		let state = openState();
 		state = reducePromptPresetEditorState(state, {
 			type: "operation-started",
-			operation: "busy",
 			conversationOperation: true,
 		});
 		const claim = conversationOperationClaim(state);
@@ -202,15 +201,14 @@ describe("busy, notice and leave transitions", () => {
 
 		state = reducePromptPresetEditorState(state, {
 			type: "operation-started",
-			operation: "busy",
 			invalidateReads: true,
 			clearNotice: true,
 		});
 		expect(state.notice).toBeNull();
-		expect(state.operation).toBe("busy");
+		expect(state.busy).toBe(true);
 
 		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim: operationClaim(state) });
-		expect(state.operation).toBeNull();
+		expect(state.busy).toBe(false);
 	});
 
 	test("keep editing cancels the pending leave and keeps the drafts", () => {
@@ -235,8 +233,9 @@ describe("busy, notice and leave transitions", () => {
 			type: "leave-requested",
 			request: { kind: "select", presetId: 8 },
 		});
-		state = reducePromptPresetEditorState(state, { type: "operation-started", operation: "leave" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", leaving: true });
 		const claim = operationClaim(state);
+		expect(state.leaving).toBe(true);
 
 		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: draft } });
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write warmly.")]));
@@ -245,7 +244,8 @@ describe("busy, notice and leave transitions", () => {
 
 		expect(state.leaveRequest).toBeNull();
 		expect(state.drafts).toEqual({});
-		expect(state.operation).toBeNull();
+		expect(state.busy).toBe(false);
+		expect(state.leaving).toBe(false);
 	});
 
 	test("a failed save retains the drafts and reports the problem", () => {
@@ -254,7 +254,7 @@ describe("busy, notice and leave transitions", () => {
 		const draft = contentDraft("Write warmly.");
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft });
 		state = reducePromptPresetEditorState(state, { type: "leave-requested", request: { kind: "close" } });
-		state = reducePromptPresetEditorState(state, { type: "operation-started", operation: "leave" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", leaving: true });
 
 		state = reducePromptPresetEditorState(state, {
 			type: "leave-failed",

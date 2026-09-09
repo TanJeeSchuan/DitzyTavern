@@ -6,11 +6,10 @@ import {
 	addPromptPresetReference,
 	type ConversationPromptPreset,
 	type PromptBlockReference,
-	type PromptPresetOperationOutcome,
 } from "../../conversation";
 import { slotLabels } from "../../prompt-preset-presentation";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
-import { PromptPresetRecipeRow, roleSelectClass } from "./PromptPresetRecipeRow";
+import { PromptPresetRecipeRow, roleSelectClass, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";
 
 const AddSlotSelect = ({
 	disabled,
@@ -60,13 +59,7 @@ export function PromptPresetRecipeEditor({
 	drafts: Record<number, BlockDraft>;
 	pending: boolean;
 	problem: string | null;
-	onDraftChange: (blockId: number, draft: BlockDraft) => void;
-	onDraftCancel: (blockId: number) => void;
-	onOperation: (
-		run: () => Promise<PromptPresetOperationOutcome>,
-		submitted?: { blockId: number; draft: BlockDraft },
-	) => void;
-}) {
+} & RecipeOperationHandlers) {
 	return <section aria-label="Selected recipe" className="flex flex-col gap-3">
 		<h2 className="text-sm font-medium">{preset.name}: assembled order</h2>
 		<ol className="flex flex-col gap-3">

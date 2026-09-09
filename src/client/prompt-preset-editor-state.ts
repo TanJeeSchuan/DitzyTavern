@@ -82,8 +82,6 @@ export type PresetView =
 
 export type LeaveRequest = { kind: "close" } | { kind: "select"; presetId: number };
 
-export type EditorOperation = "busy" | "leave";
-
 export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 
 // ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the popup
@@ -120,7 +118,10 @@ export interface PromptPresetEditorState {
 	session: EditorSession;
 	view: PresetView;
 	drafts: Record<number, BlockDraft>;
-	operation: EditorOperation | null;
+	// ==[HUMAN APPROVED]== `busy` holds the popup against a second operation; `leaving` marks the
+	// one operation a pending selection may resolve, the deferred save-on-leave.
+	busy: boolean;
+	leaving: boolean;
 	notice: string | null;
 	problem: string | null;
 	leaveRequest: LeaveRequest | null;
@@ -133,7 +134,7 @@ export type PromptPresetEditorEvent =
 	| { type: "read-started" }
 	| {
 			type: "operation-started";
-			operation: EditorOperation;
+			leaving?: boolean;
 			invalidateReads?: boolean;
 			conversationOperation?: boolean;
 			clearNotice?: boolean;
@@ -153,28 +154,39 @@ export type PromptPresetEditorEvent =
 	| { type: "leave-resolved" }
 	| { type: "leave-failed"; problem: string };
 
-export function createPromptPresetEditorState(
-	sessionKey: string,
-	conversationRevision: number | null,
-): PromptPresetEditorState {
+// ==[HUMAN APPROVED]== One clean session and one clean editor state, shared by construction and by
+// every open, close or Chat transition, so the two can never drift.
+function cleanSession(key: string, id: number, conversationRevision: number | null): EditorSession {
 	return {
-		session: {
-			key: sessionKey,
-			id: 1,
-			latestRead: 0,
-			latestOperation: 0,
-			latestConversationOperation: 0,
-			knownRevision: conversationRevision,
-			draftPresetId: null,
-			pendingRetire: null,
-		},
+		key,
+		id,
+		latestRead: 0,
+		latestOperation: 0,
+		latestConversationOperation: 0,
+		knownRevision: conversationRevision,
+		draftPresetId: null,
+		pendingRetire: null,
+	};
+}
+
+function cleanEditorState(session: EditorSession): PromptPresetEditorState {
+	return {
+		session,
 		view: { status: "loading" },
 		drafts: {},
-		operation: null,
+		busy: false,
+		leaving: false,
 		notice: null,
 		problem: null,
 		leaveRequest: null,
 	};
+}
+
+export function createPromptPresetEditorState(
+	sessionKey: string,
+	conversationRevision: number | null,
+): PromptPresetEditorState {
+	return cleanEditorState(cleanSession(sessionKey, 1, conversationRevision));
 }
 
 export const readClaim = (state: PromptPresetEditorState): ReadClaim => ({
@@ -264,24 +276,9 @@ export function reducePromptPresetEditorState(
 		case "session-changed":
 			// ==[HUMAN APPROVED]== Every open or Chat transition starts clean: transient forms,
 			// notices, drafts and pending leaves belong to one popup session.
-			return {
-				session: {
-					key: event.sessionKey,
-					id: state.session.id + 1,
-					latestRead: 0,
-					latestOperation: 0,
-					latestConversationOperation: 0,
-					knownRevision: event.conversationRevision,
-					draftPresetId: null,
-					pendingRetire: null,
-				},
-				view: { status: "loading" },
-				drafts: {},
-				operation: null,
-				notice: null,
-				problem: null,
-				leaveRequest: null,
-			};
+			return cleanEditorState(
+				cleanSession(event.sessionKey, state.session.id + 1, event.conversationRevision),
+			);
 		case "conversation-revision-changed":
 			// ==[HUMAN APPROVED]== A newer Conversation snapshot invalidates pending responses but
 			// its refresh is unrelated to the block drafts owned by this session.
@@ -311,12 +308,13 @@ export function reducePromptPresetEditorState(
 					latestConversationOperation: state.session.latestConversationOperation +
 						(event.conversationOperation === true ? 1 : 0),
 				},
-				operation: event.operation,
+				busy: true,
+				leaving: event.leaving === true,
 				notice: event.clearNotice === true ? null : state.notice,
 				problem: event.clearProblem === true ? null : state.problem,
 			};
 		case "operation-settled":
-			return operationApplies(state, event.claim) ? { ...state, operation: null } : state;
+			return operationApplies(state, event.claim) ? { ...state, busy: false, leaving: false } : state;
 		case "notice-changed":
 			return { ...state, notice: event.notice };
 		case "problem-changed":

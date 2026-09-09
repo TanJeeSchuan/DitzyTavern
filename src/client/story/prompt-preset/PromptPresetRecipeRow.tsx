@@ -95,6 +95,17 @@ const InstructionFieldEditor = ({
 	</div>;
 };
 
+// ==[HUMAN APPROVED]== The draft and operation callbacks a recipe row forwards to its owner; the
+// editor section and the row share the contract so they cannot drift.
+export interface RecipeOperationHandlers {
+	onDraftChange: (blockId: number, draft: BlockDraft) => void;
+	onDraftCancel: (blockId: number) => void;
+	onOperation: (
+		run: () => Promise<PromptPresetOperationOutcome>,
+		submitted?: { blockId: number; draft: BlockDraft },
+	) => void;
+}
+
 // ==[HUMAN APPROVED]== One recipe row: the ordered slot header, its read-only or authored body,
 // and the immediate ordering and toggle controls. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
@@ -116,13 +127,7 @@ export function PromptPresetRecipeRow({
 	slotCount: number;
 	draft: BlockDraft | undefined;
 	pending: boolean;
-	onDraftChange: (blockId: number, draft: BlockDraft) => void;
-	onDraftCancel: (blockId: number) => void;
-	onOperation: (
-		run: () => Promise<PromptPresetOperationOutcome>,
-		submitted?: { blockId: number; draft: BlockDraft },
-	) => void;
-}) {
+} & RecipeOperationHandlers) {
 	const title = slotTitle(slot);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	return <li className={`rounded-lg ring-1 ring-foreground/10 p-3${slot.enabled ? "" : " opacity-60"}`}>

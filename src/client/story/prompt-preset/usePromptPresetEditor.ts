@@ -90,13 +90,45 @@ export function usePromptPresetEditor({
 	const ownsConversationOperation = (claim: ConversationOperationClaim): boolean =>
 		conversationOperationApplies(stateRef.current, claim);
 
-	const { view, drafts, operation, notice, problem, leaveRequest } = state;
+	// ==[HUMAN APPROVED]== One settle and one refresh-failure report, shared by every flow, so the
+	// ownership check and the established notices cannot drift between handlers.
+	const settleOperation = (claim: OperationClaim): void => {
+		if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
+	};
+	const reportRefreshFailure = (refresh: EditorLoadResult): boolean => {
+		if (refresh === "network") {
+			dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+			return true;
+		}
+		if (refresh === "not-found") {
+			dispatch({ type: "notice-changed", notice: "The selected Conversation could not be loaded." });
+			return true;
+		}
+		return false;
+	};
+	const reportImportFailure = (
+		outcome: { status: "invalid"; reason: string } | { status: "network" },
+	): void => {
+		dispatch({
+			type: "notice-changed",
+			notice: outcome.status === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE,
+		});
+	};
+	// ==[HUMAN APPROVED]== The shared import epilogue: reload the library and the selected recipe,
+	// then report the imported name once the fresh state is accepted.
+	const reloadAfterImport = async (claim: OperationClaim, notice: string): Promise<void> => {
+		const refresh = await load();
+		if (!ownsOperation(claim)) return;
+		if (reportRefreshFailure(refresh)) return;
+		dispatch({ type: "notice-changed", notice });
+	};
+
+	const { view, drafts, busy, leaving, notice, problem, leaveRequest } = state;
 	const ready = view.status === "ready" ? view : null;
 	const dirty = ready !== null && ready.selected.slots.some((slot) => {
 		const draft = drafts[slot.id];
 		return draft !== undefined && draftIsDirty(slot, draft);
 	});
-	const busy = operation !== null;
 	const dirtyCount = ready === null ? 0 : dirtyDraftCount(ready.selected, drafts);
 
 	const load = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
@@ -132,11 +164,10 @@ export function usePromptPresetEditor({
 	// `selectPreset` decides whether a pending leave must resolve first.
 	const applySelection = (presetId: number, resolvingLeave = false): void => {
 		if (conversation === null) return;
-		if (operation !== null && !(resolvingLeave && operation === "leave")) return;
+		if (busy && !(resolvingLeave && leaving)) return;
 		const conversationId = conversation.id;
 		dispatch({
 			type: "operation-started",
-			operation: "busy",
 			invalidateReads: true,
 			conversationOperation: true,
 		});
@@ -184,11 +215,7 @@ export function usePromptPresetEditor({
 					}
 				},
 			},
-		}).finally(() => {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
-		});
+		}).finally(() => settleOperation(claim));
 	};
 
 	// ==[HUMAN APPROVED]== One library command execution: pending and notice state live here, and
@@ -199,7 +226,7 @@ export function usePromptPresetEditor({
 		command: PromptPresetCommand,
 		successNotice?: (outcome: PresetCommandOutcome) => string | null,
 	): Promise<void> => {
-		if (operation !== null) return;
+		if (busy) return;
 		if (dirty && command.type === "delete" && ready?.selected.id === command.presetId) {
 			dispatch({
 				type: "notice-changed",
@@ -209,7 +236,6 @@ export function usePromptPresetEditor({
 		}
 		dispatch({
 			type: "operation-started",
-			operation: "busy",
 			invalidateReads: true,
 			clearNotice: true,
 		});
@@ -222,17 +248,7 @@ export function usePromptPresetEditor({
 				case "deleted": {
 					const refresh = await load();
 					if (!ownsOperation(claim)) return;
-					if (refresh === "network") {
-						dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
-						break;
-					}
-					if (refresh === "not-found") {
-						dispatch({
-							type: "notice-changed",
-							notice: "The selected Conversation could not be loaded.",
-						});
-						break;
-					}
+					if (reportRefreshFailure(refresh)) break;
 					dispatch({ type: "notice-changed", notice: successNotice?.(outcome) ?? null });
 					break;
 				}
@@ -244,17 +260,7 @@ export function usePromptPresetEditor({
 						// and impact instead of the values the author already confirmed.
 						const refresh = await load();
 						if (!ownsOperation(claim)) return;
-						if (refresh === "network") {
-							dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
-							break;
-						}
-						if (refresh === "not-found") {
-							dispatch({
-								type: "notice-changed",
-								notice: "The selected Conversation could not be loaded.",
-							});
-							break;
-						}
+						if (reportRefreshFailure(refresh)) break;
 						if (outcome.conflict.reason === "deletion-impact") {
 							message = presetDeletionImpactChangedNotice(
 								outcome.conflict.currentPreset.name,
@@ -280,9 +286,7 @@ export function usePromptPresetEditor({
 				dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
 			}
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
@@ -299,8 +303,8 @@ export function usePromptPresetEditor({
 	};
 
 	const exportSelectedPreset = async (presetId: number, name: string): Promise<void> => {
-		if (operation !== null) return;
-		dispatch({ type: "operation-started", operation: "busy", clearNotice: true });
+		if (busy) return;
+		dispatch({ type: "operation-started", clearNotice: true });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const native = await loadNativePromptPreset(presetId);
@@ -318,17 +322,14 @@ export function usePromptPresetEditor({
 				dispatch({ type: "notice-changed", notice: "The Prompt Preset could not be exported." });
 			}
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
 	const importPresetFile = async (file: File): Promise<void> => {
-		if (operation !== null) return;
+		if (busy) return;
 		dispatch({
 			type: "operation-started",
-			operation: "busy",
 			invalidateReads: true,
 			clearNotice: true,
 		});
@@ -340,31 +341,11 @@ export function usePromptPresetEditor({
 			if (native !== null) {
 				const outcome = await importNativePromptPreset(native);
 				if (!ownsOperation(claim)) return;
-				if (outcome.status === "invalid") {
-					dispatch({ type: "notice-changed", notice: outcome.reason });
+				if (outcome.status !== "applied") {
+					reportImportFailure(outcome);
 					return;
 				}
-				if (outcome.status === "network") {
-					dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
-					return;
-				}
-				const refresh = await load();
-				if (!ownsOperation(claim)) return;
-				if (refresh === "network") {
-					dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
-					return;
-				}
-				if (refresh === "not-found") {
-					dispatch({
-						type: "notice-changed",
-						notice: "The selected Conversation could not be loaded.",
-					});
-					return;
-				}
-				dispatch({
-					type: "notice-changed",
-					notice: `Imported "${outcome.preset.name}" as a new preset.`,
-				});
+				await reloadAfterImport(claim, `Imported "${outcome.preset.name}" as a new preset.`);
 				return;
 			}
 			const reviewOutcome = await reviewSillyTavernPromptPreset(
@@ -372,12 +353,8 @@ export function usePromptPresetEditor({
 				file.name.replace(/\.json$/i, ""),
 			);
 			if (!ownsOperation(claim)) return;
-			if (reviewOutcome.status === "invalid") {
-				dispatch({ type: "notice-changed", notice: reviewOutcome.reason });
-				return;
-			}
-			if (reviewOutcome.status === "network") {
-				dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+			if (reviewOutcome.status !== "review") {
+				reportImportFailure(reviewOutcome);
 				return;
 			}
 			setReview({
@@ -393,21 +370,19 @@ export function usePromptPresetEditor({
 				});
 			}
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
 	const commitSillyTavernReview = async (): Promise<void> => {
 		const currentReview = review;
 		if (currentReview === null) return;
-		if (operation !== null) return;
+		if (busy) return;
 		if (currentReview.preview.requiresOrderSelection && currentReview.orderListId === null) {
 			dispatch({ type: "notice-changed", notice: "Choose an order list before importing." });
 			return;
 		}
-		dispatch({ type: "operation-started", operation: "busy", invalidateReads: true });
+		dispatch({ type: "operation-started", invalidateReads: true });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await commitSillyTavernPromptPreset(
@@ -416,44 +391,22 @@ export function usePromptPresetEditor({
 				currentReview.orderListId ?? undefined,
 			);
 			if (!ownsOperation(claim)) return;
-			if (outcome.status === "invalid") {
-				dispatch({ type: "notice-changed", notice: outcome.reason });
-				return;
-			}
-			if (outcome.status === "network") {
-				dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
+			if (outcome.status !== "applied") {
+				reportImportFailure(outcome);
 				return;
 			}
 			setReview(null);
-			const refresh = await load();
-			if (!ownsOperation(claim)) return;
-			if (refresh === "network") {
-				dispatch({ type: "notice-changed", notice: LIBRARY_UNREACHABLE_NOTICE });
-				return;
-			}
-			if (refresh === "not-found") {
-				dispatch({
-					type: "notice-changed",
-					notice: "The selected Conversation could not be loaded.",
-				});
-				return;
-			}
-			dispatch({
-				type: "notice-changed",
-				notice: `Imported "${outcome.preview.preset.name}" as a new preset.`,
-			});
+			await reloadAfterImport(claim, `Imported "${outcome.preview.preset.name}" as a new preset.`);
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
 	const selectSillyTavernOrder = async (orderListId: string): Promise<void> => {
 		const currentReview = review;
 		if (currentReview === null) return;
-		if (operation !== null) return;
-		dispatch({ type: "operation-started", operation: "busy" });
+		if (busy) return;
+		dispatch({ type: "operation-started" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await reviewSillyTavernPromptPreset(
@@ -468,9 +421,7 @@ export function usePromptPresetEditor({
 				dispatch({ type: "notice-changed", notice: outcome.reason });
 			}
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
@@ -485,9 +436,9 @@ export function usePromptPresetEditor({
 		submitted?: { blockId: number; draft: BlockDraft },
 	): Promise<void> => {
 		if (conversation === null) return;
-		if (operation !== null) return;
+		if (busy) return;
 		const conversationId = conversation.id;
-		dispatch({ type: "operation-started", operation: "busy", clearProblem: true });
+		dispatch({ type: "operation-started", clearProblem: true });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await run();
@@ -527,9 +478,7 @@ export function usePromptPresetEditor({
 			}
 			dispatch({ type: "recipe-adopted", claim: read, selected: fresh });
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
@@ -590,9 +539,9 @@ export function usePromptPresetEditor({
 	const saveAndLeave = async (): Promise<void> => {
 		const request = stateRef.current.leaveRequest;
 		const currentReady = stateRef.current.view.status === "ready" ? stateRef.current.view : null;
-		if (stateRef.current.operation !== null || conversation === null || currentReady === null || request === null) return;
+		if (stateRef.current.busy || conversation === null || currentReady === null || request === null) return;
 		const conversationId = conversation.id;
-		dispatch({ type: "operation-started", operation: "leave" });
+		dispatch({ type: "operation-started", leaving: true });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const failure = await saveDrafts(currentReady.selected, claim, conversationId);
@@ -603,9 +552,7 @@ export function usePromptPresetEditor({
 			}
 			finishLeave(request);
 		} finally {
-			if (ownsOperation(claim)) {
-				dispatch({ type: "operation-settled", claim });
-			}
+			settleOperation(claim);
 		}
 	};
 
