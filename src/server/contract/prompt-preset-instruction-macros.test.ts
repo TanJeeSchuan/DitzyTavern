@@ -1,247 +1,33 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConnectionSettingsModule } from "../connection-settings";
-import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRoutes } from "./prompt-preset";
 import { expandText } from "../../shared/prompt-macros";
-import type { ModelFetch } from "../model-client";
-import type {
-	ConversationPromptPreset,
-	PromptPresetRecipe,
-} from "../../shared/contract/prompt-preset";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
-
-const key = new Uint8Array(32).fill(11);
-
-const humanPrompt = {
-	systemInstruction: "Human system text never reaches the plan.",
-	identity: "I write as {{self}} opposite {{other}}.",
-	scenario: "Human scenario never reaches the plan.",
-	exampleDialogue: "Human examples never reach the plan.",
-	postHistoryInstruction: "Human post-history never reaches the plan.",
-};
-
-const modelPrompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	scenario: "A quiet room.",
-	exampleDialogue: "Writer: Hello\nMaren: Hello back",
-	postHistoryInstruction: "Continue.",
-};
-
-const profile = {
-	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43129/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
-
-interface CapturedRequest {
-	messages: { role: string; content: string }[];
-}
-
-const createChat = (
-	database: Database,
-	names: { human?: string; model?: string } = {},
-) =>
-	createConversationModule(database).create({
-		name: "Preset Chat",
-		participants: [
-			{
-				definition: {
-					name: names.human ?? "Writer",
-					prompt: humanPrompt,
-					openings: [],
-				},
-			},
-			{
-				definition: {
-					name: names.model ?? "Maren",
-					prompt: modelPrompt,
-					openings: [],
-				},
-			},
-		],
-		control: { human: 0, model: 1 },
-	});
-
-const withProfile = (database: Database) =>
-	createConnectionSettingsModule(database, { masterKey: key }).createProfile({
-		expectedRevision: 0,
-		profile,
-		credential: "preset-secret",
-	});
-
-const readPreset = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-): Promise<ConversationPromptPreset> => {
-	const response = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/prompt-preset`),
-	);
-	expect(response.status).toBe(200);
-	// SAFETY: the route's response schema is the resolved preset payload.
-	return await response.json() as ConversationPromptPreset;
-};
-
-const readOperation = async (operation: Promise<Response>): Promise<PromptPresetRecipe> => {
-	const response = await operation;
-	expect(response.status).toBe(200);
-	// SAFETY: each recipe operation responds with the stored recipe as a fresh
-	// read; this test controls the typed response.
-	return await response.json() as PromptPresetRecipe;
-};
-
-const presetRoutes = (database: Database) => createPromptPresetRoutes(database);
-
-const moveBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	toPosition: number,
-) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/move`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ toPosition }),
-		}),
-	);
-
-const toggleBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	enabled: boolean,
-) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/toggle`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ enabled }),
-		}),
-	);
-
-const setBlockRole = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	role: string,
-) =>
-	presetRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/role`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ role }),
-		}),
-	);
-
-interface RecipeSlot {
-	id: number;
-	reference: string;
-	enabled: boolean;
-	role?: string | null;
-	sourceName?: string | null;
-	content?: string;
-	entryCount?: number;
-	name?: string;
-}
-
-const slotOf = (
-	recipe: { slots: RecipeSlot[] },
-	reference: string,
-	occurrence = 0,
-) => recipe.slots.filter((slot) => slot.reference === reference)[occurrence];
-
-// SAFETY: the controlled fake receives the AI SDK Chat Completions body and
-// answers with a single completed delta.
-const captureModelFetch = (
-	onCapture: (captured: CapturedRequest) => void,
-	waitFor?: Promise<void>,
-): ModelFetch => {
-	const encoder = new TextEncoder();
-	const payload = [
-		{ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] },
-		{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-	]
-		.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-		.join("") + "data: [DONE]\n\n";
-	return async (_input, init) => {
-		// SAFETY: this test's fake owns the request body shape.
-		onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-		return new Response(new ReadableStream({
-			async start(controller) {
-				if (waitFor !== undefined) await waitFor;
-				controller.enqueue(encoder.encode(payload));
-				controller.close();
-			},
-		}), { headers: { "content-type": "text/event-stream" } });
-	};
-};
-
-const startGeneration = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	expectedRevision: number,
-): Promise<number> => {
-	const started = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision, content: "Set the scene." }),
-		}),
-	);
-	expect(started.status).toBe(200);
-	// SAFETY: this contract test controls the typed acceptance response.
-	const accepted = await started.json() as { generationId: number };
-	return accepted.generationId;
-};
-
-const readInspection = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	generationId: number,
-) => {
-	const inspected = await app.handle(
-		new Request(
-			`http://localhost/api/conversations/${conversationId}/generations/${generationId}/inspection`,
-		),
-	);
-	expect(inspected.status).toBe(200);
-	// SAFETY: the route's response schema is the active inspection payload.
-	return await inspected.json() as {
-		promptPlan: {
-			blocks: { kind: string; content: string; role: string | null }[];
-			warnings: { block: string; macro: string }[];
-		};
-		budget: { tokenEstimate: number };
-	};
-};
-
-const completeGeneration = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	generationId: number,
-) => {
-	await (await app.handle(new Request(
-		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/events`,
-	))).text();
-};
+import {
+	CapturedRequest,
+	captureModelFetch,
+	completeGeneration,
+	conversationApp,
+	createChat,
+	key,
+	moveBlock,
+	readInspection,
+	readOperation,
+	readPreset,
+	presetRoutes,
+	setBlockRole,
+	slotOf,
+	startGeneration,
+	toggleBlock,
+	withProfile,
+} from "./prompt-preset-test-fixtures";
 
 describe("Prompt Preset authored instruction macros", () => {
 	let database: Database;
 
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
-
-	const conversationApp = () => createConversationRoutes(database);
 
 	const addInstruction = (presetId: number) =>
 		presetRoutes(database).handle(
@@ -268,7 +54,7 @@ describe("Prompt Preset authored instruction macros", () => {
 		expectedRevision: number,
 		action: ConversationAction,
 	) => {
-		const response = await conversationApp().handle(
+		const response = await conversationApp(database).handle(
 			new Request(`http://localhost/api/conversations/${conversationId}/commands`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -293,7 +79,7 @@ describe("Prompt Preset authored instruction macros", () => {
 	};
 
 	const conversationRevision = async (conversationId: number): Promise<number> => {
-		const response = await conversationApp().handle(
+		const response = await conversationApp(database).handle(
 			new Request(`http://localhost/api/conversations/${conversationId}`),
 		);
 		expect(response.status).toBe(200);
@@ -319,7 +105,7 @@ describe("Prompt Preset authored instruction macros", () => {
 		const first = createChat(database, { human: "Rowan", model: "Sable" });
 		const second = createChat(database, { human: "Iris", model: "Quill" });
 		withProfile(database);
-		const preset = await readPreset(conversationApp(), first.id);
+		const preset = await readPreset(conversationApp(database), first.id);
 		const instructionId = await addAndSaveInstruction(
 			preset.id,
 			"Perspective",
@@ -353,7 +139,7 @@ describe("Prompt Preset authored instruction macros", () => {
 		// Control reassignment swaps the seats: the human seat now holds Sable
 		// and the model seat holds Rowan. Participant ids are the cast order
 		// (1 = the human seed, 2 = the model seed).
-		const searchResponse = await conversationApp().handle(
+		const searchResponse = await conversationApp(database).handle(
 			new Request(`http://localhost/api/conversations/${first.id}`),
 		);
 		// SAFETY: the route's response schema is the Conversation summary.
@@ -409,7 +195,7 @@ describe("Prompt Preset authored instruction macros", () => {
 	test("unknown macros stay literal, warn in the compiled plan, and never block Generation", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 		const content = "{{user}} and {{time}} stay raw; {{self}} works.";
 		await addAndSaveInstruction(preset.id, "Imported", content, "system");
 
@@ -444,7 +230,7 @@ describe("Prompt Preset authored instruction macros", () => {
 
 	test("an instruction save never overwrites separately saved ordering, toggles or roles", async () => {
 		const conversation = createChat(database);
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 		const scenario = slotOf(preset, "model-scenario");
 		const postHistory = slotOf(preset, "model-post-history-instruction");
 		const identity = slotOf(preset, "model-identity");
@@ -465,7 +251,7 @@ describe("Prompt Preset authored instruction macros", () => {
 
 		// The instruction save named one occurrence; the separately saved
 		// ordering, toggle and role stand exactly as they were saved.
-		const saved = await readPreset(conversationApp(), conversation.id);
+		const saved = await readPreset(conversationApp(database), conversation.id);
 		expect(saved.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
 			["model-post-history-instruction", true],
 			["model-system-instruction", true],
@@ -490,7 +276,7 @@ describe("Prompt Preset authored instruction macros", () => {
 	test("an Active Generation keeps its captured instruction while the next Generation observes the save", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 		const instructionId = await addAndSaveInstruction(
 			preset.id,
 			"Tone",
@@ -540,7 +326,7 @@ describe("Prompt Preset authored instruction macros", () => {
 			masterKey: key,
 			fetch: captureModelFetch((request) => { capturedNext = request; }),
 		});
-		const summaryResponse = await conversationApp().handle(
+		const summaryResponse = await conversationApp(database).handle(
 			new Request(`http://localhost/api/conversations/${conversation.id}`),
 		);
 		// SAFETY: the route's response schema is the Conversation summary.
@@ -559,7 +345,7 @@ describe("Prompt Preset authored instruction macros", () => {
 			masterKey: key,
 			fetch: captureModelFetch(() => {}),
 		});
-		const preset = await readPreset(conversationApp(), conversation.id);
+		const preset = await readPreset(conversationApp(database), conversation.id);
 		const instructionId = await addAndSaveInstruction(
 			preset.id,
 			"Tone",

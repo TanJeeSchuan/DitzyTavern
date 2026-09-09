@@ -1,126 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationModule } from "../conversation";
-import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRoutes } from "./prompt-preset-routes";
-import type {
-	ConversationSummary,
-} from "../../shared/contract/conversation-schema";
-import type {
-	ConversationPromptPreset,
-	PromptPresetCommand,
-	PromptPresetConflict,
-	PromptPresetListResponse,
-	PromptPresetSummary,
-} from "../../shared/contract/prompt-preset";
+import type { ConversationSummary } from "../../shared/contract/conversation-schema";
+import type { PromptPresetConflict } from "../../shared/contract/prompt-preset";
 import { addPromptPresetInstruction, readPromptPresetRecipe } from "../prompt-preset";
-
-const humanPrompt = {
-	systemInstruction: "Human system text never reaches the plan.",
-	identity: "I write as {{self}} opposite {{other}}.",
-	scenario: "Human scenario never reaches the plan.",
-	exampleDialogue: "Human examples never reach the plan.",
-	postHistoryInstruction: "Human post-history never reaches the plan.",
-};
-
-const modelPrompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	scenario: "A quiet room.",
-	exampleDialogue: "Writer: Hello\nMaren: Hello back",
-	postHistoryInstruction: "Continue.",
-};
-
-const createChat = (database: Database, name = "Preset Chat") =>
-	createConversationModule(database).create({
-		name,
-		participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, openings: [] } },
-		],
-		control: { human: 0, model: 1 },
-	});
-
-// ==[HUMAN APPROVED]== Library and selection tests exercise the ordinary public routes
-// against one isolated initialized database: the same seam the popup uses,
-// with no test-only transport or persistence helpers.
-const createRoutes = (database: Database) => ({
-	library: createPromptPresetRoutes(database),
-	conversations: createConversationRoutes(database),
-});
-
-const listPresets = async (
-	app: ReturnType<typeof createPromptPresetRoutes>,
-): Promise<PromptPresetSummary[]> => {
-	const response = await app.handle(new Request("http://localhost/api/prompt-presets"));
-	expect(response.status).toBe(200);
-	// SAFETY: the route's response schema is the library list payload.
-	const payload = await response.json() as PromptPresetListResponse;
-	return payload.presets;
-};
-
-const runPresetCommand = async (
-	app: ReturnType<typeof createPromptPresetRoutes>,
-	command: PromptPresetCommand,
-): Promise<{ status: number; body: unknown }> => {
-	const response = await app.handle(
-		new Request("http://localhost/api/prompt-presets/commands", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(command),
-		}),
-	);
-	// SAFETY: the route validates the discriminated command at this boundary.
-	const body = await response.json();
-	return { status: response.status, body };
-};
-
-const readSelectedPreset = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-): Promise<ConversationPromptPreset | null> => {
-	const response = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/prompt-preset`),
-	);
-	if (response.status === 404) return null;
-	expect(response.status).toBe(200);
-	// SAFETY: the route's response schema is the resolved preset payload.
-	return await response.json() as ConversationPromptPreset;
-};
-
-const readConversation = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-): Promise<ConversationSummary> => {
-	const response = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}`),
-	);
-	expect(response.status).toBe(200);
-	// SAFETY: the route's response schema is the conversation summary payload.
-	return await response.json() as ConversationSummary;
-};
-
-const selectPreset = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	expectedRevision: number,
-	promptPresetId: number,
-): Promise<{ status: number; body: unknown }> => {
-	const response = await app.handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/commands`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				expectedRevision,
-				action: { type: "select-prompt-preset", promptPresetId },
-			}),
-		}),
-	);
-	// SAFETY: the route validates the revisioned command shape at this boundary.
-	const body = await response.json();
-	return { status: response.status, body };
-};
+import {
+	createChat,
+	createRoutes,
+	libraryRoutes,
+	listPresets,
+	readConversation,
+	readSelectedPreset,
+	runPresetCommand,
+	selectPreset,
+} from "./prompt-preset-test-fixtures";
 
 describe("Prompt Preset library transport", () => {
 	let database: Database;
@@ -129,9 +22,9 @@ describe("Prompt Preset library transport", () => {
 	afterEach(() => database.close());
 
 	test("lists the library with the Default preset first and its Conversation count", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		createChat(database);
-		createChat(database, "Second Chat");
+		createChat(database, { name: "Second Chat" });
 
 		const presets = await listPresets(app);
 
@@ -172,7 +65,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("rejects a blank preset name as invalid", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		const applied = await runPresetCommand(app, { type: "create", name: "   " });
 		expect(applied.status).toBe(422);
 		// SAFETY: the invalid outcome carries a reason string.
@@ -180,7 +73,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("renames through the durable command and rereads the new name", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		await runPresetCommand(app, { type: "create", name: "Working Title" });
 
 		const applied = await runPresetCommand(app, {
@@ -200,7 +93,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("conflicts a stale rename with the authoritative preset", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		await runPresetCommand(app, { type: "create", name: "Original" });
 
 		const applied = await runPresetCommand(app, {
@@ -256,7 +149,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("source renaming and deletion leave the duplicate untouched", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		await runPresetCommand(app, { type: "create", name: "Source" });
 		const duplicated = await runPresetCommand(app, {
 			type: "duplicate",
@@ -290,7 +183,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("refuses to delete the Default preset", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		const deleted = await runPresetCommand(app, {
 			type: "delete",
 			presetId: 1,
@@ -308,8 +201,8 @@ describe("Prompt Preset library transport", () => {
 	test("reports the affected Conversation count and reassigns exactly those Chats to Default", async () => {
 		const routes = createRoutes(database);
 		const chatA = createChat(database);
-		const chatB = createChat(database, "Chat B");
-		const chatC = createChat(database, "Chat C");
+		const chatB = createChat(database, { name: "Chat B" });
+		const chatC = createChat(database, { name: "Chat C" });
 		await runPresetCommand(routes.library, { type: "create", name: "Story" });
 		await selectPreset(routes.conversations, chatA.id, chatA.revision, 2);
 		await selectPreset(routes.conversations, chatB.id, chatB.revision, 2);
@@ -400,7 +293,7 @@ describe("Prompt Preset library transport", () => {
 	test("conflicts a deletion when the affected-Conversation count decreased without a revision change", async () => {
 		const routes = createRoutes(database);
 		const chatA = createChat(database);
-		const chatB = createChat(database, "Chat B");
+		const chatB = createChat(database, { name: "Chat B" });
 		await runPresetCommand(routes.library, { type: "create", name: "Story" });
 		await selectPreset(routes.conversations, chatA.id, chatA.revision, 2);
 		await selectPreset(routes.conversations, chatB.id, chatB.revision, 2);
@@ -430,7 +323,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("saves mixed block patches atomically and preserves independently saved recipe fields", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		createChat(database);
 		// The library route intentionally owns only library commands; seed one occurrence
 		// through the domain operation before exercising the command route.
@@ -485,7 +378,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("returns not-found when saving patches against a nonexistent preset, for empty and nonempty patches", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 
 		const empty = await runPresetCommand(app, {
 			type: "save-block-patches",
@@ -506,7 +399,7 @@ describe("Prompt Preset library transport", () => {
 	});
 
 	test("returns not-found when saving patches against a deleted preset", async () => {
-		const app = createPromptPresetRoutes(database);
+		const app = libraryRoutes(database);
 		await runPresetCommand(app, { type: "create", name: "Disposable" });
 		await runPresetCommand(app, {
 			type: "delete",
@@ -536,7 +429,7 @@ describe("Prompt Preset library transport", () => {
 	test("selects independently for each Conversation and survives a fresh read", async () => {
 		const routes = createRoutes(database);
 		const chatA = createChat(database);
-		const chatB = createChat(database, "Chat B");
+		const chatB = createChat(database, { name: "Chat B" });
 		await runPresetCommand(routes.library, { type: "create", name: "Story" });
 
 		const applied = await selectPreset(routes.conversations, chatA.id, chatA.revision, 2);
