@@ -69,17 +69,17 @@ const validateBlockPatches = (
 };
 
 const applyBlockPatch = (
-	tx: Pick<RecipeDatabase, "update">,
+	db: Pick<RecipeDatabase, "update">,
 	patch: PromptPresetBlockPatch,
 ): void => {
 	if (patch.type === "role") {
-		tx.update(promptPresetBlockTable)
+		db.update(promptPresetBlockTable)
 			.set({ role: patch.role })
 			.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
 			.run();
 		return;
 	}
-	tx.update(promptPresetBlockTable)
+	db.update(promptPresetBlockTable)
 		.set({ name: patch.name, content: patch.content, role: patch.role })
 		.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
 		.run();
@@ -153,12 +153,12 @@ export const savePromptPresetBlockPatches = (
 	patches: readonly PromptPresetBlockPatch[],
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
-	return db.transaction((tx) => {
+	return database.transaction(() => {
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		validateBlockPatches(recipe, patches);
-		patches.forEach((patch) => applyBlockPatch(tx, patch));
+		patches.forEach((patch) => applyBlockPatch(db, patch));
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	});
+	}).immediate();
 };
 
 // ==[HUMAN APPROVED]== One transactional boundary for the occurrence-addressed writes: the
@@ -170,19 +170,21 @@ const writePromptPresetBlock = (
 	presetId: number,
 	blockId: number,
 	write: (
-		tx: Pick<RecipeDatabase, "select" | "update" | "insert" | "delete">,
+		db: Pick<RecipeDatabase, "select" | "update" | "insert" | "delete">,
 		occurrence: PromptPresetBlockOccurrence,
 	) => void,
-): PromptPresetRecipe =>
-	drizzle(database).transaction((tx) => {
+): PromptPresetRecipe => {
+	const db = drizzle(database);
+	return database.transaction(() => {
 		const occurrence = requireBlock(database, presetId, blockId)
 			.slots.find((slot) => slot.id === blockId);
 		if (occurrence === undefined) {
 			throw new PromptPresetBlockNotFoundError(presetId, blockId);
 		}
-		write(tx, occurrence);
+		write(db, occurrence);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	});
+	}).immediate();
+};
 
 /** ==[HUMAN APPROVED]== Appends one reference occurrence with its default outgoing role. */
 export const addPromptPresetBlock = (
@@ -190,11 +192,11 @@ export const addPromptPresetBlock = (
 	presetId: number,
 	reference: PromptBlockReference,
 ): PromptPresetRecipe => {
-	requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	const db = drizzle(database);
-	return db.transaction((tx) => {
-		const count = orderedIdsOf(tx, presetId).length;
-		tx.insert(promptPresetBlockTable)
+	return database.transaction(() => {
+		requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const count = orderedIdsOf(db, presetId).length;
+		db.insert(promptPresetBlockTable)
 			.values({
 				preset_id: presetId,
 				position: count + 1,
@@ -204,7 +206,7 @@ export const addPromptPresetBlock = (
 			})
 			.run();
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	});
+	}).immediate();
 };
 
 /** ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence. The name, text, and
@@ -215,11 +217,11 @@ export const addPromptPresetInstruction = (
 	database: Database,
 	presetId: number,
 ): PromptPresetRecipe => {
-	requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	const db = drizzle(database);
-	return db.transaction((tx) => {
-		const count = orderedIdsOf(tx, presetId).length;
-		tx.insert(promptPresetBlockTable)
+	return database.transaction(() => {
+		requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const count = orderedIdsOf(db, presetId).length;
+		db.insert(promptPresetBlockTable)
 			.values({
 				preset_id: presetId,
 				position: count + 1,
@@ -231,7 +233,7 @@ export const addPromptPresetInstruction = (
 			})
 			.run();
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	});
+	}).immediate();
 };
 
 /** ==[HUMAN APPROVED]== Moves one occurrence to a one-based position, shifting the rest. */
@@ -241,8 +243,8 @@ export const movePromptPresetBlock = (
 	blockId: number,
 	toPosition: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx) => {
-		const ordered = orderedIdsOf(tx, presetId);
+	writePromptPresetBlock(database, presetId, blockId, (db) => {
+		const ordered = orderedIdsOf(db, presetId);
 		if (toPosition < 1 || toPosition > ordered.length) {
 			throw new InvalidPromptPresetOperationError(
 				`Position ${toPosition} is outside the recipe's ${ordered.length} slots.`,
@@ -250,7 +252,7 @@ export const movePromptPresetBlock = (
 		}
 		const without = ordered.filter((id) => id !== blockId);
 		without.splice(toPosition - 1, 0, blockId);
-		renumber(tx, presetId, without);
+		renumber(db, presetId, without);
 	});
 
 /** ==[HUMAN APPROVED]== Enables or disables one occurrence without moving it. */
@@ -260,8 +262,8 @@ export const setPromptPresetBlockEnabled = (
 	blockId: number,
 	enabled: boolean,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx) => {
-		tx.update(promptPresetBlockTable)
+	writePromptPresetBlock(database, presetId, blockId, (db) => {
+		db.update(promptPresetBlockTable)
 			.set({ enabled })
 			.where(eq(promptPresetBlockTable.id, blockId))
 			.run();
@@ -276,11 +278,11 @@ export const duplicatePromptPresetBlock = (
 	presetId: number,
 	blockId: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx, original) => {
+	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.
-		const ordered = orderedIdsOf(tx, presetId);
+		const ordered = orderedIdsOf(db, presetId);
 		// ==[HUMAN APPROVED]== Authored instruction rows carry their own name and text;
 		// referenced occurrences store none, so only the instruction branch
 		// contributes them to the copy.
@@ -295,7 +297,7 @@ export const duplicatePromptPresetBlock = (
 			duplicatedRow.name = original.name;
 			duplicatedRow.content = original.content;
 		}
-		const inserted = tx
+		const inserted = db
 			.insert(promptPresetBlockTable)
 			.values(duplicatedRow)
 			.returning({ id: promptPresetBlockTable.id })
@@ -305,7 +307,7 @@ export const duplicatePromptPresetBlock = (
 		}
 		const withCopy = [...ordered];
 		withCopy.splice(withCopy.indexOf(blockId) + 1, 0, inserted.id);
-		renumber(tx, presetId, withCopy);
+		renumber(db, presetId, withCopy);
 	});
 
 /** ==[HUMAN APPROVED]== Removes one occurrence; no slot is forced to remain. */
@@ -314,9 +316,9 @@ export const removePromptPresetBlock = (
 	presetId: number,
 	blockId: number,
 ): PromptPresetRecipe =>
-	writePromptPresetBlock(database, presetId, blockId, (tx) => {
-		tx.delete(promptPresetBlockTable)
+	writePromptPresetBlock(database, presetId, blockId, (db) => {
+		db.delete(promptPresetBlockTable)
 			.where(eq(promptPresetBlockTable.id, blockId))
 			.run();
-		renumber(tx, presetId, orderedIdsOf(tx, presetId));
+		renumber(db, presetId, orderedIdsOf(db, presetId));
 	});
