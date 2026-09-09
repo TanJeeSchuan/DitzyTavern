@@ -8,7 +8,6 @@ import {
 	promptPresetBlockPatch,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
-	type PromptOutgoingRole,
 	type PromptPresetBlockOccurrence,
 	type PromptPresetRecipe,
 } from "../../shared/contract/prompt-preset";
@@ -321,36 +320,3 @@ export const removePromptPresetBlock = (
 			.run();
 		renumber(tx, presetId, orderedIdsOf(tx, presetId));
 	});
-
-/**
- * ==[HUMAN APPROVED]== Saves one Definition occurrence's outgoing role. The history slot has
- * no outgoing role: its entries carry the roles of their own Messages.
- */
-export const setPromptPresetBlockRole = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	role: PromptOutgoingRole,
-): PromptPresetRecipe => savePromptPresetBlockPatches(database, presetId, [{
-		occurrenceId: blockId,
-		type: "role",
-		role,
-	}]);
-
-/**
- * ==[HUMAN APPROVED]== Saves one authored instruction occurrence's name, text, and outgoing
- * role as one block-level Save boundary. The operation names one occurrence
- * and writes only its rows, so a stale draft can never overwrite ordering,
- * toggles, or another block's saved text. Referenced occurrences hold no
- * authored text and are refused.
- */
-export const setPromptPresetBlockContent = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-	content: { name: string; content: string; role: PromptOutgoingRole },
-): PromptPresetRecipe => savePromptPresetBlockPatches(database, presetId, [{
-		occurrenceId: blockId,
-		type: "content",
-		...content,
-	}]);

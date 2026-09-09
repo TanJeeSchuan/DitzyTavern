@@ -1,17 +1,15 @@
 import { ChevronDown, ChevronUp, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { expandText } from "../../../shared/prompt-macros";
+import type { PromptOutgoingRole, ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
 	removePromptPresetBlock,
-	setPromptPresetBlockContent,
+	savePromptPresetBlockPatches,
 	setPromptPresetBlockEnabled,
-	setPromptPresetBlockRole,
-	type PromptOutgoingRole,
 	type PromptPresetOperationOutcome,
-	type ResolvedPromptPresetSlot,
-} from "../../conversation";
+} from "../../prompt-preset-library";
 import { outgoingRoleLabels, slotTitle } from "../../prompt-preset-presentation";
 import { draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
 
@@ -152,7 +150,7 @@ export function PromptPresetRecipeRow({
 				onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 				onCancel={() => onDraftCancel(slot.id)}
 				onSave={(fields) => onOperation(
-					() => setPromptPresetBlockContent(presetId, slot.id, fields),
+					() => savePromptPresetBlockPatches(presetId, [{ occurrenceId: slot.id, type: "content", ...fields }]),
 					{ blockId: slot.id, draft: { kind: "content", ...fields } },
 				)}
 			/>
@@ -174,7 +172,7 @@ export function PromptPresetRecipeRow({
 									size="xs"
 									disabled={pending}
 									onClick={() => onOperation(
-										() => setPromptPresetBlockRole(presetId, slot.id, roleDraft.role),
+										() => savePromptPresetBlockPatches(presetId, [{ occurrenceId: slot.id, type: "role", role: roleDraft.role }]),
 										{ blockId: slot.id, draft: roleDraft },
 									)}
 								>

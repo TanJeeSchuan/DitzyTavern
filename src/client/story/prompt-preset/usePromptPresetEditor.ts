@@ -2,10 +2,7 @@ import { useRef, useState } from "react";
 import {
 	applyConversationCommand,
 	loadConversationPromptPreset,
-	savePromptPresetBlockPatches,
-	type ConversationPromptPreset,
 	type ConversationSummary,
-	type PromptPresetOperationOutcome,
 } from "../../conversation";
 import { runConversationCommand } from "../../conversation-command-runner";
 import {
@@ -16,10 +13,13 @@ import {
 	listPromptPresets,
 	parseNativePromptPreset,
 	reviewSillyTavernPromptPreset,
+	savePromptPresetBlockPatches,
 	type PresetCommandOutcome,
 	type PromptPresetCommand,
+	type PromptPresetOperationOutcome,
 	type SillyTavernJsonValue,
 } from "../../prompt-preset-library";
+import type { ConversationPromptPreset } from "../../../shared/contract/prompt-preset";
 import { LIBRARY_UNREACHABLE_NOTICE } from "../../lib/command-outcome";
 import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
 import { useAsyncEffect } from "../../lib/use-async";

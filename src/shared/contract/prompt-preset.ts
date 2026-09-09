@@ -271,9 +271,10 @@ export const promptPresetDeleteCommand = Type.Object({
 	expectedConversationCount: Type.Integer(),
 });
 
-// ==[HUMAN APPROVED]== Save-on-leave addresses only the authored fields that the editor owns.
-// Occurrence identity is mandatory so a draft can never accidentally target a
-// duplicate occurrence or rewrite ordering and enablement.
+// ==[HUMAN APPROVED]== The one authored-field save contract: individual block Save and
+// save-on-leave address only the fields the editor owns. Occurrence identity
+// is mandatory so a save can never accidentally target a duplicate occurrence
+// or rewrite ordering and enablement.
 export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
@@ -290,8 +291,9 @@ export const promptPresetBlockPatch = Type.Union([
 ]);
 export type PromptPresetBlockPatch = Static<typeof promptPresetBlockPatch>;
 
-// ==[HUMAN APPROVED]== The recipe route's patch batch: one occurrence-addressed save-on-leave
-// submission, applied atomically or refused entirely.
+// ==[HUMAN APPROVED]== The recipe route's patch batch: an individual Save submits one
+// occurrence-addressed patch and save-on-leave submits the dirty set, applied
+// atomically or refused entirely.
 export const promptPresetBlockPatchesBody = Type.Object({
 	patches: Type.Array(promptPresetBlockPatch),
 });
@@ -359,26 +361,14 @@ export const promptPresetCommandConflict = Type.Union([
 
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each operation
 // persists the smallest change it names: adding one reference, moving one
-// occurrence, toggling one occurrence, duplicating one occurrence, removing
-// one occurrence, or saving one occurrence's outgoing role — never a
-// whole-recipe rewrite that could stomp separately saved changes.
+// occurrence, toggling one occurrence, duplicating one occurrence, or removing
+// one occurrence — never a whole-recipe rewrite that could stomp separately
+// saved changes. Authored-field saves travel the patch batch below instead.
 export const addPromptPresetBlockBody = Type.Object({ reference: promptBlockReference });
 export const movePromptPresetBlockBody = Type.Object({
 	toPosition: Type.Integer({ minimum: 1 }),
 });
 export const setPromptPresetBlockEnabledBody = Type.Object({ enabled: Type.Boolean() });
-export const setPromptPresetBlockRoleBody = Type.Object({ role: promptOutgoingRole });
-
-// ==[HUMAN APPROVED]== The one authored-instruction save. Name, text, and outgoing role are a
-// single block-level Save boundary: the operation names one occurrence and
-// writes only its rows, so a stale draft can never overwrite separately
-// saved ordering or toggles.
-export const setPromptPresetBlockContentBody = Type.Object({
-	name: Type.String(),
-	content: Type.String(),
-	role: promptOutgoingRole,
-});
-export type SetPromptPresetBlockContent = Static<typeof setPromptPresetBlockContentBody>;
 
 export const presetIdParams = Type.Object({ presetId: numericWire });
 export const blockIdParams = Type.Object({

@@ -31,9 +31,7 @@ export {
 	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
 	savePromptPresetBlockPatches,
-	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
-	setPromptPresetBlockRole,
 } from "./blocks";
 export {
 	DefaultPromptPresetNotRemovableError,

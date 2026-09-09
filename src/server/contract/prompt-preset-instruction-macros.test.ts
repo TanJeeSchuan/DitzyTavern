@@ -4,6 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import { expandText } from "../../shared/prompt-macros";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
+import type { PromptOutgoingRole } from "../../shared/contract/prompt-preset";
 import {
 	CapturedRequest,
 	captureModelFetch,
@@ -16,7 +17,8 @@ import {
 	readOperation,
 	readPreset,
 	recipeRoutes,
-	setBlockRole,
+	saveBlockRole,
+	saveInstructionContent,
 	slotOf,
 	startGeneration,
 	toggleBlock,
@@ -33,19 +35,6 @@ describe("Prompt Preset authored instruction macros", () => {
 		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
-			}),
-		);
-
-	const setInstructionContent = (
-		presetId: number,
-		blockId: number,
-		body: { name: string; content: string; role: string },
-	) =>
-		recipeRoutes(database).handle(
-			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(body),
 			}),
 		);
 
@@ -92,12 +81,12 @@ describe("Prompt Preset authored instruction macros", () => {
 		presetId: number,
 		name: string,
 		content: string,
-		role: string,
+		role: PromptOutgoingRole,
 	): Promise<number> => {
 		const added = await readOperation(addInstruction(presetId));
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
-		await readOperation(setInstructionContent(presetId, instruction.id, { name, content, role }));
+		await readOperation(saveInstructionContent(database, presetId, instruction.id, { name, content, role }));
 		return instruction.id;
 	};
 
@@ -177,7 +166,8 @@ describe("Prompt Preset authored instruction macros", () => {
 
 		// Changing the outgoing role to user changes only the presentation:
 		// the same perspective, now sent as a user message.
-		await readOperation(setInstructionContent(
+		await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			instructionId,
 			{ name: "Perspective", content: "You are {{self}}; answer {{other}}.", role: "user" },
@@ -240,7 +230,7 @@ describe("Prompt Preset authored instruction macros", () => {
 
 		await readOperation(toggleBlock(database, preset.id, scenario.id, false));
 		await readOperation(moveBlock(database, preset.id, postHistory.id, 1));
-		await readOperation(setBlockRole(database, preset.id, identity.id, "user"));
+		await readOperation(saveBlockRole(database, preset.id, identity.id, "user"));
 
 		const instructionId = await addAndSaveInstruction(
 			preset.id,
@@ -296,7 +286,8 @@ describe("Prompt Preset authored instruction macros", () => {
 
 		// While the attempt streams, the saved instruction changes in text,
 		// role and position.
-		await readOperation(setInstructionContent(
+		await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			instructionId,
 			{ name: "Tone", content: "Revised tone.", role: "user" },
@@ -357,7 +348,8 @@ describe("Prompt Preset authored instruction macros", () => {
 		const first = await readInspection(fetchApp, conversation.id, firstId);
 		await completeGeneration(fetchApp, conversation.id, firstId);
 
-		await readOperation(setInstructionContent(
+		await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			instructionId,
 			{

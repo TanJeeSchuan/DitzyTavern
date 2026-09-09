@@ -9,9 +9,7 @@ import {
 	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
 	savePromptPresetBlockPatches,
-	setPromptPresetBlockContent,
 	setPromptPresetBlockEnabled,
-	setPromptPresetBlockRole,
 } from "../prompt-preset/blocks";
 import { PromptPresetNotFoundError } from "../prompt-preset/errors";
 import { withDatabase } from "../database/database";
@@ -22,9 +20,7 @@ import {
 	presetIdParams,
 	promptPresetBlockPatchesBody,
 	promptPresetRecipe,
-	setPromptPresetBlockContentBody,
 	setPromptPresetBlockEnabledBody,
-	setPromptPresetBlockRoleBody,
 } from "../../shared/contract/prompt-preset";
 import { invalidResponse, notFoundResponse } from "./responses";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -157,24 +153,6 @@ export const createPromptPresetRecipeRoutes = (database: Database | undefined) =
 			},
 		)
 		.post(
-			"/api/prompt-presets/:presetId/blocks/:blockId/role",
-			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeOperationResponse(runRecipeOperation(() =>
-						setPromptPresetBlockRole(
-							connection,
-							params.presetId,
-							params.blockId,
-							body.role,
-						))),
-				),
-			{
-				params: blockIdParams,
-				body: setPromptPresetBlockRoleBody,
-				response: withRecipeResponse,
-			},
-		)
-		.post(
 			"/api/prompt-presets/:presetId/instructions",
 			({ params }) =>
 				withDatabase(database, (connection) =>
@@ -183,24 +161,6 @@ export const createPromptPresetRecipeRoutes = (database: Database | undefined) =
 				),
 			{
 				params: presetIdParams,
-				response: withRecipeResponse,
-			},
-		)
-		.post(
-			"/api/prompt-presets/:presetId/blocks/:blockId/content",
-			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeOperationResponse(runRecipeOperation(() =>
-						setPromptPresetBlockContent(
-							connection,
-							params.presetId,
-							params.blockId,
-							body,
-						))),
-				),
-			{
-				params: blockIdParams,
-				body: setPromptPresetBlockContentBody,
 				response: withRecipeResponse,
 			},
 		);

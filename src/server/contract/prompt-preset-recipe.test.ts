@@ -25,7 +25,7 @@ import {
 	readPreset,
 	removeBlock,
 	saveBlockPatches,
-	setBlockRole,
+	saveBlockRole,
 	slotOf,
 	startGeneration,
 	toggleBlock,
@@ -308,10 +308,10 @@ describe("Prompt Preset transport", () => {
 		// system content. The role is presentation only: the source text and
 		// the Participant supplying it stay untouched.
 		const withRoles = await readOperation(
-			setBlockRole(database, preset.id, scenario.id, "user"),
+			saveBlockRole(database, preset.id, scenario.id, "user"),
 		);
 		const afterIdentity = await readOperation(
-			setBlockRole(database, preset.id, identity.id, "system"),
+			saveBlockRole(database, preset.id, identity.id, "system"),
 		);
 		expect(slotOf(withRoles, "model-scenario")?.role).toBe("user");
 		expect(slotOf(afterIdentity, "model-identity")?.role).toBe("system");
@@ -360,7 +360,7 @@ describe("Prompt Preset transport", () => {
 
 		await readOperation(toggleBlock(database, preset.id, scenario.id, false));
 		await readOperation(moveBlock(database, preset.id, example.id, 1));
-		await readOperation(setBlockRole(database, preset.id, identity.id, "user"));
+		await readOperation(saveBlockRole(database, preset.id, identity.id, "user"));
 
 		// The role save named one occurrence; the other saved changes stand.
 		const reread = await readPreset(app, conversation.id);
@@ -383,7 +383,7 @@ describe("Prompt Preset transport", () => {
 		const history = slotOf(preset, "history");
 		if (history === undefined) throw new Error("The Default recipe has no history slot.");
 
-		const response = await setBlockRole(database, preset.id, history.id, "user");
+		const response = await saveBlockRole(database, preset.id, history.id, "user");
 		expect(response.status).toBe(422);
 		// SAFETY: the route's typed invalid outcome.
 		const outcome = await response.json() as { outcome: string; reason: string };

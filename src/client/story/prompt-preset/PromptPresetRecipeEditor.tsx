@@ -4,9 +4,8 @@ import { Button } from "@/components/ui/button";
 import {
 	addPromptPresetInstruction,
 	addPromptPresetReference,
-	type ConversationPromptPreset,
-	type PromptBlockReference,
-} from "../../conversation";
+} from "../../prompt-preset-library";
+import type { ConversationPromptPreset, PromptBlockReference } from "../../../shared/contract/prompt-preset";
 import { slotLabels } from "../../prompt-preset-presentation";
 import type { BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetRecipeRow, roleSelectClass, type RecipeOperationHandlers } from "./PromptPresetRecipeRow";

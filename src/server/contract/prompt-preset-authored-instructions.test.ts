@@ -15,6 +15,7 @@ import {
 	readOperation,
 	readPreset,
 	removeBlock,
+	saveInstructionContent,
 	slotOf,
 	startGeneration,
 	toggleBlock,
@@ -38,19 +39,6 @@ describe("Prompt Preset authored instructions", () => {
 			}),
 		);
 
-	const setInstructionContent = (
-		presetId: number,
-		blockId: number,
-		body: { name: string; content: string; role: string },
-	) =>
-		recipeRoutes(database).handle(
-			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(body),
-			}),
-		);
-
 	test("add, save, move, toggle, duplicate and remove work for authored instruction blocks", async () => {
 		const conversation = createChat(database);
 		const preset = await readPreset(conversationApp(database), conversation.id);
@@ -67,7 +55,8 @@ describe("Prompt Preset authored instructions", () => {
 		});
 
 		// The one block-level save persists name, text, and role together.
-		const saved = await readOperation(setInstructionContent(
+		const saved = await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			// SAFETY: the occurrence above exists in the response recipe.
 			(instruction as { id: number }).id,
@@ -104,7 +93,8 @@ describe("Prompt Preset authored instructions", () => {
 		const copy = toggled.slots.filter((slot) => slot.reference === "instruction")[1];
 		if (copy === undefined) throw new Error("The duplicated instruction is missing.");
 		// SAFETY: the copy exists in the response recipe.
-		const copySaved = await readOperation(setInstructionContent(
+		const copySaved = await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			copy.id,
 			{ name: "Copy", content: "Independent text.", role: "user" },
@@ -140,7 +130,7 @@ describe("Prompt Preset authored instructions", () => {
 		const identity = slotOf(preset, "human-identity");
 		if (identity === undefined) throw new Error("The Default recipe has no Identity slot.");
 
-		const response = await setInstructionContent(preset.id, identity.id, {
+		const response = await saveInstructionContent(database, preset.id, identity.id, {
 			name: "Nope",
 			content: "Nope",
 			role: "system",
@@ -172,19 +162,6 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
-			}),
-		);
-
-	const setInstructionContent = (
-		presetId: number,
-		blockId: number,
-		body: { name: string; content: string; role: string },
-	) =>
-		recipeRoutes(database).handle(
-			new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/content`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(body),
 			}),
 		);
 
@@ -257,7 +234,8 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		const added = await readOperation(addInstruction(preset.id));
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
-		await readOperation(setInstructionContent(
+		await readOperation(saveInstructionContent(
+			database,
 			preset.id,
 			instruction.id,
 			{ name: "Tone", content: "Write like {{self}}.", role: "assistant" },
@@ -295,7 +273,8 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		const added = await readOperation(addInstruction(duplicated.preset.id));
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
-		await readOperation(setInstructionContent(
+		await readOperation(saveInstructionContent(
+			database,
 			duplicated.preset.id,
 			instruction.id,
 			{ name: "CopyOnly", content: "Only the copy has this.", role: "system" },

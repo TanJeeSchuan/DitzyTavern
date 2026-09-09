@@ -9,6 +9,7 @@ import type { ModelFetch } from "../model-client";
 import type {
 	ConversationPromptPreset,
 	NativePromptPreset,
+	PromptOutgoingRole,
 	PromptPresetBlockPatch,
 	PromptPresetCommand,
 	PromptPresetListResponse,
@@ -425,19 +426,24 @@ export const saveBlockPatches = (
 		}),
 	);
 
-export const setBlockRole = (
+// ==[HUMAN APPROVED]== Individual Save and save-on-leave share one occurrence-addressed patch
+// contract, so the fixtures submit single-element batches through the same
+// route instead of dedicated role/content endpoints.
+export const saveBlockRole = (
 	database: Database,
 	presetId: number,
 	blockId: number,
-	role: string,
+	role: PromptOutgoingRole,
 ) =>
-	recipeRoutes(database).handle(
-		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/role`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ role }),
-		}),
-	);
+	saveBlockPatches(database, presetId, [{ occurrenceId: blockId, type: "role", role }]);
+
+export const saveInstructionContent = (
+	database: Database,
+	presetId: number,
+	blockId: number,
+	content: { name: string; content: string; role: PromptOutgoingRole },
+) =>
+	saveBlockPatches(database, presetId, [{ occurrenceId: blockId, type: "content", ...content }]);
 
 export interface RecipeSlot {
 	id: number;

@@ -1,9 +1,13 @@
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
+import type { EdenResponse } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
 import { nativePromptPreset } from "../shared/contract/prompt-preset";
 import type {
 	NativePromptPreset,
+	PromptBlockReference,
+	PromptPresetBlockPatch,
+	PromptPresetRecipe,
 	SillyTavernImportApplied,
 	SillyTavernImportPreview,
 	SillyTavernImportRequest,
@@ -17,7 +21,9 @@ import type {
 // ==[HUMAN APPROVED]== Typed client for the Prompt Preset library transport adapters. Outcomes
 // mirror the server's typed results so the popup can recover from conflicts
 // without losing its list. Every shape is the canonical shared wire schema's
-// Static type, so the client can never drift from the server.
+// Static type, so the client can never drift from the server. The global
+// recipe operations live here with the library commands, because both address
+// shared presets by identity.
 
 export type {
 	PromptPresetCommand,
@@ -166,4 +172,107 @@ export async function applyPromptPresetCommand(
 	return data.outcome === "deleted"
 		? { status: "deleted", result: data.result }
 		: { status: "applied", preset: data.preset };
+}
+
+// ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each call
+// persists one smallest operation against the shared preset; the applied
+// response is the stored recipe as a fresh read.
+export type PromptPresetOperationOutcome =
+	| { status: "applied"; recipe: PromptPresetRecipe }
+	| { status: "invalid"; reason: string }
+	| { status: "not-found" }
+	| { status: "network" };
+
+// ==[HUMAN APPROVED]== Every recipe operation responds with the stored recipe as a fresh
+// read plus the shared not-found/invalid envelopes, so one adapter maps the
+// treaty union for all of them. The shared command-outcome helper classifies an
+// envelope the route never declares as unreachable, never as bad input.
+type RecipeOperationError =
+	| { outcome: "not-found" }
+	| { outcome: "invalid"; reason: string };
+
+const applyRecipeOperation = async (
+	request: EdenResponse<PromptPresetRecipe, { status: number; value: RecipeOperationError }>,
+): Promise<PromptPresetOperationOutcome> => {
+	try {
+		const { data, error } = await request;
+		if (error) {
+			return commandOutcome(error.value, {
+				invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
+			});
+		}
+		return { status: "applied", recipe: data };
+	} catch {
+		return { status: "network" };
+	}
+};
+
+export function addPromptPresetReference(
+	presetId: number,
+	reference: PromptBlockReference,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks.post({ reference })
+	);
+}
+
+// ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence; its name, text, and
+// role are authored through the block editor's Save boundary.
+export function addPromptPresetInstruction(
+	presetId: number,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).instructions.post()
+	);
+}
+
+export function movePromptPresetBlock(
+	presetId: number,
+	blockId: number,
+	toPosition: number,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).move.post({ toPosition })
+	);
+}
+
+export function setPromptPresetBlockEnabled(
+	presetId: number,
+	blockId: number,
+	enabled: boolean,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).toggle.post({ enabled })
+	);
+}
+
+export function duplicatePromptPresetBlock(
+	presetId: number,
+	blockId: number,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).duplicate.post()
+	);
+}
+
+export function removePromptPresetBlock(
+	presetId: number,
+	blockId: number,
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).delete()
+	);
+}
+
+// ==[HUMAN APPROVED]== The one authored-field save contract: an individual block Save submits
+// exactly one occurrence-addressed patch, and save-on-leave submits the dirty
+// set, both through this batch so saving can never bypass the preset's
+// concurrency guard.
+export function savePromptPresetBlockPatches(
+	presetId: number,
+	patches: readonly PromptPresetBlockPatch[],
+): Promise<PromptPresetOperationOutcome> {
+	return applyRecipeOperation(
+		api.api["prompt-presets"]({ presetId }).blocks.patches.post({ patches: [...patches] }),
+	);
 }

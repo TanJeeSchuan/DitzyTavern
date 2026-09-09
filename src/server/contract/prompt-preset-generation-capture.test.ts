@@ -20,7 +20,7 @@ import {
 	readSelectedPreset,
 	runPresetCommand,
 	selectPreset,
-	setBlockRole,
+	saveBlockRole,
 	slotOf,
 	startGeneration,
 	withProfile,
@@ -59,7 +59,7 @@ describe("Prompt Preset capture", () => {
 
 		// While the attempt streams, the shared recipe is edited.
 		await readOperation(moveBlock(database, preset.id, postHistory.id, 1));
-		await readOperation(setBlockRole(database, preset.id, scenario.id, "user"));
+		await readOperation(saveBlockRole(database, preset.id, scenario.id, "user"));
 
 		// The Active Generation consumes the Prompt Plan captured when it was
 		// prepared; the saved edit cannot rewrite the request in flight.

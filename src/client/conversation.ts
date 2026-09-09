@@ -15,7 +15,7 @@ import type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
-import type { ConversationPromptPreset, PromptBlockReference, PromptOutgoingRole, PromptPresetBlockPatch, PromptPresetRecipe } from "../shared/contract/prompt-preset";
+import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 
 export type {
 	ActiveGenerationDetails,
@@ -33,13 +33,6 @@ export type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 export type { PromptChannels } from "../shared/contract/prompt-schema";
-export type {
-	ConversationPromptPreset,
-	PromptBlockReference,
-	PromptOutgoingRole,
-	PromptPresetRecipe,
-	ResolvedPromptPresetSlot,
-} from "../shared/contract/prompt-preset";
 export type {
 	GenerationStreamDelta,
 	GenerationStreamResult,
@@ -168,130 +161,6 @@ export async function loadConversationPromptPreset(
 		throw new Error("Unable to load the selected Prompt Preset.");
 	}
 	return data ?? null;
-}
-
-// ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each call
-// persists one smallest operation against the shared preset the Conversation
-// selected; the applied response is the stored recipe as a fresh read.
-export type PromptPresetOperationOutcome =
-	| { status: "applied"; recipe: PromptPresetRecipe }
-	| { status: "invalid"; reason: string }
-	| { status: "not-found" }
-	| { status: "network" };
-
-// ==[HUMAN APPROVED]== Every recipe operation responds with the stored recipe as a fresh
-// read plus the shared not-found/invalid envelopes, so one adapter maps the
-// treaty union for all of them. The shared command-outcome helper classifies an
-// envelope the route never declares as unreachable, never as bad input.
-type RecipeOperationError =
-	| { outcome: "not-found" }
-	| { outcome: "invalid"; reason: string };
-
-const applyRecipeOperation = async (
-	request: EdenResponse<PromptPresetRecipe, { status: number; value: RecipeOperationError }>,
-): Promise<PromptPresetOperationOutcome> => {
-	try {
-		const { data, error } = await request;
-		if (error) {
-			return commandOutcome(error.value, {
-				invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
-			});
-		}
-		return { status: "applied", recipe: data };
-	} catch {
-		return { status: "network" };
-	}
-};
-
-export function addPromptPresetReference(
-	presetId: number,
-	reference: PromptBlockReference,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks.post({ reference })
-	);
-}
-
-// ==[HUMAN APPROVED]== Appends one blank authored instruction occurrence; its name, text, and
-// role are authored through the block editor's Save boundary.
-export function addPromptPresetInstruction(
-	presetId: number,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).instructions.post()
-	);
-}
-
-export function movePromptPresetBlock(
-	presetId: number,
-	blockId: number,
-	toPosition: number,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).move.post({ toPosition })
-	);
-}
-
-export function setPromptPresetBlockEnabled(
-	presetId: number,
-	blockId: number,
-	enabled: boolean,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).toggle.post({ enabled })
-	);
-}
-
-export function duplicatePromptPresetBlock(
-	presetId: number,
-	blockId: number,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).duplicate.post()
-	);
-}
-
-export function removePromptPresetBlock(
-	presetId: number,
-	blockId: number,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).delete()
-	);
-}
-
-export function setPromptPresetBlockRole(
-	presetId: number,
-	blockId: number,
-	role: PromptOutgoingRole,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).role.post({ role }),
-	);
-}
-
-// ==[HUMAN APPROVED]== The one authored-instruction save: name, text, and outgoing role are a
-// single block-level Save boundary persisted against that one occurrence.
-export function setPromptPresetBlockContent(
-	presetId: number,
-	blockId: number,
-	content: { name: string; content: string; role: PromptOutgoingRole },
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).content.post(content),
-	);
-}
-
-// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence as one occurrence-addressed
-// batch through the same recipe transport as ordering and toggles, so saving
-// drafts can never bypass the preset's concurrency guard.
-export function savePromptPresetBlockPatches(
-	presetId: number,
-	patches: readonly PromptPresetBlockPatch[],
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks.patches.post({ patches: [...patches] }),
-	);
 }
 
 export type GenerationDetailsOutcome<T> =
