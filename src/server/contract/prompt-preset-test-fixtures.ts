@@ -3,8 +3,7 @@ import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
-import { createPromptPresetRecipeRoutes } from "./prompt-preset";
-import { createPromptPresetLibraryRoutes } from "./prompt-preset-routes";
+import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import type { ModelFetch } from "../model-client";
 import type {
 	ConversationPromptPreset,
@@ -92,13 +91,13 @@ export const withProfile = (database: Database) =>
 // against one isolated initialized database: the same seam the popup uses,
 // with no test-only transport or persistence helpers.
 export const createRoutes = (database: Database) => ({
-	library: createPromptPresetLibraryRoutes(database),
+	library: createPromptPresetRoutes(database),
 	conversations: createConversationRoutes(database),
 });
 
-export const recipeRoutes = (database: Database) => createPromptPresetRecipeRoutes(database);
+export const recipeRoutes = (database: Database) => createPromptPresetRoutes(database);
 
-export const libraryRoutes = (database: Database) => createPromptPresetLibraryRoutes(database);
+export const libraryRoutes = (database: Database) => createPromptPresetRoutes(database);
 
 export const conversationApp = (
 	database: Database,
@@ -106,7 +105,7 @@ export const conversationApp = (
 ) => createConversationRoutes(database, options);
 
 export const listPresets = async (
-	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
+	app: ReturnType<typeof createPromptPresetRoutes>,
 ): Promise<PromptPresetSummary[]> => {
 	const response = await app.handle(new Request("http://localhost/api/prompt-presets"));
 	expect(response.status).toBe(200);
@@ -116,7 +115,7 @@ export const listPresets = async (
 };
 
 export const exportPreset = async (
-	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
+	app: ReturnType<typeof createPromptPresetRoutes>,
 	presetId: number,
 ): Promise<NativePromptPreset> => {
 	const response = await app.handle(
@@ -139,7 +138,7 @@ export type NativePromptPresetRequest = {
 };
 
 export const importPreset = async (
-	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
+	app: ReturnType<typeof createPromptPresetRoutes>,
 	native: NativePromptPresetRequest,
 ): Promise<{ status: number; body: unknown }> => {
 	const response = await app.handle(
@@ -153,7 +152,7 @@ export const importPreset = async (
 };
 
 export const runPresetCommand = async (
-	app: ReturnType<typeof createPromptPresetLibraryRoutes>,
+	app: ReturnType<typeof createPromptPresetRoutes>,
 	command: PromptPresetCommand,
 ): Promise<{ status: number; body: unknown }> => {
 	const response = await app.handle(
