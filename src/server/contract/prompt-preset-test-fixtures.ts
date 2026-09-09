@@ -443,7 +443,7 @@ export const saveInstructionContent = (
 	blockId: number,
 	content: { name: string; content: string; role: PromptOutgoingRole },
 ) =>
-	saveBlockPatches(database, presetId, [{ occurrenceId: blockId, type: "content", ...content }]);
+	saveBlockPatches(database, presetId, [{ ...content, occurrenceId: blockId, type: "content" }]);
 
 export interface RecipeSlot {
 	id: number;

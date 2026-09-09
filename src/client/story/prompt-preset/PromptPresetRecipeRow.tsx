@@ -150,7 +150,7 @@ export function PromptPresetRecipeRow({
 				onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 				onCancel={() => onDraftCancel(slot.id)}
 				onSave={(fields) => onOperation(
-					() => savePromptPresetBlockPatches(presetId, [{ occurrenceId: slot.id, type: "content", ...fields }]),
+					() => savePromptPresetBlockPatches(presetId, [{ ...fields, occurrenceId: slot.id, type: "content" }]),
 					{ blockId: slot.id, draft: { kind: "content", ...fields } },
 				)}
 			/>
