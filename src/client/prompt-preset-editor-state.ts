@@ -59,17 +59,13 @@ export function dirtyBlockPatches(
 		const draft = drafts[slot.id];
 		if (draft === undefined || !draftIsDirty(slot, draft)) continue;
 		if (slot.reference === "instruction" && draft.kind === "content") {
-			patches.push({
-				occurrenceId: slot.id,
-				type: "content",
-				name: draft.name,
-				content: draft.content,
-				role: draft.role,
-			});
-			submitted[slot.id] = { kind: "content", name: draft.name, content: draft.content, role: draft.role };
+			const { name, content, role } = draft;
+			patches.push({ occurrenceId: slot.id, type: "content", name, content, role });
+			submitted[slot.id] = { kind: "content", name, content, role };
 		} else if (slot.reference !== "history" && draft.kind === "role") {
-			patches.push({ occurrenceId: slot.id, type: "role", role: draft.role });
-			submitted[slot.id] = { kind: "role", role: draft.role };
+			const { role } = draft;
+			patches.push({ occurrenceId: slot.id, type: "role", role });
+			submitted[slot.id] = { kind: "role", role };
 		}
 	}
 	return { patches, submitted };

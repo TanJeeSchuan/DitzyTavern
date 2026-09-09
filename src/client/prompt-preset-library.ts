@@ -266,8 +266,9 @@ export function removePromptPresetBlock(
 
 // ==[HUMAN APPROVED]== The one authored-field save contract: an individual block Save submits
 // exactly one occurrence-addressed patch, and save-on-leave submits the dirty
-// set, both through this batch so saving can never bypass the preset's
-// concurrency guard.
+// set, both through the recipe route, which is never revision-guarded.
+// Authored-field saves never travel the library command executor, which accepts
+// only revision-guarded commands.
 export function savePromptPresetBlockPatches(
 	presetId: number,
 	patches: readonly PromptPresetBlockPatch[],
