@@ -1,5 +1,5 @@
 // ==[HUMAN APPROVED]== Focused UI-boundary presentation for the Prompt Preset library in the
-// preset popup. These shape list labels, selection feedback, deletion
+// preset panel. These shape list labels, selection feedback, deletion
 // confirmation copy, and the recipe vocabulary shared by the recipe editor
 // and the import review; the library behavior itself lives behind the server
 // seam. Transport stays out of this module so tests can import it without a

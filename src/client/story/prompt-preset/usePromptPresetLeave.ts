@@ -47,7 +47,7 @@ export function usePromptPresetLeave({
 	const { current, dirty, dispatch, runOperation, ownsOperation } = runtime;
 
 	// ==[HUMAN APPROVED]== Completes a resolved leave: the drafts are gone and the deferred action
-	// — closing the popup or applying the pending selection — runs. Called only after the save
+	// — closing the panel or applying the pending selection — runs. Called only after the save
 	// operation has settled, so busy is already released when a selection starts.
 	const finishLeave = (request: LeaveRequest): void => {
 		dispatch({ type: "leave-resolved" });
@@ -67,7 +67,7 @@ export function usePromptPresetLeave({
 		// resolves, so the outcome below is read with busy already free. Only a still-current
 		// successful save resolves the leave; a failed save reports and stays open, a superseded
 		// refresh aborts without completing the leave, and reconciliation that left newer dirty
-		// drafts keeps the popup open.
+		// drafts keeps the panel open.
 		const outcome = await runOperation(SAVE_ON_LEAVE_EFFECTS, async (claim) => {
 			const result = await saveDrafts(currentReady.selected, claim);
 			if (!ownsOperation(claim)) return { status: "aborted" as const };

@@ -2,6 +2,7 @@ import { CastPanel } from "../CastPanel";
 import { CharacterLibraryPanel } from "../CharacterLibraryPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
+import { PromptPresetPanel } from "../story/PromptPresetPanel";
 import type { ConversationSummary } from "../conversation";
 import type {
 	ChatSummary,
@@ -77,20 +78,22 @@ export function PrimaryPanelView({
 			/>
 			{panel !== null && panel !== "chats" && (
 				<>
-					<PanelHeader
-						title={
-							panel === "cast"
-								? "Cast"
-								: panel === "library"
-									? "Character Library"
-									: panel === "models"
-										? "Model Settings"
-										: panel === "generation"
-											? "Generation Settings"
-											: "Settings"
-						}
-						onClose={onClose}
-					/>
+					{panel !== "prompts" && (
+						<PanelHeader
+							title={
+								panel === "cast"
+									? "Cast"
+									: panel === "library"
+										? "Character Library"
+										: panel === "models"
+											? "Model Settings"
+											: panel === "generation"
+												? "Generation Settings"
+												: "Settings"
+							}
+							onClose={onClose}
+						/>
+					)}
 					{panel === "cast" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CastPanel
@@ -115,6 +118,16 @@ export function PrimaryPanelView({
 					{panel === "models" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<ConnectionSettingsPanel controller={connectionSettings} onOpenInspector={() => onOpenInspector("models")} />
+						</div>
+					)}
+					{panel === "prompts" && (
+						<div className="panel-fill">
+							<PromptPresetPanel
+								conversation={conversation}
+								onConversationChange={onConversationChange}
+								onClose={onClose}
+								mutationsDisabled={mutationsDisabled}
+							/>
 						</div>
 					)}
 					{panel === "generation" && (

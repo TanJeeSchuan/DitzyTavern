@@ -56,7 +56,7 @@ export function PromptPresetRecipeEditor({
 } & RecipeOperationHandlers) {
 	return <section aria-label="Selected recipe" className="flex flex-col gap-3">
 		<h2 className="text-sm font-medium">{preset.name}: assembled order</h2>
-		<ol className="flex flex-col gap-3">
+		<ol className="divide-y divide-border border-y border-border">
 			{preset.slots.map((slot, index) => (
 				<PromptPresetRecipeRow
 					key={slot.id}
@@ -71,7 +71,7 @@ export function PromptPresetRecipeEditor({
 					onOperation={onOperation}
 				/>
 			))}
-			{preset.slots.length === 0 && <li className="rounded-lg ring-1 ring-foreground/10 p-3"><p className="text-muted-foreground">This recipe assembles no context yet. Add a slot below; the Chat still generates, but only from its own submitted writing.</p></li>}
+			{preset.slots.length === 0 && <li className="py-3"><p className="text-muted-foreground">This recipe assembles no context yet. Add a slot below; the Chat still generates, but only from its own submitted writing.</p></li>}
 		</ol>
 		{problem !== null && <p className="text-destructive text-sm" role="alert">{problem}</p>}
 		<div className="flex flex-wrap items-center gap-2">

@@ -21,7 +21,7 @@ import {
 	type PromptPresetEditorState,
 } from "../../prompt-preset-editor-state";
 
-// ==[HUMAN APPROVED]== The shared owner of the popup's session state and operation settlement: every
+// ==[HUMAN APPROVED]== The shared owner of the panel's session state and operation settlement: every
 // focused unit starts work through `runOperation` and checks ownership through `ownsOperation`, so
 // no flow assembles its own epoch handling and one settle rule holds busy for every mutation.
 export interface PromptPresetEditorRuntime {
@@ -51,7 +51,7 @@ export function usePromptPresetEditorRuntime({
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
 	const stateRef = useRef(state);
 
-	// ==[HUMAN APPROVED]== Unmounting the popup invalidates every in-flight response, callback,
+	// ==[HUMAN APPROVED]== Unmounting the panel invalidates every in-flight response, callback,
 	// download and deferred leave: once the editor is gone no operation may settle or continue,
 	// and dispatch becomes a no-op so no state update or deferred action can escape it.
 	const alive = useRef(true);

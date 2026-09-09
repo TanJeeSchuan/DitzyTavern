@@ -5,7 +5,6 @@ import {
 	affectedConversationsLabel,
 	presetDeletionConfirmationCopy,
 	presetDeletionResultNotice,
-	presetSelectionFeedbackLabel,
 } from "../../prompt-preset-presentation";
 import type {
 	PresetCommandOutcome,
@@ -43,8 +42,9 @@ export function PromptPresetLibrarySection({
 	const [activeEdit, setActiveEdit] = useState<PresetInlineEdit | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 	const busy = pending;
+	const selected = presets.find((preset) => preset.id === selectedId);
 	return (
-		<section aria-label="Shared presets" className="flex flex-col gap-2">
+		<section aria-label="Shared presets" className="flex flex-col gap-3">
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<h2 className="text-sm font-medium">Shared presets</h2>
 				<div className="flex flex-wrap items-center gap-2">
@@ -60,15 +60,16 @@ export function PromptPresetLibrarySection({
 							if (file !== undefined) onImportFile(file);
 						}}
 					/>
-					<button
-						className="secondary-button"
+					<Button
+						variant="outline"
+						size="sm"
 						type="button"
 						disabled={busy}
 						onClick={() => importInput.current?.click()}
 					>
 						<Upload aria-hidden="true" />
 						Import JSON
-					</button>
+					</Button>
 					<Button
 						variant="outline"
 						size="sm"
@@ -83,57 +84,71 @@ export function PromptPresetLibrarySection({
 					</Button>
 				</div>
 			</div>
-			<ol className="flex flex-col gap-2">
-				{presets.map((preset) => (
-					<PresetRow
-						key={preset.id}
-						preset={preset}
-						isSelected={preset.id === selectedId}
-						activeEdit={activeEdit?.id === preset.id ? activeEdit : null}
-						busy={busy}
-						onEditStart={(kind) => setActiveEdit({
-							id: preset.id,
-							kind,
-							name: kind === "duplicate" ? `Copy of ${preset.name}` : preset.name,
-						})}
-						onEditDraft={(name) => setActiveEdit((current) =>
-							current?.id === preset.id ? { ...current, name } : current)}
-						onEditSubmit={() => {
-							const edit = activeEdit;
-							setActiveEdit(null);
-							if (edit === null) return;
-							if (edit.kind === "delete") {
-								onCommand({
-									type: "delete",
-									presetId: preset.id,
-									expectedRevision: preset.revision,
-									expectedConversationCount: preset.conversationCount,
-								}, (outcome) => outcome.status === "deleted"
-								? presetDeletionResultNotice(preset.name, outcome.result)
-								: null);
-								return;
-							}
+			<label className="flex flex-col gap-1 text-xs text-muted-foreground">
+				<span>Preset for this Chat</span>
+				<select
+					className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm font-medium text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+					value={selectedId}
+					disabled={busy || activeEdit !== null}
+					onChange={(event) => {
+						setActiveEdit(null);
+						onSelect(Number(event.target.value));
+					}}
+				>
+					{presets.map((preset) => (
+						<option key={preset.id} value={preset.id}>
+							{preset.name}{preset.isDefault ? " (Default)" : ""}
+						</option>
+					))}
+				</select>
+			</label>
+			{selected !== undefined && (
+				<PresetControls
+					preset={selected}
+					activeEdit={activeEdit?.id === selected.id ? activeEdit : null}
+					busy={busy}
+					onEditStart={(kind) => setActiveEdit({
+						id: selected.id,
+						kind,
+						name: kind === "duplicate" ? `Copy of ${selected.name}` : selected.name,
+					})}
+					onEditDraft={(name) => setActiveEdit((current) =>
+						current?.id === selected.id ? { ...current, name } : current)}
+					onEditSubmit={() => {
+						const edit = activeEdit;
+						setActiveEdit(null);
+						if (edit === null) return;
+						if (edit.kind === "delete") {
 							onCommand({
-								type: edit.kind,
-								presetId: preset.id,
-								expectedRevision: preset.revision,
-								name: edit.name,
-							});
-						}}
-						onEditCancel={() => setActiveEdit(null)}
-						onSelect={() => onSelect(preset.id)}
-					/>
-				))}
-			</ol>
+								type: "delete",
+								presetId: selected.id,
+								expectedRevision: selected.revision,
+								expectedConversationCount: selected.conversationCount,
+							}, (outcome) => outcome.status === "deleted"
+								? presetDeletionResultNotice(selected.name, outcome.result)
+								: null);
+							return;
+						}
+						onCommand({
+							type: edit.kind,
+							presetId: selected.id,
+							expectedRevision: selected.revision,
+							name: edit.name,
+						});
+					}}
+					onEditCancel={() => setActiveEdit(null)}
+				/>
+			)}
 			{creating === null ? (
-				<button
-					className="secondary-button justify-self-start"
+				<Button
+					variant="outline"
+					size="sm"
 					type="button"
 					disabled={busy}
 					onClick={() => setCreating("")}
 				>
 					New blank preset
-				</button>
+				</Button>
 			) : (
 				<InlineNameEdit
 					value={creating}
@@ -154,58 +169,41 @@ export function PromptPresetLibrarySection({
 	);
 }
 
-const PresetRow = ({
+const PresetControls = ({
 	preset,
-	isSelected,
 	activeEdit,
 	busy,
 	onEditStart,
 	onEditDraft,
 	onEditSubmit,
 	onEditCancel,
-	onSelect,
 }: {
 	preset: PromptPresetSummary;
-	isSelected: boolean;
 	activeEdit: PresetInlineEdit | null;
 	busy: boolean;
 	onEditStart: (kind: PresetInlineEdit["kind"]) => void;
 	onEditDraft: (name: string) => void;
 	onEditSubmit: () => void;
 	onEditCancel: () => void;
-	onSelect: () => void;
 }) => {
 	const deleteCopy = presetDeletionConfirmationCopy(preset.name, preset.conversationCount);
 	return (
-		<li className="rounded-lg ring-1 ring-foreground/10 p-3" data-selected={isSelected}>
-			<div className="flex flex-wrap items-baseline justify-between gap-2">
-				<h3 className="font-medium">
-					{preset.name}
-					{preset.isDefault && <span className="ml-2 text-xs text-muted-foreground"> Default</span>}
-				</h3>
-				<span className="text-xs text-muted-foreground">
-					{affectedConversationsLabel(preset.conversationCount)}
-				</span>
-			</div>
+		<div>
+			<p className="text-xs text-muted-foreground">
+				{affectedConversationsLabel(preset.conversationCount)}
+			</p>
 			{activeEdit === null ? (
-				<div className="mt-2 flex flex-wrap items-center gap-2">
-					{isSelected ? (
-						<span className="text-xs font-medium" aria-current="true">{presetSelectionFeedbackLabel(true)}</span>
-					) : (
-						<button className="secondary-button" type="button" disabled={busy} onClick={onSelect}>
-							{presetSelectionFeedbackLabel(false)}
-						</button>
-					)}
-					<button className="secondary-button" type="button" disabled={busy} onClick={() => onEditStart("rename")}>Rename</button>
-					<button className="secondary-button" type="button" disabled={busy} onClick={() => onEditStart("duplicate")}>Duplicate</button>
-					<button className="danger-button" type="button" disabled={busy} onClick={() => onEditStart("delete")}>Delete</button>
+				<div className="mt-2 flex flex-wrap items-center gap-1">
+					<Button variant="ghost" size="xs" type="button" disabled={busy} onClick={() => onEditStart("rename")}>Rename</Button>
+					<Button variant="ghost" size="xs" type="button" disabled={busy} onClick={() => onEditStart("duplicate")}>Duplicate</Button>
+					<Button variant="destructive" size="xs" type="button" disabled={busy} onClick={() => onEditStart("delete")}>Delete</Button>
 				</div>
 			) : activeEdit.kind === "delete" ? (
 				<div className="mt-2 flex flex-col gap-2">
 					<p className="text-sm text-muted-foreground">{deleteCopy.impact}</p>
 					<div className="flex flex-wrap items-center gap-2">
-						<button className="danger-button" type="button" disabled={busy} onClick={onEditSubmit}>{deleteCopy.confirmLabel}</button>
-						<button className="secondary-button" type="button" disabled={busy} onClick={onEditCancel}>Cancel</button>
+						<Button variant="destructive" size="xs" type="button" disabled={busy} onClick={onEditSubmit}>{deleteCopy.confirmLabel}</Button>
+						<Button variant="ghost" size="xs" type="button" disabled={busy} onClick={onEditCancel}>Cancel</Button>
 					</div>
 				</div>
 			) : (
@@ -222,7 +220,7 @@ const PresetRow = ({
 					/>
 				</div>
 			)}
-		</li>
+		</div>
 	);
 };
 
@@ -261,8 +259,8 @@ const InlineNameEdit = ({
 					if (event.key === "Escape") onCancel();
 				}}
 			/>
-			<button className="primary-button" type="button" disabled={busy || !ready} onClick={onSubmit}>{submitLabel}</button>
-			<button className="secondary-button" type="button" disabled={busy} onClick={onCancel}>Cancel</button>
+			<Button size="xs" type="button" disabled={busy || !ready} onClick={onSubmit}>{submitLabel}</Button>
+			<Button variant="ghost" size="xs" type="button" disabled={busy} onClick={onCancel}>Cancel</Button>
 		</div>
 	);
 };

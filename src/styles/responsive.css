@@ -238,7 +238,7 @@ body > .details-panel > .panel-body {
 	}
 
 	.story-header {
-		grid-template-columns: minmax(0, 1fr) auto auto auto;
+		grid-template-columns: minmax(0, 1fr) auto auto;
 		padding: 0 0.75rem 0 1rem;
 	}
 
