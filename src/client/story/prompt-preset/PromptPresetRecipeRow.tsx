@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useSortable } from "@dnd-kit/react/sortable";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -22,8 +23,8 @@ import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../promp
 import { draftIsDirty, draftToPatch, type BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetSelect } from "./PromptPresetSelect";
 
-const nameInputClass = "h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
-const textInputClass = "min-h-56 max-h-[55vh] w-full resize-y overflow-y-auto rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none [field-sizing:content] focus-visible:ring-3 focus-visible:ring-ring/50";
+const nameInputClass = "prompt-block-field h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal";
+const textInputClass = "prompt-block-field min-h-56 max-h-[55vh] w-full resize-y overflow-y-auto rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed [field-sizing:content]";
 
 const unknownMacrosOf = (text: string, label: string): string[] => {
 	const { warnings } = expandText(text, { self: "", other: "" }, label);
@@ -140,6 +141,12 @@ export function PromptPresetRecipeRow({
 } & RecipeOperationHandlers) {
 	const [editing, setEditing] = useState(false);
 	const [confirmingRemove, setConfirmingRemove] = useState(false);
+	const { ref, handleRef, isDragging, isDropTarget } = useSortable({
+		id: slot.id,
+		index,
+		group: presetId,
+		disabled: pending,
+	});
 	const title = slotTitle(slot);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
@@ -168,37 +175,17 @@ export function PromptPresetRecipeRow({
 		)}
 	</div>;
 	return <li
-		className="py-2.5"
-		onDragOver={(event) => event.preventDefault()}
-		onDrop={(event) => {
-			const sourceId = Number(event.dataTransfer.getData("application/x-ditzy-prompt-slot"));
-			if (Number.isSafeInteger(sourceId) && sourceId !== slot.id) {
-				onOperation(() => movePromptPresetBlock(presetId, sourceId, index + 1));
-			}
-		}}
+		ref={ref}
+		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${isDragging ? " z-10 bg-background shadow-lg ring-1 ring-border" : isDropTarget ? " bg-muted/60" : ""}`}
 	>
 		<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
 			<div className="flex min-w-0 items-center gap-1">
 				<button
+					ref={handleRef}
 					type="button"
-					draggable={!pending}
 					disabled={pending}
-					className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
-					aria-label={`Reorder ${title}. Use the arrow keys or drag.`}
-					onDragStart={(event) => {
-						event.dataTransfer.effectAllowed = "move";
-						event.dataTransfer.setData("application/x-ditzy-prompt-slot", String(slot.id));
-					}}
-					onKeyDown={(event) => {
-						if (event.key === "ArrowUp" && index > 0) {
-							event.preventDefault();
-							onOperation(() => movePromptPresetBlock(presetId, slot.id, index));
-						}
-						if (event.key === "ArrowDown" && index < slotCount - 1) {
-							event.preventDefault();
-							onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2));
-						}
-					}}
+					className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
+					aria-label={`Reorder ${title}`}
 				>
 					<GripVertical aria-hidden="true" className="size-4" />
 				</button>

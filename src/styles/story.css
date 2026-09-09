@@ -807,6 +807,11 @@
 	line-height: 1.6;
 }
 
+.prompt-block-field:focus-visible {
+	outline: none;
+	border-color: color-mix(in oklch, var(--text-muted) 60%, var(--border));
+}
+
 @media (prefers-reduced-motion: no-preference) {
 	.skeleton {
 		animation: skeleton-breathe 1.7s ease-in-out infinite;
