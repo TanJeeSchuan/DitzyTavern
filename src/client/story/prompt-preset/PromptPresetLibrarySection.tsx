@@ -53,7 +53,7 @@ export function PromptPresetLibrarySection({
 						type="file"
 						accept="application/json,.json"
 						className="sr-only"
-						aria-label="Choose Prompt Preset or SillyTavern JSON"
+						aria-label="Choose a Prompt Preset or SillyTavern JSON file to import"
 						onChange={(event) => {
 							const file = event.target.files?.[0];
 							event.target.value = "";
@@ -68,7 +68,7 @@ export function PromptPresetLibrarySection({
 						onClick={() => importInput.current?.click()}
 					>
 						<Upload aria-hidden="true" />
-						Import JSON
+						Import Preset
 					</Button>
 					<Button
 						variant="outline"
@@ -80,7 +80,7 @@ export function PromptPresetLibrarySection({
 						}}
 					>
 						<Download aria-hidden="true" />
-						Export JSON
+						Export This Preset
 					</Button>
 				</div>
 			</div>

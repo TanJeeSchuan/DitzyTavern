@@ -168,7 +168,7 @@ export function PromptPresetRecipeRow({
 		)}
 	</div>;
 	return <li
-		className={`py-2.5${slot.enabled ? "" : " opacity-60"}`}
+		className="py-2.5"
 		onDragOver={(event) => event.preventDefault()}
 		onDrop={(event) => {
 			const sourceId = Number(event.dataTransfer.getData("application/x-ditzy-prompt-slot"));
@@ -202,13 +202,15 @@ export function PromptPresetRecipeRow({
 				>
 					<GripVertical aria-hidden="true" className="size-4" />
 				</button>
-				<h3 className="min-w-0 truncate font-medium leading-5">{title}</h3>
+				<h3 className={`min-w-0 truncate font-medium leading-5${slot.enabled ? "" : " text-muted-foreground"}`}>{title}</h3>
 			</div>
 			<div className="flex items-center gap-1">
 				<Button
 					variant="ghost"
-					size="xs"
+					size="icon-sm"
 					disabled={pending}
+					title={`Edit ${title}`}
+					aria-label={`Edit ${title}`}
 					aria-haspopup="dialog"
 					onClick={() => {
 						setConfirmingRemove(false);
@@ -216,7 +218,6 @@ export function PromptPresetRecipeRow({
 					}}
 				>
 					<Pencil aria-hidden="true" />
-					Edit
 				</Button>
 				<button
 					type="button"
@@ -224,10 +225,10 @@ export function PromptPresetRecipeRow({
 					aria-checked={slot.enabled}
 					aria-label={`${slot.enabled ? "Disable" : "Enable"} ${title}`}
 					disabled={pending}
-					className={`relative h-5 w-9 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${slot.enabled ? "bg-primary" : "bg-muted-foreground/30"}`}
+					className={`relative h-5 w-9 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${slot.enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
 					onClick={() => onOperation(() => setPromptPresetBlockEnabled(presetId, slot.id, !slot.enabled))}
 				>
-					<span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-background shadow-sm transition-transform ${slot.enabled ? "translate-x-4" : "translate-x-0"}`} />
+					<span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform ${slot.enabled ? "translate-x-4" : "translate-x-0"}`} />
 				</button>
 			</div>
 		</div>
