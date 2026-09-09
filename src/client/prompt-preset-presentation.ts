@@ -1,8 +1,43 @@
 // ==[HUMAN APPROVED]== Focused UI-boundary presentation for the Prompt Preset library in the
-// preset popup. These shape list labels, selection feedback, and deletion
-// confirmation copy only; the library behavior itself lives behind the server
+// preset popup. These shape list labels, selection feedback, deletion
+// confirmation copy, and the recipe vocabulary shared by the recipe editor
+// and the import review; the library behavior itself lives behind the server
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
+
+import type { PromptOutgoingRole, PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+
+// ==[HUMAN APPROVED]== One vocabulary for both the recipe editor and the SillyTavern import
+// review, so a slot label or outgoing-role label can never drift between
+// them.
+export const slotLabels = {
+	"model-system-instruction": "System Instruction",
+	"human-identity": "Identity (you)",
+	"model-identity": "Identity (character)",
+	"model-scenario": "Scenario",
+	"model-example-dialogue": "Example Dialogue",
+	history: "Chat history",
+	"model-post-history-instruction": "Post-History Instruction",
+	instruction: "Instruction",
+} as const satisfies Record<PromptPresetBlockReference, string>;
+
+export const outgoingRoleLabels = {
+	system: "System message",
+	user: "User message",
+	assistant: "Assistant message",
+} as const satisfies Record<PromptOutgoingRole, string>;
+
+type TitledSlot =
+	| { reference: "instruction"; name: string }
+	| { reference: Exclude<PromptPresetBlockReference, "instruction"> };
+
+// ==[HUMAN APPROVED]== An authored instruction titles itself with its own name and falls back to
+// the reference label when that name is blank; every other slot shows the
+// reference label.
+export const slotTitle = (slot: TitledSlot): string =>
+	slot.reference === "instruction" && slot.name.trim() !== ""
+		? slot.name
+		: slotLabels[slot.reference];
 
 // Short human label for the affected-Conversation count presented on every
 // ==[HUMAN APPROVED]== library list row, so the deletion confirmation can state the exact
