@@ -67,7 +67,7 @@ export function affectedConversationsLabel(count: number): string {
 	return `Selected by ${count} Chats`;
 }
 
-export interface PresetDeletionConfirmationCopy {
+interface PresetDeletionConfirmationCopy {
 	title: string;
 	impact: string;
 	confirmLabel: string;
@@ -87,12 +87,6 @@ export function presetDeletionConfirmationCopy(
 			`${affectedConversationsLabel(conversationCount)}. Deleting this preset removes it from the Library and moves every affected Chat to the Default preset. Nothing else in those Chats changes.`,
 		confirmLabel: "Yes, delete preset",
 	};
-}
-
-// The selected row's feedback label. The Default badge rides the same list
-// ==[HUMAN APPROVED]== so the stable deletion destination stays recognizable.
-export function presetSelectionFeedbackLabel(isSelected: boolean): string {
-	return isSelected ? "Selected for this Chat" : "Select for this Chat";
 }
 
 // ==[HUMAN APPROVED]== The notice after a deletion is rejected because the affected-Conversation

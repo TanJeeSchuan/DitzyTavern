@@ -70,7 +70,7 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 // may span lines and contain macro delimiters, so they end at the `}}` that
 // balances the opening `{{`. Returns the index just past the complete comment,
 // or null when unbalanced.
-export const matchPromptComment = (source: string, start: number): number | null => {
+const matchPromptComment = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
 	if (source.startsWith("{{//}}", start)) {
 		const close = source.indexOf("{{///}}", start + "{{//}}".length);

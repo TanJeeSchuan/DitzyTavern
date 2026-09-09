@@ -4,7 +4,7 @@ import type { LeaveRequest, OperationClaim, OperationStartEffects } from "../../
 import type { SaveDraftsResult } from "./usePromptPresetRecipe";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
-export interface PromptPresetLeaveUnit {
+interface PromptPresetLeaveUnit {
 	requestOpenChange: (next: boolean) => void;
 	guardDirtyDismiss: (event: { preventDefault: () => void }) => void;
 	saveAndLeave: () => Promise<void>;

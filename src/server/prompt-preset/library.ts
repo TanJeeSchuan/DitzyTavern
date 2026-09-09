@@ -200,7 +200,7 @@ export const importSillyTavernPromptPreset = (
 // deletion reassigns every Conversation that selected the preset to Default in
 // the same transaction before the preset row (and its blocks) goes away, so no
 // selection is ever left dangling.
-export type PromptPresetCommandResult =
+type PromptPresetCommandResult =
 	| { kind: "preset"; preset: PromptPresetSummary }
 	| { kind: "deleted"; result: PromptPresetDeletionResult };
 

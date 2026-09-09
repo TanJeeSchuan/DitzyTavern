@@ -404,7 +404,7 @@ const buildSillyTavernPreview = (
 	};
 };
 
-export const normalizeSillyTavernImportRequest = (value: SillyTavernJsonValue): SillyTavernImportRequest => {
+const normalizeSillyTavernImportRequest = (value: SillyTavernJsonValue): SillyTavernImportRequest => {
 	const envelope = asJsonRecord(value);
 	if (envelope === null || !Object.hasOwn(envelope, "source")) {
 		throw new InvalidPromptPresetCommandError("SillyTavern import request must provide a source.");

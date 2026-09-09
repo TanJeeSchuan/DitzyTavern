@@ -4,7 +4,6 @@ import {
 	presetDeletionConfirmationCopy,
 	presetDeletionImpactChangedNotice,
 	presetDeletionResultNotice,
-	presetSelectionFeedbackLabel,
 } from "./prompt-preset-presentation";
 
 // Focused UI-boundary tests for the Prompt Preset library's deletion
@@ -38,13 +37,6 @@ describe("presetDeletionConfirmationCopy", () => {
 		const copy = presetDeletionConfirmationCopy("Draft", 0);
 		expect(copy.impact).toContain("Not selected by any Chat");
 		expect(copy.impact).toContain("Default preset");
-	});
-});
-
-describe("presetSelectionFeedbackLabel", () => {
-	test("the selected row and the selectable row state their states", () => {
-		expect(presetSelectionFeedbackLabel(true)).toBe("Selected for this Chat");
-		expect(presetSelectionFeedbackLabel(false)).toBe("Select for this Chat");
 	});
 });
 

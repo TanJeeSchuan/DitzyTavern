@@ -20,7 +20,7 @@ import { Value } from "@sinclair/typebox/value";
 const connect = (database: Database) => drizzle(database);
 export type PromptPresetDatabase = ReturnType<typeof connect>;
 
-export class PromptPresetNotInitializedError extends Error {
+class PromptPresetNotInitializedError extends Error {
 	constructor() {
 		super("The Default Prompt Preset is missing from the preset library.");
 		this.name = "PromptPresetNotInitializedError";

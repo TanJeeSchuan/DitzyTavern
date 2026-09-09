@@ -46,7 +46,7 @@ export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft):
 
 // ==[HUMAN APPROVED]== The one-pass dirty summary: `dirty` is the guard every dismissal path
 // consults and `count` is what the unsaved-drafts dialog shows, both from one scan.
-export interface DirtyDraftSummary {
+interface DirtyDraftSummary {
 	dirty: boolean;
 	count: number;
 }
@@ -66,7 +66,7 @@ export function dirtyDraftSummary(
 // ==[HUMAN APPROVED]== A save finishes exactly the submitted draft version: after a successful
 // save the editor retires an occurrence's draft only when it still equals
 // what was submitted, so a newer local edit made while saving survives.
-export const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
+const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
 	if (a.kind === "role") return b.kind === "role" && a.role === b.role;
 	return b.kind === "content" && a.name === b.name && a.content === b.content && a.role === b.role;
 };
@@ -118,7 +118,7 @@ export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 // an older one, and `latestOperation`/`latestConversationOperation` when a
 // newer mutation supersedes an older one. A response may apply only while
 // every epoch it was claimed under is still current.
-export interface EditorSession {
+interface EditorSession {
 	key: string;
 	id: number;
 	latestRead: number;

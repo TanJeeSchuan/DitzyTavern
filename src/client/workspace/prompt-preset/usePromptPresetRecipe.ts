@@ -13,7 +13,7 @@ import {
 import type { ConversationSummary } from "../../conversation";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
-export interface PromptPresetRecipeUnit {
+interface PromptPresetRecipeUnit {
 	runRecipeOperation: (
 		run: () => Promise<PromptPresetOperationOutcome>,
 		submitted?: { blockId: number; draft: BlockDraft },

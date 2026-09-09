@@ -67,7 +67,7 @@ const EXPORT_EFFECTS: OperationStartEffects = {
 	clearProblem: false,
 };
 
-export interface PromptPresetLibraryUnit {
+interface PromptPresetLibraryUnit {
 	applySelection: (presetId: number) => void;
 	selectPreset: (presetId: number) => void;
 	runPresetCommand: (
