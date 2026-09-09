@@ -1,28 +1,24 @@
 import type { Database } from "bun:sqlite";
-import { createConversationModule } from "../conversation";
-import type { CastParticipantSnapshot } from "../conversation";
 import { referencedDefinitionBlocks } from "../prompt-compiler";
-import { readConversationPromptPresetRecipe } from "./recipe";
+import { readConversationPromptPresetRecipe } from "../prompt-preset";
+import { readConversationSnapshot } from "./snapshot";
+import type { CastParticipantSnapshot, ConversationSnapshot } from "./types";
 import type {
 	ConversationPromptPreset,
+	PromptPresetRecipe,
 	ResolvedPromptPresetSlot,
 } from "../../shared/contract/prompt-preset";
 
-/**
- * ==[HUMAN APPROVED]== The Chat's selected recipe with each Referenced Prompt Block resolved
- * against that Chat's own Conversation-local Participant Definitions and
- * selected narrative path. The preset stores references, never rendered
- * character text or history, so this read is the only place they meet.
- * Undefined when the Conversation does not exist.
- */
-export const resolveConversationPromptPreset = (
-	database: Database,
-	conversationId: number,
-): ConversationPromptPreset | undefined => {
-	const recipe = readConversationPromptPresetRecipe(database, conversationId);
-	const snapshot = createConversationModule(database).getSnapshot(conversationId);
-	if (recipe === undefined || snapshot === undefined) return undefined;
-
+// ==[HUMAN APPROVED]== The Chat's selected recipe with each Referenced Prompt Block resolved
+// against that Chat's own Conversation-local Participant Definitions and
+// selected narrative path. The preset stores references, never rendered
+// character text or history, so this read is the only place they meet. The
+// projection is Conversation-owned because it reads the Conversation snapshot;
+// the preset library stays independent of the Conversation module.
+const projectPromptPreset = (
+	recipe: PromptPresetRecipe,
+	snapshot: ConversationSnapshot,
+): ConversationPromptPreset => {
 	const seated = (
 		participantId: number | null,
 	): CastParticipantSnapshot | undefined => snapshot.cast.find(
@@ -75,4 +71,16 @@ export const resolveConversationPromptPreset = (
 	});
 
 	return { id: recipe.id, name: recipe.name, slots };
+};
+
+/** ==[HUMAN APPROVED]== Undefined when the Conversation does not exist. */
+export const readConversationPromptPreset = (
+	database: Database,
+	conversationId: number,
+): ConversationPromptPreset | undefined => {
+	const recipe = readConversationPromptPresetRecipe(database, conversationId);
+	if (recipe === undefined) return undefined;
+	const snapshot = readConversationSnapshot(database, conversationId);
+	if (snapshot === undefined) return undefined;
+	return projectPromptPreset(recipe, snapshot);
 };

@@ -21,7 +21,6 @@ import {
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
 import { withDatabase } from "../database/database";
-import { resolveConversationPromptPreset } from "../prompt-preset";
 import { conversationPromptPreset } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
@@ -258,7 +257,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/prompt-preset",
 			({ params }) => {
 				const preset = withDatabase(database, (connection) =>
-					resolveConversationPromptPreset(connection, params.id),
+					createConversationModule(connection).getPromptPreset(params.id),
 				);
 				return preset ?? notFoundResponse();
 			},

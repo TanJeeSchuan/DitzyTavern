@@ -20,6 +20,7 @@ import {
 	readConversationSummary,
 } from "./snapshot";
 import { readConversationData } from "./read-data";
+import { readConversationPromptPreset } from "./prompt-preset";
 import {
 	readActiveGenerationDetails,
 	readVariantDetails,
@@ -144,6 +145,8 @@ export function createConversationModule(database: Database): ConversationModule
 		getSummary: (conversationId) => readConversationSummary(database, conversationId),
 		getGenerationSettings: (conversationId) =>
 			readConversationGenerationSettings(database, conversationId),
+		getPromptPreset: (conversationId) =>
+			readConversationPromptPreset(database, conversationId),
 		readHistory: (conversationId, request) =>
 			readChatHistory(database, conversationId, request),
 		readConversationData: (conversationId, filter) =>

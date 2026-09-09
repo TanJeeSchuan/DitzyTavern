@@ -40,7 +40,6 @@ export {
 	PromptPresetNotFoundError,
 	StalePromptPresetRevisionError,
 } from "./errors";
-export { resolveConversationPromptPreset } from "./resolve";
 export type {
 	PromptBlockReference,
 	PromptPresetBlockPatch,

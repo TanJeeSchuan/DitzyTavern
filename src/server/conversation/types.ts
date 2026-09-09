@@ -22,6 +22,7 @@ import type {
 import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
+import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -294,6 +295,10 @@ export interface ConversationModule {
 	getGenerationSettings(
 		conversationId: number,
 	): ConversationGenerationSettings | undefined;
+	// The Chat's selected recipe with each Referenced Prompt Block resolved
+	// against this Chat's own Participant Definitions and selected history.
+	// Undefined for a missing Conversation.
+	getPromptPreset(conversationId: number): ConversationPromptPreset | undefined;
 	// Reads one stable chronological page of the normal Chat history read
 	// model. Pages carry the lightweight Participant identity, immutable
 	// Author Stamp names, Message chronology, Variant order, and selected
