@@ -166,11 +166,7 @@ export function usePromptPresetEditor({
 		if (conversation === null) return;
 		if (busy && !(resolvingLeave && leaving)) return;
 		const conversationId = conversation.id;
-		dispatch({
-			type: "operation-started",
-			invalidateReads: true,
-			conversationOperation: true,
-		});
+		dispatch({ type: "operation-started", kind: "conversation-selection" });
 		const claim = conversationOperationClaim(stateRef.current);
 		void runConversationCommand({
 			revision: () => conversation.revision,
@@ -234,11 +230,7 @@ export function usePromptPresetEditor({
 			});
 			return;
 		}
-		dispatch({
-			type: "operation-started",
-			invalidateReads: true,
-			clearNotice: true,
-		});
+		dispatch({ type: "operation-started", kind: "library-write" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await applyPromptPresetCommand(command);
@@ -304,7 +296,7 @@ export function usePromptPresetEditor({
 
 	const exportSelectedPreset = async (presetId: number, name: string): Promise<void> => {
 		if (busy) return;
-		dispatch({ type: "operation-started", clearNotice: true });
+		dispatch({ type: "operation-started", kind: "export" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const native = await loadNativePromptPreset(presetId);
@@ -328,11 +320,7 @@ export function usePromptPresetEditor({
 
 	const importPresetFile = async (file: File): Promise<void> => {
 		if (busy) return;
-		dispatch({
-			type: "operation-started",
-			invalidateReads: true,
-			clearNotice: true,
-		});
+		dispatch({ type: "operation-started", kind: "library-write" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value that the review route validates again.
@@ -382,7 +370,7 @@ export function usePromptPresetEditor({
 			dispatch({ type: "notice-changed", notice: "Choose an order list before importing." });
 			return;
 		}
-		dispatch({ type: "operation-started", invalidateReads: true });
+		dispatch({ type: "operation-started", kind: "import-commit" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await commitSillyTavernPromptPreset(
@@ -406,7 +394,7 @@ export function usePromptPresetEditor({
 		const currentReview = review;
 		if (currentReview === null) return;
 		if (busy) return;
-		dispatch({ type: "operation-started" });
+		dispatch({ type: "operation-started", kind: "order-selection" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await reviewSillyTavernPromptPreset(
@@ -438,7 +426,7 @@ export function usePromptPresetEditor({
 		if (conversation === null) return;
 		if (busy) return;
 		const conversationId = conversation.id;
-		dispatch({ type: "operation-started", clearProblem: true });
+		dispatch({ type: "operation-started", kind: "recipe-operation" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const outcome = await run();
@@ -541,7 +529,7 @@ export function usePromptPresetEditor({
 		const currentReady = stateRef.current.view.status === "ready" ? stateRef.current.view : null;
 		if (stateRef.current.busy || conversation === null || currentReady === null || request === null) return;
 		const conversationId = conversation.id;
-		dispatch({ type: "operation-started", leaving: true });
+		dispatch({ type: "operation-started", kind: "save-on-leave" });
 		const claim = operationClaim(stateRef.current);
 		try {
 			const failure = await saveDrafts(currentReady.selected, claim, conversationId);

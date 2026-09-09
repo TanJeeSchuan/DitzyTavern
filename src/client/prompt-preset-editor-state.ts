@@ -127,19 +127,76 @@ export interface PromptPresetEditorState {
 	leaveRequest: LeaveRequest | null;
 }
 
+// ==[HUMAN APPROVED]== An operation names the flow it starts; the policy table owns what that means
+// for read invalidation, Conversation ownership, the save-on-leave handoff and feedback clearing,
+// so no caller assembles those rules itself.
+export type EditorOperationKind =
+	| "conversation-selection"
+	| "library-write"
+	| "import-commit"
+	| "export"
+	| "order-selection"
+	| "recipe-operation"
+	| "save-on-leave";
+
+interface OperationPolicy {
+	supersedesReads: boolean;
+	ownsConversation: boolean;
+	replacesFeedback: "none" | "notice" | "problem";
+	leaveHandoff: boolean;
+}
+
+const OPERATION_POLICY = {
+	"conversation-selection": {
+		supersedesReads: true,
+		ownsConversation: true,
+		replacesFeedback: "none",
+		leaveHandoff: false,
+	},
+	"library-write": {
+		supersedesReads: true,
+		ownsConversation: false,
+		replacesFeedback: "notice",
+		leaveHandoff: false,
+	},
+	"import-commit": {
+		supersedesReads: true,
+		ownsConversation: false,
+		replacesFeedback: "none",
+		leaveHandoff: false,
+	},
+	export: {
+		supersedesReads: false,
+		ownsConversation: false,
+		replacesFeedback: "notice",
+		leaveHandoff: false,
+	},
+	"order-selection": {
+		supersedesReads: false,
+		ownsConversation: false,
+		replacesFeedback: "none",
+		leaveHandoff: false,
+	},
+	"recipe-operation": {
+		supersedesReads: false,
+		ownsConversation: false,
+		replacesFeedback: "problem",
+		leaveHandoff: false,
+	},
+	"save-on-leave": {
+		supersedesReads: false,
+		ownsConversation: false,
+		replacesFeedback: "none",
+		leaveHandoff: true,
+	},
+} as const satisfies Record<EditorOperationKind, OperationPolicy>;
+
 export type PromptPresetEditorEvent =
 	| { type: "session-changed"; sessionKey: string; conversationRevision: number | null }
 	| { type: "conversation-revision-changed"; conversationRevision: number | null }
 	| { type: "conversation-adopted"; conversationRevision: number }
 	| { type: "read-started" }
-	| {
-			type: "operation-started";
-			leaving?: boolean;
-			invalidateReads?: boolean;
-			conversationOperation?: boolean;
-			clearNotice?: boolean;
-			clearProblem?: boolean;
-	  }
+	| { type: "operation-started"; kind: EditorOperationKind }
 	| { type: "operation-settled"; claim: OperationClaim }
 	| { type: "notice-changed"; notice: string | null }
 	| { type: "problem-changed"; problem: string | null }
@@ -298,21 +355,23 @@ export function reducePromptPresetEditorState(
 			};
 		case "read-started":
 			return { ...state, session: { ...state.session, latestRead: state.session.latestRead + 1 } };
-		case "operation-started":
+		case "operation-started": {
+			const policy = OPERATION_POLICY[event.kind];
 			return {
 				...state,
 				session: {
 					...state.session,
 					latestOperation: state.session.latestOperation + 1,
-					latestRead: state.session.latestRead + (event.invalidateReads === true ? 1 : 0),
+					latestRead: state.session.latestRead + (policy.supersedesReads ? 1 : 0),
 					latestConversationOperation: state.session.latestConversationOperation +
-						(event.conversationOperation === true ? 1 : 0),
+						(policy.ownsConversation ? 1 : 0),
 				},
 				busy: true,
-				leaving: event.leaving === true,
-				notice: event.clearNotice === true ? null : state.notice,
-				problem: event.clearProblem === true ? null : state.problem,
+				leaving: policy.leaveHandoff,
+				notice: policy.replacesFeedback === "notice" ? null : state.notice,
+				problem: policy.replacesFeedback === "problem" ? null : state.problem,
 			};
+		}
 		case "operation-settled":
 			return operationApplies(state, event.claim) ? { ...state, busy: false, leaving: false } : state;
 		case "notice-changed":

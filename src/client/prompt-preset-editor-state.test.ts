@@ -79,9 +79,9 @@ describe("response ownership", () => {
 
 	test("an older mutation response is dropped", () => {
 		let state = openState();
-		state = reducePromptPresetEditorState(state, { type: "operation-started" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "library-write" });
 		const older = operationClaim(state);
-		state = reducePromptPresetEditorState(state, { type: "operation-started" });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "library-write" });
 		const newer = operationClaim(state);
 
 		expect(operationApplies(state, older)).toBe(false);
@@ -116,7 +116,7 @@ describe("response ownership", () => {
 		let state = openState();
 		state = reducePromptPresetEditorState(state, {
 			type: "operation-started",
-			conversationOperation: true,
+			kind: "conversation-selection",
 		});
 		const claim = conversationOperationClaim(state);
 
@@ -126,6 +126,21 @@ describe("response ownership", () => {
 		});
 
 		expect(conversationOperationApplies(state, claim)).toBe(false);
+	});
+
+	test("a newer Conversation snapshot leaves an unrelated library operation current", () => {
+		let state = openState();
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "library-write" });
+		const claim = operationClaim(state);
+
+		state = reducePromptPresetEditorState(state, {
+			type: "conversation-revision-changed",
+			conversationRevision: 4,
+		});
+
+		expect(operationApplies(state, claim)).toBe(true);
+		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim });
+		expect(state.busy).toBe(false);
 	});
 });
 
@@ -199,11 +214,7 @@ describe("busy, notice and leave transitions", () => {
 		let state = openState();
 		state = reducePromptPresetEditorState(state, { type: "notice-changed", notice: "old notice" });
 
-		state = reducePromptPresetEditorState(state, {
-			type: "operation-started",
-			invalidateReads: true,
-			clearNotice: true,
-		});
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "library-write" });
 		expect(state.notice).toBeNull();
 		expect(state.busy).toBe(true);
 
@@ -233,7 +244,7 @@ describe("busy, notice and leave transitions", () => {
 			type: "leave-requested",
 			request: { kind: "select", presetId: 8 },
 		});
-		state = reducePromptPresetEditorState(state, { type: "operation-started", leaving: true });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "save-on-leave" });
 		const claim = operationClaim(state);
 		expect(state.leaving).toBe(true);
 
@@ -254,7 +265,7 @@ describe("busy, notice and leave transitions", () => {
 		const draft = contentDraft("Write warmly.");
 		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft });
 		state = reducePromptPresetEditorState(state, { type: "leave-requested", request: { kind: "close" } });
-		state = reducePromptPresetEditorState(state, { type: "operation-started", leaving: true });
+		state = reducePromptPresetEditorState(state, { type: "operation-started", kind: "save-on-leave" });
 
 		state = reducePromptPresetEditorState(state, {
 			type: "leave-failed",
