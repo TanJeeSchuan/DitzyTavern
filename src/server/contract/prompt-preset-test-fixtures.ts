@@ -56,10 +56,10 @@ export interface CapturedRequest {
 
 export const createChat = (
 	database: Database,
-	names: { human?: string; model?: string } = {},
+	names: { name?: string; human?: string; model?: string } = {},
 ) =>
 	createConversationModule(database).create({
-		name: "Preset Chat",
+		name: names.name ?? "Preset Chat",
 		participants: [
 			{
 				definition: {
