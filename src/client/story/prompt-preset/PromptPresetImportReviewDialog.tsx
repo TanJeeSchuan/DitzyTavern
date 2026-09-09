@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SillyTavernImportPreview, SillyTavernImportRequest, SillyTavernJsonValue } from "../../prompt-preset-library";
+import { outgoingRoleLabels, slotTitle } from "../../prompt-preset-presentation";
 
 export type SillyTavernReview = {
 	request: SillyTavernImportRequest & { source: SillyTavernJsonValue };
@@ -8,30 +9,8 @@ export type SillyTavernReview = {
 	orderListId: string | null;
 };
 
-const roleLabels = {
-	system: "System message",
-	user: "User message",
-	assistant: "Assistant message",
-} as const;
-
-const slotLabels = {
-	"model-system-instruction": "System Instruction",
-	"human-identity": "Identity (you)",
-	"model-identity": "Identity (character)",
-	"model-scenario": "Scenario",
-	"model-example-dialogue": "Example Dialogue",
-	history: "Chat history",
-	"model-post-history-instruction": "Post-History Instruction",
-	instruction: "Instruction",
-} as const;
-
-const slotTitle = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
-	slot.reference === "instruction"
-		? (slot.name.trim() === "" ? "Instruction" : slot.name)
-		: slotLabels[slot.reference];
-
 const importedSlotRole = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
-	slot.reference === "history" ? "History message roles" : roleLabels[slot.role];
+	slot.reference === "history" ? "History message roles" : outgoingRoleLabels[slot.role];
 
 export function PromptPresetImportReviewDialog({
 	review,
