@@ -64,7 +64,6 @@ export function PromptPresetRecipeEditor({
 	}, [pending, preset.slots]);
 
 	return <section aria-label="Selected recipe" className="flex flex-col gap-3">
-		<h2 className="text-sm font-medium">{preset.name}: assembled order</h2>
 		<DragDropProvider
 			plugins={(defaults) => [...defaults, AutoScroller.configure({
 				acceleration: 8,

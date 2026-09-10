@@ -212,10 +212,10 @@ export function PromptPresetRecipeRow({
 					aria-checked={slot.enabled}
 					aria-label={`${slot.enabled ? "Disable" : "Enable"} ${title}`}
 					disabled={pending}
-					className={`relative h-5 w-9 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${slot.enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
+					className={`relative h-4 w-7 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${slot.enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
 					onClick={() => onOperation(() => setPromptPresetBlockEnabled(presetId, slot.id, !slot.enabled))}
 				>
-					<span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow-sm transition-transform ${slot.enabled ? "translate-x-4" : "translate-x-0"}`} />
+					<span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${slot.enabled ? "translate-x-3" : "translate-x-0"}`} />
 				</button>
 			</div>
 		</div>
