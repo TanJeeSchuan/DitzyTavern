@@ -2,7 +2,7 @@
   "version": "6",
   "dialect": "sqlite",
   "id": "62fb9342-016f-41e8-9893-cfaa0516d14f",
-  "prevId": "55b8c4e7-ddb7-426d-80fd-2bcfb5bf9abf",
+  "prevId": "cd2427de-2903-42cd-bf42-b19df0f0a79f",
   "tables": {
     "active_generation": {
       "name": "active_generation",
@@ -2049,6 +2049,27 @@
           "notNull": true,
           "autoincrement": false,
           "default": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -2104,6 +2125,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {
