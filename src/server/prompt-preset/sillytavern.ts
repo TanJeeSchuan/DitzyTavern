@@ -9,8 +9,10 @@ interface SourceDefinition {
 	name: string;
 	content: string;
 	role: PromptOutgoingRole;
+	roleWasDefaulted: boolean;
 	marker: boolean;
 	injectionPosition: number;
+	injectionPositionWasDefaulted: boolean;
 }
 
 interface SourceOrderEntry {
@@ -26,6 +28,7 @@ interface SourceOrderList {
 interface NormalizedSource {
 	name: string | undefined;
 	definitions: SourceDefinition[];
+	duplicateDefinitionIdentifiers: string[];
 	orders: SourceOrderList[];
 	settings: JsonRecord;
 }
@@ -80,11 +83,15 @@ const requiredString = (value: SillyTavernJsonValue | undefined, field: string):
 	return value;
 };
 
-const sourceRole = (value: SillyTavernJsonValue | undefined): PromptOutgoingRole =>
-	value === "user" || value === "assistant" || value === "system" ? value : "system";
+const sourceRole = (value: SillyTavernJsonValue | undefined): { role: PromptOutgoingRole; wasDefaulted: boolean } =>
+	value === "user" || value === "assistant" || value === "system"
+		? { role: value, wasDefaulted: false }
+		: { role: "system", wasDefaulted: true };
 
-const sourceInjectionPosition = (value: SillyTavernJsonValue | undefined): number =>
-	value !== undefined && isJsonNumber(value) && Number.isFinite(value) ? value : 0;
+const sourceInjectionPosition = (value: SillyTavernJsonValue | undefined): { position: number; wasDefaulted: boolean } =>
+	value !== undefined && isJsonNumber(value) && Number.isFinite(value) && (value === 0 || value === 1)
+		? { position: value, wasDefaulted: false }
+		: { position: 0, wasDefaulted: value !== undefined };
 
 const sourceName = (source: JsonRecord, requestedName: string | undefined): string => {
 	const name = requestedName?.trim() || (source.name !== undefined && isJsonString(source.name) ? source.name.trim() : "");
@@ -104,6 +111,7 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 	}
 
 	const definitions: SourceDefinition[] = [];
+	const duplicateDefinitionIdentifiers: string[] = [];
 	const seenDefinitions = new Set<string>();
 	for (const [index, value] of source.prompts.entries()) {
 		const definition = asJsonRecord(value);
@@ -111,19 +119,26 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 			throw new InvalidPromptPresetCommandError(`SillyTavern prompt definition ${index + 1} must be an object.`);
 		}
 		const identifier = requiredString(definition.identifier, `prompt definition ${index + 1} identifier`);
-		if (seenDefinitions.has(identifier)) continue;
+		if (seenDefinitions.has(identifier)) {
+			duplicateDefinitionIdentifiers.push(identifier);
+			continue;
+		}
 		seenDefinitions.add(identifier);
 		const content = definition.content === undefined ? "" : definition.content;
 		if (!isJsonString(content)) {
 			throw new InvalidPromptPresetCommandError(`SillyTavern definition "${identifier}" has non-text content.`);
 		}
+		const role = sourceRole(definition.role);
+		const injectionPosition = sourceInjectionPosition(definition.injection_position);
 		definitions.push({
 			identifier,
 			name: definition.name !== undefined && isJsonString(definition.name) && definition.name !== "" ? definition.name : identifier,
 			content,
-			role: sourceRole(definition.role),
+			role: role.role,
+			roleWasDefaulted: role.wasDefaulted,
 			marker: definition.marker === true,
-			injectionPosition: sourceInjectionPosition(definition.injection_position),
+			injectionPosition: injectionPosition.position,
+			injectionPositionWasDefaulted: injectionPosition.wasDefaulted,
 		});
 	}
 
@@ -154,7 +169,13 @@ const normalizeSource = (value: SillyTavernJsonValue): NormalizedSource => {
 	if (orders.length === 0) {
 		throw new InvalidPromptPresetCommandError("SillyTavern JSON contains no order lists to import.");
 	}
-	return { name: source.name !== undefined && isJsonString(source.name) ? source.name : undefined, definitions, orders, settings: source };
+	return {
+		name: source.name !== undefined && isJsonString(source.name) ? source.name : undefined,
+		definitions,
+		duplicateDefinitionIdentifiers,
+		orders,
+		settings: source,
+	};
 };
 
 const orderChoices = (orders: readonly SourceOrderList[]): SillyTavernOrderChoice[] =>
@@ -213,6 +234,37 @@ const pushOnce = (diagnostics: SillyTavernImportDiagnostic[], seen: Set<string>,
 	if (seen.has(key)) return;
 	seen.add(key);
 	diagnostics.push(value);
+};
+
+const reportDefinitionNormalization = (
+	diagnostics: SillyTavernImportDiagnostic[],
+	seen: Set<string>,
+	definition: SourceDefinition,
+	converted: Extract<ConvertedDefinition, { slot: unknown }>,
+): void => {
+	if (converted.slot.reference !== "instruction") return;
+	if (definition.roleWasDefaulted) {
+		pushOnce(
+			diagnostics,
+			seen,
+			diagnostic(
+				"default-role",
+				`Authored block "${definition.identifier}" had no supported role; the system role was used.`,
+				definition.identifier,
+			),
+		);
+	}
+	if (definition.injectionPositionWasDefaulted) {
+		pushOnce(
+			diagnostics,
+			seen,
+			diagnostic(
+				"invalid-injection-position",
+				`Injection position for authored block "${definition.identifier}" was invalid; it was placed using ordinary recipe order.`,
+				definition.identifier,
+			),
+		);
+	}
 };
 
 // ==[HUMAN APPROVED]== One converted definition, used identically by listed occurrences and
@@ -312,6 +364,17 @@ const buildSillyTavernPreview = (
 	const regular: NativePromptPreset["slots"] = [];
 	const depthPlaced: NativePromptPreset["slots"] = [];
 	const unlisted: NativePromptPreset["slots"] = [];
+	for (const identifier of normalized.duplicateDefinitionIdentifiers) {
+		pushOnce(
+			diagnostics,
+			diagnosticKeys,
+			diagnostic(
+				"duplicate-definition",
+				`Prompt definition "${identifier}" appeared more than once; later definitions were omitted and the first was kept.`,
+				identifier,
+			),
+		);
+	}
 
 	for (const entry of order.entries) {
 		const definition = definitions.get(entry.identifier);
@@ -324,6 +387,7 @@ const buildSillyTavernPreview = (
 			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
 			continue;
 		}
+		reportDefinitionNormalization(diagnostics, diagnosticKeys, definition, converted);
 		const slot = withEnablement(converted, entry.enabled);
 		if (converted.slot.reference === "instruction" && definition.injectionPosition === 1) {
 			depthPlaced.push(slot);
@@ -343,6 +407,7 @@ const buildSillyTavernPreview = (
 			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
 			continue;
 		}
+		reportDefinitionNormalization(diagnostics, diagnosticKeys, definition, converted);
 		unlisted.push(withEnablement(converted, false));
 	}
 

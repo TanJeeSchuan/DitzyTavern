@@ -254,6 +254,58 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		]);
 	});
 
+	test("reports lossy authored normalization while preserving the first duplicate", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{ identifier: "missing-role", name: "Missing role", content: "default me" },
+				{ identifier: "unsupported-role", name: "Unsupported role", content: "default this", role: "tool" },
+				{ identifier: "invalid-position", name: "Invalid position", content: "ordinary order", role: "assistant", injection_position: 2 },
+				{ identifier: "duplicate", name: "First", content: "first content", role: "user" },
+				{ identifier: "duplicate", name: "Later", content: "later content", role: "assistant" },
+			],
+			prompt_order: [{ character_id: 100001, order: [
+				{ identifier: "missing-role", enabled: true },
+				{ identifier: "unsupported-role", enabled: true },
+				{ identifier: "invalid-position", enabled: true },
+				{ identifier: "duplicate", enabled: true },
+				{ identifier: "duplicate", enabled: false },
+				{ identifier: "missing-role", enabled: false },
+			] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		expect(preview.native.slots).toEqual([
+			{ reference: "instruction", enabled: true, role: "system", name: "Missing role", content: "default me" },
+			{ reference: "instruction", enabled: true, role: "system", name: "Unsupported role", content: "default this" },
+			{ reference: "instruction", enabled: true, role: "assistant", name: "Invalid position", content: "ordinary order" },
+			{ reference: "instruction", enabled: true, role: "user", name: "First", content: "first content" },
+			{ reference: "instruction", enabled: false, role: "user", name: "First", content: "first content" },
+			{ reference: "instruction", enabled: false, role: "system", name: "Missing role", content: "default me" },
+		]);
+		expect(preview.diagnostics.map((item) => item.code)).toEqual([
+			"duplicate-definition",
+			"default-role",
+			"default-role",
+			"invalid-injection-position",
+		]);
+		expect(preview.diagnostics.find((item) => item.code === "default-role")?.message).toContain("system role");
+		expect(preview.diagnostics.find((item) => item.code === "invalid-injection-position")?.message).toContain("ordinary recipe order");
+		expect(preview.diagnostics.find((item) => item.code === "duplicate-definition")?.message).toContain("first was kept");
+
+		const imported = await postImport(app, source);
+		expect(imported.status).toBe(200);
+		const applied = requireApplied(imported.body);
+		expect(await exportPreset(app, applied.preset.id)).toEqual(preview.native);
+		expect(applied.diagnostics).toEqual([
+			{ code: "duplicate-definition", message: 'Prompt definition "duplicate" appeared more than once; later definitions were omitted and the first was kept.', identifier: "duplicate" },
+			{ code: "default-role", message: 'Authored block "missing-role" had no supported role; the system role was used.', identifier: "missing-role" },
+			{ code: "default-role", message: 'Authored block "unsupported-role" had no supported role; the system role was used.', identifier: "unsupported-role" },
+			{ code: "invalid-injection-position", message: 'Injection position for authored block "invalid-position" was invalid; it was placed using ordinary recipe order.', identifier: "invalid-position" },
+		]);
+	});
+
 	test("reports every excluded settings family without importing its behavior", async () => {
 		const app = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {
