@@ -32,10 +32,11 @@ export interface PromptPresetEditorRuntime {
 	dirtyCount: number;
 	dispatch: (event: PromptPresetEditorEvent) => void;
 	load: (isCancelled?: () => boolean) => Promise<EditorLoadResult>;
+	loadRecipe: (isCancelled?: () => boolean) => Promise<EditorLoadResult>;
 	runOperation: <R>(
 		effects: OperationStartEffects,
 		body: (claim: OperationClaim) => Promise<R>,
-	) => Promise<R>;
+	) => Promise<R | undefined>;
 	ownsOperation: (claim: OperationClaim) => boolean;
 }
 
@@ -70,14 +71,15 @@ export function usePromptPresetEditorRuntime({
 		alive.current && operationApplies(stateRef.current, claim);
 
 	// ==[HUMAN APPROVED]== One operation settlement owner: a flow declares its start effects and
-	// hands over its body, and this wrapper bumps the operation epoch, runs the body and settles
-	// only its own busy state. Because the settle happens synchronously before `runOperation`
-	// resolves, a leave that starts its selection after `await runOperation(...)` runs with busy
-	// already released — no busy bypass is needed and no operation overlaps another.
+	// hands over its body, and this wrapper refuses a second operation while the first is active,
+	// runs the body and settles only its own busy state. Because the settle happens synchronously
+	// before `runOperation` resolves, a leave that starts its selection after `await runOperation(...)`
+	// runs with busy already released.
 	const runOperation = async <R>(
 		effects: OperationStartEffects,
 		body: (claim: OperationClaim) => Promise<R>,
-	): Promise<R> => {
+	): Promise<R | undefined> => {
+		if (!open || !alive.current || stateRef.current.busy) return undefined;
 		dispatch({ type: "operation-started", effects });
 		const claim = operationClaim(stateRef.current);
 		try {
@@ -87,12 +89,13 @@ export function usePromptPresetEditorRuntime({
 		}
 	};
 
-	// ==[HUMAN APPROVED]== The one refresh path for initial load, revision refreshes and every
-	// post-mutation reload: it fetches the library list and the Conversation-resolved recipe,
-	// requires both successes for ready, and classifies a current response under one acceptance
-	// rule. An authoritative null recipe takes precedence over a library-list failure; otherwise
-	// either request failure is a network outcome that retains the last ready view (or shows
-	// unavailable on initial load). Every call cancels the previous read regardless of caller.
+	// ==[HUMAN APPROVED]== The broad refresh path for initial load, revision refreshes, library
+	// commands, imports and selection changes: it fetches the library list and the
+	// Conversation-resolved recipe, requires both successes for ready, and classifies a current
+	// response under one acceptance rule. An authoritative null recipe takes precedence over a
+	// library-list failure; otherwise either request failure is a network outcome that retains the
+	// last ready view (or shows unavailable on initial load). Every call cancels the previous read
+	// regardless of caller.
 	const load = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
 		if (!open) return "stale";
 		if (conversation === null) {
@@ -128,6 +131,37 @@ export function usePromptPresetEditorRuntime({
 		return "network";
 	};
 
+	// ==[HUMAN APPROVED]== Recipe mutations reload only the selected Conversation-resolved recipe;
+	// the library summary is unchanged by block edits. It keeps the same read claim and stale
+	// response handling as the broad refresh, including authoritative absence and last-view
+	// preservation on network failure.
+	const loadRecipe = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
+		if (!open) return "stale";
+		if (conversation === null) {
+			dispatch({ type: "recipe-unavailable" });
+			return "not-found";
+		}
+		const conversationId = conversation.id;
+		dispatch({ type: "read-started" });
+		const claim = readClaim(stateRef.current);
+		const selectedResult = await Promise.allSettled([
+			loadConversationPromptPreset(conversationId),
+		]);
+		if (isCancelled?.() || !readApplies(stateRef.current, claim)) return "stale";
+		const selectedResultValue = selectedResult[0];
+		if (selectedResultValue?.status === "fulfilled") {
+			const selected = selectedResultValue.value;
+			if (selected === null) {
+				dispatch({ type: "recipe-unavailable" });
+				return "not-found";
+			}
+			dispatch({ type: "recipe-adopted", claim, selected });
+			return "ready";
+		}
+		dispatch({ type: "load-failed" });
+		return "network";
+	};
+
 	const { view, drafts } = state;
 	const ready = view.status === "ready" ? view : null;
 	const { dirty, count } = ready === null
@@ -155,5 +189,5 @@ export function usePromptPresetEditorRuntime({
 		void load(isCancelled);
 	}, [open, conversation?.id, conversation?.revision]);
 
-	return { state, current, ready, dirty, dirtyCount, dispatch, load, runOperation, ownsOperation };
+	return { state, current, ready, dirty, dirtyCount, dispatch, load, loadRecipe, runOperation, ownsOperation };
 }

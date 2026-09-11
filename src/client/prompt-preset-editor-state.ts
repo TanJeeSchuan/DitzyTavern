@@ -115,14 +115,13 @@ export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 
 // ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the popup
 // opens, closes or switches Chat, `latestRead` when a newer read supersedes
-// an older one, and `latestOperation`/`latestConversationOperation` when a
-// newer mutation supersedes an older one. A response may apply only while
-// every epoch it was claimed under is still current.
+// an older one, and `latestConversationOperation` when a Conversation-owned
+// mutation or newer Conversation revision invalidates its expected revision.
+// A response may apply only while the session it was claimed under is still current.
 interface EditorSession {
 	key: string;
 	id: number;
 	latestRead: number;
-	latestOperation: number;
 	latestConversationOperation: number;
 	knownRevision: number | null;
 	draftPresetId: number | null;
@@ -136,7 +135,6 @@ export interface ReadClaim {
 
 export interface OperationClaim {
 	sessionId: number;
-	operationId: number;
 }
 
 export interface ConversationOperationClaim extends OperationClaim {
@@ -198,7 +196,6 @@ function cleanSession(key: string, id: number, conversationRevision: number | nu
 		key,
 		id,
 		latestRead: 0,
-		latestOperation: 0,
 		latestConversationOperation: 0,
 		knownRevision: conversationRevision,
 		draftPresetId: null,
@@ -233,7 +230,6 @@ export const readClaim = (state: PromptPresetEditorState): ReadClaim => ({
 
 export const operationClaim = (state: PromptPresetEditorState): OperationClaim => ({
 	sessionId: state.session.id,
-	operationId: state.session.latestOperation,
 });
 
 export const conversationOperationClaim = (
@@ -250,7 +246,7 @@ export const operationApplies = (
 	state: PromptPresetEditorState,
 	claim: OperationClaim,
 ): boolean =>
-	state.session.id === claim.sessionId && claim.operationId === state.session.latestOperation;
+	state.session.id === claim.sessionId;
 
 export const conversationOperationApplies = (
 	state: PromptPresetEditorState,
@@ -356,7 +352,6 @@ export function reducePromptPresetEditorState(
 				...state,
 				session: {
 					...state.session,
-					latestOperation: state.session.latestOperation + 1,
 					latestRead: state.session.latestRead + (event.effects.supersedesReads ? 1 : 0),
 					latestConversationOperation: state.session.latestConversationOperation +
 						(event.effects.ownsConversation ? 1 : 0),

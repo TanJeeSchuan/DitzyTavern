@@ -15,6 +15,7 @@ import {
 	moveBlock,
 	readInspection,
 	readOperation,
+	readRecipeAfterOperation,
 	readPreset,
 	recipeRoutes,
 	saveBlockRole,
@@ -32,11 +33,11 @@ describe("Prompt Preset authored instruction macros", () => {
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
-		recipeRoutes(database).handle(
+		readRecipeAfterOperation(recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		);
+		), database, presetId);
 
 	const runConversationCommand = async (
 		conversationId: number,

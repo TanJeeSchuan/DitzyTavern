@@ -47,8 +47,8 @@ export type SaveDraftsResult =
 	| { status: "aborted" };
 
 // ==[HUMAN APPROVED]== The recipe unit: immediate ordering and enablement, per-block authored saves
-// and the atomic save-on-leave batch. It shares the runtime's settlement owner and the one unified
-// refresh path, so its flows cannot diverge from the library unit's ownership rules.
+// and the atomic save-on-leave batch. It shares the runtime's settlement owner and refresh
+// ownership, so its flows cannot diverge from the library unit's response rules.
 export function usePromptPresetRecipe({
 	runtime,
 	conversation,
@@ -56,20 +56,18 @@ export function usePromptPresetRecipe({
 	runtime: PromptPresetEditorRuntime;
 	conversation: ConversationSummary | null;
 }): PromptPresetRecipeUnit {
-	const { current, dispatch, load, runOperation, ownsOperation } = runtime;
+	const { current, dispatch, loadRecipe, runOperation, ownsOperation } = runtime;
 
 	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live here, and
-	// the applied response reloads through the shared unified refresh path, which also refreshes
-	// the library list. When the operation submitted one occurrence's draft, that exact version is
-	// retired on acceptance so saved content never resurfaces as an unsaved edit. An authoritative
-	// null recipe stays silent here (the view is already unavailable); network failure reports the
-	// recipe reload problem.
+	// the applied response reloads only the selected Conversation-resolved recipe. When the
+	// operation submitted one occurrence's draft, that exact version is retired on acceptance so
+	// saved content never resurfaces as an unsaved edit. An authoritative null recipe stays silent
+	// here (the view is already unavailable); network failure reports the recipe reload problem.
 	const runRecipeOperation = async (
 		run: () => Promise<PromptPresetOperationOutcome>,
 		submitted?: { blockId: number; draft: BlockDraft },
 	): Promise<void> => {
 		if (conversation === null) return;
-		if (current().busy) return;
 		await runOperation(RECIPE_OPERATION_EFFECTS, async (claim) => {
 			const outcome = await run();
 			if (!ownsOperation(claim)) return;
@@ -87,7 +85,7 @@ export function usePromptPresetRecipe({
 			if (submitted !== undefined) {
 				dispatch({ type: "drafts-submitted", submitted: { [submitted.blockId]: submitted.draft } });
 			}
-			const refresh = await load();
+			const refresh = await loadRecipe();
 			if (!ownsOperation(claim)) return;
 			if (refresh === "network") {
 				dispatch({
@@ -104,9 +102,9 @@ export function usePromptPresetRecipe({
 	const clearDraft = (blockId: number): void => dispatch({ type: "draft-cleared", blockId });
 
 	// ==[HUMAN APPROVED]== Save-on-leave submits every dirty occurrence in one typed domain command,
-	// then reloads through the shared unified refresh path. The save's own refresh (not a pre-save
-	// read) accepts the fresh recipe and retires exactly the submitted draft versions; the local
-	// drafts remain available if the save is rejected or either request fails, and a superseded
+	// then reloads only the selected Conversation-resolved recipe. The save's own refresh (not a
+	// pre-save read) accepts the fresh recipe and retires exactly the submitted draft versions; the
+	// local drafts remain available if the save is rejected or either request fails, and a superseded
 	// refresh aborts without completing the leave.
 	const saveDrafts = async (
 		preset: ConversationPromptPreset,
@@ -129,7 +127,7 @@ export function usePromptPresetRecipe({
 			};
 		}
 		dispatch({ type: "drafts-submitted", submitted });
-		const refresh = await load();
+		const refresh = await loadRecipe();
 		if (!ownsOperation(claim)) return { status: "aborted" };
 		if (refresh === "network") {
 			return { status: "failed", problem: "The saved Prompt Preset could not be reloaded." };

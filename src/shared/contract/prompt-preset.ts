@@ -317,7 +317,8 @@ export type PromptPresetDeletionResult = Static<typeof promptPresetDeletionResul
 // ==[HUMAN APPROVED]== The applied-command wire union states its variant: a summary for every
 // metadata command, or the deletion's derived reassignment. Deletion returns
 // the typed result instead of a summary because the preset no longer exists.
-// Block patches respond through the recipe route with the stored recipe.
+// Block operations respond through the recipe route with a minimal applied acknowledgment; the
+// client reloads the resolved recipe through the Conversation read seam.
 export const promptPresetCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
@@ -329,6 +330,11 @@ export const promptPresetCommandApplied = Type.Union([
 	}),
 ]);
 export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplied>;
+
+export const promptPresetRecipeApplied = Type.Object({
+	outcome: Type.Literal("applied"),
+});
+export type PromptPresetRecipeApplied = Static<typeof promptPresetRecipeApplied>;
 
 // ==[HUMAN APPROVED]== The two recoverable command conflicts share one 409 envelope: the
 // preset's library metadata revision is stale, or the deletion impact the

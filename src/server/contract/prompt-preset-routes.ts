@@ -37,7 +37,7 @@ import {
 	promptPresetCommandBody,
 	promptPresetCommandConflict,
 	promptPresetListResponse,
-	promptPresetRecipe,
+	promptPresetRecipeApplied,
 	setPromptPresetBlockEnabledBody,
 	sillyTavernImportApplied,
 	sillyTavernImportPreview,
@@ -145,7 +145,7 @@ const runPresetCommand = <T>(operation: () => T): CommandOutcome<T> => {
 
 const recipeResponse = <T>(outcome: RecipeOutcome<T>) =>
 	outcome.outcome === "ok"
-		? outcome.value
+		? { outcome: "applied" as const }
 		: outcome.outcome === "not-found"
 			? notFoundResponse()
 			: invalidResponse(outcome.reason);
@@ -165,7 +165,7 @@ const commandResponse = <T, R>(outcome: CommandOutcome<T>, applied: (value: T) =
 					: status(409, { outcome: "not-removable" as const, reason: outcome.reason });
 
 const recipeResponseSchema = {
-	200: promptPresetRecipe,
+	200: promptPresetRecipeApplied,
 	404: notFoundOutcome,
 	422: invalidOutcome,
 };

@@ -181,22 +181,6 @@ describe("response ownership", () => {
 		expect(state.view).toEqual({ status: "ready", presets: [], selected });
 	});
 
-	test("an older mutation response is dropped", () => {
-		let state = openState();
-		state = reducePromptPresetEditorState(state, { type: "operation-started", effects: libraryEffects });
-		const older = operationClaim(state);
-		state = reducePromptPresetEditorState(state, { type: "operation-started", effects: libraryEffects });
-		const newer = operationClaim(state);
-
-		expect(operationApplies(state, older)).toBe(false);
-		expect(operationApplies(state, newer)).toBe(true);
-
-		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim: older });
-		expect(state.busy).toBe(true);
-		state = reducePromptPresetEditorState(state, { type: "operation-settled", claim: newer });
-		expect(state.busy).toBe(false);
-	});
-
 	test("a response from a replaced popup session is rejected", () => {
 		let state = openState();
 		state = reducePromptPresetEditorState(state, { type: "read-started" });

@@ -25,9 +25,8 @@ const SAVE_ON_LEAVE_EFFECTS: OperationStartEffects = {
 
 // ==[HUMAN APPROVED]== The leave unit: the unsaved-drafts guard every dismissal path shares, and the
 // deferred close or selection that only runs after the atomic save settles. Save-on-leave is
-// linearized: the batch is submitted, a current refresh is accepted, the save settles and releases
-// busy, and only then does the leave resolve to close or start a selection — so no selection ever
-// starts while the save owns busy and no busy bypass is needed.
+// linearized: the batch is submitted, a current refresh is accepted, the save settles, and only
+// then does the leave resolve to close or start a selection.
 export function usePromptPresetLeave({
 	runtime,
 	conversation,
@@ -48,7 +47,7 @@ export function usePromptPresetLeave({
 
 	// ==[HUMAN APPROVED]== Completes a resolved leave: the drafts are gone and the deferred action
 	// — closing the panel or applying the pending selection — runs. Called only after the save
-	// operation has settled, so busy is already released when a selection starts.
+	// operation has settled, so the runtime gate is released when a selection starts.
 	const finishLeave = (request: LeaveRequest): void => {
 		dispatch({ type: "leave-resolved" });
 		if (request.kind === "close") {
@@ -62,9 +61,9 @@ export function usePromptPresetLeave({
 		const live = current();
 		const request = live.leaveRequest;
 		const currentReady = live.view.status === "ready" ? live.view : null;
-		if (live.busy || conversation === null || currentReady === null || request === null) return;
-		// ==[HUMAN APPROVED]== The save operation settles and releases busy before `runOperation`
-		// resolves, so the outcome below is read with busy already free. Only a still-current
+		if (conversation === null || currentReady === null || request === null) return;
+		// ==[HUMAN APPROVED]== The save operation settles before `runOperation` resolves, so the
+		// outcome below is read after the runtime gate is released. Only a still-current
 		// successful save resolves the leave; a failed save reports and stays open, a superseded
 		// refresh aborts without completing the leave, and reconciliation that left newer dirty
 		// drafts keeps the panel open.
@@ -73,6 +72,7 @@ export function usePromptPresetLeave({
 			if (!ownsOperation(claim)) return { status: "aborted" as const };
 			return result;
 		});
+		if (outcome === undefined) return;
 		if (outcome.status === "failed") {
 			dispatch({ type: "leave-failed", problem: outcome.problem });
 			return;

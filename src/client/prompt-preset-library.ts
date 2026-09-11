@@ -7,7 +7,7 @@ import type {
 	NativePromptPreset,
 	PromptBlockReference,
 	PromptPresetBlockPatch,
-	PromptPresetRecipe,
+	PromptPresetRecipeApplied,
 	SillyTavernImportApplied,
 	SillyTavernImportPreview,
 	SillyTavernImportRequest,
@@ -175,24 +175,25 @@ export async function applyPromptPresetCommand(
 }
 
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each call
-// persists one smallest operation against the shared preset; the applied
-// response is the stored recipe as a fresh read.
+// persists one smallest operation against the shared preset; the applied response is only an
+// acknowledgment because the editor reloads the Conversation-resolved recipe through its read
+// seam.
 export type PromptPresetOperationOutcome =
-	| { status: "applied"; recipe: PromptPresetRecipe }
+	| { status: "applied" }
 	| { status: "invalid"; reason: string }
 	| { status: "not-found" }
 	| { status: "network" };
 
-// ==[HUMAN APPROVED]== Every recipe operation responds with the stored recipe as a fresh
-// read plus the shared not-found/invalid envelopes, so one adapter maps the
-// treaty union for all of them. The shared command-outcome helper classifies an
-// envelope the route never declares as unreachable, never as bad input.
+// ==[HUMAN APPROVED]== Every recipe operation responds with the same applied acknowledgment plus
+// the shared not-found/invalid envelopes, so one adapter maps the treaty union for all of them.
+// The shared command-outcome helper classifies an envelope the route never declares as
+// unreachable, never as bad input.
 type RecipeOperationError =
 	| { outcome: "not-found" }
 	| { outcome: "invalid"; reason: string };
 
 const applyRecipeOperation = async (
-	request: EdenResponse<PromptPresetRecipe, { status: number; value: RecipeOperationError }>,
+	request: EdenResponse<PromptPresetRecipeApplied, { status: number; value: RecipeOperationError }>,
 ): Promise<PromptPresetOperationOutcome> => {
 	try {
 		const { data, error } = await request;
@@ -201,7 +202,7 @@ const applyRecipeOperation = async (
 				invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 			});
 		}
-		return { status: "applied", recipe: data };
+		return data.outcome === "applied" ? { status: "applied" } : { status: "network" };
 	} catch {
 		return { status: "network" };
 	}

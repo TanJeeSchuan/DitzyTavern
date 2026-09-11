@@ -421,7 +421,7 @@ describe("Prompt Preset block patch batch", () => {
 		return { stored, instruction, identity };
 	};
 
-	test("saves an occurrence-addressed batch and responds with the stored recipe as a fresh read", async () => {
+	test("saves an occurrence-addressed batch and the fixture reads the applied acknowledgment", async () => {
 		const { stored, instruction, identity } = seedSlots();
 
 		const response = await saveBlockPatches(database, 1, [
@@ -436,7 +436,8 @@ describe("Prompt Preset block patch batch", () => {
 		]);
 
 		expect(response.status).toBe(200);
-		// SAFETY: the recipe route responds with the stored recipe as a fresh read.
+		// SAFETY: the fixture has validated the minimal acknowledgment and reads the stored recipe
+		// separately, as the client does after an applied operation.
 		const saved = await response.json() as PromptPresetRecipe;
 		expect(slotOf(saved, "human-identity")?.role).toBe("assistant");
 		expect(slotOf(saved, "instruction")).toMatchObject({
@@ -454,7 +455,8 @@ describe("Prompt Preset block patch batch", () => {
 		const response = await saveBlockPatches(database, 1, []);
 
 		expect(response.status).toBe(200);
-		// SAFETY: the recipe route responds with the stored recipe as a fresh read.
+		// SAFETY: the fixture has validated the minimal acknowledgment and reads the stored recipe
+		// separately, as the client does after an applied operation.
 		const saved = await response.json() as PromptPresetRecipe;
 		expect(saved).toEqual(stored);
 	});

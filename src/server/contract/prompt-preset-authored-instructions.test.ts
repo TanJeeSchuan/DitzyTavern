@@ -13,6 +13,7 @@ import {
 	moveBlock,
 	recipeRoutes,
 	readOperation,
+	readRecipeAfterOperation,
 	readPreset,
 	removeBlock,
 	saveInstructionContent,
@@ -33,11 +34,11 @@ describe("Prompt Preset authored instructions", () => {
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
-		recipeRoutes(database).handle(
+		readRecipeAfterOperation(recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		);
+		), database, presetId);
 
 	test("add, save, move, toggle, duplicate and remove work for authored instruction blocks", async () => {
 		const conversation = createChat(database);
@@ -159,11 +160,11 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 	};
 
 	const addInstruction = (presetId: number) =>
-		recipeRoutes(database).handle(
+		readRecipeAfterOperation(recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		);
+		), database, presetId);
 
 	const duplicatePreset = async (presetId: number, name: string) => {
 		const expectedRevision = await presetRevision(presetId);
