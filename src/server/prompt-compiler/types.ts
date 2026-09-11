@@ -9,7 +9,6 @@ import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 // `src/shared/prompt-macros.ts` and `prompt-macro-engine.ts`; this barrel re-exports them so the deep
 // Prompt Compiler seam keeps one surface for its callers.
 export type {
-	ExpansionResult,
 	MacroContext,
 } from "../../shared/prompt-macros";
 export type {

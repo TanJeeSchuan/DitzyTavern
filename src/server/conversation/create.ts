@@ -345,7 +345,11 @@ export function createConversation(
 				other: normalizeParticipantName(humanSeed.definition.name),
 				conversationId: conversation.id,
 				promptPresetId: readDefaultPromptPresetId(db),
-				now: new Date(),
+				// ==[HUMAN APPROVED]== The creation timestamp is the captured opening assembly clock. This
+				// keeps native creation deterministic for callers that provide one.
+				now: new Date(baseTime),
+				timeZone: input.macroTimeZone,
+				locale: input.macroLocale,
 				variables: new Map(),
 				expansionCache: new Map(),
 			};

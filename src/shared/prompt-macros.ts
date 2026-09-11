@@ -2,8 +2,11 @@
 // expansion; this module keeps the small source scanner used by the SillyTavern
 // importer and exposes the evaluator through the established shared barrel.
 
-import type { PromptWarning } from "./contract/conversation-schema";
-import { expandMacroText } from "./prompt-macro-engine";
+const isEscaped = (source: string, index: number): boolean => {
+	let slashes = 0;
+	for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) slashes += 1;
+	return slashes % 2 === 1;
+};
 
 // ==[HUMAN APPROVED]== Macro context provided by the caller. `self` is the name of the
 // Participant whose Definition (or opening) is being compiled; `other` is the
@@ -14,11 +17,6 @@ import { expandMacroText } from "./prompt-macro-engine";
 export interface MacroContext {
 	self: string;
 	other: string;
-}
-
-export interface ExpansionResult {
-	text: string;
-	warnings: readonly PromptWarning[];
 }
 
 interface MacroMatch {
@@ -43,13 +41,17 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 const matchPromptComment = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
 	if (source.startsWith("{{//}}", start)) {
-		const close = source.indexOf("{{///}}", start + "{{//}}".length);
-		return close === -1 ? null : close + "{{///}}".length;
+		for (let index = start + "{{//}}".length; index < source.length - "{{///}}".length + 1; index += 1) {
+			if (source.startsWith("{{///}}", index) && !isEscaped(source, index)) {
+				return index + "{{///}}".length;
+			}
+		}
+		return null;
 	}
 	let depth = 0;
 	for (let index = start; index < source.length; index += 1) {
 		if (source.startsWith("{{", index)) depth += 1;
-		else if (source.startsWith("}}", index)) depth -= 1;
+		else if (source.startsWith("}}", index) && !isEscaped(source, index)) depth -= 1;
 		else continue;
 		if (depth === 0) return index + 2;
 		index += 1;
@@ -101,16 +103,6 @@ export function scanMacroToken(
 	const macro = matchMacro(source, index);
 	if (macro !== null) return { kind: "macro", name: macro.name, end: macro.end };
 	return { kind: "char", end: index + 1 };
-}
-
-// ==[HUMAN APPROVED]== The established barrel function delegates to the full evaluator, keeping
-// one expansion implementation for compiler and editor callers.
-export function expandText(
-	source: string,
-	context: MacroContext,
-	blockLabel: string,
-): ExpansionResult {
-	return expandMacroText(source, { self: context.self, other: context.other }, blockLabel);
 }
 
 export { expandMacroText, validateMacroText } from "./prompt-macro-engine";

@@ -51,7 +51,7 @@ import {
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
-import type { MacroVariableWrite } from "../../shared/prompt-macro-engine";
+import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState } from "../prompt-macros";
 
 // ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation snapshot and

@@ -11,13 +11,11 @@ import {
 } from "../database/schema";
 import {
 	deriveMacroVariables,
-	isMacroValue,
-	isMacroVariableName,
 	macroInitialValuesToData,
 	macroWritesToData,
 	nextMacroWriteSequence,
 } from "../prompt-macros";
-import type { MacroValue } from "../../shared/prompt-macro-engine";
+import { isMacroValue, isMacroVariableName, type MacroValue } from "../../shared/contract/macro-variables";
 import type {
 	MacroVariables as SharedMacroVariables,
 } from "../../shared/contract/macro-variables";
@@ -242,7 +240,7 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 		if (input.position > lastPosition) {
 			throw new InvalidConversationCommandError(`History position ${input.position} is beyond the end of this Conversation.`);
 		}
-		const write: import("../../shared/prompt-macro-engine").MacroVariableWrite = input.operation === "set"
+		const write: import("../../shared/contract/macro-variables").MacroVariableWrite = input.operation === "set"
 			? { name: input.name, operation: "set", value: requireMacroValue(input.value) }
 			: { name: input.name, operation: "delete" as const, value: undefined };
 		if (input.position === 0) {

@@ -1,14 +1,14 @@
-import { createToken, EmbeddedActionsParser, createTokenInstance, type IToken } from "chevrotain";
+import {
+	CstParser,
+	Lexer,
+	createToken,
+	type CstNode,
+	type IToken,
+} from "chevrotain";
 import type { PromptWarning } from "./contract/conversation-schema";
+import { isMacroVariableName, type MacroValue, type MacroVariableWrite } from "./contract/macro-variables";
 
-// ==[HUMAN APPROVED]== Values a macro can carry while an authored block is being expanded.
-export type MacroValue = string | number | boolean | null | readonly MacroValue[];
-
-export interface MacroVariableWrite {
-	readonly name: string;
-	readonly value: MacroValue | undefined;
-	readonly operation: "set" | "delete";
-}
+export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
 
 // ==[HUMAN APPROVED]== Explicit inputs for one expansion. The evaluator never reads browser
 // globals, a database, or the wall clock. A Map is intentionally accepted so a compiler can
@@ -59,86 +59,171 @@ interface MacroNode {
 
 type Node = TextNode | MacroNode;
 
-const PlainText = createToken({ name: "PlainText", pattern: /NOT_USED/ });
-const MacroText = createToken({ name: "MacroText", pattern: /NOT_USED/ });
-
-// ==[HUMAN APPROVED]== Chevrotain owns the document grammar. The source lexer below preserves
-// arbitrary text allowed inside an argument and emits the two grammar tokens; this keeps
-// malformed user-authored text literal while still giving the evaluator a real parser boundary.
-class MacroDocumentParser extends EmbeddedActionsParser {
-	private readonly parseDocumentRule: () => void;
-
-	constructor() {
-		super([PlainText, MacroText], { recoveryEnabled: true });
-		this.parseDocumentRule = this.RULE("document", () => {
-			this.MANY(() => this.OR([
-				{ ALT: () => this.CONSUME(PlainText) },
-				{ ALT: () => this.CONSUME(MacroText) },
-			]));
-		});
-		this.performSelfAnalysis();
-	}
-
-	parse(tokens: IToken[]): void {
-		this.input = tokens;
-		this.parseDocumentRule();
-	}
-}
-
-const documentParser = new MacroDocumentParser();
-
 const isEscaped = (source: string, index: number): boolean => {
 	let slashes = 0;
 	for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) slashes += 1;
 	return slashes % 2 === 1;
 };
 
-const hasOpen = (source: string, index: number): boolean =>
-	// ==[HUMAN APPROVED]== A leading backslash does not escape an adjacent `{{` in SillyTavern
-	// syntax; only splitting the braces (`\{\{`) does.
-	source.startsWith("{{", index);
-
-const matchingEnd = (source: string, start: number): number | undefined => {
-	let depth = 1;
-	for (let index = start + 2; index < source.length - 1; index += 1) {
-		if (hasOpen(source, index)) {
+const balancedMacroAt = (source: string, start: number): boolean => {
+	if (!source.startsWith("{{", start)) return false;
+	let depth = 0;
+	for (let index = start; index < source.length - 1; index += 1) {
+		if (source.startsWith("{{", index)) {
 			depth += 1;
 			index += 1;
 			continue;
 		}
 		if (source.startsWith("}}", index) && !isEscaped(source, index)) {
 			depth -= 1;
-			if (depth === 0) return index + 2;
+			if (depth === 0) return true;
 			index += 1;
 		}
 	}
-	return undefined;
+	return false;
 };
 
-const splitTopLevel = (source: string, separator: "::" | ":"): string[] => {
-	const parts: string[] = [];
-	let start = 0;
-	let depth = 0;
-	for (let index = 0; index < source.length; index += 1) {
-		if (hasOpen(source, index)) {
-			depth += 1;
-			index += 1;
-			continue;
-		}
-		if (source.startsWith("}}", index) && depth > 0) {
-			depth -= 1;
-			index += 1;
-			continue;
-		}
-		if (depth === 0 && source.startsWith(separator, index)) {
-			parts.push(source.slice(start, index).trim());
-			start = index + separator.length;
-			index += separator.length - 1;
-		}
+const openPattern = (source: string, offset: number): [string] | null =>
+	balancedMacroAt(source, offset) ? ["{{"] : null;
+
+const closePattern = (source: string, offset: number): [string] | null =>
+	source.startsWith("}}", offset) && !isEscaped(source, offset) ? ["}}"] : null;
+
+const documentTextPattern = (source: string, offset: number): [string] | null => {
+	if (balancedMacroAt(source, offset)) return null;
+	let end = offset;
+	while (end < source.length) {
+		if (balancedMacroAt(source, end)) break;
+		end += 1;
 	}
-	parts.push(source.slice(start).trim());
-	return parts;
+	return end === offset ? null : [source.slice(offset, end)];
 };
+
+const macroPartPattern = (source: string, offset: number): [string] | null => {
+	let end = offset;
+	while (end < source.length) {
+		if (balancedMacroAt(source, end) || closePattern(source, end) !== null || source[end] === ":") break;
+		end += 1;
+	}
+	return end === offset ? null : [source.slice(offset, end)];
+};
+
+const MacroOpen = createToken({ name: "MacroOpen", pattern: { exec: openPattern }, push_mode: "macro", line_breaks: false });
+const MacroClose = createToken({ name: "MacroClose", pattern: { exec: closePattern }, pop_mode: true, line_breaks: false });
+const DoubleColon = createToken({ name: "DoubleColon", pattern: /::/ });
+const Colon = createToken({ name: "Colon", pattern: /:/ });
+const DocumentText = createToken({ name: "DocumentText", pattern: { exec: documentTextPattern }, line_breaks: true });
+const MacroPart = createToken({ name: "MacroPart", pattern: { exec: macroPartPattern }, line_breaks: true });
+
+const macroLexer = new Lexer({
+	modes: {
+		document: [MacroOpen, DocumentText],
+		macro: [MacroOpen, MacroClose, DoubleColon, Colon, MacroPart],
+	},
+	defaultMode: "document",
+}, { ensureOptimizations: false });
+
+interface ParsedMacro {
+	readonly kind: "parsed-macro";
+	readonly header: string;
+	readonly args: readonly string[];
+	readonly raw: string;
+	readonly start: number;
+	readonly end: number;
+}
+
+type ParsedNode = TextNode | ParsedMacro;
+type MacroSource = string;
+
+class MacroDocumentParser extends CstParser {
+	public macro = this.RULE("macro", () => {
+		this.CONSUME(MacroOpen);
+		this.SUBRULE(this.macroHead);
+		this.OPTION1(() => this.OR([
+			{ ALT: () => this.SUBRULE(this.doubleColonArguments) },
+			{ ALT: () => this.SUBRULE(this.singleColonArguments) },
+		]));
+		this.CONSUME(MacroClose);
+	});
+
+	public macroHead = this.RULE("macroHead", () => {
+		this.MANY(() => this.OR([
+			{ ALT: () => this.CONSUME(MacroPart) },
+			{ ALT: () => this.SUBRULE(this.macro) },
+		]));
+	});
+
+	public macroArgumentDouble = this.RULE("macroArgumentDouble", () => {
+		this.MANY(() => this.OR([
+			{ ALT: () => this.CONSUME(MacroPart) },
+			{ ALT: () => this.CONSUME(Colon) },
+			{ ALT: () => this.SUBRULE(this.macro) },
+		]));
+	});
+
+	public macroArgumentSingle = this.RULE("macroArgumentSingle", () => {
+		this.MANY(() => this.OR([
+			{ ALT: () => this.CONSUME(MacroPart) },
+			{ ALT: () => this.SUBRULE(this.macro) },
+		]));
+	});
+
+	public doubleColonArguments = this.RULE("doubleColonArguments", () => {
+		this.AT_LEAST_ONE(() => {
+			this.CONSUME(DoubleColon);
+			this.SUBRULE(this.macroArgumentDouble);
+		});
+	});
+
+	public singleColonArguments = this.RULE("singleColonArguments", () => {
+		this.AT_LEAST_ONE(() => {
+			this.CONSUME(Colon);
+			this.SUBRULE(this.macroArgumentSingle);
+		});
+	});
+
+	public documentPart = this.RULE("documentPart", () => this.OR([
+		{ ALT: () => this.CONSUME(DocumentText) },
+		{ ALT: () => this.SUBRULE(this.macro) },
+	]));
+
+	public document = this.RULE("document", () => {
+		this.MANY(() => this.SUBRULE(this.documentPart));
+	});
+
+	constructor() {
+		super([MacroOpen, MacroClose, DoubleColon, Colon, DocumentText, MacroPart], {
+			recoveryEnabled: true,
+			nodeLocationTracking: "full",
+		});
+		this.performSelfAnalysis();
+	}
+}
+
+const documentParser = new MacroDocumentParser();
+
+const tokenFrom = (children: CstNode["children"], name: string): IToken | undefined => {
+	const value = children[name]?.[0];
+	return value !== undefined && "image" in value ? value : undefined;
+};
+
+const nodeFrom = (children: CstNode["children"], name: string): CstNode | undefined => {
+	const value = children[name]?.[0];
+	return value !== undefined && "children" in value ? value : undefined;
+};
+
+const cstNode = (value: CstNode | IToken): CstNode => {
+	if ("children" in value) return value;
+	throw new Error("Macro parser produced a token where a CST node was required.");
+};
+
+const orderedElements = (
+	elements: readonly (CstNode | IToken)[],
+): (CstNode | IToken)[] => [...elements].sort((left, right) =>
+	("image" in left ? left.startOffset ?? 0 : left.location?.startOffset ?? 0) -
+	("image" in right ? right.startOffset ?? 0 : right.location?.startOffset ?? 0));
+
+const parsedNodeText = (node: ParsedNode): string => node.kind === "parsed-macro" ? node.raw : node.text;
 
 const parseHeader = (body: string): { name: string; flags: string[]; args: string[] } | undefined => {
 	let text = body.trim();
@@ -152,94 +237,203 @@ const parseHeader = (body: string): { name: string; flags: string[]; args: strin
 	const nameMatch = text.match(/^([A-Za-z](?:[\w-]*[\w])?|[.$][A-Za-z](?:[\w-]*[\w])?|\/\/|\/\/\/)(.*)$/s);
 	if (nameMatch === null) return undefined;
 	const name = nameMatch[1];
-	let tail = nameMatch[2].trim();
+	const tail = nameMatch[2].trim();
 	if (name === "///") return { name, flags, args: [] };
-	const legacyTimeZone = name.match(/^time_(UTC[+-]\d{1,2}(?::\d{2})?)$/i);
-	if (legacyTimeZone !== null) return { name: "time", flags, args: [legacyTimeZone[1]] };
 	if (tail === "") return { name, flags, args: [] };
-	if (tail.startsWith("::")) return { name, flags, args: splitTopLevel(tail.slice(2), "::") };
-	if (tail.startsWith(":")) return { name, flags, args: [tail.slice(1).trim()] };
 	// ==[HUMAN APPROVED]== SillyTavern's whitespace separator accepts one or more spaces after the name.
 	return { name, flags, args: [tail] };
 };
 
-const parseSimpleMacro = (source: string, start: number): MacroNode | undefined => {
-	if (!hasOpen(source, start)) return undefined;
-	const end = matchingEnd(source, start);
-	if (end === undefined) return undefined;
-	const parsed = parseHeader(source.slice(start + 2, end - 2));
-	if (parsed === undefined) return undefined;
-	return {
-		kind: "macro",
-		name: parsed.name,
-		flags: parsed.flags,
-		args: parsed.args,
-		scope: undefined,
-		raw: source.slice(start, end),
-		start,
-		end,
-	};
-};
-
-const findScopedClose = (source: string, start: number, name: string): { start: number; end: number } | undefined => {
-	const expected = name.toLowerCase();
-	let depth = 0;
-	for (let index = start; index < source.length - 1; index += 1) {
-		if (!hasOpen(source, index)) continue;
-		const node = parseSimpleMacro(source, index);
-		if (node === undefined) continue;
-		index = node.end - 1;
-		const candidate = node.name.toLowerCase();
-		if (name === "//") {
-			if (candidate === "///") return { start: node.start, end: node.end };
-			continue;
-		}
-		if (candidate === expected && node.flags.includes("/")) {
-			if (depth === 0) return { start: node.start, end: node.end };
-			depth -= 1;
-			continue;
-		}
-		if (candidate === expected && !node.flags.includes("/")) depth += 1;
+class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDefaults() {
+	constructor() {
+		super();
+		this.validateVisitor();
 	}
-	return undefined;
-};
+
+	private visitNode(node: CstNode, source: MacroSource): ParsedNode {
+		// ==[HUMAN APPROVED]== SAFETY: The CST rule's visitor result is restricted to the parsed macro/text union.
+		return this.visit(node, source) as ParsedNode;
+	}
+
+	private visitString(node: CstNode, source: MacroSource): string {
+		// ==[HUMAN APPROVED]== SAFETY: Segment visitor rules return only their reconstructed source string.
+		return this.visit(node, source) as string;
+	}
+
+	private visitArguments(node: CstNode, source: MacroSource): string[] {
+		// ==[HUMAN APPROVED]== SAFETY: Argument visitor rules return one ordered list of parsed argument text.
+		return this.visit(node, source) as string[];
+	}
+
+	public document(ctx: CstNode["children"], source: MacroSource): ParsedNode[] {
+		return (ctx.documentPart ?? []).map((part) => {
+			return this.visitNode(cstNode(part), source);
+		});
+	}
+
+	public documentPart(ctx: CstNode["children"], source: MacroSource): ParsedNode {
+		const text = tokenFrom(ctx, "DocumentText");
+		if (text !== undefined) return { kind: "text", text: text.image };
+		const macro = nodeFrom(ctx, "macro");
+		if (macro === undefined) return { kind: "text", text: "" };
+		return this.visitNode(macro, source);
+	}
+
+	public macro(ctx: CstNode["children"], source: MacroSource): ParsedNode {
+		const open = tokenFrom(ctx, "MacroOpen");
+		const close = tokenFrom(ctx, "MacroClose");
+		const headNode = nodeFrom(ctx, "macroHead");
+		if (open === undefined || close === undefined || headNode === undefined) {
+			return { kind: "text", text: "" };
+		}
+		const header = this.visitString(headNode, source);
+		const parsedHeader = parseHeader(header);
+		const doubleArguments = (ctx.doubleColonArguments ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat();
+		const singleArguments = (ctx.singleColonArguments ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat();
+		if (parsedHeader === undefined) return { kind: "text", text: source.slice(open.startOffset ?? 0, (close.endOffset ?? 0) + 1) };
+		const start = open.startOffset ?? 0;
+		const end = (close.endOffset ?? start) + 1;
+		return {
+			kind: "parsed-macro",
+			header: header,
+			args: [...parsedHeader.args, ...doubleArguments, ...singleArguments],
+			raw: source.slice(start, end),
+			start,
+			end,
+		};
+	}
+
+	public macroHead(ctx: CstNode["children"], source: MacroSource): string {
+		return orderedElements([
+			...(ctx.MacroPart ?? []),
+			...(ctx.macro ?? []),
+		]).map((element) => "image" in element
+			? element.image
+			: parsedNodeText(this.visitNode(cstNode(element), source))).join("");
+	}
+
+	public macroArgumentDouble(ctx: CstNode["children"], source: MacroSource): string[] {
+		return [orderedElements([
+			...(ctx.MacroPart ?? []),
+			...(ctx.Colon ?? []),
+			...(ctx.macro ?? []),
+		]).map((element) => "image" in element
+			? element.image
+			: parsedNodeText(this.visitNode(cstNode(element), source))).join("")];
+	}
+
+	public macroArgumentSingle(ctx: CstNode["children"], source: MacroSource): string[] {
+		return [orderedElements([
+			...(ctx.MacroPart ?? []),
+			...(ctx.macro ?? []),
+		]).map((element) => "image" in element
+			? element.image
+			: parsedNodeText(this.visitNode(cstNode(element), source))).join("")];
+	}
+
+	public doubleColonArguments(ctx: CstNode["children"], source: MacroSource): string[] {
+		return (ctx.macroArgumentDouble ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat().map((value) => value.trim());
+	}
+
+	public singleColonArguments(ctx: CstNode["children"], source: MacroSource): string[] {
+		return (ctx.macroArgumentSingle ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat().map((value) => value.trim());
+	}
+}
+
+const macroAstVisitor = new MacroAstVisitor();
 
 const parseDocument = (source: string): Node[] => {
-	const nodes: Node[] = [];
-	const tokenInstances = [];
-	let textStart = 0;
-	const flushText = (end: number) => {
-		if (end <= textStart) return;
-		const text = source.slice(textStart, end);
-		nodes.push({ kind: "text", text });
-		tokenInstances.push(createTokenInstance(PlainText, text, textStart, end - 1, NaN, NaN, NaN, NaN));
-	};
-	for (let index = 0; index < source.length; index += 1) {
-		if (!hasOpen(source, index)) continue;
-		const node = parseSimpleMacro(source, index);
-		if (node === undefined) continue;
-		// ==[HUMAN APPROVED]== A scoped closing tag is consumed together with its opening node. A
-		// closing tag without an opening pair remains authored text.
-		if (node.name === "///" || node.flags.includes("/")) continue;
-		flushText(index);
-		let full = node;
-		const scopeClose = findScopedClose(source, node.end, node.name === "//" ? "//" : node.name);
-		if (scopeClose !== undefined) {
-			full = {
-				...node,
-				scope: source.slice(node.end, scopeClose.start),
-				raw: source.slice(node.start, scopeClose.end),
-				end: scopeClose.end,
-			};
+	const lexed = macroLexer.tokenize(source);
+	documentParser.input = lexed.tokens;
+	const tree = documentParser.document();
+	if (lexed.errors.length > 0 || documentParser.errors.length > 0) return [{ kind: "text", text: source }];
+	// ==[HUMAN APPROVED]== SAFETY: The root document visitor returns the parser's ParsedNode list.
+	const parsed = macroAstVisitor.visit(tree, source) as ParsedNode[];
+	const nodes = parsed.flatMap((node): Node[] => node.kind === "parsed-macro"
+		? (() => {
+				const parsedHeader = parseHeader(node.header);
+				if (parsedHeader === undefined) return [{ kind: "text", text: node.raw }];
+				return [{
+					kind: "macro",
+					name: parsedHeader.name,
+					flags: parsedHeader.flags,
+					args: [...parsedHeader.args, ...node.args.slice(parsedHeader.args.length)],
+					scope: undefined,
+					raw: node.raw,
+					start: node.start,
+					end: node.end,
+				}];
+			})()
+		: [node]);
+	return attachScopes(nodes, source);
+};
+
+const attachScopes = (nodes: readonly Node[], source: string): Node[] => {
+	const scoped: Node[] = [];
+	for (let index = 0; index < nodes.length; index += 1) {
+		const node = nodes[index];
+		if (node === undefined || node.kind === "text") {
+			if (node !== undefined) scoped.push(node);
+			continue;
 		}
-		nodes.push(full);
-		tokenInstances.push(createTokenInstance(MacroText, full.raw, full.start, full.end - 1, NaN, NaN, NaN, NaN));
-		index = full.end - 1;
-		textStart = full.end;
+		if (node.name === "///" || node.flags.includes("/")) {
+			scoped.push({ kind: "text", text: node.raw });
+			continue;
+		}
+		if (node.name === "//" && isEscaped(source, node.start)) {
+			let escapedEnd = node.end;
+			for (let candidateIndex = index + 1; candidateIndex < nodes.length; candidateIndex += 1) {
+				const candidate = nodes[candidateIndex];
+				if (candidate?.kind === "macro" && candidate.name === "///" && !isEscaped(source, candidate.start)) {
+					escapedEnd = candidate.end;
+					index = candidateIndex;
+					break;
+				}
+			}
+			scoped.push({ kind: "text", text: source.slice(node.start, escapedEnd) });
+			continue;
+		}
+		const commentScope = node.name === "//" && node.args.length === 0 && node.flags.length === 0;
+		let depth = 0;
+		let closeIndex: number | undefined;
+		for (let candidateIndex = index + 1; candidateIndex < nodes.length; candidateIndex += 1) {
+			const candidate = nodes[candidateIndex];
+			if (candidate === undefined || candidate.kind === "text") continue;
+			const candidateName = candidate.name.toLowerCase();
+			if (commentScope) {
+			if (candidateName === "///" && !isEscaped(source, candidate.start)) {
+					closeIndex = candidateIndex;
+					break;
+				}
+				continue;
+			}
+			if (candidateName !== node.name.toLowerCase()) continue;
+			if (candidate.flags.includes("/") && !isEscaped(source, candidate.start)) {
+				if (depth === 0) {
+					closeIndex = candidateIndex;
+					break;
+				}
+				depth -= 1;
+			} else depth += 1;
+		}
+		if (closeIndex === undefined) {
+			scoped.push(node);
+			continue;
+		}
+		const close = nodes[closeIndex];
+		if (close === undefined || close.kind === "text") {
+			scoped.push(node);
+			continue;
+		}
+		scoped.push({
+			...node,
+			scope: source.slice(node.end, close.start),
+			raw: source.slice(node.start, close.end),
+			end: close.end,
+		});
+		index = closeIndex;
 	}
-	flushText(source.length);
-	documentParser.parse(tokenInstances);
-	return nodes;
+	return scoped;
 };
 
 const cloneVariables = (variables: MacroEnvironment["variables"]): Map<string, MacroValue> =>
@@ -257,8 +451,6 @@ const asNumber = (value: string | number): number | undefined => {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : undefined;
 };
-
-const isVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
 
 const randomFloat = (environment: MacroEnvironment): number => {
 	const value = environment.random?.() ?? Math.random();
@@ -311,11 +503,28 @@ const falsy = (value: string): boolean => {
 	return normalized === "" || normalized === "0" || normalized === "off" || normalized === "false" || normalized === "no";
 };
 
+const utcOffsetMinutes = (value: string): number | undefined => {
+	const match = value.match(/^UTC([+-])(\d{1,2})(?::(\d{2}))?$/i);
+	if (match === null) return undefined;
+	const hours = Number(match[2]);
+	const minutes = Number(match[3] ?? 0);
+	if (hours > 23 || minutes > 59) return undefined;
+	return (match[1] === "+" ? 1 : -1) * (hours * 60 + minutes);
+};
+
+const dateForTimeZone = (date: Date, timeZone: string): { date: Date; intlTimeZone: string } => {
+	const offset = utcOffsetMinutes(timeZone);
+	return offset === undefined
+		? { date, intlTimeZone: timeZone }
+		: { date: new Date(date.getTime() + offset * 60_000), intlTimeZone: "UTC" };
+};
+
 const dateParts = (date: Date, timeZone: string, locale: string) => {
+	const target = dateForTimeZone(date, timeZone);
 	let formatter: Intl.DateTimeFormat;
 	try {
 		formatter = new Intl.DateTimeFormat(locale, {
-			timeZone,
+			timeZone: target.intlTimeZone,
 			year: "numeric",
 			month: "2-digit",
 			day: "2-digit",
@@ -338,7 +547,7 @@ const dateParts = (date: Date, timeZone: string, locale: string) => {
 			hourCycle: "h23",
 		});
 	}
-	const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+	const parts = Object.fromEntries(formatter.formatToParts(target.date).map((part) => [part.type, part.value]));
 	return {
 		year: parts.year ?? "",
 		month: parts.month ?? "",
@@ -352,8 +561,8 @@ const dateParts = (date: Date, timeZone: string, locale: string) => {
 
 const timezoneOf = (value: string | undefined, fallback: string): string => {
 	if (value === undefined || value === "") return fallback;
-	const utc = value.match(/^UTC([+-])(\d{1,2})(?::(\d{2}))?$/i);
-	if (utc === null) {
+	const offset = utcOffsetMinutes(value);
+	if (offset === undefined && !/^UTC[+-]/i.test(value)) {
 		try {
 			new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
 			return value;
@@ -361,10 +570,7 @@ const timezoneOf = (value: string | undefined, fallback: string): string => {
 			return fallback;
 		}
 	}
-	const hours = Number(utc[2]);
-	const minutes = Number(utc[3] ?? 0);
-	const offset = (utc[1] === "+" ? 1 : -1) * (hours * 60 + minutes);
-	return `Etc/GMT${offset <= 0 ? "+" : "-"}${Math.abs(Math.trunc(offset / 60))}`;
+	return offset === undefined ? fallback : value;
 };
 
 const localeOf = (value: string | undefined): string => {
@@ -380,17 +586,18 @@ const localeOf = (value: string | undefined): string => {
 const formatDate = (date: Date, format: string, environment: MacroEnvironment, timezoneArg?: string): string => {
 	const timezone = timezoneOf(timezoneArg, timezoneOf(environment.timeZone, "UTC"));
 	const locale = localeOf(environment.locale);
+	const target = dateForTimeZone(date, timezone);
 	const parts = dateParts(date, timezone, locale);
 	if (format === "LT") {
-		return new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(date);
+		return new Intl.DateTimeFormat(locale, { timeZone: target.intlTimeZone, hour: "numeric", minute: "2-digit" }).format(target.date);
 	}
 	if (format === "LL") {
-		return new Intl.DateTimeFormat(locale, { timeZone: timezone, year: "numeric", month: "long", day: "numeric" }).format(date);
+		return new Intl.DateTimeFormat(locale, { timeZone: target.intlTimeZone, year: "numeric", month: "long", day: "numeric" }).format(target.date);
 	}
 	return format
 		.replaceAll("YYYY", parts.year)
-		.replaceAll("MMMM", new Intl.DateTimeFormat(locale, { timeZone: timezone, month: "long" }).format(date))
-		.replaceAll("MMM", new Intl.DateTimeFormat(locale, { timeZone: timezone, month: "short" }).format(date))
+		.replaceAll("MMMM", new Intl.DateTimeFormat(locale, { timeZone: target.intlTimeZone, month: "long" }).format(target.date))
+		.replaceAll("MMM", new Intl.DateTimeFormat(locale, { timeZone: target.intlTimeZone, month: "short" }).format(target.date))
 		.replaceAll("dddd", parts.weekday)
 		.replaceAll("DD", parts.day)
 		.replaceAll("MM", parts.month)
@@ -490,7 +697,12 @@ const evaluateText = (source: string, state: EvaluationState): string => {
 		}
 		output += evaluateMacro(node, state);
 	}
-	return output.replace(/(?:\r?\n)?__DITZY_TRIM_SENTINEL__(?:\r?\n)?/g, "").replace(/\\([{}])/g, "$1");
+	return output
+		.replace(/(?:\r?\n)?__DITZY_TRIM_SENTINEL__(?:\r?\n)?/g, "")
+		// ==[HUMAN APPROVED]== Split braces (`\{\{`) are an escape for literal delimiters. An
+		// adjacent `\{{` is authored text before an active macro, and must keep
+		// its backslash; Prompt Comments use that same literal-prefix rule.
+		.replace(/\\(?=[{}])(?!\{\{|}})/g, "");
 };
 
 const evaluateCondition = (condition: string, state: EvaluationState, node: MacroNode): string | undefined => {
@@ -657,7 +869,7 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 		"deletelocalvar", "flushlocalvar",
 	].includes(name)) {
 		const variableName = args[0] ?? "";
-		if (!isVariableName(variableName)) {
+		if (!isMacroVariableName(variableName)) {
 			warningFor(state, node);
 			return node.raw;
 		}

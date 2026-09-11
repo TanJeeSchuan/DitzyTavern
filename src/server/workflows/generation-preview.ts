@@ -21,6 +21,7 @@ import { createConversationModule } from "../conversation";
 import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import { conversationGenerationSettings, promptPlan } from "../../shared/contract/conversation-schema";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "../conversation";
+import { deriveMacroState, readMacroWrites } from "../prompt-macros";
 
 export type GenerationPreviewKind = "send" | "continuation" | "sibling";
 
@@ -56,6 +57,7 @@ const relevantMessages = (
 	snapshot: ConversationSnapshot,
 	kind: GenerationPreviewKind,
 	messageId: number | undefined,
+	presetId: number,
 ) => {
 	const end = kind === "sibling" && messageId !== undefined
 		? snapshot.messages.findIndex((message) => message.id === messageId)
@@ -65,9 +67,18 @@ const relevantMessages = (
 		.map((message) => ({
 			id: message.id,
 			position: message.position,
-			author: message.author,
+			author: message.author === null ? null : {
+				participantId: message.author.participantId,
+				capturedName: message.author.capturedName,
+			},
 			historicalContext: message.historicalContext,
-			variant: message.variants.find((variant) => variant.selected) ?? null,
+			variant: (() => {
+				const selected = message.variants.find((variant) => variant.selected);
+				return selected === undefined ? null : {
+					content: selected.content,
+					writes: readMacroWrites(selected.data, presetId),
+				};
+			})(),
 		}));
 };
 
@@ -87,7 +98,6 @@ const relevantParticipants = (
 			id: participant.id,
 			name: participant.name,
 			prompt: participant.prompt,
-			openings: participant.openings,
 		}));
 };
 
@@ -123,6 +133,18 @@ export const generationPreviewFingerprint = (
 		participants: relevantParticipants(snapshot, input.kind, input.messageId),
 		recipe,
 		settings,
+		macroState: [...deriveMacroState({
+			initialData: snapshot.data,
+			presetId: recipe.id,
+			selectedVariants: snapshot.messages
+				.slice(0, input.kind === "sibling" && input.messageId !== undefined
+					? Math.max(0, snapshot.messages.findIndex((message) => message.id === input.messageId))
+					: snapshot.messages.length)
+				.map((message) => {
+					const selected = message.variants.find((variant) => variant.selected);
+					return { selected: selected !== undefined, data: selected?.data ?? [] };
+				}),
+		})],
 		connection: input.connection === undefined || input.connection === null
 			? input.connection ?? null
 			: {
@@ -132,8 +154,7 @@ export const generationPreviewFingerprint = (
 				adapter: input.connection.adapter,
 				apiFormat: input.connection.apiFormat,
 			},
-		data: snapshot.data,
-		messages: relevantMessages(snapshot, input.kind, input.messageId),
+		messages: relevantMessages(snapshot, input.kind, input.messageId, recipe.id),
 	});
 };
 

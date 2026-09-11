@@ -7,10 +7,6 @@ export {
 	compilePrompt,
 	referencedDefinitionBlocks,
 } from "./compiler";
-// ==[HUMAN APPROVED]== The shared macro engine is the single expansion implementation for
-// Participant text, openings, and authored preset instruction blocks; the
-// deep compiler seam re-exports it beside its own functions.
-export { expandText } from "../../shared/prompt-macros";
 export { expandMacroText, validateMacroText } from "../../shared/prompt-macro-engine";
 export {
 	budgetPromptPlan,
@@ -22,7 +18,6 @@ export {
 export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
-	ExpansionResult,
 	GenerationIntent,
 	MacroContext,
 	MacroEnvironment,

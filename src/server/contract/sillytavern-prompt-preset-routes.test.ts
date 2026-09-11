@@ -94,7 +94,7 @@ const samples: Array<{
 			name: "Tracked Macro Recipe",
 			prompts: [
 				{ identifier: "main", name: "Prompt variables", content: "{{setvar::prompt::an excellent protagonist.", role: "system" },
-				{ identifier: "jailbreak", name: "Tense", content: "{{setvar::tense::past tense}}", role: "user" },
+				{ identifier: "jailbreak", name: "Tense", content: "{{setvar::tense::past tense}} Tense enabled.", role: "user" },
 				{ identifier: "chatHistory", name: "History", content: "", marker: true },
 			],
 			prompt_order: [{ character_id: 100001, order: [
@@ -106,7 +106,7 @@ const samples: Array<{
 		},
 		expectedContentInOrder: [
 			"{{setvar::prompt::an excellent protagonist.",
-			"{{setvar::tense::past tense}}",
+			"Tense enabled.",
 		],
 		expectedReferences: ["instruction", "instruction", "history"],
 	},
@@ -296,7 +296,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(reviewed.status).toBe(200);
 		const preview = requirePreview(reviewed.body);
 		expect(preview.native.slots.map((slot) => slot.reference === "instruction" ? slot.content : slot.reference)).toEqual([
-			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{char}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}",
+			"{{self}} {{// hidden {{char}} }} {{//}}{{user}} {{char}}{{///}} \\{{other}} \\{{// hidden {{user}} {{char}} }} \\{{//}}{{user}} {{char}}{{///}}",
 			"history",
 			"history",
 			"one",
@@ -466,7 +466,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				enabled: true,
 				role: "system",
 				name: "Escapes",
-				content: "\\\\{{self}} \\\\\\\\{{other}} \\\\\\{{user}} \\{{char}} {{self}} {{other}}",
+				content: "\\\\{{self}} \\\\\\\\{{other}} \\\\\\{{self}} \\{{other}} {{self}} {{other}}",
 			},
 		]);
 
@@ -501,11 +501,11 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await completeGeneration(generating, conversation.id, generationId);
 		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
 
-		// `\\` renders one backslash, then the active `{{self}}` names the
-		// human-controlled Participant.
+		// The adjacent backslash pair remains authored text, then the active
+		// `{{self}}` names the human-controlled Participant.
 		expect(captured?.messages).toContainEqual({
 			role: "system",
-			content: "\\Writer precedes Writer.",
+			content: "\\\\Writer precedes Writer.",
 		});
 	});
 
@@ -628,29 +628,29 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		// warning about their contents; the escaped comments stay literal.
 		expect(captured?.messages).toEqual([{
 			role: "system",
-			content: "Start  inline  scoped  multi {{// kept {{user}} }} {{//}} kept {{char}} {{///}} end",
+			content: "Start  inline  scoped  multi \\{{// kept {{user}} }} \\{{//}} kept {{char}} {{///}} end",
 		}]);
 		expect(inspection?.promptPlan.warnings).toEqual([]);
 	});
 
-	test("preserves unknown macros and malformed delimiters; unknown active macros remain literal and warn", async () => {
+	test("expands supported macros and preserves malformed delimiters", async () => {
 		const app = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {
 			prompts: [
-				{ identifier: "main", name: "Unknowns", content: "{{time}} stays and {{user stays open", role: "system" },
+				{ identifier: "main", name: "Supported macros", content: "{{time}} stays and {{user stays open", role: "system" },
 			],
 			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
 		};
 		const reviewed = await postReview(app, source);
 		expect(reviewed.status).toBe(200);
 		const preview = requirePreview(reviewed.body);
-		// Neither macro is translated: {{time}} is unknown and the unterminated
-		// {{user is not a balanced macro at all.
+		// Import translation only rewrites user/character names. The supported
+		// native time macro stays authored text until Generation compilation.
 		expect(preview.native.slots[0]).toEqual({
 			reference: "instruction",
 			enabled: true,
 			role: "system",
-			name: "Unknowns",
+			name: "Supported macros",
 			content: "{{time}} stays and {{user stays open",
 		});
 
@@ -680,15 +680,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await completeGeneration(generating, conversation.id, generationId);
 		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
 
-		// The balanced unknown macro stays literal and warns; the malformed
-		// delimiter stays raw text without a warning, and Generation is
-		// available throughout.
-		expect(captured?.messages).toEqual([{
-			role: "system",
-			content: "{{time}} stays and {{user stays open",
-		}]);
-		expect(inspection.promptPlan.warnings).toEqual([
-			{ block: "Unknowns", macro: "{{time}}" },
-		]);
+		// The supported time macro expands; the malformed delimiter stays raw
+		// text without a warning, and Generation is available throughout.
+		expect(captured?.messages).toHaveLength(1);
+		expect(captured?.messages[0]?.content).toMatch(/^\d{1,2}:\d{2} [AP]M stays and \{\{user stays open$/);
+		expect(inspection.promptPlan.warnings).toEqual([]);
 	});
 });

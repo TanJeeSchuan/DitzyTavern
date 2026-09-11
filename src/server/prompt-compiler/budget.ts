@@ -97,15 +97,7 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
-	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
-		throw new Error("Prompt context limit must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
-		throw new Error("Prompt response budget must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.safetyAllowance) || input.safetyAllowance < 0) {
-		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
-	}
+	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
 
 	const protectedHistoryIndex = input.protectedHistoryIndex ?? findLatestHumanIndex(input.context);
 	if (
@@ -191,15 +183,7 @@ export function budgetEditedPromptPlan(input: {
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
 }): PromptBudgetResult {
-	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
-		throw new Error("Prompt context limit must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
-		throw new Error("Prompt response budget must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.safetyAllowance) || input.safetyAllowance < 0) {
-		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
-	}
+	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
 	const tokenEstimate = Math.ceil((input.estimator ?? tokenxEstimator)(toEstimationTranscript(input.plan)));
 	if (!Number.isFinite(tokenEstimate) || tokenEstimate < 0) {
 		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
@@ -232,6 +216,22 @@ export function budgetEditedPromptPlan(input: {
 			: { reason: "fixed-prompt-too-large", breakdown },
 	};
 }
+
+const validateBudgetFields = (
+	contextLimit: number,
+	responseBudget: number,
+	safetyAllowance: number,
+): void => {
+	if (!Number.isInteger(contextLimit) || contextLimit <= 0) {
+		throw new Error("Prompt context limit must be a positive whole number.");
+	}
+	if (!Number.isInteger(responseBudget) || responseBudget <= 0) {
+		throw new Error("Prompt response budget must be a positive whole number.");
+	}
+	if (!Number.isInteger(safetyAllowance) || safetyAllowance < 0) {
+		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
+	}
+};
 
 export class PromptBudgetExceededError extends Error {
 	readonly result: PromptBudgetResult;

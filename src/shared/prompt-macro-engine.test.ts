@@ -112,6 +112,15 @@ describe("Prompt macro engine", () => {
 		expect(result.text).toBe("2026-01-02 15:04 2026/01/02 15:04 Friday");
 	});
 
+	test("honors fractional explicit UTC offsets", () => {
+		const result = expandMacroText(
+			"{{isotime::UTC+05:30}} {{isotime::UTC-04:30}}",
+			environment,
+			"instruction",
+		);
+		expect(result.text).toBe("20:34 10:34");
+	});
+
 	test("reports unknown macros without blocking expansion and keeps unmatched closes", () => {
 		const result = expandMacroText("{{wat::{{other}}}} {{/wat}} {{self}}", environment, "instruction");
 		expect(result.text).toBe("{{wat::Maren}} {{/wat}} Writer");
@@ -119,9 +128,7 @@ describe("Prompt macro engine", () => {
 	});
 
 	test("validates both conditional branches without sampling or writing", () => {
-		let calls = 0;
 		const result = validateMacroText("{{if::yes}}{{random::a}}{{wat}}{{else}}{{roll::1d6}}{{/if}}", "draft");
 		expect(result.warnings).toEqual([{ block: "draft", macro: "{{wat}}" }]);
-		expect(calls).toBe(0);
 	});
 });

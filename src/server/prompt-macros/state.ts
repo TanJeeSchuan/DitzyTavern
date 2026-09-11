@@ -1,4 +1,4 @@
-import type { MacroValue, MacroVariableWrite } from "../../shared/prompt-macro-engine";
+import { isMacroValue, isMacroVariableName, type MacroValue, type MacroVariableWrite } from "../../shared/contract/macro-variables";
 import type { ConversationDataEntry, ConversationVariantSnapshot } from "../conversation/types";
 import type {
 	MacroVariable as SharedMacroVariable,
@@ -17,15 +17,6 @@ export const MACRO_DATA_NAMESPACE = "prompt-macro";
 
 const initialPrefix = (presetId: number): string => `initial:${presetId}:`;
 const writePrefix = (presetId: number): string => `write:${presetId}:`;
-export const isMacroVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
-
-export const isMacroValue = (value: unknown): value is MacroValue =>
-	value === null ||
-	typeof value === "string" ||
-	typeof value === "number" && Number.isFinite(value) ||
-	typeof value === "boolean" ||
-	Array.isArray(value) && value.every(isMacroValue);
-
 const encodedName = (name: string): string => encodeURIComponent(name);
 
 const writeKey = (presetId: number, sequence: number): string =>

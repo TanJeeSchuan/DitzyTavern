@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	compileOpening,
 	compilePrompt,
-	expandText,
+	expandMacroText,
 	type CompilePromptInput,
 	type PromptPlan,
 } from ".";
@@ -423,7 +423,7 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		expect(plan.blocks[0]?.content).toBe("Syntax: \\ end.");
+		expect(plan.blocks[0]?.content).toBe("Syntax: \\{{// draft: mention {{unfinished}} }} end.");
 		expect(plan.warnings).toEqual([]);
 	});
 
@@ -442,7 +442,7 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		expect(plan.blocks[0]?.content).toBe("Syntax: \\ end.");
+		expect(plan.blocks[0]?.content).toBe("Syntax: \\{{//}} mention {{unfinished}} {{///}} end.");
 		expect(plan.warnings).toEqual([]);
 	});
 
@@ -592,9 +592,9 @@ describe("Opening compilation", () => {
 	});
 });
 
-describe("expandText", () => {
+describe("expandMacroText", () => {
 	test("is a single left-to-right pass over mixed literal, escaped, and unknown text", () => {
-		const result = expandText(
+		const result = expandMacroText(
 			"A \\{{self}} B {{self}} C {{unknown}} D \\\\{{other}} E",
 			{ self: "S", other: "O" },
 			"example-dialogue",

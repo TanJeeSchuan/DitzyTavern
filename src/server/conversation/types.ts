@@ -23,7 +23,7 @@ import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
-import type { MacroVariableWrite } from "../../shared/prompt-macro-engine";
+import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import type {
 	MacroVariables as SharedMacroVariables,
 } from "../../shared/contract/macro-variables";
@@ -594,4 +594,8 @@ export interface ConversationCreationInput {
 	artifacts?: readonly ConversationArtifactSeed[];
 	// Base time for Conversations whose history does not carry timestamps.
 	createdAt?: string | undefined;
+	// Native creation captures the initiating client's formatting context for
+	// the one opening assembly; imported/preservation records leave these unset.
+	macroTimeZone?: string | undefined;
+	macroLocale?: string | undefined;
 }

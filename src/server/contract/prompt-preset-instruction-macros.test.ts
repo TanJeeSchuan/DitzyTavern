@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
-import { expandText } from "../../shared/prompt-macros";
+import { expandMacroText } from "../../shared/prompt-macro-engine";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import type { PromptOutgoingRole } from "../../shared/contract/prompt-preset";
 import {
@@ -202,19 +202,13 @@ describe("Prompt Preset authored instruction macros", () => {
 		// The unknown macros reach the provider literally — Generation is
 		// available — while the plan warns about exactly what the shared
 		// editor warning surface would show.
-		expect(captured?.messages).toContainEqual({
-			role: "system",
-			content: "{{user}} and {{time}} stay raw; Writer works.",
-		});
+		const importedInstruction = captured?.messages.find((message) => message.role === "system" && message.content.includes("stay raw"));
+		expect(importedInstruction?.content).toMatch(/^\{\{user\}\} and \d{1,2}:\d{2} [AP]M stay raw; Writer works\.$/);
 		expect(inspection.promptPlan.warnings).toContainEqual({
 			block: "Imported",
 			macro: "{{user}}",
 		});
-		expect(inspection.promptPlan.warnings).toContainEqual({
-			block: "Imported",
-			macro: "{{time}}",
-		});
-		expect(expandText(content, { self: "", other: "" }, "Imported").warnings)
+		expect(expandMacroText(content, { self: "", other: "" }, "Imported").warnings)
 			.toContainEqual({ block: "Imported", macro: "{{user}}" });
 	});
 
