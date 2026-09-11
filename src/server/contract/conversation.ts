@@ -60,6 +60,12 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
+	macroVariables,
+	macroVariablesAppliedResponse,
+	macroVariablesEditBody,
+	macroVariablesQuery,
+} from "../../shared/contract/macro-variables";
+import {
 	generationAcceptanceResponse,
 	siblingGenerationAcceptanceResponse,
 } from "./generation-error-mapping";
@@ -269,6 +275,72 @@ export const createConversationRoutes = (
 				response: {
 					200: conversationPromptPreset,
 					404: notFoundOutcome,
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/macro-variables",
+			({ params, query, status }) => {
+				try {
+					const variables = withConversationModule(database, (conversationModule) =>
+						conversationModule.readMacroVariables(params.id, {
+							position: query.position,
+							promptPresetId: query.promptPresetId,
+						}),
+					);
+					return variables ?? status(404, { outcome: "not-found" as const });
+				} catch (error) {
+					if (error instanceof InvalidConversationCommandError) {
+						return invalidResponse(error.message);
+					}
+					throw error;
+				}
+			},
+			{
+				params: conversationIdParams,
+				query: macroVariablesQuery,
+				response: {
+					200: macroVariables,
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/macro-variables",
+			({ params, body, status }) => {
+				try {
+					const edited = withDatabase(database, (connection) =>
+						createConversationModule(connection).editMacroVariables({
+							conversationId: params.id,
+							expectedRevision: body.expectedRevision,
+							promptPresetId: body.promptPresetId,
+							position: body.position,
+							operation: body.operation,
+							name: body.name,
+							value: body.operation === "set" ? body.value : undefined,
+						}),
+					);
+					return { outcome: "applied" as const, ...edited };
+				} catch (error) {
+					if (error instanceof StaleConversationRevisionError) {
+						return staleConversationResponse(database, params.id, error);
+					}
+					if (error instanceof ConversationNotFoundError) return notFoundResponse();
+					if (error instanceof InvalidConversationCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				params: conversationIdParams,
+				body: macroVariablesEditBody,
+				response: {
+					200: macroVariablesAppliedResponse,
+					404: notFoundOutcome,
+					409: conversationConflict,
+					422: invalidOutcome,
 				},
 			},
 		)

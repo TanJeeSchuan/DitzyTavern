@@ -1,6 +1,9 @@
 export {
 	MACRO_DATA_NAMESPACE,
 	deriveMacroState,
+	deriveMacroVariables,
+	isMacroValue,
+	isMacroVariableName,
 	isMacroDataNamespace,
 	macroInitialValuesToData,
 	macroWritesToData,
@@ -9,3 +12,4 @@ export {
 	readMacroInitialValues,
 	readMacroWrites,
 } from "./state";
+export type { DerivedMacroVariable, MacroVariableSource } from "./state";

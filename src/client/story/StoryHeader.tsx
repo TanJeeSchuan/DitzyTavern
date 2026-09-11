@@ -1,14 +1,16 @@
-import { ChevronDown, Info } from "lucide-react";
+import { ChevronDown, Info, Variable } from "lucide-react";
 import type { ChatSummary } from "../workspace";
 
 export function StoryHeader({
 	chat,
 	onOpenCast,
 	onOpenInfo,
+	onOpenVariables,
 }: {
 	chat: ChatSummary;
 	onOpenCast: () => void;
 	onOpenInfo: () => void;
+	onOpenVariables: () => void;
 }) {
 	return (
 		<header className="story-header">
@@ -23,6 +25,14 @@ export function StoryHeader({
 				aria-label="Chat information"
 			>
 				<Info aria-hidden="true" />
+			</button>
+			<button
+				className="icon-button variables-button"
+				type="button"
+				onClick={onOpenVariables}
+				aria-label="Macro Variables"
+			>
+				<Variable aria-hidden="true" />
 			</button>
 			<button className="cast-control" type="button" onClick={onOpenCast}>
 				<span>Cast</span>

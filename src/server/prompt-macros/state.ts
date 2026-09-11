@@ -1,5 +1,9 @@
 import type { MacroValue, MacroVariableWrite } from "../../shared/prompt-macro-engine";
 import type { ConversationDataEntry, ConversationVariantSnapshot } from "../conversation/types";
+import type {
+	MacroVariable as SharedMacroVariable,
+	MacroVariableSource as SharedMacroVariableSource,
+} from "../../shared/contract/macro-variables";
 import {
 	generationJsonObject,
 	generationJsonString,
@@ -13,9 +17,9 @@ export const MACRO_DATA_NAMESPACE = "prompt-macro";
 
 const initialPrefix = (presetId: number): string => `initial:${presetId}:`;
 const writePrefix = (presetId: number): string => `write:${presetId}:`;
-const isVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
+export const isMacroVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
 
-const isMacroValue = (value: unknown): value is MacroValue =>
+export const isMacroValue = (value: unknown): value is MacroValue =>
 	value === null ||
 	typeof value === "string" ||
 	typeof value === "number" && Number.isFinite(value) ||
@@ -43,7 +47,7 @@ const parsedWrite = (
 	if (candidate === null) return undefined;
 	const name = generationJsonString(candidate.name);
 	const operation = generationJsonString(candidate.operation);
-	if (name === null || !isVariableName(name)) return undefined;
+	if (name === null || !isMacroVariableName(name)) return undefined;
 	if (operation === "delete") return { name, operation: "delete", value: undefined };
 	if (operation !== "set" || !isMacroValue(candidate.value)) return undefined;
 	return { name, operation: "set", value: candidate.value };
@@ -61,7 +65,7 @@ export const parseMacroWrites = (value: string): MacroVariableWrite[] => {
 		}
 		const name = generationJsonString(entry.name);
 		const operation = generationJsonString(entry.operation);
-		if (name === null || !isVariableName(name)) {
+		if (name === null || !isMacroVariableName(name)) {
 			throw new Error("The Active Generation has invalid persisted macro writes.");
 		}
 		if (operation === "delete") {
@@ -88,7 +92,7 @@ const parsedInitial = (
 	} catch {
 		return undefined;
 	}
-	if (!isVariableName(name)) return undefined;
+	if (!isMacroVariableName(name)) return undefined;
 	const value = parseGenerationJson(entry.value, null);
 	return isMacroValue(value) ? { name, value } : undefined;
 };
@@ -155,6 +159,49 @@ export const deriveMacroState = (input: {
 		}
 	}
 	return state;
+};
+
+export type MacroVariableSource = SharedMacroVariableSource;
+export type DerivedMacroVariable = SharedMacroVariable;
+
+/** ==[HUMAN APPROVED]== Derive effective values while retaining the write that supplied each value. */
+export const deriveMacroVariables = (input: {
+	initialData: readonly ConversationDataEntry[];
+	presetId: number;
+	selectedVariants: readonly {
+		selected: boolean;
+		data: readonly ConversationDataEntry[];
+		messageId: number;
+		messagePosition: number;
+		variantId: number;
+		variantPosition: number;
+	}[];
+}): DerivedMacroVariable[] => {
+	const values = new Map<string, DerivedMacroVariable>();
+	for (const [name, value] of readMacroInitialValues(input.initialData, input.presetId)) {
+		values.set(name, { name, value, source: { type: "initial" } });
+	}
+	for (const variant of input.selectedVariants) {
+		if (!variant.selected) continue;
+		for (const write of readMacroWrites(variant.data, input.presetId)) {
+			if (write.operation === "delete") {
+				values.delete(write.name);
+				continue;
+			}
+			values.set(write.name, {
+				name: write.name,
+				value: write.value === undefined ? null : write.value,
+				source: {
+					type: "variant",
+					messageId: variant.messageId,
+					messagePosition: variant.messagePosition,
+					variantId: variant.variantId,
+					variantPosition: variant.variantPosition,
+				},
+			});
+		}
+	}
+	return [...values.values()].sort((left, right) => left.name.localeCompare(right.name));
 };
 
 /** ==[HUMAN APPROVED]== Number the next write after existing records on a Variant. */

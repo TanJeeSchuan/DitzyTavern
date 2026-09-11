@@ -16,6 +16,13 @@ import type {
 } from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
+import { Value } from "@sinclair/typebox/value";
+import {
+	macroVariables,
+	macroVariablesAppliedResponse,
+} from "../shared/contract/macro-variables";
+import type { MacroVariables } from "../shared/contract/macro-variables";
+import type { MacroValue } from "../shared/contract/macro-variables";
 
 export type {
 	ActiveGenerationDetails,
@@ -32,6 +39,7 @@ export type {
 	ParticipantDefinition,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
+export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
 export type { PromptChannels } from "../shared/contract/prompt-schema";
 export type {
 	GenerationStreamDelta,
@@ -161,6 +169,69 @@ export async function loadConversationPromptPreset(
 		throw new Error("Unable to load the selected Prompt Preset.");
 	}
 	return data ?? null;
+}
+
+export type MacroVariablesOutcome =
+	| { status: "available"; variables: MacroVariables }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function loadMacroVariables(
+	conversationId: number,
+	input: { position?: number; promptPresetId?: number } = {},
+): Promise<MacroVariablesOutcome> {
+	try {
+		const { data, error } = await api.api
+			.conversations({ id: conversationId })["macro-variables"]
+			.get({ query: input });
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		return { status: "available", variables: Value.Decode(macroVariables, data) };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export type EditMacroVariablesOutcome =
+	| { status: "applied"; variables: MacroVariables; conversation: ConversationSummary }
+	| { status: "conflict"; currentConversation: ConversationSummary }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function editMacroVariable(
+	conversationId: number,
+	input: {
+		expectedRevision: number;
+		promptPresetId: number;
+		position: number;
+	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
+): Promise<EditMacroVariablesOutcome> {
+	try {
+		const { data, error } = await api.api
+			.conversations({ id: conversationId })["macro-variables"]
+			.post(input);
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 409 && "currentConversation" in error.value) {
+				return { status: "conflict", currentConversation: error.value.currentConversation };
+			}
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		const payload = Value.Decode(macroVariablesAppliedResponse, data);
+		return {
+			status: "applied",
+			variables: payload.variables,
+			conversation: payload.conversation,
+		};
+	} catch {
+		return { status: "network" };
+	}
 }
 
 export type GenerationDetailsOutcome<T> =

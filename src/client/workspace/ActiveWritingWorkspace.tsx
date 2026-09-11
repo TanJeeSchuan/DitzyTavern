@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useState } from "react";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import {
 	GenerationDetailsPanel,
 	type GenerationDetailsTarget,
@@ -225,6 +226,11 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "chat-info-opened" });
 					}}
+					onOpenVariables={() => {
+						if (story.preview !== null) return;
+						setGenerationDetailsTarget(null);
+						dispatchPanel({ type: "macro-variables-opened" });
+					}}
 				/>
 
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
@@ -331,6 +337,15 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "details-closed" });
 					}}
+				/>
+			)}
+			{panelState.detailsSurface === "macro-variables" && story.preview === null && session.conversation !== null && (
+				<MacroVariablesPanel
+					conversationId={session.conversation.id}
+					conversation={session.conversation}
+					historyPositions={story.messages.map((message) => message.position)}
+					onConversationChange={session.setConversation}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
 			{panelState.inspector === "generation" && story.preview === null && (

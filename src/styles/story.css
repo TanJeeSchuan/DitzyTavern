@@ -11,7 +11,7 @@
 
 .story-header {
 	display: grid;
-	grid-template-columns: 1fr auto auto;
+	grid-template-columns: 1fr auto auto auto;
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
