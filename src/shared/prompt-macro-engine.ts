@@ -2,7 +2,7 @@ import { createToken, EmbeddedActionsParser, createTokenInstance, type IToken } 
 import type { PromptWarning } from "./contract/conversation-schema";
 
 // ==[HUMAN APPROVED]== Values a macro can carry while an authored block is being expanded.
-export type MacroValue = string | number | boolean | null;
+export type MacroValue = string | number | boolean | null | readonly MacroValue[];
 
 export interface MacroVariableWrite {
 	readonly name: string;
@@ -22,6 +22,9 @@ export interface MacroEnvironment {
 	readonly timeZone?: string;
 	readonly locale?: string;
 	readonly variables?: ReadonlyMap<string, MacroValue> | Readonly<Record<string, MacroValue>>;
+	// ==[HUMAN APPROVED]== One expansion may execute several authored blocks. The caller supplies
+	// this journal so resolved writes can be carried to the Variant that owns the attempt.
+	readonly writes?: MacroVariableWrite[];
 	readonly random?: () => number;
 	readonly macroPositionBase?: string | number;
 	// ==[HUMAN APPROVED]== Cached authored expansions reused by budget recompilation.
@@ -240,14 +243,22 @@ const parseDocument = (source: string): Node[] => {
 };
 
 const cloneVariables = (variables: MacroEnvironment["variables"]): Map<string, MacroValue> =>
+	// ==[HUMAN APPROVED]== A Map is the explicit attempt-local state seam. Reusing it is what lets recipe blocks observe
+	// writes from earlier enabled blocks; record snapshots are cloned at the domain boundary.
 	variables instanceof Map ? variables : new Map(Object.entries(variables ?? {}));
 
-const normalize = (value: MacroValue | undefined): string => value === null || value === undefined ? "" : String(value);
+const normalize = (value: MacroValue | undefined): string => {
+	if (value === null || value === undefined) return "";
+	if (Array.isArray(value)) return JSON.stringify(value);
+	return String(value);
+};
 
-const asNumber = (value: string): number | undefined => {
+const asNumber = (value: string | number): number | undefined => {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : undefined;
 };
+
+const isVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
 
 const randomFloat = (environment: MacroEnvironment): number => {
 	const value = environment.random?.() ?? Math.random();
@@ -435,12 +446,38 @@ const variable = (state: EvaluationState, name: string): string => normalize(sta
 
 const setVariable = (state: EvaluationState, name: string, value: MacroValue): void => {
 	state.variables.set(name, value);
-	state.writes.push({ name, value, operation: "set" });
+	if (!state.validationOnly) {
+		const write = { name, value, operation: "set" } as const;
+		state.writes.push(write);
+		state.environment.writes?.push(write);
+	}
 };
 
 const deleteVariable = (state: EvaluationState, name: string): void => {
 	state.variables.delete(name);
-	state.writes.push({ name, value: undefined, operation: "delete" });
+	if (!state.validationOnly) {
+		const write = { name, value: undefined, operation: "delete" } as const;
+		state.writes.push(write);
+		state.environment.writes?.push(write);
+	}
+};
+
+const addVariable = (state: EvaluationState, name: string, addition: string | number): string => {
+	const currentValue = state.variables.get(name);
+	if (Array.isArray(currentValue)) {
+		setVariable(state, name, [...currentValue, addition]);
+		return variable(state, name);
+	}
+	const current = asNumber(currentValue === undefined ? "" : normalize(currentValue));
+	const amount = asNumber(addition);
+	setVariable(
+		state,
+		name,
+		current !== undefined && amount !== undefined
+			? current + amount
+			: `${variable(state, name)}${addition}`,
+	);
+	return variable(state, name);
 };
 
 const evaluateText = (source: string, state: EvaluationState): string => {
@@ -456,9 +493,13 @@ const evaluateText = (source: string, state: EvaluationState): string => {
 	return output.replace(/(?:\r?\n)?__DITZY_TRIM_SENTINEL__(?:\r?\n)?/g, "").replace(/\\([{}])/g, "$1");
 };
 
-const evaluateCondition = (condition: string, state: EvaluationState, node: MacroNode): string => {
+const evaluateCondition = (condition: string, state: EvaluationState, node: MacroNode): string | undefined => {
 	const shorthand = condition.match(/^([.$])([A-Za-z](?:[\w-]*[\w])?)(?:\s*(\|\|=|\?\?=|\|\||\?\?|\+\+|--|\+=|-=|==|!=|>=|<=|>|<|=)\s*(.*))?$/s);
 	if (shorthand !== null) {
+		if (shorthand[1] === "$") {
+			warningFor(state, node);
+			return undefined;
+		}
 		const name = shorthand[2];
 		const operator = shorthand[3];
 		const rhs = shorthand[4] ?? "";
@@ -490,12 +531,10 @@ const evaluateCondition = (condition: string, state: EvaluationState, node: Macr
 			setVariable(state, name, evaluated);
 			return "";
 		}
-		if (operator === "++") setVariable(state, name, (asNumber(current) ?? 0) + 1);
-		if (operator === "--") setVariable(state, name, (asNumber(current) ?? 0) - 1);
+		if (operator === "++") return addVariable(state, name, 1);
+		if (operator === "--") return addVariable(state, name, -1);
 		if (operator === "+=") {
-			const left = asNumber(current);
-			const right = asNumber(evaluated);
-			setVariable(state, name, left !== undefined && right !== undefined ? left + right : `${current}${evaluated}`);
+			addVariable(state, name, evaluated);
 			return "";
 		}
 		if (operator === "-=") {
@@ -526,7 +565,11 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 	const name = node.name.toLowerCase();
 	if (name === "///" || name === "else") return "";
 	if (node.name.startsWith(".")) {
-		return evaluateCondition(`${node.name}${node.args[0] ?? ""}`, state, node);
+		return evaluateCondition(`${node.name}${node.args[0] ?? ""}`, state, node) ?? node.raw;
+	}
+	if (node.name.startsWith("$")) {
+		warningFor(state, node);
+		return node.raw;
 	}
 	if (name === "//" || name === "comment") return "";
 	if (name === "if") {
@@ -541,6 +584,7 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 			evaluateText(whenFalse ?? "", state);
 			return "";
 		}
+		if (condition === undefined) return node.raw;
 		const useTrue = node.flags.includes("!") ? falsy(condition) : !falsy(condition);
 		const chosen = useTrue ? whenTrue : whenFalse;
 		return evaluateText(chosen ?? "", state);
@@ -607,12 +651,20 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 		const then = Date.parse(args[0] ?? "");
 		return Number.isNaN(then) ? "" : humanizeDuration((state.environment.now ?? new Date(0)).getTime() - then);
 	}
-	if (["getvar", "varexists", "hasvar", "deletevar", "flushvar", "setvar", "addvar", "incvar", "decvar", "setlocalvar", "getlocalvar", "haslocalvar", "deletelocalvar"].includes(name)) {
+	if ([
+		"getvar", "varexists", "hasvar", "deletevar", "flushvar", "setvar", "addvar", "incvar", "decvar",
+		"setlocalvar", "getlocalvar", "addlocalvar", "inclocalvar", "declocalvar", "haslocalvar",
+		"deletelocalvar", "flushlocalvar",
+	].includes(name)) {
 		const variableName = args[0] ?? "";
+		if (!isVariableName(variableName)) {
+			warningFor(state, node);
+			return node.raw;
+		}
 		if (state.validationOnly) return "";
 		if (name === "getvar" || name === "getlocalvar") return variable(state, variableName);
 		if (name === "varexists" || name === "hasvar" || name === "haslocalvar") return String(state.variables.has(variableName));
-		if (name === "deletevar" || name === "flushvar" || name === "deletelocalvar") {
+		if (name === "deletevar" || name === "flushvar" || name === "deletelocalvar" || name === "flushlocalvar") {
 			deleteVariable(state, variableName);
 			return "";
 		}
@@ -620,13 +672,10 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 			setVariable(state, variableName, args[1] ?? "");
 			return "";
 		}
-		const current = asNumber(variable(state, variableName));
-		if (name === "incvar" || name === "decvar") {
-			const next = (current ?? 0) + (name === "incvar" ? 1 : -1);
-			setVariable(state, variableName, next);
-			return String(next);
+		if (name === "incvar" || name === "decvar" || name === "inclocalvar" || name === "declocalvar") {
+			return addVariable(state, variableName, name === "incvar" || name === "inclocalvar" ? 1 : -1);
 		}
-		setVariable(state, variableName, `${variable(state, variableName)}${args[1] ?? ""}`);
+		addVariable(state, variableName, args[1] ?? "");
 		return "";
 	}
 

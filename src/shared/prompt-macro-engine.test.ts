@@ -51,6 +51,49 @@ describe("Prompt macro engine", () => {
 		expect(result.writes.at(-1)).toEqual({ name: "count", value: 6, operation: "set" });
 	});
 
+	test("keeps variable names case-sensitive and supports local aliases and array addition", () => {
+		const variables = new Map<string, import("./prompt-macro-engine").MacroValue>([
+			["Count", 2],
+			["items", ["one"]],
+		]);
+		const result = expandMacroText(
+			"{{getvar::Count}}/{{getvar::count}}/{{addlocalvar::items::two}}{{getvar::items}}/{{.Count++}}",
+			{ ...environment, variables },
+			"instruction",
+		);
+		expect(result.text).toBe("2//[\"one\",\"two\"]/3");
+		expect(result.writes).toEqual([
+			{ name: "items", value: ["one", "two"], operation: "set" },
+			{ name: "Count", value: 3, operation: "set" },
+		]);
+		const coerced = expandMacroText("{{incvar::text}}/{{addvar::text::!}}", {
+			...environment,
+			variables: new Map([["text", "raw"]]),
+		}, "instruction");
+		expect(coerced.text).toBe("raw1/");
+		expect(coerced.writes).toEqual([
+			{ name: "text", value: "raw1", operation: "set" },
+			{ name: "text", value: "raw1!", operation: "set" },
+		]);
+	});
+
+	test("does not execute global shorthand operations", () => {
+		const result = expandMacroText("{{$count=3}}", environment, "instruction");
+		expect(result.text).toBe("{{$count=3}}");
+		expect(result.writes).toEqual([]);
+		expect(result.warnings).toEqual([{ block: "instruction", macro: "{{$count=3}}" }]);
+		const conditional = expandMacroText("{{if::$count}}yes{{else}}no{{/if}}", environment, "instruction");
+		expect(conditional.text).toBe("{{if::$count}}yes{{else}}no{{/if}}");
+		expect(conditional.writes).toEqual([]);
+	});
+
+	test("keeps malformed variable names literal instead of persisting invalid state", () => {
+		const result = expandMacroText("{{setvar::::x}}/{{getvar::bad.name}}", environment, "instruction");
+		expect(result.text).toBe("{{setvar::::x}}/{{getvar::bad.name}}");
+		expect(result.writes).toEqual([]);
+		expect(result.warnings).toHaveLength(2);
+	});
+
 	test("keeps random fresh while pick stays stable for one source position", () => {
 		let calls = 0;
 		const input = "{{random::a::b}}/{{pick::a::b}}/{{pick::a::b}}";

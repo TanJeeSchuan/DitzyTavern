@@ -54,6 +54,7 @@ import {
 	captureConfiguration,
 	capturedAcceptanceFields,
 	compilePlanFrom,
+	configurationFor,
 	modelRequestFor,
 	deriveGeneration,
 	type CapturedGeneration,
@@ -287,6 +288,7 @@ export function inspectGenerationPrompt(
 		undefined,
 		options.connectionSettings,
 	);
+	const preparedConfiguration = configurationFor(configuration, snapshot);
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
@@ -295,15 +297,15 @@ export function inspectGenerationPrompt(
 	const plan = compilePlanFrom(
 		derivation,
 		{
-			settings: configuration.settings,
-			slots: configuration.slots,
+			settings: preparedConfiguration.settings,
+			slots: preparedConfiguration.slots,
 			// ==[HUMAN APPROVED]== The safe Connection fact narrows before compilation so Request
 			// Overrides are narrowed exactly as an executed attempt would narrow
 			// them.
-			connection: configuration.connection === null
+			connection: preparedConfiguration.connection === null
 				? null
-				: { apiFormat: configuration.connection.apiFormat },
-			macroEnvironment: configuration.macroEnvironment,
+				: { apiFormat: preparedConfiguration.connection.apiFormat },
+			macroEnvironment: preparedConfiguration.macroEnvironment,
 		},
 		{ estimator: options.tokenEstimator },
 	);

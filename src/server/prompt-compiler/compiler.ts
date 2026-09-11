@@ -15,7 +15,7 @@
 // prompt-inspection warnings.
 
 import { expandMacroText, type MacroEnvironment, type MacroExpansionResult } from "../../shared/prompt-macro-engine";
-import type { ExpansionResult, MacroContext } from "../../shared/prompt-macros";
+import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
 	type PromptOutgoingRole,
@@ -104,7 +104,7 @@ export function compileOpening(
 	context: MacroContext,
 	position: number,
 	macroEnvironment?: MacroEnvironment,
-): ExpansionResult {
+): MacroExpansionResult {
 	return expandMacroText(
 		content,
 		{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other, macroPositionBase: `opening:${position}` },
@@ -125,7 +125,7 @@ const expandInto = (
 ) => {
 	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
-	let expanded: ExpansionResult | MacroExpansionResult;
+	let expanded: MacroExpansionResult;
 	if (macroEnvironment === undefined) {
 		expanded = expandMacroText(text, { ...context, macroPositionBase: cacheKey }, blockLabel);
 	} else {

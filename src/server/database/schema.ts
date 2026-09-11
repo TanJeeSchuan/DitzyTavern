@@ -465,6 +465,11 @@ export const activeGenerationTable = sqliteTable(
 		provenance_namespace: text(),
 		provenance_key: text(),
 		provenance_value: text(),
+		// ==[HUMAN APPROVED]== Pending macro writes are captured with the originating preset and
+		// survive a process restart until terminal Variant persistence can attach
+		// them to the target. An attempt never derives these from completion order.
+		macro_preset_id: int(),
+		macro_writes_json: text().notNull().default("[]"),
 	},
 );
 
@@ -620,4 +625,3 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 		primaryKey({ columns: [table.profile_id, table.model_id] }),
 	],
 );
-

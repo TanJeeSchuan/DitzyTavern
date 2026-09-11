@@ -21,6 +21,7 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
+import { macroWritesToData } from "../prompt-macros";
 import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -350,15 +351,22 @@ export function createConversation(
 			};
 			messages = [{
 				...greeting,
-				variants: greeting.variants.map((variant, index) => ({
-					...variant,
-					content: compileOpening(
+				variants: greeting.variants.map((variant, index) => {
+					const expanded = compileOpening(
 						variant.content,
 						{ self: macroEnvironment.self, other: macroEnvironment.other },
 						index + 1,
 						{ ...macroEnvironment, variables: new Map(macroEnvironment.variables), expansionCache: new Map() },
-					).text,
-				})),
+					);
+					return {
+						...variant,
+						content: expanded.text,
+						data: [
+							...(variant.data ?? []),
+							...macroWritesToData(macroEnvironment.promptPresetId, expanded.writes),
+						],
+					};
+				}),
 			}];
 		}
 

@@ -15,6 +15,7 @@ import {
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isImportOwnedDataNamespace } from "../../shared/import-data";
+import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	InvalidConversationCommandError,
 } from "./errors";
@@ -298,6 +299,11 @@ export const requireGenericDataNamespace = (namespace: string): void => {
 	if (isImportOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
 			`The ${namespace} namespace is import-owned provenance; generic data commands cannot address it.`,
+		);
+	}
+	if (isMacroDataNamespace(namespace)) {
+		throw new InvalidConversationCommandError(
+			`The ${namespace} namespace is macro-owned state; generic data commands cannot address it.`,
 		);
 	}
 };

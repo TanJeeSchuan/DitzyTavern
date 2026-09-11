@@ -23,6 +23,7 @@ import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
+import type { MacroVariableWrite } from "../../shared/prompt-macro-engine";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -407,6 +408,10 @@ export interface AcceptTailGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	// Captured macro state belongs to this originating preset and is attached to the target only
+	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedTailGeneration {
@@ -475,6 +480,8 @@ export interface AcceptContinuationGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedContinuationGeneration {
@@ -502,6 +509,8 @@ export interface AcceptSiblingGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedSiblingGeneration {

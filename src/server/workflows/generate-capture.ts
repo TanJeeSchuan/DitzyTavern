@@ -51,6 +51,8 @@ import {
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
+import type { MacroVariableWrite } from "../../shared/prompt-macro-engine";
+import { deriveMacroState } from "../prompt-macros";
 
 // ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation snapshot and
 // the captured configuration this module derives the complete Generation Plan
@@ -68,6 +70,8 @@ interface GenerationDerivation {
 	human: CastParticipantSnapshot;
 	model: CastParticipantSnapshot;
 	context: readonly PromptContextEntry[];
+	/** ==[HUMAN APPROVED]== Sibling state stops before its target Message; Tail and Continue use the full path. */
+	endExclusiveIndex?: number;
 }
 
 // ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model
@@ -188,6 +192,7 @@ export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
+	promptPresetId: number;
 	macroEnvironment: MacroEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
 }
@@ -214,6 +219,7 @@ export function captureConfiguration(
 	return {
 		settings,
 		slots: recipe.slots,
+		promptPresetId: recipe.id,
 		macroEnvironment: {
 			self: "",
 			other: "",
@@ -228,6 +234,28 @@ export function captureConfiguration(
 		connection: capturedConnection,
 	};
 }
+
+// ==[HUMAN APPROVED]== The effective Macro State is reconstructed from the Conversation's
+// preset-scoped baseline and selected Variant records. An attempt gets a fresh
+// mutable copy, so sibling completions can never mutate another attempt's input.
+export const configurationFor = (
+	configuration: AttemptConfiguration,
+	snapshot: ConversationSnapshot,
+	endExclusiveIndex?: number,
+): AttemptConfiguration => ({
+	...configuration,
+	macroEnvironment: {
+		...configuration.macroEnvironment,
+		variables: deriveMacroState({
+			initialData: snapshot.data,
+			presetId: configuration.promptPresetId,
+			selectedVariants: (endExclusiveIndex === undefined ? snapshot.messages : snapshot.messages.slice(0, endExclusiveIndex))
+				.flatMap((message) => message.variants.filter((variant) => variant.selected)),
+		}),
+		writes: [],
+		expansionCache: new Map(),
+	},
+});
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
 // and the attempt's Effective Generation Settings. Only fields in the shared
@@ -283,6 +311,8 @@ export interface CapturedGeneration {
 		readonly modelParticipantId: number;
 	};
 	readonly connection: ModelClientConnectionSnapshot | null;
+	readonly macroPresetId: number;
+	readonly macroWrites: readonly MacroVariableWrite[];
 	readonly provenance: ConversationDataEntry;
 }
 
@@ -308,11 +338,14 @@ export function capturedAcceptanceFields(
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		provenance: capture.provenance,
+		macroPresetId: capture.macroPresetId,
+		macroWrites: capture.macroWrites,
 	} satisfies Pick<
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "provenance"
+		"promptContext" | "generationSettings" | "connection" | "provenance" |
+		"macroPresetId" | "macroWrites"
 	>;
 }
 
@@ -352,6 +385,8 @@ const toCapturedGeneration = (
 		modelParticipantId: derivation.model.id,
 	},
 	connection: configuration.connection,
+	macroPresetId: configuration.promptPresetId,
+	macroWrites: [...(configuration.macroEnvironment.writes ?? [])],
 	provenance: generationProvenanceEntry(plan, configuration.connection),
 });
 
@@ -491,11 +526,12 @@ export function captureSendGeneration(
 		: derivation;
 	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
 	// compiled plan has no applicable Continuation operand either.
+	const preparedConfiguration = configurationFor(configuration, snapshot);
 	const plan = assertGenerationPlan(
-		compilePlanFrom(submitted, configuration, { estimator: tokenEstimator }),
+		compilePlanFrom(submitted, preparedConfiguration, { estimator: tokenEstimator }),
 	);
 	return {
-		...toCapturedGeneration(derivation, configuration, plan),
+		...toCapturedGeneration(derivation, preparedConfiguration, plan),
 		humanContent: content,
 		reuseHumanMessageId,
 	};
@@ -566,11 +602,12 @@ export function captureContinuationGeneration(
 	// protects its prefixed model text, an instruction Continuation protects
 	// the latest human entry, and the effective settings retain exactly the
 	// applicable Continuation operand.
+	const preparedConfiguration = configurationFor(configuration, snapshot);
 	const plan = assertGenerationPlan(
-		compilePlanFrom(derivation, configuration, { intent, estimator: tokenEstimator }),
+		compilePlanFrom(derivation, preparedConfiguration, { intent, estimator: tokenEstimator }),
 	);
 	return {
-		...toCapturedGeneration(derivation, configuration, plan),
+		...toCapturedGeneration(derivation, preparedConfiguration, plan),
 		precedingMessageId: latest.id,
 		precedingVariantId: selected.id,
 		intent,
@@ -639,7 +676,7 @@ const deriveSiblingDerivation = (
 	// ==[HUMAN APPROVED]== The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
-	return { human, model, context };
+	return { human, model, context, endExclusiveIndex: targetIndex };
 };
 
 export function captureSiblingGeneration(
@@ -664,9 +701,10 @@ export function captureSiblingGeneration(
 	);
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
-	const plan = assertGenerationPlan(compilePlanFrom(derivation, configuration, {
+	const preparedConfiguration = configurationFor(configuration, snapshot, derivation.endExclusiveIndex);
+	const plan = assertGenerationPlan(compilePlanFrom(derivation, preparedConfiguration, {
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,
 	}));
-	return toCapturedGeneration(derivation, configuration, plan);
+	return toCapturedGeneration(derivation, preparedConfiguration, plan);
 }
