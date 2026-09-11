@@ -3,14 +3,20 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	PromptHistoryRole,
 } from "../../shared/contract/conversation-schema";
+import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 
-// ==[HUMAN APPROVED]== The macro language types live with the shared processor in
-// `src/shared/prompt-macros.ts`; this barrel re-exports them so the deep
+// ==[HUMAN APPROVED]== The macro language types live with the shared processors in
+// `src/shared/prompt-macros.ts` and `prompt-macro-engine.ts`; this barrel re-exports them so the deep
 // Prompt Compiler seam keeps one surface for its callers.
 export type {
 	ExpansionResult,
 	MacroContext,
 } from "../../shared/prompt-macros";
+export type {
+	MacroEnvironment,
+	MacroExpansionResult,
+	MacroValidationResult,
+} from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,
 	PromptBlock,
@@ -60,6 +66,7 @@ export interface CompilePromptInput {
 	// The selected Prompt Preset's ordered recipe. It decides which blocks the
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];
+	// Captured once for one assembly. The compiler journals variable writes in
+	// this attempt-local context and never reads external state.
+	macroEnvironment?: MacroEnvironment;
 }
-
-

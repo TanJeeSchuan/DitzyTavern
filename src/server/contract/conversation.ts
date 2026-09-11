@@ -44,6 +44,7 @@ import {
 	conversationIdParams,
 	conversationSummary,
 	continuationBody,
+	siblingGenerationQuery,
 	generationAccepted,
 	generationBody,
 	generationConflictResponse,
@@ -202,6 +203,8 @@ export const createConversationRoutes = (
 				() => generationCoordinator.startContinuationGeneration({
 					conversationId: params.id,
 					expectedRevision: body.expectedRevision,
+					macroTimeZone: body.timeZone,
+					macroLocale: body.locale,
 				}),
 			),
 			{
@@ -317,6 +320,8 @@ export const createConversationRoutes = (
 					conversationId: params.id,
 					expectedRevision: body.expectedRevision,
 					content: body.content,
+					macroTimeZone: body.timeZone,
+					macroLocale: body.locale,
 				}),
 			),
 			{
@@ -348,16 +353,19 @@ export const createConversationRoutes = (
 		// closing it never aborts the sibling provider attempt.
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params }) =>
+			async ({ params, query }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
 					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
+						macroTimeZone: query.timeZone,
+						macroLocale: query.locale,
 					}),
 				),
 			{
 				params: messageIdParams,
+				query: siblingGenerationQuery,
 				response: {
 					200: generationAccepted,
 					404: notFoundOutcome,

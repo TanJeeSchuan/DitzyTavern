@@ -50,6 +50,7 @@ import {
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
+import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 
 // ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation snapshot and
 // the captured configuration this module derives the complete Generation Plan
@@ -154,6 +155,7 @@ export const compilePlanFrom = (
 	configuration: {
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
+		macroEnvironment: MacroEnvironment;
 		connection: GenerationConnectionFacts | null;
 	},
 	options: {
@@ -165,6 +167,7 @@ export const compilePlanFrom = (
 	model: toCompilerDefinition(derivation.model),
 	context: derivation.context,
 	recipe: configuration.slots,
+	macroEnvironment: configuration.macroEnvironment,
 	intent: options.intent,
 	settings: configuration.settings,
 	connection: configuration.connection,
@@ -185,6 +188,7 @@ export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
+	macroEnvironment: MacroEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
 }
 
@@ -196,6 +200,7 @@ export function captureConfiguration(
 	conversationId: number,
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
+	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
 ): AttemptConfiguration {
 	const conversation = createConversationModule(database);
 	const settings = conversation.getGenerationSettings(conversationId);
@@ -206,7 +211,22 @@ export function captureConfiguration(
 	const capturedConnection = connection === undefined
 		? resolveConnectionSnapshot(database, connectionSettingsOptions)
 		: connection;
-	return { settings, slots: recipe.slots, connection: capturedConnection };
+	return {
+		settings,
+		slots: recipe.slots,
+		macroEnvironment: {
+			self: "",
+			other: "",
+			conversationId,
+			promptPresetId: recipe.id,
+			now: new Date(),
+			timeZone: macroOptions.timeZone,
+			locale: macroOptions.locale,
+			variables: new Map(),
+			expansionCache: new Map(),
+		},
+		connection: capturedConnection,
+	};
 }
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
@@ -436,12 +456,14 @@ export function captureSendGeneration(
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
+	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
 ): SendGenerationCapture {
 	const configuration = captureConfiguration(
 		database,
 		snapshot.id,
 		connection,
 		connectionSettingsOptions,
+		macroOptions,
 	);
 	const derivation = deriveGeneration(snapshot);
 	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
@@ -503,6 +525,7 @@ export function captureContinuationGeneration(
 	connection: ModelClientConnectionSnapshot | null | undefined,
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
+	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
 ): ContinuationGenerationCapture {
 	if (hasActiveGeneration(database, snapshot.id)) {
 		throw new ContinuationUnavailableError("active-generation");
@@ -531,6 +554,7 @@ export function captureContinuationGeneration(
 		snapshot.id,
 		connection,
 		connectionSettingsOptions,
+		macroOptions,
 	);
 	if (configuration.settings.continuationStrategy !== "instruction") {
 		if (selected.content.length === 0) {
@@ -626,6 +650,8 @@ export function captureSiblingGeneration(
 		connection?: ModelClientConnectionSnapshot | null | undefined;
 		connectionSettings?: ConnectionSettingsModuleOptions | undefined;
 		tokenEstimator?: TokenEstimator | undefined;
+		macroTimeZone?: string;
+		macroLocale?: string;
 	},
 ): CapturedGeneration {
 	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
@@ -634,6 +660,7 @@ export function captureSiblingGeneration(
 		snapshot.id,
 		input.connection,
 		input.connectionSettings,
+		{ timeZone: input.macroTimeZone, locale: input.macroLocale },
 	);
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.

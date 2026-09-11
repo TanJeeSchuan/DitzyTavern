@@ -9,7 +9,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { expandText } from "../../../shared/prompt-macros";
+import { validateMacroText } from "../../../shared/prompt-macro-engine";
 import type { PromptOutgoingRole, ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
 import {
 	duplicatePromptPresetBlock,
@@ -27,7 +27,7 @@ const nameInputClass = "prompt-block-field h-9 w-full rounded-md border border-b
 const textInputClass = "prompt-block-field min-h-56 max-h-[55vh] w-full resize-y overflow-y-auto rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed [field-sizing:content]";
 
 const unknownMacrosOf = (text: string, label: string): string[] => {
-	const { warnings } = expandText(text, { self: "", other: "" }, label);
+	const { warnings } = validateMacroText(text, label);
 	return [...new Set(warnings.map((warning) => warning.macro))];
 };
 

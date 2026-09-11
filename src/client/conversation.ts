@@ -204,6 +204,11 @@ export async function loadVariantDetails(
 
 export type StartConversationGenerationResult = GenerationStartResponse;
 
+export interface MacroFormattingContext {
+	timeZone?: string;
+	locale?: string;
+}
+
 const startGenerationError = (
 	payload: Exclude<GenerationStartResponse, { outcome: "accepted" }>,
 ): StartConversationGenerationResult => {
@@ -242,9 +247,10 @@ export function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	content: string,
+	formatting?: MacroFormattingContext,
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content }),
+		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting }),
 		"",
 	);
 }
@@ -252,9 +258,10 @@ export function startConversationGeneration(
 export function startConversationSiblingGeneration(
 	conversationId: number,
 	messageId: number,
+	formatting?: MacroFormattingContext,
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({}),
+		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({ query: formatting }),
 		"Sibling",
 	);
 }
@@ -262,9 +269,10 @@ export function startConversationSiblingGeneration(
 export function startConversationContinuationGeneration(
 	conversationId: number,
 	expectedRevision: number,
+	formatting?: MacroFormattingContext,
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting }),
 		"Continuation",
 	);
 }

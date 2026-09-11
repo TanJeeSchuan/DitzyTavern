@@ -303,6 +303,7 @@ export function inspectGenerationPrompt(
 			connection: configuration.connection === null
 				? null
 				: { apiFormat: configuration.connection.apiFormat },
+			macroEnvironment: configuration.macroEnvironment,
 		},
 		{ estimator: options.tokenEstimator },
 	);
@@ -345,6 +346,7 @@ export async function sendThroughProvisionalTailGeneration(
 			current.connection,
 			current.connectionSettings,
 			current.tokenEstimator,
+			{ timeZone: current.macroTimeZone, locale: current.macroLocale },
 		),
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -384,6 +386,7 @@ export async function continueGeneration(
 			current.connection,
 			current.connectionSettings,
 			current.tokenEstimator,
+			{ timeZone: current.macroTimeZone, locale: current.macroLocale },
 		),
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -437,6 +440,9 @@ export interface GenerateSiblingVariantInput {
 	tokenEstimator?: TokenEstimator;
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
+	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured with the sibling attempt.
+	macroTimeZone?: string;
+	macroLocale?: string;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;

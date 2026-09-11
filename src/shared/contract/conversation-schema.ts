@@ -618,17 +618,31 @@ export const conversationCommandBody = Type.Object({
 export const generationBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
+	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
+	// Conversation settings. It is optional so callers with no locale hint use
+	// the evaluator's deterministic defaults.
+	timeZone: Type.Optional(Type.String()),
+	locale: Type.Optional(Type.String()),
 });
 
-// Continue carries only the Conversation revision. The server derives the
+// ==[HUMAN APPROVED]== Continue carries only the Conversation revision. The server derives the
 // selected terminal Message and current Control pair from its snapshot.
 export const continuationBody = Type.Object({
 	expectedRevision: Type.Integer(),
+	timeZone: Type.Optional(Type.String()),
+	locale: Type.Optional(Type.String()),
 });
 
 export type ConversationCommandBody = Static<typeof conversationCommandBody>;
 export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
+
+export const siblingGenerationQuery = Type.Object({
+	timeZone: Type.Optional(Type.String()),
+	locale: Type.Optional(Type.String()),
+});
+
+export type SiblingGenerationQuery = Static<typeof siblingGenerationQuery>;
 
 export const conversationConflict = Type.Object({
 	outcome: Type.Literal("conflict"),

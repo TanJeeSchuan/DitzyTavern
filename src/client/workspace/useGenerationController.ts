@@ -41,6 +41,11 @@ import {
 	type StoryState,
 } from "../story";
 
+const macroFormattingContext = () => {
+	const resolved = Intl.DateTimeFormat().resolvedOptions();
+	return { timeZone: resolved.timeZone, locale: resolved.locale };
+};
+
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
 // and authoritative snapshots replace it. Reasoning Content follows a
@@ -288,7 +293,7 @@ export function useGenerationController({
 		void startGeneration(
 			startId,
 			conversationId,
-			startConversationGeneration(conversationId, conversation.revision, draft),
+			startConversationGeneration(conversationId, conversation.revision, draft, macroFormattingContext()),
 			() => setDraft(""),
 		);
 	};
@@ -306,7 +311,7 @@ export function useGenerationController({
 		void startGeneration(
 			startId,
 			conversationId,
-			startConversationContinuationGeneration(conversationId, conversation.revision),
+			startConversationContinuationGeneration(conversationId, conversation.revision, macroFormattingContext()),
 		);
 	};
 
@@ -327,7 +332,7 @@ export function useGenerationController({
 		void startGeneration(
 			startId,
 			conversationId,
-			startConversationSiblingGeneration(conversationId, messageId),
+			startConversationSiblingGeneration(conversationId, messageId, macroFormattingContext()),
 		);
 	};
 

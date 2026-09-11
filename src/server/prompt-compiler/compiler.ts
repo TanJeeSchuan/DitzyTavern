@@ -6,15 +6,16 @@
 // given, and expands each authored instruction block's own text. Empty blocks
 // are omitted from the rendered plan only — storage keeps exact text.
 //
-// Macro expansion, Prompt Comments, and escaping are the shared processor in
-// `src/shared/prompt-macros.ts`; this module supplies only the macro context
+// Macro expansion, Prompt Comments, and escaping are owned by the shared
+// Chevrotain-backed engine; this module supplies only the macro context
 // each provenance establishes. A Definition slot expands relative to its
 // owner; an authored instruction block always resolves `{{self}}` to the
 // current human-controlled Participant and `{{other}}` to the current
 // model-controlled Participant. Unknown macros remain literal and become
 // prompt-inspection warnings.
 
-import { expandText, type ExpansionResult, type MacroContext } from "../../shared/prompt-macros";
+import { expandMacroText, type MacroEnvironment, type MacroExpansionResult } from "../../shared/prompt-macro-engine";
+import type { ExpansionResult, MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
 	type PromptOutgoingRole,
@@ -102,8 +103,13 @@ export function compileOpening(
 	content: string,
 	context: MacroContext,
 	position: number,
+	macroEnvironment?: MacroEnvironment,
 ): ExpansionResult {
-	return expandText(content, context, `opening ${position}`);
+	return expandMacroText(
+		content,
+		{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other, macroPositionBase: `opening:${position}` },
+		`opening ${position}`,
+	);
 }
 
 const expandInto = (
@@ -114,10 +120,27 @@ const expandInto = (
 	text: string,
 	context: MacroContext,
 	blockLabel: string,
+	macroEnvironment: MacroEnvironment | undefined,
+	cacheKey: string,
 ) => {
 	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
-	const expanded = expandText(text, context, blockLabel);
+	let expanded: ExpansionResult | MacroExpansionResult;
+	if (macroEnvironment === undefined) {
+		expanded = expandMacroText(text, { ...context, macroPositionBase: cacheKey }, blockLabel);
+	} else {
+		const cached = macroEnvironment.expansionCache?.get(cacheKey);
+		if (cached !== undefined) expanded = cached;
+		else {
+			const evaluated = expandMacroText(
+				text,
+				{ ...macroEnvironment, self: context.self, other: context.other, macroPositionBase: cacheKey },
+				blockLabel,
+			);
+			expanded = evaluated;
+			macroEnvironment.expansionCache?.set(cacheKey, evaluated);
+		}
+	}
 	if (expanded.text === "") return;
 	blocks.push({ ...block, role, content: expanded.text });
 	warnings.push(...expanded.warnings);
@@ -126,6 +149,15 @@ const expandInto = (
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
+	const macroEnvironment: MacroEnvironment = input.macroEnvironment === undefined
+		? { self: "", other: "", variables: new Map(), expansionCache: new Map() }
+		: {
+			...input.macroEnvironment,
+			variables: input.macroEnvironment.variables instanceof Map
+				? input.macroEnvironment.variables
+				: new Map(Object.entries(input.macroEnvironment.variables ?? {})),
+			expansionCache: input.macroEnvironment.expansionCache ?? new Map(),
+		};
 
 	// ==[HUMAN APPROVED]== Owner-relative macro context: `{{self}}` is the Definition owner and
 	// `{{other}}` the other controlled Participant, whatever order the recipe
@@ -144,7 +176,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		{ definition: CompilePromptDefinition; context: MacroContext }
 	>;
 
-	for (const slot of input.recipe) {
+	for (const [slotIndex, slot] of input.recipe.entries()) {
 		if (!slot.enabled) continue;
 		if (slot.reference === "history") {
 			for (const entry of input.context ?? []) {
@@ -172,6 +204,8 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 				slot.content,
 				{ self: input.human.name, other: input.model.name },
 				slot.name === "" ? "instruction" : slot.name,
+				macroEnvironment,
+				`slot:${slotIndex}`,
 			);
 			continue;
 		}
@@ -185,6 +219,8 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			owner.definition.prompt[referenced.channel],
 			owner.context,
 			referenced.label,
+			macroEnvironment,
+			`slot:${slotIndex}`,
 		);
 	}
 
