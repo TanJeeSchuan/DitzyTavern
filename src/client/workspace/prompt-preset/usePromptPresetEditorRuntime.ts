@@ -40,6 +40,32 @@ export interface PromptPresetEditorRuntime {
 	ownsOperation: (claim: OperationClaim) => boolean;
 }
 
+export function createPromptPresetEditorOperationRunner({
+	current,
+	dispatch,
+	canStart,
+	ownsOperation,
+}: {
+	current: () => PromptPresetEditorState;
+	dispatch: (event: PromptPresetEditorEvent) => void;
+	canStart: () => boolean;
+	ownsOperation: (claim: OperationClaim) => boolean;
+}): PromptPresetEditorRuntime["runOperation"] {
+	return async <R>(
+		effects: OperationStartEffects,
+		body: (claim: OperationClaim) => Promise<R>,
+	): Promise<R | undefined> => {
+		if (!canStart()) return undefined;
+		dispatch({ type: "operation-started", effects });
+		const claim = operationClaim(current());
+		try {
+			return await body(claim);
+		} finally {
+			if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
+		}
+	};
+}
+
 export function usePromptPresetEditorRuntime({
 	conversation,
 	open,
@@ -75,19 +101,12 @@ export function usePromptPresetEditorRuntime({
 	// runs the body and settles only its own busy state. Because the settle happens synchronously
 	// before `runOperation` resolves, a leave that starts its selection after `await runOperation(...)`
 	// runs with busy already released.
-	const runOperation = async <R>(
-		effects: OperationStartEffects,
-		body: (claim: OperationClaim) => Promise<R>,
-	): Promise<R | undefined> => {
-		if (!open || !alive.current || stateRef.current.busy) return undefined;
-		dispatch({ type: "operation-started", effects });
-		const claim = operationClaim(stateRef.current);
-		try {
-			return await body(claim);
-		} finally {
-			if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
-		}
-	};
+	const runOperation = createPromptPresetEditorOperationRunner({
+		current,
+		dispatch,
+		canStart: () => open && alive.current && !stateRef.current.busy,
+		ownsOperation,
+	});
 
 	// ==[HUMAN APPROVED]== The broad refresh path for initial load, revision refreshes, library
 	// commands, imports and selection changes: it fetches the library list and the
