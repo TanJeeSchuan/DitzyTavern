@@ -355,39 +355,28 @@ export const readPreset = async (
 	return await response.json() as ConversationPromptPreset;
 };
 
-export const readOperation = async (operation: Promise<Response>): Promise<PromptPresetRecipe> => {
+export const readOperation = async (operation: Promise<Response>): Promise<void> => {
 	const response = await operation;
 	expect(response.status).toBe(200);
-	// ==[HUMAN APPROVED]== SAFETY: the fixture's recipe-operation helpers validate the minimal
-	// applied acknowledgment, then replace it with this authoritative read for behavior assertions.
-	return await response.json() as PromptPresetRecipe;
+	// ==[HUMAN APPROVED]== SAFETY: every successful recipe mutation route returns the minimal
+	// applied acknowledgment; tests read the authoritative recipe separately when needed.
+	expect(await response.json()).toEqual({ outcome: "applied" });
 };
 
-export const readRecipeAfterOperation = async (
-	operation: Promise<Response>,
-	database: Database,
-	presetId: number,
-): Promise<Response> => {
-	const response = await operation;
-	if (response.status !== 200) return response;
-	// ==[HUMAN APPROVED]== SAFETY: every successful recipe mutation route has the minimal applied
-	// acknowledgment contract; tests then read the authoritative recipe separately.
-	expect(await response.json()).toEqual({ outcome: "applied" });
+export const readStoredRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
 	const recipe = readPromptPresetRecipe(database, presetId);
-	return new Response(JSON.stringify(recipe), {
-		status: 200,
-		headers: { "content-type": "application/json" },
-	});
+	if (recipe === undefined) throw new Error("The preset recipe is missing.");
+	return recipe;
 };
 
 export const addBlock = (database: Database, presetId: number, reference: string) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ reference }),
 		}),
-	), database, presetId);
+	);
 
 export const moveBlock = (
 	database: Database,
@@ -395,13 +384,13 @@ export const moveBlock = (
 	blockId: number,
 	toPosition: number,
 ) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/move`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ toPosition }),
 		}),
-	), database, presetId);
+	);
 
 export const toggleBlock = (
 	database: Database,
@@ -409,39 +398,39 @@ export const toggleBlock = (
 	blockId: number,
 	enabled: boolean,
 ) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/toggle`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ enabled }),
 		}),
-	), database, presetId);
+	);
 
 export const duplicateBlock = (database: Database, presetId: number, blockId: number) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}/duplicate`,
 		{ method: "POST" }),
-	), database, presetId);
+	);
 
 export const removeBlock = (database: Database, presetId: number, blockId: number) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/${blockId}`, {
 			method: "DELETE",
 		}),
-	), database, presetId);
+	);
 
 export const saveBlockPatches = (
 	database: Database,
 	presetId: number,
 	patches: PromptPresetBlockPatch[],
 ) =>
-	readRecipeAfterOperation(recipeRoutes(database).handle(
+	recipeRoutes(database).handle(
 		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks/patches`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ patches }),
 		}),
-	), database, presetId);
+	);
 
 // ==[HUMAN APPROVED]== Individual Save and save-on-leave share one occurrence-addressed patch
 // contract, so the fixtures submit single-element batches through the same

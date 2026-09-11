@@ -15,8 +15,8 @@ import {
 	moveBlock,
 	readInspection,
 	readOperation,
-	readRecipeAfterOperation,
 	readPreset,
+	readStoredRecipe,
 	recipeRoutes,
 	saveBlockRole,
 	saveInstructionContent,
@@ -33,11 +33,11 @@ describe("Prompt Preset authored instruction macros", () => {
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
-		readRecipeAfterOperation(recipeRoutes(database).handle(
+		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		), database, presetId);
+		);
 
 	const runConversationCommand = async (
 		conversationId: number,
@@ -84,7 +84,8 @@ describe("Prompt Preset authored instruction macros", () => {
 		content: string,
 		role: PromptOutgoingRole,
 	): Promise<number> => {
-		const added = await readOperation(addInstruction(presetId));
+		await readOperation(addInstruction(presetId));
+		const added = readStoredRecipe(database, presetId);
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
 		await readOperation(saveInstructionContent(database, presetId, instruction.id, { name, content, role }));
@@ -257,9 +258,10 @@ describe("Prompt Preset authored instruction macros", () => {
 		expect(slotOf(saved, "instruction")?.content).toBe("Saved text.");
 
 		// And a later toggle of the instruction does not disturb its saved text.
-		const toggled = await readOperation(
+		await readOperation(
 			toggleBlock(database, preset.id, instructionId, false),
 		);
+		const toggled = readStoredRecipe(database, preset.id);
 		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
 		expect(slotOf(toggled, "instruction")?.content).toBe("Saved text.");
 	});

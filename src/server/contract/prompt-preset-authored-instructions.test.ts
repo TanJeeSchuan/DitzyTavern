@@ -13,8 +13,8 @@ import {
 	moveBlock,
 	recipeRoutes,
 	readOperation,
-	readRecipeAfterOperation,
 	readPreset,
+	readStoredRecipe,
 	removeBlock,
 	saveInstructionContent,
 	slotOf,
@@ -34,17 +34,18 @@ describe("Prompt Preset authored instructions", () => {
 	afterEach(() => database.close());
 
 	const addInstruction = (presetId: number) =>
-		readRecipeAfterOperation(recipeRoutes(database).handle(
+		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		), database, presetId);
+		);
 
 	test("add, save, move, toggle, duplicate and remove work for authored instruction blocks", async () => {
 		const conversation = createChat(database);
 		const preset = await readPreset(conversationApp(database), conversation.id);
 
-		const added = await readOperation(addInstruction(preset.id));
+		await readOperation(addInstruction(preset.id));
+		const added = readStoredRecipe(database, preset.id);
 		const instruction = added.slots.at(-1);
 		expect(instruction).toEqual({
 			id: expect.any(Number),
@@ -56,13 +57,14 @@ describe("Prompt Preset authored instructions", () => {
 		});
 
 		// The one block-level save persists name, text, and role together.
-		const saved = await readOperation(saveInstructionContent(
+		await readOperation(saveInstructionContent(
 			database,
 			preset.id,
-			// SAFETY: the occurrence above exists in the response recipe.
+			// SAFETY: the occurrence above exists in the authoritative stored recipe.
 			(instruction as { id: number }).id,
 			{ name: "Tone", content: "Write like {{self}}.", role: "assistant" },
 		));
+		const saved = readStoredRecipe(database, preset.id);
 		const savedSlot = slotOf(saved, "instruction");
 		if (savedSlot === undefined) throw new Error("The saved instruction is missing.");
 		expect(savedSlot).toEqual({
@@ -76,30 +78,34 @@ describe("Prompt Preset authored instructions", () => {
 
 		// Instruction blocks participate in the same ordered recipe operations.
 		// Move it to the front, then duplicate it while both copies are enabled.
-		const moved = await readOperation(moveBlock(database, preset.id, savedSlot.id, 1));
+		await readOperation(moveBlock(database, preset.id, savedSlot.id, 1));
+		const moved = readStoredRecipe(database, preset.id);
 		expect(moved.slots[0]?.reference).toBe("instruction");
-		const duplicated = await readOperation(
+		await readOperation(
 			duplicateBlock(database, preset.id, savedSlot.id),
 		);
+		const duplicated = readStoredRecipe(database, preset.id);
 		expect(duplicated.slots.filter((slot) => slot.reference === "instruction")).toHaveLength(2);
 
 		// disabling one occurrence leaves the other enabled and in place.
-		const toggled = await readOperation(
+		await readOperation(
 			toggleBlock(database, preset.id, savedSlot.id, false),
 		);
+		const toggled = readStoredRecipe(database, preset.id);
 		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
 
 		// A deliberate duplicate is independently editable: saving the second
 		// copy's text and role leaves the disabled original untouched.
 		const copy = toggled.slots.filter((slot) => slot.reference === "instruction")[1];
 		if (copy === undefined) throw new Error("The duplicated instruction is missing.");
-		// SAFETY: the copy exists in the response recipe.
-		const copySaved = await readOperation(saveInstructionContent(
+		// SAFETY: the copy exists in the authoritative stored recipe.
+		await readOperation(saveInstructionContent(
 			database,
 			preset.id,
 			copy.id,
 			{ name: "Copy", content: "Independent text.", role: "user" },
 		));
+		const copySaved = readStoredRecipe(database, preset.id);
 		const copies = copySaved.slots.filter((slot) => slot.reference === "instruction");
 		expect(copies[0]).toEqual({
 			id: expect.any(Number),
@@ -119,7 +125,8 @@ describe("Prompt Preset authored instructions", () => {
 		});
 
 		// Removing one occurrence leaves the other exactly where it was.
-		const removed = await readOperation(removeBlock(database, preset.id, copies[0].id));
+		await readOperation(removeBlock(database, preset.id, copies[0].id));
+		const removed = readStoredRecipe(database, preset.id);
 		expect(removed.slots.filter((slot) => slot.reference === "instruction")).toEqual([
 			copies[1],
 		]);
@@ -160,11 +167,11 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 	};
 
 	const addInstruction = (presetId: number) =>
-		readRecipeAfterOperation(recipeRoutes(database).handle(
+		recipeRoutes(database).handle(
 			new Request(`http://localhost/api/prompt-presets/${presetId}/instructions`, {
 				method: "POST",
 			}),
-		), database, presetId);
+		);
 
 	const duplicatePreset = async (presetId: number, name: string) => {
 		const expectedRevision = await presetRevision(presetId);
@@ -232,7 +239,8 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 
 		// A saved instruction on the shared preset reaches both selecting
 		// Chats and never reaches the copy.
-		const added = await readOperation(addInstruction(preset.id));
+		await readOperation(addInstruction(preset.id));
+		const added = readStoredRecipe(database, preset.id);
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
 		await readOperation(saveInstructionContent(
@@ -271,7 +279,8 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 		const copyRevision = await selectPresetFor(copy.id, copy.revision, duplicated.preset.id);
 
 		// Editing the copy's recipe later is invisible to the shared preset.
-		const added = await readOperation(addInstruction(duplicated.preset.id));
+		await readOperation(addInstruction(duplicated.preset.id));
+		const added = readStoredRecipe(database, duplicated.preset.id);
 		const instruction = added.slots.at(-1);
 		if (instruction === undefined) throw new Error("The instruction was not added.");
 		await readOperation(saveInstructionContent(

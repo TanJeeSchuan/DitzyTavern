@@ -9,7 +9,6 @@ import {
 	InvalidPromptPresetOperationError,
 	readPromptPresetRecipe,
 } from "../prompt-preset";
-import type { PromptPresetRecipe } from "../../shared/contract/prompt-preset";
 import {
 	CapturedRequest,
 	addBlock,
@@ -23,6 +22,7 @@ import {
 	readInspection,
 	readOperation,
 	readPreset,
+	readStoredRecipe,
 	removeBlock,
 	saveBlockPatches,
 	saveBlockRole,
@@ -202,21 +202,24 @@ describe("Prompt Preset transport", () => {
 
 		// Disable the Scenario occurrence: it must vanish from the request
 		// without being reinserted anywhere.
-		const toggled = await readOperation(
+		await readOperation(
 			toggleBlock(database, preset.id, scenario.id, false),
 		);
+		const toggled = readStoredRecipe(database, preset.id);
 		expect(slotOf(toggled, "model-scenario")?.enabled).toBe(false);
 
 		// Move the Post-History Instruction ahead of everything else.
-		const moved = await readOperation(
+		await readOperation(
 			moveBlock(database, preset.id, postHistory.id, 1),
 		);
+		const moved = readStoredRecipe(database, preset.id);
 		expect(moved.slots[0]?.reference).toBe("model-post-history-instruction");
 
 		// Deliberately repeat the history slot right after itself.
-		const duplicated = await readOperation(
+		await readOperation(
 			duplicateBlock(database, preset.id, history.id),
 		);
+		const duplicated = readStoredRecipe(database, preset.id);
 		expect(duplicated.slots.map((slot) => slot.reference)).toEqual([
 			"model-post-history-instruction",
 			"model-system-instruction",
@@ -231,7 +234,8 @@ describe("Prompt Preset transport", () => {
 
 		// Add a fresh Scenario occurrence: a deliberate duplicate the recipe
 		// keeps alongside the disabled original.
-		const added = await readOperation(addBlock(database, preset.id, "model-scenario"));
+		await readOperation(addBlock(database, preset.id, "model-scenario"));
+		const added = readStoredRecipe(database, preset.id);
 		const addedSlot = added.slots.at(-1);
 		expect(addedSlot?.reference).toBe("model-scenario");
 		if (addedSlot?.reference !== "model-scenario") throw new Error("The added Scenario is missing.");
@@ -278,9 +282,10 @@ describe("Prompt Preset transport", () => {
 		// and the repeated history exactly where they were.
 		const addedForRemoval = added.slots.at(-1);
 		if (addedForRemoval === undefined) throw new Error("The added slot disappeared.");
-		const removed = await readOperation(
+		await readOperation(
 			removeBlock(database, preset.id, addedForRemoval.id),
 		);
+		const removed = readStoredRecipe(database, preset.id);
 		expect(removed.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
 			["model-post-history-instruction", true],
 			["model-system-instruction", true],
@@ -307,12 +312,14 @@ describe("Prompt Preset transport", () => {
 		// The Scenario is presented as user content and the model Identity as
 		// system content. The role is presentation only: the source text and
 		// the Participant supplying it stay untouched.
-		const withRoles = await readOperation(
+		await readOperation(
 			saveBlockRole(database, preset.id, scenario.id, "user"),
 		);
-		const afterIdentity = await readOperation(
+		const withRoles = readStoredRecipe(database, preset.id);
+		await readOperation(
 			saveBlockRole(database, preset.id, identity.id, "system"),
 		);
+		const afterIdentity = readStoredRecipe(database, preset.id);
 		expect(slotOf(withRoles, "model-scenario")?.role).toBe("user");
 		expect(slotOf(afterIdentity, "model-identity")?.role).toBe("system");
 
@@ -421,7 +428,7 @@ describe("Prompt Preset block patch batch", () => {
 		return { stored, instruction, identity };
 	};
 
-	test("saves an occurrence-addressed batch and the fixture reads the applied acknowledgment", async () => {
+	test("saves an occurrence-addressed batch and reads the applied recipe", async () => {
 		const { stored, instruction, identity } = seedSlots();
 
 		const response = await saveBlockPatches(database, 1, [
@@ -436,9 +443,10 @@ describe("Prompt Preset block patch batch", () => {
 		]);
 
 		expect(response.status).toBe(200);
-		// SAFETY: the fixture has validated the minimal acknowledgment and reads the stored recipe
-		// separately, as the client does after an applied operation.
-		const saved = await response.json() as PromptPresetRecipe;
+		// SAFETY: successful recipe mutations return the minimal applied acknowledgment.
+		expect(await response.json()).toEqual({ outcome: "applied" });
+		const saved = readPromptPresetRecipe(database, 1);
+		if (saved === undefined) throw new Error("The saved recipe is missing.");
 		expect(slotOf(saved, "human-identity")?.role).toBe("assistant");
 		expect(slotOf(saved, "instruction")).toMatchObject({
 			name: "Tone",
@@ -455,9 +463,10 @@ describe("Prompt Preset block patch batch", () => {
 		const response = await saveBlockPatches(database, 1, []);
 
 		expect(response.status).toBe(200);
-		// SAFETY: the fixture has validated the minimal acknowledgment and reads the stored recipe
-		// separately, as the client does after an applied operation.
-		const saved = await response.json() as PromptPresetRecipe;
+		// SAFETY: successful recipe mutations return the minimal applied acknowledgment.
+		expect(await response.json()).toEqual({ outcome: "applied" });
+		const saved = readPromptPresetRecipe(database, 1);
+		if (saved === undefined) throw new Error("The saved recipe is missing.");
 		expect(saved).toEqual(stored);
 	});
 
