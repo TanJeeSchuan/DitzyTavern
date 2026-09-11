@@ -22,6 +22,7 @@ import type { Database } from "bun:sqlite";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
+	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationDataEntry,
@@ -60,6 +61,10 @@ import {
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
+import {
+	generationCaptureForPreview,
+	type GenerationPreviewRecord,
+} from "./generation-preview";
 import {
 	continuationIntentFor,
 	type EffectiveGenerationSettings,
@@ -212,6 +217,8 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
@@ -341,15 +348,29 @@ export async function sendThroughProvisionalTailGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSendGeneration(
-			currentDatabase,
-			snapshot,
-			current.content,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-			{ timeZone: current.macroTimeZone, locale: current.macroLocale },
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				const prepared = generationCaptureForPreview(
+					currentDatabase,
+					snapshot,
+					current.preview.record,
+					current.preview.editedPlan,
+					current.connection,
+					{ content: current.content, timeZone: current.macroTimeZone, locale: current.macroLocale },
+				);
+				if (prepared.kind !== "send") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Send.");
+				return { ...prepared.capture, humanContent: current.content, reuseHumanMessageId: prepared.capture.reuseHumanMessageId };
+			}
+			return captureSendGeneration(
+				currentDatabase,
+				snapshot,
+				current.content,
+				current.connection,
+				current.connectionSettings,
+				current.tokenEstimator,
+				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -368,6 +389,8 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
 	expectedRevision: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
 }
 
@@ -382,14 +405,28 @@ export async function continueGeneration(
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureContinuationGeneration(
-			currentDatabase,
-			snapshot,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-			{ timeZone: current.macroTimeZone, locale: current.macroLocale },
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				const prepared = generationCaptureForPreview(
+					currentDatabase,
+					snapshot,
+					current.preview.record,
+					current.preview.editedPlan,
+					current.connection,
+					{ timeZone: current.macroTimeZone, locale: current.macroLocale },
+				);
+				if (prepared.kind !== "continuation") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Continue.");
+				return prepared.capture;
+			}
+			return captureContinuationGeneration(
+				currentDatabase,
+				snapshot,
+				current.connection,
+				current.connectionSettings,
+				current.tokenEstimator,
+				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -430,6 +467,8 @@ export interface GenerateSiblingVariantInput {
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
@@ -462,11 +501,25 @@ export async function generateSiblingVariant(
 	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
 	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSiblingGeneration(
-			currentDatabase,
-			snapshot,
-			current,
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				const prepared = generationCaptureForPreview(
+					currentDatabase,
+					snapshot,
+					current.preview.record,
+					current.preview.editedPlan,
+					current.connection,
+					{ messageId: current.messageId, timeZone: current.macroTimeZone, locale: current.macroLocale },
+				);
+				if (prepared.kind !== "sibling") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Swipe.");
+				return prepared.capture;
+			}
+			return captureSiblingGeneration(
+				currentDatabase,
+				snapshot,
+				current,
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,

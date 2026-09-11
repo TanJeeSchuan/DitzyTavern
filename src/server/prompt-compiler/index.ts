@@ -14,6 +14,7 @@ export { expandText } from "../../shared/prompt-macros";
 export { expandMacroText, validateMacroText } from "../../shared/prompt-macro-engine";
 export {
 	budgetPromptPlan,
+	budgetEditedPromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,

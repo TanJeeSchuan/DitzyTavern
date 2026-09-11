@@ -10,6 +10,8 @@ import type {
 	ConversationSummary,
 	GenerationAccepted,
 	GenerationStartResponse,
+	GenerationPreview,
+	GenerationPreviewBody,
 	GenerationStopped,
 	GenerationsStopped,
 	VariantDetails,
@@ -40,6 +42,7 @@ export type {
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
+export type { GenerationPreview, GenerationPreviewBody } from "../shared/contract/conversation-schema";
 export type { PromptChannels } from "../shared/contract/prompt-schema";
 export type {
 	GenerationStreamDelta,
@@ -275,9 +278,32 @@ export async function loadVariantDetails(
 
 export type StartConversationGenerationResult = GenerationStartResponse;
 
+export type GenerationPreviewOutcome =
+	| { status: "available"; preview: GenerationPreview }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
 export interface MacroFormattingContext {
 	timeZone?: string;
 	locale?: string;
+}
+
+export async function previewConversationGeneration(
+	conversationId: number,
+	input: GenerationPreviewBody,
+): Promise<GenerationPreviewOutcome> {
+	try {
+		const { data, error } = await api.api.conversations({ id: conversationId }).generations.preview.post(input);
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		return { status: "available", preview: data };
+	} catch {
+		return { status: "network" };
+	}
 }
 
 const startGenerationError = (
@@ -319,9 +345,10 @@ export function startConversationGeneration(
 	expectedRevision: number,
 	content: string,
 	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting }),
+		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
 		"",
 	);
 }
@@ -330,9 +357,13 @@ export function startConversationSiblingGeneration(
 	conversationId: number,
 	messageId: number,
 	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({ query: formatting }),
+		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+			...formatting,
+			...preview,
+		}),
 		"Sibling",
 	);
 }
@@ -341,9 +372,10 @@ export function startConversationContinuationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
 		"Continuation",
 	);
 }

@@ -179,6 +179,60 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 	});
 }
 
+/**
+ * ==[HUMAN APPROVED]== Validate an already-expanded plan without recompiling it or trimming its
+ * history. An inspected plan is the user's direct model input, so accepting
+ * it must preserve every edit and report an over-ceiling plan as-is.
+ */
+export function budgetEditedPromptPlan(input: {
+	plan: PromptPlan;
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	estimator?: TokenEstimator;
+}): PromptBudgetResult {
+	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
+		throw new Error("Prompt context limit must be a positive whole number.");
+	}
+	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
+		throw new Error("Prompt response budget must be a positive whole number.");
+	}
+	if (!Number.isInteger(input.safetyAllowance) || input.safetyAllowance < 0) {
+		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
+	}
+	const tokenEstimate = Math.ceil((input.estimator ?? tokenxEstimator)(toEstimationTranscript(input.plan)));
+	if (!Number.isFinite(tokenEstimate) || tokenEstimate < 0) {
+		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
+	}
+	const breakdown: PromptBudgetBreakdown = {
+		contextLimit: input.contextLimit,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		tokenEstimate,
+		totalRequiredTokens: tokenEstimate + input.responseBudget + input.safetyAllowance,
+		fixedPromptCharacters: input.plan.blocks
+			.filter((block) => block.kind !== "history")
+			.reduce((total, block) => total + block.content.length, 0),
+		protectedHistoryCharacters: 0,
+	};
+	const fits = breakdown.totalRequiredTokens <= input.contextLimit;
+	return {
+		fits,
+		plan: input.plan,
+		retainedContext: [],
+		omittedContext: [],
+		tokenEstimate,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		contextLimit: input.contextLimit,
+		totalRequiredTokens: breakdown.totalRequiredTokens,
+		breakdown,
+		failure: fits
+			? null
+			: { reason: "fixed-prompt-too-large", breakdown },
+	};
+}
+
 export class PromptBudgetExceededError extends Error {
 	readonly result: PromptBudgetResult;
 	readonly breakdown: PromptBudgetBreakdown;

@@ -492,6 +492,7 @@ export function captureSendGeneration(
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
 	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
+	options: { assertBudget?: boolean } = {},
 ): SendGenerationCapture {
 	const configuration = captureConfiguration(
 		database,
@@ -527,9 +528,8 @@ export function captureSendGeneration(
 	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
 	// compiled plan has no applicable Continuation operand either.
 	const preparedConfiguration = configurationFor(configuration, snapshot);
-	const plan = assertGenerationPlan(
-		compilePlanFrom(submitted, preparedConfiguration, { estimator: tokenEstimator }),
-	);
+	const plan = compilePlanFrom(submitted, preparedConfiguration, { estimator: tokenEstimator });
+	if (options.assertBudget !== false) assertGenerationPlan(plan);
 	return {
 		...toCapturedGeneration(derivation, preparedConfiguration, plan),
 		humanContent: content,
@@ -562,6 +562,7 @@ export function captureContinuationGeneration(
 	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
 	tokenEstimator: TokenEstimator | undefined,
 	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
+	options: { assertBudget?: boolean } = {},
 ): ContinuationGenerationCapture {
 	if (hasActiveGeneration(database, snapshot.id)) {
 		throw new ContinuationUnavailableError("active-generation");
@@ -603,9 +604,8 @@ export function captureContinuationGeneration(
 	// the latest human entry, and the effective settings retain exactly the
 	// applicable Continuation operand.
 	const preparedConfiguration = configurationFor(configuration, snapshot);
-	const plan = assertGenerationPlan(
-		compilePlanFrom(derivation, preparedConfiguration, { intent, estimator: tokenEstimator }),
-	);
+	const plan = compilePlanFrom(derivation, preparedConfiguration, { intent, estimator: tokenEstimator });
+	if (options.assertBudget !== false) assertGenerationPlan(plan);
 	return {
 		...toCapturedGeneration(derivation, preparedConfiguration, plan),
 		precedingMessageId: latest.id,
@@ -689,6 +689,7 @@ export function captureSiblingGeneration(
 		tokenEstimator?: TokenEstimator | undefined;
 		macroTimeZone?: string;
 		macroLocale?: string;
+		assertBudget?: boolean;
 	},
 ): CapturedGeneration {
 	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
@@ -702,9 +703,10 @@ export function captureSiblingGeneration(
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
 	const preparedConfiguration = configurationFor(configuration, snapshot, derivation.endExclusiveIndex);
-	const plan = assertGenerationPlan(compilePlanFrom(derivation, preparedConfiguration, {
+	const plan = compilePlanFrom(derivation, preparedConfiguration, {
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,
-	}));
+	});
+	if (input.assertBudget !== false) assertGenerationPlan(plan);
 	return toCapturedGeneration(derivation, preparedConfiguration, plan);
 }
