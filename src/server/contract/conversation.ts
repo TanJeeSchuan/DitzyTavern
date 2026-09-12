@@ -156,7 +156,6 @@ const generationStartRouteResponse = {
 };
 
 const previewUseFor = (
-	database: Database | undefined,
 	conversationId: number,
 	kind: "send" | "continuation" | "sibling",
 	previewId: string | undefined,
@@ -254,7 +253,7 @@ export const createConversationRoutes = (
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
 					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
+					preview: previewUseFor(params.id, "continuation", body.previewId, body.promptPlan),
 				}),
 			),
 			{
@@ -485,7 +484,7 @@ export const createConversationRoutes = (
 						: currentConversationRevision(database, params.id),
 					content: body.content,
 					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
+					preview: previewUseFor(params.id, "send", body.previewId, body.promptPlan),
 				}),
 			),
 			{
@@ -526,7 +525,7 @@ export const createConversationRoutes = (
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },
 						preview: body?.previewId === undefined
 							? undefined
-							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
+							: previewUseFor(params.id, "sibling", body.previewId, body.promptPlan),
 					}),
 				),
 				{
