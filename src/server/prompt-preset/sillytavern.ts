@@ -197,7 +197,7 @@ const diagnostic = (code: string, message: string, identifier?: string): SillyTa
 };
 
 // ==[HUMAN APPROVED]== Translation walks the same token stream as expansion (the shared
-// scan in `prompt-macros.ts`), so escaping, Prompt Comments and malformed
+// scan in `prompt-macro-syntax.ts`, exposed by the shared barrel), so escaping, Prompt Comments and malformed
 // delimiters mean the same thing in both passes. Only an active `{{user}}`
 // or `{{char}}` macro is rewritten to the native names; a backslash pair,
 // an escaped macro or comment, an active comment, an unknown macro and

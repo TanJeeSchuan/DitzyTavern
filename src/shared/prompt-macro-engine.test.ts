@@ -51,6 +51,12 @@ describe("Prompt macro engine", () => {
 		expect(result.text).toBe("A\none\ntwo\n\n    three\n");
 	});
 
+	test("trims without consuming authored sentinel-like text", () => {
+		const authored = "__DITZY_TRIM_SENTINEL__";
+		const result = expandMacroText(`{{trim}}\n${authored}`, environment, "instruction");
+		expect(result.text).toBe(authored);
+	});
+
 	test("does not execute comments and treats split braces as escaped text", () => {
 		const result = expandMacroText(
 			"before {{// {{setvar::hidden::value}} }}after \\{\\{self\\}\\} {{/if}}",

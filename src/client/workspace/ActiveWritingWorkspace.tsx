@@ -96,7 +96,7 @@ export function ActiveWritingWorkspace({
 			setGenerationDetailsTarget(null);
 			dispatchPanel({ type: "prompt-plan-opened" });
 		},
-		onPromptPlanPreviewClosed: () => dispatchPanel({ type: "details-closed" }),
+		onPromptPlanPreviewClosed: () => dispatchPanel({ type: "prompt-plan-closed" }),
 	});
 	const viewport = useStoryViewport({
 		messages: story.messages,
