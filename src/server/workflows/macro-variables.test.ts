@@ -54,12 +54,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		});
 
 		const first = captureSendGeneration(
-			database,
-			conversation,
-			"Hello",
-			null,
-			undefined,
-			undefined,
+			{ database, snapshot: conversation, content: "Hello" },
 		);
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");
 		expect(first.macroWrites).toEqual([
@@ -85,7 +80,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
 		expect(readMacroWrites(generated.data, 1)).toEqual([...first.macroWrites]);
 
-		const second = captureSendGeneration(database, after, "Again", null, undefined, undefined);
+		const second = captureSendGeneration({ database, snapshot: after, content: "Again" });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
 	});
 
@@ -118,7 +113,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
-		const capture = captureSendGeneration(database, snapshot, "Again", null, undefined, undefined);
+		const capture = captureSendGeneration({ database, snapshot, content: "Again" });
 		expect(capture.plan.promptPlan.blocks.map((block) => block.content)).toContain("greeted=yes");
 	});
 
@@ -143,7 +138,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const capture = captureSendGeneration(database, conversation, "Hello", null, undefined, undefined);
+		const capture = captureSendGeneration({ database, snapshot: conversation, content: "Hello" });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,

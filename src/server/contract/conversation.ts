@@ -253,8 +253,7 @@ export const createConversationRoutes = (
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
-					macroTimeZone: body.timeZone,
-					macroLocale: body.locale,
+					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
 				}),
 			),
@@ -273,8 +272,7 @@ export const createConversationRoutes = (
 						kind: body.kind,
 						content: body.content,
 						messageId: body.messageId,
-						timeZone: body.timeZone,
-						locale: body.locale,
+						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
 					}));
 					const capture = preview.capture.capture;
@@ -489,8 +487,7 @@ export const createConversationRoutes = (
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
 					content: body.content,
-					macroTimeZone: body.timeZone,
-					macroLocale: body.locale,
+					formatting: { timeZone: body.timeZone, locale: body.locale },
 					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
 				}),
 			),
@@ -529,8 +526,7 @@ export const createConversationRoutes = (
 					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
-						macroTimeZone: body?.timeZone,
-						macroLocale: body?.locale,
+						formatting: { timeZone: body?.timeZone, locale: body?.locale },
 						preview: body?.previewId === undefined
 							? undefined
 							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),

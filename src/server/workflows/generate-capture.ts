@@ -18,7 +18,6 @@ import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import type { PromptPresetSlot } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
-	assertGenerationPlan,
 	compileGenerationPlan,
 	continuationIntentFor,
 	type EffectiveGenerationSettings,
@@ -50,7 +49,12 @@ import {
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
-import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
+import {
+	createAttemptEnvironment,
+	type MacroAttemptState,
+	type MacroEnvironment,
+} from "../../shared/prompt-macro-engine";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState } from "../prompt-macros";
 
@@ -66,7 +70,7 @@ export interface ParticipantPreview {
 	name: string;
 }
 
-interface GenerationDerivation {
+export interface GenerationDerivation {
 	human: CastParticipantSnapshot;
 	model: CastParticipantSnapshot;
 	context: readonly PromptContextEntry[];
@@ -190,6 +194,7 @@ export const compilePlanFrom = (
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		macroEnvironment: MacroEnvironment;
+		macroAttemptState: MacroAttemptState;
 		connection: GenerationConnectionFacts | null;
 	},
 	options: {
@@ -202,6 +207,7 @@ export const compilePlanFrom = (
 	context: derivation.context,
 	recipe: configuration.slots,
 	macroEnvironment: configuration.macroEnvironment,
+	macroAttemptState: configuration.macroAttemptState,
 	intent: options.intent,
 	settings: configuration.settings,
 	connection: configuration.connection,
@@ -224,68 +230,66 @@ interface AttemptConfiguration {
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
 	macroEnvironment: MacroEnvironment;
+	macroAttemptState: MacroAttemptState;
 	connection: ModelClientConnectionSnapshot | null;
 }
 
 // ==[HUMAN APPROVED]== The one attempt-configuration read: every Generation start and the
 // read-only inspection capture the same settings and the same recipe slots, so
 // a missing Conversation fails identically wherever an attempt is captured.
-export function captureConfiguration(
-	database: Database,
-	conversationId: number,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
-): AttemptConfiguration {
+export interface CaptureConfigurationInput {
+	database: Database;
+	snapshot: ConversationSnapshot;
+	derivation: GenerationDerivation;
+	participation: ParticipatingHistory;
+	connection?: ModelClientConnectionSnapshot | null | undefined;
+	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
+	formatting?: GenerationFormattingContext | undefined;
+}
+
+export function captureConfiguration(input: CaptureConfigurationInput): AttemptConfiguration {
+	const {
+		database,
+		snapshot,
+		derivation,
+		participation,
+		connection,
+		connectionSettings,
+		formatting = {},
+	} = input;
 	const conversation = createConversationModule(database);
-	const settings = conversation.getGenerationSettings(conversationId);
-	const recipe = readConversationPromptPresetRecipe(database, conversationId);
+	const settings = conversation.getGenerationSettings(snapshot.id);
+	const recipe = readConversationPromptPresetRecipe(database, snapshot.id);
 	if (settings === undefined || recipe === undefined) {
-		throw new ConversationNotFoundError(conversationId);
+		throw new ConversationNotFoundError(snapshot.id);
 	}
 	const capturedConnection = connection === undefined
-		? resolveConnectionSnapshot(database, connectionSettingsOptions)
+		? resolveConnectionSnapshot(database, connectionSettings)
 		: connection;
+	const attempt = createAttemptEnvironment({
+		self: derivation.human.name,
+		other: derivation.model.name,
+		conversationId: snapshot.id,
+		promptPresetId: recipe.id,
+		now: new Date(),
+		timeZone: formatting.timeZone,
+		locale: formatting.locale,
+		variables: deriveMacroState({
+			initialData: snapshot.data,
+			presetId: recipe.id,
+			selectedVariants: participation.messages
+				.flatMap((message) => message.variants.filter((variant) => variant.selected)),
+		}),
+	});
 	return {
 		settings,
 		slots: recipe.slots,
 		promptPresetId: recipe.id,
-		macroEnvironment: {
-			self: "",
-			other: "",
-			conversationId,
-			promptPresetId: recipe.id,
-			now: new Date(),
-			timeZone: macroOptions.timeZone,
-			locale: macroOptions.locale,
-			variables: new Map(),
-			expansionCache: new Map(),
-		},
+		macroEnvironment: attempt.environment,
+		macroAttemptState: attempt.state,
 		connection: capturedConnection,
 	};
 }
-
-// ==[HUMAN APPROVED]== The effective Macro State is reconstructed from the Conversation's
-// preset-scoped baseline and selected Variant records. An attempt gets a fresh
-// mutable copy, so sibling completions can never mutate another attempt's input.
-export const configurationFor = (
-	configuration: AttemptConfiguration,
-	snapshot: ConversationSnapshot,
-	participatingMessages: readonly ConversationSnapshot["messages"][number][] = snapshot.messages,
-): AttemptConfiguration => ({
-	...configuration,
-	macroEnvironment: {
-		...configuration.macroEnvironment,
-		variables: deriveMacroState({
-			initialData: snapshot.data,
-			presetId: configuration.promptPresetId,
-			selectedVariants: participatingMessages
-				.flatMap((message) => message.variants.filter((variant) => variant.selected)),
-		}),
-		writes: [],
-		expansionCache: new Map(),
-	},
-});
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
 // and the attempt's Effective Generation Settings. Only fields in the shared
@@ -416,7 +420,7 @@ const toCapturedGeneration = (
 	},
 	connection: configuration.connection,
 	macroPresetId: configuration.promptPresetId,
-	macroWrites: [...(configuration.macroEnvironment.writes ?? [])],
+	macroWrites: [...configuration.macroAttemptState.writes],
 	provenance: generationProvenanceEntry(plan, configuration.connection),
 });
 
@@ -511,28 +515,39 @@ export interface SendGenerationCapture extends CapturedGeneration {
 	reuseHumanMessageId: number | undefined;
 }
 
+export interface GenerationCaptureInput {
+	database: Database;
+	snapshot: ConversationSnapshot;
+	content?: string | undefined;
+	messageId?: number | undefined;
+	connection?: ModelClientConnectionSnapshot | null | undefined;
+	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
+	tokenEstimator?: TokenEstimator | undefined;
+	formatting?: GenerationFormattingContext | undefined;
+}
+
+export type SendGenerationCaptureInput = GenerationCaptureInput & { content: string };
+export type SiblingGenerationCaptureInput = GenerationCaptureInput & { messageId: number };
+
 // ==[HUMAN APPROVED]== Build the candidate Prompt Plan without writing it. A retry reuses the
 // already accepted trailing human Message; a fresh Send appends the submitted
 // human writing to the selected narrative path before budgeting.
 export function captureSendGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	content: string,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
-	options: { assertBudget?: boolean } = {},
+	input: SendGenerationCaptureInput,
 ): SendGenerationCapture {
-	const configuration = captureConfiguration(
-		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-		macroOptions,
-	);
+	const { database, snapshot, content } = input;
 	const derivation = deriveGeneration(snapshot);
 	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
+	const participation = participatingHistoryFor(snapshot, "send");
+	const configuration = captureConfiguration({
+		database,
+		snapshot,
+		derivation,
+		participation,
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+	});
 
 	const latest = snapshot.messages.at(-1);
 	const latestSelected = latest?.variants.find((variant) => variant.selected);
@@ -557,11 +572,9 @@ export function captureSendGeneration(
 		: derivation;
 	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
 	// compiled plan has no applicable Continuation operand either.
-	const preparedConfiguration = configurationFor(configuration, snapshot);
-	const plan = compilePlanFrom(submitted, preparedConfiguration, { estimator: tokenEstimator });
-	if (options.assertBudget !== false) assertGenerationPlan(plan);
+	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
 	return {
-		...toCapturedGeneration(derivation, preparedConfiguration, plan),
+		...toCapturedGeneration(derivation, configuration, plan),
 		humanContent: content,
 		reuseHumanMessageId,
 	};
@@ -586,14 +599,9 @@ function continuationHasUsableOutput(
 }
 
 export function captureContinuationGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	connectionSettingsOptions: ConnectionSettingsModuleOptions | undefined,
-	tokenEstimator: TokenEstimator | undefined,
-	macroOptions: Pick<MacroEnvironment, "timeZone" | "locale"> = {},
-	options: { assertBudget?: boolean } = {},
+	input: GenerationCaptureInput,
 ): ContinuationGenerationCapture {
+	const { database, snapshot } = input;
 	if (hasActiveGeneration(database, snapshot.id)) {
 		throw new ContinuationUnavailableError("active-generation");
 	}
@@ -616,13 +624,16 @@ export function captureContinuationGeneration(
 	}
 	const derivation = deriveGeneration(snapshot);
 	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-	const configuration = captureConfiguration(
+	const participation = participatingHistoryFor(snapshot, "continuation");
+	const configuration = captureConfiguration({
 		database,
-		snapshot.id,
-		connection,
-		connectionSettingsOptions,
-		macroOptions,
-	);
+		snapshot,
+		derivation,
+		participation,
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+	});
 	if (configuration.settings.continuationStrategy !== "instruction") {
 		if (selected.content.length === 0) {
 			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
@@ -633,11 +644,9 @@ export function captureContinuationGeneration(
 	// protects its prefixed model text, an instruction Continuation protects
 	// the latest human entry, and the effective settings retain exactly the
 	// applicable Continuation operand.
-	const preparedConfiguration = configurationFor(configuration, snapshot);
-	const plan = compilePlanFrom(derivation, preparedConfiguration, { intent, estimator: tokenEstimator });
-	if (options.assertBudget !== false) assertGenerationPlan(plan);
+	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
 	return {
-		...toCapturedGeneration(derivation, preparedConfiguration, plan),
+		...toCapturedGeneration(derivation, configuration, plan),
 		precedingMessageId: latest.id,
 		precedingVariantId: selected.id,
 		intent,
@@ -704,37 +713,24 @@ const deriveSiblingDerivation = (
 };
 
 export function captureSiblingGeneration(
-	database: Database,
-	snapshot: ConversationSnapshot,
-	input: {
-		messageId: number;
-		connection?: ModelClientConnectionSnapshot | null | undefined;
-		connectionSettings?: ConnectionSettingsModuleOptions | undefined;
-		tokenEstimator?: TokenEstimator | undefined;
-		macroTimeZone?: string;
-		macroLocale?: string;
-		assertBudget?: boolean;
-	},
+	input: SiblingGenerationCaptureInput,
 ): CapturedGeneration {
-	const derivation = deriveSiblingDerivation(snapshot, input.messageId);
-	const configuration = captureConfiguration(
-		database,
-		snapshot.id,
-		input.connection,
-		input.connectionSettings,
-		{ timeZone: input.macroTimeZone, locale: input.macroLocale },
-	);
+	const derivation = deriveSiblingDerivation(input.snapshot, input.messageId);
+	const participation = participatingHistoryFor(input.snapshot, "sibling", input.messageId);
+	const configuration = captureConfiguration({
+		database: input.database,
+		snapshot: input.snapshot,
+		derivation,
+		participation,
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+	});
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
-	const preparedConfiguration = configurationFor(
-		configuration,
-		snapshot,
-		participatingHistoryFor(snapshot, "sibling", input.messageId).messages,
-	);
-	const plan = compilePlanFrom(derivation, preparedConfiguration, {
+	const plan = compilePlanFrom(derivation, configuration, {
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,
 	});
-	if (input.assertBudget !== false) assertGenerationPlan(plan);
-	return toCapturedGeneration(derivation, preparedConfiguration, plan);
+	return toCapturedGeneration(derivation, configuration, plan);
 }

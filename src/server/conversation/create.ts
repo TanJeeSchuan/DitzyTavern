@@ -22,6 +22,7 @@ import {
 } from "./internal";
 import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
 import { macroWritesToData } from "../prompt-macros";
+import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -245,6 +246,51 @@ const deriveGreetingFromInput = (
 	};
 };
 
+// ==[HUMAN APPROVED]== Creation-time opening expansion is one named assembly step. Each greeting
+// Variant receives the same captured seat identity, preset, clock, formatting,
+// and a fresh attempt state before its writes are attached to that Variant.
+const expandGreetingOpenings = (
+	greeting: ConversationCreationMessage,
+	input: {
+		conversationId: number;
+		promptPresetId: number;
+		modelName: string;
+		humanName: string;
+		formatting?: ConversationCreationInput["formatting"];
+	},
+): ConversationCreationMessage => {
+	const now = new Date(greeting.timestamp);
+	return {
+		...greeting,
+		variants: greeting.variants.map((variant, index) => {
+			const attempt = createAttemptEnvironment({
+				self: input.modelName,
+				other: input.humanName,
+				conversationId: input.conversationId,
+				promptPresetId: input.promptPresetId,
+				now,
+				timeZone: input.formatting?.timeZone,
+				locale: input.formatting?.locale,
+			});
+			const expanded = compileOpening(
+				variant.content,
+				{ self: attempt.environment.self, other: attempt.environment.other },
+				index + 1,
+				attempt.environment,
+				attempt.state,
+			);
+			return {
+				...variant,
+				content: expanded.text,
+				data: [
+					...(variant.data ?? []),
+					...macroWritesToData(input.promptPresetId, expanded.writes),
+				],
+			};
+		}),
+	};
+};
+
 export function createConversation(
 	database: Database,
 	input: ConversationCreationInput,
@@ -340,38 +386,14 @@ export function createConversation(
 		if (greeting !== null && modelIndex !== undefined && humanIndex !== undefined) {
 			const modelSeed = seeds[modelIndex];
 			const humanSeed = seeds[humanIndex];
-			const macroEnvironment = {
-				self: normalizeParticipantName(modelSeed.definition.name),
-				other: normalizeParticipantName(humanSeed.definition.name),
+			const promptPresetId = readDefaultPromptPresetId(db);
+			messages = [expandGreetingOpenings(greeting, {
 				conversationId: conversation.id,
-				promptPresetId: readDefaultPromptPresetId(db),
-				// ==[HUMAN APPROVED]== The creation timestamp is the captured opening assembly clock. This
-				// keeps native creation deterministic for callers that provide one.
-				now: new Date(baseTime),
-				timeZone: input.macroTimeZone,
-				locale: input.macroLocale,
-				variables: new Map(),
-				expansionCache: new Map(),
-			};
-			messages = [{
-				...greeting,
-				variants: greeting.variants.map((variant, index) => {
-					const expanded = compileOpening(
-						variant.content,
-						{ self: macroEnvironment.self, other: macroEnvironment.other },
-						index + 1,
-						{ ...macroEnvironment, variables: new Map(macroEnvironment.variables), expansionCache: new Map() },
-					);
-					return {
-						...variant,
-						content: expanded.text,
-						data: [
-							...(variant.data ?? []),
-							...macroWritesToData(macroEnvironment.promptPresetId, expanded.writes),
-						],
-					};
-				}),
-			}];
+				promptPresetId,
+				modelName: normalizeParticipantName(modelSeed.definition.name),
+				humanName: normalizeParticipantName(humanSeed.definition.name),
+				formatting: input.formatting,
+			})];
 		}
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable

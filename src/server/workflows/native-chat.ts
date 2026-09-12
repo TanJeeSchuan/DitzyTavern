@@ -63,8 +63,7 @@ export function createNativeConversation(
 			participants: [human, model],
 			control: { human: 0, model: 1 },
 			createdAt: input.createdAt,
-			macroTimeZone: input.timeZone,
-			macroLocale: input.locale,
+			formatting: { timeZone: input.timeZone, locale: input.locale },
 		});
 	});
 

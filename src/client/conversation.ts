@@ -12,6 +12,7 @@ import type {
 	GenerationStartResponse,
 	GenerationPreview,
 	GenerationPreviewBody,
+	GenerationFormattingContext,
 	PromptPlan,
 	GenerationStopped,
 	GenerationsStopped,
@@ -285,11 +286,6 @@ export type GenerationPreviewOutcome =
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
-export interface MacroFormattingContext {
-	timeZone?: string;
-	locale?: string;
-}
-
 export async function previewConversationGeneration(
 	conversationId: number,
 	input: GenerationPreviewBody,
@@ -345,7 +341,7 @@ export function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	content: string,
-	formatting?: MacroFormattingContext,
+	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
@@ -357,7 +353,7 @@ export function startConversationGeneration(
 export function startConversationSiblingGeneration(
 	conversationId: number,
 	messageId: number,
-	formatting?: MacroFormattingContext,
+	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
@@ -372,7 +368,7 @@ export function startConversationSiblingGeneration(
 export function startConversationContinuationGeneration(
 	conversationId: number,
 	expectedRevision: number,
-	formatting?: MacroFormattingContext,
+	formatting?: GenerationFormattingContext,
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(

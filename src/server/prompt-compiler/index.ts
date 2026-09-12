@@ -10,6 +10,7 @@ export {
 export {
 	budgetPromptPlan,
 	budgetEditedPromptPlan,
+	measurePromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,
@@ -19,6 +20,7 @@ export type {
 	CompilePromptInput,
 	GenerationIntent,
 	MacroEnvironment,
+	MacroAttemptState,
 	PromptBlock,
 	PromptContextEntry,
 	PromptHistoryRole,
@@ -30,5 +32,7 @@ export type {
 	PromptBudgetFailure,
 	PromptBudgetInput,
 	PromptBudgetResult,
+	PromptBudgetMeasurement,
+	PromptBudgetMeasurementInput,
 	TokenEstimator,
 } from "./budget";

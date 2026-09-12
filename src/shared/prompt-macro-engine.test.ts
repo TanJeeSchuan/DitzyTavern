@@ -1,5 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { expandMacroText, validateMacroText } from "./prompt-macro-engine";
+import {
+	createMacroAttemptState,
+	expandMacroText as expandMacroTextWithState,
+	validateMacroText,
+	type MacroEnvironment,
+} from "./prompt-macro-engine";
+
+type TestMacroEnvironment = MacroEnvironment & {
+	variables?: ReadonlyMap<string, import("./prompt-macro-engine").MacroValue>;
+};
+
+const expandMacroText = (
+	source: string,
+	environment: TestMacroEnvironment,
+	blockLabel: string,
+) => expandMacroTextWithState(
+	source,
+	environment,
+	createMacroAttemptState(environment.variables),
+	blockLabel,
+);
 
 const environment = {
 	self: "Writer",

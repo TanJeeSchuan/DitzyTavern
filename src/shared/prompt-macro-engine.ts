@@ -10,9 +10,9 @@ import { isMacroVariableName, type MacroValue, type MacroVariableWrite } from ".
 
 export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
 
-// ==[HUMAN APPROVED]== Explicit inputs for one expansion. The evaluator never reads browser
-// globals, a database, or the wall clock. A Map is intentionally accepted so a compiler can
-// thread one local attempt state through ordered authored blocks.
+// ==[HUMAN APPROVED]== Immutable inputs for one attempt. The evaluator never reads browser
+// globals, a database, or the wall clock. Mutable values live in the explicit
+// MacroAttemptState passed alongside this environment.
 export interface MacroEnvironment {
 	readonly self: string;
 	readonly other: string;
@@ -21,15 +21,62 @@ export interface MacroEnvironment {
 	readonly now?: Date;
 	readonly timeZone?: string;
 	readonly locale?: string;
-	readonly variables?: ReadonlyMap<string, MacroValue> | Readonly<Record<string, MacroValue>>;
-	// ==[HUMAN APPROVED]== One expansion may execute several authored blocks. The caller supplies
-	// this journal so resolved writes can be carried to the Variant that owns the attempt.
-	readonly writes?: MacroVariableWrite[];
 	readonly random?: () => number;
-	readonly macroPositionBase?: string | number;
-	// ==[HUMAN APPROVED]== Cached authored expansions reused by budget recompilation.
-	readonly expansionCache?: Map<string, MacroExpansionResult>;
 }
+
+// ==[HUMAN APPROVED]== Mutable state for one complete attempt. Evaluation receives this as a
+// visible parameter rather than inheriting it from a shared environment record;
+// authored blocks therefore observe writes in order and budget recompilation
+// can reuse the same expansion cache without losing the attempt journal.
+export interface MacroAttemptState {
+	readonly variables: Map<string, MacroValue>;
+	readonly writes: MacroVariableWrite[];
+	readonly expansionCache: Map<string, MacroExpansionResult>;
+	macroPositionBase: string | number;
+}
+
+export interface AttemptEnvironmentInput {
+	readonly self: string;
+	readonly other: string;
+	readonly conversationId: string | number;
+	readonly promptPresetId: string | number;
+	readonly now: Date;
+	readonly timeZone?: string;
+	readonly locale?: string;
+	readonly variables?: ReadonlyMap<string, MacroValue>;
+	readonly random?: () => number;
+}
+
+export interface AttemptEnvironment {
+	readonly environment: MacroEnvironment;
+	readonly state: MacroAttemptState;
+}
+
+export const createMacroAttemptState = (
+	variables: ReadonlyMap<string, MacroValue> = new Map(),
+): MacroAttemptState => ({
+	variables: new Map(variables),
+	writes: [],
+	expansionCache: new Map(),
+	macroPositionBase: "",
+});
+
+// ==[HUMAN APPROVED]== One named construction path captures every immutable input and creates
+// every mutable per-attempt value. Generation capture and creation-time
+// opening expansion therefore cannot forget the journal or cache.
+export const createAttemptEnvironment = (input: AttemptEnvironmentInput): AttemptEnvironment => ({
+	environment: {
+		self: input.self,
+		other: input.other,
+		conversationId: input.conversationId,
+		promptPresetId: input.promptPresetId,
+		now: input.now,
+		timeZone: input.timeZone,
+		locale: input.locale,
+		random: input.random ?? Math.random,
+	},
+	state: createMacroAttemptState(input.variables),
+});
 
 export interface MacroExpansionResult {
 	readonly text: string;
@@ -451,11 +498,6 @@ const attachScopes = (nodes: readonly Node[], source: string): Node[] => {
 	return scoped;
 };
 
-const cloneVariables = (variables: MacroEnvironment["variables"]): Map<string, MacroValue> =>
-	// ==[HUMAN APPROVED]== A Map is the explicit attempt-local state seam. Reusing it is what lets recipe blocks observe
-	// writes from earlier enabled blocks; record snapshots are cloned at the domain boundary.
-	variables instanceof Map ? variables : new Map(Object.entries(variables ?? {}));
-
 const normalize = (value: MacroValue | undefined): string => {
 	if (value === null || value === undefined) return "";
 	if (Array.isArray(value)) return JSON.stringify(value);
@@ -653,7 +695,7 @@ const isDiceFormula = (formula: string): boolean =>
 
 interface EvaluationState {
 	readonly environment: MacroEnvironment;
-	readonly variables: Map<string, MacroValue>;
+	readonly attemptState: MacroAttemptState;
 	readonly writes: MacroVariableWrite[];
 	readonly warnings: PromptWarning[];
 	readonly blockLabel: string;
@@ -664,28 +706,28 @@ const warningFor = (state: EvaluationState, node: MacroNode) => {
 	state.warnings.push({ block: state.blockLabel, macro: node.raw });
 };
 
-const variable = (state: EvaluationState, name: string): string => normalize(state.variables.get(name));
+const variable = (state: EvaluationState, name: string): string => normalize(state.attemptState.variables.get(name));
 
 const setVariable = (state: EvaluationState, name: string, value: MacroValue): void => {
-	state.variables.set(name, value);
+	state.attemptState.variables.set(name, value);
 	if (!state.validationOnly) {
 		const write = { name, value, operation: "set" } as const;
 		state.writes.push(write);
-		state.environment.writes?.push(write);
+		state.attemptState.writes.push(write);
 	}
 };
 
 const deleteVariable = (state: EvaluationState, name: string): void => {
-	state.variables.delete(name);
+	state.attemptState.variables.delete(name);
 	if (!state.validationOnly) {
 		const write = { name, value: undefined, operation: "delete" } as const;
 		state.writes.push(write);
-		state.environment.writes?.push(write);
+		state.attemptState.writes.push(write);
 	}
 };
 
 const addVariable = (state: EvaluationState, name: string, addition: string | number): string => {
-	const currentValue = state.variables.get(name);
+	const currentValue = state.attemptState.variables.get(name);
 	if (Array.isArray(currentValue)) {
 		setVariable(state, name, [...currentValue, addition]);
 		return variable(state, name);
@@ -744,13 +786,13 @@ const evaluateCondition = (condition: string, state: EvaluationState, node: Macr
 			return String(operator === ">" ? left > right : operator === ">=" ? left >= right : operator === "<" ? left < right : left <= right);
 		}
 		if (operator === "||") return falsy(current) ? evaluateText(rhs, state) : current;
-		if (operator === "??") return state.variables.has(name) ? current : evaluateText(rhs, state);
+		if (operator === "??") return state.attemptState.variables.has(name) ? current : evaluateText(rhs, state);
 		if (operator === "||=") {
 			if (falsy(current)) setVariable(state, name, evaluateText(rhs, state));
 			return variable(state, name);
 		}
 		if (operator === "??=") {
-			if (!state.variables.has(name)) setVariable(state, name, evaluateText(rhs, state));
+			if (!state.attemptState.variables.has(name)) setVariable(state, name, evaluateText(rhs, state));
 			return variable(state, name);
 		}
 		const evaluated = evaluateText(rhs, state);
@@ -850,7 +892,7 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 		}
 		if (choices.length === 0) return "";
 		if (state.validationOnly) return "";
-		const identity = `${state.environment.conversationId ?? ""}|${state.environment.promptPresetId ?? ""}|${state.environment.macroPositionBase ?? ""}|${node.raw}|${node.start}`;
+		const identity = `${state.environment.conversationId ?? ""}|${state.environment.promptPresetId ?? ""}|${state.attemptState.macroPositionBase}|${node.raw}|${node.start}`;
 		return choices[hash(identity) % choices.length] ?? "";
 	}
 	if (name === "roll") {
@@ -890,7 +932,7 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 		}
 		if (state.validationOnly) return "";
 		if (name === "getvar" || name === "getlocalvar") return variable(state, variableName);
-		if (name === "varexists" || name === "hasvar" || name === "haslocalvar") return String(state.variables.has(variableName));
+		if (name === "varexists" || name === "hasvar" || name === "haslocalvar") return String(state.attemptState.variables.has(variableName));
 		if (name === "deletevar" || name === "flushvar" || name === "deletelocalvar" || name === "flushlocalvar") {
 			deleteVariable(state, variableName);
 			return "";
@@ -921,12 +963,13 @@ const evaluateMacro = (node: MacroNode, state: EvaluationState): string => {
 export const expandMacroText = (
 	source: string,
 	environment: MacroEnvironment,
+	attemptState: MacroAttemptState,
 	blockLabel: string,
 	options: { validationOnly?: boolean } = {},
 ): MacroExpansionResult => {
 	const state: EvaluationState = {
 		environment,
-		variables: cloneVariables(environment.variables),
+		attemptState,
 		writes: [],
 		warnings: [],
 		blockLabel,
@@ -940,5 +983,11 @@ export const expandMacroText = (
 };
 
 export const validateMacroText = (source: string, blockLabel: string): MacroValidationResult => ({
-	warnings: expandMacroText(source, { self: "", other: "" }, blockLabel, { validationOnly: true }).warnings,
+	warnings: expandMacroText(
+		source,
+		{ self: "", other: "" },
+		{ ...createMacroAttemptState(), macroPositionBase: "validation" },
+		blockLabel,
+		{ validationOnly: true },
+	).warnings,
 });

@@ -14,7 +14,13 @@
 // model-controlled Participant. Unknown macros remain literal and become
 // prompt-inspection warnings.
 
-import { expandMacroText, type MacroEnvironment, type MacroExpansionResult } from "../../shared/prompt-macro-engine";
+import {
+	createMacroAttemptState,
+	expandMacroText,
+	type MacroAttemptState,
+	type MacroEnvironment,
+	type MacroExpansionResult,
+} from "../../shared/prompt-macro-engine";
 import type { MacroContext } from "../../shared/prompt-macros";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import {
@@ -104,10 +110,13 @@ export function compileOpening(
 	context: MacroContext,
 	position: number,
 	macroEnvironment?: MacroEnvironment,
+	macroAttemptState: MacroAttemptState = createMacroAttemptState(),
 ): MacroExpansionResult {
+	macroAttemptState.macroPositionBase = `opening:${position}`;
 	return expandMacroText(
 		content,
-		{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other, macroPositionBase: `opening:${position}` },
+		{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other },
+		macroAttemptState,
 		`opening ${position}`,
 	);
 }
@@ -121,25 +130,23 @@ const expandInto = (
 	context: MacroContext,
 	blockLabel: string,
 	macroEnvironment: MacroEnvironment | undefined,
+	macroAttemptState: MacroAttemptState,
 	cacheKey: string,
 ) => {
 	// ==[HUMAN APPROVED]== Emptiness is judged after expansion, so a channel holding nothing but a
 	// Prompt Comment is omitted exactly like an unauthored one.
 	let expanded: MacroExpansionResult;
-	if (macroEnvironment === undefined) {
-		expanded = expandMacroText(text, { ...context, macroPositionBase: cacheKey }, blockLabel);
-	} else {
-		const cached = macroEnvironment.expansionCache?.get(cacheKey);
-		if (cached !== undefined) expanded = cached;
-		else {
-			const evaluated = expandMacroText(
-				text,
-				{ ...macroEnvironment, self: context.self, other: context.other, macroPositionBase: cacheKey },
-				blockLabel,
-			);
-			expanded = evaluated;
-			macroEnvironment.expansionCache?.set(cacheKey, evaluated);
-		}
+	const cached = macroAttemptState.expansionCache.get(cacheKey);
+	if (cached !== undefined) expanded = cached;
+	else {
+		macroAttemptState.macroPositionBase = cacheKey;
+		expanded = expandMacroText(
+			text,
+			{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other },
+			macroAttemptState,
+			blockLabel,
+		);
+		macroAttemptState.expansionCache.set(cacheKey, expanded);
 	}
 	if (expanded.text === "") return;
 	blocks.push({ ...block, role, content: expanded.text });
@@ -149,15 +156,8 @@ const expandInto = (
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
-	const macroEnvironment: MacroEnvironment = input.macroEnvironment === undefined
-		? { self: "", other: "", variables: new Map(), expansionCache: new Map() }
-		: {
-			...input.macroEnvironment,
-			variables: input.macroEnvironment.variables instanceof Map
-				? input.macroEnvironment.variables
-				: new Map(Object.entries(input.macroEnvironment.variables ?? {})),
-			expansionCache: input.macroEnvironment.expansionCache ?? new Map(),
-		};
+	const macroEnvironment: MacroEnvironment = input.macroEnvironment ?? { self: "", other: "" };
+	const macroAttemptState = input.macroAttemptState ?? createMacroAttemptState();
 
 	// ==[HUMAN APPROVED]== Owner-relative macro context: `{{self}}` is the Definition owner and
 	// `{{other}}` the other controlled Participant, whatever order the recipe
@@ -205,6 +205,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 				{ self: input.human.name, other: input.model.name },
 				slot.name === "" ? "instruction" : slot.name,
 				macroEnvironment,
+				macroAttemptState,
 				`slot:${slotIndex}`,
 			);
 			continue;
@@ -220,6 +221,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			owner.context,
 			referenced.label,
 			macroEnvironment,
+			macroAttemptState,
 			`slot:${slotIndex}`,
 		);
 	}

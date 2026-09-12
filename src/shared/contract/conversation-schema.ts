@@ -615,18 +615,20 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
-const generationFormattingContext = {
+export const generationFormattingContext = Type.Object({
 	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
 	// Conversation settings. It is shared by preview and all three Generation
 	// start bodies so the route cannot rename or omit one side.
 	timeZone: Type.Optional(Type.String()),
 	locale: Type.Optional(Type.String()),
-};
+});
+
+export type GenerationFormattingContext = Static<typeof generationFormattingContext>;
 
 const inspectedPlanFields = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
-	...generationFormattingContext,
+	...generationFormattingContext.properties,
 };
 
 // Send carries the client draft and the Conversation revision it was based
@@ -666,7 +668,7 @@ export const generationPreviewBody = Type.Object({
 	kind: generationPreviewKind,
 	content: Type.Optional(Type.String()),
 	messageId: Type.Optional(Type.Integer()),
-	...generationFormattingContext,
+	...generationFormattingContext.properties,
 });
 
 const generationPreviewBudget = Type.Object({

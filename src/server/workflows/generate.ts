@@ -38,8 +38,10 @@ import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
 	ModelClientGenerationInput,
+	ModelClientEvent,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
@@ -55,9 +57,9 @@ import {
 	captureConfiguration,
 	capturedAcceptanceFields,
 	compilePlanFrom,
-	configurationFor,
 	modelRequestFor,
 	deriveGeneration,
+	participatingHistoryFor,
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
@@ -67,6 +69,7 @@ import {
 	type GenerationPreviewRecord,
 } from "./generation-preview";
 import {
+	assertGenerationPlan,
 	continuationIntentFor,
 	type EffectiveGenerationSettings,
 } from "../generation-plan";
@@ -122,12 +125,7 @@ interface GenerationLifecyclePolicy<
 	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
 
-type PreviewCaptureFor<Kind extends GenerationPreviewCapture["kind"]> = Extract<
-	GenerationPreviewCapture,
-	{ kind: Kind }
->["capture"];
-
-const capturePreview = <Kind extends GenerationPreviewCapture["kind"]>(
+const capturePreview = (
 	database: Database,
 	snapshot: ConversationSnapshot,
 	input: {
@@ -135,11 +133,9 @@ const capturePreview = <Kind extends GenerationPreviewCapture["kind"]>(
 		connection?: ModelClientConnectionSnapshot | null;
 		content?: string;
 		messageId?: number;
-		macroTimeZone?: string;
-		macroLocale?: string;
+		formatting?: GenerationFormattingContext;
 	},
-	expectedKind: Kind,
-): PreviewCaptureFor<Kind> => {
+): GenerationPreviewCapture => {
 	if (input.preview === undefined) {
 		throw new InvalidConversationCommandError("The Prompt Plan preview is unavailable.");
 	}
@@ -152,17 +148,10 @@ const capturePreview = <Kind extends GenerationPreviewCapture["kind"]>(
 		{
 			content: input.content,
 			messageId: input.messageId,
-			timeZone: input.macroTimeZone,
-			locale: input.macroLocale,
+			formatting: input.formatting,
 		},
 	);
-	if (prepared.kind !== expectedKind) {
-		const label = expectedKind === "send" ? "Send" : expectedKind === "continuation" ? "Continue" : "Swipe";
-		throw new InvalidConversationCommandError(`The Prompt Plan intent does not match ${label}.`);
-	}
-	// ==[HUMAN APPROVED]== SAFETY: The discriminant check above narrows the preview capture to the
-	// lifecycle requested by this policy.
-	return prepared.capture as PreviewCaptureFor<Kind>;
+	return prepared;
 };
 
 /**
@@ -196,6 +185,7 @@ async function runGenerationLifecycle<
 		throw new StaleConversationRevisionError(input.expectedRevision, snapshot.revision);
 	}
 	const capture = policy.capture(database, snapshot, input);
+	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
 	await notifyAccepted<Accepted>({ onAccepted }, accepted);
@@ -333,13 +323,13 @@ export function inspectGenerationPrompt(
 			budgetFailure: null,
 		};
 	}
-	const configuration = captureConfiguration(
+	const configuration = captureConfiguration({
 		database,
-		conversationId,
-		undefined,
-		options.connectionSettings,
-	);
-	const preparedConfiguration = configurationFor(configuration, snapshot);
+		snapshot,
+		derivation,
+		participation: participatingHistoryFor(snapshot, "send"),
+		connectionSettings: options.connectionSettings,
+	});
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
@@ -348,15 +338,16 @@ export function inspectGenerationPrompt(
 	const plan = compilePlanFrom(
 		derivation,
 		{
-			settings: preparedConfiguration.settings,
-			slots: preparedConfiguration.slots,
+			settings: configuration.settings,
+			slots: configuration.slots,
 			// ==[HUMAN APPROVED]== The safe Connection fact narrows before compilation so Request
 			// Overrides are narrowed exactly as an executed attempt would narrow
 			// them.
-			connection: preparedConfiguration.connection === null
+			connection: configuration.connection === null
 				? null
-				: { apiFormat: preparedConfiguration.connection.apiFormat },
-			macroEnvironment: preparedConfiguration.macroEnvironment,
+				: { apiFormat: configuration.connection.apiFormat },
+			macroEnvironment: configuration.macroEnvironment,
+			macroAttemptState: configuration.macroAttemptState,
 		},
 		{ estimator: options.tokenEstimator },
 	);
@@ -394,18 +385,22 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				const capture = capturePreview(currentDatabase, snapshot, current, "send");
+				const prepared = capturePreview(currentDatabase, snapshot, current);
+				if (prepared.kind !== "send") {
+					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Send.");
+				}
+				const capture = prepared.capture;
 				return { ...capture, humanContent: current.content, reuseHumanMessageId: capture.reuseHumanMessageId };
 			}
-			return captureSendGeneration(
-				currentDatabase,
+			return captureSendGeneration({
+				database: currentDatabase,
 				snapshot,
-				current.content,
-				current.connection,
-				current.connectionSettings,
-				current.tokenEstimator,
-				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
-			);
+				content: current.content,
+				connection: current.connection,
+				connectionSettings: current.connectionSettings,
+				tokenEstimator: current.tokenEstimator,
+				formatting: current.formatting,
+			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -443,16 +438,20 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				return capturePreview(currentDatabase, snapshot, current, "continuation");
+				const prepared = capturePreview(currentDatabase, snapshot, current);
+				if (prepared.kind !== "continuation") {
+					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Continue.");
+				}
+				return prepared.capture;
 			}
-			return captureContinuationGeneration(
-				currentDatabase,
+			return captureContinuationGeneration({
+				database: currentDatabase,
 				snapshot,
-				current.connection,
-				current.connectionSettings,
-				current.tokenEstimator,
-				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
-			);
+				connection: current.connection,
+				connectionSettings: current.connectionSettings,
+				tokenEstimator: current.tokenEstimator,
+				formatting: current.formatting,
+			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -502,15 +501,14 @@ export interface GenerateSiblingVariantInput {
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	signal?: AbortSignal;
-	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
-	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured with the sibling attempt.
-	macroTimeZone?: string;
-	macroLocale?: string;
+	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
+	formatting?: GenerationFormattingContext;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -530,13 +528,17 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				return capturePreview(currentDatabase, snapshot, current, "sibling");
+				const prepared = capturePreview(currentDatabase, snapshot, current);
+				if (prepared.kind !== "sibling") {
+					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Swipe.");
+				}
+				return prepared.capture;
 			}
-			return captureSiblingGeneration(
-				currentDatabase,
-				snapshot,
-				current,
-			);
+				return captureSiblingGeneration({
+					database: currentDatabase,
+					snapshot,
+					...current,
+				});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {

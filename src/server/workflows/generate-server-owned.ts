@@ -11,6 +11,7 @@ import {
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 // ==[HUMAN APPROVED]== Detached server-owned Generation scaffolding: the attempt input shared by
 // every workflow, the accept/result handle detached from its observing
@@ -39,7 +40,7 @@ export interface GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== The signal belongs to this one Generation. A cancelled attempt never
 	// changes the active Profile or another Conversation.
 	signal?: AbortSignal;
-	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 	/** ==[HUMAN APPROVED]== Flush process-local output before the workflow performs a terminal write. */
 	onBeforeTerminal?: () => void | Promise<void>;
 	// ==[HUMAN APPROVED]== Tests and future calibration work may replace the default project-owned
@@ -48,9 +49,8 @@ export interface GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context. The capture
-	// turns it into explicit macro inputs and reuses it through budgeting/send.
-	macroTimeZone?: string;
-	macroLocale?: string;
+	// carries this one value through budgeting and send.
+	formatting?: GenerationFormattingContext;
 }
 
 /** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */

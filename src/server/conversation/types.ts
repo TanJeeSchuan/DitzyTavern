@@ -27,6 +27,7 @@ import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import type {
 	MacroVariables as SharedMacroVariables,
 } from "../../shared/contract/macro-variables";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -598,7 +599,6 @@ export interface ConversationCreationInput {
 	// Base time for Conversations whose history does not carry timestamps.
 	createdAt?: string | undefined;
 	// Native creation captures the initiating client's formatting context for
-	// the one opening assembly; imported/preservation records leave these unset.
-	macroTimeZone?: string | undefined;
-	macroLocale?: string | undefined;
+	// the one opening assembly; imported/preservation records leave it unset.
+	formatting?: GenerationFormattingContext | undefined;
 }

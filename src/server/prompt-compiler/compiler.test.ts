@@ -5,7 +5,13 @@ import {
 	type CompilePromptInput,
 	type PromptPlan,
 } from ".";
-import { expandMacroText } from "../../shared/prompt-macro-engine";
+import {
+	createMacroAttemptState,
+	expandMacroText as expandMacroTextWithState,
+} from "../../shared/prompt-macro-engine";
+
+const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
+	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
 
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database. The roles are the stored

@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
-import { expandMacroText } from "../../shared/prompt-macro-engine";
+import {
+	createMacroAttemptState,
+	expandMacroText as expandMacroTextWithState,
+} from "../../shared/prompt-macro-engine";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import type { PromptOutgoingRole } from "../../shared/contract/prompt-preset";
 import {
@@ -25,6 +28,9 @@ import {
 	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
+
+const expandMacroText = (source: string, environment: { self: string; other: string }, blockLabel: string) =>
+	expandMacroTextWithState(source, environment, createMacroAttemptState(), blockLabel);
 
 describe("Prompt Preset authored instruction macros", () => {
 	let database: Database;

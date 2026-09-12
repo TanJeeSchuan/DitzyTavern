@@ -25,6 +25,7 @@ import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import { conversationGenerationSettings, promptPlan } from "../../shared/contract/conversation-schema";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "../conversation";
 import { deriveMacroState, readMacroWrites } from "../prompt-macros";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 export type GenerationPreviewKind = GenerationAttemptKind;
 
@@ -47,8 +48,7 @@ export interface GenerationPreviewRequest {
 	readonly conversationId: number;
 	readonly content?: string;
 	readonly messageId?: number;
-	readonly timeZone?: string;
-	readonly locale?: string;
+	readonly formatting?: GenerationFormattingContext;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly tokenEstimator?: TokenEstimator;
@@ -133,7 +133,7 @@ const relevantParticipants = (
 export const generationPreviewFingerprint = (
 	database: Database,
 	snapshot: ConversationSnapshot,
-	input: Pick<GenerationPreviewRequest, "kind" | "content" | "messageId" | "timeZone" | "locale" | "connection">,
+	input: Pick<GenerationPreviewRequest, "kind" | "content" | "messageId" | "formatting" | "connection">,
 ): string => {
 	const recipe = readConversationPromptPresetRecipe(database, snapshot.id);
 	const settings = createConversationModule(database).getGenerationSettings(snapshot.id);
@@ -148,8 +148,8 @@ export const generationPreviewFingerprint = (
 		kind: input.kind,
 		content: input.content ?? null,
 		messageId: input.messageId ?? null,
-		timeZone: input.timeZone ?? null,
-		locale: input.locale ?? null,
+		timeZone: input.formatting?.timeZone ?? null,
+		locale: input.formatting?.locale ?? null,
 		control: participation.control,
 		participants: relevantParticipants(snapshot, participation),
 		recipe,
@@ -222,41 +222,39 @@ export const createGenerationPreview = (
 	const capture = input.kind === "send"
 		? {
 			kind: "send" as const,
-			capture: captureSendGeneration(
+			capture: captureSendGeneration({
 				database,
 				snapshot,
-				input.content!,
-				input.connection,
-				input.connectionSettings,
-				input.tokenEstimator,
-				{ timeZone: input.timeZone, locale: input.locale },
-				{ assertBudget: false },
-			),
+				content: input.content!,
+				connection: input.connection,
+				connectionSettings: input.connectionSettings,
+				tokenEstimator: input.tokenEstimator,
+				formatting: input.formatting,
+			}),
 			content: input.content!,
 		}
 		: input.kind === "continuation"
 			? {
 					kind: "continuation" as const,
-					capture: captureContinuationGeneration(
+					capture: captureContinuationGeneration({
 						database,
 						snapshot,
-						input.connection,
-						input.connectionSettings,
-						input.tokenEstimator,
-						{ timeZone: input.timeZone, locale: input.locale },
-						{ assertBudget: false },
-					),
+						connection: input.connection,
+						connectionSettings: input.connectionSettings,
+						tokenEstimator: input.tokenEstimator,
+						formatting: input.formatting,
+					}),
 				}
 			: {
 					kind: "sibling" as const,
-					capture: captureSiblingGeneration(database, snapshot, {
+					capture: captureSiblingGeneration({
+						database,
+						snapshot,
 						messageId: input.messageId!,
 						connection: input.connection,
 						connectionSettings: input.connectionSettings,
 						tokenEstimator: input.tokenEstimator,
-						macroTimeZone: input.timeZone,
-						macroLocale: input.locale,
-						assertBudget: false,
+						formatting: input.formatting,
 					}),
 					messageId: input.messageId!,
 				};
@@ -284,7 +282,7 @@ export const generationCaptureForPreview = (
 	record: GenerationPreviewRecord,
 	editedPlan: PromptPlan,
 	connection: ModelClientConnectionSnapshot | null | undefined,
-	input: Pick<GenerationPreviewRequest, "content" | "messageId" | "timeZone" | "locale">,
+	input: Pick<GenerationPreviewRequest, "content" | "messageId" | "formatting">,
 ): GenerationPreviewCapture => {
 	const source = record.capture;
 	const kind = source.kind;
@@ -298,8 +296,7 @@ export const generationCaptureForPreview = (
 		kind,
 		content: kind === "send" ? source.content : undefined,
 		messageId: kind === "sibling" ? source.messageId : undefined,
-		timeZone: input.timeZone,
-		locale: input.locale,
+		formatting: input.formatting,
 		connection,
 	});
 	if (fingerprint !== record.fingerprint) {

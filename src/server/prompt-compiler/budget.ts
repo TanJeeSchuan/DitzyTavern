@@ -55,6 +55,29 @@ export interface PromptBudgetResult {
 	readonly failure: PromptBudgetFailure | null;
 }
 
+export interface PromptBudgetMeasurementInput {
+	plan: PromptPlan;
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	estimator?: TokenEstimator;
+	// ==[HUMAN APPROVED]== The failure reason distinguishes an over-large protected history
+	// from an otherwise fixed prompt that cannot fit.
+	protectedHistory?: boolean;
+	protectedHistoryCharacters?: number;
+}
+
+export interface PromptBudgetMeasurement {
+	readonly fits: boolean;
+	readonly tokenEstimate: number;
+	readonly responseBudget: number;
+	readonly safetyAllowance: number;
+	readonly contextLimit: number;
+	readonly totalRequiredTokens: number;
+	readonly breakdown: PromptBudgetBreakdown;
+	readonly failure: PromptBudgetFailure | null;
+}
+
 /**
  * ==[HUMAN APPROVED]==
  * Creates the one text representation that token estimation is allowed to
@@ -116,13 +139,25 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		const plan = count === 0
 			? input.plan
 			: input.compile(retainedIndexes.map((index) => input.context[index]));
-		return { retainedIndexes, plan, tokenEstimate: estimateCandidate(estimator, plan) };
+		return {
+			retainedIndexes,
+			plan,
+			measurement: measurePromptPlan({
+				plan,
+				contextLimit: input.contextLimit,
+				responseBudget: input.responseBudget,
+				safetyAllowance: input.safetyAllowance,
+				estimator,
+				protectedHistory: protectedHistoryIndex !== undefined,
+				protectedHistoryCharacters: protectedHistoryIndex === undefined
+					? 0
+					: input.context[protectedHistoryIndex]?.content.length ?? 0,
+			}),
+		};
 	};
-	const fits = (tokenEstimate: number) =>
-		tokenEstimate + input.responseBudget + input.safetyAllowance <= input.contextLimit;
 	let candidate = candidateAfterRemoving(0);
 
-	if (!fits(candidate.tokenEstimate) && removableIndexes.length > 0) {
+	if (!candidate.measurement.fits && removableIndexes.length > 0) {
 		// ==[HUMAN APPROVED]== Removing oldest whole history blocks only shortens this compiler's
 		// estimation transcript. Find the smallest fitting removal count without
 		// rebuilding and rescanning a multi-megabyte prompt once per Message.
@@ -132,7 +167,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		while (lower <= upper) {
 			const middle = Math.floor((lower + upper) / 2);
 			const inspected = candidateAfterRemoving(middle);
-			if (fits(inspected.tokenEstimate)) {
+			if (inspected.measurement.fits) {
 				fitting = inspected;
 				upper = middle - 1;
 			} else {
@@ -142,32 +177,12 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		candidate = fitting ?? candidateAfterRemoving(removableIndexes.length);
 	}
 
-	const { retainedIndexes, plan, tokenEstimate } = candidate;
-	if (!fits(tokenEstimate)) {
-		const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
-		return createResult({
-			input,
-			plan,
-			retainedIndexes,
-			tokenEstimate,
-			breakdown,
-			failure: {
-				reason: protectedHistoryIndex === undefined
-					? "fixed-prompt-too-large"
-					: "protected-history-too-large",
-				breakdown,
-			},
-		});
-	}
-
-	const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
+	const { retainedIndexes, plan, measurement } = candidate;
 	return createResult({
 		input,
 		plan,
 		retainedIndexes,
-		tokenEstimate,
-		breakdown,
-		failure: null,
+		measurement,
 	});
 }
 
@@ -183,28 +198,45 @@ export function budgetEditedPromptPlan(input: {
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
 }): PromptBudgetResult {
-	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
-	const tokenEstimate = Math.ceil((input.estimator ?? tokenxEstimator)(toEstimationTranscript(input.plan)));
-	if (!Number.isFinite(tokenEstimate) || tokenEstimate < 0) {
-		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
-	}
-	const breakdown: PromptBudgetBreakdown = {
+	const measurement = measurePromptPlan({
+		plan: input.plan,
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
 		safetyAllowance: input.safetyAllowance,
-		tokenEstimate,
-		totalRequiredTokens: tokenEstimate + input.responseBudget + input.safetyAllowance,
-		fixedPromptCharacters: input.plan.blocks
-			.filter((block) => block.kind !== "history")
-			.reduce((total, block) => total + block.content.length, 0),
-		protectedHistoryCharacters: 0,
-	};
-	const fits = breakdown.totalRequiredTokens <= input.contextLimit;
+		estimator: input.estimator,
+	});
 	return {
-		fits,
+		fits: measurement.fits,
 		plan: input.plan,
 		retainedContext: [],
 		omittedContext: [],
+		tokenEstimate: measurement.tokenEstimate,
+		responseBudget: measurement.responseBudget,
+		safetyAllowance: measurement.safetyAllowance,
+		contextLimit: measurement.contextLimit,
+		totalRequiredTokens: measurement.totalRequiredTokens,
+		breakdown: measurement.breakdown,
+		failure: measurement.failure,
+	};
+}
+
+/**
+ * ==[HUMAN APPROVED]== Measures one ordered Prompt Plan. Both the trimming
+ * path and the inspected path use this step, so their token estimate,
+ * breakdown, and fit decision cannot drift apart.
+ */
+export function measurePromptPlan(input: PromptBudgetMeasurementInput): PromptBudgetMeasurement {
+	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
+	const tokenEstimate = estimateCandidate(input.estimator ?? tokenxEstimator, input.plan);
+	const breakdown = createBreakdown({
+		contextLimit: input.contextLimit,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		protectedHistoryCharacters: input.protectedHistoryCharacters ?? 0,
+	}, input.plan, tokenEstimate);
+	const fits = breakdown.totalRequiredTokens <= input.contextLimit;
+	return {
+		fits,
 		tokenEstimate,
 		responseBudget: input.responseBudget,
 		safetyAllowance: input.safetyAllowance,
@@ -213,7 +245,12 @@ export function budgetEditedPromptPlan(input: {
 		breakdown,
 		failure: fits
 			? null
-			: { reason: "fixed-prompt-too-large", breakdown },
+			: {
+				reason: input.protectedHistory === true
+					? "protected-history-too-large"
+					: "fixed-prompt-too-large",
+				breakdown,
+			},
 	};
 }
 
@@ -263,10 +300,11 @@ function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan): number 
 }
 
 function createBreakdown(
-	input: PromptBudgetInput,
+	input: Pick<PromptBudgetInput, "contextLimit" | "responseBudget" | "safetyAllowance"> & {
+		protectedHistoryCharacters: number;
+	},
 	plan: PromptPlan,
 	tokenEstimate: number,
-	protectedHistoryIndex: number | undefined,
 ): PromptBudgetBreakdown {
 	const fixedPromptCharacters = plan.blocks
 		.filter((block) => block.kind !== "history")
@@ -278,9 +316,6 @@ function createBreakdown(
 				: plan.intent.strategy === "instruction"
 					? plan.intent.instruction.length
 					: plan.intent.suffix.length);
-	const protectedHistoryCharacters = protectedHistoryIndex === undefined
-		? 0
-		: input.context[protectedHistoryIndex]?.content.length ?? 0;
 	return {
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
@@ -288,7 +323,7 @@ function createBreakdown(
 		tokenEstimate,
 		totalRequiredTokens: tokenEstimate + input.responseBudget + input.safetyAllowance,
 		fixedPromptCharacters,
-		protectedHistoryCharacters,
+		protectedHistoryCharacters: input.protectedHistoryCharacters,
 	};
 }
 
@@ -296,22 +331,20 @@ function createResult(input: {
 	input: PromptBudgetInput;
 	plan: PromptPlan;
 	retainedIndexes: readonly number[];
-	tokenEstimate: number;
-	breakdown: PromptBudgetBreakdown;
-	failure: PromptBudgetFailure | null;
+	measurement: PromptBudgetMeasurement;
 }): PromptBudgetResult {
 	const retainedSet = new Set(input.retainedIndexes);
 	return {
-		fits: input.failure === null,
+		fits: input.measurement.fits,
 		plan: input.plan,
 		retainedContext: input.retainedIndexes.map((index) => input.input.context[index]),
 		omittedContext: input.input.context.filter((_, index) => !retainedSet.has(index)),
-		tokenEstimate: input.tokenEstimate,
+		tokenEstimate: input.measurement.tokenEstimate,
 		responseBudget: input.input.responseBudget,
 		safetyAllowance: input.input.safetyAllowance,
 		contextLimit: input.input.contextLimit,
-		totalRequiredTokens: input.breakdown.totalRequiredTokens,
-		breakdown: input.breakdown,
-		failure: input.failure,
+		totalRequiredTokens: input.measurement.totalRequiredTokens,
+		breakdown: input.measurement.breakdown,
+		failure: input.measurement.failure,
 	};
 }
