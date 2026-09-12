@@ -325,7 +325,7 @@ export function ActiveWritingWorkspace({
 				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
 
-			{panelState.detailsSurface === "prompt-plan" && generation.promptPlanPreview !== null && (
+			{panelState.promptPlanOpen && panelState.detailsSurface === "prompt-plan" && generation.promptPlanPreview !== null && (
 				<PromptPlanPreviewPanel
 					preview={generation.promptPlanPreview.preview}
 					pending={generation.promptPlanPreviewPending}
