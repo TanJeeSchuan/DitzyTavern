@@ -1,24 +1,18 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { conversationSummary } from "./conversation-schema";
 import { numericWire } from "./wire";
-// Macro values and writes are shared by the evaluator, persistence seam, and
-// transport contract. Keeping their vocabulary here prevents those layers
-// from each declaring a subtly different record shape.
-export type MacroValue = string | number | boolean | null | readonly MacroValue[];
-
-export const isMacroVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
-
-export const isMacroValue = (value: unknown): value is MacroValue =>
-	value === null ||
-	typeof value === "string" ||
-	typeof value === "number" && Number.isFinite(value) ||
-	typeof value === "boolean" ||
-	Array.isArray(value) && value.every(isMacroValue);
-
-// Macro values deliberately remain provider-neutral scalar/array JSON. This
-// recursive schema keeps the transport boundary and the MacroValue domain
-// union on the same contract.
-export const macroValue = Type.Unsafe<MacroValue>(Type.Unknown());
+import {
+	macroValue,
+	macroVariableDeleteWrite,
+	macroVariableSetWrite,
+} from "./macro-variable-write";
+export {
+	isMacroValue,
+	isMacroVariableName,
+	macroValue,
+	macroVariableWrite,
+} from "./macro-variable-write";
+export type { MacroValue, MacroVariableWrite } from "./macro-variable-write";
 
 const macroVariableLocation = Type.Union([
 	Type.Object({ type: Type.Literal("initial") }),
@@ -31,12 +25,10 @@ const macroVariableLocation = Type.Union([
 	}),
 ]);
 
-const macroVariableSource = macroVariableLocation;
-
 export const macroVariable = Type.Object({
 	name: Type.String(),
 	value: macroValue,
-	source: macroVariableSource,
+	source: macroVariableLocation,
 });
 
 export const macroVariablesTarget = macroVariableLocation;
@@ -55,20 +47,6 @@ export const macroVariablesQuery = Type.Object({
 	promptPresetId: Type.Optional(numericWire),
 });
 
-const macroVariableSetWrite = Type.Object({
-	operation: Type.Literal("set"),
-	name: Type.String(),
-	value: macroValue,
-});
-
-const macroVariableDeleteWrite = Type.Object({
-	operation: Type.Literal("delete"),
-	name: Type.String(),
-	value: Type.Optional(Type.Undefined()),
-});
-
-export const macroVariableWrite = Type.Union([macroVariableSetWrite, macroVariableDeleteWrite]);
-
 const macroVariableEditFields = Type.Object({
 	expectedRevision: Type.Integer(),
 	promptPresetId: Type.Integer(),
@@ -86,8 +64,7 @@ export const macroVariablesAppliedResponse = Type.Object({
 	variables: macroVariables,
 });
 
-export type MacroVariableSource = Static<typeof macroVariableSource>;
-export type MacroVariableWrite = Static<typeof macroVariableWrite>;
+export type MacroVariableSource = Static<typeof macroVariableLocation>;
 export type MacroVariable = Static<typeof macroVariable>;
 export type MacroVariablesTarget = Static<typeof macroVariablesTarget>;
 export type MacroVariables = Static<typeof macroVariables>;

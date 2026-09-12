@@ -107,7 +107,7 @@ describe("Prompt Plan inspection", () => {
 			await (await app.handle(new Request(
 				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
 			))).text();
-			expect(readVariantData(database).some((row) => row.namespace === "prompt-macro" && JSON.parse(row.value).value === "7")).toBe(true);
+			expect(readVariantData(database).some((row) => row.namespace === "prompt-macro" && JSON.parse(row.value).some((write: { value?: unknown }) => write.value === "7"))).toBe(true);
 		} finally {
 			Math.random = originalRandom;
 		}

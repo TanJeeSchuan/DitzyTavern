@@ -48,6 +48,7 @@ import type {
 	ConversationJsonValue,
 	ConversationSummary,
 } from "../types";
+import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -131,11 +132,7 @@ const persistActiveGeneration = (
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
 			macro_writes_json: jsonText(
-				(input.macroWrites ?? []).map((write) => ({
-					name: write.name,
-					operation: write.operation,
-					value: write.value ?? null,
-				})),
+				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
 				"Macro writes",
 			),
 		})

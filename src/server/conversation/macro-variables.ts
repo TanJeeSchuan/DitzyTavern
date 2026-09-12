@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, inArray, max } from "drizzle-orm";
+import { and, eq, max } from "drizzle-orm";
 import {
 	conversationDataTable,
 	conversationPromptPresetTable,
@@ -11,16 +11,22 @@ import {
 } from "../database/schema";
 import {
 	deriveMacroVariables,
-	macroInitialValuesToData,
+	MACRO_DATA_NAMESPACE,
+	macroInitialValueKey,
+	macroWritesKey,
 	macroWritesToData,
-	nextMacroWriteSequence,
+	readMacroWrites,
 } from "../prompt-macros";
-import { isMacroValue, isMacroVariableName, type MacroValue } from "../../shared/contract/macro-variables";
-import type {
-	MacroVariables as SharedMacroVariables,
-} from "../../shared/contract/macro-variables";
+import {
+	isMacroValue,
+	isMacroVariableName,
+	type MacroValue,
+	type MacroVariableWrite,
+} from "../../shared/contract/macro-variable-write";
+import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
 import { connectConversationDatabase, type ConversationDatabase } from "./internal";
+import { readConversationSnapshotFromConnection } from "./snapshot";
 import {
 	advanceConversationRevisionGuarded,
 	requireConversationSummary,
@@ -47,20 +53,10 @@ export interface EditMacroVariablesInput {
 	value?: MacroValue;
 }
 
-export type MacroVariablesRead = SharedMacroVariables;
-
 export interface EditedMacroVariables {
 	conversation: ConversationSummary;
-	variables: MacroVariablesRead;
+	variables: MacroVariables;
 }
-
-type MessageRow = { id: number; position: number };
-type VariantRow = {
-	id: number;
-	message_id: number;
-	position: number;
-	selected: boolean;
-};
 
 const readConversationPreset = (db: ConversationDatabase, conversationId: number) => {
 	const selected = db
@@ -94,13 +90,9 @@ const readMacroVariablesFromConnection = (
 	db: ConversationDatabase,
 	conversationId: number,
 	input: ReadMacroVariablesInput = {},
-): MacroVariablesRead | undefined => {
-	const conversation = db
-		.select({ id: conversationTable.id })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get();
-	if (conversation === undefined) return undefined;
+): MacroVariables | undefined => {
+	const snapshot = readConversationSnapshotFromConnection(db, conversationId);
+	if (snapshot === undefined) return undefined;
 	const preset = readConversationPreset(db, conversationId);
 	if (preset === undefined) return undefined;
 	const presetId = input.promptPresetId ?? preset.id;
@@ -118,72 +110,26 @@ const readMacroVariablesFromConnection = (
 	const requestedPosition = input.position;
 	if (requestedPosition !== undefined) requireNumber(requestedPosition, "History position");
 
-	const messages: MessageRow[] = db
-		.select({ id: messageTable.id, position: messageTable.position })
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, conversationId))
-		.orderBy(asc(messageTable.position))
-		.all();
-	const lastPosition = messages.at(-1)?.position ?? 0;
+	const lastPosition = snapshot.messages.at(-1)?.position ?? 0;
 	const position = requestedPosition ?? lastPosition;
 	if (position > lastPosition) {
 		throw new InvalidConversationCommandError(
 			`History position ${position} is beyond the end of this Conversation.`,
 		);
 	}
-	const initialData = db
-		.select({ namespace: conversationDataTable.namespace, key: conversationDataTable.key, value: conversationDataTable.value })
-		.from(conversationDataTable)
-		.where(eq(conversationDataTable.conversation_id, conversationId))
-		.all();
-	const history = messages.filter((message) => message.position <= position);
-	const variants: VariantRow[] = history.length === 0
-		? []
-		: db
-				.select({
-					id: messageVariantTable.id,
-					message_id: messageVariantTable.message_id,
-					position: messageVariantTable.position,
-					selected: messageVariantTable.selected,
-				})
-				.from(messageVariantTable)
-				.where(inArray(messageVariantTable.message_id, history.map(({ id }) => id)))
-				.orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position))
-				.all();
-	const variantIds = variants.map(({ id }) => id);
-	const dataRows = variantIds.length === 0
-		? []
-		: db
-				.select({
-					message_variant_id: messageVariantDataTable.message_variant_id,
-					namespace: messageVariantDataTable.namespace,
-					key: messageVariantDataTable.key,
-					value: messageVariantDataTable.value,
-				})
-				.from(messageVariantDataTable)
-				.where(inArray(messageVariantDataTable.message_variant_id, variantIds))
-				.all();
-	const dataByVariant = new Map<number, { namespace: string; key: string; value: string }[]>();
-	for (const row of dataRows) {
-		const entries = dataByVariant.get(row.message_variant_id) ?? [];
-		entries.push({ namespace: row.namespace, key: row.key, value: row.value });
-		dataByVariant.set(row.message_variant_id, entries);
-	}
-	const selectedVariants = history.flatMap((message) => {
-		const selected = variants.find((variant) => variant.message_id === message.id && variant.selected);
-		return selected === undefined
-			? []
-			: [{
-					selected: true,
-					data: dataByVariant.get(selected.id) ?? [],
-					messageId: message.id,
-					messagePosition: message.position,
-					variantId: selected.id,
-					variantPosition: selected.position,
-				}];
-	});
+	const history = snapshot.messages.filter((message) => message.position <= position);
+	const selectedVariants = history.flatMap((message) => message.variants
+		.filter((variant) => variant.selected)
+		.map((selected) => ({
+			selected: true as const,
+			data: selected.data,
+			messageId: message.id,
+			messagePosition: message.position,
+			variantId: selected.id,
+			variantPosition: selected.position,
+		})));
 	const targetVariant = selectedVariants.at(-1);
-	const variables = deriveMacroVariables({ initialData, presetId, selectedVariants });
+	const variables = deriveMacroVariables({ initialData: snapshot.data, presetId, selectedVariants });
 	return {
 		conversationId,
 		promptPresetId: presetId,
@@ -206,7 +152,7 @@ export const readMacroVariables = (
 	database: Database,
 	conversationId: number,
 	input: ReadMacroVariablesInput = {},
-): MacroVariablesRead | undefined =>
+): MacroVariables | undefined =>
 	readMacroVariablesFromConnection(connectConversationDatabase(database), conversationId, input);
 
 export const editMacroVariables = (database: Database, input: EditMacroVariablesInput): EditedMacroVariables =>
@@ -240,28 +186,31 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 		if (input.position > lastPosition) {
 			throw new InvalidConversationCommandError(`History position ${input.position} is beyond the end of this Conversation.`);
 		}
-		const write: import("../../shared/contract/macro-variables").MacroVariableWrite = input.operation === "set"
+		const write: MacroVariableWrite = input.operation === "set"
 			? { name: input.name, operation: "set", value: requireMacroValue(input.value) }
 			: { name: input.name, operation: "delete" as const, value: undefined };
 		if (input.position === 0) {
-			const entry = write.operation === "set"
-				? macroInitialValuesToData(input.promptPresetId, new Map<string, MacroValue>([[input.name, requireMacroValue(write.value)]]))[0]
-				: macroInitialValuesToData(input.promptPresetId, new Map([[input.name, null]]))[0];
-			if (entry === undefined) throw new InvalidConversationCommandError("Macro Variable could not be encoded.");
+			const key = macroInitialValueKey(input.promptPresetId, input.name);
 			if (write.operation === "set") {
+				const value = JSON.stringify(requireMacroValue(write.value));
 				db.insert(conversationDataTable)
-					.values({ conversation_id: input.conversationId, ...entry })
+					.values({
+						conversation_id: input.conversationId,
+						namespace: MACRO_DATA_NAMESPACE,
+						key,
+						value,
+					})
 					.onConflictDoUpdate({
 						target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key],
-						set: { value: entry.value },
+						set: { value },
 					})
 					.run();
 			} else {
 				db.delete(conversationDataTable)
 					.where(and(
 						eq(conversationDataTable.conversation_id, input.conversationId),
-						eq(conversationDataTable.namespace, entry.namespace),
-						eq(conversationDataTable.key, entry.key),
+						eq(conversationDataTable.namespace, MACRO_DATA_NAMESPACE),
+						eq(conversationDataTable.key, key),
 					))
 					.run();
 			}
@@ -281,14 +230,30 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 				.where(and(eq(messageVariantTable.message_id, message.id), eq(messageVariantTable.selected, true)))
 				.get();
 			if (variant === undefined) throw new InvalidConversationCommandError("The selected history position has no selected Variant.");
-			const rows = db
+			const row = db
 				.select({ namespace: messageVariantDataTable.namespace, key: messageVariantDataTable.key, value: messageVariantDataTable.value })
 				.from(messageVariantDataTable)
-				.where(eq(messageVariantDataTable.message_variant_id, variant.id))
-				.all();
-			const [entry] = macroWritesToData(input.promptPresetId, [write], nextMacroWriteSequence(rows, input.promptPresetId));
-			if (entry === undefined) throw new InvalidConversationCommandError("Macro Variable write could not be encoded.");
-			db.insert(messageVariantDataTable).values({ message_variant_id: variant.id, ...entry }).run();
+				.where(and(
+					eq(messageVariantDataTable.message_variant_id, variant.id),
+					eq(messageVariantDataTable.namespace, MACRO_DATA_NAMESPACE),
+					eq(messageVariantDataTable.key, macroWritesKey(input.promptPresetId)),
+				))
+				.get();
+			const entries = macroWritesToData(
+				input.promptPresetId,
+				[...readMacroWrites(row === undefined ? [] : [row], input.promptPresetId), write],
+			);
+			db.insert(messageVariantDataTable)
+				.values(entries.map((entry) => ({ message_variant_id: variant.id, ...entry })))
+				.onConflictDoUpdate({
+					target: [
+						messageVariantDataTable.message_variant_id,
+						messageVariantDataTable.namespace,
+						messageVariantDataTable.key,
+					],
+					set: { value: entries[0]!.value },
+				})
+				.run();
 		}
 		advanceConversationRevisionGuarded(db, input.conversationId, input.expectedRevision, conversation.revision);
 		const variables = readMacroVariablesFromConnection(db, input.conversationId, {

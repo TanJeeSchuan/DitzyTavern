@@ -287,10 +287,7 @@ export const createConversationRoutes = (
 							model: { id: capture.author.participantId, name: capture.author.capturedName },
 						},
 						effectiveSettings: capture.plan.effectiveSettings,
-						pendingWrites: capture.macroWrites.map((write) => {
-							if (write.value === undefined) return { name: write.name, operation: write.operation };
-							return { name: write.name, operation: write.operation, value: write.value };
-						}),
+						pendingWrites: [...capture.macroWrites],
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,

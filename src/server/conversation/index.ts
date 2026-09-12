@@ -34,7 +34,6 @@ import {
 export type {
 	EditMacroVariablesInput,
 	EditedMacroVariables,
-	MacroVariablesRead,
 	ReadMacroVariablesInput,
 } from "./macro-variables";
 import type { ConversationModule } from "./types";

@@ -21,6 +21,7 @@ import type {
 	GenerationProvenance as SharedGenerationProvenance,
 	ProvenanceSettingsField,
 } from "../generation-provenance";
+import { macroVariableWrite } from "./macro-variable-write";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -680,12 +681,6 @@ const generationPreviewBudget = Type.Object({
 	budgetFits: Type.Boolean(),
 });
 
-const generationPreviewWrite = Type.Object({
-	name: Type.String(),
-	operation: Type.Union([Type.Literal("set"), Type.Literal("delete")]),
-	value: Type.Optional(jsonValue),
-});
-
 export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
@@ -697,7 +692,7 @@ export const generationPreview = Type.Object({
 		model: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
 	}),
 	effectiveSettings: effectiveGenerationSettings,
-	pendingWrites: Type.Array(generationPreviewWrite),
+	pendingWrites: Type.Array(macroVariableWrite),
 	budget: generationPreviewBudget,
 });
 
