@@ -248,6 +248,40 @@ export const operationApplies = (
 ): boolean =>
 	state.session.id === claim.sessionId;
 
+export type PromptPresetOperationRunner = <R>(
+	effects: OperationStartEffects,
+	body: (claim: OperationClaim) => Promise<R>,
+) => Promise<R | undefined>;
+
+// ==[HUMAN APPROVED]== The pure operation runner keeps operation ownership and settlement beside
+// the editor reducer. The React hook supplies liveness and dispatch, but cannot invent a second
+// busy/claim policy for one of the editor's flows.
+export function createPromptPresetEditorOperationRunner({
+	current,
+	dispatch,
+	canStart,
+	ownsOperation,
+}: {
+	current: () => PromptPresetEditorState;
+	dispatch: (event: PromptPresetEditorEvent) => void;
+	canStart: () => boolean;
+	ownsOperation: (claim: OperationClaim) => boolean;
+}): PromptPresetOperationRunner {
+	return async <R>(
+		effects: OperationStartEffects,
+		body: (claim: OperationClaim) => Promise<R>,
+	): Promise<R | undefined> => {
+		if (!canStart()) return undefined;
+		dispatch({ type: "operation-started", effects });
+		const claim = operationClaim(current());
+		try {
+			return await body(claim);
+		} finally {
+			if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
+		}
+	};
+}
+
 export const conversationOperationApplies = (
 	state: PromptPresetEditorState,
 	claim: ConversationOperationClaim,

@@ -44,11 +44,8 @@ import {
 	type StoryMessage,
 	type StoryState,
 } from "../story";
-
-const macroFormattingContext = () => {
-	const resolved = Intl.DateTimeFormat().resolvedOptions();
-	return { timeZone: resolved.timeZone, locale: resolved.locale };
-};
+import { canStartAssembly } from "../assembly";
+import { clientFormattingContext } from "../lib/formatting-context";
 
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
@@ -104,6 +101,8 @@ type GenerationControllerOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
+	onPromptPlanPreviewOpened?: () => void;
+	onPromptPlanPreviewClosed?: () => void;
 };
 
 type PromptPlanPreviewState = {
@@ -124,6 +123,8 @@ export function useGenerationController({
 	dispatchStory,
 	activeChatIdRef,
 	refreshStory,
+	onPromptPlanPreviewOpened,
+	onPromptPlanPreviewClosed,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
@@ -209,6 +210,7 @@ export function useGenerationController({
 		setPromptPlanPreview(null);
 		setPromptPlanPreviewPending(false);
 		setPromptPlanPreviewError(null);
+		onPromptPlanPreviewClosed?.();
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
@@ -222,6 +224,7 @@ export function useGenerationController({
 		setPromptPlanPreviewPending(false);
 		if (outcome.status === "available") {
 			setPromptPlanPreview({ preview: outcome.preview, request });
+			onPromptPlanPreviewOpened?.();
 			return;
 		}
 		setPromptPlanPreviewError(
@@ -246,6 +249,7 @@ export function useGenerationController({
 	const cancelPromptPlanPreview = () => {
 		setPromptPlanPreview(null);
 		setPromptPlanPreviewError(null);
+		onPromptPlanPreviewClosed?.();
 	};
 
 	const editPromptPlanPreview = (promptPlan: PromptPlan) => {
@@ -362,6 +366,7 @@ export function useGenerationController({
 			() => {
 				setPromptPlanPreview(null);
 				setPromptPlanPreviewError(null);
+				onPromptPlanPreviewClosed?.();
 				if (request.kind === "send") setDraft("");
 			},
 		);
@@ -369,23 +374,23 @@ export function useGenerationController({
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (story.preview !== null || isGenerating || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable || draft.trim() === "") return;
-		openPromptPlanPreview({ kind: "send", content: draft, ...macroFormattingContext() });
+		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
+		openPromptPlanPreview({ kind: "send", content: draft, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
-		if (story.preview !== null || isGenerating || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable) return;
+		if (!assemblyAvailable || conversation === null) return;
 		const latest = story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		openPromptPlanPreview({ kind: "continuation", ...macroFormattingContext() });
+		openPromptPlanPreview({ kind: "continuation", ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number) => {
-		if (story.preview !== null || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable) return;
+		if (!assemblyAvailable || conversation === null) return;
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
 			target === undefined ||
@@ -396,11 +401,19 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		openPromptPlanPreview({ kind: "sibling", messageId, ...macroFormattingContext() });
+		openPromptPlanPreview({ kind: "sibling", messageId, ...clientFormattingContext() });
 	};
 
+	const assemblyAvailable = canStartAssembly({
+		playable: conversation?.playable === true,
+		isGenerating,
+		promptPlanOpen: promptPlanPreview !== null,
+		promptPlanPending: promptPlanPreviewPending,
+		variantPreviewActive: story.preview !== null,
+	});
+
 	const canOfferSiblingMessage = (message: StoryMessage) =>
-		conversation !== null && canOfferSiblingGeneration({
+		assemblyAvailable && conversation !== null && canOfferSiblingGeneration({
 			message,
 			playable: conversation.playable,
 			previewActive: story.preview !== null,
@@ -421,6 +434,7 @@ export function useGenerationController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		openPromptPlanPreview,
+		assemblyAvailable,
 		activeGenerationTargets,
 		activeGenerationMessageIds,
 		selectedGenerationTarget,

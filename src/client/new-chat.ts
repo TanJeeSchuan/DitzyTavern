@@ -1,6 +1,9 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
+import { clientFormattingContext } from "./lib/formatting-context";
+import { decodeWirePayload } from "./lib/wire-decode";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
+import { nativeConversationResponse } from "../shared/contract/native-conversation";
 import { emptyPromptChannels } from "../shared/definition";
 
 // Typed client for the native New Chat workflow. Outcomes mirror the ==[HUMAN APPROVED]==
@@ -41,10 +44,7 @@ export async function createNativeConversation(input: {
 	timeZone?: string;
 	locale?: string;
 }): Promise<CreationOutcome> {
-	const formatting = {
-		timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-		locale: input.locale ?? Intl.DateTimeFormat().resolvedOptions().locale,
-	};
+	const formatting = clientFormattingContext(input);
 	const { data, error } = await api.api.conversations.native.post({
 		name: input.name,
 		humanSeat: input.humanSeat,
@@ -61,9 +61,12 @@ export async function createNativeConversation(input: {
 			invalid: (payload) => ({ status: "invalid", reason: String(payload.reason ?? "") }),
 		});
 	}
-	return {
-		status: "created",
-		conversationId: data.conversation.id,
-		playable: data.conversation.playable,
-	};
+	const response = decodeWirePayload(nativeConversationResponse, data);
+	return response === null
+		? { status: "network" }
+		: {
+				status: "created",
+				conversationId: response.conversation.id,
+				playable: response.conversation.playable,
+			};
 }

@@ -2,7 +2,15 @@ import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
 import type { EdenResponse } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
-import { nativePromptPreset } from "../shared/contract/prompt-preset";
+import { decodeWirePayload } from "./lib/wire-decode";
+import {
+	nativePromptPreset,
+	promptPresetCommandApplied,
+	promptPresetListResponse,
+	promptPresetRecipeApplied,
+	sillyTavernImportApplied,
+	sillyTavernImportPreview,
+} from "../shared/contract/prompt-preset";
 import type {
 	NativePromptPreset,
 	PromptBlockReference,
@@ -74,7 +82,9 @@ export async function listPromptPresets(): Promise<PromptPresetSummary[]> {
 	if (error || !data) {
 		throw new Error("Unable to list Prompt Presets");
 	}
-	return data.presets;
+	const decoded = decodeWirePayload(promptPresetListResponse, data);
+	if (decoded === null) throw new Error("Unable to list Prompt Presets");
+	return decoded.presets;
 }
 
 export async function loadNativePromptPreset(presetId: number): Promise<NativePromptPreset> {
@@ -82,7 +92,9 @@ export async function loadNativePromptPreset(presetId: number): Promise<NativePr
 	if (error || !data) {
 		throw new Error("Unable to export the Prompt Preset.");
 	}
-	return data;
+	const decoded = decodeWirePayload(nativePromptPreset, data);
+	if (decoded === null) throw new Error("Unable to export the Prompt Preset.");
+	return decoded;
 }
 
 export function parseNativePromptPreset(text: string): NativePromptPreset | null {
@@ -109,8 +121,9 @@ export async function importNativePromptPreset(
 			const value = error.value as PromptPresetImportErrorPayload | null;
 			return promptPresetImportError(value);
 		}
-		return data.outcome === "applied"
-			? { status: "applied", preset: data.preset }
+		const decoded = decodeWirePayload(promptPresetCommandApplied, data);
+		return decoded?.outcome === "applied"
+			? { status: "applied", preset: decoded.preset }
 			: { status: "network" };
 	} catch {
 		return { status: "network" };
@@ -133,7 +146,8 @@ export async function reviewSillyTavernPromptPreset(
 		if (error) {
 			return promptPresetImportError(error.value);
 		}
-		return { status: "review", preview: data };
+		const preview = decodeWirePayload(sillyTavernImportPreview, data);
+		return preview === null ? { status: "network" } : { status: "review", preview };
 	} catch {
 		return { status: "network" };
 	}
@@ -150,7 +164,8 @@ export async function commitSillyTavernPromptPreset(
 		if (error) {
 			return promptPresetImportError(error.value);
 		}
-		return { status: "applied", preview: data };
+		const preview = decodeWirePayload(sillyTavernImportApplied, data);
+		return preview === null ? { status: "network" } : { status: "applied", preview };
 	} catch {
 		return { status: "network" };
 	}
@@ -167,11 +182,13 @@ export async function applyPromptPresetCommand(
 			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 		});
 	}
+	const decoded = decodeWirePayload(promptPresetCommandApplied, data);
+	if (decoded === null) return { status: "network" };
 	// ==[HUMAN APPROVED]== The applied-command response states its variant, so the adapter
 	// narrows on the outcome tag instead of inferring it from which fields are present.
-	return data.outcome === "deleted"
-		? { status: "deleted", result: data.result }
-		: { status: "applied", preset: data.preset };
+	return decoded.outcome === "deleted"
+		? { status: "deleted", result: decoded.result }
+		: { status: "applied", preset: decoded.preset };
 }
 
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each call
@@ -202,7 +219,9 @@ const applyRecipeOperation = async (
 				invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 			});
 		}
-		return data.outcome === "applied" ? { status: "applied" } : { status: "network" };
+		return decodeWirePayload(promptPresetRecipeApplied, data) === null
+			? { status: "network" }
+			: { status: "applied" };
 	} catch {
 		return { status: "network" };
 	}

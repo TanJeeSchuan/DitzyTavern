@@ -92,6 +92,11 @@ export function ActiveWritingWorkspace({
 		dispatchStory,
 		activeChatIdRef: session.activeChatIdRef,
 		refreshStory: session.refreshStory,
+		onPromptPlanPreviewOpened: () => {
+			setGenerationDetailsTarget(null);
+			dispatchPanel({ type: "prompt-plan-opened" });
+		},
+		onPromptPlanPreviewClosed: () => dispatchPanel({ type: "details-closed" }),
 	});
 	const viewport = useStoryViewport({
 		messages: story.messages,
@@ -110,13 +115,6 @@ export function ActiveWritingWorkspace({
 		dispatchPanel({ type: previewMode ? "preview-entered" : "preview-exited" });
 		if (previewMode) setGenerationDetailsTarget(null);
 	}, [previewMode]);
-
-	useEffect(() => {
-		if (generation.promptPlanPreview === null) return;
-		setGenerationDetailsTarget(null);
-		dispatchPanel({ type: "details-closed" });
-		dispatchPanel({ type: "inspector-closed" });
-	}, [generation.promptPlanPreview]);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -230,12 +228,10 @@ export function ActiveWritingWorkspace({
 					chat={session.activeChat}
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
-						if (story.preview !== null) return;
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "chat-info-opened" });
 					}}
 					onOpenVariables={() => {
-						if (story.preview !== null) return;
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "macro-variables-opened" });
 					}}
@@ -275,19 +271,16 @@ export function ActiveWritingWorkspace({
 								previewDownstream={isPreviewDownstream(message, story.preview)}
 								previewTarget={story.preview?.messageId === message.id}
 								canContinue={
+									generation.assemblyAvailable &&
 									latestStoryMessage?.id === message.id &&
-									session.conversation?.playable === true &&
 									generation.activeGenerationTargets.length === 0 &&
 									isModelAuthoredMessage(message) &&
-									message.continuable === true &&
-									!generation.isGenerating &&
-									generation.promptPlanPreview === null &&
-									story.preview === null
+									message.continuable === true
 								}
 								onSibling={generation.canOfferSiblingMessage(message) ? generation.siblingMessage : undefined}
 								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 								onContinue={generation.continueMessage}
-								onInspect={story.preview === null ? openVariantDetails : undefined}
+								onInspect={openVariantDetails}
 								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
 							/>
@@ -314,7 +307,7 @@ export function ActiveWritingWorkspace({
 				<Composer
 					draft={generation.draft}
 					isGenerating={generation.isGenerating}
-					canWrite={session.conversation?.playable === true && !generation.isGenerating && generation.promptPlanPreview === null && !generation.promptPlanPreviewPending && story.preview === null}
+					canWrite={generation.assemblyAvailable}
 					isReceded={composerIsReceded}
 					onDraftChange={generation.setDraft}
 					onFocusChange={setIsComposerFocused}
@@ -324,7 +317,7 @@ export function ActiveWritingWorkspace({
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							conversation={session.conversation}
-								disabled={story.preview !== null || generation.promptPlanPreview !== null || generation.promptPlanPreviewPending}
+							disabled={story.preview !== null || generation.promptPlanPreview !== null || generation.promptPlanPreviewPending}
 							onConversationChange={session.setConversation}
 						/>
 					) : null}
@@ -332,7 +325,7 @@ export function ActiveWritingWorkspace({
 				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
 
-			{generation.promptPlanPreview !== null && story.preview === null && (
+			{panelState.detailsSurface === "prompt-plan" && generation.promptPlanPreview !== null && (
 				<PromptPlanPreviewPanel
 					preview={generation.promptPlanPreview.preview}
 					pending={generation.promptPlanPreviewPending}
@@ -344,14 +337,14 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 
-			{panelState.detailsSurface === "chat-info" && story.preview === null && (
+			{panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
 					chatTitle={session.activeChat.title}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && story.preview === null && (
+			{panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
 					onClose={() => {
@@ -360,7 +353,7 @@ export function ActiveWritingWorkspace({
 					}}
 				/>
 			)}
-			{panelState.detailsSurface === "macro-variables" && story.preview === null && session.conversation !== null && (
+			{panelState.detailsSurface === "macro-variables" && session.conversation !== null && (
 				<MacroVariablesPanel
 					conversationId={session.conversation.id}
 					conversation={session.conversation}
@@ -369,14 +362,14 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{panelState.inspector === "generation" && story.preview === null && (
+			{panelState.inspector === "generation" && (
 				<GenerationSettingsInspector
 					conversation={session.conversation}
 					controller={generationSettings}
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}
-			{panelState.inspector === "models" && story.preview === null && (
+			{panelState.inspector === "models" && (
 				<ConnectionSettingsInspector
 					controller={connectionSettings}
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}

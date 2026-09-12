@@ -1,7 +1,7 @@
 import type { PrimaryPanel } from "./types";
 
 export type SplitInspector = "generation" | "models";
-export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables";
+export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables" | "prompt-plan";
 
 export interface PanelCoordinationState {
 	primaryPanel: PrimaryPanel;
@@ -19,6 +19,7 @@ export type PanelCoordinationAction =
 	| { type: "chat-info-opened" }
 	| { type: "generation-details-opened" }
 	| { type: "macro-variables-opened" }
+	| { type: "prompt-plan-opened" }
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
 	| { type: "preview-exited" }
@@ -30,6 +31,18 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	detailsSurface: null,
 	previewMode: false,
 });
+
+const openDetailSurface = (
+	state: PanelCoordinationState,
+	detailsSurface: DetailsSurface,
+): PanelCoordinationState => state.previewMode
+	? state
+	: {
+			...state,
+			primaryPanel: null,
+			inspector: null,
+			detailsSurface,
+		};
 
 export function reducePanelCoordination(
 	state: PanelCoordinationState,
@@ -53,7 +66,7 @@ export function reducePanelCoordination(
 				detailsSurface: null,
 			};
 		case "primary-closed":
-			return { ...state, primaryPanel: null, inspector: null };
+			return { ...state, primaryPanel: null, inspector: null, detailsSurface: null };
 		case "inspector-opened":
 			return state.previewMode || state.primaryPanel !== action.inspector
 				? state
@@ -61,29 +74,13 @@ export function reducePanelCoordination(
 		case "inspector-closed":
 			return { ...state, inspector: null };
 		case "chat-info-opened":
-			if (state.previewMode) return state;
-			return {
-				...state,
-				primaryPanel: null,
-				inspector: null,
-				detailsSurface: "chat-info",
-			};
+			return openDetailSurface(state, "chat-info");
 		case "generation-details-opened":
-			if (state.previewMode) return state;
-			return {
-				...state,
-				primaryPanel: null,
-				inspector: null,
-				detailsSurface: "generation-details",
-			};
+			return openDetailSurface(state, "generation-details");
 		case "macro-variables-opened":
-			if (state.previewMode) return state;
-			return {
-				...state,
-				primaryPanel: null,
-				inspector: null,
-				detailsSurface: "macro-variables",
-			};
+			return openDetailSurface(state, "macro-variables");
+		case "prompt-plan-opened":
+			return openDetailSurface(state, "prompt-plan");
 		case "details-closed":
 			return { ...state, detailsSurface: null };
 		case "preview-entered":

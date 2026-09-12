@@ -1,18 +1,13 @@
 import { expect, test } from "bun:test";
 import {
 	createPromptPresetEditorState,
+	createPromptPresetEditorOperationRunner,
 	operationApplies,
 	reducePromptPresetEditorState,
 	type OperationStartEffects,
 	type PromptPresetEditorEvent,
 	type PromptPresetEditorState,
 } from "../../prompt-preset-editor-state";
-
-Object.defineProperty(globalThis, "window", {
-	value: { location: { origin: "http://localhost" } },
-	configurable: true,
-});
-const { createPromptPresetEditorOperationRunner } = await import("./usePromptPresetEditorRuntime");
 
 const effects: OperationStartEffects = {
 	supersedesReads: false,

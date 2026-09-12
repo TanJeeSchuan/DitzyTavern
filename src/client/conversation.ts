@@ -18,15 +18,26 @@ import type {
 	GenerationsStopped,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
+import {
+	activeGenerationDetails,
+	conversationSummary,
+	generationPreview,
+	generationStartResponse,
+	variantDetails,
+	conversationGenerationSettings,
+	conversationAppliedResponse,
+	characterAppliedResponse,
+} from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
-import { Value } from "@sinclair/typebox/value";
+import { conversationPromptPreset } from "../shared/contract/prompt-preset";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
 } from "../shared/contract/macro-variables";
 import type { MacroVariables } from "../shared/contract/macro-variables";
 import type { MacroValue } from "../shared/contract/macro-variables";
+import { decodeWirePayload } from "./lib/wire-decode";
 
 export type {
 	ActiveGenerationDetails,
@@ -81,7 +92,10 @@ export async function loadConversation(
 		if (error.status === 404) return null;
 		throw new Error(`Unable to load Conversation ${conversationId}`);
 	}
-	return data ?? null;
+	if (data === null) return null;
+	const conversation = decodeWirePayload(conversationSummary, data);
+	if (conversation === null) throw new Error(`Unable to load Conversation ${conversationId}`);
+	return conversation;
 }
 
 export async function applyConversationCommand(
@@ -101,7 +115,10 @@ export async function applyConversationCommand(
 			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 		});
 	}
-	return { status: "applied", conversation: data.conversation };
+	const response = decodeWirePayload(conversationAppliedResponse, data);
+	return response === null
+		? { status: "network" }
+		: { status: "applied", conversation: response.conversation };
 }
 
 export async function addCharacterToCast(input: {
@@ -128,7 +145,10 @@ export async function addCharacterToCast(input: {
 			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 		});
 	}
-	return { status: "applied", conversation: data.conversation };
+	const response = decodeWirePayload(conversationAppliedResponse, data);
+	return response === null
+		? { status: "network" }
+		: { status: "applied", conversation: response.conversation };
 }
 
 export type SaveParticipantAsCharacterOutcome =
@@ -153,15 +173,23 @@ export async function saveParticipantAsCharacter(input: {
 			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
 		});
 	}
-	return { status: "applied", character: data.character };
+	const response = decodeWirePayload(
+		characterAppliedResponse,
+		data,
+	);
+	return response === null
+		? { status: "network" }
+		: { status: "applied", character: response.character };
 }
 
 export async function loadConversationGenerationSettings(
 	conversationId: number,
 ): Promise<ConversationGenerationSettings> {
 	const { data, error } = await api.api.conversations({ id: conversationId })["generation-settings"].get();
-	if (error) throw new Error("Unable to load Conversation Generation Settings.");
-	return data;
+	if (error || data === undefined) throw new Error("Unable to load Conversation Generation Settings.");
+	const settings = decodeWirePayload(conversationGenerationSettings, data);
+	if (settings === null) throw new Error("Unable to load Conversation Generation Settings.");
+	return settings;
 }
 
 export async function loadConversationPromptPreset(
@@ -173,7 +201,10 @@ export async function loadConversationPromptPreset(
 		if (error.status === 404) return null;
 		throw new Error("Unable to load the selected Prompt Preset.");
 	}
-	return data ?? null;
+	if (data === null) return null;
+	const preset = decodeWirePayload(conversationPromptPreset, data);
+	if (preset === null) throw new Error("Unable to load the selected Prompt Preset.");
+	return preset;
 }
 
 export type MacroVariablesOutcome =
@@ -195,7 +226,10 @@ export async function loadMacroVariables(
 			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
 			return { status: "network" };
 		}
-		return { status: "available", variables: Value.Decode(macroVariables, data) };
+		const variables = decodeWirePayload(macroVariables, data);
+		return variables === null
+			? { status: "network" }
+			: { status: "available", variables };
 	} catch {
 		return { status: "network" };
 	}
@@ -228,7 +262,8 @@ export async function editMacroVariable(
 			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
 			return { status: "network" };
 		}
-		const payload = Value.Decode(macroVariablesAppliedResponse, data);
+		const payload = decodeWirePayload(macroVariablesAppliedResponse, data);
+		if (payload === null) return { status: "network" };
 		return {
 			status: "applied",
 			variables: payload.variables,
@@ -254,7 +289,10 @@ export async function loadActiveGenerationDetails(
 			.generations({ generationId })
 			.inspection.get();
 		if (error) return error.status === 404 ? { status: "not-found" } : { status: "network" };
-		return { status: "available", details: data };
+		const details = decodeWirePayload(activeGenerationDetails, data);
+		return details === null
+			? { status: "network" }
+			: { status: "available", details };
 	} catch {
 		return { status: "network" };
 	}
@@ -272,7 +310,10 @@ export async function loadVariantDetails(
 			.variants({ variantId })
 			.details.get();
 		if (error) return error.status === 404 ? { status: "not-found" } : { status: "network" };
-		return { status: "available", details: data };
+		const details = decodeWirePayload(variantDetails, data);
+		return details === null
+			? { status: "network" }
+			: { status: "available", details };
 	} catch {
 		return { status: "network" };
 	}
@@ -297,7 +338,10 @@ export async function previewConversationGeneration(
 			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
 			return { status: "network" };
 		}
-		return { status: "available", preview: data };
+		const preview = decodeWirePayload(generationPreview, data);
+		return preview === null
+			? { status: "network" }
+			: { status: "available", preview };
 	} catch {
 		return { status: "network" };
 	}
@@ -328,7 +372,11 @@ const postGenerationStart = async (
 		if (error) {
 			return startGenerationError(error.value);
 		}
-		return data;
+		const response = decodeWirePayload(generationStartResponse, data);
+		if (response === null) {
+			return { outcome: "invalid", reason: `${operation} start returned malformed JSON.` };
+		}
+		return response;
 	} catch {
 		return { outcome: "invalid", reason: `${operation} start returned malformed JSON.` };
 	}

@@ -7,9 +7,9 @@ import { listPromptPresets } from "../../prompt-preset-library";
 import { useAsyncEffect } from "../../lib/use-async";
 import {
 	createPromptPresetEditorState,
+	createPromptPresetEditorOperationRunner,
 	dirtyDraftSummary,
 	operationApplies,
-	operationClaim,
 	readApplies,
 	readClaim,
 	reducePromptPresetEditorState,
@@ -38,32 +38,6 @@ export interface PromptPresetEditorRuntime {
 		body: (claim: OperationClaim) => Promise<R>,
 	) => Promise<R | undefined>;
 	ownsOperation: (claim: OperationClaim) => boolean;
-}
-
-export function createPromptPresetEditorOperationRunner({
-	current,
-	dispatch,
-	canStart,
-	ownsOperation,
-}: {
-	current: () => PromptPresetEditorState;
-	dispatch: (event: PromptPresetEditorEvent) => void;
-	canStart: () => boolean;
-	ownsOperation: (claim: OperationClaim) => boolean;
-}): PromptPresetEditorRuntime["runOperation"] {
-	return async <R>(
-		effects: OperationStartEffects,
-		body: (claim: OperationClaim) => Promise<R>,
-	): Promise<R | undefined> => {
-		if (!canStart()) return undefined;
-		dispatch({ type: "operation-started", effects });
-		const claim = operationClaim(current());
-		try {
-			return await body(claim);
-		} finally {
-			if (ownsOperation(claim)) dispatch({ type: "operation-settled", claim });
-		}
-	};
 }
 
 export function usePromptPresetEditorRuntime({
