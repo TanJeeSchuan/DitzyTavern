@@ -23,6 +23,10 @@ import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
+import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
+import type {
+	MacroVariables as SharedMacroVariables,
+} from "../../shared/contract/macro-variables";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -38,6 +42,8 @@ export interface ConversationDataEntry {
 // persistence seams. Keeping this closed recursive type avoids admitting
 // provider classes, credentials, or unserializable runtime values.
 export type ConversationJsonValue = GenerationJsonValue;
+
+export type MacroVariables = SharedMacroVariables;
 
 // Conversation-local generation controls derive from the canonical
 // Generation Settings declaration (ADR-0032) instead of restating its
@@ -319,6 +325,14 @@ export interface ConversationModule {
 		conversationId: number,
 		filter?: ConversationDataReadFilter,
 	): ConversationDataRead | undefined;
+	readMacroVariables(
+		conversationId: number,
+		input?: { promptPresetId?: number; position?: number },
+	): MacroVariables | undefined;
+	editMacroVariables(input: import("./macro-variables").EditMacroVariablesInput): {
+		conversation: ConversationSummary;
+		variables: MacroVariables;
+	};
 	// Deliberate detail reads. Active inspection is available only while the
 	// server-owned row is retained; compact Variant provenance survives that
 	// cleanup and is loaded separately from ordinary history.
@@ -407,6 +421,10 @@ export interface AcceptTailGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	// Captured macro state belongs to this originating preset and is attached to the target only
+	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedTailGeneration {
@@ -475,6 +493,8 @@ export interface AcceptContinuationGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedContinuationGeneration {
@@ -502,6 +522,8 @@ export interface AcceptSiblingGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedSiblingGeneration {
@@ -572,4 +594,8 @@ export interface ConversationCreationInput {
 	artifacts?: readonly ConversationArtifactSeed[];
 	// Base time for Conversations whose history does not carry timestamps.
 	createdAt?: string | undefined;
+	// Native creation captures the initiating client's formatting context for
+	// the one opening assembly; imported/preservation records leave these unset.
+	macroTimeZone?: string | undefined;
+	macroLocale?: string | undefined;
 }

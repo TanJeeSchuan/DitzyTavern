@@ -11,7 +11,7 @@
 
 .story-header {
 	display: grid;
-	grid-template-columns: 1fr auto auto;
+	grid-template-columns: 1fr auto auto auto;
 	align-items: center;
 	gap: 0.8rem;
 	min-height: 4.5rem;
@@ -564,6 +564,62 @@
 	display: grid;
 	align-content: start;
 	gap: 0.9rem;
+}
+
+.prompt-plan-edit-list {
+	gap: 0.75rem;
+}
+
+.prompt-plan-edit-list label {
+	display: grid;
+	gap: 0.35rem;
+}
+
+.prompt-plan-edit-list label > span {
+	color: var(--text-muted);
+	font-size: 0.68rem;
+	font-weight: 680;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.prompt-plan-edit-list textarea {
+	width: 100%;
+	min-height: 4rem;
+	resize: vertical;
+	padding: 0.65rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.65rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font: inherit;
+	font-size: 0.76rem;
+	line-height: 1.45;
+}
+
+.prompt-plan-edit-list textarea:focus {
+	border-color: var(--focus);
+	outline: 0;
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}
+
+.prompt-plan-preview-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	justify-content: flex-end;
+	padding-top: 0.25rem;
+}
+
+.prompt-plan-preview-actions button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.prompt-plan-preview-actions svg {
+	width: 0.9rem;
+	height: 0.9rem;
 }
 
 .generation-detail-status {

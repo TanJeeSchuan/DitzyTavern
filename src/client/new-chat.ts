@@ -38,11 +38,18 @@ export async function createNativeConversation(input: {
 	name: string;
 	humanSeat: SeatDraft;
 	modelSeat: SeatDraft;
+	timeZone?: string;
+	locale?: string;
 }): Promise<CreationOutcome> {
+	const formatting = {
+		timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+		locale: input.locale ?? Intl.DateTimeFormat().resolvedOptions().locale,
+	};
 	const { data, error } = await api.api.conversations.native.post({
 		name: input.name,
 		humanSeat: input.humanSeat,
 		modelSeat: input.modelSeat,
+		...formatting,
 	});
 	if (error) {
 		return commandOutcome(error.value, {

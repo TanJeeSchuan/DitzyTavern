@@ -7,12 +7,9 @@ export {
 	compilePrompt,
 	referencedDefinitionBlocks,
 } from "./compiler";
-// ==[HUMAN APPROVED]== The shared macro processor is the single expansion implementation for
-// Participant text, openings, and authored preset instruction blocks; the
-// deep compiler seam re-exports it beside its own functions.
-export { expandText } from "../../shared/prompt-macros";
 export {
 	budgetPromptPlan,
+	budgetEditedPromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,
@@ -20,9 +17,8 @@ export {
 export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
-	ExpansionResult,
 	GenerationIntent,
-	MacroContext,
+	MacroEnvironment,
 	PromptBlock,
 	PromptContextEntry,
 	PromptHistoryRole,

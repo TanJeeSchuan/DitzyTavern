@@ -207,10 +207,20 @@ const translateCommentsAndMacros = (source: string): string => {
 	let output = "";
 	let index = 0;
 	while (index < source.length) {
-		const token = scanMacroToken(source, index, (name) => name === "user" || name === "char");
+		const token = scanMacroToken(source, index, (name) => {
+			const normalized = name.toLowerCase();
+			return normalized === "user" || normalized === "char";
+		});
 		if (token.kind === "macro") {
-			if (token.name === "user") output += "{{self}}";
-			else if (token.name === "char") output += "{{other}}";
+			if (token.name.toLowerCase() === "user") output += "{{self}}";
+			else if (token.name.toLowerCase() === "char") output += "{{other}}";
+			else output += source.slice(index, token.end);
+		} else if (token.kind === "escaped-macro") {
+			// ==[HUMAN APPROVED]== SillyTavern keeps `\{{name}}` active: the backslash is ordinary
+			// text because the braces remain adjacent. Translate the name while
+			// retaining that literal prefix for the runtime evaluator.
+			if (token.name.toLowerCase() === "user") output += `\\{{self}}`;
+			else if (token.name.toLowerCase() === "char") output += `\\{{other}}`;
 			else output += source.slice(index, token.end);
 		} else {
 			output += source.slice(index, token.end);

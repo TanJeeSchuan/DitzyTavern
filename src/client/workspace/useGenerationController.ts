@@ -9,6 +9,7 @@ import {
 	type RefObject,
 } from "react";
 import {
+	previewConversationGeneration,
 	startConversationContinuationGeneration,
 	startConversationGeneration,
 	startConversationSiblingGeneration,
@@ -16,7 +17,10 @@ import {
 	stopConversationGeneration,
 	type ConversationSummary,
 	type StopConversationGenerationResult,
+	type GenerationPreview,
+	type GenerationPreviewBody,
 } from "../conversation";
+import type { PromptPlan } from "../../shared/contract/conversation-schema";
 import { generationStreamAdapter } from "../conversation-stream";
 import {
 	createGenerationSessionRunner,
@@ -40,6 +44,11 @@ import {
 	type StoryMessage,
 	type StoryState,
 } from "../story";
+
+const macroFormattingContext = () => {
+	const resolved = Intl.DateTimeFormat().resolvedOptions();
+	return { timeZone: resolved.timeZone, locale: resolved.locale };
+};
 
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
@@ -97,6 +106,11 @@ type GenerationControllerOptions = {
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
 };
 
+type PromptPlanPreviewState = {
+	preview: GenerationPreview;
+	request: GenerationPreviewBody;
+};
+
 /**
  * ==[HUMAN APPROVED]== Thin wiring between the view, the Generation session machine, and the
  * server. The session machine (generation-sessions) and its runner own
@@ -119,6 +133,9 @@ export function useGenerationController({
 	);
 	const nextStartIdRef = useRef(1);
 	const [startError, setStartError] = useState<string | null>(null);
+	const [promptPlanPreview, setPromptPlanPreview] = useState<PromptPlanPreviewState | null>(null);
+	const [promptPlanPreviewPending, setPromptPlanPreviewPending] = useState(false);
+	const [promptPlanPreviewError, setPromptPlanPreviewError] = useState<string | null>(null);
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
@@ -189,7 +206,53 @@ export function useGenerationController({
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
 		setStartError(null);
+		setPromptPlanPreview(null);
+		setPromptPlanPreviewPending(false);
+		setPromptPlanPreviewError(null);
 		runner.dispatch({ type: "conversation-switched" });
+	};
+
+	const requestPromptPlanPreview = async (request: GenerationPreviewBody) => {
+		if (conversation === null || promptPlanPreviewPending) return;
+		setPromptPlanPreviewPending(true);
+		setPromptPlanPreviewError(null);
+		const conversationId = conversation.id;
+		const outcome = await previewConversationGeneration(conversationId, request);
+		if (Number(activeChatIdRef.current) !== conversationId) return;
+		setPromptPlanPreviewPending(false);
+		if (outcome.status === "available") {
+			setPromptPlanPreview({ preview: outcome.preview, request });
+			return;
+		}
+		setPromptPlanPreviewError(
+			outcome.status === "invalid"
+				? outcome.reason
+				: outcome.status === "not-found"
+					? "The Conversation no longer exists."
+					: "The Prompt Plan could not be assembled.",
+		);
+	};
+
+	const openPromptPlanPreview = (request: Omit<GenerationPreviewBody, "expectedRevision">) => {
+		if (conversation === null || promptPlanPreviewPending) return;
+		void requestPromptPlanPreview({ ...request, expectedRevision: conversation.revision });
+	};
+
+	const refreshPromptPlanPreview = () => {
+		if (promptPlanPreview === null) return;
+		void requestPromptPlanPreview(promptPlanPreview.request);
+	};
+
+	const cancelPromptPlanPreview = () => {
+		setPromptPlanPreview(null);
+		setPromptPlanPreviewError(null);
+	};
+
+	const editPromptPlanPreview = (promptPlan: PromptPlan) => {
+		setPromptPlanPreview((current) => current === null
+			? current
+			: { ...current, preview: { ...current.preview, promptPlan } });
+		setPromptPlanPreviewError(null);
 	};
 
 	const stopGeneration = async (generationId: number) => {
@@ -280,38 +343,49 @@ export function useGenerationController({
 		return startId;
 	};
 
-	const submitMessage = (event: FormEvent) => {
-		event.preventDefault();
-		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable || draft.trim() === "") return;
+	const sendPromptPlanPreview = () => {
+		if (conversation === null || promptPlanPreview === null || promptPlanPreviewPending) return;
 		const conversationId = conversation.id;
 		const startId = beginStart();
+		const { preview, request } = promptPlanPreview;
+		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
+		const formatting = { timeZone: request.timeZone, locale: request.locale };
+		const start = request.kind === "send"
+			? startConversationGeneration(conversationId, conversation.revision, request.content ?? "", formatting, previewInput)
+			: request.kind === "continuation"
+				? startConversationContinuationGeneration(conversationId, conversation.revision, formatting, previewInput)
+				: startConversationSiblingGeneration(conversationId, request.messageId!, formatting, previewInput);
 		void startGeneration(
 			startId,
 			conversationId,
-			startConversationGeneration(conversationId, conversation.revision, draft),
-			() => setDraft(""),
+			start,
+			() => {
+				setPromptPlanPreview(null);
+				setPromptPlanPreviewError(null);
+				if (request.kind === "send") setDraft("");
+			},
 		);
 	};
 
+	const submitMessage = (event: FormEvent) => {
+		event.preventDefault();
+		if (story.preview !== null || isGenerating || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable || draft.trim() === "") return;
+		openPromptPlanPreview({ kind: "send", content: draft, ...macroFormattingContext() });
+	};
+
 	const continueMessage = (messageId: number) => {
-		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable) return;
+		if (story.preview !== null || isGenerating || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable) return;
 		const latest = story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		const conversationId = conversation.id;
-		const startId = beginStart();
-		void startGeneration(
-			startId,
-			conversationId,
-			startConversationContinuationGeneration(conversationId, conversation.revision),
-		);
+		openPromptPlanPreview({ kind: "continuation", ...macroFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number) => {
-		if (story.preview !== null || conversation === null || !conversation.playable) return;
+		if (story.preview !== null || promptPlanPreview !== null || promptPlanPreviewPending || conversation === null || !conversation.playable) return;
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
 			target === undefined ||
@@ -322,13 +396,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		const conversationId = conversation.id;
-		const startId = beginStart();
-		void startGeneration(
-			startId,
-			conversationId,
-			startConversationSiblingGeneration(conversationId, messageId),
-		);
+		openPromptPlanPreview({ kind: "sibling", messageId, ...macroFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>
@@ -345,6 +413,14 @@ export function useGenerationController({
 		isGenerating,
 		stopPending,
 		generationError,
+		promptPlanPreview,
+		promptPlanPreviewPending,
+		promptPlanPreviewError,
+		editPromptPlanPreview,
+		refreshPromptPlanPreview,
+		cancelPromptPlanPreview,
+		sendPromptPlanPreview,
+		openPromptPlanPreview,
 		activeGenerationTargets,
 		activeGenerationMessageIds,
 		selectedGenerationTarget,

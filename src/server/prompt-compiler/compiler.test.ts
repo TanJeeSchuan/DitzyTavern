@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	compileOpening,
 	compilePrompt,
-	expandText,
 	type CompilePromptInput,
 	type PromptPlan,
 } from ".";
+import { expandMacroText } from "../../shared/prompt-macro-engine";
 
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database. The roles are the stored
@@ -332,7 +332,7 @@ describe("Macro expansion", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 
-	test("is case-sensitive: {{SELF}} stays literal and warns", () => {
+	test("looks up macro names case-insensitively", () => {
 		const plan = compilePrompt(
 			source({
 				model: {
@@ -347,11 +347,8 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		expect(plan.blocks[0]?.content).toBe("{{SELF}} and {{SELF}}.");
-		expect(plan.warnings).toEqual([
-			{ block: "identity (model)", macro: "{{SELF}}" },
-			{ block: "identity (model)", macro: "{{SELF}}" },
-		]);
+		expect(plan.blocks[0]?.content).toBe("Maren Voss and Maren Voss.");
+		expect(plan.warnings).toEqual([]);
 	});
 
 	test("expands once and never rescans expansion output", () => {
@@ -373,7 +370,7 @@ describe("Macro expansion", () => {
 		expect(plan.warnings).toEqual([]);
 	});
 
-	test("renders an escaped recognized macro literally without a warning", () => {
+	test("keeps the backslash before an adjacent macro", () => {
 		const plan = compilePrompt(
 			source({
 				model: {
@@ -388,9 +385,7 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		expect(plan.blocks[0]?.content).toBe(
-			"Use {{self}} and {{other}} literally.",
-		);
+		expect(plan.blocks[0]?.content).toBe("Use \\Maren Voss and \\Writer literally.");
 		expect(plan.warnings).toEqual([]);
 	});
 
@@ -409,11 +404,11 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		// The first backslash escapes the second, so {{self}} expands.
-		expect(plan.blocks[0]?.content).toBe("\\Maren Voss");
+		// Splitting the braces is the escape form; adjacent braces remain active.
+		expect(plan.blocks[0]?.content).toBe("\\\\Maren Voss");
 	});
 
-	test("renders an escaped Prompt Comment literally without stripping or warning", () => {
+	test("keeps a leading backslash while an adjacent Prompt Comment is active", () => {
 		const plan = compilePrompt(
 			source({
 				model: {
@@ -428,16 +423,11 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		// The backslash removes the comment's activity, so the whole comment
-		// stays in the plan as literal text and its enclosed unknown macro
-		// neither expands nor warns.
-		expect(plan.blocks[0]?.content).toBe(
-			"Syntax: {{// draft: mention {{unfinished}} }} end.",
-		);
+		expect(plan.blocks[0]?.content).toBe("Syntax: \\{{// draft: mention {{unfinished}} }} end.");
 		expect(plan.warnings).toEqual([]);
 	});
 
-	test("renders an escaped scoped Prompt Comment literally without warnings", () => {
+	test("strips an adjacent scoped Prompt Comment", () => {
 		const plan = compilePrompt(
 			source({
 				model: {
@@ -452,9 +442,7 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		expect(plan.blocks[0]?.content).toBe(
-			"Syntax: {{//}} mention {{unfinished}} {{///}} end.",
-		);
+		expect(plan.blocks[0]?.content).toBe("Syntax: \\{{//}} mention {{unfinished}} {{///}} end.");
 		expect(plan.warnings).toEqual([]);
 	});
 
@@ -473,9 +461,7 @@ describe("Macro expansion", () => {
 				},
 			}),
 		);
-		// The first backslash escapes the second, so the comment that follows
-		// is still an active comment and the macro after it still expands.
-		expect(plan.blocks[0]?.content).toBe("\\ and Maren Voss");
+		expect(plan.blocks[0]?.content).toBe("\\\\ and Maren Voss");
 	});
 
 	test("drops a scoped Prompt Comment before evaluating its macros", () => {
@@ -601,19 +587,19 @@ describe("Opening compilation", () => {
 			{ self: "Maren Voss", other: "Writer" },
 			1,
 		);
-		expect(opening.text).toBe("Say {{self}} plainly.");
+		expect(opening.text).toBe("Say \\Maren Voss plainly.");
 		expect(opening.warnings).toEqual([]);
 	});
 });
 
-describe("expandText", () => {
+describe("expandMacroText", () => {
 	test("is a single left-to-right pass over mixed literal, escaped, and unknown text", () => {
-		const result = expandText(
+		const result = expandMacroText(
 			"A \\{{self}} B {{self}} C {{unknown}} D \\\\{{other}} E",
 			{ self: "S", other: "O" },
 			"example-dialogue",
 		);
-		expect(result.text).toBe("A {{self}} B S C {{unknown}} D \\O E");
+		expect(result.text).toBe("A \\S B S C {{unknown}} D \\\\O E");
 		expect(result.warnings).toEqual([
 			{ block: "example-dialogue", macro: "{{unknown}}" },
 		]);
@@ -739,10 +725,7 @@ describe("Authored instruction blocks", () => {
 				model: { name: "Sable", prompt: emptyChannels },
 			}),
 		);
-		// The escaped macro renders literally and the comment is stripped whole
-		// without warning about the macro inside it — the same behavior as
-		// Participant-owned text.
-		expect(plan.blocks[0]?.content).toBe("A {{self}} literal and  done.");
+		expect(plan.blocks[0]?.content).toBe("A \\Rowan literal and  done.");
 		expect(plan.warnings).toEqual([]);
 	});
 });

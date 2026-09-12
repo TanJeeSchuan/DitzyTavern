@@ -10,6 +10,7 @@ import type {
 	CanonicalGenerationSettings,
 	GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
+import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
@@ -88,6 +89,9 @@ export interface CompileGenerationPlanInput {
 	// The safe Connection facts resolved before compilation. Null when no
 	// Profile is active — no Request Overrides namespace applies then.
 	readonly connection: GenerationConnectionFacts | null;
+	// One attempt's captured macro clock/random inputs. The pure compiler
+	// reuses its expansion cache while history candidates are budgeted.
+	readonly macroEnvironment?: MacroEnvironment;
 	// Tests and calibration work may replace the default project-owned
 	// estimator; budgeting policy itself stays application-owned.
 	readonly estimator?: TokenEstimator | undefined;

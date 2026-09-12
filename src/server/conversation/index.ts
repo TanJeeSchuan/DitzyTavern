@@ -26,6 +26,16 @@ import {
 	readVariantDetails,
 } from "./generation-details";
 import { readConversationGenerationSettings } from "./generation-settings";
+import {
+	editMacroVariables,
+	readMacroVariables,
+} from "./macro-variables";
+export type {
+	EditMacroVariablesInput,
+	EditedMacroVariables,
+	MacroVariablesRead,
+	ReadMacroVariablesInput,
+} from "./macro-variables";
 import type { ConversationModule } from "./types";
 
 export {
@@ -105,6 +115,7 @@ export type {
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
+	MacroVariables,
 	ConversationJsonValue,
 	ConversationDataRead,
 	ConversationDataReadFilter,
@@ -151,6 +162,9 @@ export function createConversationModule(database: Database): ConversationModule
 			readChatHistory(database, conversationId, request),
 		readConversationData: (conversationId, filter) =>
 			readConversationData(database, conversationId, filter),
+		readMacroVariables: (conversationId, input) =>
+			readMacroVariables(database, conversationId, input),
+		editMacroVariables: (input) => editMacroVariables(database, input),
 		readActiveGenerationDetails: (conversationId, generationId) =>
 			readActiveGenerationDetails(database, conversationId, generationId),
 		readVariantDetails: (conversationId, messageId, variantId) =>

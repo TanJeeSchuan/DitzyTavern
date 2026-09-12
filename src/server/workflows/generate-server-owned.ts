@@ -47,6 +47,10 @@ export interface GenerationAttemptInput {
 	tokenEstimator?: TokenEstimator;
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
+	// ==[HUMAN APPROVED]== Initiating-client formatting context. The capture
+	// turns it into explicit macro inputs and reuses it through budgeting/send.
+	macroTimeZone?: string;
+	macroLocale?: string;
 }
 
 /** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */
@@ -282,4 +286,3 @@ export const interruptedGenerationData = (
 		interruptionCause: cause,
 		error: null,
 });
-

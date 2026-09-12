@@ -1,6 +1,6 @@
 CREATE TABLE `active_generation` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`human_message_id` integer,
 	`message_id` integer NOT NULL,
 	`variant_id` integer NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE `active_generation` (
 	`started_at` text NOT NULL,
 	`prompt_plan_json` text NOT NULL,
 	`prompt_inspection_json` text DEFAULT '{}' NOT NULL,
-	`history_roles_json` text NOT NULL,
+	`prompt_context_json` text NOT NULL,
 	`generation_settings_json` text NOT NULL,
 	`connection_json` text NOT NULL,
 	`generation_intent_json` text DEFAULT '{"type":"tail"}' NOT NULL,
@@ -23,7 +23,9 @@ CREATE TABLE `active_generation` (
 	`provenance_namespace` text,
 	`provenance_key` text,
 	`provenance_value` text,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade,
+	`macro_preset_id` integer,
+	`macro_writes_json` text DEFAULT '[]' NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`human_message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`variant_id`) REFERENCES `message_variant`(`id`) ON UPDATE no action ON DELETE cascade,
@@ -34,7 +36,7 @@ CREATE TABLE `active_generation` (
 --> statement-breakpoint
 CREATE TABLE `artifact` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`namespace` text NOT NULL,
 	`key` text NOT NULL,
 	`relative_path` text NOT NULL,
@@ -42,10 +44,10 @@ CREATE TABLE `artifact` (
 	`media_type` text NOT NULL,
 	`byte_length` integer NOT NULL,
 	`sha256` text NOT NULL,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `artifact_chat_namespace_key_unique` ON `artifact` (`chat_id`,`namespace`,`key`);--> statement-breakpoint
+CREATE UNIQUE INDEX `artifact_conversation_namespace_key_unique` ON `artifact` (`conversation_id`,`namespace`,`key`);--> statement-breakpoint
 CREATE TABLE `character_opening` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`character_id` integer NOT NULL,
@@ -71,24 +73,6 @@ CREATE TABLE `character` (
 	`revision` integer DEFAULT 0 NOT NULL,
 	`pinned` integer DEFAULT false NOT NULL,
 	`deleted_at` text
-);
---> statement-breakpoint
-CREATE TABLE `chat_data` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`chat_id` integer NOT NULL,
-	`namespace` text NOT NULL,
-	`key` text NOT NULL,
-	`value` text NOT NULL,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `chat_data_owner_key_unique` ON `chat_data` (`chat_id`,`namespace`,`key`);--> statement-breakpoint
-CREATE TABLE `chat` (
-	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`name` text NOT NULL,
-	`creation_time` text NOT NULL,
-	`last_message_time` text NOT NULL,
-	`revision` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `connection_profile_discovery_model` (
@@ -139,18 +123,28 @@ CREATE TABLE `connection_settings` (
 );
 --> statement-breakpoint
 CREATE TABLE `conversation_control` (
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`seat` text NOT NULL,
 	`participant_id` integer NOT NULL,
-	PRIMARY KEY(`chat_id`, `seat`),
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade,
+	PRIMARY KEY(`conversation_id`, `seat`),
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`participant_id`) REFERENCES `participant`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "conversation_control_seat_check" CHECK("conversation_control"."seat" IN ('human', 'model'))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `conversation_control_participant_unique` ON `conversation_control` (`participant_id`);--> statement-breakpoint
+CREATE TABLE `conversation_data` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`conversation_id` integer NOT NULL,
+	`namespace` text NOT NULL,
+	`key` text NOT NULL,
+	`value` text NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `conversation_data_owner_key_unique` ON `conversation_data` (`conversation_id`,`namespace`,`key`);--> statement-breakpoint
 CREATE TABLE `conversation_generation_settings` (
-	`chat_id` integer PRIMARY KEY NOT NULL,
+	`conversation_id` integer PRIMARY KEY NOT NULL,
 	`model_id` text DEFAULT 'deepseek-chat' NOT NULL,
 	`temperature` real,
 	`top_p` real,
@@ -164,12 +158,27 @@ CREATE TABLE `conversation_generation_settings` (
 	`continuation_instruction` text DEFAULT 'Continue the narrative naturally without repeating the previous text.' NOT NULL,
 	`continuation_prefill_suffix` text DEFAULT '' NOT NULL,
 	`request_overrides_json` text DEFAULT '{}' NOT NULL,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `conversation_prompt_preset` (
+	`conversation_id` integer PRIMARY KEY NOT NULL,
+	`prompt_preset_id` integer NOT NULL,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`prompt_preset_id`) REFERENCES `prompt_preset`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `conversation` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`name` text NOT NULL,
+	`creation_time` text NOT NULL,
+	`last_message_time` text NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `generation_replay` (
 	`id` integer PRIMARY KEY NOT NULL,
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`message_id` integer NOT NULL,
 	`variant_id` integer NOT NULL,
 	`human_participant_id` integer NOT NULL,
@@ -179,7 +188,7 @@ CREATE TABLE `generation_replay` (
 	`started_at` text NOT NULL,
 	`prompt_plan_json` text NOT NULL,
 	`prompt_inspection_json` text NOT NULL,
-	`history_roles_json` text NOT NULL,
+	`prompt_context_json` text NOT NULL,
 	`generation_settings_json` text NOT NULL,
 	`connection_json` text NOT NULL,
 	`generation_intent_json` text NOT NULL,
@@ -190,7 +199,7 @@ CREATE TABLE `generation_replay` (
 	`terminal_status` text NOT NULL,
 	`terminal_at` text NOT NULL,
 	`expires_at` text NOT NULL,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`variant_id`) REFERENCES `message_variant`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -207,21 +216,21 @@ CREATE TABLE `messages_data` (
 CREATE UNIQUE INDEX `messages_data_owner_key_unique` ON `messages_data` (`message_id`,`namespace`,`key`);--> statement-breakpoint
 CREATE TABLE `messages` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`position` integer NOT NULL,
 	`timestamp` text NOT NULL,
 	`author_participant_id` integer,
 	`author_name` text,
 	`context_human_participant_id` integer,
 	`context_model_participant_id` integer,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`author_participant_id`) REFERENCES `participant`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`context_human_participant_id`) REFERENCES `participant`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`context_model_participant_id`) REFERENCES `participant`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "messages_context_pair_together" CHECK((context_human_participant_id IS NULL) = (context_model_participant_id IS NULL))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `messages_chat_position_unique` ON `messages` (`chat_id`,`position`);--> statement-breakpoint
+CREATE UNIQUE INDEX `messages_conversation_position_unique` ON `messages` (`conversation_id`,`position`);--> statement-breakpoint
 CREATE TABLE `message_variant_data` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`message_variant_id` integer NOT NULL,
@@ -265,13 +274,48 @@ CREATE TABLE `participant_prompt` (
 --> statement-breakpoint
 CREATE TABLE `participant` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
-	`chat_id` integer NOT NULL,
+	`conversation_id` integer NOT NULL,
 	`name` text NOT NULL,
 	`position` integer NOT NULL,
 	`source_character_id` integer,
 	`deleted_at` text,
-	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`source_character_id`) REFERENCES `character`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `participant_chat_position_unique` ON `participant` (`chat_id`,`position`) WHERE "participant"."deleted_at" IS NULL;
+CREATE UNIQUE INDEX `participant_conversation_position_unique` ON `participant` (`conversation_id`,`position`) WHERE "participant"."deleted_at" IS NULL;--> statement-breakpoint
+CREATE TABLE `prompt_preset_block` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`preset_id` integer NOT NULL,
+	`position` integer NOT NULL,
+	`reference` text NOT NULL,
+	`enabled` integer DEFAULT true NOT NULL,
+	`role` text,
+	`name` text,
+	`content` text,
+	FOREIGN KEY (`preset_id`) REFERENCES `prompt_preset`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `prompt_preset_block_position_unique` ON `prompt_preset_block` (`preset_id`,`position`);--> statement-breakpoint
+CREATE TABLE `prompt_preset` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`name` text NOT NULL,
+	`is_default` integer DEFAULT false NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `prompt_preset_single_default` ON `prompt_preset` (`is_default`) WHERE "prompt_preset"."is_default" = 1;
+--> statement-breakpoint
+INSERT INTO `prompt_preset` (`name`, `is_default`) VALUES ('Default', 1);
+--> statement-breakpoint
+INSERT INTO `prompt_preset_block` (`preset_id`, `position`, `reference`, `enabled`, `role`)
+SELECT `prompt_preset`.`id`, `recipe`.`position`, `recipe`.`reference`, 1, `recipe`.`role`
+FROM `prompt_preset`, (
+	SELECT 1 AS `position`, 'model-system-instruction' AS `reference`, 'system' AS `role`
+	UNION ALL SELECT 2, 'human-identity', 'user'
+	UNION ALL SELECT 3, 'model-identity', 'assistant'
+	UNION ALL SELECT 4, 'model-scenario', 'system'
+	UNION ALL SELECT 5, 'model-example-dialogue', 'user'
+	UNION ALL SELECT 6, 'history', NULL
+	UNION ALL SELECT 7, 'model-post-history-instruction', 'system'
+) AS `recipe` WHERE `prompt_preset`.`is_default` = 1;

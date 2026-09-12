@@ -22,6 +22,7 @@ import type { Database } from "bun:sqlite";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
+	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationDataEntry,
@@ -54,11 +55,17 @@ import {
 	captureConfiguration,
 	capturedAcceptanceFields,
 	compilePlanFrom,
+	configurationFor,
 	modelRequestFor,
 	deriveGeneration,
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
+import {
+	generationCaptureForPreview,
+	type GenerationPreviewCapture,
+	type GenerationPreviewRecord,
+} from "./generation-preview";
 import {
 	continuationIntentFor,
 	type EffectiveGenerationSettings,
@@ -114,6 +121,49 @@ interface GenerationLifecyclePolicy<
 	// ahead of the shared outcome entries. Only Continue has any.
 	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
+
+type PreviewCaptureFor<Kind extends GenerationPreviewCapture["kind"]> = Extract<
+	GenerationPreviewCapture,
+	{ kind: Kind }
+>["capture"];
+
+const capturePreview = <Kind extends GenerationPreviewCapture["kind"]>(
+	database: Database,
+	snapshot: ConversationSnapshot,
+	input: {
+		preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
+		connection?: ModelClientConnectionSnapshot | null;
+		content?: string;
+		messageId?: number;
+		macroTimeZone?: string;
+		macroLocale?: string;
+	},
+	expectedKind: Kind,
+): PreviewCaptureFor<Kind> => {
+	if (input.preview === undefined) {
+		throw new InvalidConversationCommandError("The Prompt Plan preview is unavailable.");
+	}
+	const prepared = generationCaptureForPreview(
+		database,
+		snapshot,
+		input.preview.record,
+		input.preview.editedPlan,
+		input.connection,
+		{
+			content: input.content,
+			messageId: input.messageId,
+			timeZone: input.macroTimeZone,
+			locale: input.macroLocale,
+		},
+	);
+	if (prepared.kind !== expectedKind) {
+		const label = expectedKind === "send" ? "Send" : expectedKind === "continuation" ? "Continue" : "Swipe";
+		throw new InvalidConversationCommandError(`The Prompt Plan intent does not match ${label}.`);
+	}
+	// ==[HUMAN APPROVED]== SAFETY: The discriminant check above narrows the preview capture to the
+	// lifecycle requested by this policy.
+	return prepared.capture as PreviewCaptureFor<Kind>;
+};
 
 /**
  * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
@@ -211,6 +261,8 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
@@ -287,6 +339,7 @@ export function inspectGenerationPrompt(
 		undefined,
 		options.connectionSettings,
 	);
+	const preparedConfiguration = configurationFor(configuration, snapshot);
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
@@ -295,14 +348,15 @@ export function inspectGenerationPrompt(
 	const plan = compilePlanFrom(
 		derivation,
 		{
-			settings: configuration.settings,
-			slots: configuration.slots,
+			settings: preparedConfiguration.settings,
+			slots: preparedConfiguration.slots,
 			// ==[HUMAN APPROVED]== The safe Connection fact narrows before compilation so Request
 			// Overrides are narrowed exactly as an executed attempt would narrow
 			// them.
-			connection: configuration.connection === null
+			connection: preparedConfiguration.connection === null
 				? null
-				: { apiFormat: configuration.connection.apiFormat },
+				: { apiFormat: preparedConfiguration.connection.apiFormat },
+			macroEnvironment: preparedConfiguration.macroEnvironment,
 		},
 		{ estimator: options.tokenEstimator },
 	);
@@ -338,14 +392,21 @@ export async function sendThroughProvisionalTailGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSendGeneration(
-			currentDatabase,
-			snapshot,
-			current.content,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				const capture = capturePreview(currentDatabase, snapshot, current, "send");
+				return { ...capture, humanContent: current.content, reuseHumanMessageId: capture.reuseHumanMessageId };
+			}
+			return captureSendGeneration(
+				currentDatabase,
+				snapshot,
+				current.content,
+				current.connection,
+				current.connectionSettings,
+				current.tokenEstimator,
+				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -364,6 +425,8 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
 	expectedRevision: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
 }
 
@@ -378,13 +441,19 @@ export async function continueGeneration(
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureContinuationGeneration(
-			currentDatabase,
-			snapshot,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				return capturePreview(currentDatabase, snapshot, current, "continuation");
+			}
+			return captureContinuationGeneration(
+				currentDatabase,
+				snapshot,
+				current.connection,
+				current.connectionSettings,
+				current.tokenEstimator,
+				{ timeZone: current.macroTimeZone, locale: current.macroLocale },
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -425,6 +494,8 @@ export interface GenerateSiblingVariantInput {
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
@@ -437,6 +508,9 @@ export interface GenerateSiblingVariantInput {
 	tokenEstimator?: TokenEstimator;
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
+	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured with the sibling attempt.
+	macroTimeZone?: string;
+	macroLocale?: string;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -454,11 +528,16 @@ export async function generateSiblingVariant(
 	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
 	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSiblingGeneration(
-			currentDatabase,
-			snapshot,
-			current,
-		),
+		capture: (currentDatabase, snapshot, current) => {
+			if (current.preview !== undefined) {
+				return capturePreview(currentDatabase, snapshot, current, "sibling");
+			}
+			return captureSiblingGeneration(
+				currentDatabase,
+				snapshot,
+				current,
+			);
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,

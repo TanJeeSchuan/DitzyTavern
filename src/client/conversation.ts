@@ -10,12 +10,21 @@ import type {
 	ConversationSummary,
 	GenerationAccepted,
 	GenerationStartResponse,
+	GenerationPreview,
+	GenerationPreviewBody,
 	GenerationStopped,
 	GenerationsStopped,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
 import { notFoundOutcome } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
+import { Value } from "@sinclair/typebox/value";
+import {
+	macroVariables,
+	macroVariablesAppliedResponse,
+} from "../shared/contract/macro-variables";
+import type { MacroVariables } from "../shared/contract/macro-variables";
+import type { MacroValue } from "../shared/contract/macro-variables";
 
 export type {
 	ActiveGenerationDetails,
@@ -32,6 +41,8 @@ export type {
 	ParticipantDefinition,
 	VariantDetails,
 } from "../shared/contract/conversation-schema";
+export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
+export type { GenerationPreview, GenerationPreviewBody } from "../shared/contract/conversation-schema";
 export type { PromptChannels } from "../shared/contract/prompt-schema";
 export type {
 	GenerationStreamDelta,
@@ -163,6 +174,69 @@ export async function loadConversationPromptPreset(
 	return data ?? null;
 }
 
+export type MacroVariablesOutcome =
+	| { status: "available"; variables: MacroVariables }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function loadMacroVariables(
+	conversationId: number,
+	input: { position?: number; promptPresetId?: number } = {},
+): Promise<MacroVariablesOutcome> {
+	try {
+		const { data, error } = await api.api
+			.conversations({ id: conversationId })["macro-variables"]
+			.get({ query: input });
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		return { status: "available", variables: Value.Decode(macroVariables, data) };
+	} catch {
+		return { status: "network" };
+	}
+}
+
+export type EditMacroVariablesOutcome =
+	| { status: "applied"; variables: MacroVariables; conversation: ConversationSummary }
+	| { status: "conflict"; currentConversation: ConversationSummary }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export async function editMacroVariable(
+	conversationId: number,
+	input: {
+		expectedRevision: number;
+		promptPresetId: number;
+		position: number;
+	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
+): Promise<EditMacroVariablesOutcome> {
+	try {
+		const { data, error } = await api.api
+			.conversations({ id: conversationId })["macro-variables"]
+			.post(input);
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 409 && "currentConversation" in error.value) {
+				return { status: "conflict", currentConversation: error.value.currentConversation };
+			}
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		const payload = Value.Decode(macroVariablesAppliedResponse, data);
+		return {
+			status: "applied",
+			variables: payload.variables,
+			conversation: payload.conversation,
+		};
+	} catch {
+		return { status: "network" };
+	}
+}
+
 export type GenerationDetailsOutcome<T> =
 	| { status: "available"; details: T }
 	| { status: "not-found" }
@@ -204,6 +278,34 @@ export async function loadVariantDetails(
 
 export type StartConversationGenerationResult = GenerationStartResponse;
 
+export type GenerationPreviewOutcome =
+	| { status: "available"; preview: GenerationPreview }
+	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
+	| { status: "network" };
+
+export interface MacroFormattingContext {
+	timeZone?: string;
+	locale?: string;
+}
+
+export async function previewConversationGeneration(
+	conversationId: number,
+	input: GenerationPreviewBody,
+): Promise<GenerationPreviewOutcome> {
+	try {
+		const { data, error } = await api.api.conversations({ id: conversationId }).generations.preview.post(input);
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
+		return { status: "available", preview: data };
+	} catch {
+		return { status: "network" };
+	}
+}
+
 const startGenerationError = (
 	payload: Exclude<GenerationStartResponse, { outcome: "accepted" }>,
 ): StartConversationGenerationResult => {
@@ -242,9 +344,11 @@ export function startConversationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	content: string,
+	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content }),
+		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
 		"",
 	);
 }
@@ -252,9 +356,14 @@ export function startConversationGeneration(
 export function startConversationSiblingGeneration(
 	conversationId: number,
 	messageId: number,
+	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({}),
+		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+			...formatting,
+			...preview,
+		}),
 		"Sibling",
 	);
 }
@@ -262,9 +371,11 @@ export function startConversationSiblingGeneration(
 export function startConversationContinuationGeneration(
 	conversationId: number,
 	expectedRevision: number,
+	formatting?: MacroFormattingContext,
+	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision }),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
 		"Continuation",
 	);
 }

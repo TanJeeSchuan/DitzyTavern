@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import { MacroVariablesPanel } from "../MacroVariablesPanel";
+import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import {
 	GenerationDetailsPanel,
 	type GenerationDetailsTarget,
@@ -108,6 +110,13 @@ export function ActiveWritingWorkspace({
 		dispatchPanel({ type: previewMode ? "preview-entered" : "preview-exited" });
 		if (previewMode) setGenerationDetailsTarget(null);
 	}, [previewMode]);
+
+	useEffect(() => {
+		if (generation.promptPlanPreview === null) return;
+		setGenerationDetailsTarget(null);
+		dispatchPanel({ type: "details-closed" });
+		dispatchPanel({ type: "inspector-closed" });
+	}, [generation.promptPlanPreview]);
 
 	useEffect(() => {
 		const root = document.documentElement;
@@ -225,6 +234,11 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "chat-info-opened" });
 					}}
+					onOpenVariables={() => {
+						if (story.preview !== null) return;
+						setGenerationDetailsTarget(null);
+						dispatchPanel({ type: "macro-variables-opened" });
+					}}
 				/>
 
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
@@ -267,6 +281,7 @@ export function ActiveWritingWorkspace({
 									isModelAuthoredMessage(message) &&
 									message.continuable === true &&
 									!generation.isGenerating &&
+									generation.promptPlanPreview === null &&
 									story.preview === null
 								}
 								onSibling={generation.canOfferSiblingMessage(message) ? generation.siblingMessage : undefined}
@@ -299,7 +314,7 @@ export function ActiveWritingWorkspace({
 				<Composer
 					draft={generation.draft}
 					isGenerating={generation.isGenerating}
-					canWrite={session.conversation?.playable === true && !generation.isGenerating && story.preview === null}
+					canWrite={session.conversation?.playable === true && !generation.isGenerating && generation.promptPlanPreview === null && !generation.promptPlanPreviewPending && story.preview === null}
 					isReceded={composerIsReceded}
 					onDraftChange={generation.setDraft}
 					onFocusChange={setIsComposerFocused}
@@ -309,13 +324,25 @@ export function ActiveWritingWorkspace({
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							conversation={session.conversation}
-							disabled={story.preview !== null}
+								disabled={story.preview !== null || generation.promptPlanPreview !== null || generation.promptPlanPreviewPending}
 							onConversationChange={session.setConversation}
 						/>
 					) : null}
 				/>
 				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
+
+			{generation.promptPlanPreview !== null && story.preview === null && (
+				<PromptPlanPreviewPanel
+					preview={generation.promptPlanPreview.preview}
+					pending={generation.promptPlanPreviewPending}
+					error={generation.promptPlanPreviewError ?? generation.generationError}
+					onPlanChange={generation.editPromptPlanPreview}
+					onRefresh={generation.refreshPromptPlanPreview}
+					onSend={generation.sendPromptPlanPreview}
+					onClose={generation.cancelPromptPlanPreview}
+				/>
+			)}
 
 			{panelState.detailsSurface === "chat-info" && story.preview === null && (
 				<ChatInformationPanel
@@ -331,6 +358,15 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "details-closed" });
 					}}
+				/>
+			)}
+			{panelState.detailsSurface === "macro-variables" && story.preview === null && session.conversation !== null && (
+				<MacroVariablesPanel
+					conversationId={session.conversation.id}
+					conversation={session.conversation}
+					historyPositions={story.messages.map((message) => message.position)}
+					onConversationChange={session.setConversation}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
 			{panelState.inspector === "generation" && story.preview === null && (

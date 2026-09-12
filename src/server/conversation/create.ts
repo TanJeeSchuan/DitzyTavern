@@ -1,8 +1,5 @@
 import type { Database } from "bun:sqlite";
-import {
-	compileOpening,
-	type MacroContext,
-} from "../prompt-compiler";
+import { compileOpening } from "../prompt-compiler";
 import {
 	artifactTable,
 	conversationDataTable,
@@ -23,7 +20,8 @@ import {
 	writeControlAssignment,
 	type ConversationDatabase,
 } from "./internal";
-import { selectDefaultPromptPreset } from "../prompt-preset";
+import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
+import { macroWritesToData } from "../prompt-macros";
 import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -231,22 +229,16 @@ const deriveGreetingFromInput = (
 		return null;
 	}
 	const modelSeed = participants[input.control.model];
-	const humanSeed = participants[input.control.human];
 	const openings = [...(modelSeed?.definition.openings ?? [])];
 	if (openings.length === 0) return null;
 
 	// ==[HUMAN APPROVED]== The greeting is the first compiled use of the model seat's openings:
 	// macros resolve relative to the owning model Definition. The stored
 	// openings stay raw; only the presented greeting text is expanded.
-	const context: MacroContext = {
-		self: normalizeParticipantName(modelSeed.definition.name),
-		other: normalizeParticipantName(humanSeed.definition.name),
-	};
-
 	return {
 		timestamp: baseTime,
 		variants: openings.map((content, index) => ({
-			content: compileOpening(content, context, index + 1).text,
+			content,
 			timestamp: baseTime,
 			selected: index === 0,
 		})),
@@ -320,7 +312,7 @@ export function createConversation(
 			explicitMessages.length === 0
 				? deriveGreetingFromInput(input, baseTime)
 				: null;
-		const messages: readonly ConversationCreationMessage[] =
+		let messages: readonly ConversationCreationMessage[] =
 			greeting !== null ? [greeting] : explicitMessages;
 
 		const { creationTime, lastMessageTime } = deriveChatTimes(messages, baseTime);
@@ -345,6 +337,42 @@ export function createConversation(
 		// is persisted rather than derived, so a later Default change never
 		// silently rewrites what an existing Conversation assembles through.
 		selectDefaultPromptPreset(db, conversation.id);
+		if (greeting !== null && modelIndex !== undefined && humanIndex !== undefined) {
+			const modelSeed = seeds[modelIndex];
+			const humanSeed = seeds[humanIndex];
+			const macroEnvironment = {
+				self: normalizeParticipantName(modelSeed.definition.name),
+				other: normalizeParticipantName(humanSeed.definition.name),
+				conversationId: conversation.id,
+				promptPresetId: readDefaultPromptPresetId(db),
+				// ==[HUMAN APPROVED]== The creation timestamp is the captured opening assembly clock. This
+				// keeps native creation deterministic for callers that provide one.
+				now: new Date(baseTime),
+				timeZone: input.macroTimeZone,
+				locale: input.macroLocale,
+				variables: new Map(),
+				expansionCache: new Map(),
+			};
+			messages = [{
+				...greeting,
+				variants: greeting.variants.map((variant, index) => {
+					const expanded = compileOpening(
+						variant.content,
+						{ self: macroEnvironment.self, other: macroEnvironment.other },
+						index + 1,
+						{ ...macroEnvironment, variables: new Map(macroEnvironment.variables), expansionCache: new Map() },
+					);
+					return {
+						...variant,
+						content: expanded.text,
+						data: [
+							...(variant.data ?? []),
+							...macroWritesToData(macroEnvironment.promptPresetId, expanded.writes),
+						],
+					};
+				}),
+			}];
+		}
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers. Insertion failures surface as the creation

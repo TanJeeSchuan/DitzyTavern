@@ -118,6 +118,12 @@ export const compileGenerationPlan = (
 	input: CompileGenerationPlanInput,
 ): GenerationPlan => {
 	const intent = input.intent;
+	const macroEnvironment = input.macroEnvironment === undefined
+		? undefined
+		: {
+			...input.macroEnvironment,
+			expansionCache: input.macroEnvironment.expansionCache ?? new Map(),
+		};
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
@@ -127,6 +133,7 @@ export const compileGenerationPlan = (
 			model: input.model,
 			context,
 			recipe: input.recipe,
+			macroEnvironment,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};

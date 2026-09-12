@@ -1,7 +1,7 @@
 import type { PrimaryPanel } from "./types";
 
 export type SplitInspector = "generation" | "models";
-export type DetailsSurface = "chat-info" | "generation-details";
+export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables";
 
 export interface PanelCoordinationState {
 	primaryPanel: PrimaryPanel;
@@ -18,6 +18,7 @@ export type PanelCoordinationAction =
 	| { type: "inspector-closed" }
 	| { type: "chat-info-opened" }
 	| { type: "generation-details-opened" }
+	| { type: "macro-variables-opened" }
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
 	| { type: "preview-exited" }
@@ -74,6 +75,14 @@ export function reducePanelCoordination(
 				primaryPanel: null,
 				inspector: null,
 				detailsSurface: "generation-details",
+			};
+		case "macro-variables-opened":
+			if (state.previewMode) return state;
+			return {
+				...state,
+				primaryPanel: null,
+				inspector: null,
+				detailsSurface: "macro-variables",
 			};
 		case "details-closed":
 			return { ...state, detailsSurface: null };
