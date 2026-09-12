@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
 	compileOpening,
 	compilePrompt,
-	expandMacroText,
 	type CompilePromptInput,
 	type PromptPlan,
 } from ".";
+import { expandMacroText } from "../../shared/prompt-macro-engine";
 
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database. The roles are the stored

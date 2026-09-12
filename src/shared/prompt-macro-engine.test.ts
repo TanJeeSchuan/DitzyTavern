@@ -114,11 +114,11 @@ describe("Prompt macro engine", () => {
 
 	test("honors fractional explicit UTC offsets", () => {
 		const result = expandMacroText(
-			"{{isotime::UTC+05:30}} {{isotime::UTC-04:30}}",
+			"{{isotime::UTC+05:30}} {{isotime::UTC-04:30}} {{isotime UTC+05:30}} {{isotime:UTC-04:30}} {{datetimeformat:YYYY-MM-DD HH:mm}}",
 			environment,
 			"instruction",
 		);
-		expect(result.text).toBe("20:34 10:34");
+		expect(result.text).toBe("20:34 10:34 20:34 10:34 2026-01-02 15:04");
 	});
 
 	test("reports unknown macros without blocking expansion and keeps unmatched closes", () => {

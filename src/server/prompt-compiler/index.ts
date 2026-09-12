@@ -7,7 +7,6 @@ export {
 	compilePrompt,
 	referencedDefinitionBlocks,
 } from "./compiler";
-export { expandMacroText, validateMacroText } from "../../shared/prompt-macro-engine";
 export {
 	budgetPromptPlan,
 	budgetEditedPromptPlan,
@@ -19,10 +18,7 @@ export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
 	GenerationIntent,
-	MacroContext,
 	MacroEnvironment,
-	MacroExpansionResult,
-	MacroValidationResult,
 	PromptBlock,
 	PromptContextEntry,
 	PromptHistoryRole,

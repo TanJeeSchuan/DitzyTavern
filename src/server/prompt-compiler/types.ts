@@ -5,16 +5,8 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 
-// ==[HUMAN APPROVED]== The macro language types live with the shared processors in
-// `src/shared/prompt-macros.ts` and `prompt-macro-engine.ts`; this barrel re-exports them so the deep
-// Prompt Compiler seam keeps one surface for its callers.
-export type {
-	MacroContext,
-} from "../../shared/prompt-macros";
 export type {
 	MacroEnvironment,
-	MacroExpansionResult,
-	MacroValidationResult,
 } from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,

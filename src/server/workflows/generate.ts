@@ -63,6 +63,7 @@ import {
 } from "./generate-capture";
 import {
 	generationCaptureForPreview,
+	type GenerationPreviewCapture,
 	type GenerationPreviewRecord,
 } from "./generation-preview";
 import {
@@ -120,6 +121,49 @@ interface GenerationLifecyclePolicy<
 	// ahead of the shared outcome entries. Only Continue has any.
 	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
+
+type PreviewCaptureFor<Kind extends GenerationPreviewCapture["kind"]> = Extract<
+	GenerationPreviewCapture,
+	{ kind: Kind }
+>["capture"];
+
+const capturePreview = <Kind extends GenerationPreviewCapture["kind"]>(
+	database: Database,
+	snapshot: ConversationSnapshot,
+	input: {
+		preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
+		connection?: ModelClientConnectionSnapshot | null;
+		content?: string;
+		messageId?: number;
+		macroTimeZone?: string;
+		macroLocale?: string;
+	},
+	expectedKind: Kind,
+): PreviewCaptureFor<Kind> => {
+	if (input.preview === undefined) {
+		throw new InvalidConversationCommandError("The Prompt Plan preview is unavailable.");
+	}
+	const prepared = generationCaptureForPreview(
+		database,
+		snapshot,
+		input.preview.record,
+		input.preview.editedPlan,
+		input.connection,
+		{
+			content: input.content,
+			messageId: input.messageId,
+			timeZone: input.macroTimeZone,
+			locale: input.macroLocale,
+		},
+	);
+	if (prepared.kind !== expectedKind) {
+		const label = expectedKind === "send" ? "Send" : expectedKind === "continuation" ? "Continue" : "Swipe";
+		throw new InvalidConversationCommandError(`The Prompt Plan intent does not match ${label}.`);
+	}
+	// ==[HUMAN APPROVED]== SAFETY: The discriminant check above narrows the preview capture to the
+	// lifecycle requested by this policy.
+	return prepared.capture as PreviewCaptureFor<Kind>;
+};
 
 /**
  * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
@@ -350,16 +394,8 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				const prepared = generationCaptureForPreview(
-					currentDatabase,
-					snapshot,
-					current.preview.record,
-					current.preview.editedPlan,
-					current.connection,
-					{ content: current.content, timeZone: current.macroTimeZone, locale: current.macroLocale },
-				);
-				if (prepared.kind !== "send") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Send.");
-				return { ...prepared.capture, humanContent: current.content, reuseHumanMessageId: prepared.capture.reuseHumanMessageId };
+				const capture = capturePreview(currentDatabase, snapshot, current, "send");
+				return { ...capture, humanContent: current.content, reuseHumanMessageId: capture.reuseHumanMessageId };
 			}
 			return captureSendGeneration(
 				currentDatabase,
@@ -407,16 +443,7 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				const prepared = generationCaptureForPreview(
-					currentDatabase,
-					snapshot,
-					current.preview.record,
-					current.preview.editedPlan,
-					current.connection,
-					{ timeZone: current.macroTimeZone, locale: current.macroLocale },
-				);
-				if (prepared.kind !== "continuation") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Continue.");
-				return prepared.capture;
+				return capturePreview(currentDatabase, snapshot, current, "continuation");
 			}
 			return captureContinuationGeneration(
 				currentDatabase,
@@ -503,16 +530,7 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, snapshot, current) => {
 			if (current.preview !== undefined) {
-				const prepared = generationCaptureForPreview(
-					currentDatabase,
-					snapshot,
-					current.preview.record,
-					current.preview.editedPlan,
-					current.connection,
-					{ messageId: current.messageId, timeZone: current.macroTimeZone, locale: current.macroLocale },
-				);
-				if (prepared.kind !== "sibling") throw new InvalidConversationCommandError("The Prompt Plan intent does not match Swipe.");
-				return prepared.capture;
+				return capturePreview(currentDatabase, snapshot, current, "sibling");
 			}
 			return captureSiblingGeneration(
 				currentDatabase,

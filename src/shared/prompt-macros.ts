@@ -104,12 +104,3 @@ export function scanMacroToken(
 	if (macro !== null) return { kind: "macro", name: macro.name, end: macro.end };
 	return { kind: "char", end: index + 1 };
 }
-
-export { expandMacroText, validateMacroText } from "./prompt-macro-engine";
-export type {
-	MacroEnvironment,
-	MacroExpansionResult,
-	MacroValidationResult,
-	MacroValue,
-	MacroVariableWrite,
-} from "./prompt-macro-engine";

@@ -135,6 +135,22 @@ export const readMacroWrites = (
 	.sort((left, right) => left.entry.key.localeCompare(right.entry.key))
 	.map(({ write }) => write);
 
+type SelectedVariant = {
+	selected: boolean;
+	data: readonly ConversationDataEntry[];
+};
+
+const forEachSelectedWrite = <Variant extends SelectedVariant>(
+	variants: readonly Variant[],
+	presetId: number,
+	visit: (write: MacroVariableWrite, variant: Variant) => void,
+): void => {
+	for (const variant of variants) {
+		if (!variant.selected) continue;
+		for (const write of readMacroWrites(variant.data, presetId)) visit(write, variant);
+	}
+};
+
 /** ==[HUMAN APPROVED]== Derive effective state from the baseline and selected narrative path, in Message order. */
 export const deriveMacroState = (input: {
 	initialData: readonly ConversationDataEntry[];
@@ -142,13 +158,10 @@ export const deriveMacroState = (input: {
 	selectedVariants: readonly Pick<ConversationVariantSnapshot, "selected" | "data">[];
 }): Map<string, MacroValue> => {
 	const state = readMacroInitialValues(input.initialData, input.presetId);
-	for (const variant of input.selectedVariants) {
-		if (!variant.selected) continue;
-		for (const write of readMacroWrites(variant.data, input.presetId)) {
-			if (write.operation === "delete") state.delete(write.name);
-			else state.set(write.name, write.value ?? null);
-		}
-	}
+	forEachSelectedWrite(input.selectedVariants, input.presetId, (write) => {
+		if (write.operation === "delete") state.delete(write.name);
+		else state.set(write.name, write.value ?? null);
+	});
 	return state;
 };
 
@@ -172,26 +185,23 @@ export const deriveMacroVariables = (input: {
 	for (const [name, value] of readMacroInitialValues(input.initialData, input.presetId)) {
 		values.set(name, { name, value, source: { type: "initial" } });
 	}
-	for (const variant of input.selectedVariants) {
-		if (!variant.selected) continue;
-		for (const write of readMacroWrites(variant.data, input.presetId)) {
-			if (write.operation === "delete") {
-				values.delete(write.name);
-				continue;
-			}
-			values.set(write.name, {
-				name: write.name,
-				value: write.value === undefined ? null : write.value,
-				source: {
-					type: "variant",
-					messageId: variant.messageId,
-					messagePosition: variant.messagePosition,
-					variantId: variant.variantId,
-					variantPosition: variant.variantPosition,
-				},
-			});
+	forEachSelectedWrite(input.selectedVariants, input.presetId, (write, variant) => {
+		if (write.operation === "delete") {
+			values.delete(write.name);
+			return;
 		}
-	}
+		values.set(write.name, {
+			name: write.name,
+			value: write.value === undefined ? null : write.value,
+			source: {
+				type: "variant",
+				messageId: variant.messageId,
+				messagePosition: variant.messagePosition,
+				variantId: variant.variantId,
+				variantPosition: variant.variantPosition,
+			},
+		});
+	});
 	return [...values.values()].sort((left, right) => left.name.localeCompare(right.name));
 };
 

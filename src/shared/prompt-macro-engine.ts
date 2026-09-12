@@ -89,6 +89,16 @@ const openPattern = (source: string, offset: number): [string] | null =>
 const closePattern = (source: string, offset: number): [string] | null =>
 	source.startsWith("}}", offset) && !isEscaped(source, offset) ? ["}}"] : null;
 
+const bareMacroHeader = (source: string, offset: number): string => {
+	const open = source.lastIndexOf("{{", offset);
+	return open < 0 ? "" : source.slice(open + 2, offset).trim().replace(/^[#!/]+\s*/, "");
+};
+
+const singleColonPattern = (source: string, offset: number): [string] | null => {
+	if (source[offset] !== ":" || source[offset + 1] === ":") return null;
+	return /^[.$]?[A-Za-z](?:[\w-]*[\w])?$/.test(bareMacroHeader(source, offset)) ? [":"] : null;
+};
+
 const documentTextPattern = (source: string, offset: number): [string] | null => {
 	if (balancedMacroAt(source, offset)) return null;
 	let end = offset;
@@ -102,7 +112,12 @@ const documentTextPattern = (source: string, offset: number): [string] | null =>
 const macroPartPattern = (source: string, offset: number): [string] | null => {
 	let end = offset;
 	while (end < source.length) {
-		if (balancedMacroAt(source, end) || closePattern(source, end) !== null || source[end] === ":") break;
+		if (
+			balancedMacroAt(source, end) ||
+			closePattern(source, end) !== null ||
+			source.startsWith("::", end) ||
+			singleColonPattern(source, end) !== null
+		) break;
 		end += 1;
 	}
 	return end === offset ? null : [source.slice(offset, end)];
@@ -111,7 +126,7 @@ const macroPartPattern = (source: string, offset: number): [string] | null => {
 const MacroOpen = createToken({ name: "MacroOpen", pattern: { exec: openPattern }, push_mode: "macro", line_breaks: false });
 const MacroClose = createToken({ name: "MacroClose", pattern: { exec: closePattern }, pop_mode: true, line_breaks: false });
 const DoubleColon = createToken({ name: "DoubleColon", pattern: /::/ });
-const Colon = createToken({ name: "Colon", pattern: /:/ });
+const Colon = createToken({ name: "Colon", pattern: { exec: singleColonPattern }, line_breaks: false });
 const DocumentText = createToken({ name: "DocumentText", pattern: { exec: documentTextPattern }, line_breaks: true });
 const MacroPart = createToken({ name: "MacroPart", pattern: { exec: macroPartPattern }, line_breaks: true });
 
@@ -164,6 +179,7 @@ class MacroDocumentParser extends CstParser {
 	public macroArgumentSingle = this.RULE("macroArgumentSingle", () => {
 		this.MANY(() => this.OR([
 			{ ALT: () => this.CONSUME(MacroPart) },
+			{ ALT: () => this.CONSUME(Colon) },
 			{ ALT: () => this.SUBRULE(this.macro) },
 		]));
 	});
@@ -176,10 +192,8 @@ class MacroDocumentParser extends CstParser {
 	});
 
 	public singleColonArguments = this.RULE("singleColonArguments", () => {
-		this.AT_LEAST_ONE(() => {
-			this.CONSUME(Colon);
-			this.SUBRULE(this.macroArgumentSingle);
-		});
+		this.CONSUME(Colon);
+		this.SUBRULE(this.macroArgumentSingle);
 	});
 
 	public documentPart = this.RULE("documentPart", () => this.OR([
@@ -325,6 +339,7 @@ class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDef
 	public macroArgumentSingle(ctx: CstNode["children"], source: MacroSource): string[] {
 		return [orderedElements([
 			...(ctx.MacroPart ?? []),
+			...(ctx.Colon ?? []),
 			...(ctx.macro ?? []),
 		]).map((element) => "image" in element
 			? element.image

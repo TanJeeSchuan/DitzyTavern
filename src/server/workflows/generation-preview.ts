@@ -75,6 +75,8 @@ const relevantMessages = (
 			variant: (() => {
 				const selected = message.variants.find((variant) => variant.selected);
 				return selected === undefined ? null : {
+					id: selected.id,
+					position: selected.position,
 					content: selected.content,
 					writes: readMacroWrites(selected.data, presetId),
 				};

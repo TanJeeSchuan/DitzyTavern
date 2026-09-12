@@ -20,20 +20,7 @@ export const isMacroValue = (value: unknown): value is MacroValue =>
 // union on the same contract.
 export const macroValue = Type.Unsafe<MacroValue>(Type.Unknown());
 
-export const macroVariableWrite = Type.Union([
-	Type.Object({
-		operation: Type.Literal("set"),
-		name: Type.String(),
-		value: macroValue,
-	}),
-	Type.Object({
-		operation: Type.Literal("delete"),
-		name: Type.String(),
-		value: Type.Optional(Type.Undefined()),
-	}),
-]);
-
-const macroVariableSource = Type.Union([
+const macroVariableLocation = Type.Union([
 	Type.Object({ type: Type.Literal("initial") }),
 	Type.Object({
 		type: Type.Literal("variant"),
@@ -43,6 +30,8 @@ const macroVariableSource = Type.Union([
 		variantPosition: Type.Integer(),
 	}),
 ]);
+
+const macroVariableSource = macroVariableLocation;
 
 export const macroVariable = Type.Object({
 	name: Type.String(),
@@ -50,16 +39,7 @@ export const macroVariable = Type.Object({
 	source: macroVariableSource,
 });
 
-export const macroVariablesTarget = Type.Union([
-	Type.Object({ type: Type.Literal("initial") }),
-	Type.Object({
-		type: Type.Literal("variant"),
-		messageId: Type.Integer(),
-		messagePosition: Type.Integer(),
-		variantId: Type.Integer(),
-		variantPosition: Type.Integer(),
-	}),
-]);
+export const macroVariablesTarget = macroVariableLocation;
 
 export const macroVariables = Type.Object({
 	conversationId: Type.Integer(),
@@ -75,30 +55,29 @@ export const macroVariablesQuery = Type.Object({
 	promptPresetId: Type.Optional(numericWire),
 });
 
-const macroVariableSet = Type.Object({
+const macroVariableSetWrite = Type.Object({
 	operation: Type.Literal("set"),
 	name: Type.String(),
 	value: macroValue,
 });
 
-const macroVariableDelete = Type.Object({
+const macroVariableDeleteWrite = Type.Object({
 	operation: Type.Literal("delete"),
 	name: Type.String(),
+	value: Type.Optional(Type.Undefined()),
+});
+
+export const macroVariableWrite = Type.Union([macroVariableSetWrite, macroVariableDeleteWrite]);
+
+const macroVariableEditFields = Type.Object({
+	expectedRevision: Type.Integer(),
+	promptPresetId: Type.Integer(),
+	position: Type.Integer({ minimum: 0 }),
 });
 
 export const macroVariablesEditBody = Type.Union([
-	Type.Object({
-		expectedRevision: Type.Integer(),
-		promptPresetId: Type.Integer(),
-		position: Type.Integer({ minimum: 0 }),
-		...macroVariableSet.properties,
-	}),
-	Type.Object({
-		expectedRevision: Type.Integer(),
-		promptPresetId: Type.Integer(),
-		position: Type.Integer({ minimum: 0 }),
-		...macroVariableDelete.properties,
-	}),
+	Type.Intersect([macroVariableEditFields, macroVariableSetWrite]),
+	Type.Intersect([macroVariableEditFields, macroVariableDeleteWrite]),
 ]);
 
 export const macroVariablesAppliedResponse = Type.Object({
