@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
+import {
+	clearGenerationPreviewRegistry,
+} from "../workflows/generation-preview";
 import type {
 	GenerationPreview,
 	GenerationPreviewBody,
@@ -53,7 +56,11 @@ describe("Prompt Plan inspection", () => {
 	let database: Database;
 
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
-	afterEach(() => database.close());
+	afterEach(() => {
+		setSystemTime();
+		clearGenerationPreviewRegistry();
+		database.close();
+	});
 
 	test("sends the edited plan literally and preserves expansion-time writes", async () => {
 		const originalRandom = Math.random;
@@ -112,7 +119,7 @@ describe("Prompt Plan inspection", () => {
 		const app = createConversationRoutes(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch(() => {}) });
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
 		const module = createConversationModule(database);
-		const changed = module.execute({
+		module.execute({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			action: { type: "add-participant", definition: { name: "Extra", prompt, openings: [] } },
@@ -122,7 +129,9 @@ describe("Prompt Plan inspection", () => {
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: changed.revision, content: "hello", previewId: plan.previewId }),
+				// Preview sends use the server's narrow revision read; the client may still hold
+				// the revision from before an unrelated edit.
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
 			},
 		));
 		expect(accepted.status).toBe(200);
@@ -149,5 +158,94 @@ describe("Prompt Plan inspection", () => {
 			},
 		));
 		expect(rejected.status).toBe(422);
+	});
+
+	test("keeps an inspected plan past the old quarter-hour window", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		setSystemTime(Date.now() + 15 * 60 * 1000 + 1);
+		const started = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(started.status).toBe(200);
+	});
+
+	test("requires a refresh after the process-local preview registry is cleared", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		clearGenerationPreviewRegistry();
+		const started = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(started.status).toBe(422);
+		expect(await started.json()).toEqual({
+			outcome: "invalid",
+			reason: "The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
+		});
+	});
+
+	test("keeps only the newest inspected plan for a Conversation", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const first = await preview(app, conversation.id, { kind: "send", content: "first" });
+		const second = await preview(app, conversation.id, { kind: "send", content: "second" });
+		const rejected = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "first",
+					previewId: first.previewId,
+				}),
+			},
+		));
+		expect(rejected.status).toBe(422);
+		const accepted = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "second",
+					previewId: second.previewId,
+				}),
+			},
+		));
+		expect(accepted.status).toBe(200);
 	});
 });

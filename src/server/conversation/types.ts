@@ -296,6 +296,9 @@ export interface ConversationCommand {
 export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	exists(conversationId: number): boolean;
+	// Narrow authoritative revision read used when a preview send ignores the
+	// client's stale revision; it does not load Conversation history.
+	getRevision(conversationId: number): number | undefined;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
 	getSummary(conversationId: number): ConversationSummary | undefined;
 	getGenerationSettings(

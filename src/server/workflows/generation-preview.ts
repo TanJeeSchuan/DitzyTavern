@@ -13,6 +13,9 @@ import {
 	captureContinuationGeneration,
 	captureSendGeneration,
 	captureSiblingGeneration,
+	participatingHistoryFor,
+	type GenerationAttemptKind,
+	type ParticipatingHistory,
 	type ContinuationGenerationCapture,
 	type SendGenerationCapture,
 	type CapturedGeneration,
@@ -23,7 +26,7 @@ import { conversationGenerationSettings, promptPlan } from "../../shared/contrac
 import { ConversationNotFoundError, InvalidConversationCommandError } from "../conversation";
 import { deriveMacroState, readMacroWrites } from "../prompt-macros";
 
-export type GenerationPreviewKind = "send" | "continuation" | "sibling";
+export type GenerationPreviewKind = GenerationAttemptKind;
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }
@@ -36,6 +39,7 @@ export interface GenerationPreviewRecord {
 	readonly fingerprint: string;
 	readonly capture: GenerationPreviewCapture;
 	readonly createdAt: number;
+	readonly expiresAt: number;
 }
 
 export interface GenerationPreviewRequest {
@@ -50,20 +54,41 @@ export interface GenerationPreviewRequest {
 	readonly tokenEstimator?: TokenEstimator;
 }
 
-const previews = new Map<string, GenerationPreviewRecord>();
-const PREVIEW_RETENTION_MS = 15 * 60 * 1000;
+// ==[HUMAN APPROVED]== One process-local inspected-plan session per Conversation. Replacing a
+// preview abandons the previous plan immediately, so the store is bounded by
+// Conversations rather than inspection requests. The expiry is a leak guard
+// for abandoned Conversations; it is not part of fingerprint staleness.
+const previews = new Map<number, GenerationPreviewRecord>();
+export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
+const GENERATION_PREVIEW_SWEEP_INTERVAL_MS = 60 * 1000;
+
+export const sweepExpiredGenerationPreviews = (now: number = Date.now()): void => {
+	for (const [conversationId, preview] of previews) {
+		if (preview.expiresAt <= now) previews.delete(conversationId);
+	}
+};
+
+let previewSweepTimer: ReturnType<typeof setInterval> | undefined;
+const ensureScheduledPreviewSweep = (): void => {
+	if (previewSweepTimer !== undefined) return;
+	previewSweepTimer = setInterval(
+		sweepExpiredGenerationPreviews,
+		GENERATION_PREVIEW_SWEEP_INTERVAL_MS,
+	);
+	previewSweepTimer.unref();
+};
+
+// ==[HUMAN APPROVED]== Simulates a server restart: inspected plans are process-local and therefore
+// cannot be resumed by a new process. The next send must refresh the plan.
+export const clearGenerationPreviewRegistry = (): void => {
+	previews.clear();
+};
 
 const relevantMessages = (
-	snapshot: ConversationSnapshot,
-	kind: GenerationPreviewKind,
-	messageId: number | undefined,
+	participatingMessages: ParticipatingHistory["messages"],
 	presetId: number,
 ) => {
-	const end = kind === "sibling" && messageId !== undefined
-		? snapshot.messages.findIndex((message) => message.id === messageId)
-		: snapshot.messages.length;
-	return snapshot.messages
-		.slice(0, end < 0 ? snapshot.messages.length : end)
+	return participatingMessages
 		.map((message) => ({
 			id: message.id,
 			position: message.position,
@@ -86,13 +111,9 @@ const relevantMessages = (
 
 const relevantParticipants = (
 	snapshot: ConversationSnapshot,
-	kind: GenerationPreviewKind,
-	messageId: number | undefined,
+	participation: ParticipatingHistory,
 ) => {
-	const target = kind === "sibling" && messageId !== undefined
-		? snapshot.messages.find((message) => message.id === messageId)
-		: undefined;
-	const pair = target?.historicalContext ?? snapshot.control;
+	const pair = participation.control;
 	return [pair.humanParticipantId, pair.modelParticipantId]
 		.map((id) => snapshot.cast.find((participant) => participant.id === id))
 		.filter((participant): participant is NonNullable<typeof participant> => participant !== undefined)
@@ -122,26 +143,21 @@ export const generationPreviewFingerprint = (
 	if (!Value.Check(conversationGenerationSettings, settings)) {
 		throw new InvalidConversationCommandError("The Conversation's Generation Settings are invalid.");
 	}
-	const target = input.kind === "sibling" && input.messageId !== undefined
-		? snapshot.messages.find((message) => message.id === input.messageId)
-		: undefined;
+	const participation = participatingHistoryFor(snapshot, input.kind, input.messageId);
 	return JSON.stringify({
 		kind: input.kind,
 		content: input.content ?? null,
 		messageId: input.messageId ?? null,
 		timeZone: input.timeZone ?? null,
 		locale: input.locale ?? null,
-		control: target?.historicalContext ?? snapshot.control,
-		participants: relevantParticipants(snapshot, input.kind, input.messageId),
+		control: participation.control,
+		participants: relevantParticipants(snapshot, participation),
 		recipe,
 		settings,
 		macroState: [...deriveMacroState({
 			initialData: snapshot.data,
 			presetId: recipe.id,
-			selectedVariants: snapshot.messages
-				.slice(0, input.kind === "sibling" && input.messageId !== undefined
-					? Math.max(0, snapshot.messages.findIndex((message) => message.id === input.messageId))
-					: snapshot.messages.length)
+			selectedVariants: participation.messages
 				.map((message) => {
 					const selected = message.variants.find((variant) => variant.selected);
 					return { selected: selected !== undefined, data: selected?.data ?? [] };
@@ -156,15 +172,17 @@ export const generationPreviewFingerprint = (
 				adapter: input.connection.adapter,
 				apiFormat: input.connection.apiFormat,
 			},
-		messages: relevantMessages(snapshot, input.kind, input.messageId, recipe.id),
+		messages: relevantMessages(participation.messages, recipe.id),
 	});
 };
 
 const ensureRecord = (id: string, conversationId: number): GenerationPreviewRecord => {
-	const record = previews.get(id);
-	if (record === undefined || record.conversationId !== conversationId || Date.now() - record.createdAt > PREVIEW_RETENTION_MS) {
-		previews.delete(id);
-		throw new InvalidConversationCommandError("The Prompt Plan preview has expired. Refresh it before sending.");
+	sweepExpiredGenerationPreviews();
+	const record = previews.get(conversationId);
+	if (record === undefined || record.id !== id) {
+		throw new InvalidConversationCommandError(
+			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
+		);
 	}
 	return record;
 };
@@ -191,6 +209,8 @@ export const createGenerationPreview = (
 	database: Database,
 	input: GenerationPreviewRequest,
 ): GenerationPreviewRecord => {
+	ensureScheduledPreviewSweep();
+	sweepExpiredGenerationPreviews();
 	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
 	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.kind === "send" && input.content === undefined) {
@@ -240,6 +260,7 @@ export const createGenerationPreview = (
 					}),
 					messageId: input.messageId!,
 				};
+	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
 		conversationId: input.conversationId,
@@ -248,9 +269,10 @@ export const createGenerationPreview = (
 			connection: capture.capture.connection,
 		}),
 		capture,
-		createdAt: Date.now(),
+		createdAt: now,
+		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
 	};
-	previews.set(record.id, record);
+	previews.set(record.conversationId, record);
 	return record;
 };
 

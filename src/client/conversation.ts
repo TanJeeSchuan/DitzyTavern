@@ -12,6 +12,7 @@ import type {
 	GenerationStartResponse,
 	GenerationPreview,
 	GenerationPreviewBody,
+	PromptPlan,
 	GenerationStopped,
 	GenerationsStopped,
 	VariantDetails,
@@ -345,7 +346,7 @@ export function startConversationGeneration(
 	expectedRevision: number,
 	content: string,
 	formatting?: MacroFormattingContext,
-	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
+	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
 		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
@@ -357,7 +358,7 @@ export function startConversationSiblingGeneration(
 	conversationId: number,
 	messageId: number,
 	formatting?: MacroFormattingContext,
-	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
+	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
 		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
@@ -372,7 +373,7 @@ export function startConversationContinuationGeneration(
 	conversationId: number,
 	expectedRevision: number,
 	formatting?: MacroFormattingContext,
-	preview?: { previewId: string; promptPlan: import("../shared/contract/conversation-schema").PromptPlan },
+	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
 		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),

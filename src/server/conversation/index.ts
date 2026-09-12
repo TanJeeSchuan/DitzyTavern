@@ -16,6 +16,7 @@ import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
 import {
 	conversationExists,
+	readConversationRevision,
 	readConversationSnapshot,
 	readConversationSummary,
 } from "./snapshot";
@@ -83,6 +84,7 @@ export {
 	readChatHistory,
 } from "./history";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
+export { readConversationRevision } from "./snapshot";
 export {
 	cleanupRetainedGenerationInspections,
 	GENERATION_REPLAY_RETENTION_MS,
@@ -152,6 +154,7 @@ export function createConversationModule(database: Database): ConversationModule
 	return {
 		create: (input) => createConversation(database, input),
 		exists: (conversationId) => conversationExists(database, conversationId),
+		getRevision: (conversationId) => readConversationRevision(database, conversationId),
 		getSnapshot: (conversationId) => readConversationSnapshot(database, conversationId),
 		getSummary: (conversationId) => readConversationSummary(database, conversationId),
 		getGenerationSettings: (conversationId) =>

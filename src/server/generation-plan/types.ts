@@ -5,10 +5,9 @@
 // Generation workflow consumes.
 
 import type { ConnectionApiFormat } from "../connection-settings/types";
-import type { GenerationJsonObject } from "../../shared/generation-provenance";
 import type {
 	CanonicalGenerationSettings,
-	GenerationSettingsField,
+	EffectiveGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { MacroEnvironment } from "../../shared/prompt-macro-engine";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
@@ -21,21 +20,6 @@ import type {
 	TokenEstimator,
 } from "../prompt-compiler";
 
-// The value one canonical field takes in the Effective Generation Settings:
-// every field keeps its configured value except the three Continuation
-// fields and the currently unenforced Sibling Generation limit. A value that
-// did not participate is null rather than copied. Request Overrides narrow
-// to the active API Format namespace.
-type EffectiveFieldValue<K extends GenerationSettingsField> = K extends
-	| "continuationStrategy"
-	| "continuationInstruction"
-	| "continuationPrefillSuffix"
-	| "siblingGenerationLimit"
-	? CanonicalGenerationSettings[K] | null
-	: K extends "requestOverrides"
-		? GenerationJsonObject
-		: CanonicalGenerationSettings[K];
-
 /**
  * The Generation Settings that actually participate in one Generation
  * attempt. Effective means DitzyTavern used a value locally or supplied it
@@ -45,9 +29,7 @@ type EffectiveFieldValue<K extends GenerationSettingsField> = K extends
  * its instruction, and an assistant-prefill Continuation retains only its
  * Prefill suffix.
  */
-export type EffectiveGenerationSettings = {
-	readonly [K in GenerationSettingsField]: EffectiveFieldValue<K>;
-};
+export type { EffectiveGenerationSettings } from "../../shared/contract/generation-settings";
 
 /**
  * The complete application plan for one Generation attempt: its Prompt Plan,

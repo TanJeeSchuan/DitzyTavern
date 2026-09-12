@@ -70,9 +70,40 @@ interface GenerationDerivation {
 	human: CastParticipantSnapshot;
 	model: CastParticipantSnapshot;
 	context: readonly PromptContextEntry[];
-	/** ==[HUMAN APPROVED]== Sibling state stops before its target Message; Tail and Continue use the full path. */
-	endExclusiveIndex?: number;
 }
+
+export type GenerationAttemptKind = "send" | "continuation" | "sibling";
+
+export interface ParticipatingHistory {
+	readonly messages: readonly ConversationSnapshot["messages"][number][];
+	readonly control: ConversationSnapshot["control"];
+	readonly target: ConversationSnapshot["messages"][number] | undefined;
+}
+
+// ==[HUMAN APPROVED]== One boundary decides the history and historical Control pair an attempt
+// sees. A missing sibling target contributes no history and falls back to the
+// current Control pair; the generation-specific eligibility check still rejects
+// that target before any provider request can start.
+export const participatingHistoryFor = (
+	snapshot: ConversationSnapshot,
+	kind: GenerationAttemptKind,
+	messageId?: number,
+): ParticipatingHistory => {
+	if (kind !== "sibling" || messageId === undefined) {
+		return {
+			messages: snapshot.messages,
+			control: snapshot.control,
+			target: undefined,
+		};
+	}
+	const targetIndex = snapshot.messages.findIndex((message) => message.id === messageId);
+	const target = targetIndex < 0 ? undefined : snapshot.messages[targetIndex];
+	return {
+		messages: target === undefined ? [] : snapshot.messages.slice(0, targetIndex),
+		control: target?.historicalContext ?? snapshot.control,
+		target,
+	};
+};
 
 // ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model
 // writing when its Author Stamp matches the current model Control seat or the
@@ -105,18 +136,16 @@ const roleForMessage = (
 
 // ==[HUMAN APPROVED]== Selected-history entries for prompt compilation, derived from each
 // Message's selected Variant and its immutable Author Stamp name.
-// `endExclusiveIndex` limits the entries to Messages strictly preceding a
-// targeted sibling Variant; omitted, the entire ordered snapshot counts, as
-// a Tail Generation uses.
+// The caller supplies the already-bounded participating Messages, so this
+// helper cannot accidentally include a sibling target or its later history.
 const selectedHistoryFrom = (
-	snapshot: ConversationSnapshot,
+	messages: readonly ConversationSnapshot["messages"][number][],
 	humanParticipantId: number,
 	modelParticipantId: number,
-	endExclusiveIndex?: number,
 ): readonly PromptContextEntry[] => {
 	const entries: PromptContextEntry[] = [];
 
-	for (const message of snapshot.messages.slice(0, endExclusiveIndex)) {
+	for (const message of messages) {
 		const selected = message.variants.find((variant) => variant.selected);
 		if (selected === undefined) continue;
 
@@ -134,17 +163,18 @@ const selectedHistoryFrom = (
 export const deriveGeneration = (
 	snapshot: ConversationSnapshot,
 ): GenerationDerivation | null => {
+	const participation = participatingHistoryFor(snapshot, "send");
 	const human = snapshot.cast.find(
-		(participant) => participant.id === snapshot.control.humanParticipantId,
+		(participant) => participant.id === participation.control.humanParticipantId,
 	);
 	const model = snapshot.cast.find(
-		(participant) => participant.id === snapshot.control.modelParticipantId,
+		(participant) => participant.id === participation.control.modelParticipantId,
 	);
 	if (human === undefined || model === undefined || human.id === model.id) {
 		return null;
 	}
 
-	return { human, model, context: selectedHistoryFrom(snapshot, human.id, model.id) };
+	return { human, model, context: selectedHistoryFrom(participation.messages, human.id, model.id) };
 };
 
 /**
@@ -241,7 +271,7 @@ export function captureConfiguration(
 export const configurationFor = (
 	configuration: AttemptConfiguration,
 	snapshot: ConversationSnapshot,
-	endExclusiveIndex?: number,
+	participatingMessages: readonly ConversationSnapshot["messages"][number][] = snapshot.messages,
 ): AttemptConfiguration => ({
 	...configuration,
 	macroEnvironment: {
@@ -249,7 +279,7 @@ export const configurationFor = (
 		variables: deriveMacroState({
 			initialData: snapshot.data,
 			presetId: configuration.promptPresetId,
-			selectedVariants: (endExclusiveIndex === undefined ? snapshot.messages : snapshot.messages.slice(0, endExclusiveIndex))
+			selectedVariants: participatingMessages
 				.flatMap((message) => message.variants.filter((variant) => variant.selected)),
 		}),
 		writes: [],
@@ -624,10 +654,8 @@ const deriveSiblingDerivation = (
 	snapshot: ConversationSnapshot,
 	messageId: number,
 ): GenerationDerivation => {
-	const targetIndex = snapshot.messages.findIndex(
-		(message) => message.id === messageId,
-	);
-	const target = targetIndex === -1 ? undefined : snapshot.messages[targetIndex];
+	const participation = participatingHistoryFor(snapshot, "sibling", messageId);
+	const target = participation.target;
 	if (target === undefined) {
 		throw new InvalidConversationCommandError(
 			`Message ${messageId} does not belong to Conversation ${snapshot.id}.`,
@@ -651,11 +679,7 @@ const deriveSiblingDerivation = (
 		throw new SiblingVariantUnavailableError(eligibility.reason);
 	}
 
-	const historicalPair = target.historicalContext;
-	if (historicalPair === null) {
-		// Unreachable after the eligibility check; keeps the pair trusted. ==[HUMAN APPROVED]==
-		throw new SiblingVariantUnavailableError("missing-historical-context");
-	}
+	const historicalPair = participation.control;
 	const human = snapshot.cast.find(
 		(participant) => participant.id === historicalPair.humanParticipantId,
 	);
@@ -671,12 +695,12 @@ const deriveSiblingDerivation = (
 	// ==[HUMAN APPROVED]== Selected history strictly preceding the target Message. Excluding the
 	// target by construction also excludes all of its existing sibling
 	// Variants: an alternative never prompts on another alternative.
-	const context = selectedHistoryFrom(snapshot, human.id, model.id, targetIndex);
+	const context = selectedHistoryFrom(participation.messages, human.id, model.id);
 
 	// ==[HUMAN APPROVED]== The historical pair's current Definitions and names, so a rename or
 	// Prompt edit before this generation starts contributes; the Message
 	// itself keeps displaying its captured author name.
-	return { human, model, context, endExclusiveIndex: targetIndex };
+	return { human, model, context };
 };
 
 export function captureSiblingGeneration(
@@ -702,7 +726,11 @@ export function captureSiblingGeneration(
 	);
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
-	const preparedConfiguration = configurationFor(configuration, snapshot, derivation.endExclusiveIndex);
+	const preparedConfiguration = configurationFor(
+		configuration,
+		snapshot,
+		participatingHistoryFor(snapshot, "sibling", input.messageId).messages,
+	);
 	const plan = compilePlanFrom(derivation, preparedConfiguration, {
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,

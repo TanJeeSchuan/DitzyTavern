@@ -3,6 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
 	canonicalGenerationSettings,
+	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
 import { promptChannels } from "./prompt-schema";
@@ -20,6 +21,8 @@ import type {
 	GenerationProvenance as SharedGenerationProvenance,
 	ProvenanceSettingsField,
 } from "../generation-provenance";
+
+export { effectiveGenerationSettings } from "./generation-settings";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
@@ -612,6 +615,20 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
+const generationFormattingContext = {
+	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
+	// Conversation settings. It is shared by preview and all three Generation
+	// start bodies so the route cannot rename or omit one side.
+	timeZone: Type.Optional(Type.String()),
+	locale: Type.Optional(Type.String()),
+};
+
+const inspectedPlanFields = {
+	previewId: Type.Optional(Type.String()),
+	promptPlan: Type.Optional(promptPlan),
+	...generationFormattingContext,
+};
+
 // Send carries the client draft and the Conversation revision it was based
 // on. Generation acceptance is deliberately a complete typed operation: an
 // omitted revision or draft must never fall through to an older request shape.
@@ -621,40 +638,22 @@ export const generationBody = Type.Object({
 	// A preview token carries the server-captured macro clock, random draws,
 	// and pending writes. The optional plan is the user's direct edit of that
 	// capture; it is never treated as provider JSON.
-	previewId: Type.Optional(Type.String()),
-	promptPlan: Type.Optional(promptPlan),
-	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
-	// Conversation settings. It is optional so callers with no locale hint use
-	// the evaluator's deterministic defaults.
-	timeZone: Type.Optional(Type.String()),
-	locale: Type.Optional(Type.String()),
+	...inspectedPlanFields,
 });
 
 // ==[HUMAN APPROVED]== Continue carries only the Conversation revision. The server derives the
 // selected terminal Message and current Control pair from its snapshot.
 export const continuationBody = Type.Object({
 	expectedRevision: Type.Integer(),
-	previewId: Type.Optional(Type.String()),
-	promptPlan: Type.Optional(promptPlan),
-	timeZone: Type.Optional(Type.String()),
-	locale: Type.Optional(Type.String()),
+	...inspectedPlanFields,
 });
 
 export type ConversationCommandBody = Static<typeof conversationCommandBody>;
 export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
 
-export const siblingGenerationQuery = Type.Object({
-	previewId: Type.Optional(Type.String()),
-	timeZone: Type.Optional(Type.String()),
-	locale: Type.Optional(Type.String()),
-});
-
 export const siblingGenerationBody = Type.Object({
-	previewId: Type.Optional(Type.String()),
-	promptPlan: Type.Optional(promptPlan),
-	timeZone: Type.Optional(Type.String()),
-	locale: Type.Optional(Type.String()),
+	...inspectedPlanFields,
 });
 
 const generationPreviewKind = Type.Union([
@@ -665,11 +664,9 @@ const generationPreviewKind = Type.Union([
 
 export const generationPreviewBody = Type.Object({
 	kind: generationPreviewKind,
-	expectedRevision: Type.Optional(Type.Integer()),
 	content: Type.Optional(Type.String()),
 	messageId: Type.Optional(Type.Integer()),
-	timeZone: Type.Optional(Type.String()),
-	locale: Type.Optional(Type.String()),
+	...generationFormattingContext,
 });
 
 const generationPreviewBudget = Type.Object({
@@ -697,12 +694,11 @@ export const generationPreview = Type.Object({
 		human: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
 		model: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
 	}),
-	effectiveSettings: jsonValue,
+	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(generationPreviewWrite),
 	budget: generationPreviewBudget,
 });
 
-export type SiblingGenerationQuery = Static<typeof siblingGenerationQuery>;
 export type SiblingGenerationBody = Static<typeof siblingGenerationBody>;
 export type GenerationPreviewBody = Static<typeof generationPreviewBody>;
 export type GenerationPreview = Static<typeof generationPreview>;

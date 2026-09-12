@@ -233,9 +233,9 @@ export function useGenerationController({
 		);
 	};
 
-	const openPromptPlanPreview = (request: Omit<GenerationPreviewBody, "expectedRevision">) => {
+	const openPromptPlanPreview = (request: GenerationPreviewBody) => {
 		if (conversation === null || promptPlanPreviewPending) return;
-		void requestPromptPlanPreview({ ...request, expectedRevision: conversation.revision });
+		void requestPromptPlanPreview(request);
 	};
 
 	const refreshPromptPlanPreview = () => {

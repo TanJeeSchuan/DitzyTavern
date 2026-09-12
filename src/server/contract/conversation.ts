@@ -45,8 +45,8 @@ import {
 	conversationIdParams,
 	conversationSummary,
 	continuationBody,
-	siblingGenerationQuery,
 	siblingGenerationBody,
+	type PromptPlan,
 	generationAccepted,
 	generationBody,
 	generationPreview,
@@ -160,7 +160,7 @@ const previewUseFor = (
 	conversationId: number,
 	kind: "send" | "continuation" | "sibling",
 	previewId: string | undefined,
-	promptPlan: import("../../shared/contract/conversation-schema").PromptPlan | undefined,
+	promptPlan: PromptPlan | undefined,
 ) => {
 	if (previewId === undefined) {
 		if (promptPlan !== undefined) {
@@ -182,11 +182,11 @@ const currentConversationRevision = (
 	database: Database | undefined,
 	conversationId: number,
 ): number => {
-	const snapshot = withConversationModule(database, (conversationModule) =>
-		conversationModule.getSnapshot(conversationId),
+	const revision = withConversationModule(database, (conversationModule) =>
+		conversationModule.getRevision(conversationId),
 	);
-	if (snapshot === undefined) throw new ConversationNotFoundError(conversationId);
-	return snapshot.revision;
+	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
+	return revision;
 };
 
 // ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so transport
@@ -523,30 +523,29 @@ export const createConversationRoutes = (
 		// closing it never aborts the sibling provider attempt.
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params, query, body }) =>
+			async ({ params, body }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
 					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
-						macroTimeZone: body?.timeZone ?? query.timeZone,
-						macroLocale: body?.locale ?? query.locale,
-						preview: (body?.previewId ?? query.previewId) === undefined
+						macroTimeZone: body?.timeZone,
+						macroLocale: body?.locale,
+						preview: body?.previewId === undefined
 							? undefined
-							: previewUseFor(database, params.id, "sibling", body?.previewId ?? query.previewId, body?.promptPlan),
+							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
 					}),
-			),
-			{
-				params: messageIdParams,
-				query: siblingGenerationQuery,
-				body: Type.Optional(siblingGenerationBody),
-				response: {
-					200: generationAccepted,
-					404: notFoundOutcome,
-					409: notPlayableOutcome,
-					422: invalidOutcome,
+				),
+				{
+					params: messageIdParams,
+					body: Type.Optional(siblingGenerationBody),
+					response: {
+						200: generationAccepted,
+						404: notFoundOutcome,
+						409: notPlayableOutcome,
+						422: invalidOutcome,
+					},
 				},
-			},
 		)
 		// ==[HUMAN APPROVED]== Revisioned Conversation commands remain separate from the
 		// server-owned Generation acceptance and event routes above.
