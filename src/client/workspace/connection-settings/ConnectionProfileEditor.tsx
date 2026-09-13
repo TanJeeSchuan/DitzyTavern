@@ -1,4 +1,5 @@
-import { KeyRound, RotateCcw, Save, SlidersHorizontal, Zap } from "lucide-react";
+import { Check, ChevronDown, KeyRound, RefreshCw, RotateCcw, Save, SlidersHorizontal, Zap } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 import type { ConnectionProfileDraft } from "../../connection-settings";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
@@ -15,16 +16,24 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 		credentialDraft,
 		testModelId,
 		testPending,
+		discoveryPending,
+		refreshModelsDisabledReason,
 		setDraft,
 		setCredentialDraft,
 		setTestModelId,
 		testDraft,
+		refreshModels,
 		applyDraft,
 		updateCredential,
 		resetCredential,
 		activateSelectedProfile,
 	} = controller;
 	const updateDraft = (patch: Partial<ConnectionProfileDraft>) => setDraft({ ...draft, ...patch });
+	const modelOptions = Array.from(new Set([...(selectedProfile?.discoveryCatalog ?? []), ...draft.pinnedModels]));
+	const updateTestModel = (value: string) => {
+		setTestModelId(value);
+		updateDraft({ pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] });
+	};
 
 	return (
 		<section className="connection-editor-section">
@@ -49,12 +58,26 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 					</div>
 					<small>{credentialDraft.length > 0 && selectedProfile ? "Update this credential before testing it." : credentialDraft.length > 0 ? "The credential will be saved when this connection is created." : "Saved credentials cannot be viewed. Enter a new one to replace it."}</small>
 				</label>
-				<label className="field">
-					<span>Default and test model</span>
-					<input className="field-input" value={testModelId} onChange={(event) => { const value = event.target.value; setTestModelId(value); updateDraft({ pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] }); }} placeholder="deepseek-chat" list={`connection-models-${selectedProfileId ?? "new"}`} />
-					<datalist id={`connection-models-${selectedProfileId ?? "new"}`}>{Array.from(new Set([...(selectedProfile?.discoveryCatalog ?? []), ...draft.pinnedModels])).map((modelId) => <option key={modelId} value={modelId} />)}</datalist>
+				<div className="field">
+					<label htmlFor={`connection-model-${selectedProfileId ?? "new"}`}>Default and test model</label>
+					<div className="connection-model-field-row">
+						<div className="connection-model-picker">
+							<input id={`connection-model-${selectedProfileId ?? "new"}`} className="field-input connection-model-input" value={testModelId} onChange={(event) => updateTestModel(event.target.value)} placeholder="deepseek-flash" />
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger asChild><button className="connection-model-menu-button" type="button" aria-label="Show available models" disabled={modelOptions.length === 0}><ChevronDown aria-hidden="true" /></button></DropdownMenu.Trigger>
+								<DropdownMenu.Portal>
+									<DropdownMenu.Content className="connection-model-menu-content" align="end" sideOffset={6}>
+										{modelOptions.map((modelId) => <DropdownMenu.Item className="connection-model-menu-item" key={modelId} onSelect={() => updateTestModel(modelId)}><span>{modelId}</span>{modelId === testModelId && <Check aria-hidden="true" />}</DropdownMenu.Item>)}
+									</DropdownMenu.Content>
+								</DropdownMenu.Portal>
+							</DropdownMenu.Root>
+						</div>
+						<span title={refreshModelsDisabledReason ?? (discoveryPending ? "Refreshing models" : "Refresh models")}>
+							<button className="secondary-button connection-refresh-models-button" type="button" aria-label={discoveryPending ? "Refreshing models" : "Refresh models"} aria-busy={discoveryPending} disabled={refreshModelsDisabledReason !== undefined} onClick={() => void refreshModels()}><RefreshCw aria-hidden="true" /></button>
+						</span>
+					</div>
 					<small>Used for connection tests and saved as the default model.</small>
-				</label>
+				</div>
 
 				<ConnectionAdvancedSummary controller={controller} onOpenInspector={onOpenInspector} />
 

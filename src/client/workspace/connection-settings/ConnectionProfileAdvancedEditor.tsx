@@ -11,12 +11,9 @@ export function ConnectionProfileAdvancedEditor({
 		draft,
 		selectedProfile,
 		headerEditorData,
-		discoveryPending,
 		resolvedRequestUrl,
-		refreshModelsDisabledReason,
 		setDraft,
 		setHeaderEditorData,
-		refreshModels,
 	} = controller;
 	const updateDraft = (patch: Partial<ConnectionProfileDraft>) => setDraft({ ...draft, ...patch });
 
@@ -27,8 +24,7 @@ export function ConnectionProfileAdvancedEditor({
 				<label className="field"><span>Request URL</span><input className="field-input" value={draft.requestUrl} onChange={(event) => updateDraft({ requestUrl: event.target.value })} placeholder="https://example.com/" /><small>Resolved destination: {resolvedRequestUrl}</small></label>
 				<div className="connection-models-url">
 					<label className="field"><span>Models URL <em>(optional, exact endpoint)</em></span><input className="field-input" value={draft.modelsUrl} onChange={(event) => updateDraft({ modelsUrl: event.target.value })} placeholder="https://example.com/models" /></label>
-					<span className="connection-refresh-models-button" title={refreshModelsDisabledReason}><button className="secondary-button" type="button" disabled={refreshModelsDisabledReason !== undefined} onClick={() => void refreshModels()}>{discoveryPending ? "Refreshing..." : "Refresh Models"}</button></span>
-					<small>{selectedProfile === undefined ? "Save the connection before refreshing." : `${selectedProfile.discoveryCatalog.length} model names available as suggestions.`}</small>
+					<small>{selectedProfile === undefined ? "Save the connection to refresh its model catalog." : `${selectedProfile.discoveryCatalog.length} model names available as suggestions.`}</small>
 				</div>
 				<div className="connection-header-editor">
 					<div className="connection-header-heading"><div><h4>Custom headers</h4>{Object.keys(headerEditorData).length === 0 && <span>No custom headers</span>}</div></div>

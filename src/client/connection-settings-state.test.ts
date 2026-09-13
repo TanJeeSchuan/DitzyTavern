@@ -132,6 +132,15 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.error).toBeNull();
 	});
 
+	test("choosing a blank preset opens the new-profile editor", () => {
+		const next = reduceConnectionSettingsController(controllerState(), {
+			type: "choose-preset",
+			preset: { ...preset, profile: emptyConnectionProfileDraft },
+		});
+
+		expect(next.editorOpen).toBe(true);
+	});
+
 	test("a command conflict replaces authority while retaining the local editor", () => {
 		const conflict = {
 			outcome: "conflict" as const,

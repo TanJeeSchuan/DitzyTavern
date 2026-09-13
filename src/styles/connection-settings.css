@@ -267,8 +267,113 @@
 	gap: 0.45rem;
 }
 
+.connection-model-field-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: stretch;
+	gap: 0.45rem;
+}
+
+.connection-model-picker {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+}
+
+.connection-model-picker:focus-within {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}
+
+.connection-model-input {
+	min-width: 0;
+	border: 0;
+	background: transparent;
+}
+
+.connection-model-input:focus-visible {
+	border-color: transparent;
+	box-shadow: none;
+}
+
+.connection-model-menu-button {
+	display: grid;
+	place-items: center;
+	width: 2.55rem;
+	border: 0;
+	border-left: 1px solid var(--border);
+	border-radius: 0 0.7rem 0.7rem 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.connection-model-menu-button:hover:not(:disabled),
+.connection-model-menu-button:focus-visible,
+.connection-model-menu-button[aria-expanded="true"] {
+	background: var(--surface-raised);
+	color: var(--foreground);
+}
+
+.connection-model-menu-button svg,
+.connection-model-menu-item svg {
+	width: 0.9rem;
+	height: 0.9rem;
+}
+
+.connection-model-menu-content {
+	z-index: 60;
+	display: grid;
+	min-width: min(22rem, calc(100vw - 2rem));
+	max-height: min(18rem, var(--radix-dropdown-menu-content-available-height));
+	overflow-y: auto;
+	padding: 0.3rem;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-raised);
+	box-shadow: 0 0.7rem 1.8rem var(--shadow-soft);
+}
+
+.connection-model-menu-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.6rem;
+	min-height: 2.35rem;
+	padding: 0.5rem 0.6rem;
+	border-radius: 0.5rem;
+	font-size: 0.8rem;
+	outline: 0;
+	cursor: pointer;
+}
+
+.connection-model-menu-item[data-highlighted] {
+	background: var(--accent-soft);
+	color: var(--accent-foreground);
+}
+
+.connection-model-menu-item span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.connection-model-field-row > span {
+	display: flex;
+}
+
 .connection-refresh-models-button {
-	justify-self: start;
+	display: inline-flex;
+	align-items: center;
+	width: 2.55rem;
+	height: 100%;
+	padding: 0;
+}
+
+.connection-refresh-models-button svg {
+	width: 0.9rem;
+	height: 0.9rem;
 }
 
 .connection-models-url > small {

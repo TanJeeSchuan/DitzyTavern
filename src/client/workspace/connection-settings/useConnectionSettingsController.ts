@@ -89,6 +89,7 @@ export type ConnectionSettingsController = {
 	pendingDeletionProfileId: number | null;
 	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
+	editorOpen: boolean;
 	canSave: boolean;
 	validationError: string | null;
 	basicValidationError: string | null;
@@ -145,6 +146,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
+		editorOpen,
 		conflict,
 		notice,
 		error,
@@ -412,6 +414,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
+		editorOpen,
 		canSave,
 		validationError,
 		basicValidationError,

@@ -13,7 +13,7 @@ const deepSeekProfile: ConnectionProfileDraft = {
 	adapter: "deepseek",
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120000,
-	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+	pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
 };
 
 const presets: readonly ConnectionPreset[] = [

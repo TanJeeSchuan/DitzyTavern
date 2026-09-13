@@ -63,7 +63,7 @@ export function ConnectionSettingsPanel({
 				/>
 			)}
 
-			{(controller.selectedProfile !== undefined || controller.draft.displayName.length > 0) && <ConnectionProfileEditor controller={controller} onOpenInspector={onOpenInspector} />}
+			{controller.editorOpen && <ConnectionProfileEditor controller={controller} onOpenInspector={onOpenInspector} />}
 
 			{(controller.notice || controller.error || controller.conflict) && (
 				<p className={controller.error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={controller.error ? "alert" : "status"}>

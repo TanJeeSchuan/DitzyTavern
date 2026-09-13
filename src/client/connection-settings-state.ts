@@ -65,6 +65,7 @@ export type ConnectionSettingsControllerState = {
 	pendingDeletionProfileId: number | null;
 	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
+	editorOpen: boolean;
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
@@ -85,6 +86,7 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	pendingDeletionProfileId: null,
 	openProfileMenuId: null,
 	presetChoicesOpen: false,
+	editorOpen: false,
 	conflict: null,
 	notice: null,
 	error: null,
@@ -126,8 +128,9 @@ const profileEditorState = (
 		testResult: null,
 		replacementProfileId: state.settings?.profiles.find((entry) => entry.id !== profile.id)?.id ?? null,
 		pendingDeletionProfileId: null,
-	openProfileMenuId: null,
+		openProfileMenuId: null,
 		presetChoicesOpen: false,
+		editorOpen: true,
 		conflict: null,
 		notice: null,
 		error: null,
@@ -192,6 +195,7 @@ export function reduceConnectionSettingsController(
 				pendingDeletionProfileId: null,
 				openProfileMenuId: null,
 				presetChoicesOpen: false,
+				editorOpen: true,
 				conflict: null,
 				notice: `${action.preset.label} defaults copied into a new editable Profile draft.`,
 				error: null,
@@ -316,6 +320,7 @@ export function reduceConnectionSettingsController(
 						...next,
 						selectedProfileId: null,
 						draft: connectionProfileDraftOf(blankConnectionProfileDraft),
+						editorOpen: false,
 						headerEditorData: {},
 						testModelId: "",
 						testResult: null,
