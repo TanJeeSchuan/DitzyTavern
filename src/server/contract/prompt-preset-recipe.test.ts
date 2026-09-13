@@ -54,7 +54,7 @@ describe("Prompt Preset stored contract boundary", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	test("keeps empty authored text and rejects missing required instruction fields", () => {
+	test("keeps empty authored text and rejects invalid instruction rows", () => {
 		const recipe = addPromptPresetInstruction(database, 1);
 		const instruction = recipe.slots.find((slot) => slot.reference === "instruction");
 		if (instruction === undefined) throw new Error("The instruction fixture is missing.");
@@ -64,14 +64,15 @@ describe("Prompt Preset stored contract boundary", () => {
 		const emptyInstruction = empty?.slots.find((slot) => slot.reference === "instruction");
 		expect(emptyInstruction).toMatchObject({ name: "", content: "", role: "system" });
 
-		database.exec(`UPDATE prompt_preset_block SET name = NULL WHERE id = ${instruction.id}`);
-		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no name");
-
-		database.exec(`UPDATE prompt_preset_block SET name = '', content = NULL WHERE id = ${instruction.id}`);
-		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no content");
-
-		database.exec(`UPDATE prompt_preset_block SET content = '', role = NULL WHERE id = ${instruction.id}`);
-		expect(() => readPromptPresetRecipe(database, 1)).toThrow("has no supported outgoing role");
+		expect(() => database.exec(
+			`UPDATE prompt_preset_block SET name = NULL WHERE id = ${instruction.id}`,
+		)).toThrow("CHECK constraint failed");
+		expect(() => database.exec(
+			`UPDATE prompt_preset_block SET content = NULL WHERE id = ${instruction.id}`,
+		)).toThrow("CHECK constraint failed");
+		expect(() => database.exec(
+			`UPDATE prompt_preset_block SET role = NULL WHERE id = ${instruction.id}`,
+		)).toThrow("CHECK constraint failed");
 	});
 });
 

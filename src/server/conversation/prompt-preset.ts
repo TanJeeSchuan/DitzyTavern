@@ -3,7 +3,6 @@ import { and, count, eq } from "drizzle-orm";
 import { referencedDefinitionBlocks } from "../prompt-compiler";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import {
-	conversationPromptPresetTable,
 	messageTable,
 	messageVariantTable,
 } from "../database/schema";
@@ -80,12 +79,6 @@ export const readConversationPromptPreset = (
 	runConversationTransaction(database, (db) => {
 		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId);
 		if (recipe === undefined) return undefined;
-		const conversation = db
-			.select({ id: conversationPromptPresetTable.conversation_id })
-			.from(conversationPromptPresetTable)
-			.where(eq(conversationPromptPresetTable.conversation_id, conversationId))
-			.get();
-		if (conversation === undefined) return undefined;
 		const control = readControlAssignment(db, conversationId);
 		const controlledIds = [control.humanParticipantId, control.modelParticipantId]
 			.filter((id): id is number => id !== null);

@@ -145,48 +145,22 @@ const forEachSelectedWrite = <Variant extends SelectedVariant>(
 	}
 };
 
-type FoldedMacroVariable = {
-	value: MacroValue;
-	source: MacroVariableSource | null;
-};
-
 const compareVariableNames = (left: string, right: string): number =>
 	left < right ? -1 : left > right ? 1 : 0;
-
-const foldMacroVariables = <Variant extends SelectedVariant>(
-	input: {
-		initialData: readonly ConversationDataEntry[];
-		presetId: number;
-		selectedVariants: readonly Variant[];
-	},
-	initialSource: MacroVariableSource | null,
-	variantSource: (variant: Variant) => MacroVariableSource | null,
-): Map<string, FoldedMacroVariable> => {
-	const values = new Map<string, FoldedMacroVariable>();
-	for (const [name, value] of readMacroInitialValues(input.initialData, input.presetId)) {
-		values.set(name, { value, source: initialSource });
-	}
-	forEachSelectedWrite(input.selectedVariants, input.presetId, (write, variant) => {
-		if (write.operation === "delete") {
-			values.delete(write.name);
-			return;
-		}
-		values.set(write.name, {
-			value: write.value,
-			source: variantSource(variant),
-		});
-	});
-	return values;
-};
 
 /** ==[HUMAN APPROVED]== Derive effective state from the baseline and selected narrative path, in Message order. */
 export const deriveMacroState = (input: {
 	initialData: readonly ConversationDataEntry[];
 	presetId: number;
 	selectedVariants: readonly SelectedVariant[];
-}): Map<string, MacroValue> => new Map(
-	[...foldMacroVariables(input, null, () => null)].map(([name, value]) => [name, value.value]),
-);
+}): Map<string, MacroValue> => {
+	const values = readMacroInitialValues(input.initialData, input.presetId);
+	forEachSelectedWrite(input.selectedVariants, input.presetId, (write) => {
+		if (write.operation === "delete") values.delete(write.name);
+		else values.set(write.name, write.value);
+	});
+	return values;
+};
 
 /** ==[HUMAN APPROVED]== Derive effective values while retaining the write that supplied each value. */
 export const deriveMacroVariables = (input: {
@@ -201,23 +175,32 @@ export const deriveMacroVariables = (input: {
 		variantPosition: number;
 	}[];
 }): MacroVariable[] => {
-	const values = foldMacroVariables(
-		input,
-		{ type: "initial" },
-		(variant) => ({
+	const values = new Map<string, { value: MacroValue; source: MacroVariableSource }>();
+	for (const [name, value] of readMacroInitialValues(input.initialData, input.presetId)) {
+		values.set(name, { value, source: { type: "initial" } });
+	}
+	forEachSelectedWrite(input.selectedVariants, input.presetId, (write, variant) => {
+		if (write.operation === "delete") {
+			values.delete(write.name);
+			return;
+		}
+		values.set(write.name, {
+			value: write.value,
+			source: {
 			type: "variant",
 			messageId: variant.messageId,
 			messagePosition: variant.messagePosition,
 			variantId: variant.variantId,
 			variantPosition: variant.variantPosition,
-		}),
-	);
+			},
+		});
+	});
 	return [...values.entries()]
 		.sort(([left], [right]) => compareVariableNames(left, right))
 		.map(([name, value]) => ({
 			name,
 			value: value.value,
-			source: value.source!,
+			source: value.source,
 		}));
 };
 

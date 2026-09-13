@@ -25,11 +25,8 @@ export function PromptPresetPanel({
 }) {
 	const editor = usePromptPresetEditor({
 		conversation,
-		open: true,
 		onConversationChange,
-		onOpenChange: (open) => {
-			if (!open) onClose();
-		},
+		onClose,
 	});
 	const ready = editor.view.status === "ready" ? editor.view : null;
 
@@ -37,7 +34,7 @@ export function PromptPresetPanel({
 		<>
 			<PanelHeader
 				title="Prompt Presets"
-				onClose={() => editor.requestOpenChange(false)}
+				onClose={editor.requestClose}
 			/>
 			<div
 				className="panel-body flex flex-col gap-6"

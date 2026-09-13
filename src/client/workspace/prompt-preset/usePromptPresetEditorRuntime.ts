@@ -4,6 +4,7 @@ import {
 	type ConversationSummary,
 } from "../../conversation";
 import { listPromptPresets } from "../../prompt-preset-library";
+import type { ConversationPromptPreset } from "../../../shared/contract/prompt-preset";
 import { useAsyncEffect } from "../../lib/use-async";
 import {
 	createPromptPresetEditorState,
@@ -42,12 +43,10 @@ export interface PromptPresetEditorRuntime {
 
 export function usePromptPresetEditorRuntime({
 	conversation,
-	open,
 }: {
 	conversation: ConversationSummary | null;
-	open: boolean;
 }): PromptPresetEditorRuntime {
-	const sessionKey = open ? `open:${conversation?.id ?? "none"}` : "closed";
+	const sessionKey = `conversation:${conversation?.id ?? "none"}`;
 	const [state, setState] = useState(() =>
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
 	const stateRef = useRef(state);
@@ -78,9 +77,41 @@ export function usePromptPresetEditorRuntime({
 	const runOperation = createPromptPresetEditorOperationRunner({
 		current,
 		dispatch,
-		canStart: () => open && alive.current && !stateRef.current.busy,
+		canStart: () => alive.current && !stateRef.current.busy,
 		ownsOperation,
 	});
+
+	type SelectedRecipeRead =
+		| {
+				status: "ready";
+				claim: ReturnType<typeof readClaim>;
+				selected: ConversationPromptPreset;
+			}
+		| { status: Exclude<EditorLoadResult, "ready"> };
+
+	const readSelectedRecipe = async (
+		isCancelled?: () => boolean,
+	): Promise<SelectedRecipeRead> => {
+		if (conversation === null) {
+			dispatch({ type: "recipe-unavailable" });
+			return { status: "not-found" };
+		}
+		dispatch({ type: "read-started" });
+		const claim = readClaim(stateRef.current);
+		try {
+			const selected = await loadConversationPromptPreset(conversation.id);
+			if (isCancelled?.() || !readApplies(stateRef.current, claim)) return { status: "stale" };
+			if (selected === null) {
+				dispatch({ type: "recipe-unavailable" });
+				return { status: "not-found" };
+			}
+			return { status: "ready", claim, selected };
+		} catch {
+			if (isCancelled?.() || !readApplies(stateRef.current, claim)) return { status: "stale" };
+			dispatch({ type: "load-failed" });
+			return { status: "network" };
+		}
+	};
 
 	// ==[HUMAN APPROVED]== The broad refresh path for initial load, revision refreshes, library
 	// commands, imports and selection changes: it fetches the library list and the
@@ -90,35 +121,23 @@ export function usePromptPresetEditorRuntime({
 	// last ready view (or shows unavailable on initial load). Every call cancels the previous read
 	// regardless of caller.
 	const load = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
-		if (!open) return "stale";
-		if (conversation === null) {
-			dispatch({ type: "recipe-unavailable" });
-			return "not-found";
-		}
-		const conversationId = conversation.id;
-		dispatch({ type: "read-started" });
-		const claim = readClaim(stateRef.current);
-		const [presetsResult, selectedResult] = await Promise.allSettled([
-			listPromptPresets(),
-			loadConversationPromptPreset(conversationId),
+		const [presetsResult, selectedRead] = await Promise.all([
+			listPromptPresets().then(
+				(presets) => ({ status: "ready" as const, presets }),
+				() => ({ status: "network" as const }),
+			),
+			readSelectedRecipe(isCancelled),
 		]);
-		if (isCancelled?.() || !readApplies(stateRef.current, claim)) return "stale";
-		if (selectedResult.status === "fulfilled") {
-			const selected = selectedResult.value;
-			if (selected === null) {
-				// ==[HUMAN APPROVED]== An authoritative null recipe takes precedence over a list failure.
-				dispatch({ type: "recipe-unavailable" });
-				return "not-found";
-			}
-			if (presetsResult.status === "fulfilled") {
-				dispatch({
-					type: "recipe-adopted",
-					claim,
-					selected,
-					presets: presetsResult.value,
-				});
-				return "ready";
-			}
+		if (selectedRead.status !== "ready") return selectedRead.status;
+		if (isCancelled?.() || !readApplies(stateRef.current, selectedRead.claim)) return "stale";
+		if (presetsResult.status === "ready") {
+			dispatch({
+				type: "recipe-adopted",
+				claim: selectedRead.claim,
+				selected: selectedRead.selected,
+				presets: presetsResult.presets,
+			});
+			return "ready";
 		}
 		dispatch({ type: "load-failed" });
 		return "network";
@@ -129,30 +148,14 @@ export function usePromptPresetEditorRuntime({
 	// response handling as the broad refresh, including authoritative absence and last-view
 	// preservation on network failure.
 	const loadRecipe = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
-		if (!open) return "stale";
-		if (conversation === null) {
-			dispatch({ type: "recipe-unavailable" });
-			return "not-found";
-		}
-		const conversationId = conversation.id;
-		dispatch({ type: "read-started" });
-		const claim = readClaim(stateRef.current);
-		const selectedResult = await Promise.allSettled([
-			loadConversationPromptPreset(conversationId),
-		]);
-		if (isCancelled?.() || !readApplies(stateRef.current, claim)) return "stale";
-		const selectedResultValue = selectedResult[0];
-		if (selectedResultValue?.status === "fulfilled") {
-			const selected = selectedResultValue.value;
-			if (selected === null) {
-				dispatch({ type: "recipe-unavailable" });
-				return "not-found";
-			}
-			dispatch({ type: "recipe-adopted", claim, selected });
-			return "ready";
-		}
-		dispatch({ type: "load-failed" });
-		return "network";
+		const selectedRead = await readSelectedRecipe(isCancelled);
+		if (selectedRead.status !== "ready") return selectedRead.status;
+		dispatch({
+			type: "recipe-adopted",
+			claim: selectedRead.claim,
+			selected: selectedRead.selected,
+		});
+		return "ready";
 	};
 
 	const { view, drafts } = state;
@@ -165,22 +168,21 @@ export function usePromptPresetEditorRuntime({
 	useAsyncEffect((isCancelled) => {
 		const currentState = stateRef.current;
 		if (currentState.session.key !== sessionKey) {
-			// ==[HUMAN APPROVED]== Every open or Chat transition starts clean; a same-session revision
-			// refresh keeps drafts.
+			// ==[HUMAN APPROVED]== Every Chat transition starts clean; a same-session revision refresh
+			// keeps drafts.
 			dispatch({
 				type: "session-changed",
 				sessionKey,
 				conversationRevision: conversation?.revision ?? null,
 			});
-		} else if (open && currentState.session.knownRevision !== (conversation?.revision ?? null)) {
+		} else if (currentState.session.knownRevision !== (conversation?.revision ?? null)) {
 			dispatch({
 				type: "conversation-revision-changed",
 				conversationRevision: conversation?.revision ?? null,
 			});
 		}
-		if (!open) return;
 		void load(isCancelled);
-	}, [open, conversation?.id, conversation?.revision]);
+	}, [conversation?.id, conversation?.revision]);
 
 	return { state, current, ready, dirty, dirtyCount, dispatch, load, loadRecipe, runOperation, ownsOperation };
 }

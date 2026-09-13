@@ -1172,7 +1172,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "conversation_prompt_preset_prompt_preset_id_index": {
+          "name": "conversation_prompt_preset_prompt_preset_id_index",
+          "columns": [
+            "prompt_preset_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "conversation_prompt_preset_conversation_id_conversation_id_fk": {
           "name": "conversation_prompt_preset_conversation_id_conversation_id_fk",
@@ -2114,7 +2122,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "prompt_preset_block_shape_check": {
+          "name": "prompt_preset_block_shape_check",
+          "value": "(\n\t\t\t\t\"prompt_preset_block\".\"reference\" = 'history'\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NULL\n\t\t\t) OR (\n\t\t\t\t\"prompt_preset_block\".\"reference\" = 'instruction'\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IN ('system', 'user', 'assistant')\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NOT NULL\n\t\t\t) OR (\n\t\t\t\t\"prompt_preset_block\".\"reference\" IN (\n\t\t\t\t\t'model-system-instruction',\n\t\t\t\t\t'human-identity',\n\t\t\t\t\t'model-identity',\n\t\t\t\t\t'model-scenario',\n\t\t\t\t\t'model-example-dialogue',\n\t\t\t\t\t'model-post-history-instruction'\n\t\t\t\t)\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IN ('system', 'user', 'assistant')\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NULL\n\t\t\t)"
+        }
+      }
     },
     "prompt_preset": {
       "name": "prompt_preset",

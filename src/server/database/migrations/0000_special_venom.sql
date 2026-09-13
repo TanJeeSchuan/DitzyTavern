@@ -168,6 +168,8 @@ CREATE TABLE `conversation_prompt_preset` (
 	FOREIGN KEY (`prompt_preset_id`) REFERENCES `prompt_preset`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE INDEX `conversation_prompt_preset_prompt_preset_id_index` ON `conversation_prompt_preset` (`prompt_preset_id`);
+--> statement-breakpoint
 CREATE TABLE `conversation` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,
@@ -293,6 +295,24 @@ CREATE TABLE `prompt_preset_block` (
 	`role` text,
 	`name` text,
 	`content` text,
+	CONSTRAINT "prompt_preset_block_shape_check" CHECK((
+		"prompt_preset_block"."reference" = 'history'
+		AND "prompt_preset_block"."role" IS NULL
+		AND "prompt_preset_block"."name" IS NULL
+		AND "prompt_preset_block"."content" IS NULL
+	) OR (
+		"prompt_preset_block"."reference" = 'instruction'
+		AND "prompt_preset_block"."role" IS NOT NULL
+		AND "prompt_preset_block"."role" IN ('system', 'user', 'assistant')
+		AND "prompt_preset_block"."name" IS NOT NULL
+		AND "prompt_preset_block"."content" IS NOT NULL
+	) OR (
+		"prompt_preset_block"."reference" IN ('model-system-instruction', 'human-identity', 'model-identity', 'model-scenario', 'model-example-dialogue', 'model-post-history-instruction')
+		AND "prompt_preset_block"."role" IS NOT NULL
+		AND "prompt_preset_block"."role" IN ('system', 'user', 'assistant')
+		AND "prompt_preset_block"."name" IS NULL
+		AND "prompt_preset_block"."content" IS NULL
+	)),
 	FOREIGN KEY (`preset_id`) REFERENCES `prompt_preset`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint

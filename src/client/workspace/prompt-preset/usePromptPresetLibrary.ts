@@ -15,7 +15,10 @@ import {
 	type SillyTavernJsonValue,
 } from "../../prompt-preset-library";
 import { downloadNativePromptPreset } from "../../prompt-preset-download";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../../lib/command-outcome";
+import {
+	CONVERSATION_UNREACHABLE_NOTICE,
+	LIBRARY_UNREACHABLE_NOTICE,
+} from "../../lib/command-outcome";
 import { presetDeletionImpactChangedNotice } from "../../prompt-preset-presentation";
 import {
 	conversationOperationApplies,
@@ -29,7 +32,7 @@ import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 const PRESET_COMMAND_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the current state was loaded.",
 	notFound: "The Conversation no longer exists.",
-	unreachable: "The Conversation could not be reached.",
+	unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 };
 
 // ==[HUMAN APPROVED]== Each flow declares its own start effects at the call site, so adding a flow
@@ -162,16 +165,9 @@ export function usePromptPresetLibrary({
 							dispatch({ type: "notice-changed", notice: reason });
 						}
 					},
-					onApplied: async () => {
+					onApplied: () => {
 						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
 						dispatch({ type: "notice-changed", notice: null });
-						const refresh = await load();
-						if (!conversationOperationApplies(runtime.current(), conversationClaim)) return;
-						if (refresh === "network") {
-							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.unreachable });
-						} else if (refresh === "not-found") {
-							dispatch({ type: "notice-changed", notice: PRESET_COMMAND_NOTICES.notFound });
-						}
 					},
 				},
 			});
@@ -338,6 +334,7 @@ export function usePromptPresetLibrary({
 	};
 
 	const selectSillyTavernOrder = async (orderListId: string): Promise<void> => {
+		if (orderListId === "") return;
 		const currentReview = current().review;
 		if (currentReview === null) return;
 		await runOperation(IMPORT_ORDER_EFFECTS, async (claim) => {

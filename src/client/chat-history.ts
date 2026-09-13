@@ -203,29 +203,3 @@ export const createChatHistoryTransport = (
 // ==[HUMAN APPROVED]==
 export const chatHistoryTransport: ChatHistoryTransport =
 	createChatHistoryTransport();
-
-// Triggers a browser download of the exact managed bytes using the stored
-// ==[HUMAN APPROVED]== original leaf filename. Returns whether the download started; cleaned-up
-// artifacts never reach this point (the view disables the action).
-export const downloadImportedSourceInBrowser = (
-	filename: string,
-	mediaType: string,
-	bytes: Uint8Array,
-	callback: (href: string, download: string) => void = (href, download) => {
-		const anchor = document.createElement("a");
-		anchor.href = href;
-		anchor.download = download;
-		document.body.appendChild(anchor);
-		anchor.click();
-		anchor.remove();
-	},
-): void => {
-	const objectUrl = URL.createObjectURL(
-		new Blob([new Uint8Array(bytes)], { type: mediaType }),
-	);
-	try {
-		callback(objectUrl, filename);
-	} finally {
-		window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-	}
-};

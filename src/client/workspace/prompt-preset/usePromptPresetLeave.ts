@@ -5,8 +5,7 @@ import type { SaveDraftsResult } from "./usePromptPresetRecipe";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
 interface PromptPresetLeaveUnit {
-	requestOpenChange: (next: boolean) => void;
-	guardDirtyDismiss: (event: { preventDefault: () => void }) => void;
+	requestClose: () => void;
 	saveAndLeave: () => Promise<void>;
 	keepEditing: () => void;
 	discardAndLeave: () => void;
@@ -23,20 +22,20 @@ const SAVE_ON_LEAVE_EFFECTS: OperationStartEffects = {
 	clearProblem: false,
 };
 
-// ==[HUMAN APPROVED]== The leave unit: the unsaved-drafts guard every dismissal path shares, and the
-// deferred close or selection that only runs after the atomic save settles. Save-on-leave is
+// ==[HUMAN APPROVED]== The leave unit guards close and selection, and defers either action until
+// the atomic save settles. Save-on-leave is
 // linearized: the batch is submitted, a current refresh is accepted, the save settles, and only
 // then does the leave resolve to close or start a selection.
 export function usePromptPresetLeave({
 	runtime,
 	conversation,
-	onOpenChange,
+	onClose,
 	applySelection,
 	saveDrafts,
 }: {
 	runtime: PromptPresetEditorRuntime;
 	conversation: ConversationSummary | null;
-	onOpenChange: (open: boolean) => void;
+	onClose: () => void;
 	applySelection: (presetId: number) => void;
 	saveDrafts: (
 		preset: ConversationPromptPreset,
@@ -51,7 +50,7 @@ export function usePromptPresetLeave({
 	const finishLeave = (request: LeaveRequest): void => {
 		dispatch({ type: "leave-resolved" });
 		if (request.kind === "close") {
-			onOpenChange(false);
+			onClose();
 		} else {
 			applySelection(request.presetId);
 		}
@@ -94,22 +93,13 @@ export function usePromptPresetLeave({
 		finishLeave(request);
 	};
 
-	const requestOpenChange = (next: boolean): void => {
-		if (!next && dirty) {
+	const requestClose = (): void => {
+		if (dirty) {
 			dispatch({ type: "leave-requested", request: { kind: "close" } });
 			return;
 		}
-		onOpenChange(next);
+		onClose();
 	};
 
-	// ==[HUMAN APPROVED]== Escape and outside clicks take the same unsaved-drafts guard as the
-	// close button, so a dirty block edit is never silently dropped by any
-	// dismissal path.
-	const guardDirtyDismiss = (event: { preventDefault: () => void }): void => {
-		if (!dirty) return;
-		event.preventDefault();
-		dispatch({ type: "leave-requested", request: { kind: "close" } });
-	};
-
-	return { requestOpenChange, guardDirtyDismiss, saveAndLeave, keepEditing, discardAndLeave };
+	return { requestClose, saveAndLeave, keepEditing, discardAndLeave };
 }

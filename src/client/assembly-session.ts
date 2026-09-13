@@ -8,7 +8,6 @@ export type AssemblySessionPhase = "assembling" | "ready" | "accepting" | "faile
 
 export type AssemblySession = {
 	phase: AssemblySessionPhase;
-	conversationId: number;
 	requestId: number;
 	request: GenerationPreviewBody;
 	preview: GenerationPreview | null;
@@ -18,7 +17,6 @@ export type AssemblySession = {
 export type AssemblySessionAction =
 	| {
 			type: "started";
-			conversationId: number;
 			requestId: number;
 			request: GenerationPreviewBody;
 			preview?: GenerationPreview | null;
@@ -43,7 +41,6 @@ export function reduceAssemblySession(
 		case "started":
 			return {
 				phase: "assembling",
-				conversationId: action.conversationId,
 				requestId: action.requestId,
 				request: action.request,
 				preview: action.preview ?? null,

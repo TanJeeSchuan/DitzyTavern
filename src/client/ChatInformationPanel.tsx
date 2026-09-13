@@ -9,9 +9,9 @@ import {
 } from "./chat-info";
 import {
 	chatHistoryTransport,
-	downloadImportedSourceInBrowser,
 	type ChatSourceDownloadOutcome,
 } from "./chat-history";
+import { downloadFileInBrowser } from "./lib/download";
 import { ImportWarningsList } from "./import-chat/ImportNotices";
 import { useAsyncEffect } from "./lib/use-async";
 import { formatSize } from "./lib/format";
@@ -68,7 +68,7 @@ export function ChatInformationPanel({
 		setDownloadOutcome({ status: "downloading" });
 		const outcome = await chatHistoryTransport.downloadExactSource(conversationId);
 		if (outcome.status === "available") {
-			downloadImportedSourceInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
+			downloadFileInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
 		}
 		setDownloadOutcome(outcome);
 	};

@@ -11,8 +11,6 @@ import {
 	type ConversationDataEntry,
 	type ConversationJsonValue,
 	type ConversationSnapshot,
-	type AuthorStampSnapshot,
-	type HistoricalControlSnapshot,
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
@@ -99,34 +97,13 @@ export interface ParticipatingHistory {
 	readonly control: ConversationSnapshot["control"];
 }
 
-export interface ParticipatingHistoryMessage {
-	readonly id: number;
-	readonly position: number;
-	readonly author: AuthorStampSnapshot | null;
-	readonly historicalContext: HistoricalControlSnapshot | null;
-	readonly variant: {
-		readonly id: number;
-		readonly position: number;
-		readonly content: string;
-		readonly data: readonly ConversationDataEntry[];
-	} | null;
-}
-
-const participatingMessageFromRead = (
-	message: SelectedHistoryRead["messages"][number],
-): ParticipatingHistoryMessage => ({
-	id: message.id,
-	position: message.position,
-	author: message.author,
-	historicalContext: message.historicalContext,
-	variant: message.variant,
-});
+export type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
 
 const participatingHistoryFromRead = (
 	read: SelectedHistoryRead,
 	control: ConversationSnapshot["control"],
 ): ParticipatingHistory => ({
-	messages: read.messages.map(participatingMessageFromRead),
+	messages: read.messages,
 	control,
 });
 
@@ -252,6 +229,26 @@ export interface GenerationPreparation {
 	readonly macroState: ReadonlyMap<string, MacroValue>;
 }
 
+export interface SendReuseTarget {
+	messageId: number;
+	variantId: number;
+}
+
+export const sendReuseTargetOf = (
+	preparation: GenerationPreparation,
+): SendReuseTarget | undefined => {
+	if (preparation.kind !== "send") return undefined;
+	const latest = preparation.participation.messages.at(-1);
+	const variant = latest?.variant;
+	return latest !== undefined &&
+		variant !== null &&
+		variant !== undefined &&
+		latest.author?.participantId === preparation.derivation.human.id &&
+		variant.content === preparation.content
+		? { messageId: latest.id, variantId: variant.id }
+		: undefined;
+};
+
 const effectiveSettingsForPreparation = (input: Pick<
 	GenerationPreparation,
 	"settings" | "connection" | "kind"
@@ -349,10 +346,8 @@ export function prepareGenerationInputs(
 	if (input.kind === "continuation") {
 		const latest = participation.messages.at(-1);
 		const selectedVariant = latest?.variant;
-		const latestWasModelAuthored = latest?.author?.participantId !== null &&
-			latest?.author?.participantId !== undefined &&
-			(model.id === latest.author.participantId ||
-				latest.historicalContext?.modelParticipantId === latest.author.participantId);
+		const latestWasModelAuthored = latest !== undefined &&
+			roleForMessage(latest, human.id, model.id) === "model";
 		const hasUsableOutput = selectedVariant !== null && selectedVariant !== undefined &&
 			(selectedVariant.content.length > 0 || selectedVariant.data.some(
 				(entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0,
@@ -676,13 +671,7 @@ export function captureSendGeneration(
 	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	const latest = preparation.participation.messages.at(-1);
-	const latestSelected = latest?.variant;
-	const reuseHumanMessageId = latest !== undefined &&
-		latest.author?.participantId === derivation.human.id &&
-		latestSelected?.content === content
-		? latest.id
-		: undefined;
+	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
 	// ==[HUMAN APPROVED]== A fresh Send budgets the submitted human writing as part of the context;
 	// a retry reuses the already accepted trailing human Message, which is
 	// already in it.

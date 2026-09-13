@@ -498,10 +498,7 @@ export const createConversationRoutes = (
 			({ params, query, request }) => {
 				const runtime = generationRuntimeFor(database).get(params.generationId);
 				if (runtime === undefined || runtime.state.conversationId !== params.id) {
-					return new Response(JSON.stringify({ outcome: "not-found" }), {
-						status: 404,
-						headers: { "content-type": "application/json" },
-					});
+					return notFoundResponse();
 				}
 				return createGenerationSubscriptionResponse(runtime, query.after ?? 0, request);
 			},

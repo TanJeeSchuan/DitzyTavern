@@ -99,7 +99,7 @@ export function ActiveWritingWorkspace({
 	useEffect(() => {
 		if (assemblyActive) {
 			setGenerationDetailsTarget(null);
-			dispatchPanel({ type: "assembly-entered" });
+			dispatchPanel({ type: "workspace-reset" });
 		}
 	}, [assemblyActive]);
 	const viewport = useStoryViewport({

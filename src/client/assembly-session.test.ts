@@ -33,7 +33,6 @@ const preview = (content = "Expanded"): GenerationPreview => ({
 
 const started = (): AssemblySession => reduceAssemblySession(null, {
 	type: "started",
-	conversationId: 7,
 	requestId: 1,
 	request,
 })!;
@@ -43,7 +42,6 @@ describe("assembly session", () => {
 		const first = started();
 		const replaced = reduceAssemblySession(first, {
 			type: "started",
-			conversationId: 7,
 			requestId: 2,
 			request,
 		})!;

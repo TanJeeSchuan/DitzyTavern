@@ -22,7 +22,6 @@ export type PanelCoordinationAction =
 	| { type: "details-closed" }
 	| { type: "preview-entered" }
 	| { type: "preview-exited" }
-	| { type: "assembly-entered" }
 	| { type: "workspace-reset" };
 
 export const createPanelCoordinationState = (): PanelCoordinationState => ({
@@ -91,8 +90,6 @@ export function reducePanelCoordination(
 			};
 		case "preview-exited":
 			return { ...state, previewMode: false };
-		case "assembly-entered":
-			return { ...state, primaryPanel: null, inspector: null, detailsSurface: null };
 		case "workspace-reset":
 			return { ...state, primaryPanel: null, inspector: null, detailsSurface: null };
 	}

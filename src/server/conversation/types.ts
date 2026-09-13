@@ -417,14 +417,9 @@ export type VariantDetails = SharedVariantDetails;
 // Captured, provider-neutral input stored with an Active Generation. The
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
-export interface AcceptTailGenerationInput {
+export interface GenerationAcceptanceCapture {
 	conversationId: number;
-	expectedRevision: number;
 	timestamp: string;
-	humanContent: string;
-	// A retry may point at the already accepted trailing human Message. When
-	// omitted, acceptance creates one in the same transaction.
-	reuseHumanMessageId?: number | undefined;
 	humanParticipantId: number;
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
@@ -442,6 +437,14 @@ export interface AcceptTailGenerationInput {
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
 	macroPresetId?: number | undefined;
 	macroWrites?: readonly MacroVariableWrite[] | undefined;
+}
+
+export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
+	expectedRevision: number;
+	humanContent: string;
+	// A retry may point at the already accepted trailing human Message. When
+	// omitted, acceptance creates one in the same transaction.
+	reuseHumanMessageId?: number | undefined;
 }
 
 export interface AcceptedTailGeneration {
@@ -493,25 +496,10 @@ export interface StoppedGenerations {
 // Continuation acceptance creates only the model-authored provisional target.
 // The current human seat remains part of the captured historical pair, but
 // there is deliberately no Human-authored Message for this lifecycle.
-export interface AcceptContinuationGenerationInput {
-	conversationId: number;
+export interface AcceptContinuationGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
-	timestamp: string;
 	precedingMessageId: number;
 	precedingVariantId: number;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
-	capturedModelName: string;
-	promptPlan: PromptPlan;
-	promptInspection?: ConversationJsonValue | undefined;
-	promptContext: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
-	generationIntent?: ConversationJsonValue | undefined;
-	provenance?: ConversationDataEntry | undefined;
-	macroPresetId?: number | undefined;
-	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedContinuationGeneration {
@@ -524,23 +512,8 @@ export interface AcceptedContinuationGeneration {
 // Sibling acceptance creates a Provisional Variant on an existing Message.
 // `priorVariantId` lets an empty failure restore the selection that was
 // visible before this attempt, without overwriting a later user selection.
-export interface AcceptSiblingGenerationInput {
-	conversationId: number;
+export interface AcceptSiblingGenerationInput extends GenerationAcceptanceCapture {
 	messageId: number;
-	timestamp: string;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
-	capturedModelName: string;
-	promptPlan: PromptPlan;
-	promptInspection?: ConversationJsonValue | undefined;
-	promptContext: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
-	generationIntent?: ConversationJsonValue | undefined;
-	provenance?: ConversationDataEntry | undefined;
-	macroPresetId?: number | undefined;
-	macroWrites?: readonly MacroVariableWrite[] | undefined;
 }
 
 export interface AcceptedSiblingGeneration {

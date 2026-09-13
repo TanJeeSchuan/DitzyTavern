@@ -1,7 +1,11 @@
 import { referencedDefinitionBlocks } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
-import { generationSettingsJson, type GenerationPreparation } from "./generate-capture";
+import {
+	generationSettingsJson,
+	sendReuseTargetOf,
+	type GenerationPreparation,
+} from "./generate-capture";
 import type { GenerationJsonObject, GenerationJsonValue } from "../../shared/generation-json";
 
 const canonicalize = (value: GenerationJsonValue): GenerationJsonValue => {
@@ -91,27 +95,11 @@ const continuationTarget = (preparation: GenerationPreparation): GenerationJsonV
 	};
 };
 
-const sendReuseTarget = (preparation: GenerationPreparation): GenerationJsonValue => {
-	if (preparation.kind !== "send") return null;
-	const latest = preparation.participation.messages.at(-1);
-	const variant = latest?.variant;
-	if (
-		latest === undefined ||
-		variant === null ||
-		variant === undefined ||
-		latest.author?.participantId !== preparation.derivation.human.id ||
-		variant.content !== preparation.content
-	) return null;
-	return {
-		messageId: latest.id,
-		variantId: variant.id,
-	};
-};
-
 /** ==[HUMAN APPROVED]== Fingerprint the semantic inputs an inspected plan actually participates in. */
 export const generationPreparationFingerprint = (
 	preparation: GenerationPreparation,
 ): string => {
+	const sendReuseTarget = sendReuseTargetOf(preparation);
 	const input: GenerationJsonObject = {
 		kind: preparation.kind,
 		content: preparation.content ?? null,
@@ -133,7 +121,10 @@ export const generationPreparationFingerprint = (
 		macroState: [...preparation.macroState.entries()]
 			.sort(([left], [right]) => left.localeCompare(right)),
 		continuationTarget: continuationTarget(preparation),
-		sendReuseTarget: sendReuseTarget(preparation),
+		sendReuseTarget: sendReuseTarget === undefined ? null : {
+			messageId: sendReuseTarget.messageId,
+			variantId: sendReuseTarget.variantId,
+		},
 		connection: preparation.connection === null ? null : {
 			profileId: preparation.connection.profileId,
 			settingsRevision: preparation.connection.settingsRevision,

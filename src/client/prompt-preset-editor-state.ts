@@ -9,7 +9,7 @@ import type {
 	SillyTavernJsonValue,
 } from "../shared/contract/prompt-preset";
 
-// ==[HUMAN APPROVED]== The Prompt Preset popup's decision rules, separated from its rendering and
+// ==[HUMAN APPROVED]== The Prompt Preset panel's decision rules, separated from its rendering and
 // its transport: which read or mutation response may still apply, how saved
 // drafts reconcile and retire against the authoritative recipe, and how busy,
 // notice and leave state transition. The controller hook and the dialog stay
@@ -44,8 +44,8 @@ export function draftToPatch(
 export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft): boolean =>
 	draftToPatch(slot, draft) !== null;
 
-// ==[HUMAN APPROVED]== The one-pass dirty summary: `dirty` is the guard every dismissal path
-// consults and `count` is what the unsaved-drafts dialog shows, both from one scan.
+// ==[HUMAN APPROVED]== The one-pass dirty summary: `dirty` guards close and selection while
+// `count` is what the unsaved-drafts dialog shows, both from one scan.
 interface DirtyDraftSummary {
 	dirty: boolean;
 	count: number;
@@ -113,8 +113,8 @@ export interface SillyTavernReview {
 
 export type EditorLoadResult = "ready" | "not-found" | "network" | "stale";
 
-// ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the popup
-// opens, closes or switches Chat, `latestRead` when a newer read supersedes
+// ==[HUMAN APPROVED]== The editor session owns the response ordering: `id` changes when the panel
+// switches Chat, `latestRead` when a newer read supersedes
 // an older one, and `latestConversationOperation` when a Conversation-owned
 // mutation or newer Conversation revision invalidates its expected revision.
 // A response may apply only while the session it was claimed under is still current.
@@ -145,7 +145,7 @@ export interface PromptPresetEditorState {
 	session: EditorSession;
 	view: PresetView;
 	drafts: Record<number, BlockDraft>;
-	// ==[HUMAN APPROVED]== `busy` holds the popup against a second operation. The deferred
+	// ==[HUMAN APPROVED]== `busy` holds the panel against a second operation. The deferred
 	// save-on-leave needs no flag: the leave resolves only after the save operation settles,
 	// so the next selection starts with busy already released.
 	busy: boolean;
@@ -190,7 +190,7 @@ export type PromptPresetEditorEvent =
 	| { type: "leave-failed"; problem: string };
 
 // ==[HUMAN APPROVED]== One clean session and one clean editor state, shared by construction and by
-// every open, close or Chat transition, so the two can never drift.
+// every Chat transition, so the two can never drift.
 function cleanSession(key: string, id: number, conversationRevision: number | null): EditorSession {
 	return {
 		key,
@@ -357,8 +357,8 @@ export function reducePromptPresetEditorState(
 ): PromptPresetEditorState {
 	switch (event.type) {
 		case "session-changed":
-			// ==[HUMAN APPROVED]== Every open or Chat transition starts clean: transient forms,
-			// notices, drafts and pending leaves belong to one popup session.
+			// ==[HUMAN APPROVED]== Every Chat transition starts clean: transient forms, notices,
+			// drafts and pending leaves belong to one panel session.
 			return cleanEditorState(
 				cleanSession(event.sessionKey, state.session.id + 1, event.conversationRevision),
 			);

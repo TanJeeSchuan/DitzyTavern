@@ -14,22 +14,20 @@ import { usePromptPresetRecipe } from "./usePromptPresetRecipe";
  */
 export function usePromptPresetEditor({
 	conversation,
-	open,
 	onConversationChange,
-	onOpenChange,
+	onClose,
 }: {
 	conversation: ConversationSummary | null;
-	open: boolean;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	onOpenChange: (open: boolean) => void;
+	onClose: () => void;
 }) {
-	const runtime = usePromptPresetEditorRuntime({ conversation, open });
+	const runtime = usePromptPresetEditorRuntime({ conversation });
 	const library = usePromptPresetLibrary({ runtime, conversation, onConversationChange });
 	const recipe = usePromptPresetRecipe({ runtime, conversation });
 	const leave = usePromptPresetLeave({
 		runtime,
 		conversation,
-		onOpenChange,
+		onClose,
 		applySelection: library.applySelection,
 		saveDrafts: recipe.saveDrafts,
 	});
@@ -43,8 +41,7 @@ export function usePromptPresetEditor({
 		problem: runtime.state.problem,
 		leaveRequest: runtime.state.leaveRequest,
 		review: runtime.state.review,
-		requestOpenChange: leave.requestOpenChange,
-		guardDirtyDismiss: leave.guardDirtyDismiss,
+		requestClose: leave.requestClose,
 		selectPreset: library.selectPreset,
 		runPresetCommand: library.runPresetCommand,
 		exportSelectedPreset: library.exportSelectedPreset,

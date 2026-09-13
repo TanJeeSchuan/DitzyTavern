@@ -1,11 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { Value } from "@sinclair/typebox/value";
 import { asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
-	promptPresetBlockPatch,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
 	type PromptPresetBlockOccurrence,
@@ -40,9 +38,6 @@ const validateBlockPatches = (
 	const occurrences = new Map(recipe.slots.map((slot) => [slot.id, slot]));
 	const seen = new Set<number>();
 	for (const patch of patches) {
-		if (!Value.Check(promptPresetBlockPatch, patch)) {
-			throw new InvalidPromptPresetOperationError("The Prompt Preset block patch is invalid.");
-		}
 		if (seen.has(patch.occurrenceId)) {
 			throw new InvalidPromptPresetOperationError(
 				`Occurrence ${patch.occurrenceId} is patched more than once.`,
@@ -134,12 +129,13 @@ const requireBlock = (
 	database: Database,
 	presetId: number,
 	blockId: number,
-): PromptPresetRecipe => {
+): PromptPresetBlockOccurrence => {
 	const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	if (!recipe.slots.some((slot) => slot.id === blockId)) {
+	const occurrence = recipe.slots.find((slot) => slot.id === blockId);
+	if (occurrence === undefined) {
 		throw new PromptPresetBlockNotFoundError(presetId, blockId);
 	}
-	return recipe;
+	return occurrence;
 };
 
 /** ==[HUMAN APPROVED]==
@@ -176,11 +172,7 @@ const writePromptPresetBlock = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		const occurrence = requireBlock(database, presetId, blockId)
-			.slots.find((slot) => slot.id === blockId);
-		if (occurrence === undefined) {
-			throw new PromptPresetBlockNotFoundError(presetId, blockId);
-		}
+		const occurrence = requireBlock(database, presetId, blockId);
 		write(db, occurrence);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();

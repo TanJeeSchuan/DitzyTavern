@@ -36,6 +36,15 @@ const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
 	clearProblem: true,
 };
 
+const promptPresetOperationProblem = (
+	outcome: Exclude<PromptPresetOperationOutcome, { status: "applied" }>,
+	fallback: string,
+): string => outcome.status === "invalid"
+	? outcome.reason
+	: outcome.status === "not-found"
+		? "The selected preset no longer exists."
+		: fallback;
+
 // ==[HUMAN APPROVED]== The save-on-leave result a leave resolution acts on: a successful save whose
 // refresh accepted may resolve the leave, `kept` stays open with newer dirty drafts retained,
 // `failed` reports a problem while retaining drafts, and `aborted` makes no state or feedback
@@ -74,11 +83,7 @@ export function usePromptPresetRecipe({
 			if (outcome.status !== "applied") {
 				dispatch({
 					type: "problem-changed",
-					problem: outcome.status === "invalid"
-						? outcome.reason
-						: outcome.status === "not-found"
-							? "The selected preset no longer exists."
-							: "The Prompt Preset change could not be reached.",
+					problem: promptPresetOperationProblem(outcome, "The Prompt Preset change could not be reached."),
 				});
 				return;
 			}
@@ -119,11 +124,7 @@ export function usePromptPresetRecipe({
 		if (outcome.status !== "applied") {
 			return {
 				status: "failed",
-				problem: outcome.status === "invalid"
-					? outcome.reason
-					: outcome.status === "not-found"
-						? "The selected preset no longer exists."
-						: "The Prompt Preset change could not be saved.",
+				problem: promptPresetOperationProblem(outcome, "The Prompt Preset change could not be saved."),
 			};
 		}
 		dispatch({ type: "drafts-submitted", submitted });
@@ -140,7 +141,7 @@ export function usePromptPresetRecipe({
 		const freshReady = live.view.status === "ready" ? live.view : null;
 		if (freshReady !== null && dirtyDraftSummary(freshReady.selected, live.drafts).count > 0) {
 			// ==[HUMAN APPROVED]== The save settled but reconciliation left newer dirty drafts: retain
-			// them and keep the popup open instead of clearing them through leave resolution.
+			// them and keep the panel open instead of clearing them through leave resolution.
 			return { status: "kept" };
 		}
 		return { status: "saved" };

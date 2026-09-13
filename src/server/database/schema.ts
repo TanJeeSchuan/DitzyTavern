@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import {
 	check,
+	index,
 	int,
 	primaryKey,
 	real,
@@ -67,6 +68,34 @@ export const promptPresetBlockTable = sqliteTable(
 			table.preset_id,
 			table.position,
 		),
+		check(
+			"prompt_preset_block_shape_check",
+			sql`(
+				${table.reference} = 'history'
+				AND ${table.role} IS NULL
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			) OR (
+				${table.reference} = 'instruction'
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NOT NULL
+				AND ${table.content} IS NOT NULL
+			) OR (
+				${table.reference} IN (
+					'model-system-instruction',
+					'human-identity',
+					'model-identity',
+					'model-scenario',
+					'model-example-dialogue',
+					'model-post-history-instruction'
+				)
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			)`,
+		),
 	],
 );
 
@@ -92,6 +121,11 @@ export const conversationPromptPresetTable = sqliteTable(
 			.notNull()
 			.references(() => promptPresetTable.id),
 	},
+	(table) => [
+		index("conversation_prompt_preset_prompt_preset_id_index").on(
+			table.prompt_preset_id,
+		),
+	],
 );
 
 export const messageTable = sqliteTable(

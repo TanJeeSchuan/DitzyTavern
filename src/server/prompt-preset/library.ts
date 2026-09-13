@@ -8,7 +8,6 @@ import {
 } from "../database/schema";
 import {
 	nativePromptPreset,
-	promptPresetCreateCommand,
 	type SillyTavernImportPreview,
 	type SillyTavernJsonValue,
 	type NativePromptPreset,
@@ -208,7 +207,7 @@ export function executePromptPresetCommand(
 	database: Database,
 	command: PromptPresetCommand,
 ): PromptPresetCommandResult {
-	if (Value.Check(promptPresetCreateCommand, command)) {
+	if (command.type === "create") {
 		const db = connect(database);
 		const create = database.transaction(() => {
 			const inserted = db

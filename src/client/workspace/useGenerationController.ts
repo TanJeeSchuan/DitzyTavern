@@ -238,7 +238,6 @@ export function useGenerationController({
 		const requestId = issueAssemblyRequestId();
 		dispatchAssembly({
 			type: "started",
-			conversationId,
 			requestId,
 			request,
 			preview: preservedPreview,
