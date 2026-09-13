@@ -341,21 +341,58 @@
 	line-height: 1.55;
 }
 
-.reasoning-content strong {
-	display: block;
-	margin-bottom: 0.35rem;
+.reasoning-trigger {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--foreground);
+	cursor: pointer;
+	text-align: left;
+}
+
+.reasoning-trigger strong {
 	color: var(--foreground);
 	font-size: 0.68rem;
 	font-weight: 680;
 }
 
-.reasoning-content p {
+.reasoning-trigger svg {
+	width: 0.85rem;
+	height: 0.85rem;
+	transition: transform 140ms ease;
+}
+
+.reasoning-trigger[data-state="closed"] svg {
+	transform: rotate(-90deg);
+}
+
+.reasoning-trigger:focus-visible {
+	border-radius: 0.25rem;
+	outline: 2px solid var(--accent);
+	outline-offset: 3px;
+}
+
+.reasoning-body {
+	padding-top: 0.35rem;
+}
+
+.reasoning-body p {
 	margin: 0;
 	white-space: pre-wrap;
 }
 
-.reasoning-content p + p {
+.reasoning-body p + p {
 	margin-top: 0.6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reasoning-trigger svg {
+		transition: none;
+	}
 }
 
 .message-actions {

@@ -24,7 +24,7 @@ const message = (reasoning: string): StoryMessage => ({
 });
 
 describe("Story Message Reasoning Content", () => {
-	test("renders Reasoning Content separately from generated prose", () => {
+	test("collapses Reasoning Content without hiding generated prose", () => {
 		const markup = renderToStaticMarkup(
 			<StoryMessageView
 				message={message("Keep the answer grounded in the room.")}
@@ -34,7 +34,8 @@ describe("Story Message Reasoning Content", () => {
 		);
 
 		expect(markup).toContain('aria-label="Reasoning Content"');
-		expect(markup).toContain("Keep the answer grounded in the room.");
+		expect(markup).toContain('aria-expanded="false"');
+		expect(markup).not.toContain("Keep the answer grounded in the room.");
 		expect(markup).toContain("The lamp turns.");
 	});
 

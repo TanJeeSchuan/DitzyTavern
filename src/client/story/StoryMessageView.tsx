@@ -1,10 +1,12 @@
 import {
+	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	Edit3,
 	Info,
 	RefreshCw,
 } from "lucide-react";
+import { Collapsible } from "radix-ui";
 import { useEffect, useState } from "react";
 import {
 	type StoryMessage,
@@ -166,12 +168,17 @@ export function StoryMessageView({
 			) : (
 				<>
 					{active?.reasoning !== undefined && active.reasoning !== "" && (
-						<section className="reasoning-content" aria-label="Reasoning Content">
-							<strong>Reasoning</strong>
-							{active.reasoning
-								.split("\n\n")
-								.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-						</section>
+						<Collapsible.Root className="reasoning-content" aria-label="Reasoning Content">
+							<Collapsible.Trigger className="reasoning-trigger">
+								<strong>Reasoning</strong>
+								<ChevronDown aria-hidden="true" />
+							</Collapsible.Trigger>
+							<Collapsible.Content className="reasoning-body">
+								{active.reasoning
+									.split("\n\n")
+									.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+							</Collapsible.Content>
+						</Collapsible.Root>
 					)}
 					<div
 						className="prose"
