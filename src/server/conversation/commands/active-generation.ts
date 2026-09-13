@@ -31,6 +31,7 @@ import {
 	parseGenerationJson,
 	readGenerationTerminalMetadata,
 } from "../../../shared/generation-provenance";
+import { macroWritesToData, parseMacroWrites } from "../../prompt-macros";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -102,6 +103,8 @@ type ReplayCarriedColumn = Exclude<
 	| "provenance_namespace"
 	| "provenance_key"
 	| "provenance_value"
+	| "macro_preset_id"
+	| "macro_writes_json"
 	| "checkpoint_content"
 	| "checkpoint_reasoning"
 >;
@@ -162,6 +165,17 @@ const terminalProvenance = (
 	};
 };
 
+const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+	if (active.macro_preset_id === null) return [];
+	let writes;
+	try {
+		writes = parseMacroWrites(active.macro_writes_json);
+	} catch (error) {
+		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted macro writes.");
+	}
+	return macroWritesToData(active.macro_preset_id, writes);
+};
+
 /**
  * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
@@ -176,9 +190,11 @@ export const persistTerminalVariantData = (
 		provenance: ConversationDataEntry | undefined;
 		reasoning?: string | undefined;
 		suppliedData: readonly ConversationDataEntry[];
+		macroData?: readonly ConversationDataEntry[];
 	},
 ): void => {
 	const data = [
+		...(input.macroData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
 			!input.suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
@@ -235,6 +251,7 @@ function commitDurableTerminalGenerationInTransaction(
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
 		suppliedData: input.suppliedData,
+		macroData: terminalMacroData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)

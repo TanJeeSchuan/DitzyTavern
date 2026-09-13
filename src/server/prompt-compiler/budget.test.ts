@@ -3,6 +3,7 @@ import type { PromptContextEntry, PromptPlan } from ".";
 import {
 	PromptBudgetExceededError,
 	budgetPromptPlan,
+	budgetEditedPromptPlan,
 	toEstimationTranscript,
 } from "./budget";
 
@@ -16,9 +17,9 @@ const entry = (
 
 const planFor = (context: readonly PromptContextEntry[]): PromptPlan => ({
 	blocks: [
-		{ kind: "system-instruction", content: "Fixed system prompt." },
+		{ kind: "system-instruction", role: "system", content: "Fixed system prompt." },
 		...context.map(({ kind: _kind, ...rest }) => ({ kind: "history" as const, ...rest })),
-		{ kind: "post-history-instruction", content: "Fixed post-history prompt." },
+		{ kind: "post-history-instruction", role: "system", content: "Fixed post-history prompt." },
 	],
 	warnings: [],
 });
@@ -136,5 +137,26 @@ describe("Prompt Plan budget", () => {
 		expect(result.retainedContext[0]).toBe(history[1_016]);
 		expect(result.retainedContext.at(-1)).toBe(history.at(-1));
 		expect(estimateCalls).toBeLessThanOrEqual(12);
+	});
+
+	test("uses the same measurement fields for an inspected intent", () => {
+		const instruction = "Continue this scene.";
+		const plan = {
+			...planFor([]),
+			intent: { type: "continuation" as const, strategy: "instruction" as const, instruction },
+		};
+		const result = budgetEditedPromptPlan({
+			plan,
+			contextLimit: 20,
+			responseBudget: 2,
+			safetyAllowance: 1,
+			estimator: () => 4,
+		});
+
+		expect(result.breakdown).toMatchObject({
+			tokenEstimate: 4,
+			fixedPromptCharacters: "Fixed system prompt.".length + "Fixed post-history prompt.".length + instruction.length,
+			totalRequiredTokens: 7,
+		});
 	});
 });

@@ -168,8 +168,8 @@ describe("Conversation creation", () => {
 		const greeting = snapshot.messages[0];
 		expect(greeting?.variants.map((variant) => variant.content)).toEqual([
 			"Maren Voss greets Writer.",
-			"Say {{self}} plainly.",
-			"{{SELF}} and {{user}} stay literal.",
+			"Say \\Maren Voss plainly.",
+			"Maren Voss and {{user}} stay literal.",
 		]);
 		expect(greeting?.author).toEqual({
 			participantId: snapshot.cast[1]?.id ?? null,

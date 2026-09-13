@@ -1,9 +1,15 @@
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	PromptHistoryRole,
-	PromptWarning,
 } from "../../shared/contract/conversation-schema";
+import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 
+export type {
+	AttemptEnvironment,
+	MacroAttemptState,
+	MacroEnvironment,
+} from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,
 	PromptBlock,
@@ -50,17 +56,10 @@ export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];
-}
-
-// Owner-relative macro context. `self` is the name of the Participant whose
-// Definition (or opening) is being compiled; `other` is the name of the other
-// controlled Participant.
-export interface MacroContext {
-	self: string;
-	other: string;
-}
-
-export interface ExpansionResult {
-	text: string;
-	warnings: readonly PromptWarning[];
+	// The selected Prompt Preset's ordered recipe. It decides which blocks the
+	// plan contains and in what order; the compiler holds no order of its own.
+	recipe: readonly PromptPresetSlot[];
+	// Captured once for one assembly. Environment and state are one invariant:
+	// budget recompilation must reuse both or create both together.
+	attempt?: AttemptEnvironment;
 }

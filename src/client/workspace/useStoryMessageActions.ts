@@ -33,6 +33,7 @@ type StoryMessageActionsOptions = {
 	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
 	clearPreviewError: () => void;
+	canEnterPreview: boolean;
 	onEnterPreview: () => void;
 };
 
@@ -52,6 +53,7 @@ export function useStoryMessageActions({
 	setConversation,
 	queueSwipeScroll,
 	clearPreviewError,
+	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
@@ -77,6 +79,7 @@ export function useStoryMessageActions({
 			dispatchStory({ type: "preview-retargeted", messageId, variantId: target.id });
 			return;
 		}
+		if (!canEnterPreview) return;
 		if (conversation === null) return;
 
 		const revisionWindow = deriveRevisionWindow(

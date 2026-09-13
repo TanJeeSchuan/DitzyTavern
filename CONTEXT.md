@@ -83,9 +83,21 @@ _Avoid_: Generation Settings, Connection Preset, Prompt Plan
 A Prompt Preset slot whose content comes from the Conversation or a Participant Definition rather than text authored in the preset. Its source text is read-only in the preset editor.
 _Avoid_: foreign prompt block
 
+**Prompt Macro**:
+An expression in authored prompt text that contributes text or controls what enters a Prompt Plan using the available writing context.
+_Avoid_: placeholder when referring to macros that take arguments or control content
+
 **Prompt Comment**:
 An annotation enclosed in `{{// ... }}` that remains in authored prompt text but contributes no text to the Prompt Plan.
 _Avoid_: instruction block, unknown macro
+
+**Macro Variable**:
+A named value scoped to one Conversation and one Prompt Preset that Prompt Macros can read and change, retained between Generations.
+_Avoid_: temporary template value, Participant attribute
+
+**Macro State**:
+The values of one Prompt Preset's Macro Variables within a Conversation at a point in its Selected narrative path. Alternative Variants may have different resulting Macro States.
+_Avoid_: global variable store, memory tool result
 
 **Generation Plan**:
 The complete application plan for one Generation attempt: its Prompt Plan, budget decision, and Effective Generation Settings.

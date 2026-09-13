@@ -2,9 +2,15 @@
 // and one ordered writing context into a deterministic provider-neutral
 // Prompt Plan. No SQLite, HTTP, credentials, or provider vocabulary.
 
-export { compileOpening, compilePrompt, expandText } from "./compiler";
+export {
+	compileOpening,
+	compilePrompt,
+	referencedDefinitionBlocks,
+} from "./compiler";
 export {
 	budgetPromptPlan,
+	budgetEditedPromptPlan,
+	measurePromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
 	tokenxEstimator,
@@ -12,9 +18,9 @@ export {
 export type {
 	CompilePromptDefinition,
 	CompilePromptInput,
-	ExpansionResult,
 	GenerationIntent,
-	MacroContext,
+	MacroEnvironment,
+	MacroAttemptState,
 	PromptBlock,
 	PromptContextEntry,
 	PromptHistoryRole,
@@ -26,5 +32,7 @@ export type {
 	PromptBudgetFailure,
 	PromptBudgetInput,
 	PromptBudgetResult,
+	PromptBudgetMeasurement,
+	PromptBudgetMeasurementInput,
 	TokenEstimator,
 } from "./budget";

@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { conversationSummary } from "./conversation-schema";
+import { conversationSummary, generationFormattingContext } from "./conversation-schema";
 import { promptChannels } from "./prompt-schema";
 
 // One seat of a new native Conversation: fork an existing Character at a
@@ -24,6 +24,10 @@ export const nativeConversationBody = Type.Object({
 	name: Type.String(),
 	humanSeat: newChatSeatSchema,
 	modelSeat: newChatSeatSchema,
+	// The initiating client owns the formatting context used to compile model
+	// openings. Both values are optional so the evaluator can apply its
+	// deterministic UTC/en-US defaults when a caller has no locale hint.
+	...generationFormattingContext.properties,
 });
 
 export const nativeConversationResponse = Type.Object({

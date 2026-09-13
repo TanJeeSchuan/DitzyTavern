@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "98e4053f-4c6a-4d16-898d-fab2f3a0dfeb",
+  "id": "2654adc9-26e2-4d5a-967d-c6379e9083c2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "active_generation": {
@@ -14,8 +14,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -100,8 +100,8 @@
           "autoincrement": false,
           "default": "'{}'"
         },
-        "history_roles_json": {
-          "name": "history_roles_json",
+        "prompt_context_json": {
+          "name": "prompt_context_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -180,16 +180,31 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "macro_preset_id": {
+          "name": "macro_preset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "macro_writes_json": {
+          "name": "macro_writes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
         }
       },
       "indexes": {},
       "foreignKeys": {
-        "active_generation_chat_id_chat_id_fk": {
-          "name": "active_generation_chat_id_chat_id_fk",
+        "active_generation_conversation_id_conversation_id_fk": {
+          "name": "active_generation_conversation_id_conversation_id_fk",
           "tableFrom": "active_generation",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -290,8 +305,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -348,10 +363,10 @@
         }
       },
       "indexes": {
-        "artifact_chat_namespace_key_unique": {
-          "name": "artifact_chat_namespace_key_unique",
+        "artifact_conversation_namespace_key_unique": {
+          "name": "artifact_conversation_namespace_key_unique",
           "columns": [
-            "chat_id",
+            "conversation_id",
             "namespace",
             "key"
           ],
@@ -359,12 +374,12 @@
         }
       },
       "foreignKeys": {
-        "artifact_chat_id_chat_id_fk": {
-          "name": "artifact_chat_id_chat_id_fk",
+        "artifact_conversation_id_conversation_id_fk": {
+          "name": "artifact_conversation_id_conversation_id_fk",
           "tableFrom": "artifact",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -543,121 +558,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "chat_data": {
-      "name": "chat_data",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "chat_id": {
-          "name": "chat_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "namespace": {
-          "name": "namespace",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "value": {
-          "name": "value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "chat_data_owner_key_unique": {
-          "name": "chat_data_owner_key_unique",
-          "columns": [
-            "chat_id",
-            "namespace",
-            "key"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "chat_data_chat_id_chat_id_fk": {
-          "name": "chat_data_chat_id_chat_id_fk",
-          "tableFrom": "chat_data",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "chat": {
-      "name": "chat",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "creation_time": {
-          "name": "creation_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_message_time": {
-          "name": "last_message_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         }
       },
       "indexes": {},
@@ -978,8 +878,8 @@
     "conversation_control": {
       "name": "conversation_control",
       "columns": {
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1010,12 +910,12 @@
         }
       },
       "foreignKeys": {
-        "conversation_control_chat_id_chat_id_fk": {
-          "name": "conversation_control_chat_id_chat_id_fk",
+        "conversation_control_conversation_id_conversation_id_fk": {
+          "name": "conversation_control_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_control",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -1038,12 +938,12 @@
         }
       },
       "compositePrimaryKeys": {
-        "conversation_control_chat_id_seat_pk": {
+        "conversation_control_conversation_id_seat_pk": {
           "columns": [
-            "chat_id",
+            "conversation_id",
             "seat"
           ],
-          "name": "conversation_control_chat_id_seat_pk"
+          "name": "conversation_control_conversation_id_seat_pk"
         }
       },
       "uniqueConstraints": {},
@@ -1054,11 +954,80 @@
         }
       }
     },
+    "conversation_data": {
+      "name": "conversation_data",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "namespace": {
+          "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "conversation_data_owner_key_unique": {
+          "name": "conversation_data_owner_key_unique",
+          "columns": [
+            "conversation_id",
+            "namespace",
+            "key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "conversation_data_conversation_id_conversation_id_fk": {
+          "name": "conversation_data_conversation_id_conversation_id_fk",
+          "tableFrom": "conversation_data",
+          "tableTo": "conversation",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "conversation_generation_settings": {
       "name": "conversation_generation_settings",
       "columns": {
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": true,
           "notNull": true,
@@ -1167,12 +1136,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "conversation_generation_settings_chat_id_chat_id_fk": {
-          "name": "conversation_generation_settings_chat_id_chat_id_fk",
+        "conversation_generation_settings_conversation_id_conversation_id_fk": {
+          "name": "conversation_generation_settings_conversation_id_conversation_id_fk",
           "tableFrom": "conversation_generation_settings",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -1181,6 +1150,111 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "conversation_prompt_preset": {
+      "name": "conversation_prompt_preset",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prompt_preset_id": {
+          "name": "prompt_preset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "conversation_prompt_preset_prompt_preset_id_index": {
+          "name": "conversation_prompt_preset_prompt_preset_id_index",
+          "columns": [
+            "prompt_preset_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "conversation_prompt_preset_conversation_id_conversation_id_fk": {
+          "name": "conversation_prompt_preset_conversation_id_conversation_id_fk",
+          "tableFrom": "conversation_prompt_preset",
+          "tableTo": "conversation",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "conversation_prompt_preset_prompt_preset_id_prompt_preset_id_fk": {
+          "name": "conversation_prompt_preset_prompt_preset_id_prompt_preset_id_fk",
+          "tableFrom": "conversation_prompt_preset",
+          "tableTo": "prompt_preset",
+          "columnsFrom": [
+            "prompt_preset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "conversation": {
+      "name": "conversation",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creation_time": {
+          "name": "creation_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_message_time": {
+          "name": "last_message_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -1195,8 +1269,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1265,8 +1339,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "history_roles_json": {
-          "name": "history_roles_json",
+        "prompt_context_json": {
+          "name": "prompt_context_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1345,12 +1419,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "generation_replay_chat_id_chat_id_fk": {
-          "name": "generation_replay_chat_id_chat_id_fk",
+        "generation_replay_conversation_id_conversation_id_fk": {
+          "name": "generation_replay_conversation_id_conversation_id_fk",
           "tableFrom": "generation_replay",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -1468,8 +1542,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1519,22 +1593,22 @@
         }
       },
       "indexes": {
-        "messages_chat_position_unique": {
-          "name": "messages_chat_position_unique",
+        "messages_conversation_position_unique": {
+          "name": "messages_conversation_position_unique",
           "columns": [
-            "chat_id",
+            "conversation_id",
             "position"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "messages_chat_id_chat_id_fk": {
-          "name": "messages_chat_id_chat_id_fk",
+        "messages_conversation_id_conversation_id_fk": {
+          "name": "messages_conversation_id_conversation_id_fk",
           "tableFrom": "messages",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -1881,8 +1955,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "chat_id": {
-          "name": "chat_id",
+        "conversation_id": {
+          "name": "conversation_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1918,10 +1992,10 @@
         }
       },
       "indexes": {
-        "participant_chat_position_unique": {
-          "name": "participant_chat_position_unique",
+        "participant_conversation_position_unique": {
+          "name": "participant_conversation_position_unique",
           "columns": [
-            "chat_id",
+            "conversation_id",
             "position"
           ],
           "isUnique": true,
@@ -1929,12 +2003,12 @@
         }
       },
       "foreignKeys": {
-        "participant_chat_id_chat_id_fk": {
-          "name": "participant_chat_id_chat_id_fk",
+        "participant_conversation_id_conversation_id_fk": {
+          "name": "participant_conversation_id_conversation_id_fk",
           "tableFrom": "participant",
-          "tableTo": "chat",
+          "tableTo": "conversation",
           "columnsFrom": [
-            "chat_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
@@ -1956,6 +2030,150 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "prompt_preset_block": {
+      "name": "prompt_preset_block",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "preset_id": {
+          "name": "preset_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "prompt_preset_block_position_unique": {
+          "name": "prompt_preset_block_position_unique",
+          "columns": [
+            "preset_id",
+            "position"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "prompt_preset_block_preset_id_prompt_preset_id_fk": {
+          "name": "prompt_preset_block_preset_id_prompt_preset_id_fk",
+          "tableFrom": "prompt_preset_block",
+          "tableTo": "prompt_preset",
+          "columnsFrom": [
+            "preset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "prompt_preset_block_shape_check": {
+          "name": "prompt_preset_block_shape_check",
+          "value": "(\n\t\t\t\t\"prompt_preset_block\".\"reference\" = 'history'\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NULL\n\t\t\t) OR (\n\t\t\t\t\"prompt_preset_block\".\"reference\" = 'instruction'\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IN ('system', 'user', 'assistant')\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NOT NULL\n\t\t\t) OR (\n\t\t\t\t\"prompt_preset_block\".\"reference\" IN (\n\t\t\t\t\t'model-system-instruction',\n\t\t\t\t\t'human-identity',\n\t\t\t\t\t'model-identity',\n\t\t\t\t\t'model-scenario',\n\t\t\t\t\t'model-example-dialogue',\n\t\t\t\t\t'model-post-history-instruction'\n\t\t\t\t)\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IS NOT NULL\n\t\t\t\tAND \"prompt_preset_block\".\"role\" IN ('system', 'user', 'assistant')\n\t\t\t\tAND \"prompt_preset_block\".\"name\" IS NULL\n\t\t\t\tAND \"prompt_preset_block\".\"content\" IS NULL\n\t\t\t)"
+        }
+      }
+    },
+    "prompt_preset": {
+      "name": "prompt_preset",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "prompt_preset_single_default": {
+          "name": "prompt_preset_single_default",
+          "columns": [
+            "is_default"
+          ],
+          "isUnique": true,
+          "where": "\"prompt_preset\".\"is_default\" = 1"
+        }
+      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

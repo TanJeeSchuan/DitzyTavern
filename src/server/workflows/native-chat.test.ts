@@ -89,6 +89,18 @@ describe("Native New Chat workflow", () => {
 		expect(countRows(participantTable)).toBe(2);
 	});
 
+	test("expands openings with the native creation timezone and locale", () => {
+		const snapshot = createNativeConversation(database, {
+			name: "Formatted opening",
+			humanSeat: adHoc("Writer"),
+			modelSeat: adHoc("Juno", ["{{isodate}} {{isotime}} {{weekday}}"]),
+			timeZone: "UTC+05:30",
+			locale: "en-US",
+			createdAt: "2026-01-02T15:04:05.000Z",
+		});
+		expect(snapshot.messages[0]?.variants[0]?.content).toBe("2026-01-02 20:34 Friday");
+	});
+
 	test("forks copy the authoritative Definition server-side and record provenance without revisions or synchronization", () => {
 		const library = createCharacterLibraryModule(database);
 		const source = library.execute({

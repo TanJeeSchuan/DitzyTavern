@@ -4,6 +4,7 @@
 import { sql } from "drizzle-orm";
 import {
 	check,
+	index,
 	int,
 	primaryKey,
 	real,
@@ -17,6 +18,87 @@ import {
 } from "../conversation/generation-defaults";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
+// ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
+// only: Generation Settings and text-processing scripts are deliberately not
+// part of it. Exactly one row is the Default preset, which every Conversation
+// selects until it selects another.
+export const promptPresetTable = sqliteTable(
+	"prompt_preset",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		name: text().notNull(),
+		is_default: int({ mode: "boolean" }).notNull().default(false),
+		// ==[HUMAN APPROVED]== Optimistic-concurrency revision following the Character
+		// Library convention: every authoritative library command carries the
+		// revision the caller saw, so a stale rename or deletion cannot
+		// silently act on state the caller never confirmed.
+		revision: int().notNull().default(0),
+	},
+	(table) => [
+		uniqueIndex("prompt_preset_single_default")
+			.on(table.is_default)
+			.where(sql`${table.is_default} = 1`),
+	],
+);
+
+// ==[HUMAN APPROVED]== One ordered slot of a recipe. Enablement is stored on the slot so a
+// disabled slot keeps its place in the order rather than leaving it. The
+// outgoing role is stored per occurrence so deliberate duplicates can be
+// presented differently; history rows keep it null because their entries
+// carry the roles of their own Messages.
+export const promptPresetBlockTable = sqliteTable(
+	"prompt_preset_block",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		preset_id: int()
+			.notNull()
+			.references(() => promptPresetTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		reference: text().notNull(),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+		role: text({ enum: ["system", "user", "assistant"] }),
+		// ==[HUMAN APPROVED]== The authored instruction block's own metadata and text. Null on
+		// every referenced occurrence: the preset stores references, never
+		// rendered Participant or history content.
+		name: text(),
+		content: text(),
+	},
+	(table) => [
+		uniqueIndex("prompt_preset_block_position_unique").on(
+			table.preset_id,
+			table.position,
+		),
+		check(
+			"prompt_preset_block_shape_check",
+			sql`(
+				${table.reference} = 'history'
+				AND ${table.role} IS NULL
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			) OR (
+				${table.reference} = 'instruction'
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NOT NULL
+				AND ${table.content} IS NOT NULL
+			) OR (
+				${table.reference} IN (
+					'model-system-instruction',
+					'human-identity',
+					'model-identity',
+					'model-scenario',
+					'model-example-dialogue',
+					'model-post-history-instruction'
+				)
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			)`,
+		),
+	],
+);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),
@@ -24,6 +106,27 @@ export const conversationTable = sqliteTable("conversation", {
 	last_message_time: text().notNull(),
 	revision: int().notNull().default(0),
 });
+
+// ==[HUMAN APPROVED]== The Conversation's own selection from the shared preset library. The
+// preset is referenced, never copied: saved edits reach every Conversation
+// that selected it. Every Conversation has exactly one row, written at
+// creation, so no read has to invent a selection.
+export const conversationPromptPresetTable = sqliteTable(
+	"conversation_prompt_preset",
+	{
+		conversation_id: int()
+			.primaryKey()
+			.references(() => conversationTable.id, { onDelete: "cascade" }),
+		prompt_preset_id: int()
+			.notNull()
+			.references(() => promptPresetTable.id),
+	},
+	(table) => [
+		index("conversation_prompt_preset_prompt_preset_id_index").on(
+			table.prompt_preset_id,
+		),
+	],
+);
 
 export const messageTable = sqliteTable(
 	"messages",
@@ -396,6 +499,11 @@ export const activeGenerationTable = sqliteTable(
 		provenance_namespace: text(),
 		provenance_key: text(),
 		provenance_value: text(),
+		// ==[HUMAN APPROVED]== Pending macro writes are captured with the originating preset and
+		// survive a process restart until terminal Variant persistence can attach
+		// them to the target. An attempt never derives these from completion order.
+		macro_preset_id: int(),
+		macro_writes_json: text().notNull().default("[]"),
 	},
 );
 
@@ -551,4 +659,3 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 		primaryKey({ columns: [table.profile_id, table.model_id] }),
 	],
 );
-

@@ -13,10 +13,10 @@ import {
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	generateSiblingVariant,
-	inspectGenerationPrompt,
 	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
+import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -62,6 +62,7 @@ describe("Generation capture and provenance", () => {
 	});
 
 	afterEach(() => {
+		clearGenerationPreviewRegistry();
 		database.close();
 	});
 
@@ -222,11 +223,14 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 
-		// Inspection resolves the same safe Connection fact before compilation.
-		const inspection = inspectGenerationPrompt(database, conversationId, {
+		const preview = createGenerationPreview(database, {
+			conversationId,
+			kind: "send",
+			content: "Send with narrowed overrides.",
 			connectionSettings: { masterKey: key },
 		});
-		if (inspection.effectiveSettings === null) throw new Error("Expected effective settings.");
+		if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
+		const effectiveSettings = preview.capture.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
 		await sendThroughProvisionalTailGeneration(database, {
@@ -244,9 +248,9 @@ describe("Generation capture and provenance", () => {
 		// the inactive namespaces stay editable and are never transmitted.
 		if (receivedSettings === undefined) throw new Error("Expected the Model Client input.");
 		expect(receivedSettings.requestOverrides).toEqual({ logit_bias: { "50256": -100 } });
-		// Inspection and execution produce equivalent plans from the same
+		// Preview and execution produce equivalent settings from the same
 		// captured inputs.
-		expect(projectModelClientGenerationSettings(inspection.effectiveSettings))
+		expect(projectModelClientGenerationSettings(effectiveSettings))
 			.toEqual(receivedSettings);
 
 		const message = requireSnapshot(createConversationModule(database), conversationId).messages.at(-1);

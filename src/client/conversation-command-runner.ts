@@ -53,9 +53,9 @@ export interface ConversationCommandNotices {
 }
 
 // Typed callbacks the runner never interprets. `onApplied` and `onConflict`
-// ==[HUMAN APPROVED]== carry operation-specific success and reload work (local state sync,
-// confirmations, reloading authoritative operation data while drafts stay
-// untouched). `onNotPlayable` and `onNotRemovable` are required: those
+// ==[HUMAN APPROVED]== carry synchronous operation-specific state changes and confirmations.
+// Authoritative reloads belong to the state owner that observes the adopted snapshot.
+// `onNotPlayable` and `onNotRemovable` are required: those
 // Conversation-state outcomes keep their precise meaning, so every adopting
 // surface must decide their presentation instead of falling into a generic
 // failure branch. `onOperation` receives every `ConversationOperationOutcome`

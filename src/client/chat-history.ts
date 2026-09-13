@@ -10,10 +10,6 @@
 // Content. Exact artifact bytes, the canonical archive text, and signatures
 // stay behind deliberate detail operations.
 
-// Payload types and wire validation both derive from the shared TypeBox
-// ==[HUMAN APPROVED]== contract: every response is decoded at this boundary with Value.Decode so
-// a malformed payload can never masquerade as trusted history.
-import { Value } from "@sinclair/typebox/value";
 import type {
 	ChatHistoryAuthorStamp,
 	ChatHistoryMessage,
@@ -31,6 +27,7 @@ import {
 	chatImportDetails,
 	importCleanedUpResponse,
 } from "../shared/contract/chat-import";
+import { decodeWirePayload } from "./lib/wire-decode";
 import type { JsonValue } from "./lib/json-guards";
 
 export type {
@@ -92,21 +89,11 @@ export interface ChatHistoryTransport {
 // ==[HUMAN APPROVED]== contract at the I/O boundary. Any field failing the typed contract
 // discards the whole payload so a malformed response can never masquerade
 // as trusted history.
-const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null => {
-	try {
-		return Value.Decode(chatHistoryPage, value);
-	} catch {
-		return null;
-	}
-};
+const parseHistoryPage = (value: JsonValue): ChatHistoryPage | null =>
+	decodeWirePayload(chatHistoryPage, value);
 
-const parseImportDetails = (value: JsonValue): ChatImportDetails | null => {
-	try {
-		return Value.Decode(chatImportDetails, value);
-	} catch {
-		return null;
-	}
-};
+const parseImportDetails = (value: JsonValue): ChatImportDetails | null =>
+	decodeWirePayload(chatImportDetails, value);
 
 const parseHistoryResponse = async (
 	response: Response,
@@ -136,15 +123,11 @@ const parseDownloadResponse = async (
 	if (response.status === 404) return { status: "not-found" };
 	if (response.status === 410) {
 		const value: JsonValue = await response.json().catch(() => ({}));
-		try {
-			const cleaned = Value.Decode(importCleanedUpResponse, value);
-			return {
-				status: "cleaned-up",
-				reason: cleaned.reason,
-			};
-		} catch {
-			return { status: "cleaned-up", reason: "missing" };
-		}
+		const cleaned = decodeWirePayload(importCleanedUpResponse, value);
+		return {
+			status: "cleaned-up",
+			reason: cleaned?.reason ?? "missing",
+		};
 	}
 	if (!response.ok) return { status: "network" };
 	const disposition = response.headers.get("content-disposition") ?? "";
@@ -220,29 +203,3 @@ export const createChatHistoryTransport = (
 // ==[HUMAN APPROVED]==
 export const chatHistoryTransport: ChatHistoryTransport =
 	createChatHistoryTransport();
-
-// Triggers a browser download of the exact managed bytes using the stored
-// ==[HUMAN APPROVED]== original leaf filename. Returns whether the download started; cleaned-up
-// artifacts never reach this point (the view disables the action).
-export const downloadImportedSourceInBrowser = (
-	filename: string,
-	mediaType: string,
-	bytes: Uint8Array,
-	callback: (href: string, download: string) => void = (href, download) => {
-		const anchor = document.createElement("a");
-		anchor.href = href;
-		anchor.download = download;
-		document.body.appendChild(anchor);
-		anchor.click();
-		anchor.remove();
-	},
-): void => {
-	const objectUrl = URL.createObjectURL(
-		new Blob([new Uint8Array(bytes)], { type: mediaType }),
-	);
-	try {
-		callback(objectUrl, filename);
-	} finally {
-		window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-	}
-};

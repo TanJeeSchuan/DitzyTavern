@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status, t } from "elysia";
+import { Type } from "@sinclair/typebox";
 import {
 	CharacterNotFoundError,
 	InvalidCharacterDefinitionError,
@@ -21,6 +22,7 @@ import {
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
 import { withDatabase } from "../database/database";
+import { conversationPromptPreset } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
@@ -43,8 +45,12 @@ import {
 	conversationIdParams,
 	conversationSummary,
 	continuationBody,
+	siblingGenerationBody,
+	type PromptPlan,
 	generationAccepted,
 	generationBody,
+	generationPreview,
+	generationPreviewBody,
 	generationConflictResponse,
 	generationEventsQuery,
 	generationIdParams,
@@ -58,6 +64,19 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
+	createGenerationPreview,
+	previewRecordFor,
+	type GenerationPreviewAcceptanceFor,
+	type GenerationPreviewKind,
+} from "../workflows/generation-preview";
+import {
+	macroVariables,
+	macroVariablesAppliedResponse,
+	macroVariablesEditBody,
+	macroVariablesQuery,
+} from "../../shared/contract/macro-variables";
+import {
+	classifyGenerationFailure,
 	generationAcceptanceResponse,
 	siblingGenerationAcceptanceResponse,
 } from "./generation-error-mapping";
@@ -139,6 +158,37 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
+const previewUseFor = <K extends GenerationPreviewKind>(
+	conversationId: number,
+	kind: K,
+	previewId: string | undefined,
+	promptPlan: PromptPlan | undefined,
+): GenerationPreviewAcceptanceFor<K> | undefined => {
+	if (previewId === undefined) {
+		if (promptPlan !== undefined) {
+			throw new InvalidConversationCommandError("An edited Prompt Plan requires a preview token.");
+		}
+		return undefined;
+	}
+	const record = previewRecordFor(previewId, conversationId, kind);
+	return {
+		kind,
+		record,
+		editedPlan: promptPlan ?? record.capture.capture.plan.promptPlan,
+	};
+};
+
+const currentConversationRevision = (
+	database: Database | undefined,
+	conversationId: number,
+): number => {
+	const revision = withConversationModule(database, (conversationModule) =>
+		conversationModule.getRevision(conversationId),
+	);
+	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
+	return revision;
+};
+
 // ==[HUMAN APPROVED]== Route options extend the Coordinator composition options, so transport
 // tests can inject the Coordinator's Conversation and runtime lifecycle seams
 // while production resolves the deep adapters itself.
@@ -200,13 +250,75 @@ export const createConversationRoutes = (
 				params.id,
 				() => generationCoordinator.startContinuationGeneration({
 					conversationId: params.id,
-					expectedRevision: body.expectedRevision,
+					expectedRevision: body.previewId === undefined
+						? body.expectedRevision
+						: currentConversationRevision(database, params.id),
+					formatting: { timeZone: body.timeZone, locale: body.locale },
+					preview: previewUseFor(params.id, "continuation", body.previewId, body.promptPlan),
 				}),
 			),
 			{
 				params: conversationIdParams,
 				body: continuationBody,
 				response: generationStartRouteResponse,
+			},
+		)
+		.post(
+			"/api/conversations/:id/generations/preview",
+			({ params, body }) => {
+				try {
+					const common = {
+						conversationId: params.id,
+						formatting: { timeZone: body.timeZone, locale: body.locale },
+						connectionSettings: options,
+					};
+					const input = body.kind === "send"
+						? { ...common, kind: body.kind, content: body.content }
+						: body.kind === "sibling"
+							? { ...common, kind: body.kind, messageId: body.messageId }
+							: { ...common, kind: body.kind };
+					const preview = withDatabase(database, (connection) =>
+						createGenerationPreview(connection, input));
+					const capture = preview.capture.capture;
+					return {
+						outcome: "available" as const,
+						previewId: preview.id,
+						conversationId: preview.conversationId,
+						kind: preview.capture.kind,
+						promptPlan: capture.plan.promptPlan,
+						participants: {
+							human: capture.humanParticipant,
+							model: { id: capture.author.participantId, name: capture.author.capturedName },
+						},
+						effectiveSettings: capture.plan.effectiveSettings,
+						pendingWrites: [...capture.macroWrites],
+						budget: {
+							tokenEstimate: capture.plan.budget.tokenEstimate,
+							responseBudget: capture.plan.budget.responseBudget,
+							safetyAllowance: capture.plan.budget.safetyAllowance,
+							contextLimit: capture.plan.budget.contextLimit,
+							totalRequiredTokens: capture.plan.budget.totalRequiredTokens,
+							budgetFits: capture.plan.budget.fits,
+						},
+					};
+				} catch (error) {
+					if (!(error instanceof Error)) throw error;
+					const failure = classifyGenerationFailure(error);
+					if (failure === undefined || failure.body.outcome === "conflict") throw error;
+					if (failure.status === 404) return status(404, failure.body);
+					if (failure.status === 409) return status(409, failure.body);
+					return status(422, failure.body);
+				}
+			},
+			{
+				params: conversationIdParams,
+				body: generationPreviewBody,
+				response: {
+					200: generationPreview,
+					404: notFoundOutcome,
+					409: notPlayableOutcome,
+					422: invalidOutcome,
+				},
 			},
 		)
 		.get(
@@ -249,6 +361,88 @@ export const createConversationRoutes = (
 				response: {
 					200: conversationSummary,
 					404: notFoundOutcome,
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/prompt-preset",
+			({ params }) => {
+				const preset = withDatabase(database, (connection) =>
+					createConversationModule(connection).getPromptPreset(params.id),
+				);
+				return preset ?? notFoundResponse();
+			},
+			{
+				params: conversationIdParams,
+				response: {
+					200: conversationPromptPreset,
+					404: notFoundOutcome,
+				},
+			},
+		)
+		.get(
+			"/api/conversations/:id/macro-variables",
+			({ params, query, status }) => {
+				try {
+					const variables = withConversationModule(database, (conversationModule) =>
+						conversationModule.readMacroVariables(params.id, {
+							position: query.position,
+							promptPresetId: query.promptPresetId,
+						}),
+					);
+					return variables ?? status(404, { outcome: "not-found" as const });
+				} catch (error) {
+					if (error instanceof InvalidConversationCommandError) {
+						return invalidResponse(error.message);
+					}
+					throw error;
+				}
+			},
+			{
+				params: conversationIdParams,
+				query: macroVariablesQuery,
+				response: {
+					200: macroVariables,
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
+		.post(
+			"/api/conversations/:id/macro-variables",
+			({ params, body, status }) => {
+				try {
+					const edited = withDatabase(database, (connection) =>
+						createConversationModule(connection).editMacroVariables({
+							conversationId: params.id,
+							expectedRevision: body.expectedRevision,
+							promptPresetId: body.promptPresetId,
+							position: body.position,
+							operation: body.operation,
+							name: body.name,
+							value: body.operation === "set" ? body.value : undefined,
+						}),
+					);
+					return { outcome: "applied" as const, ...edited };
+				} catch (error) {
+					if (error instanceof StaleConversationRevisionError) {
+						return staleConversationResponse(database, params.id, error);
+					}
+					if (error instanceof ConversationNotFoundError) return notFoundResponse();
+					if (error instanceof InvalidConversationCommandError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				params: conversationIdParams,
+				body: macroVariablesEditBody,
+				response: {
+					200: macroVariablesAppliedResponse,
+					404: notFoundOutcome,
+					409: conversationConflict,
+					422: invalidOutcome,
 				},
 			},
 		)
@@ -298,8 +492,12 @@ export const createConversationRoutes = (
 				params.id,
 				() => generationCoordinator.startSendGeneration({
 					conversationId: params.id,
-					expectedRevision: body.expectedRevision,
+					expectedRevision: body.previewId === undefined
+						? body.expectedRevision
+						: currentConversationRevision(database, params.id),
 					content: body.content,
+					formatting: { timeZone: body.timeZone, locale: body.locale },
+					preview: previewUseFor(params.id, "send", body.previewId, body.promptPlan),
 				}),
 			),
 			{
@@ -313,10 +511,7 @@ export const createConversationRoutes = (
 			({ params, query, request }) => {
 				const runtime = generationRuntimeFor(database).get(params.generationId);
 				if (runtime === undefined || runtime.state.conversationId !== params.id) {
-					return new Response(JSON.stringify({ outcome: "not-found" }), {
-						status: 404,
-						headers: { "content-type": "application/json" },
-					});
+					return notFoundResponse();
 				}
 				return createGenerationSubscriptionResponse(runtime, query.after ?? 0, request);
 			},
@@ -331,23 +526,28 @@ export const createConversationRoutes = (
 		// closing it never aborts the sibling provider attempt.
 		.post(
 			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params }) =>
+			async ({ params, body }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
 					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
+						formatting: { timeZone: body?.timeZone, locale: body?.locale },
+						preview: body?.previewId === undefined
+							? undefined
+							: previewUseFor(params.id, "sibling", body.previewId, body.promptPlan),
 					}),
 				),
-			{
-				params: messageIdParams,
-				response: {
-					200: generationAccepted,
-					404: notFoundOutcome,
-					409: notPlayableOutcome,
-					422: invalidOutcome,
+				{
+					params: messageIdParams,
+					body: Type.Optional(siblingGenerationBody),
+					response: {
+						200: generationAccepted,
+						404: notFoundOutcome,
+						409: notPlayableOutcome,
+						422: invalidOutcome,
+					},
 				},
-			},
 		)
 		// ==[HUMAN APPROVED]== Revisioned Conversation commands remain separate from the
 		// server-owned Generation acceptance and event routes above.

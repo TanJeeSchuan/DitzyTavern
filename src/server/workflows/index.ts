@@ -26,8 +26,6 @@ export {
 	generateSiblingVariant,
 	type GenerateSiblingVariantInput,
 	type GenerationAttemptInput,
-	type GenerationPromptInspection,
-	inspectGenerationPrompt,
 	type ParticipantPreview,
 	sendThroughProvisionalTailGeneration,
 	type SendThroughProvisionalTailGenerationInput,

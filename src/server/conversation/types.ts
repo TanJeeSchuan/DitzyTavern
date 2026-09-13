@@ -22,6 +22,12 @@ import type {
 import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
+import type { ConversationPromptPreset } from "../../shared/contract/prompt-preset";
+import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
+import type {
+	MacroVariables as SharedMacroVariables,
+} from "../../shared/contract/macro-variables";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -37,6 +43,8 @@ export interface ConversationDataEntry {
 // persistence seams. Keeping this closed recursive type avoids admitting
 // provider classes, credentials, or unserializable runtime values.
 export type ConversationJsonValue = GenerationJsonValue;
+
+export type MacroVariables = SharedMacroVariables;
 
 // Conversation-local generation controls derive from the canonical
 // Generation Settings declaration (ADR-0032) instead of restating its
@@ -79,6 +87,15 @@ export interface ConversationDataReadFilter {
 export interface ConversationDataRead {
 	name: string;
 	entries: ConversationDataEntry[];
+}
+
+export interface SelectedHistoryReadRequest {
+	position?: number | undefined;
+	targetMessageId?: number | undefined;
+	conversationDataNamespace?: string | undefined;
+	conversationDataKeyPrefix?: string | undefined;
+	variantDataNamespace?: string | undefined;
+	variantDataKeys?: readonly string[] | undefined;
 }
 
 // Generic filesystem artifact ownership seed. The metadata row commits
@@ -289,11 +306,18 @@ export interface ConversationCommand {
 export interface ConversationModule {
 	create(input: ConversationCreationInput): ConversationSnapshot;
 	exists(conversationId: number): boolean;
+	// Narrow authoritative revision read used when a preview send ignores the
+	// client's stale revision; it does not load Conversation history.
+	getRevision(conversationId: number): number | undefined;
 	getSnapshot(conversationId: number): ConversationSnapshot | undefined;
 	getSummary(conversationId: number): ConversationSummary | undefined;
 	getGenerationSettings(
 		conversationId: number,
 	): ConversationGenerationSettings | undefined;
+	// The Chat's selected recipe with each Referenced Prompt Block resolved
+	// against this Chat's own Participant Definitions and selected history.
+	// Undefined for a missing Conversation.
+	getPromptPreset(conversationId: number): ConversationPromptPreset | undefined;
 	// Reads one stable chronological page of the normal Chat history read
 	// model. Pages carry the lightweight Participant identity, immutable
 	// Author Stamp names, Message chronology, Variant order, and selected
@@ -314,6 +338,18 @@ export interface ConversationModule {
 		conversationId: number,
 		filter?: ConversationDataReadFilter,
 	): ConversationDataRead | undefined;
+	readSelectedHistory(
+		conversationId: number,
+		request?: SelectedHistoryReadRequest,
+	): import("./selected-history").SelectedHistoryRead | undefined;
+	readMacroVariables(
+		conversationId: number,
+		input?: { promptPresetId?: number; position?: number },
+	): MacroVariables | undefined;
+	editMacroVariables(input: import("./macro-variables").EditMacroVariablesInput): {
+		conversation: ConversationSummary;
+		variables: MacroVariables;
+	};
 	// Deliberate detail reads. Active inspection is available only while the
 	// server-owned row is retained; compact Variant provenance survives that
 	// cleanup and is loaded separately from ordinary history.
@@ -381,14 +417,9 @@ export type VariantDetails = SharedVariantDetails;
 // Captured, provider-neutral input stored with an Active Generation. The
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
-export interface AcceptTailGenerationInput {
+export interface GenerationAcceptanceCapture {
 	conversationId: number;
-	expectedRevision: number;
 	timestamp: string;
-	humanContent: string;
-	// A retry may point at the already accepted trailing human Message. When
-	// omitted, acceptance creates one in the same transaction.
-	reuseHumanMessageId?: number | undefined;
 	humanParticipantId: number;
 	modelParticipantId: number;
 	capturedHumanName?: string | undefined;
@@ -402,6 +433,18 @@ export interface AcceptTailGenerationInput {
 	connection: ConversationJsonValue;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
+	// Captured macro state belongs to this originating preset and is attached to the target only
+	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
+	macroPresetId?: number | undefined;
+	macroWrites?: readonly MacroVariableWrite[] | undefined;
+}
+
+export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
+	expectedRevision: number;
+	humanContent: string;
+	// A retry may point at the already accepted trailing human Message. When
+	// omitted, acceptance creates one in the same transaction.
+	reuseHumanMessageId?: number | undefined;
 }
 
 export interface AcceptedTailGeneration {
@@ -453,23 +496,10 @@ export interface StoppedGenerations {
 // Continuation acceptance creates only the model-authored provisional target.
 // The current human seat remains part of the captured historical pair, but
 // there is deliberately no Human-authored Message for this lifecycle.
-export interface AcceptContinuationGenerationInput {
-	conversationId: number;
+export interface AcceptContinuationGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
-	timestamp: string;
 	precedingMessageId: number;
 	precedingVariantId: number;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
-	capturedModelName: string;
-	promptPlan: PromptPlan;
-	promptInspection?: ConversationJsonValue | undefined;
-	promptContext: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
-	generationIntent?: ConversationJsonValue | undefined;
-	provenance?: ConversationDataEntry | undefined;
 }
 
 export interface AcceptedContinuationGeneration {
@@ -482,21 +512,8 @@ export interface AcceptedContinuationGeneration {
 // Sibling acceptance creates a Provisional Variant on an existing Message.
 // `priorVariantId` lets an empty failure restore the selection that was
 // visible before this attempt, without overwriting a later user selection.
-export interface AcceptSiblingGenerationInput {
-	conversationId: number;
+export interface AcceptSiblingGenerationInput extends GenerationAcceptanceCapture {
 	messageId: number;
-	timestamp: string;
-	humanParticipantId: number;
-	modelParticipantId: number;
-	capturedHumanName?: string | undefined;
-	capturedModelName: string;
-	promptPlan: PromptPlan;
-	promptInspection?: ConversationJsonValue | undefined;
-	promptContext: ConversationJsonValue;
-	generationSettings: ConversationJsonValue;
-	connection: ConversationJsonValue;
-	generationIntent?: ConversationJsonValue | undefined;
-	provenance?: ConversationDataEntry | undefined;
 }
 
 export interface AcceptedSiblingGeneration {
@@ -567,4 +584,7 @@ export interface ConversationCreationInput {
 	artifacts?: readonly ConversationArtifactSeed[];
 	// Base time for Conversations whose history does not carry timestamps.
 	createdAt?: string | undefined;
+	// Native creation captures the initiating client's formatting context for
+	// the one opening assembly; imported/preservation records leave it unset.
+	formatting?: GenerationFormattingContext | undefined;
 }

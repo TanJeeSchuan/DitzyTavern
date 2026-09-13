@@ -27,6 +27,8 @@ export const createNativeConversationRoutes = (database: Database | undefined) =
 						name: body.name,
 						humanSeat: body.humanSeat,
 						modelSeat: body.modelSeat,
+						timeZone: body.timeZone,
+						locale: body.locale,
 					}),
 				);
 				return {

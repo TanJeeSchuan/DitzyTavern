@@ -1,8 +1,8 @@
 // ==[HUMAN APPROVED]== Server-owned Generation workflows.
 //
 // Composes the deep Conversation seam and the pure Prompt Compiler in one
-// deterministic flow: read one authoritative snapshot, compile the
-// provider-neutral Prompt Plan from the two controlled Participants and
+// deterministic flow: prepare one immutable set of generation inputs, compile
+// the provider-neutral Prompt Plan from the two controlled Participants and
 // selected history, hand the plan to the injected model transport, and
 // finally commit the transport's reply as a new Message authored by the
 // Participant that occupied model Control when generation started. Everything
@@ -25,20 +25,20 @@ import {
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationDataEntry,
-	type ConversationSnapshot,
 	type ConversationSummary,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 } from "../conversation";
-import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
-import type { PromptContextEntry } from "../prompt-compiler";
+import type { TokenEstimator } from "../prompt-compiler";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
 	ModelClientGenerationInput,
+	ModelClientEvent,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
+import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
@@ -52,16 +52,19 @@ import {
 	captureContinuationGeneration,
 	captureSiblingGeneration,
 	capturedAcceptanceFields,
-	compilePlanFrom,
 	modelRequestFor,
-	deriveGeneration,
-	resolveConnectionApiFormat,
 	type CapturedGeneration,
-	type ParticipantPreview,
 } from "./generate-capture";
 import {
-	continuationIntentFor,
-	type EffectiveGenerationSettings,
+	consumeGenerationPreview,
+	captureContinuationGenerationPreview,
+	captureSendGenerationPreview,
+	captureSiblingGenerationPreview,
+	type GenerationPreviewAcceptance,
+	type GenerationPreviewAcceptanceFor,
+} from "./generation-preview";
+import {
+	assertGenerationPlan,
 } from "../generation-plan";
 
 export type {
@@ -97,7 +100,7 @@ interface GenerationLifecyclePolicy<
 > {
 	capture: (
 		database: Database,
-		snapshot: ConversationSnapshot,
+		conversationId: number,
 		input: Input,
 	) => Capture;
 	accept: (
@@ -115,6 +118,10 @@ interface GenerationLifecyclePolicy<
 	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
 
+type PreviewableGenerationAttemptInput = GenerationAttemptInput & {
+	readonly preview?: GenerationPreviewAcceptance;
+};
+
 /**
  * ==[HUMAN APPROVED]== Run one server-owned Generation lifecycle from the shared seams.
  * What differs between Send, Continue, and Sibling is what they capture, how
@@ -124,7 +131,7 @@ interface GenerationLifecyclePolicy<
  */
 async function runGenerationLifecycle<
 	Accepted extends AcceptedGenerationTarget,
-	Input extends GenerationAttemptInput,
+	Input extends PreviewableGenerationAttemptInput,
 	Capture extends CapturedGeneration,
 >(
 	database: Database,
@@ -133,21 +140,23 @@ async function runGenerationLifecycle<
 	policy: GenerationLifecyclePolicy<Input, Capture, Accepted>,
 ): Promise<Accepted> {
 	const conversation = createConversationModule(database);
-	const snapshot = conversation.getSnapshot(input.conversationId);
-	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+	const revision = conversation.getRevision(input.conversationId);
+	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
 	// ==[HUMAN APPROVED]== A revisioned lifecycle fails fast before the Prompt Plan is
 	// compiled. The acceptance transaction re-checks the revision under its
 	// own lock and stays authoritative; this only avoids budgeting a
 	// Conversation that has already moved on.
 	if (
 		input.expectedRevision !== undefined &&
-		snapshot.revision !== input.expectedRevision
+		revision !== input.expectedRevision
 	) {
-		throw new StaleConversationRevisionError(input.expectedRevision, snapshot.revision);
+		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const capture = policy.capture(database, snapshot, input);
+	const capture = policy.capture(database, input.conversationId, input);
+	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
+	if (input.preview !== undefined) consumeGenerationPreview(input.preview.record);
 	await notifyAccepted<Accepted>({ onAccepted }, accepted);
 	return runAcceptedGeneration(input, policy.request(capture, input), {
 		remove: () => {
@@ -178,39 +187,13 @@ async function runGenerationLifecycle<
 	});
 }
 
-// ==[HUMAN APPROVED]== Read-only prompt inspection result. `playable: false` means the
-// Conversation cannot currently generate because the two distinct Control
-// seats are not both occupied; the plan is then null.
-export interface GenerationPromptInspection {
-	conversationId: number;
-	playable: boolean;
-	humanParticipant: ParticipantPreview | null;
-	modelParticipant: ParticipantPreview | null;
-	plan: PromptPlan | null;
-	// ==[HUMAN APPROVED]== The Effective Generation Settings a generation from the current captured
-	// state would use: an ordinary Tail attempt, so the Continuation group is
-	// absent and Request Overrides are narrowed to the active API Format.
-	effectiveSettings: EffectiveGenerationSettings | null;
-	// ==[HUMAN APPROVED]== The selected Continue request intent is exposed separately from the
-	// ordinary Generate plan. Assistant prefill remains metadata here, never a
-	// synthetic Conversation history block.
-	continuationIntent: GenerationIntent | null;
-	tokenEstimate: number | null;
-	responseBudget: number | null;
-	safetyAllowance: number | null;
-	contextLimit: number | null;
-	totalRequiredTokens: number | null;
-	omittedContext: readonly PromptContextEntry[];
-	budgetFits: boolean | null;
-	tokenEstimateIsApproximate: boolean;
-	budgetFailure: PromptBudgetFailure | null;
-}
-
 export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: GenerationPreviewAcceptanceFor<"send">;
 	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
@@ -244,85 +227,6 @@ export function startServerOwnedSendGeneration(
 	);
 }
 
-// ==[HUMAN APPROVED]== Compiles the Prompt Plan the server would send for a Tail Generation
-// without contacting any transport. Exposes the agreed participant context
-// (the Control pair and their plan) using provider-neutral vocabulary only.
-export function inspectGenerationPrompt(
-	database: Database,
-	conversationId: number,
-	options: {
-		readonly tokenEstimator?: TokenEstimator;
-		readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	} = {},
-): GenerationPromptInspection {
-	const snapshot = createConversationModule(database).getSnapshot(conversationId);
-	if (snapshot === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
-		return {
-			conversationId,
-			playable: false,
-			humanParticipant: null,
-			modelParticipant: null,
-			plan: null,
-			effectiveSettings: null,
-			continuationIntent: null,
-			tokenEstimate: null,
-			responseBudget: null,
-			safetyAllowance: null,
-			contextLimit: null,
-			totalRequiredTokens: null,
-			omittedContext: [],
-			budgetFits: null,
-			tokenEstimateIsApproximate: false,
-			budgetFailure: null,
-		};
-	}
-	const settings = createConversationModule(database).getGenerationSettings(conversationId);
-	if (settings === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
-	// Compiler, so the same captured inputs cannot produce drifting plans.
-	// Like Send, the inspected attempt is an ordinary Tail Generation: the
-	// compiled plan carries no Continuation intent, and the impossible-budget
-	// failure is reported instead of thrown.
-	const plan = compilePlanFrom(
-		derivation,
-		{
-			settings,
-			// ==[HUMAN APPROVED]== The safe Connection fact resolves before compilation so Request
-			// Overrides are narrowed exactly as an executed attempt would narrow
-			// them.
-			connection: resolveConnectionApiFormat(database, options.connectionSettings),
-		},
-		{ estimator: options.tokenEstimator },
-	);
-	const continuationIntent = continuationIntentFor(settings);
-
-	return {
-		conversationId,
-		playable: true,
-		humanParticipant: { id: derivation.human.id, name: derivation.human.name },
-		modelParticipant: { id: derivation.model.id, name: derivation.model.name },
-		plan: plan.promptPlan,
-		effectiveSettings: plan.effectiveSettings,
-		continuationIntent,
-		tokenEstimate: plan.budget.tokenEstimate,
-		responseBudget: plan.budget.responseBudget,
-		safetyAllowance: plan.budget.safetyAllowance,
-		contextLimit: plan.budget.contextLimit,
-		totalRequiredTokens: plan.budget.totalRequiredTokens,
-		omittedContext: plan.budget.omittedContext,
-		budgetFits: plan.budget.fits,
-		tokenEstimateIsApproximate: true,
-		budgetFailure: plan.budget.failure,
-	};
-}
-
 // ==[HUMAN APPROVED]== Send's accepted lifecycle is intentionally separate from the legacy
 // Generate wrapper. Preflight is entirely read-only; only after it succeeds
 // does the Conversation seam atomically create the human input, provisional
@@ -333,14 +237,27 @@ export async function sendThroughProvisionalTailGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSendGeneration(
-			currentDatabase,
-			snapshot,
-			current.content,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-		),
+		capture: (currentDatabase, conversationId, current) => {
+			if (current.preview !== undefined) {
+				return captureSendGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					content: current.content,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
+			}
+			return captureSendGeneration({
+				database: currentDatabase,
+				conversationId,
+				content: current.content,
+				connection: current.connection,
+				connectionSettings: current.connectionSettings,
+				tokenEstimator: current.tokenEstimator,
+				formatting: current.formatting,
+			});
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -359,6 +276,8 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 	// model Message and Variant are captured so a changed narrative position
 	// cannot receive output from this attempt.
 	expectedRevision: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: GenerationPreviewAcceptanceFor<"continuation">;
 	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
 }
 
@@ -373,13 +292,25 @@ export async function continueGeneration(
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureContinuationGeneration(
-			currentDatabase,
-			snapshot,
-			current.connection,
-			current.connectionSettings,
-			current.tokenEstimator,
-		),
+		capture: (currentDatabase, conversationId, current) => {
+			if (current.preview !== undefined) {
+				return captureContinuationGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
+			}
+			return captureContinuationGeneration({
+				database: currentDatabase,
+				conversationId,
+				connection: current.connection,
+				connectionSettings: current.connectionSettings,
+				tokenEstimator: current.tokenEstimator,
+				formatting: current.formatting,
+			});
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,
@@ -420,18 +351,22 @@ export interface GenerateSiblingVariantInput {
 	// older Message reproduces the participants who were playing when it was
 	// generated, and never reassigns the seats.
 	messageId: number;
+	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
+	preview?: GenerationPreviewAcceptanceFor<"sibling">;
 	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	signal?: AbortSignal;
-	onEvent?: (event: import("../model-client").ModelClientEvent) => void | Promise<void>;
+	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
+	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
+	formatting?: GenerationFormattingContext;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -449,11 +384,22 @@ export async function generateSiblingVariant(
 	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
 	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => captureSiblingGeneration(
-			currentDatabase,
-			snapshot,
-			current,
-		),
+		capture: (currentDatabase, conversationId, current) => {
+			if (current.preview !== undefined) {
+				return captureSiblingGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					messageId: current.messageId,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
+			}
+			return captureSiblingGeneration({
+				database: currentDatabase,
+				...current,
+			});
+		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {
 				conversationId: current.conversationId,

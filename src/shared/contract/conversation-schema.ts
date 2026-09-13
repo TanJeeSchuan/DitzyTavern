@@ -3,6 +3,7 @@ import { Value } from "@sinclair/typebox/value";
 import { characterConflict, characterSnapshot } from "./character-library";
 import {
 	canonicalGenerationSettings,
+	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
 import { promptChannels } from "./prompt-schema";
@@ -20,6 +21,9 @@ import type {
 	GenerationProvenance as SharedGenerationProvenance,
 	ProvenanceSettingsField,
 } from "../generation-provenance";
+import { macroVariableWrite } from "./macro-variable-write";
+
+export { effectiveGenerationSettings } from "./generation-settings";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
@@ -27,22 +31,42 @@ const promptHistoryRole = Type.Union([
 	Type.Null(),
 ]);
 
+// ==[HUMAN APPROVED]== Definition-sourced plan blocks carry the provider-neutral presentation
+// role their recipe slot chose; history blocks carry the authorship roles of
+// their own Messages. The Model Client owns the translation into provider
+// vocabulary. Every Definition-sourced kind has the same fields, so the kind
+// is a label union rather than a discriminated set of identical shapes.
+const promptDefinitionRole = Type.Union([
+	Type.Literal("system"),
+	Type.Literal("human"),
+	Type.Literal("model"),
+]);
+
+const promptDefinitionBlockKind = Type.Union([
+	Type.Literal("system-instruction"),
+	Type.Literal("identity"),
+	Type.Literal("scenario"),
+	Type.Literal("example-dialogue"),
+	Type.Literal("post-history-instruction"),
+	// ==[HUMAN APPROVED]== An authored instruction block's plan entry. Like Definition-sourced
+	// blocks it carries its expanded content and the recipe-chosen outgoing
+	// role; unlike them its text was authored in the preset, not resolved from
+	// a Participant.
+	Type.Literal("instruction"),
+]);
+
 const promptBlock = Type.Union([
-	Type.Object({ kind: Type.Literal("system-instruction"), content: Type.String() }),
 	Type.Object({
-		kind: Type.Literal("identity"),
-		role: Type.Union([Type.Literal("human"), Type.Literal("model")]),
+		kind: promptDefinitionBlockKind,
+		role: promptDefinitionRole,
 		content: Type.String(),
 	}),
-	Type.Object({ kind: Type.Literal("scenario"), content: Type.String() }),
-	Type.Object({ kind: Type.Literal("example-dialogue"), content: Type.String() }),
 	Type.Object({
 		kind: Type.Literal("history"),
 		speakerName: Type.Union([Type.Null(), Type.String()]),
 		content: Type.String(),
 		role: promptHistoryRole,
 	}),
-	Type.Object({ kind: Type.Literal("post-history-instruction"), content: Type.String() }),
 ]);
 
 const generationIntent = Type.Union([
@@ -554,6 +578,15 @@ const removeParticipantAction = Type.Object({
 	participantId: Type.Integer(),
 });
 
+// ==[HUMAN APPROVED]== Selects one shared Prompt Preset for this Conversation. Selection is
+// a reference to the library entry, never a copy, and it deliberately stays
+// available while an Active Generation exists: the running attempt keeps the
+// Prompt Plan it captured, and later attempts use the new selection.
+const selectPromptPresetAction = Type.Object({
+	type: Type.Literal("select-prompt-preset"),
+	promptPresetId: Type.Integer(),
+});
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -571,6 +604,7 @@ const conversationCommandAction = Type.Union([
 	replaceParticipantOpeningsAction,
 	assignControlAction,
 	removeParticipantAction,
+	selectPromptPresetAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
@@ -582,23 +616,99 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
+export const generationFormattingContext = Type.Object({
+	// ==[HUMAN APPROVED]== Formatting context belongs to the initiating client, not persisted
+	// Conversation settings. It is shared by preview and all three Generation
+	// start bodies so the route cannot rename or omit one side.
+	timeZone: Type.Optional(Type.String()),
+	locale: Type.Optional(Type.String()),
+});
+
+export type GenerationFormattingContext = Static<typeof generationFormattingContext>;
+
+const inspectedPlanFields = {
+	previewId: Type.Optional(Type.String()),
+	promptPlan: Type.Optional(promptPlan),
+	...generationFormattingContext.properties,
+};
+
 // Send carries the client draft and the Conversation revision it was based
 // on. Generation acceptance is deliberately a complete typed operation: an
 // omitted revision or draft must never fall through to an older request shape.
 export const generationBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
+	// A preview token carries the server-captured macro clock, random draws,
+	// and pending writes. The optional plan is the user's direct edit of that
+	// capture; it is never treated as provider JSON.
+	...inspectedPlanFields,
 });
 
-// Continue carries only the Conversation revision. The server derives the
+// ==[HUMAN APPROVED]== Continue carries only the Conversation revision. The server derives the
 // selected terminal Message and current Control pair from its snapshot.
 export const continuationBody = Type.Object({
 	expectedRevision: Type.Integer(),
+	...inspectedPlanFields,
 });
 
 export type ConversationCommandBody = Static<typeof conversationCommandBody>;
 export type GenerationBody = Static<typeof generationBody>;
 export type ContinuationBody = Static<typeof continuationBody>;
+
+export const siblingGenerationBody = Type.Object({
+	...inspectedPlanFields,
+});
+
+const generationPreviewKind = Type.Union([
+	Type.Literal("send"),
+	Type.Literal("continuation"),
+	Type.Literal("sibling"),
+]);
+
+export const generationPreviewBody = Type.Union([
+	Type.Object({
+		kind: Type.Literal("send"),
+		content: Type.String(),
+		...generationFormattingContext.properties,
+	}),
+	Type.Object({
+		kind: Type.Literal("continuation"),
+		...generationFormattingContext.properties,
+	}),
+	Type.Object({
+		kind: Type.Literal("sibling"),
+		messageId: Type.Integer(),
+		...generationFormattingContext.properties,
+	}),
+]);
+
+const generationPreviewBudget = Type.Object({
+	tokenEstimate: Type.Integer(),
+	responseBudget: Type.Integer(),
+	safetyAllowance: Type.Integer(),
+	contextLimit: Type.Integer(),
+	totalRequiredTokens: Type.Integer(),
+	budgetFits: Type.Boolean(),
+});
+
+export const generationPreview = Type.Object({
+	outcome: Type.Literal("available"),
+	previewId: Type.String(),
+	conversationId: Type.Integer(),
+	kind: generationPreviewKind,
+	promptPlan,
+	participants: Type.Object({
+		human: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
+		model: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
+	}),
+	effectiveSettings: effectiveGenerationSettings,
+	pendingWrites: Type.Array(macroVariableWrite),
+	budget: generationPreviewBudget,
+});
+
+export type SiblingGenerationBody = Static<typeof siblingGenerationBody>;
+export type GenerationPreviewBody = Static<typeof generationPreviewBody>;
+export type GenerationPreview = Static<typeof generationPreview>;
 
 export const conversationConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
