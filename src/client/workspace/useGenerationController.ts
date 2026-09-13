@@ -94,6 +94,7 @@ type GenerationControllerOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
+	inspectPromptPlanBeforeGenerating: boolean;
 };
 
 /**
@@ -109,6 +110,7 @@ export function useGenerationController({
 	dispatchStory,
 	activeChatIdRef,
 	refreshStory,
+	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
@@ -170,7 +172,7 @@ export function useGenerationController({
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
-	const generationError = firstActiveGenerationSessionError(sessions);
+	const sessionError = firstActiveGenerationSessionError(sessions);
 
 	useEffect(() => {
 		dispatchPendingStarts({
@@ -202,6 +204,7 @@ export function useGenerationController({
 		refreshStory,
 		isGenerating,
 		variantPreviewActive: story.preview !== null,
+		inspectPromptPlanBeforeGenerating,
 		generationStart: {
 			begin: beginStart,
 			settle: (startId) => dispatchPendingStarts({ type: "settled", startId }),
@@ -216,8 +219,10 @@ export function useGenerationController({
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
-		openPromptPlanPreview,
+		requestGeneration,
+		directStartError,
 	} = assemblyController;
+	const generationError = directStartError ?? sessionError;
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
@@ -266,7 +271,7 @@ export function useGenerationController({
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
-		openPromptPlanPreview({ kind: "send", content: draft, ...clientFormattingContext() });
+		requestGeneration({ kind: "send", content: draft, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -277,7 +282,7 @@ export function useGenerationController({
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		openPromptPlanPreview({ kind: "continuation", ...clientFormattingContext() });
+		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number) => {
@@ -292,7 +297,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		openPromptPlanPreview({ kind: "sibling", messageId, ...clientFormattingContext() });
+		requestGeneration({ kind: "sibling", messageId, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>
@@ -314,7 +319,6 @@ export function useGenerationController({
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
-		openPromptPlanPreview,
 		assemblyAvailable,
 		activeGenerationTargets,
 		activeGenerationMessageIds,

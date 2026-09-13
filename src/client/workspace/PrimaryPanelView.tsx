@@ -35,6 +35,8 @@ export function PrimaryPanelView({
 	activeChat,
 	theme,
 	onThemeChange,
+	inspectPromptPlanBeforeGenerating,
+	onInspectPromptPlanBeforeGeneratingChange,
 	onSelectChat,
 	onNewChat,
 	onClose,
@@ -54,6 +56,8 @@ export function PrimaryPanelView({
 	activeChat: ChatSummary;
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
+	inspectPromptPlanBeforeGenerating: boolean;
+	onInspectPromptPlanBeforeGeneratingChange: (enabled: boolean) => void;
 	onSelectChat: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
@@ -115,7 +119,12 @@ export function PrimaryPanelView({
 						</div>
 					)}
 					{panel === "settings" && (
-						<SettingsPanel theme={theme} onThemeChange={onThemeChange} />
+						<SettingsPanel
+							theme={theme}
+							onThemeChange={onThemeChange}
+							inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
+							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
+						/>
 					)}
 					{panel === "models" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>

@@ -48,6 +48,8 @@ import { usePreviewController } from "./usePreviewController";
 import { useStoryMessageActions } from "./useStoryMessageActions";
 import { useStoryViewport } from "./useStoryViewport";
 
+const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
+
 export function ActiveWritingWorkspace({
 	initialWorkspace,
 	onNewChat,
@@ -71,6 +73,9 @@ export function ActiveWritingWorkspace({
 	);
 	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
 	const [theme, setTheme] = useState<ThemePreference>("system");
+	const [inspectPromptPlanBeforeGenerating, setInspectPromptPlanBeforeGenerating] = useState(
+		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
+	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
 
@@ -92,9 +97,14 @@ export function ActiveWritingWorkspace({
 		dispatchStory,
 		activeChatIdRef: session.activeChatIdRef,
 		refreshStory: session.refreshStory,
+		inspectPromptPlanBeforeGenerating,
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
+
+	useEffect(() => {
+		window.localStorage.setItem(PROMPT_PLAN_INSPECTION_KEY, String(inspectPromptPlanBeforeGenerating));
+	}, [inspectPromptPlanBeforeGenerating]);
 
 	useEffect(() => {
 		if (assemblyActive) {
@@ -210,6 +220,8 @@ export function ActiveWritingWorkspace({
 				activeChat={session.activeChat}
 				theme={theme}
 				onThemeChange={setTheme}
+				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
+				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
 				onSelectChat={selectChat}
 				onNewChat={onNewChat}
 				onClose={() => dispatchPanel({ type: "primary-closed" })}

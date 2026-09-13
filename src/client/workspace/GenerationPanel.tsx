@@ -1,6 +1,7 @@
 import { SlidersHorizontal } from "lucide-react";
 import type { ConversationSummary } from "../conversation";
 import { generationSettingsSummaryFromDrafts } from "../generation-settings-draft";
+import { BudgetEditor } from "./GenerationSettingsEditors";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
 
 export function GenerationPanel({
@@ -44,6 +45,7 @@ function GenerationSettings({
 		save,
 		samplingDrafts,
 		budgetDrafts,
+		updateBudget,
 		overridesDrafts,
 	} = controller;
 
@@ -115,17 +117,18 @@ function GenerationSettings({
 						</div>
 					</section>
 
+					<BudgetEditor drafts={budgetDrafts} onChange={updateBudget} />
+
 					<section className="generation-settings-summary" aria-labelledby="generation-summary-title">
 						<div className="settings-summary-heading">
 							<div>
 								<h3 id="generation-summary-title">Advanced settings</h3>
-								<p>Sampling, Budget, and Request Overrides are ready in the inspector.</p>
+								<p>Sampling and Request Overrides are ready in the inspector.</p>
 							</div>
 							<SlidersHorizontal aria-hidden="true" />
 						</div>
 						<dl className="settings-summary-list">
 							<div><dt>Sampling</dt><dd>{summary.sampling}</dd></div>
-							<div><dt>Budget</dt><dd>{summary.budget}</dd></div>
 							<div><dt>Request Overrides</dt><dd>{summary.overrides}</dd></div>
 							<div><dt>Transmitted namespace</dt><dd>{summary.transmittingNamespace}</dd></div>
 						</dl>

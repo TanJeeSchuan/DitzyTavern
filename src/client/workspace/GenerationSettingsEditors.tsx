@@ -21,8 +21,6 @@ type GenerationEditorController = Pick<
 	GenerationSettingsDraftController,
 	| "samplingDrafts"
 	| "updateSampling"
-	| "budgetDrafts"
-	| "updateBudget"
 	| "overridesDrafts"
 	| "updateOverrides"
 	| "transmittingNamespace"
@@ -38,10 +36,6 @@ export function GenerationSecondaryEditors({
 			<SamplingEditor
 				drafts={controller.samplingDrafts}
 				onChange={controller.updateSampling}
-			/>
-			<BudgetEditor
-				drafts={controller.budgetDrafts}
-				onChange={controller.updateBudget}
 			/>
 			<RequestOverridesEditor
 				drafts={controller.overridesDrafts}
@@ -91,8 +85,8 @@ export function BudgetEditor({
 	drafts,
 	onChange,
 }: {
-	drafts: GenerationEditorController["budgetDrafts"];
-	onChange: GenerationEditorController["updateBudget"];
+	drafts: GenerationSettingsDraftController["budgetDrafts"];
+	onChange: GenerationSettingsDraftController["updateBudget"];
 }) {
 	return (
 		<section aria-labelledby="generation-budget-title">

@@ -917,6 +917,70 @@
 	color: var(--accent);
 }
 
+.settings-section {
+	margin-top: 1.4rem;
+	padding-top: 1.25rem;
+	border-top: 1px solid var(--border);
+}
+
+.settings-toggle-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.75rem;
+	border-radius: 0.8rem;
+	background: var(--surface-muted);
+}
+
+.settings-toggle-row > div {
+	display: grid;
+	gap: 0.2rem;
+}
+
+.settings-toggle-row strong {
+	font-size: 0.8rem;
+	font-weight: 650;
+}
+
+.settings-toggle-row span {
+	color: var(--text-muted);
+	font-size: 0.72rem;
+	line-height: 1.45;
+}
+
+.settings-switch {
+	position: relative;
+	flex: 0 0 auto;
+	width: 2.4rem;
+	height: 1.4rem;
+	padding: 0.15rem;
+	border: 1px solid var(--border-strong);
+	border-radius: 999px;
+	background: var(--surface-deep);
+	transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.settings-switch[data-state="checked"] {
+	border-color: var(--primary);
+	background: var(--primary);
+}
+
+.settings-switch-thumb {
+	display: block;
+	width: 1rem;
+	height: 1rem;
+	border-radius: 50%;
+	background: var(--surface-raised);
+	box-shadow: 0 0.1rem 0.3rem var(--shadow);
+	transform: translateX(0);
+	transition: transform 150ms ease;
+}
+
+.settings-switch[data-state="checked"] .settings-switch-thumb {
+	transform: translateX(1rem);
+}
+
 .generation-error {
 	margin: 0.6rem 0 0;
 	color: var(--destructive);

@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, type RefObject } from "react";
+import { useEffect, useReducer, useRef, useState, type RefObject } from "react";
 import {
 	previewConversationGeneration,
 	startConversationContinuationGeneration,
@@ -27,6 +27,7 @@ type AssemblyControllerOptions = {
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
 	isGenerating: boolean;
 	variantPreviewActive: boolean;
+	inspectPromptPlanBeforeGenerating: boolean;
 	generationStart: GenerationStartLifecycle;
 	clearDraft: () => void;
 };
@@ -37,10 +38,12 @@ export function useAssemblyController({
 	refreshStory,
 	isGenerating,
 	variantPreviewActive,
+	inspectPromptPlanBeforeGenerating,
 	generationStart,
 	clearDraft,
 }: AssemblyControllerOptions) {
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
+	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
 
@@ -130,51 +133,57 @@ export function useAssemblyController({
 		dispatchAssembly({ type: "plan-edited", requestId: assembly.requestId, promptPlan });
 	};
 
+	const generationRequest = (
+		conversationId: number,
+		request: GenerationPreviewBody,
+		preview?: { previewId: string; promptPlan: PromptPlan },
+	) => {
+		const formatting = { timeZone: request.timeZone, locale: request.locale };
+		return request.kind === "send"
+			? startConversationGeneration(conversationId, conversation!.revision, request.content, formatting, preview)
+			: request.kind === "continuation"
+				? startConversationContinuationGeneration(conversationId, conversation!.revision, formatting, preview)
+				: startConversationSiblingGeneration(conversationId, request.messageId, formatting, preview);
+	};
+
 	const startGeneration = async (
 		startId: number,
 		conversationId: number,
-		assemblyRequestId: number,
+		requestId: number,
 		request: Promise<Awaited<ReturnType<typeof startConversationGeneration>>>,
 		clearDraftOnAccepted: boolean,
+		onFailure: (message: string) => void,
+		onAccepted: () => void,
 	) => {
 		let outcome: Awaited<ReturnType<typeof startConversationGeneration>>;
 		try {
 			outcome = await request;
 		} catch {
-			if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
+			if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 			generationStart.settle(startId);
-			dispatchAssembly({
-				type: "acceptance-failed",
-				requestId: assemblyRequestId,
-				error: "Generation could not be started.",
-			});
+			onFailure("Generation could not be started.");
 			return;
 		}
-		if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
+		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 		if (outcome.outcome !== "accepted") {
 			generationStart.settle(startId);
-			dispatchAssembly({
-				type: "acceptance-failed",
-				requestId: assemblyRequestId,
-				error:
-					outcome.outcome === "not-found"
-						? "The Conversation no longer exists."
-						: (outcome.reason ?? "Generation could not be started."),
-			});
+			onFailure(outcome.outcome === "not-found"
+				? "The Conversation no longer exists."
+				: (outcome.reason ?? "Generation could not be started."));
 			return;
 		}
 
-		dispatchAssembly({ type: "acceptance-succeeded", requestId: assemblyRequestId });
+		onAccepted();
 		if (clearDraftOnAccepted) clearDraft();
 		let freshConversation: ConversationSummary | null;
 		try {
 			freshConversation = await refreshStory(conversationId);
 		} catch {
-			if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
+			if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 			generationStart.settle(startId);
 			return;
 		}
-		if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
+		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 		if (
 			freshConversation === null ||
 			!freshConversation.activeGenerations.some(
@@ -200,23 +209,43 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
-		const formatting = { timeZone: request.timeZone, locale: request.locale };
-		const start = request.kind === "send"
-			? startConversationGeneration(conversationId, conversation.revision, request.content, formatting, previewInput)
-			: request.kind === "continuation"
-			? startConversationContinuationGeneration(conversationId, conversation.revision, formatting, previewInput)
-			: startConversationSiblingGeneration(conversationId, request.messageId, formatting, previewInput);
 		void startGeneration(
 			startId,
 			conversationId,
 			requestId,
-			start,
+			generationRequest(conversationId, request, previewInput),
 			request.kind === "send",
+			(error) => dispatchAssembly({ type: "acceptance-failed", requestId, error }),
+			() => dispatchAssembly({ type: "acceptance-succeeded", requestId }),
 		);
+	};
+
+	const startWithoutPreview = (request: GenerationPreviewBody) => {
+		if (conversation === null || assembly !== null) return;
+		const conversationId = conversation.id;
+		const requestId = issueAssemblyRequestId();
+		const startId = generationStart.begin();
+		setDirectStartError(null);
+		void startGeneration(
+			startId,
+			conversationId,
+			requestId,
+			generationRequest(conversationId, request),
+			request.kind === "send",
+			setDirectStartError,
+			() => undefined,
+		);
+	};
+
+	const requestGeneration = (request: GenerationPreviewBody) => {
+		setDirectStartError(null);
+		if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(request);
+		else startWithoutPreview(request);
 	};
 
 	const conversationSwitched = () => {
 		invalidateAssemblyRequests();
+		setDirectStartError(null);
 		dispatchAssembly({ type: "conversation-switched" });
 	};
 
@@ -229,12 +258,13 @@ export function useAssemblyController({
 
 	return {
 		assembly,
+		directStartError,
 		assemblyAvailable,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
-		openPromptPlanPreview,
+		requestGeneration,
 		conversationSwitched,
 	};
 }
