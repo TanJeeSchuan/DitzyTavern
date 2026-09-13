@@ -55,8 +55,7 @@ import {
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 import {
 	createAttemptEnvironment,
-	type MacroAttemptState,
-	type MacroEnvironment,
+	type AttemptEnvironment,
 } from "../../shared/prompt-macro-engine";
 import {
 	conversationGenerationSettings,
@@ -173,8 +172,7 @@ export const compilePlanFrom = (
 	configuration: {
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
-		macroEnvironment: MacroEnvironment;
-		macroAttemptState: MacroAttemptState;
+		attempt: AttemptEnvironment;
 		connection: GenerationConnectionFacts | null;
 	},
 	options: {
@@ -186,8 +184,7 @@ export const compilePlanFrom = (
 	model: toCompilerDefinition(derivation.model),
 	context: derivation.context,
 	recipe: configuration.slots,
-	macroEnvironment: configuration.macroEnvironment,
-	macroAttemptState: configuration.macroAttemptState,
+	attempt: configuration.attempt,
 	intent: options.intent,
 	settings: configuration.settings,
 	connection: configuration.connection,
@@ -209,8 +206,7 @@ interface AttemptConfiguration {
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
-	macroEnvironment: MacroEnvironment;
-	macroAttemptState: MacroAttemptState;
+	attempt: AttemptEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
 }
 
@@ -225,6 +221,18 @@ interface GenerationPreparationBase {
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly macroState: ReadonlyMap<string, MacroValue>;
 }
+
+const connectionIdentityOf = (
+	connection: ModelClientConnectionSnapshot | null,
+): ConversationJsonValue => connection === null
+	? null
+	: {
+			profileId: connection.profileId,
+			settingsRevision: connection.settingsRevision,
+			backend: connection.backend,
+			adapter: connection.adapter,
+			apiFormat: connection.apiFormat,
+		};
 
 export type GenerationPreparation = GenerationPreparationBase & (
 	| { readonly kind: "send"; readonly content: string }
@@ -368,6 +376,14 @@ export function prepareGenerationInputs(
 		locale: input.formatting?.locale,
 	};
 	const effectiveSettings = effectiveSettingsForPreparation({ kind: input.kind, settings, connection });
+	const macroState = new Map(deriveMacroState({
+		initialData: selected.initialData,
+		presetId: recipe.id,
+		selectedVariants: participation.messages.map((message) => ({
+			selected: message.variant !== null,
+			data: message.variant?.data ?? [],
+		})),
+	}));
 	const preparation = {
 		conversationId: input.conversationId,
 		formatting,
@@ -377,14 +393,7 @@ export function prepareGenerationInputs(
 		effectiveSettings,
 		recipe,
 		connection,
-		macroState: new Map(deriveMacroState({
-			initialData: selected.initialData,
-			presetId: recipe.id,
-			selectedVariants: participation.messages.map((message) => ({
-				selected: message.variant !== null,
-				data: message.variant?.data ?? [],
-			})),
-		})),
+		macroState,
 	};
 	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
 	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
@@ -408,8 +417,7 @@ export const captureConfigurationFromPreparation = (
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,
-		macroEnvironment: attempt.environment,
-		macroAttemptState: attempt.state,
+		attempt,
 		connection: preparation.connection,
 	};
 };
@@ -546,7 +554,7 @@ const toCapturedGeneration = (
 	},
 	connection: configuration.connection,
 	macroPresetId: configuration.promptPresetId,
-	macroWrites: [...configuration.macroAttemptState.writes],
+	macroWrites: [...configuration.attempt.state.writes],
 	provenance: generationProvenanceEntry(plan, configuration.connection),
 });
 
@@ -611,15 +619,7 @@ export function generationSettingsJson(
 
 export const connectionJson = (
 	connection: ModelClientConnectionSnapshot | null,
-): ConversationJsonValue => connection === null
-	? null
-	: {
-			profileId: connection.profileId,
-			settingsRevision: connection.settingsRevision,
-			backend: connection.backend,
-			adapter: connection.adapter,
-			apiFormat: connection.apiFormat,
-		};
+): ConversationJsonValue => connectionIdentityOf(connection);
 
 // ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. It is

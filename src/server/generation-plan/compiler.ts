@@ -22,6 +22,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type {
 	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,
@@ -118,7 +119,10 @@ export const compileGenerationPlan = (
 	input: CompileGenerationPlanInput,
 ): GenerationPlan => {
 	const intent = input.intent;
-	const macroEnvironment = input.macroEnvironment;
+	const attempt = input.attempt ?? {
+		environment: { self: input.human.name, other: input.model.name },
+		state: createMacroAttemptState(),
+	};
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
@@ -128,8 +132,7 @@ export const compileGenerationPlan = (
 			model: input.model,
 			context,
 			recipe: input.recipe,
-			macroEnvironment,
-			macroAttemptState: input.macroAttemptState,
+			attempt,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};

@@ -272,13 +272,12 @@ const expandGreetingOpenings = (
 				timeZone: input.formatting?.timeZone,
 				locale: input.formatting?.locale,
 			});
-			const expanded = compileOpening(
-				variant.content,
-				{ self: attempt.environment.self, other: attempt.environment.other },
-				index + 1,
-				attempt.environment,
-				attempt.state,
-			);
+				const expanded = compileOpening(
+					variant.content,
+					{ self: attempt.environment.self, other: attempt.environment.other },
+					index + 1,
+					attempt,
+				);
 			return {
 				...variant,
 				content: expanded.text,

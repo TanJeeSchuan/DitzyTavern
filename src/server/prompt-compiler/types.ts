@@ -3,9 +3,10 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	PromptHistoryRole,
 } from "../../shared/contract/conversation-schema";
-import type { MacroAttemptState, MacroEnvironment } from "../../shared/prompt-macro-engine";
+import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 
 export type {
+	AttemptEnvironment,
 	MacroAttemptState,
 	MacroEnvironment,
 } from "../../shared/prompt-macro-engine";
@@ -58,8 +59,7 @@ export interface CompilePromptInput {
 	// The selected Prompt Preset's ordered recipe. It decides which blocks the
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];
-	// Captured once for one assembly. The compiler reads immutable macro inputs
-	// and threads the explicit mutable attempt state through authored blocks.
-	macroEnvironment?: MacroEnvironment;
-	macroAttemptState?: MacroAttemptState;
+	// Captured once for one assembly. Environment and state are one invariant:
+	// budget recompilation must reuse both or create both together.
+	attempt?: AttemptEnvironment;
 }

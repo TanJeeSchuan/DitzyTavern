@@ -22,7 +22,6 @@ import type { Database } from "bun:sqlite";
 import {
 	createConversationModule,
 	ConversationNotFoundError,
-	InvalidConversationCommandError,
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationDataEntry,
@@ -31,7 +30,7 @@ import {
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 } from "../conversation";
-import type { PromptPlan, TokenEstimator } from "../prompt-compiler";
+import type { TokenEstimator } from "../prompt-compiler";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
@@ -57,9 +56,12 @@ import {
 	type CapturedGeneration,
 } from "./generate-capture";
 import {
-	generationCaptureForPreview,
-	type GenerationPreviewCapture,
-	type GenerationPreviewRecord,
+	consumeGenerationPreview,
+	captureContinuationGenerationPreview,
+	captureSendGenerationPreview,
+	captureSiblingGenerationPreview,
+	type GenerationPreviewAcceptance,
+	type GenerationPreviewAcceptanceFor,
 } from "./generation-preview";
 import {
 	assertGenerationPlan,
@@ -116,33 +118,8 @@ interface GenerationLifecyclePolicy<
 	terminalData?: (capture: Capture) => readonly ConversationDataEntry[];
 }
 
-const capturePreview = (
-	database: Database,
-	conversationId: number,
-	input: {
-		preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
-		connection?: ModelClientConnectionSnapshot | null;
-		content?: string;
-		messageId?: number;
-		formatting?: GenerationFormattingContext;
-	},
-): GenerationPreviewCapture => {
-	if (input.preview === undefined) {
-		throw new InvalidConversationCommandError("The Prompt Plan preview is unavailable.");
-	}
-	const prepared = generationCaptureForPreview(
-		database,
-		conversationId,
-		input.preview.record,
-		input.preview.editedPlan,
-		input.connection,
-		{
-			content: input.content,
-			messageId: input.messageId,
-			formatting: input.formatting,
-		},
-	);
-	return prepared;
+type PreviewableGenerationAttemptInput = GenerationAttemptInput & {
+	readonly preview?: GenerationPreviewAcceptance;
 };
 
 /**
@@ -154,7 +131,7 @@ const capturePreview = (
  */
 async function runGenerationLifecycle<
 	Accepted extends AcceptedGenerationTarget,
-	Input extends GenerationAttemptInput,
+	Input extends PreviewableGenerationAttemptInput,
 	Capture extends CapturedGeneration,
 >(
 	database: Database,
@@ -179,6 +156,7 @@ async function runGenerationLifecycle<
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
+	if (input.preview !== undefined) consumeGenerationPreview(input.preview.record);
 	await notifyAccepted<Accepted>({ onAccepted }, accepted);
 	return runAcceptedGeneration(input, policy.request(capture, input), {
 		remove: () => {
@@ -215,7 +193,7 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	expectedRevision: number;
 	content: string;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
-	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
+	preview?: GenerationPreviewAcceptanceFor<"send">;
 	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
 	// transaction commits and before provider contact begins.
 	onAccepted?: (accepted: AcceptedTailGeneration) => void | Promise<void>;
@@ -261,12 +239,14 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, conversationId, current);
-				if (prepared.kind !== "send") {
-					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Send.");
-				}
-				const capture = prepared.capture;
-				return { ...capture, humanContent: current.content, reuseHumanMessageId: capture.reuseHumanMessageId };
+				return captureSendGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					content: current.content,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
 			}
 			return captureSendGeneration({
 				database: currentDatabase,
@@ -297,7 +277,7 @@ export interface ContinueGenerationInput extends GenerationAttemptInput {
 	// cannot receive output from this attempt.
 	expectedRevision: number;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
-	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
+	preview?: GenerationPreviewAcceptanceFor<"continuation">;
 	onAccepted?: (accepted: AcceptedContinuationGeneration) => void | Promise<void>;
 }
 
@@ -314,11 +294,13 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, conversationId, current);
-				if (prepared.kind !== "continuation") {
-					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Continue.");
-				}
-				return prepared.capture;
+				return captureContinuationGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
 			}
 			return captureContinuationGeneration({
 				database: currentDatabase,
@@ -370,7 +352,7 @@ export interface GenerateSiblingVariantInput {
 	// generated, and never reassigns the seats.
 	messageId: number;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
-	preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
+	preview?: GenerationPreviewAcceptanceFor<"sibling">;
 	// ==[HUMAN APPROVED]== The provider-neutral Model Client receives the compiled Prompt Plan and
 	// returns normalized asynchronous events for the sibling Variant.
 	modelClient: ModelClient;
@@ -404,11 +386,14 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, conversationId, current);
-				if (prepared.kind !== "sibling") {
-					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Swipe.");
-				}
-				return prepared.capture;
+				return captureSiblingGenerationPreview({
+					database: currentDatabase,
+					conversationId,
+					preview: current.preview,
+					messageId: current.messageId,
+					connection: current.connection,
+					formatting: current.formatting,
+				});
 			}
 			return captureSiblingGeneration({
 				database: currentDatabase,

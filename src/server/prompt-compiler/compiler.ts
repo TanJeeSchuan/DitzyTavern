@@ -7,7 +7,7 @@
 // are omitted from the rendered plan only — storage keeps exact text.
 //
 // Macro expansion, Prompt Comments, and escaping are owned by the shared
-// Chevrotain-backed engine; this module supplies only the macro context
+// shared macro engine; this module supplies only the macro context
 // each provenance establishes. A Definition slot expands relative to its
 // owner; an authored instruction block always resolves `{{self}}` to the
 // current human-controlled Participant and `{{other}}` to the current
@@ -17,6 +17,7 @@
 import {
 	createMacroAttemptState,
 	expandMacroText,
+	type AttemptEnvironment,
 	type MacroAttemptState,
 	type MacroEnvironment,
 	type MacroExpansionResult,
@@ -109,14 +110,15 @@ export function compileOpening(
 	content: string,
 	context: MacroContext,
 	position: number,
-	macroEnvironment?: MacroEnvironment,
-	macroAttemptState: MacroAttemptState = createMacroAttemptState(),
+	attempt?: AttemptEnvironment,
 ): MacroExpansionResult {
-	macroAttemptState.macroPositionBase = `opening:${position}`;
+	const environment = attempt?.environment ?? { self: context.self, other: context.other };
+	const state = attempt?.state ?? createMacroAttemptState();
+	state.macroPositionBase = `opening:${position}`;
 	return expandMacroText(
 		content,
-		{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other },
-		macroAttemptState,
+		{ ...environment, self: context.self, other: context.other },
+		state,
 		`opening ${position}`,
 	);
 }
@@ -156,8 +158,8 @@ const expandInto = (
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
-	const macroEnvironment: MacroEnvironment = input.macroEnvironment ?? { self: "", other: "" };
-	const macroAttemptState = input.macroAttemptState ?? createMacroAttemptState();
+	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
+	const macroAttemptState = input.attempt?.state ?? createMacroAttemptState();
 
 	// ==[HUMAN APPROVED]== Owner-relative macro context: `{{self}}` is the Definition owner and
 	// `{{other}}` the other controlled Participant, whatever order the recipe

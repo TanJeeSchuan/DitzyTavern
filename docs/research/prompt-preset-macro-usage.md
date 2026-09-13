@@ -2,7 +2,7 @@
 
 Inspected `.sample-format/prompts/Freaky Frankenstein 5 - Internal States - Fast.json` and `.sample-format/prompts/Marinara's Spaghetti Recipe(1).json` on 2026-09-10. This is static inspection of prompt text and ordering, not a runtime compatibility test. Both have a `100001` prompt order; Marinara also has a `100000` order. Findings about enabled blocks below use `100001`, matching ADR-0036's import rule.
 
-The design interview is complete. [ADR-0037](../adr/0037-use-sillytavern-syntax-for-prompt-macros.md) records the engine and assembly decisions; [ADR-0038](../adr/0038-carry-macro-state-through-selected-variants.md) records variable state, storage, and editing. These decisions supersede the original research's handwritten-parser recommendation and single shared variable-store proposal. Application code has not been changed by this interview.
+The design interview is complete. [ADR-0037](../adr/0037-use-sillytavern-syntax-for-prompt-macros.md) records the engine and assembly decisions; [ADR-0038](../adr/0038-carry-macro-state-through-selected-variants.md) records variable state, storage, and editing. These decisions supersede the original research's single shared variable-store proposal.
 
 ## Marinara uses variables to assemble a prompt
 
@@ -34,7 +34,7 @@ This retains [ADR-0009](../adr/0009-allow-parallel-sibling-variant-generation.md
 
 Captured clock values and random results remain fixed through inspection, budget calculations, and sending. Previewing does not persist writes. A change to relevant captured inputs requires refreshing the preview; elapsed time or unrelated sibling completion alone does not. `pick` remains stable for the same Conversation, preset, source text, and macro position.
 
-The accepted syntax, Chevrotain evaluator split, internal registration, persistent variables, per-attempt assembly, and exact preview reuse decisions are recorded in [ADR-0037](../adr/0037-use-sillytavern-syntax-for-prompt-macros.md).
+The accepted syntax, parser/evaluator split, internal registration, persistent variables, per-attempt assembly, and exact preview reuse decisions are recorded in [ADR-0037](../adr/0037-use-sillytavern-syntax-for-prompt-macros.md).
 
 ## Accepted initial scope and deferrals
 

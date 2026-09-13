@@ -36,7 +36,6 @@
 		"@openrouter/ai-sdk-provider": "3.0.0",
 		"@sinclair/typebox": "^0.34.52",
 		"ai": "^7.0.79",
-		"chevrotain": "^11.0.3",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"drizzle-orm": "^0.45.2",

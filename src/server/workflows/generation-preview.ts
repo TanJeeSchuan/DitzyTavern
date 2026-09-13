@@ -30,14 +30,34 @@ export type GenerationPreviewCapture =
 	| { kind: "continuation"; capture: ContinuationGenerationCapture }
 	| { kind: "sibling"; capture: CapturedGeneration; messageId: number };
 
-export interface GenerationPreviewRecord {
+export type GenerationPreviewKind = GenerationPreviewCapture["kind"];
+
+interface GenerationPreviewRecordFields {
 	readonly id: string;
 	readonly conversationId: number;
 	readonly fingerprint: string;
-	readonly capture: GenerationPreviewCapture;
 	readonly createdAt: number;
 	readonly expiresAt: number;
 }
+
+export type GenerationPreviewRecord = GenerationPreviewRecordFields & {
+	readonly capture: GenerationPreviewCapture;
+};
+
+export type GenerationPreviewRecordFor<K extends GenerationPreviewKind> = GenerationPreviewRecordFields & {
+	readonly capture: Extract<GenerationPreviewCapture, { kind: K }>;
+};
+
+export type GenerationPreviewAcceptanceFor<K extends GenerationPreviewKind> = {
+	readonly kind: K;
+	readonly record: GenerationPreviewRecordFor<K>;
+	readonly editedPlan: PromptPlan;
+};
+
+export type GenerationPreviewAcceptance =
+	| GenerationPreviewAcceptanceFor<"send">
+	| GenerationPreviewAcceptanceFor<"continuation">
+	| GenerationPreviewAcceptanceFor<"sibling">;
 
 type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale"> : never;
 
@@ -123,6 +143,35 @@ const ensureRecord = (id: string, conversationId: number): GenerationPreviewReco
 	return record;
 };
 
+const isPreviewRecordFor = <K extends GenerationPreviewKind>(
+	record: GenerationPreviewRecord,
+	kind: K,
+): record is GenerationPreviewRecordFor<K> => record.capture.kind === kind;
+
+export const previewRecordFor = <K extends GenerationPreviewKind>(
+	id: string,
+	conversationId: number,
+	kind: K,
+): GenerationPreviewRecordFor<K> => {
+	const record = ensureRecord(id, conversationId);
+	if (!isPreviewRecordFor(record, kind)) {
+		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
+	}
+	return record;
+};
+
+export const consumeGenerationPreview = (
+	record: Pick<GenerationPreviewRecord, "id" | "conversationId">,
+): void => {
+	const current = previews.get(record.conversationId);
+	if (current?.id !== record.id) {
+		throw new InvalidConversationCommandError(
+			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
+		);
+	}
+	previews.delete(record.conversationId);
+};
+
 const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void => {
 	if (edited.blocks.length !== source.blocks.length) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan must keep its assembled blocks.");
@@ -161,60 +210,22 @@ export const createGenerationPreview = (
 	return record;
 };
 
-export const previewRecordFor = (id: string, conversationId: number): GenerationPreviewRecord => ensureRecord(id, conversationId);
-
-export const generationCaptureForPreview = (
-	database: Database,
-	conversationId: number,
+const acceptedEditedPlan = (
 	record: GenerationPreviewRecord,
 	editedPlan: PromptPlan,
-	connection: ModelClientConnectionSnapshot | null | undefined,
-	input: { content?: string; messageId?: number; formatting?: GenerationFormattingContext },
-): GenerationPreviewCapture => {
-	const source = record.capture;
-	const kind = source.kind;
-	if (kind === "send" && input.content !== source.content) {
-		throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
-	}
-	if (kind === "sibling" && input.messageId !== source.messageId) {
-		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
-	}
-	const preparation = kind === "send"
-		? prepareGenerationInputs({
-			database,
-			conversationId,
-			kind,
-			content: source.content,
-			formatting: input.formatting,
-			connection,
-		})
-		: kind === "sibling"
-			? prepareGenerationInputs({
-				database,
-				conversationId,
-				kind,
-				messageId: source.messageId,
-				formatting: input.formatting,
-				connection,
-			})
-			: prepareGenerationInputs({
-				database,
-				conversationId,
-				kind,
-				formatting: input.formatting,
-				connection,
-			});
+	preparation: CapturedGeneration["preparation"],
+) => {
 	if (generationPreparationFingerprint(preparation) !== record.fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
 	}
 	if (!Value.Check(promptPlan, editedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
 	}
-	assertEditedPlanStructure(source.capture.plan.promptPlan, editedPlan);
-	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(source.capture.plan.promptPlan.intent ?? null)) {
+	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, editedPlan);
+	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	const settings = source.capture.plan.effectiveSettings;
+	const settings = record.capture.capture.plan.effectiveSettings;
 	const budget = budgetEditedPromptPlan({
 		plan: editedPlan,
 		contextLimit: settings.contextLimit,
@@ -222,16 +233,78 @@ export const generationCaptureForPreview = (
 		safetyAllowance: settings.safetyAllowance,
 	});
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
-	const plan = { ...source.capture.plan, promptPlan: editedPlan, budget };
-	if (kind === "send") return { ...source, capture: { ...source.capture, plan } };
-	if (kind === "continuation") {
-		const assistantPrefill = source.capture.assistantPrefill === undefined
-			? undefined
-			: {
-				...source.capture.assistantPrefill,
-				prefix: [...editedPlan.blocks].reverse().find((block) => block.kind === "history" && block.role === "model")?.content ?? source.capture.assistantPrefill.prefix,
-			};
-		return { ...source, capture: { ...source.capture, plan, assistantPrefill } };
+	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget };
+};
+
+interface PreviewAcceptanceContext {
+	readonly database: Database;
+	readonly conversationId: number;
+	readonly connection: ModelClientConnectionSnapshot | null | undefined;
+	readonly formatting: GenerationFormattingContext | undefined;
+}
+
+export const captureSendGenerationPreview = (
+	context: PreviewAcceptanceContext & {
+		readonly preview: GenerationPreviewAcceptanceFor<"send">;
+		readonly content: string;
+	},
+): SendGenerationCapture => {
+	const { database, conversationId, connection, formatting, preview, content } = context;
+	ensureRecord(preview.record.id, conversationId);
+	if (content !== preview.record.capture.content) {
+		throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
 	}
-	return { ...source, capture: { ...source.capture, plan } };
+	const preparation = prepareGenerationInputs({
+		database, conversationId, connection, formatting, kind: "send", content,
+	});
+	return {
+		...preview.record.capture.capture,
+		plan: acceptedEditedPlan(preview.record, preview.editedPlan, preparation),
+	};
+};
+
+export const captureContinuationGenerationPreview = (
+	context: PreviewAcceptanceContext & {
+		readonly preview: GenerationPreviewAcceptanceFor<"continuation">;
+	},
+): ContinuationGenerationCapture => {
+	const { database, conversationId, connection, formatting, preview } = context;
+	ensureRecord(preview.record.id, conversationId);
+	const preparation = prepareGenerationInputs({
+		database, conversationId, connection, formatting, kind: "continuation",
+	});
+	const source = preview.record.capture.capture;
+	const assistantPrefill = source.assistantPrefill === undefined
+		? undefined
+		: {
+			...source.assistantPrefill,
+			prefix: [...preview.editedPlan.blocks].reverse().find(
+				(block) => block.kind === "history" && block.role === "model",
+			)?.content ?? source.assistantPrefill.prefix,
+		};
+	return {
+		...source,
+		plan: acceptedEditedPlan(preview.record, preview.editedPlan, preparation),
+		assistantPrefill,
+	};
+};
+
+export const captureSiblingGenerationPreview = (
+	context: PreviewAcceptanceContext & {
+		readonly preview: GenerationPreviewAcceptanceFor<"sibling">;
+		readonly messageId: number;
+	},
+): CapturedGeneration => {
+	const { database, conversationId, connection, formatting, preview, messageId } = context;
+	ensureRecord(preview.record.id, conversationId);
+	if (messageId !== preview.record.capture.messageId) {
+		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
+	}
+	const preparation = prepareGenerationInputs({
+		database, conversationId, connection, formatting, kind: "sibling", messageId,
+	});
+	return {
+		...preview.record.capture.capture,
+		plan: acceptedEditedPlan(preview.record, preview.editedPlan, preparation),
+	};
 };

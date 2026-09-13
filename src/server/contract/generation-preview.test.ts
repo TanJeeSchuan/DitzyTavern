@@ -20,6 +20,8 @@ const prompt = {
 	postHistoryInstruction: "",
 };
 
+const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
+
 const createChat = (database: Database) => createConversationModule(database).create({
 	name: "Preview Chat",
 	participants: [
@@ -194,7 +196,7 @@ describe("Prompt Plan inspection", () => {
 		}
 	});
 
-	test("rejects a stale Definition while tolerating an unrelated cast addition", async () => {
+	test("keeps a preview valid after an unrelated cast addition", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch(() => {}) });
@@ -293,6 +295,202 @@ describe("Prompt Plan inspection", () => {
 		});
 	});
 
+	test("consumes a Send preview token after acceptance", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		const request = () => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		const accepted = await request();
+		expect(accepted.status).toBe(200);
+		// SAFETY: the route's acceptance response contains the generation ID used by the event route.
+		const acceptedBody = await accepted.json() as { generationId: number };
+		await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`,
+		))).text();
+		const reused = await request();
+		expect(reused.status).toBe(422);
+		expect(await reused.json()).toEqual({
+			outcome: "invalid",
+			reason: "The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
+		});
+	});
+
+	test("keeps a preview token retryable after edited-plan validation fails", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		const invalid = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+					promptPlan: { ...plan.promptPlan, blocks: [] },
+				}),
+			},
+		));
+		expect(invalid.status).toBe(422);
+		expect(await invalid.json()).toEqual({
+			outcome: "invalid",
+			reason: "The edited Prompt Plan must keep its assembled blocks.",
+		});
+
+		const retried = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(retried.status).toBe(200);
+		// SAFETY: the route's acceptance response contains the generation ID used by the event route.
+		const retriedBody = await retried.json() as { generationId: number };
+		await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${retriedBody.generationId}/events`,
+		))).text();
+	});
+
+	test("consumes a Sibling preview token after acceptance", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Sibling Preview Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt: siblingPrompt, openings: ["Opening."] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const target = conversation.messages[0];
+		if (target === undefined) throw new Error("Sibling target missing.");
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, {
+			kind: "sibling",
+			messageId: target.id,
+		});
+		const request = () => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ previewId: plan.previewId }),
+			},
+		));
+		const accepted = await request();
+		expect(accepted.status).toBe(200);
+		// SAFETY: the route's acceptance response contains the generation ID used by the event route.
+		const acceptedBody = await accepted.json() as { generationId: number };
+		await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${acceptedBody.generationId}/events`,
+		))).text();
+		const reused = await request();
+		expect(reused.status).toBe(422);
+		expect(await reused.json()).toEqual({
+			outcome: "invalid",
+			reason: "The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
+		});
+	});
+
+	test("keeps a Sibling preview token retryable after acceptance fails", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Retryable Sibling Preview Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt: siblingPrompt, openings: ["Opening."] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const target = conversation.messages[0];
+		if (target === undefined) throw new Error("Sibling target missing.");
+		const module = createConversationModule(database);
+		const settings = module.getGenerationSettings(conversation.id);
+		if (settings === undefined) throw new Error("Generation settings missing.");
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: { ...settings, siblingGenerationLimit: 1 },
+			},
+		});
+		withProfile(database);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		let providerRequests = 0;
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: async () => {
+				await gate;
+				providerRequests += 1;
+				const body = providerRequests === 1
+					? "data: [DONE]\n\n"
+					: `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`;
+				return new Response(body, { headers: { "content-type": "text/event-stream" } });
+			},
+		});
+		const occupied = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			{ method: "POST", body: "{}" },
+		));
+		expect(occupied.status).toBe(200);
+		const plan = await preview(app, conversation.id, {
+			kind: "sibling",
+			messageId: target.id,
+		});
+		const request = () => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ previewId: plan.previewId }),
+			},
+		));
+		const rejected = await request();
+		expect(rejected.status).toBe(422);
+		expect(await rejected.json()).toEqual({
+			outcome: "invalid",
+			reason: "The Conversation already has 1 active Sibling Generations at this response position.",
+		});
+		// SAFETY: the acceptance response contains the generation ID used to release the occupied sibling.
+		const occupiedBody = await occupied.json() as { generationId: number };
+		release();
+		await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${occupiedBody.generationId}/events`,
+		))).text();
+
+		const retried = await request();
+		expect(retried.status).toBe(200);
+	});
+
 	test("keeps only the newest inspected plan for a Conversation", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
@@ -330,7 +528,7 @@ describe("Prompt Plan inspection", () => {
 		expect(accepted.status).toBe(200);
 	});
 
-	test("keeps an ordinary Send preview valid when only the inactive Continuation instruction changes", async () => {
+	test("requires a refresh when the inactive Continuation instruction changes", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
 		const app = createConversationRoutes(database, {
@@ -351,7 +549,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const current = module.getSummary(conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
-		const accepted = await app.handle(new Request(
+		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
@@ -363,10 +561,14 @@ describe("Prompt Plan inspection", () => {
 				}),
 			},
 		));
-		expect(accepted.status).toBe(200);
+		expect(rejected.status).toBe(422);
+		expect(await rejected.json()).toEqual({
+			outcome: "invalid",
+			reason: "The Prompt Plan is stale. Refresh it before sending.",
+		});
 	});
 
-	test("keeps a preview valid when an unused Definition field changes", async () => {
+	test("requires a refresh when an unused Definition field changes", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
 		const app = createConversationRoutes(database, {
@@ -388,7 +590,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const current = module.getSummary(conversation.id);
 		if (current === undefined) throw new Error("Conversation summary missing.");
-		const accepted = await app.handle(new Request(
+		const rejected = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
@@ -400,7 +602,11 @@ describe("Prompt Plan inspection", () => {
 				}),
 			},
 		));
-		expect(accepted.status).toBe(200);
+		expect(rejected.status).toBe(422);
+		expect(await rejected.json()).toEqual({
+			outcome: "invalid",
+			reason: "The Prompt Plan is stale. Refresh it before sending.",
+		});
 	});
 
 	test("requires a refresh when selected history changes", async () => {

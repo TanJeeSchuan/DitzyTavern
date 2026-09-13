@@ -67,6 +67,24 @@ describe("Prompt macro engine", () => {
 		expect(result.writes).toEqual([]);
 	});
 
+	test("keeps escaped nested delimiters from closing their parent macro", () => {
+		const result = expandMacroText(
+			"{{if::\\{{self}}::yes}}",
+			environment,
+			"instruction",
+		);
+		expect(result.text).toBe("yes");
+	});
+
+	test("does not pair an escaped scope opener with a later close", () => {
+		const result = expandMacroText(
+			"\\{{if::yes}}body{{/if}}",
+			environment,
+			"instruction",
+		);
+		expect(result.text).toBe("\\body{{/if}}");
+	});
+
 	test("threads variable writes and applies shorthand arithmetic", () => {
 		const result = expandMacroText(
 			"{{setvar::count::2}}{{.count++}}{{.count+=3}}{{getvar::count}}",

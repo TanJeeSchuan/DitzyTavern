@@ -11,6 +11,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
 // intent, the budget outcomes, the active API Format selection for Request
@@ -256,6 +257,39 @@ describe("Generation Plan Compiler", () => {
 		};
 
 		expect(compileGenerationPlan(input)).toEqual(compileGenerationPlan({ ...input }));
+	});
+
+	test("reuses one macro attempt while trimming history", () => {
+		const randomValues = [0, 0.999];
+		let randomCalls = 0;
+		const plan = compile({
+			human: {
+				...human,
+				prompt: { ...human.prompt, identity: "{{random::a::b}}" },
+			},
+			context: [
+				entry("Maren", "old", "model"),
+				entry("Writer", "keep", "human"),
+			],
+			recipe: [
+				{ reference: "human-identity", enabled: true, role: "user" },
+				{ reference: "history", enabled: true },
+			],
+			settings: configuredSettings({ contextLimit: 50, responseBudget: 1, safetyAllowance: 0 }),
+			attempt: {
+				environment: {
+					self: "Writer",
+					other: "Maren",
+					random: () => randomValues[randomCalls++] ?? 0.999,
+				},
+				state: createMacroAttemptState(),
+			},
+			estimator: (transcript) => transcript.includes("old") ? 100 : 0,
+		});
+
+		expect(randomCalls).toBe(1);
+		expect(plan.budget.omittedContext).toEqual([entry("Maren", "old", "model")]);
+		expect(plan.promptPlan.blocks[0]?.content).toBe("a");
 	});
 
 	test("protects the prefill prefix instead of the latest human entry", () => {

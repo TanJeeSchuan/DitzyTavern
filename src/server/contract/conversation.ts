@@ -66,6 +66,8 @@ import {
 import {
 	createGenerationPreview,
 	previewRecordFor,
+	type GenerationPreviewAcceptanceFor,
+	type GenerationPreviewKind,
 } from "../workflows/generation-preview";
 import {
 	macroVariables,
@@ -156,23 +158,21 @@ const generationStartRouteResponse = {
 	422: invalidOutcome,
 };
 
-const previewUseFor = (
+const previewUseFor = <K extends GenerationPreviewKind>(
 	conversationId: number,
-	kind: "send" | "continuation" | "sibling",
+	kind: K,
 	previewId: string | undefined,
 	promptPlan: PromptPlan | undefined,
-) => {
+): GenerationPreviewAcceptanceFor<K> | undefined => {
 	if (previewId === undefined) {
 		if (promptPlan !== undefined) {
 			throw new InvalidConversationCommandError("An edited Prompt Plan requires a preview token.");
 		}
 		return undefined;
 	}
-	const record = previewRecordFor(previewId, conversationId);
-	if (record.capture.kind !== kind) {
-		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
-	}
+	const record = previewRecordFor(previewId, conversationId, kind);
 	return {
+		kind,
 		record,
 		editedPlan: promptPlan ?? record.capture.capture.plan.promptPlan,
 	};
