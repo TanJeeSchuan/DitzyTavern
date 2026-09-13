@@ -1,7 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import {
-	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	ContinuationUnavailableError,
@@ -16,9 +15,13 @@ import {
 	type HistoricalControlSnapshot,
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
+import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
+import { readConversationSummaryFromConnection } from "../conversation/snapshot";
+import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
+import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
+import { runConversationTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
 	continuationIntentFor,
@@ -426,30 +429,38 @@ export interface PrepareGenerationInputs {
 export function prepareGenerationInputs(
 	input: PrepareGenerationInputs,
 ): GenerationPreparation {
-	const conversation = createConversationModule(input.database);
-	const summary = conversation.getSummary(input.conversationId);
-	if (summary === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.kind === "sibling" && input.messageId === undefined) {
 		throw new InvalidConversationCommandError("Sibling preview requires a target Message.");
 	}
-	const recipe = readConversationPromptPresetRecipe(input.database, input.conversationId);
-	const settings = conversation.getGenerationSettings(input.conversationId);
-	if (recipe === undefined || settings === undefined) {
-		throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
-	}
+	const { summary, recipe, settings, selected, connection } = runConversationTransaction(
+		input.database,
+		(db) => {
+			const summary = readConversationSummaryFromConnection(db, input.conversationId);
+			if (summary === undefined) throw new ConversationNotFoundError(input.conversationId);
+			const recipe = readConversationPromptPresetRecipeFromConnection(db, input.conversationId);
+			const settings = readConversationGenerationSettingsFromConnection(db, input.conversationId);
+			if (recipe === undefined || settings === undefined) {
+				throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
+			}
+			const selected = readSelectedHistoryFromConnection(db, input.conversationId, {
+				targetMessageId: input.kind === "sibling" ? input.messageId : undefined,
+				conversationDataNamespace: MACRO_DATA_NAMESPACE,
+				conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
+				variantDataKeys: [macroWritesKey(recipe.id), "reasoning"],
+			});
+			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
+			const connection = input.connection === undefined
+				? resolveConnectionSnapshot(input.database, input.connectionSettings)
+				: input.connection;
+			return { summary, recipe, settings, selected, connection };
+		},
+	);
 	if (!Value.Check(conversationGenerationSettings, settings)) {
 		throw new Error("Conversation Generation Settings are corrupt.");
 	}
 	if (input.kind === "continuation" && summary.activeGenerations.length > 0) {
 		throw new ContinuationUnavailableError("active-generation");
 	}
-	const selected = conversation.readSelectedHistory(input.conversationId, {
-		targetMessageId: input.kind === "sibling" ? input.messageId : undefined,
-		conversationDataNamespace: MACRO_DATA_NAMESPACE,
-		conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
-		variantDataKeys: [macroWritesKey(recipe.id), "reasoning"],
-	});
-	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.kind === "sibling") {
 		const eligibility = deriveMessageSwipeEligibility(
 			summary.playable,
@@ -503,9 +514,6 @@ export function prepareGenerationInputs(
 		timeZone: input.formatting?.timeZone,
 		locale: input.formatting?.locale,
 	};
-	const connection = input.connection === undefined
-		? resolveConnectionSnapshot(input.database, input.connectionSettings)
-		: input.connection;
 	const effectiveSettings = effectiveSettingsForPreparation({ kind: input.kind, settings, connection });
 	return {
 		conversationId: input.conversationId,
