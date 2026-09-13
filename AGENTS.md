@@ -5,6 +5,8 @@ There is `playwright-cli` installed
 
 For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS
 
+Use Radix / Shadcn components when possible, handroll as last resort
+
 Do not preserve backward compatibility. Remove obsolete paths. Do not create compatibility layers, fallbacks, or mitigations.
 
 Exhaustive declarations should encode information. An exhaustive object whose values are all identical and that has no consumer is just a compiler-enforced attendance sheet. That is usually worth removing.
@@ -24,7 +26,7 @@ The prompt of each subagent is simple, this verbatim:
 ```
  /implement <ticket-path>; use <user-provided-model> for review subagents;
 ```
-user-provided-model is muse-spark-1.2-contributor [opencode-go] [max] by default, change on request
+user-provided-model is muse-spark-1.3-contributor [opencode-go] [max] by default, change on request
 
 ## Database persistance
 - Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
