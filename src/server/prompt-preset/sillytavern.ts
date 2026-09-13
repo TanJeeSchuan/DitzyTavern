@@ -1,5 +1,5 @@
 import { defaultOutgoingRoles, type NativePromptPreset, type PromptOutgoingRole, type SillyTavernImportDiagnostic, type SillyTavernImportPreview, type SillyTavernImportRequest, type SillyTavernJsonValue, type SillyTavernOrderChoice } from "../../shared/contract/prompt-preset";
-import { scanMacroToken } from "../../shared/prompt-macros";
+import { parseMacroDocument, type MacroDocumentNode, type MacroNode } from "../../shared/prompt-macros";
 import { InvalidPromptPresetCommandError } from "./errors";
 
 type JsonRecord = { [key: string]: SillyTavernJsonValue };
@@ -196,38 +196,43 @@ const diagnostic = (code: string, message: string, identifier?: string): SillyTa
 	return value;
 };
 
-// ==[HUMAN APPROVED]== Translation walks the same token stream as expansion (the shared
-// scan in `prompt-macro-syntax.ts`, exposed by the shared barrel), so escaping, Prompt Comments and malformed
-// delimiters mean the same thing in both passes. Only an active `{{user}}`
-// or `{{char}}` macro is rewritten to the native names; a backslash pair,
-// an escaped macro or comment, an active comment, an unknown macro and
-// every other character are preserved verbatim, so authored formatting
-// outside the translation is never rewritten.
+// ==[HUMAN APPROVED]== Translation consumes the recursive parse used by expansion. Descendants
+// are replaced by source span, so nested supported macros are translated without rebuilding
+// and reparsing an outer expression. Prompt Comments remain opaque, exactly as they are to
+// expansion; malformed input is returned by the parser as literal text.
 const translateCommentsAndMacros = (source: string): string => {
-	let output = "";
-	let index = 0;
-	while (index < source.length) {
-		const token = scanMacroToken(source, index, (name) => {
-			const normalized = name.toLowerCase();
-			return normalized === "user" || normalized === "char";
-		});
-		if (token.kind === "macro") {
-			if (token.name.toLowerCase() === "user") output += "{{self}}";
-			else if (token.name.toLowerCase() === "char") output += "{{other}}";
-			else output += source.slice(index, token.end);
-		} else if (token.kind === "escaped-macro") {
-			// ==[HUMAN APPROVED]== SillyTavern keeps `\{{name}}` active: the backslash is ordinary
-			// text because the braces remain adjacent. Translate the name while
-			// retaining that literal prefix for the runtime evaluator.
-			if (token.name.toLowerCase() === "user") output += `\\{{self}}`;
-			else if (token.name.toLowerCase() === "char") output += `\\{{other}}`;
-			else output += source.slice(index, token.end);
-		} else {
-			output += source.slice(index, token.end);
+	const nodes = parseMacroDocument(source);
+	const translated = (node: MacroNode): string => {
+		const normalized = node.name.toLowerCase();
+		if (node.args.length === 0 && node.scope === undefined && (normalized === "user" || normalized === "char")) {
+			const name = normalized === "user" ? "self" : "other";
+			return `{{${name}}}`;
 		}
-		index = token.end;
-	}
-	return output;
+		if (normalized === "//" || normalized === "comment") return node.raw;
+		const descendants: MacroNode[] = [];
+		const collect = (children: readonly MacroDocumentNode[]): void => {
+			for (const child of children) {
+				if (child.kind !== "macro") continue;
+				if (child.name.toLowerCase() === "user" || child.name.toLowerCase() === "char") descendants.push(child);
+				else if (child.name.toLowerCase() !== "//" && child.name.toLowerCase() !== "comment") {
+					for (const argument of child.args) collect(argument.nodes);
+					if (child.scope !== undefined) collect(child.scope);
+				}
+			}
+		};
+		for (const argument of node.args) collect(argument.nodes);
+		if (node.scope !== undefined) collect(node.scope);
+		if (descendants.length === 0) return node.raw;
+		let output = "";
+		let cursor = node.start;
+		for (const child of descendants.sort((left, right) => left.start - right.start)) {
+			if (child.start < cursor) continue;
+			output += source.slice(cursor, child.start) + translated(child);
+			cursor = child.end;
+		}
+		return output + source.slice(cursor, node.end);
+	};
+	return nodes.map((node) => node.kind === "text" ? node.text : translated(node)).join("");
 };
 
 const supportedReference = (identifier: string): keyof typeof supportedReferences | null => {

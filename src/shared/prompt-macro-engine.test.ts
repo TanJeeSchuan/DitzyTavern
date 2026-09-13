@@ -157,4 +157,16 @@ describe("Prompt macro engine", () => {
 		const result = validateMacroText("{{if::yes}}{{random::a}}{{wat}}{{else}}{{roll::1d6}}{{/if}}", "draft");
 		expect(result.warnings).toEqual([{ block: "draft", macro: "{{wat}}" }]);
 	});
+
+		test("evaluates nested arguments and scopes without executing the unchosen branch", () => {
+		const state = createMacroAttemptState();
+		const result = expandMacroText(
+			"{{if::yes}}{{if::true}}{{setvar::chosen::{{self}}}}{{getvar::chosen}}{{/if}}{{else}}{{setvar::chosen::wrong}}{{/if}}",
+			environment,
+			state,
+			"instruction",
+		);
+		expect(result.text).toBe("Writer");
+		expect(result.writes).toEqual([{ name: "chosen", value: "Writer", operation: "set" }]);
+	});
 });

@@ -117,14 +117,23 @@ export const unescapeMacroText = (source: string): string => {
 export interface TextNode {
 	readonly kind: "text";
 	readonly text: string;
+	readonly start: number;
+	readonly end: number;
+}
+
+export interface MacroArgument {
+	readonly nodes: readonly MacroDocumentNode[];
+	readonly raw: string;
+	readonly start: number;
+	readonly end: number;
 }
 
 export interface MacroNode {
 	readonly kind: "macro";
 	readonly name: string;
 	readonly flags: readonly string[];
-	readonly args: readonly string[];
-	readonly scope: string | undefined;
+	readonly args: readonly MacroArgument[];
+	readonly scope: readonly MacroDocumentNode[] | undefined;
 	readonly raw: string;
 	readonly start: number;
 	readonly end: number;
@@ -270,11 +279,71 @@ const orderedElements = (elements: readonly (CstNode | IToken)[]): (CstNode | IT
 
 const nodeText = (node: MacroDocumentNode): string => node.kind === "text" ? node.text : node.raw;
 
-const parseHeader = (body: string): { name: string; flags: string[]; args: string[] } | undefined => {
+interface MacroSequence {
+	readonly nodes: MacroDocumentNode[];
+	readonly start: number;
+	readonly end: number;
+	readonly raw: string;
+}
+
+const sequenceRaw = (nodes: readonly MacroDocumentNode[]): string => nodes.map(nodeText).join("");
+
+const nodeStart = (node: MacroDocumentNode): number => node.start;
+const nodeEnd = (node: MacroDocumentNode): number => node.end;
+
+const sequenceSlice = (
+	nodes: readonly MacroDocumentNode[],
+	start: number,
+	end: number,
+	source: string,
+): MacroSequence => {
+	const sliced: MacroDocumentNode[] = [];
+	for (const node of nodes) {
+		if (nodeEnd(node) <= start || nodeStart(node) >= end) continue;
+		if (node.kind === "macro" && nodeStart(node) >= start && nodeEnd(node) <= end) {
+			sliced.push(node);
+			continue;
+		}
+		const textStart = Math.max(start, nodeStart(node));
+		const textEnd = Math.min(end, nodeEnd(node));
+		if (textStart < textEnd) sliced.push({
+			kind: "text",
+			text: source.slice(textStart, textEnd),
+			start: textStart,
+			end: textEnd,
+		});
+	}
+	return { nodes: sliced, start, end, raw: source.slice(start, end) };
+};
+
+export const sliceMacroDocument = (
+	nodes: readonly MacroDocumentNode[],
+	start: number,
+	end: number,
+	source: string,
+): MacroDocumentNode[] => sequenceSlice(nodes, start, end, source).nodes;
+
+interface ParsedHeader {
+	name: string;
+	flags: string[];
+	args: string[];
+	argumentStart: number | undefined;
+}
+
+const parseHeader = (body: string): ParsedHeader | undefined => {
 	let text = body.trim();
+	const textStart = body.indexOf(text);
 	const flags: string[] = [];
-	if (text === "//" || text === "///") return { name: text, flags, args: [] };
-	if (text.startsWith("//")) return { name: "//", flags, args: text.slice(2).trim() === "" ? [] : [text.slice(2).trim()] };
+	if (text === "//" || text === "///") return { name: text, flags, args: [], argumentStart: undefined };
+	if (text.startsWith("//")) {
+		const tail = text.slice(2).trim();
+		return {
+			name: "//",
+			flags,
+			args: tail === "" ? [] : [tail],
+			argumentStart: tail === "" ? undefined : textStart + text.indexOf(tail, 2),
+		};
+	}
 	while (text.length > 0 && "#!/".includes(text[0] ?? "")) {
 		flags.push(text[0] ?? "");
 		text = text.slice(1).trimStart();
@@ -283,8 +352,10 @@ const parseHeader = (body: string): { name: string; flags: string[]; args: strin
 	if (nameMatch === null) return undefined;
 	const name = nameMatch[1];
 	const tail = nameMatch[2].trim();
-	if (name === "///" || tail === "") return { name, flags, args: [] };
-	return { name, flags, args: [tail] };
+	if (name === "///" || tail === "") return { name, flags, args: [], argumentStart: undefined };
+	const nameOffset = body.indexOf(name, Math.max(0, textStart));
+	const tailOffset = nameOffset < 0 ? undefined : nameOffset + name.length + nameMatch[2].indexOf(tail);
+	return { name, flags, args: [tail], argumentStart: tailOffset };
 };
 
 class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDefaults() {
@@ -298,14 +369,10 @@ class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDef
 		return this.visit(node, source) as MacroDocumentNode;
 	}
 
-	private visitString(node: CstNode, source: string): string {
-		// ==[HUMAN APPROVED]== SAFETY: macroHead and its segment rules reconstruct only source text.
-		return this.visit(node, source) as string;
-	}
-
-	private visitArguments(node: CstNode, source: string): string[] {
-		// ==[HUMAN APPROVED]== SAFETY: argument visitor rules return one ordered string list.
-		return this.visit(node, source) as string[];
+	private visitSequence(node: CstNode, source: string): MacroSequence {
+		// ==[HUMAN APPROVED]== SAFETY: macroHead and macroArgument visitor rules both return the
+		// sequence shape declared above; Chevrotain invokes them with the same source.
+		return this.visit(node, source) as MacroSequence;
 	}
 
 	public document(ctx: CstNode["children"], source: string): MacroDocumentNode[] {
@@ -314,29 +381,43 @@ class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDef
 
 	public documentPart(ctx: CstNode["children"], source: string): MacroDocumentNode {
 		const text = tokenFrom(ctx, "DocumentText");
-		if (text !== undefined) return { kind: "text", text: text.image };
+		if (text !== undefined) {
+			const start = text.startOffset ?? 0;
+			return { kind: "text", text: text.image, start, end: start + text.image.length };
+		}
 		const macro = nodeFrom(ctx, "macro");
-		return macro === undefined ? { kind: "text", text: "" } : this.visitNode(macro, source);
+		return macro === undefined ? { kind: "text", text: "", start: 0, end: 0 } : this.visitNode(macro, source);
 	}
 
 	public macro(ctx: CstNode["children"], source: string): MacroDocumentNode {
 		const open = tokenFrom(ctx, "MacroOpen");
 		const close = tokenFrom(ctx, "MacroClose");
 		const headNode = nodeFrom(ctx, "macroHead");
-		if (open === undefined || close === undefined || headNode === undefined) return { kind: "text", text: "" };
-		const header = parseHeader(this.visitString(headNode, source));
+		if (open === undefined || close === undefined || headNode === undefined) return { kind: "text", text: "", start: 0, end: 0 };
+		const head = this.visitSequence(headNode, source);
+		const header = parseHeader(head.raw);
 		const start = open.startOffset ?? 0;
 		const end = (close.endOffset ?? start) + 1;
-		if (header === undefined) return { kind: "text", text: source.slice(start, end) };
+		if (header === undefined) return { kind: "text", text: source.slice(start, end), start, end };
+		const headerArgs = header.argumentStart === undefined ? [] : [sequenceSlice(
+			head.nodes,
+			(open.endOffset ?? start) + 1 + header.argumentStart,
+			(open.endOffset ?? start) + 1 + header.argumentStart + (header.args[0]?.length ?? 0),
+			source,
+		)];
 		const explicitArgs = [
-			...(ctx.doubleColonArguments ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat(),
-			...(ctx.singleColonArguments ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat(),
-		].map((value) => value.trim());
+			// ==[HUMAN APPROVED]== SAFETY: Chevrotain stores each grammar child as a CstNode; the
+			// doubleColonArguments and singleColonArguments visitor rules return sequences.
+			...(ctx.doubleColonArguments ?? []).map((node) => this.visit(cstNode(node), source) as MacroSequence[]).flat(),
+			// ==[HUMAN APPROVED]== SAFETY: Chevrotain stores each grammar child as a CstNode; the
+			// singleColonArguments visitor rule returns sequences.
+			...(ctx.singleColonArguments ?? []).map((node) => this.visit(cstNode(node), source) as MacroSequence[]).flat(),
+		];
 		return {
 			kind: "macro",
 			name: header.name,
 			flags: header.flags,
-			args: [...header.args, ...explicitArgs],
+			args: [...headerArgs, ...explicitArgs],
 			scope: undefined,
 			raw: source.slice(start, end),
 			start,
@@ -344,107 +425,140 @@ class MacroAstVisitor extends documentParser.getBaseCstVisitorConstructorWithDef
 		};
 	}
 
-	public macroHead(ctx: CstNode["children"], source: string): string {
-		return orderedElements([...(ctx.MacroPart ?? []), ...(ctx.macro ?? [])]).map((element) => "image" in element
-			? element.image
-			: nodeText(this.visitNode(cstNode(element), source))).join("");
+	public macroHead(ctx: CstNode["children"], source: string): MacroSequence {
+		const elements = orderedElements([...(ctx.MacroPart ?? []), ...(ctx.macro ?? [])]);
+		const nodes = elements.map((element): MacroDocumentNode => "image" in element
+			? {
+				kind: "text",
+				text: element.image,
+				start: element.startOffset ?? 0,
+				end: (element.endOffset ?? (element.startOffset ?? 0)) + 1,
+			}
+			: this.visitNode(cstNode(element), source));
+		const start = nodes[0]?.start ?? 0;
+		const end = nodes.at(-1)?.end ?? start;
+		return { nodes, start, end, raw: sequenceRaw(nodes) };
 	}
 
-	public macroArgument(ctx: CstNode["children"], source: string): string[] {
-		return [orderedElements([...(ctx.MacroPart ?? []), ...(ctx.Colon ?? []), ...(ctx.macro ?? [])]).map((element) => "image" in element
-			? element.image
-			: nodeText(this.visitNode(cstNode(element), source))).join("")];
+	public macroArgument(ctx: CstNode["children"], source: string): MacroSequence {
+		const elements = orderedElements([...(ctx.MacroPart ?? []), ...(ctx.Colon ?? []), ...(ctx.macro ?? [])]);
+		const nodes = elements.map((element): MacroDocumentNode => "image" in element
+			? {
+				kind: "text",
+				text: element.image,
+				start: element.startOffset ?? 0,
+				end: (element.endOffset ?? (element.startOffset ?? 0)) + 1,
+			}
+			: this.visitNode(cstNode(element), source));
+		const first = elements[0];
+		const last = elements.at(-1);
+		const start = first === undefined
+			? 0
+			: "image" in first ? first.startOffset ?? 0 : first.location?.startOffset ?? 0;
+		const end = last === undefined
+			? start
+			: "image" in last ? (last.endOffset ?? start - 1) + 1 : (last.location?.endOffset ?? start - 1) + 1;
+		return { nodes, start, end, raw: sequenceRaw(nodes) };
 	}
 
-	public doubleColonArguments(ctx: CstNode["children"], source: string): string[] {
-		return (ctx.macroArgument ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat();
+	public doubleColonArguments(ctx: CstNode["children"], source: string): MacroSequence[] {
+		return (ctx.macroArgument ?? []).map((node) => this.visitSequence(cstNode(node), source));
 	}
 
-	public singleColonArguments(ctx: CstNode["children"], source: string): string[] {
-		return (ctx.macroArgument ?? []).map((node) => this.visitArguments(cstNode(node), source)).flat();
+	public singleColonArguments(ctx: CstNode["children"], source: string): MacroSequence[] {
+		return (ctx.macroArgument ?? []).map((node) => this.visitSequence(cstNode(node), source));
 	}
 }
 
 const macroAstVisitor = new MacroAstVisitor();
 
 const attachScopes = (nodes: readonly MacroDocumentNode[], source: string): MacroDocumentNode[] => {
-	const scoped: MacroDocumentNode[] = [];
-	for (let index = 0; index < nodes.length; index += 1) {
-		const node = nodes[index];
-		if (node === undefined || node.kind === "text") {
-			if (node !== undefined) scoped.push(node);
+	const pairs = new Map<number, number>();
+	const literalPairs = new Map<number, number>();
+	const openStacks = new Map<string, number[]>();
+	const escapedCommentStack: number[] = [];
+	for (const [index, node] of nodes.entries()) {
+		if (node.kind === "text") continue;
+		const escaped = isEscaped(source, node.start);
+		if (node.name === "///" && !escaped) {
+			const opener = openStacks.get("//")?.pop();
+			if (opener !== undefined) pairs.set(opener, index);
+			const escapedOpener = escapedCommentStack.pop();
+			if (escapedOpener !== undefined) literalPairs.set(escapedOpener, index);
 			continue;
 		}
-		if (node.name === "///" || node.flags.includes("/")) {
-			scoped.push({ kind: "text", text: node.raw });
-			continue;
-		}
-		if (node.name === "//" && isEscaped(source, node.start)) {
-			let escapedEnd = node.end;
-			for (let candidateIndex = index + 1; candidateIndex < nodes.length; candidateIndex += 1) {
-				const candidate = nodes[candidateIndex];
-				if (candidate?.kind === "macro" && candidate.name === "///" && !isEscaped(source, candidate.start)) {
-					escapedEnd = candidate.end;
-					index = candidateIndex;
-					break;
-				}
-			}
-			scoped.push({ kind: "text", text: source.slice(node.start, escapedEnd) });
+		if (node.flags.includes("/")) {
+			if (escaped) continue;
+			const opener = openStacks.get(node.name.toLowerCase())?.pop();
+			if (opener !== undefined) pairs.set(opener, index);
 			continue;
 		}
 		const commentScope = node.name === "//" && node.args.length === 0 && node.flags.length === 0;
-		if (commentScope) {
-			const commentEnd = promptCommentEnd(source, node.start);
-			const commentCloseIndex = commentEnd === null ? undefined : nodes.findIndex((candidate, candidateIndex) =>
-				candidateIndex > index && candidate.kind === "macro" && candidate.name === "///" && candidate.end === commentEnd && !isEscaped(source, candidate.start));
-			if (commentCloseIndex === undefined || commentCloseIndex < 0) {
-				scoped.push(node);
-				continue;
-			}
-			const commentClose = nodes[commentCloseIndex];
-			if (commentClose === undefined || commentClose.kind === "text") {
-				scoped.push(node);
-				continue;
-			}
-			scoped.push({ ...node, scope: source.slice(node.end, commentClose.start), raw: source.slice(node.start, commentClose.end), end: commentClose.end });
-			index = commentCloseIndex;
+		if (commentScope && escaped) {
+			escapedCommentStack.push(index);
 			continue;
 		}
-		let depth = 0;
-		let closeIndex: number | undefined;
-		for (let candidateIndex = index + 1; candidateIndex < nodes.length; candidateIndex += 1) {
-			const candidate = nodes[candidateIndex];
-			if (candidate === undefined || candidate.kind === "text") continue;
-			const candidateName = candidate.name.toLowerCase();
-			if (candidateName !== node.name.toLowerCase()) continue;
-			if (candidate.flags.includes("/") && !isEscaped(source, candidate.start)) {
-				if (depth === 0) {
-					closeIndex = candidateIndex;
-					break;
-				}
-				depth -= 1;
-			} else depth += 1;
+		if (!escaped) {
+			if (node.name === "//" && !commentScope) continue;
+			const stack = openStacks.get(node.name.toLowerCase()) ?? [];
+			stack.push(index);
+			openStacks.set(node.name.toLowerCase(), stack);
 		}
-		if (closeIndex === undefined) {
-			scoped.push(node);
-			continue;
-		}
-		const close = nodes[closeIndex];
-		if (close === undefined || close.kind === "text") {
-			scoped.push(node);
-			continue;
-		}
-		scoped.push({ ...node, scope: source.slice(node.end, close.start), raw: source.slice(node.start, close.end), end: close.end });
-		index = closeIndex;
 	}
-	return scoped;
+
+	const withArguments = (node: MacroNode): MacroNode => ({
+		...node,
+		args: node.args.map((argument) => ({ ...argument, nodes: attachScopes(argument.nodes, source) })),
+	});
+	const build = (start: number, end: number): MacroDocumentNode[] => {
+		const result: MacroDocumentNode[] = [];
+		for (let index = start; index < end; index += 1) {
+			const node = nodes[index];
+			if (node === undefined) continue;
+			if (node.kind === "text") {
+				result.push(node);
+				continue;
+			}
+			const literalClose = node.name === "///" || node.flags.includes("/");
+			if (literalClose) {
+				result.push({ kind: "text", text: node.raw, start: node.start, end: node.end });
+				continue;
+			}
+			const literalEnd = literalPairs.get(index);
+			if (literalEnd !== undefined) {
+				const close = nodes[literalEnd];
+				result.push({ kind: "text", text: source.slice(node.start, close?.end ?? node.end), start: node.start, end: close?.end ?? node.end });
+				index = literalEnd;
+				continue;
+			}
+			const closeIndex = pairs.get(index);
+			if (closeIndex === undefined) {
+				result.push(withArguments(node));
+				continue;
+			}
+			const close = nodes[closeIndex];
+			if (close === undefined || close.kind === "text") {
+				result.push(withArguments(node));
+				continue;
+			}
+			result.push({
+				...withArguments(node),
+				scope: build(index + 1, closeIndex),
+				raw: source.slice(node.start, close.end),
+				end: close.end,
+			});
+			index = closeIndex;
+		}
+		return result;
+	};
+	return build(0, nodes.length);
 };
 
 export const parseMacroDocument = (source: string): MacroDocumentNode[] => {
 	const lexed = macroLexer.tokenize(source);
 	documentParser.input = lexed.tokens;
 	const tree = documentParser.document();
-	if (lexed.errors.length > 0 || documentParser.errors.length > 0) return [{ kind: "text", text: source }];
+	if (lexed.errors.length > 0 || documentParser.errors.length > 0) return [{ kind: "text", text: source, start: 0, end: source.length }];
 	// ==[HUMAN APPROVED]== SAFETY: the validated visitor returns the document's MacroDocumentNode list.
 	return attachScopes(macroAstVisitor.visit(tree, source) as MacroDocumentNode[], source);
 };

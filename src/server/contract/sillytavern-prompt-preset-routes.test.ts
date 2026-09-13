@@ -527,6 +527,24 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(requireApplied(imported.body).native.slots).toEqual(preview.native.slots);
 	});
 
+	test("translates nested participant macros inside conditional scopes", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [{
+				identifier: "main",
+				name: "Nested participants",
+				content: "{{if::true}}{{user}} begins; {{char}} follows.{{/if}}",
+				role: "system",
+			}],
+			prompt_order: [{ character_id: 100001, order: [{ identifier: "main", enabled: true }] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		expect(requirePreview(reviewed.body).native.slots[0]).toMatchObject({
+			content: "{{if::true}}{{self}} begins; {{other}} follows.{{/if}}",
+		});
+	});
+
 	test("the reproduced two-backslash source reaches the captured Generation request with the escaped backslash and the translated name", async () => {
 		const library = createPromptPresetRoutes(database);
 		const source: SillyTavernJsonValue = {

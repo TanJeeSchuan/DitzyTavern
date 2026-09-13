@@ -1,17 +1,18 @@
-import type { MacroNode, MacroDocumentNode } from "./prompt-macro-syntax";
-import { parseMacroDocument } from "./prompt-macro-syntax";
+import type { MacroArgument, MacroNode, MacroDocumentNode } from "./prompt-macro-syntax";
+import { sliceMacroDocument } from "./prompt-macro-syntax";
 import type { MacroAttemptState, MacroEnvironment } from "./prompt-macro-engine";
 import type { PromptWarning } from "./contract/conversation-schema";
 import { isMacroVariableName, type MacroValue, type MacroVariableWrite } from "./contract/macro-variables";
 
 export interface MacroDispatchContext {
+	readonly source: string;
 	readonly environment: MacroEnvironment;
 	readonly attemptState: MacroAttemptState;
 	readonly writes: MacroVariableWrite[];
 	readonly warnings: PromptWarning[];
 	readonly blockLabel: string;
 	readonly validationOnly: boolean;
-	readonly evaluate: (source: string) => string;
+	readonly evaluate: (nodes: readonly MacroDocumentNode[]) => string;
 }
 
 type MacroHandler = (node: MacroNode, args: readonly string[], context: MacroDispatchContext) => string;
@@ -70,16 +71,59 @@ const listArguments = (args: readonly string[]): string[] => {
 	return result;
 };
 
-const dedent = (value: string): string => {
-	const lines = value.split("\n");
-	const indents = lines
+const nodeSource = (node: MacroDocumentNode): string => node.kind === "text" ? node.text : node.raw;
+const nodesSource = (nodes: readonly MacroDocumentNode[]): string => nodes.map(nodeSource).join("");
+
+const normalizeScopeNodes = (nodes: readonly MacroDocumentNode[], preserve: boolean): readonly MacroDocumentNode[] => {
+	if (preserve) return nodes;
+	const source = nodesSource(nodes);
+	const minimum = Math.min(...source.split("\n")
 		.filter((line) => line.trim() !== "")
-		.map((line) => line.match(/^[ \t]*/)?.[0].length ?? 0);
-	const minimum = indents.length === 0 ? 0 : Math.min(...indents);
-	return lines.map((line) => line.slice(Math.min(minimum, line.match(/^[ \t]*/)?.[0].length ?? 0))).join("\n");
+		.map((line) => line.match(/^[ \t]*/)?.[0].length ?? 0), Infinity);
+	const normalized: MacroDocumentNode[] = [];
+	let lineStart = true;
+	for (const node of nodes) {
+		if (node.kind === "macro") {
+			normalized.push(node);
+			lineStart = false;
+			continue;
+		}
+		let text = "";
+		let indent = 0;
+		for (const character of node.text) {
+			if (lineStart && indent < (Number.isFinite(minimum) ? minimum : 0) && (character === " " || character === "\t")) {
+				indent += 1;
+				continue;
+			}
+			text += character;
+			if (character === "\n") {
+				lineStart = true;
+				indent = 0;
+			} else lineStart = false;
+		}
+		if (text !== "") normalized.push({ ...node, text });
+	}
+	while (normalized[0]?.kind === "text" && normalized[0].text.length > 0) {
+		const first = normalized[0];
+		if (first.kind !== "text") break;
+		const text = first.text.replace(/^\s+/, "");
+		if (text === first.text) break;
+		if (text === "") normalized.shift();
+		else normalized[0] = { ...first, text };
+	}
+	while (true) {
+		const last = normalized.at(-1);
+		if (last?.kind !== "text" || last.text.length === 0) break;
+		const text = last.text.replace(/\s+$/, "");
+		if (text === last.text) break;
+		if (text === "") normalized.pop();
+		else normalized[normalized.length - 1] = { ...last, text };
+	}
+	return normalized;
 };
 
-const scopedContent = (value: string, preserve: boolean): string => preserve ? value : dedent(value).trim();
+const scopedContent = (nodes: readonly MacroDocumentNode[], preserve: boolean): string =>
+	nodesSource(normalizeScopeNodes(nodes, preserve));
 
 const falsy = (value: string): boolean => {
 	const normalized = value.trim().toLowerCase();
@@ -281,8 +325,10 @@ const listChoices = (node: MacroNode, args: readonly string[], context: MacroDis
 	return choices;
 };
 
-const evaluateCondition = (condition: string, node: MacroNode, context: MacroDispatchContext): string | undefined => {
-	const shorthand = condition.match(/^([.$])([A-Za-z](?:[\w-]*[\w])?)(?:\s*(\|\|=|\?\?=|\|\||\?\?|\+\+|--|\+=|-=|==|!=|>=|<=|>|<|=)\s*(.*))?$/s);
+const evaluateCondition = (condition: MacroArgument | undefined, node: MacroNode, context: MacroDispatchContext): string | undefined => {
+	if (condition === undefined) return undefined;
+	const raw = condition.raw.trim();
+	const shorthand = raw.match(/^([.$])([A-Za-z](?:[\w-]*[\w])?)(?:\s*(\|\|=|\?\?=|\|\||\?\?|\+\+|--|\+=|-=|==|!=|>=|<=|>|<|=)\s*(.*))?$/s);
 	if (shorthand !== null) {
 		if (shorthand[1] === "$") {
 			warn(context, node);
@@ -292,29 +338,33 @@ const evaluateCondition = (condition: string, node: MacroNode, context: MacroDis
 		const operator = shorthand[3];
 		const rhs = shorthand[4] ?? "";
 		const current = variable(context, name);
+		const trimmedStart = condition.raw.indexOf(raw);
+		const rhsStart = rhs === "" ? condition.end : condition.start + trimmedStart + raw.length - rhs.length;
+		const rhsNodes = rhs === "" ? [] : sliceMacroDocument(condition.nodes, rhsStart, condition.end, context.source);
+		const evaluateRhs = (): string => context.evaluate(rhsNodes);
 		if (operator === undefined) return current;
 		if (context.validationOnly) {
-			context.evaluate(rhs);
+			evaluateRhs();
 			return "";
 		}
-		if (operator === "==" || operator === "!=") return String(operator === "==" ? current === context.evaluate(rhs) : current !== context.evaluate(rhs));
+		if (operator === "==" || operator === "!=") return String(operator === "==" ? current === evaluateRhs() : current !== evaluateRhs());
 		if ([">", ">=", "<", "<="].includes(operator)) {
 			const left = asNumber(current);
-			const right = asNumber(context.evaluate(rhs));
+			const right = asNumber(evaluateRhs());
 			if (left === undefined || right === undefined) return "false";
 			return String(operator === ">" ? left > right : operator === ">=" ? left >= right : operator === "<" ? left < right : left <= right);
 		}
-		if (operator === "||") return falsy(current) ? context.evaluate(rhs) : current;
-		if (operator === "??") return context.attemptState.variables.has(name) ? current : context.evaluate(rhs);
+		if (operator === "||") return falsy(current) ? evaluateRhs() : current;
+		if (operator === "??") return context.attemptState.variables.has(name) ? current : evaluateRhs();
 		if (operator === "||=") {
-			if (falsy(current)) setVariable(context, name, context.evaluate(rhs));
+			if (falsy(current)) setVariable(context, name, evaluateRhs());
 			return variable(context, name);
 		}
 		if (operator === "??=") {
-			if (!context.attemptState.variables.has(name)) setVariable(context, name, context.evaluate(rhs));
+			if (!context.attemptState.variables.has(name)) setVariable(context, name, evaluateRhs());
 			return variable(context, name);
 		}
-		const evaluated = context.evaluate(rhs);
+		const evaluated = evaluateRhs();
 		if (operator === "=") {
 			setVariable(context, name, evaluated);
 			return "";
@@ -337,15 +387,13 @@ const evaluateCondition = (condition: string, node: MacroNode, context: MacroDis
 		}
 		return variable(context, name);
 	}
-	return context.evaluate(condition);
+	return context.evaluate(condition.nodes);
 };
 
-const splitElse = (source: string): [string, string | undefined] => {
-	const nodes = parseMacroDocument(source);
+const splitElse = (nodes: readonly MacroDocumentNode[]): [readonly MacroDocumentNode[], readonly MacroDocumentNode[] | undefined] => {
 	const index = nodes.findIndex((node) => node.kind === "macro" && node.name.toLowerCase() === "else");
-	if (index === -1) return [source, undefined];
-	const text = (node: MacroDocumentNode): string => node.kind === "text" ? node.text : node.raw;
-	return [nodes.slice(0, index).map(text).join(""), nodes.slice(index + 1).map(text).join("")];
+	if (index === -1) return [nodes, undefined];
+	return [nodes.slice(0, index), nodes.slice(index + 1)];
 };
 
 const variableHandler = (node: MacroNode, args: readonly string[], context: MacroDispatchContext, operation: VariableOperation): string => {
@@ -432,18 +480,19 @@ const macroDefinitions: ReadonlyMap<string, MacroDefinition> = new Map([
 		return humanizeDuration((context.environment.now ?? new Date(0)).getTime() - then);
 	} }],
 	["if", { evaluateArgs: false, handler: (node, _args, context) => {
-		const condition = evaluateCondition(node.args[0] ?? "", node, context);
-		const content = node.scope ?? node.args[1] ?? "";
-		const [whenTrue, whenFalseFromScope] = splitElse(scopedContent(content, node.flags.includes("#")));
-		const whenFalse = node.scope === undefined ? node.args[2] : whenFalseFromScope;
+		const condition = evaluateCondition(node.args[0], node, context);
+		const content = node.scope ?? node.args[1]?.nodes ?? [];
+		const normalizedContent = normalizeScopeNodes(content, node.flags.includes("#"));
+		const [whenTrue, whenFalseFromScope] = splitElse(normalizedContent);
+		const whenFalse = node.scope === undefined ? node.args[2]?.nodes : whenFalseFromScope;
 		if (context.validationOnly) {
 			context.evaluate(whenTrue);
-			context.evaluate(whenFalse ?? "");
+			context.evaluate(whenFalse ?? []);
 			return "";
 		}
 		if (condition === undefined) return node.raw;
 		const useTrue = node.flags.includes("!") ? falsy(condition) : !falsy(condition);
-		return context.evaluate((useTrue ? whenTrue : whenFalse) ?? "");
+		return context.evaluate((useTrue ? whenTrue : whenFalse) ?? []);
 	} }],
 	["//", { evaluateArgs: false, handler: () => "" }],
 	["comment", { evaluateArgs: false, handler: () => "" }],
@@ -456,24 +505,29 @@ const unknownMacro = (node: MacroNode, args: readonly string[], context: MacroDi
 	warn(context, node);
 	if (args.length === 0 && node.scope === undefined) return node.raw;
 	const argumentText = args.length === 0 ? "" : `::${args.join("::")}`;
-	const scopeContent = node.scope === undefined ? "" : context.validationOnly ? context.evaluate(node.scope) : node.scope;
+	const scopeContent = node.scope === undefined ? "" : context.validationOnly ? context.evaluate(node.scope) : nodesSource(node.scope);
 	const scopedText = node.scope === undefined ? "" : `${scopeContent}{{/${node.name}}}`;
 	return `{{${node.name}${argumentText}}}${scopedText}`;
 };
 
 const shorthandDefinition: MacroDefinition = {
 	evaluateArgs: false,
-	handler: (node, _args, context) => evaluateCondition(`${node.name}${node.args[0] ?? ""}`, node, context) ?? node.raw,
+	handler: (node, _args, context) => evaluateCondition({
+		nodes: node.args[0]?.nodes ?? [],
+		raw: `${node.name}${node.args[0]?.raw ?? ""}`,
+		start: node.start + 2,
+		end: node.args[0]?.end ?? node.end,
+	}, node, context) ?? node.raw,
 };
 
 export const dispatchMacro = (node: MacroNode, context: MacroDispatchContext): string => {
 	if (node.name.startsWith("$")) return unknownMacro(node, [], context);
 	const definition = node.name.startsWith(".") ? shorthandDefinition : macroDefinitions.get(node.name.toLowerCase());
 	if (definition === undefined) {
-		const args = node.args.map((arg) => context.evaluate(arg));
+		const args = node.args.map((arg) => context.evaluate(arg.nodes).trim());
 		return unknownMacro(node, args, context);
 	}
-	const args = definition.evaluateArgs === false ? [] : node.args.map((arg) => context.evaluate(arg));
+	const args = definition.evaluateArgs === false ? [] : node.args.map((arg) => context.evaluate(arg.nodes).trim());
 	if (context.validationOnly && definition.volatile) return definition.validate?.(node, args, context) ?? "";
 	return definition.handler(node, args, context);
 };

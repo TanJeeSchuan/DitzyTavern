@@ -5,6 +5,7 @@ export {
 	parseMacroDocument,
 	promptCommentEnd,
 	scanMacroToken,
+	sliceMacroDocument,
 	unescapeMacroText,
 } from "./prompt-macro-syntax";
-export type { MacroContext, MacroDocumentNode, MacroNode, MacroToken, TextNode } from "./prompt-macro-syntax";
+export type { MacroArgument, MacroContext, MacroDocumentNode, MacroNode, MacroToken, TextNode } from "./prompt-macro-syntax";

@@ -1,7 +1,7 @@
 import type { PromptWarning } from "./contract/conversation-schema";
 import { type MacroValue, type MacroVariableWrite } from "./contract/macro-variables";
 import { dispatchMacro, type MacroDispatchContext } from "./prompt-macro-dispatch";
-import { parseMacroDocument, unescapeMacroText } from "./prompt-macro-syntax";
+import { parseMacroDocument, unescapeMacroText, type MacroDocumentNode } from "./prompt-macro-syntax";
 
 export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
 
@@ -84,8 +84,7 @@ export interface MacroValidationResult {
 	readonly warnings: readonly PromptWarning[];
 }
 
-const evaluateText = (source: string, context: Omit<MacroDispatchContext, "evaluate">): string => {
-	const nodes = parseMacroDocument(source);
+const evaluateNodes = (nodes: readonly MacroDocumentNode[], context: Omit<MacroDispatchContext, "evaluate">): string => {
 	let output = "";
 	let trimNextLine = false;
 	const append = (value: string): void => {
@@ -108,7 +107,7 @@ const evaluateText = (source: string, context: Omit<MacroDispatchContext, "evalu
 		}
 		append(dispatchMacro(node, {
 			...context,
-			evaluate: (nested) => evaluateText(nested, context),
+			evaluate: (nested) => evaluateNodes(nested, context),
 		}));
 	}
 	return output;
@@ -122,6 +121,7 @@ export const expandMacroText = (
 	options: { validationOnly?: boolean } = {},
 ): MacroExpansionResult => {
 	const context: Omit<MacroDispatchContext, "evaluate"> = {
+		source,
 		environment,
 		attemptState,
 		writes: [],
@@ -129,8 +129,9 @@ export const expandMacroText = (
 		blockLabel,
 		validationOnly: options.validationOnly === true,
 	};
+	const nodes = parseMacroDocument(source);
 	return {
-		text: evaluateText(source, context),
+		text: evaluateNodes(nodes, context),
 		warnings: context.warnings,
 		writes: context.writes,
 	};
