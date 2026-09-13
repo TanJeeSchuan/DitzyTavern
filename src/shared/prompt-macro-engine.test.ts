@@ -158,9 +158,9 @@ describe("Prompt macro engine", () => {
 		expect(result.warnings).toEqual([{ block: "draft", macro: "{{wat}}" }]);
 	});
 
-		test("evaluates nested arguments and scopes without executing the unchosen branch", () => {
+	test("evaluates nested arguments and scopes without executing the unchosen branch", () => {
 		const state = createMacroAttemptState();
-		const result = expandMacroText(
+		const result = expandMacroTextWithState(
 			"{{if::yes}}{{if::true}}{{setvar::chosen::{{self}}}}{{getvar::chosen}}{{/if}}{{else}}{{setvar::chosen::wrong}}{{/if}}",
 			environment,
 			state,
