@@ -112,9 +112,6 @@ const readSelectedHistoryFromConnection = (
 	if (request.conversationDataNamespace !== undefined) {
 		initialConditions.push(eq(conversationDataTable.namespace, request.conversationDataNamespace));
 	}
-	if (request.conversationDataKeys !== undefined && request.conversationDataKeys.length > 0) {
-		initialConditions.push(inArray(conversationDataTable.key, request.conversationDataKeys));
-	}
 	if (request.conversationDataKeyPrefix !== undefined) {
 		initialConditions.push(like(
 			conversationDataTable.key,

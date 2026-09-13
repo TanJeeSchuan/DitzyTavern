@@ -99,7 +99,6 @@ export type GenerationAttemptKind = "send" | "continuation" | "sibling";
 export interface ParticipatingHistory {
 	readonly messages: readonly ParticipatingHistoryMessage[];
 	readonly control: ConversationSnapshot["control"];
-	readonly target: ParticipatingHistoryMessage | undefined;
 }
 
 export interface ParticipatingHistoryMessage {
@@ -131,7 +130,6 @@ const participatingHistoryFromRead = (
 ): ParticipatingHistory => ({
 	messages: read.messages.map(participatingMessageFromRead),
 	control,
-	target: read.target === undefined ? undefined : participatingMessageFromRead(read.target),
 });
 
 // ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model

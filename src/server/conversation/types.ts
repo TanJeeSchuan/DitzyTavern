@@ -93,7 +93,6 @@ export interface SelectedHistoryReadRequest {
 	position?: number | undefined;
 	targetMessageId?: number | undefined;
 	conversationDataNamespace?: string | undefined;
-	conversationDataKeys?: readonly string[] | undefined;
 	conversationDataKeyPrefix?: string | undefined;
 	variantDataNamespace?: string | undefined;
 	variantDataKeys?: readonly string[] | undefined;

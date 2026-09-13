@@ -76,7 +76,9 @@ describe("Conversation-persistent prompt macro variables", () => {
 		if (after === undefined) throw new Error("Conversation disappeared.");
 		const generated = after.messages.at(-1)?.variants.find((variant) => variant.selected);
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
-		expect(readMacroWrites(generated.data, 1)).toEqual([...first.macroWrites]);
+		expect(readMacroWrites(generated.data, 1)).toEqual([
+			{ name: "turn", value: "6", operation: "set" },
+		]);
 
 		const second = captureSendGeneration({ database, conversationId: after.id, content: "Again" });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
