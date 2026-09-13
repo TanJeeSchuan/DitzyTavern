@@ -22,6 +22,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type {
 	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,
@@ -82,7 +83,7 @@ const continuationOperands = (
 // ==[HUMAN APPROVED]== The Effective Generation Settings for one attempt. The literal is
 // compile-locked to the canonical vocabulary: adding a canonical field fails
 // typecheck until the compiler states how it participates.
-const effectiveGenerationSettings = (
+export const effectiveGenerationSettingsFor = (
 	settings: CanonicalGenerationSettings,
 	intent: GenerationIntent | undefined,
 	connection: GenerationConnectionFacts | null,
@@ -118,11 +119,21 @@ export const compileGenerationPlan = (
 	input: CompileGenerationPlanInput,
 ): GenerationPlan => {
 	const intent = input.intent;
+	const attempt = input.attempt ?? {
+		environment: { self: input.human.name, other: input.model.name },
+		state: createMacroAttemptState(),
+	};
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan => {
-		const compiled = compilePrompt({ human: input.human, model: input.model, context });
+		const compiled = compilePrompt({
+			human: input.human,
+			model: input.model,
+			context,
+			recipe: input.recipe,
+			attempt,
+		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
 	// ==[HUMAN APPROVED]== Intent applicability decides the protected history: an assistant-prefill
@@ -152,7 +163,7 @@ export const compileGenerationPlan = (
 	return {
 		promptPlan: budget.plan,
 		budget,
-		effectiveSettings: effectiveGenerationSettings(
+		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,

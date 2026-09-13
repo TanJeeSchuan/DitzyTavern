@@ -3,6 +3,8 @@ dist
 .reports
 data
 .env
+# Project MCP config carries local credentials (Plane PAT). Use ${PLANE_API_KEY} if it must be committed.
+.mcp.json
 .dsh-thread-statuses.json
 test_data/
 

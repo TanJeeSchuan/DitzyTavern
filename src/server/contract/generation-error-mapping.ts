@@ -42,7 +42,7 @@ export type SiblingGenerationStartFailureResponse = FailureResponseOf<
  * unexpected Error must reach the framework's 500 handling instead of being
  * presented as a client-correctable invalid request.
  */
-const generationStartFailure = (error: Error): GenerationStartFailure | undefined => {
+export const classifyGenerationFailure = (error: Error): GenerationStartFailure | undefined => {
 	if (error instanceof ConversationNotFoundError) {
 		return { status: 404, body: { outcome: "not-found" } };
 	}
@@ -128,7 +128,7 @@ async function acceptanceResponse<
 		};
 	} catch (error) {
 		if (!(error instanceof Error)) throw error;
-		const failure = generationStartFailure(error);
+		const failure = classifyGenerationFailure(error);
 		// ==[HUMAN APPROVED]== An error outside the acceptance contract is never shaped into a
 		// client-correctable response; the original error reaches the framework
 		// unchanged.

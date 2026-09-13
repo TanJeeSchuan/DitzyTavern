@@ -1,8 +1,5 @@
 import type { Database } from "bun:sqlite";
-import {
-	compileOpening,
-	type MacroContext,
-} from "../prompt-compiler";
+import { compileOpening } from "../prompt-compiler";
 import {
 	artifactTable,
 	conversationDataTable,
@@ -23,6 +20,9 @@ import {
 	writeControlAssignment,
 	type ConversationDatabase,
 } from "./internal";
+import { readDefaultPromptPresetId, selectDefaultPromptPreset } from "../prompt-preset";
+import { macroWritesToData } from "../prompt-macros";
+import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { readConversationSnapshotFromConnection } from "./snapshot";
 import { runConversationTransaction } from "./commands/transaction";
 import type {
@@ -230,25 +230,63 @@ const deriveGreetingFromInput = (
 		return null;
 	}
 	const modelSeed = participants[input.control.model];
-	const humanSeed = participants[input.control.human];
 	const openings = [...(modelSeed?.definition.openings ?? [])];
 	if (openings.length === 0) return null;
 
 	// ==[HUMAN APPROVED]== The greeting is the first compiled use of the model seat's openings:
 	// macros resolve relative to the owning model Definition. The stored
 	// openings stay raw; only the presented greeting text is expanded.
-	const context: MacroContext = {
-		self: normalizeParticipantName(modelSeed.definition.name),
-		other: normalizeParticipantName(humanSeed.definition.name),
-	};
-
 	return {
 		timestamp: baseTime,
 		variants: openings.map((content, index) => ({
-			content: compileOpening(content, context, index + 1).text,
+			content,
 			timestamp: baseTime,
 			selected: index === 0,
 		})),
+	};
+};
+
+// ==[HUMAN APPROVED]== Creation-time opening expansion is one named assembly step. Each greeting
+// Variant receives the same captured seat identity, preset, clock, formatting,
+// and a fresh attempt state before its writes are attached to that Variant.
+const expandGreetingOpenings = (
+	greeting: ConversationCreationMessage,
+	input: {
+		conversationId: number;
+		promptPresetId: number;
+		modelName: string;
+		humanName: string;
+		formatting?: ConversationCreationInput["formatting"];
+	},
+): ConversationCreationMessage => {
+	const now = new Date(greeting.timestamp);
+	return {
+		...greeting,
+		variants: greeting.variants.map((variant, index) => {
+			const attempt = createAttemptEnvironment({
+				self: input.modelName,
+				other: input.humanName,
+				conversationId: input.conversationId,
+				promptPresetId: input.promptPresetId,
+				now,
+				timeZone: input.formatting?.timeZone,
+				locale: input.formatting?.locale,
+			});
+				const expanded = compileOpening(
+					variant.content,
+					{ self: attempt.environment.self, other: attempt.environment.other },
+					index + 1,
+					attempt,
+				);
+			return {
+				...variant,
+				content: expanded.text,
+				data: [
+					...(variant.data ?? []),
+					...macroWritesToData(input.promptPresetId, expanded.writes),
+				],
+			};
+		}),
 	};
 };
 
@@ -319,7 +357,7 @@ export function createConversation(
 			explicitMessages.length === 0
 				? deriveGreetingFromInput(input, baseTime)
 				: null;
-		const messages: readonly ConversationCreationMessage[] =
+		let messages: readonly ConversationCreationMessage[] =
 			greeting !== null ? [greeting] : explicitMessages;
 
 		const { creationTime, lastMessageTime } = deriveChatTimes(messages, baseTime);
@@ -340,6 +378,22 @@ export function createConversation(
 		db.insert(conversationGenerationSettingsTable)
 			.values({ conversation_id: conversation.id })
 			.run();
+		// ==[HUMAN APPROVED]== A new Conversation selects the shared Default preset. The selection
+		// is persisted rather than derived, so a later Default change never
+		// silently rewrites what an existing Conversation assembles through.
+		selectDefaultPromptPreset(db, conversation.id);
+		if (greeting !== null && modelIndex !== undefined && humanIndex !== undefined) {
+			const modelSeed = seeds[modelIndex];
+			const humanSeed = seeds[humanIndex];
+			const promptPresetId = readDefaultPromptPresetId(db);
+			messages = [expandGreetingOpenings(greeting, {
+				conversationId: conversation.id,
+				promptPresetId,
+				modelName: normalizeParticipantName(modelSeed.definition.name),
+				humanName: normalizeParticipantName(humanSeed.definition.name),
+				formatting: input.formatting,
+			})];
+		}
 
 		// ==[HUMAN APPROVED]== Insert the Cast so Control and the greeting can reference stable
 		// Participant identifiers. Insertion failures surface as the creation

@@ -55,6 +55,29 @@ export interface PromptBudgetResult {
 	readonly failure: PromptBudgetFailure | null;
 }
 
+export interface PromptBudgetMeasurementInput {
+	plan: PromptPlan;
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	estimator?: TokenEstimator;
+	// ==[HUMAN APPROVED]== The failure reason distinguishes an over-large protected history
+	// from an otherwise fixed prompt that cannot fit.
+	protectedHistory?: boolean;
+	protectedHistoryCharacters?: number;
+}
+
+export interface PromptBudgetMeasurement {
+	readonly fits: boolean;
+	readonly tokenEstimate: number;
+	readonly responseBudget: number;
+	readonly safetyAllowance: number;
+	readonly contextLimit: number;
+	readonly totalRequiredTokens: number;
+	readonly breakdown: PromptBudgetBreakdown;
+	readonly failure: PromptBudgetFailure | null;
+}
+
 /**
  * ==[HUMAN APPROVED]==
  * Creates the one text representation that token estimation is allowed to
@@ -63,7 +86,10 @@ export interface PromptBudgetResult {
  */
 export function toEstimationTranscript(plan: PromptPlan): string {
 	const blocks = plan.blocks.map((block, index) => {
-		const role = block.kind === "identity" ? block.role : "none";
+		// ==[HUMAN APPROVED]== Definition blocks carry the outgoing role their recipe slot chose;
+		// history blocks carry no presentation role of their own, only a
+		// speaker name.
+		const role = block.kind === "history" ? "none" : block.role;
 		const speaker = block.kind === "history" ? block.speakerName ?? "none" : "none";
 		return [
 			`\u001eBLOCK\u001f${index}\u001f${block.kind}`,
@@ -90,19 +116,11 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 					"\u001eSUFFIX\u001f",
 					plan.intent.suffix,
 				];
-	return ["ditzytavern-estimation-transcript-v1", ...blocks, ...intent].join("\n");
+	return ["ditzytavern-estimation-transcript-v2", ...blocks, ...intent].join("\n");
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
-	if (!Number.isInteger(input.contextLimit) || input.contextLimit <= 0) {
-		throw new Error("Prompt context limit must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.responseBudget) || input.responseBudget <= 0) {
-		throw new Error("Prompt response budget must be a positive whole number.");
-	}
-	if (!Number.isInteger(input.safetyAllowance) || input.safetyAllowance < 0) {
-		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
-	}
+	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
 
 	const protectedHistoryIndex = input.protectedHistoryIndex ?? findLatestHumanIndex(input.context);
 	if (
@@ -121,13 +139,25 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		const plan = count === 0
 			? input.plan
 			: input.compile(retainedIndexes.map((index) => input.context[index]));
-		return { retainedIndexes, plan, tokenEstimate: estimateCandidate(estimator, plan) };
+		return {
+			retainedIndexes,
+			plan,
+			measurement: measurePromptPlan({
+				plan,
+				contextLimit: input.contextLimit,
+				responseBudget: input.responseBudget,
+				safetyAllowance: input.safetyAllowance,
+				estimator,
+				protectedHistory: protectedHistoryIndex !== undefined,
+				protectedHistoryCharacters: protectedHistoryIndex === undefined
+					? 0
+					: input.context[protectedHistoryIndex]?.content.length ?? 0,
+			}),
+		};
 	};
-	const fits = (tokenEstimate: number) =>
-		tokenEstimate + input.responseBudget + input.safetyAllowance <= input.contextLimit;
 	let candidate = candidateAfterRemoving(0);
 
-	if (!fits(candidate.tokenEstimate) && removableIndexes.length > 0) {
+	if (!candidate.measurement.fits && removableIndexes.length > 0) {
 		// ==[HUMAN APPROVED]== Removing oldest whole history blocks only shortens this compiler's
 		// estimation transcript. Find the smallest fitting removal count without
 		// rebuilding and rescanning a multi-megabyte prompt once per Message.
@@ -137,7 +167,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		while (lower <= upper) {
 			const middle = Math.floor((lower + upper) / 2);
 			const inspected = candidateAfterRemoving(middle);
-			if (fits(inspected.tokenEstimate)) {
+			if (inspected.measurement.fits) {
 				fitting = inspected;
 				upper = middle - 1;
 			} else {
@@ -147,34 +177,98 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 		candidate = fitting ?? candidateAfterRemoving(removableIndexes.length);
 	}
 
-	const { retainedIndexes, plan, tokenEstimate } = candidate;
-	if (!fits(tokenEstimate)) {
-		const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
-		return createResult({
-			input,
-			plan,
-			retainedIndexes,
-			tokenEstimate,
-			breakdown,
-			failure: {
-				reason: protectedHistoryIndex === undefined
-					? "fixed-prompt-too-large"
-					: "protected-history-too-large",
-				breakdown,
-			},
-		});
-	}
-
-	const breakdown = createBreakdown(input, plan, tokenEstimate, protectedHistoryIndex);
+	const { retainedIndexes, plan, measurement } = candidate;
 	return createResult({
 		input,
 		plan,
 		retainedIndexes,
-		tokenEstimate,
-		breakdown,
-		failure: null,
+		measurement,
 	});
 }
+
+/**
+ * ==[HUMAN APPROVED]== Validate an already-expanded plan without recompiling it or trimming its
+ * history. An inspected plan is the user's direct model input, so accepting
+ * it must preserve every edit and report an over-ceiling plan as-is.
+ */
+export function budgetEditedPromptPlan(input: {
+	plan: PromptPlan;
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	estimator?: TokenEstimator;
+}): PromptBudgetResult {
+	const measurement = measurePromptPlan({
+		plan: input.plan,
+		contextLimit: input.contextLimit,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		estimator: input.estimator,
+	});
+	return {
+		fits: measurement.fits,
+		plan: input.plan,
+		retainedContext: [],
+		omittedContext: [],
+		tokenEstimate: measurement.tokenEstimate,
+		responseBudget: measurement.responseBudget,
+		safetyAllowance: measurement.safetyAllowance,
+		contextLimit: measurement.contextLimit,
+		totalRequiredTokens: measurement.totalRequiredTokens,
+		breakdown: measurement.breakdown,
+		failure: measurement.failure,
+	};
+}
+
+/**
+ * ==[HUMAN APPROVED]== Measures one ordered Prompt Plan. Both the trimming
+ * path and the inspected path use this step, so their token estimate,
+ * breakdown, and fit decision cannot drift apart.
+ */
+export function measurePromptPlan(input: PromptBudgetMeasurementInput): PromptBudgetMeasurement {
+	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
+	const tokenEstimate = estimateCandidate(input.estimator ?? tokenxEstimator, input.plan);
+	const breakdown = createBreakdown({
+		contextLimit: input.contextLimit,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		protectedHistoryCharacters: input.protectedHistoryCharacters ?? 0,
+	}, input.plan, tokenEstimate);
+	const fits = breakdown.totalRequiredTokens <= input.contextLimit;
+	return {
+		fits,
+		tokenEstimate,
+		responseBudget: input.responseBudget,
+		safetyAllowance: input.safetyAllowance,
+		contextLimit: input.contextLimit,
+		totalRequiredTokens: breakdown.totalRequiredTokens,
+		breakdown,
+		failure: fits
+			? null
+			: {
+				reason: input.protectedHistory === true
+					? "protected-history-too-large"
+					: "fixed-prompt-too-large",
+				breakdown,
+			},
+	};
+}
+
+const validateBudgetFields = (
+	contextLimit: number,
+	responseBudget: number,
+	safetyAllowance: number,
+): void => {
+	if (!Number.isInteger(contextLimit) || contextLimit <= 0) {
+		throw new Error("Prompt context limit must be a positive whole number.");
+	}
+	if (!Number.isInteger(responseBudget) || responseBudget <= 0) {
+		throw new Error("Prompt response budget must be a positive whole number.");
+	}
+	if (!Number.isInteger(safetyAllowance) || safetyAllowance < 0) {
+		throw new Error("Prompt Safety allowance must be a non-negative whole number.");
+	}
+};
 
 export class PromptBudgetExceededError extends Error {
 	readonly result: PromptBudgetResult;
@@ -206,10 +300,11 @@ function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan): number 
 }
 
 function createBreakdown(
-	input: PromptBudgetInput,
+	input: Pick<PromptBudgetInput, "contextLimit" | "responseBudget" | "safetyAllowance"> & {
+		protectedHistoryCharacters: number;
+	},
 	plan: PromptPlan,
 	tokenEstimate: number,
-	protectedHistoryIndex: number | undefined,
 ): PromptBudgetBreakdown {
 	const fixedPromptCharacters = plan.blocks
 		.filter((block) => block.kind !== "history")
@@ -221,9 +316,6 @@ function createBreakdown(
 				: plan.intent.strategy === "instruction"
 					? plan.intent.instruction.length
 					: plan.intent.suffix.length);
-	const protectedHistoryCharacters = protectedHistoryIndex === undefined
-		? 0
-		: input.context[protectedHistoryIndex]?.content.length ?? 0;
 	return {
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
@@ -231,7 +323,7 @@ function createBreakdown(
 		tokenEstimate,
 		totalRequiredTokens: tokenEstimate + input.responseBudget + input.safetyAllowance,
 		fixedPromptCharacters,
-		protectedHistoryCharacters,
+		protectedHistoryCharacters: input.protectedHistoryCharacters,
 	};
 }
 
@@ -239,22 +331,20 @@ function createResult(input: {
 	input: PromptBudgetInput;
 	plan: PromptPlan;
 	retainedIndexes: readonly number[];
-	tokenEstimate: number;
-	breakdown: PromptBudgetBreakdown;
-	failure: PromptBudgetFailure | null;
+	measurement: PromptBudgetMeasurement;
 }): PromptBudgetResult {
 	const retainedSet = new Set(input.retainedIndexes);
 	return {
-		fits: input.failure === null,
+		fits: input.measurement.fits,
 		plan: input.plan,
 		retainedContext: input.retainedIndexes.map((index) => input.input.context[index]),
 		omittedContext: input.input.context.filter((_, index) => !retainedSet.has(index)),
-		tokenEstimate: input.tokenEstimate,
+		tokenEstimate: input.measurement.tokenEstimate,
 		responseBudget: input.input.responseBudget,
 		safetyAllowance: input.input.safetyAllowance,
 		contextLimit: input.input.contextLimit,
-		totalRequiredTokens: input.breakdown.totalRequiredTokens,
-		breakdown: input.breakdown,
-		failure: input.failure,
+		totalRequiredTokens: input.measurement.totalRequiredTokens,
+		breakdown: input.measurement.breakdown,
+		failure: input.measurement.failure,
 	};
 }

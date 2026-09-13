@@ -9,9 +9,6 @@ import {
 	type RefObject,
 } from "react";
 import {
-	startConversationContinuationGeneration,
-	startConversationGeneration,
-	startConversationSiblingGeneration,
 	stopAllConversationGenerations,
 	stopConversationGeneration,
 	type ConversationSummary,
@@ -40,6 +37,8 @@ import {
 	type StoryMessage,
 	type StoryState,
 } from "../story";
+import { clientFormattingContext } from "../lib/formatting-context";
+import { useAssemblyController } from "./useAssemblyController";
 
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
@@ -99,10 +98,10 @@ type GenerationControllerOptions = {
 
 /**
  * ==[HUMAN APPROVED]== Thin wiring between the view, the Generation session machine, and the
- * server. The session machine (generation-sessions) and its runner own
+ * assembly controller. The session machine (generation-sessions) and its runner own
  * subscription phases, event cursors, reconnection, stop state, errors, and
- * terminal refreshes; this hook only feeds authoritative snapshots into the
- * machine, sends start/stop commands, and renders the resulting state.
+ * terminal refreshes; the assembly controller owns Prompt Plan preview and
+ * acceptance while this hook renders the combined state and composer actions.
  */
 export function useGenerationController({
 	conversation,
@@ -118,7 +117,6 @@ export function useGenerationController({
 		createPendingGenerationStarts,
 	);
 	const nextStartIdRef = useRef(1);
-	const [startError, setStartError] = useState<string | null>(null);
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
@@ -138,7 +136,11 @@ export function useGenerationController({
 	// ==[HUMAN APPROVED]== Unmount detaches every local subscription. The machine keeps cursors,
 	// so a later remount reattaches from each Generation's latest processed
 	// event, and no server-owned Active Generation is ever cancelled here.
-	useEffect(() => () => runner.dispose(), [runner]);
+	useEffect(() => {
+		return () => {
+			runner.dispose();
+		};
+	}, [runner]);
 
 	// ==[HUMAN APPROVED]== Authoritative snapshots reconcile the session collection. The dispatch
 	// is idempotent, so re-observing unchanged targets has no effect and no
@@ -168,7 +170,7 @@ export function useGenerationController({
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
-	const generationError = startError ?? firstActiveGenerationSessionError(sessions);
+	const generationError = firstActiveGenerationSessionError(sessions);
 
 	useEffect(() => {
 		dispatchPendingStarts({
@@ -186,9 +188,40 @@ export function useGenerationController({
 		return message?.swipes[message.activeSwipe]?.id === target.variantId;
 	}) ?? activeGenerationTargets[0];
 
+	const beginStart = () => {
+		const startId = nextStartIdRef.current;
+		nextStartIdRef.current += 1;
+		dispatchPendingStarts({ type: "started", startId });
+		runner.dispatch({ type: "errors-acknowledged" });
+		return startId;
+	};
+
+	const assemblyController = useAssemblyController({
+		conversation,
+		activeChatIdRef,
+		refreshStory,
+		isGenerating,
+		variantPreviewActive: story.preview !== null,
+		generationStart: {
+			begin: beginStart,
+			settle: (startId) => dispatchPendingStarts({ type: "settled", startId }),
+			accepted: (startId, generationId) => dispatchPendingStarts({ type: "accepted", startId, generationId }),
+		},
+		clearDraft: () => setDraft(""),
+	});
+	const {
+		assembly,
+		assemblyAvailable,
+		editPromptPlanPreview,
+		refreshPromptPlanPreview,
+		cancelPromptPlanPreview,
+		sendPromptPlanPreview,
+		openPromptPlanPreview,
+	} = assemblyController;
+
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
-		setStartError(null);
+		assemblyController.conversationSwitched();
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
@@ -230,88 +263,25 @@ export function useGenerationController({
 		if (target !== undefined) void stopGeneration(target);
 	};
 
-	const startGeneration = async (
-		startId: number,
-		conversationId: number,
-		request: Promise<Awaited<ReturnType<typeof startConversationGeneration>>>,
-		onAccepted?: () => void,
-	) => {
-		try {
-			const outcome = await request;
-			if (Number(activeChatIdRef.current) !== conversationId) return;
-			if (outcome.outcome === "accepted") {
-				onAccepted?.();
-				const freshConversation = await refreshStory(conversationId);
-				if (
-					freshConversation === null ||
-					!freshConversation.activeGenerations.some(
-						(generation) => generation.generationId === outcome.generationId,
-					)
-				) {
-					dispatchPendingStarts({ type: "settled", startId });
-				} else {
-					dispatchPendingStarts({
-						type: "accepted",
-						startId,
-						generationId: outcome.generationId,
-					});
-				}
-				return;
-			}
-			dispatchPendingStarts({ type: "settled", startId });
-			setStartError(
-				outcome.outcome === "not-found"
-					? "The Conversation no longer exists."
-					: (outcome.reason ?? "Generation could not be started."),
-			);
-		} catch {
-			if (Number(activeChatIdRef.current) !== conversationId) return;
-			dispatchPendingStarts({ type: "settled", startId });
-			setStartError("Generation could not be started.");
-		}
-	};
-
-	const beginStart = () => {
-		const startId = nextStartIdRef.current;
-		nextStartIdRef.current += 1;
-		dispatchPendingStarts({ type: "started", startId });
-		setStartError(null);
-		runner.dispatch({ type: "errors-acknowledged" });
-		return startId;
-	};
-
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable || draft.trim() === "") return;
-		const conversationId = conversation.id;
-		const startId = beginStart();
-		void startGeneration(
-			startId,
-			conversationId,
-			startConversationGeneration(conversationId, conversation.revision, draft),
-			() => setDraft(""),
-		);
+		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
+		openPromptPlanPreview({ kind: "send", content: draft, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
-		if (story.preview !== null || isGenerating || conversation === null || !conversation.playable) return;
+		if (!assemblyAvailable || conversation === null) return;
 		const latest = story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		const conversationId = conversation.id;
-		const startId = beginStart();
-		void startGeneration(
-			startId,
-			conversationId,
-			startConversationContinuationGeneration(conversationId, conversation.revision),
-		);
+		openPromptPlanPreview({ kind: "continuation", ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number) => {
-		if (story.preview !== null || conversation === null || !conversation.playable) return;
+		if (!assemblyAvailable || conversation === null) return;
 		const target = story.messages.find((message) => message.id === messageId);
 		if (
 			target === undefined ||
@@ -322,17 +292,11 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		const conversationId = conversation.id;
-		const startId = beginStart();
-		void startGeneration(
-			startId,
-			conversationId,
-			startConversationSiblingGeneration(conversationId, messageId),
-		);
+		openPromptPlanPreview({ kind: "sibling", messageId, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>
-		conversation !== null && canOfferSiblingGeneration({
+		assemblyAvailable && conversation !== null && canOfferSiblingGeneration({
 			message,
 			playable: conversation.playable,
 			previewActive: story.preview !== null,
@@ -345,6 +309,13 @@ export function useGenerationController({
 		isGenerating,
 		stopPending,
 		generationError,
+		assembly,
+		editPromptPlanPreview,
+		refreshPromptPlanPreview,
+		cancelPromptPlanPreview,
+		sendPromptPlanPreview,
+		openPromptPlanPreview,
+		assemblyAvailable,
 		activeGenerationTargets,
 		activeGenerationMessageIds,
 		selectedGenerationTarget,

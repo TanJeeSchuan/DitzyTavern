@@ -218,6 +218,134 @@
 	color: var(--foreground);
 }
 
+.macro-variables-panel {
+	min-width: 0;
+}
+
+.macro-variables-body {
+	display: grid;
+	align-content: start;
+	gap: 0.85rem;
+	overflow-y: auto;
+}
+
+.macro-variables-intro,
+.macro-variables-help {
+	margin: 0;
+}
+
+.macro-position-field,
+.macro-variable-editor label {
+	display: grid;
+	gap: 0.35rem;
+	color: var(--text-muted);
+	font-size: 0.74rem;
+	font-weight: 640;
+}
+
+.macro-position-field select,
+.macro-variable-editor input,
+.macro-variable-editor textarea {
+	width: 100%;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font: inherit;
+	font-weight: 450;
+}
+
+.macro-position-field select,
+.macro-variable-editor input {
+	height: 2.45rem;
+	padding: 0 0.7rem;
+}
+
+.macro-variable-editor textarea {
+	min-height: 7rem;
+	padding: 0.65rem 0.7rem;
+	line-height: 1.48;
+	resize: vertical;
+}
+
+.macro-position-field select:focus-visible,
+.macro-variable-editor input:focus-visible,
+.macro-variable-editor textarea:focus-visible {
+	outline: 0;
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}
+
+.macro-variable-list {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.macro-variable-row {
+	display: grid;
+	gap: 0.5rem;
+	min-width: 0;
+	padding: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 0.85rem;
+	background: var(--surface-muted);
+}
+
+.macro-variable-heading {
+	display: grid;
+	gap: 0.15rem;
+	min-width: 0;
+}
+
+.macro-variable-heading strong {
+	overflow-wrap: anywhere;
+	font-size: 0.82rem;
+}
+
+.macro-variable-heading span {
+	color: var(--text-muted);
+	font-size: 0.68rem;
+}
+
+.macro-variable-row pre {
+	max-height: 12rem;
+	overflow: auto;
+	margin: 0;
+	padding: 0.55rem;
+	border-radius: 0.55rem;
+	background: var(--surface);
+	color: var(--foreground);
+	font: 0.78rem/1.48 var(--font-prose, inherit);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.macro-variable-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.macro-editor-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.macro-editor-heading h3 {
+	margin: 0;
+	font-size: 0.86rem;
+	font-weight: 670;
+}
+
+.macro-variable-editor {
+	display: grid;
+	gap: 0.65rem;
+	padding-top: 0.9rem;
+	border-top: 1px solid var(--border);
+}
+
 .icon-button svg {
 	width: 1rem;
 	height: 1rem;
@@ -794,5 +922,3 @@
 	color: var(--destructive);
 	font-size: 0.78rem;
 }
-
-

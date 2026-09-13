@@ -164,6 +164,7 @@ function createHarness(mode: CommandMode, authorParticipantId = 20) {
 			clearPreviewError: () => {
 				events.push("preview-error-cleared");
 			},
+			canEnterPreview: true,
 			onEnterPreview: () => {
 				events.push("enter-preview");
 			},

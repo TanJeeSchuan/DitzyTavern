@@ -16,15 +16,33 @@ import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
 import {
 	conversationExists,
+	readConversationRevision,
 	readConversationSnapshot,
 	readConversationSummary,
 } from "./snapshot";
 import { readConversationData } from "./read-data";
+import { readSelectedHistory } from "./selected-history";
+import { readConversationPromptPreset } from "./prompt-preset";
 import {
 	readActiveGenerationDetails,
 	readVariantDetails,
 } from "./generation-details";
 import { readConversationGenerationSettings } from "./generation-settings";
+import {
+	editMacroVariables,
+	readMacroVariables,
+} from "./macro-variables";
+export type {
+	EditMacroVariablesInput,
+	EditedMacroVariables,
+	ReadMacroVariablesInput,
+} from "./macro-variables";
+export type {
+	SelectedHistoryMessage,
+	SelectedHistoryRead,
+	SelectedHistoryReadRequest,
+	SelectedHistoryVariant,
+} from "./selected-history";
 import type { ConversationModule } from "./types";
 
 export {
@@ -72,6 +90,7 @@ export {
 	readChatHistory,
 } from "./history";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
+export { readConversationRevision } from "./snapshot";
 export {
 	cleanupRetainedGenerationInspections,
 	GENERATION_REPLAY_RETENTION_MS,
@@ -104,6 +123,7 @@ export type {
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
+	MacroVariables,
 	ConversationJsonValue,
 	ConversationDataRead,
 	ConversationDataReadFilter,
@@ -140,14 +160,22 @@ export function createConversationModule(database: Database): ConversationModule
 	return {
 		create: (input) => createConversation(database, input),
 		exists: (conversationId) => conversationExists(database, conversationId),
+		getRevision: (conversationId) => readConversationRevision(database, conversationId),
 		getSnapshot: (conversationId) => readConversationSnapshot(database, conversationId),
 		getSummary: (conversationId) => readConversationSummary(database, conversationId),
 		getGenerationSettings: (conversationId) =>
 			readConversationGenerationSettings(database, conversationId),
+		getPromptPreset: (conversationId) =>
+			readConversationPromptPreset(database, conversationId),
 		readHistory: (conversationId, request) =>
 			readChatHistory(database, conversationId, request),
 		readConversationData: (conversationId, filter) =>
 			readConversationData(database, conversationId, filter),
+		readSelectedHistory: (conversationId, request) =>
+			readSelectedHistory(database, conversationId, request),
+		readMacroVariables: (conversationId, input) =>
+			readMacroVariables(database, conversationId, input),
+		editMacroVariables: (input) => editMacroVariables(database, input),
 		readActiveGenerationDetails: (conversationId, generationId) =>
 			readActiveGenerationDetails(database, conversationId, generationId),
 		readVariantDetails: (conversationId, messageId, variantId) =>

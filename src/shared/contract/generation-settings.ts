@@ -63,6 +63,39 @@ export const canonicalGenerationSettings = Type.Object({
 	}),
 });
 
+// The settings an individual attempt actually uses. Continuation operands and
+// the configured sibling limit are nullable when they do not participate in
+// that attempt; request overrides have already been narrowed to the active
+// API Format. Keep this beside the canonical declaration so the preview
+// response validates the same shape the Generation Plan produces.
+export const effectiveGenerationSettings = Type.Object({
+	modelId: Type.String({ pattern: "\\S" }),
+	temperature: samplingValue,
+	topP: samplingValue,
+	frequencyPenalty: samplingValue,
+	presencePenalty: samplingValue,
+	contextLimit: Type.Integer({ minimum: 1 }),
+	responseBudget: Type.Integer({ minimum: 1 }),
+	safetyAllowance: Type.Integer({ minimum: 0 }),
+	siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer({ minimum: 1 })]),
+	continuationStrategy: Type.Union([
+		Type.Null(),
+		Type.Literal("instruction"),
+		Type.Literal("assistant-prefill"),
+	]),
+	continuationInstruction: Type.Union([Type.Null(), Type.String({ pattern: "\\S" })]),
+	continuationPrefillSuffix: Type.Union([
+		Type.Null(),
+		Type.Literal(""),
+		Type.Literal(" "),
+		Type.Literal("\n"),
+		Type.Literal("\n\n"),
+	]),
+	requestOverrides: generationJsonObject,
+});
+
+export type EffectiveGenerationSettings = Static<typeof effectiveGenerationSettings>;
+
 export type CanonicalGenerationSettings = Static<typeof canonicalGenerationSettings>;
 export type GenerationSettingsField = keyof CanonicalGenerationSettings;
 

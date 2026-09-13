@@ -48,6 +48,7 @@ import type {
 	ConversationJsonValue,
 	ConversationSummary,
 } from "../types";
+import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -90,7 +91,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "generationIntent" |
-	"provenance"
+	"provenance" | "macroPresetId" | "macroWrites"
 >;
 
 interface PersistActiveGenerationInput
@@ -129,6 +130,11 @@ const persistActiveGeneration = (
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
+			macro_preset_id: input.macroPresetId ?? null,
+			macro_writes_json: jsonText(
+				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
+				"Macro writes",
+			),
 		})
 		.returning({ id: activeGenerationTable.id })
 		.get();

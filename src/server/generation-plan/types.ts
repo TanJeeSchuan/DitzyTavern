@@ -5,11 +5,12 @@
 // Generation workflow consumes.
 
 import type { ConnectionApiFormat } from "../connection-settings/types";
-import type { GenerationJsonObject } from "../../shared/generation-provenance";
 import type {
 	CanonicalGenerationSettings,
-	GenerationSettingsField,
+	EffectiveGenerationSettings,
 } from "../../shared/contract/generation-settings";
+import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
+import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	GenerationIntent,
@@ -18,21 +19,6 @@ import type {
 	PromptPlan,
 	TokenEstimator,
 } from "../prompt-compiler";
-
-// The value one canonical field takes in the Effective Generation Settings:
-// every field keeps its configured value except the three Continuation
-// fields and the currently unenforced Sibling Generation limit. A value that
-// did not participate is null rather than copied. Request Overrides narrow
-// to the active API Format namespace.
-type EffectiveFieldValue<K extends GenerationSettingsField> = K extends
-	| "continuationStrategy"
-	| "continuationInstruction"
-	| "continuationPrefillSuffix"
-	| "siblingGenerationLimit"
-	? CanonicalGenerationSettings[K] | null
-	: K extends "requestOverrides"
-		? GenerationJsonObject
-		: CanonicalGenerationSettings[K];
 
 /**
  * The Generation Settings that actually participate in one Generation
@@ -43,9 +29,7 @@ type EffectiveFieldValue<K extends GenerationSettingsField> = K extends
  * its instruction, and an assistant-prefill Continuation retains only its
  * Prefill suffix.
  */
-export type EffectiveGenerationSettings = {
-	readonly [K in GenerationSettingsField]: EffectiveFieldValue<K>;
-};
+export type { EffectiveGenerationSettings } from "../../shared/contract/generation-settings";
 
 /**
  * The complete application plan for one Generation attempt: its Prompt Plan,
@@ -76,6 +60,9 @@ export interface CompileGenerationPlanInput {
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];
+	// The selected Prompt Preset's ordered recipe, captured with the rest of
+	// the attempt's inputs so execution never rereads mutable preset state.
+	readonly recipe: readonly PromptPresetSlot[];
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;
@@ -84,6 +71,9 @@ export interface CompileGenerationPlanInput {
 	// The safe Connection facts resolved before compilation. Null when no
 	// Profile is active — no Request Overrides namespace applies then.
 	readonly connection: GenerationConnectionFacts | null;
+	// One attempt's captured macro inputs and state. Keeping them together makes
+	// reuse across every budget candidate part of the type contract.
+	readonly attempt?: AttemptEnvironment;
 	// Tests and calibration work may replace the default project-owned
 	// estimator; budgeting policy itself stays application-owned.
 	readonly estimator?: TokenEstimator | undefined;

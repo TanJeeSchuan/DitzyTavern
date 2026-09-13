@@ -192,6 +192,20 @@ export function conversationExists(
 	);
 }
 
+// ==[HUMAN APPROVED]== Narrow revision read for server-owned preview sends. The
+// preview capture already owns the exact Prompt Plan, so refreshing the
+// acceptance guard must not materialize the complete Conversation snapshot.
+export function readConversationRevision(
+	database: Database,
+	conversationId: number,
+): number | undefined {
+	return connectConversationDatabase(database)
+		.select({ revision: conversationTable.revision })
+		.from(conversationTable)
+		.where(eq(conversationTable.id, conversationId))
+		.get()?.revision;
+}
+
 export function readConversationSnapshot(
 	database: Database,
 	conversationId: number,

@@ -306,6 +306,15 @@ function normalizeProviderStreamError(
 	);
 }
 
+// ==[HUMAN APPROVED]== The plan keeps provider-neutral presentation roles; this adapter owns the
+// translation into provider vocabulary, exactly as it does for history
+// authorship.
+const providerRoleFor = {
+	system: "system",
+	human: "user",
+	model: "assistant",
+} as const satisfies Record<"system" | "human" | "model", "system" | "user" | "assistant">;
+
 function toMessages(input: ModelClientGenerationInput) {
 	type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 	const messages: ChatMessage[] = [];
@@ -359,22 +368,13 @@ function toMessages(input: ModelClientGenerationInput) {
 			continue;
 		}
 		if (block.content.length === 0) continue;
-		switch (block.kind) {
-			case "system-instruction":
-			case "scenario":
-			case "post-history-instruction":
-				messages.push({ role: "system", content: block.content });
-				break;
-			case "identity":
-				messages.push({
-					role: block.role === "model" ? "assistant" : "user",
-					content: block.content,
-				});
-				break;
-			case "example-dialogue":
-				messages.push({ role: "user", content: block.content });
-				break;
-		}
+		// ==[HUMAN APPROVED]== The compiled presentation role is presentation truth: the recipe
+		// slot chose it and the plan kept it provider-neutral, so the adapter
+		// owns the same translation it applies to history authorship.
+		messages.push({
+			role: providerRoleFor[block.role],
+			content: block.content,
+		});
 	}
 	// ==[HUMAN APPROVED]== Continuation instructions are request intent, not Conversation history.
 	// Keep them as an adapter-owned system message so no synthetic user turn

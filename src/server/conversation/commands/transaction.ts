@@ -36,6 +36,16 @@ export function runConversationTransaction<T>(
 		.immediate();
 }
 
+/** ==[HUMAN APPROVED]== Run one coherent Conversation read without reserving SQLite's write lock. */
+export function runConversationReadTransaction<T>(
+	database: Database,
+	work: (db: ConversationDatabase) => T,
+): T {
+	return database
+		.transaction(() => work(connectConversationDatabase(database)))
+		.deferred();
+}
+
 /**
  * ==[HUMAN APPROVED]== Advance the Conversation revision inside an open transaction and return
  * the post-write summary, throwing the typed not-found error when the

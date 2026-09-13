@@ -1,4 +1,12 @@
-import { BookOpen, Cpu, MessageSquare, Settings, SlidersHorizontal, Users } from "lucide-react";
+import {
+	BookOpen,
+	Cpu,
+	ListOrdered,
+	MessageSquare,
+	Settings,
+	SlidersHorizontal,
+	Users,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type { PrimaryPanel } from "./types";
 
@@ -35,6 +43,13 @@ export function NavigationRail({
 					onClick={() => onOpenPanel("library")}
 				>
 					<BookOpen aria-hidden="true" />
+				</RailButton>
+				<RailButton
+					label="Prompt Presets"
+					active={activePanel === "prompts"}
+					onClick={() => onOpenPanel("prompts")}
+				>
+					<ListOrdered aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Models"
@@ -89,4 +104,3 @@ function RailButton({
 		</button>
 	);
 }
-
