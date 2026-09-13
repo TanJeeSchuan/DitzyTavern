@@ -515,6 +515,26 @@ body > .details-panel > .panel-body {
 	}
 }
 
+@media (max-width: 28rem) {
+	.workspace-empty {
+		padding: 0.75rem;
+	}
+
+	.workspace-empty-panel {
+		gap: 1.2rem;
+		padding: 1.25rem;
+	}
+
+	.workspace-empty-heading {
+		grid-template-columns: 1fr;
+		gap: 0.85rem;
+	}
+
+	.workspace-empty-actions {
+		grid-template-columns: 1fr;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
