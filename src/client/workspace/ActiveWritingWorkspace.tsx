@@ -92,12 +92,15 @@ export function ActiveWritingWorkspace({
 		dispatchStory,
 		activeChatIdRef: session.activeChatIdRef,
 		refreshStory: session.refreshStory,
-		onPromptPlanPreviewOpened: () => {
-			setGenerationDetailsTarget(null);
-			dispatchPanel({ type: "prompt-plan-opened" });
-		},
-		onPromptPlanPreviewClosed: () => dispatchPanel({ type: "prompt-plan-closed" }),
 	});
+	const assemblyActive = generation.assembly !== null;
+
+	useEffect(() => {
+		if (assemblyActive) {
+			setGenerationDetailsTarget(null);
+			dispatchPanel({ type: "assembly-entered" });
+		}
+	}, [assemblyActive]);
 	const viewport = useStoryViewport({
 		messages: story.messages,
 		conversationId: story.conversationId,
@@ -126,6 +129,7 @@ export function ActiveWritingWorkspace({
 	}, [theme]);
 
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
+		if (assemblyActive) return;
 		setGenerationDetailsTarget(null);
 		dispatchPanel({ type: "primary-toggled", panel });
 	};
@@ -158,6 +162,7 @@ export function ActiveWritingWorkspace({
 		setConversation: session.setConversation,
 		queueSwipeScroll: viewport.queueSwipeScroll,
 		clearPreviewError: preview.clearPreviewError,
+		canEnterPreview: !assemblyActive,
 		onEnterPreview: () => {
 			setGenerationDetailsTarget(null);
 			dispatchPanel({ type: "preview-entered" });
@@ -173,7 +178,7 @@ export function ActiveWritingWorkspace({
 	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused;
 
 	const openActiveGenerationDetails = () => {
-		if (session.conversation === null || generation.selectedGenerationTarget === undefined) return;
+		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
 		dispatchPanel({ type: "generation-details-opened" });
 		setGenerationDetailsTarget({
 			type: "active",
@@ -183,7 +188,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const openVariantDetails = (messageId: number, variantId: number) => {
-		if (session.conversation === null) return;
+		if (assemblyActive || session.conversation === null) return;
 		dispatchPanel({ type: "generation-details-opened" });
 		setGenerationDetailsTarget({
 			type: "variant",
@@ -196,10 +201,10 @@ export function ActiveWritingWorkspace({
 	return (
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={panelState.primaryPanel} onOpenPanel={togglePanel} />
+			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={togglePanel} />
 
 			<PrimaryPanelView
-				panel={panelState.primaryPanel}
+				panel={assemblyActive ? null : panelState.primaryPanel}
 				workspace={initialWorkspace}
 				activeChat={session.activeChat}
 				theme={theme}
@@ -213,13 +218,16 @@ export function ActiveWritingWorkspace({
 				libraryFocusCharacterId={libraryFocusCharacterId}
 				onLibraryFocusConsumed={() => setLibraryFocusCharacterId(null)}
 				onOpenLibraryCharacter={(characterId) => {
+					if (assemblyActive) return;
 					setLibraryFocusCharacterId(characterId);
 					setGenerationDetailsTarget(null);
 					dispatchPanel({ type: "primary-opened", panel: "library" });
 				}}
 				connectionSettings={connectionSettings}
 				generationSettings={generationSettings}
-				onOpenInspector={(inspector: SplitInspector) => dispatchPanel({ type: "inspector-opened", inspector })}
+				onOpenInspector={(inspector: SplitInspector) => {
+					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
+				}}
 				mutationsDisabled={story.preview !== null}
 			/>
 
@@ -228,10 +236,12 @@ export function ActiveWritingWorkspace({
 					chat={session.activeChat}
 					onOpenCast={() => togglePanel("cast")}
 					onOpenInfo={() => {
+						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "chat-info-opened" });
 					}}
 					onOpenVariables={() => {
+						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "macro-variables-opened" });
 					}}
@@ -317,7 +327,7 @@ export function ActiveWritingWorkspace({
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							conversation={session.conversation}
-							disabled={story.preview !== null || generation.promptPlanPreview !== null || generation.promptPlanPreviewPending}
+							disabled={story.preview !== null || assemblyActive}
 							onConversationChange={session.setConversation}
 						/>
 					) : null}
@@ -325,11 +335,9 @@ export function ActiveWritingWorkspace({
 				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
 
-			{panelState.promptPlanOpen && panelState.detailsSurface === "prompt-plan" && generation.promptPlanPreview !== null && (
+			{assemblyActive && (
 				<PromptPlanPreviewPanel
-					preview={generation.promptPlanPreview.preview}
-					pending={generation.promptPlanPreviewPending}
-					error={generation.promptPlanPreviewError ?? generation.generationError}
+					assembly={generation.assembly!}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
@@ -337,14 +345,14 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 
-			{panelState.detailsSurface === "chat-info" && (
+			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
 					chatTitle={session.activeChat.title}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
+			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
 					onClose={() => {
@@ -353,7 +361,7 @@ export function ActiveWritingWorkspace({
 					}}
 				/>
 			)}
-			{panelState.detailsSurface === "macro-variables" && session.conversation !== null && (
+			{!assemblyActive && panelState.detailsSurface === "macro-variables" && session.conversation !== null && (
 				<MacroVariablesPanel
 					conversationId={session.conversation.id}
 					conversation={session.conversation}
@@ -362,14 +370,14 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
-			{panelState.inspector === "generation" && (
+			{!assemblyActive && panelState.inspector === "generation" && (
 				<GenerationSettingsInspector
 					conversation={session.conversation}
 					controller={generationSettings}
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}
-			{panelState.inspector === "models" && (
+			{!assemblyActive && panelState.inspector === "models" && (
 				<ConnectionSettingsInspector
 					controller={connectionSettings}
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}

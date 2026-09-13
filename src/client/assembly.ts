@@ -1,20 +1,17 @@
 export interface AssemblyGateInput {
 	playable: boolean;
 	isGenerating: boolean;
-	promptPlanOpen: boolean;
-	promptPlanPending: boolean;
+	assemblyActive: boolean;
 	variantPreviewActive: boolean;
 }
 
 export const canStartAssembly = ({
 	playable,
 	isGenerating,
-	promptPlanOpen,
-	promptPlanPending,
+	assemblyActive,
 	variantPreviewActive,
 }: AssemblyGateInput): boolean =>
 	playable &&
 	!isGenerating &&
-	!promptPlanOpen &&
-	!promptPlanPending &&
+	!assemblyActive &&
 	!variantPreviewActive;

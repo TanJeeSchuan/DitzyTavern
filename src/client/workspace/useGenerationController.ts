@@ -17,7 +17,6 @@ import {
 	stopConversationGeneration,
 	type ConversationSummary,
 	type StopConversationGenerationResult,
-	type GenerationPreview,
 	type GenerationPreviewBody,
 } from "../conversation";
 import type { PromptPlan } from "../../shared/contract/conversation-schema";
@@ -45,6 +44,11 @@ import {
 	type StoryState,
 } from "../story";
 import { canStartAssembly } from "../assembly";
+import {
+	isAssemblyPending,
+	reduceAssemblySession,
+	type AssemblySession,
+} from "../assembly-session";
 import { clientFormattingContext } from "../lib/formatting-context";
 
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
@@ -101,13 +105,6 @@ type GenerationControllerOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
-	onPromptPlanPreviewOpened?: () => void;
-	onPromptPlanPreviewClosed?: () => void;
-};
-
-type PromptPlanPreviewState = {
-	preview: GenerationPreview;
-	request: GenerationPreviewBody;
 };
 
 /**
@@ -123,8 +120,6 @@ export function useGenerationController({
 	dispatchStory,
 	activeChatIdRef,
 	refreshStory,
-	onPromptPlanPreviewOpened,
-	onPromptPlanPreviewClosed,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
@@ -133,10 +128,11 @@ export function useGenerationController({
 		createPendingGenerationStarts,
 	);
 	const nextStartIdRef = useRef(1);
-	const [startError, setStartError] = useState<string | null>(null);
-	const [promptPlanPreview, setPromptPlanPreview] = useState<PromptPlanPreviewState | null>(null);
-	const [promptPlanPreviewPending, setPromptPlanPreviewPending] = useState(false);
-	const [promptPlanPreviewError, setPromptPlanPreviewError] = useState<string | null>(null);
+	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
+	const nextAssemblyRequestIdRef = useRef(1);
+	const currentAssemblyRequestIdRef = useRef(0);
+	const acceptingAssemblyRequestIdRef = useRef<number | null>(null);
+	const assemblyMountedRef = useRef(true);
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
@@ -156,7 +152,15 @@ export function useGenerationController({
 	// ==[HUMAN APPROVED]== Unmount detaches every local subscription. The machine keeps cursors,
 	// so a later remount reattaches from each Generation's latest processed
 	// event, and no server-owned Active Generation is ever cancelled here.
-	useEffect(() => () => runner.dispose(), [runner]);
+	useEffect(() => {
+		assemblyMountedRef.current = true;
+		return () => {
+			assemblyMountedRef.current = false;
+			currentAssemblyRequestIdRef.current = 0;
+			acceptingAssemblyRequestIdRef.current = null;
+			runner.dispose();
+		};
+	}, [runner]);
 
 	// ==[HUMAN APPROVED]== Authoritative snapshots reconcile the session collection. The dispatch
 	// is idempotent, so re-observing unchanged targets has no effect and no
@@ -186,7 +190,7 @@ export function useGenerationController({
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
-	const generationError = startError ?? firstActiveGenerationSessionError(sessions);
+	const generationError = firstActiveGenerationSessionError(sessions);
 
 	useEffect(() => {
 		dispatchPendingStarts({
@@ -206,57 +210,87 @@ export function useGenerationController({
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
-		setStartError(null);
-		setPromptPlanPreview(null);
-		setPromptPlanPreviewPending(false);
-		setPromptPlanPreviewError(null);
-		onPromptPlanPreviewClosed?.();
+		currentAssemblyRequestIdRef.current = 0;
+		acceptingAssemblyRequestIdRef.current = null;
+		nextAssemblyRequestIdRef.current += 1;
+		dispatchAssembly({ type: "conversation-switched" });
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
-	const requestPromptPlanPreview = async (request: GenerationPreviewBody) => {
-		if (conversation === null || promptPlanPreviewPending) return;
-		setPromptPlanPreviewPending(true);
-		setPromptPlanPreviewError(null);
+	const ownsAssemblyRequest = (requestId: number, conversationId: number) =>
+		assemblyMountedRef.current &&
+		currentAssemblyRequestIdRef.current === requestId &&
+		Number(activeChatIdRef.current) === conversationId;
+
+	const beginAssemblyRequest = (
+		request: GenerationPreviewBody,
+		preservedPreview: AssemblySession["preview"] = null,
+	) => {
+		if (conversation === null) return;
 		const conversationId = conversation.id;
-		const outcome = await previewConversationGeneration(conversationId, request);
-		if (Number(activeChatIdRef.current) !== conversationId) return;
-		setPromptPlanPreviewPending(false);
-		if (outcome.status === "available") {
-			setPromptPlanPreview({ preview: outcome.preview, request });
-			onPromptPlanPreviewOpened?.();
-			return;
-		}
-		setPromptPlanPreviewError(
-			outcome.status === "invalid"
-				? outcome.reason
-				: outcome.status === "not-found"
-					? "The Conversation no longer exists."
-					: "The Prompt Plan could not be assembled.",
-		);
+		const requestId = nextAssemblyRequestIdRef.current;
+		nextAssemblyRequestIdRef.current += 1;
+		currentAssemblyRequestIdRef.current = requestId;
+		acceptingAssemblyRequestIdRef.current = null;
+		dispatchAssembly({
+			type: "started",
+			conversationId,
+			requestId,
+			request,
+			preview: preservedPreview,
+		});
+		void previewConversationGeneration(conversationId, request)
+			.then((outcome) => {
+				if (!ownsAssemblyRequest(requestId, conversationId)) return;
+				if (outcome.status === "available") {
+					dispatchAssembly({ type: "preview-available", requestId, preview: outcome.preview });
+					return;
+				}
+				dispatchAssembly({
+					type: "preview-failed",
+					requestId,
+					error: outcome.status === "invalid"
+						? outcome.reason
+						: outcome.status === "not-found"
+							? "The Conversation no longer exists."
+							: "The Prompt Plan could not be assembled.",
+				});
+			})
+			.catch(() => {
+				if (!ownsAssemblyRequest(requestId, conversationId)) return;
+				dispatchAssembly({
+					type: "preview-failed",
+					requestId,
+					error: "The Prompt Plan could not be assembled.",
+				});
+			});
 	};
 
 	const openPromptPlanPreview = (request: GenerationPreviewBody) => {
-		if (conversation === null || promptPlanPreviewPending) return;
-		void requestPromptPlanPreview(request);
+		if (conversation === null || assembly !== null || currentAssemblyRequestIdRef.current !== 0) return;
+		beginAssemblyRequest(request);
 	};
 
 	const refreshPromptPlanPreview = () => {
-		if (promptPlanPreview === null) return;
-		void requestPromptPlanPreview(promptPlanPreview.request);
+		if (
+			assembly === null ||
+			isAssemblyPending(assembly) ||
+			currentAssemblyRequestIdRef.current !== assembly.requestId
+		) return;
+		beginAssemblyRequest(assembly.request, assembly.preview);
 	};
 
 	const cancelPromptPlanPreview = () => {
-		setPromptPlanPreview(null);
-		setPromptPlanPreviewError(null);
-		onPromptPlanPreviewClosed?.();
+		if (assembly === null || assembly.phase === "accepting") return;
+		currentAssemblyRequestIdRef.current = 0;
+		acceptingAssemblyRequestIdRef.current = null;
+		nextAssemblyRequestIdRef.current += 1;
+		dispatchAssembly({ type: "cancelled", requestId: assembly.requestId });
 	};
 
 	const editPromptPlanPreview = (promptPlan: PromptPlan) => {
-		setPromptPlanPreview((current) => current === null
-			? current
-			: { ...current, preview: { ...current.preview, promptPlan } });
-		setPromptPlanPreviewError(null);
+		if (assembly === null) return;
+		dispatchAssembly({ type: "plan-edited", requestId: assembly.requestId, promptPlan });
 	};
 
 	const stopGeneration = async (generationId: number) => {
@@ -300,58 +334,85 @@ export function useGenerationController({
 	const startGeneration = async (
 		startId: number,
 		conversationId: number,
+		assemblyRequestId: number,
 		request: Promise<Awaited<ReturnType<typeof startConversationGeneration>>>,
-		onAccepted?: () => void,
+		clearDraftOnAccepted: boolean,
 	) => {
+		let outcome: Awaited<ReturnType<typeof startConversationGeneration>>;
 		try {
-			const outcome = await request;
-			if (Number(activeChatIdRef.current) !== conversationId) return;
-			if (outcome.outcome === "accepted") {
-				onAccepted?.();
-				const freshConversation = await refreshStory(conversationId);
-				if (
-					freshConversation === null ||
-					!freshConversation.activeGenerations.some(
-						(generation) => generation.generationId === outcome.generationId,
-					)
-				) {
-					dispatchPendingStarts({ type: "settled", startId });
-				} else {
-					dispatchPendingStarts({
-						type: "accepted",
-						startId,
-						generationId: outcome.generationId,
-					});
-				}
-				return;
-			}
-			dispatchPendingStarts({ type: "settled", startId });
-			setStartError(
-				outcome.outcome === "not-found"
-					? "The Conversation no longer exists."
-					: (outcome.reason ?? "Generation could not be started."),
-			);
+			outcome = await request;
 		} catch {
-			if (Number(activeChatIdRef.current) !== conversationId) return;
+			if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
 			dispatchPendingStarts({ type: "settled", startId });
-			setStartError("Generation could not be started.");
+			acceptingAssemblyRequestIdRef.current = null;
+			dispatchAssembly({
+				type: "acceptance-failed",
+				requestId: assemblyRequestId,
+				error: "Generation could not be started.",
+			});
+			return;
 		}
+		if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+		if (outcome.outcome !== "accepted") {
+			dispatchPendingStarts({ type: "settled", startId });
+			acceptingAssemblyRequestIdRef.current = null;
+			dispatchAssembly({
+				type: "acceptance-failed",
+				requestId: assemblyRequestId,
+				error:
+					outcome.outcome === "not-found"
+						? "The Conversation no longer exists."
+						: (outcome.reason ?? "Generation could not be started."),
+			});
+			return;
+		}
+
+		acceptingAssemblyRequestIdRef.current = null;
+		dispatchAssembly({ type: "acceptance-succeeded", requestId: assemblyRequestId });
+		if (clearDraftOnAccepted) setDraft("");
+		let freshConversation: ConversationSummary | null;
+		try {
+			freshConversation = await refreshStory(conversationId);
+		} catch {
+			if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+			dispatchPendingStarts({ type: "settled", startId });
+			currentAssemblyRequestIdRef.current = 0;
+			return;
+		}
+		if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+		if (
+			freshConversation === null ||
+			!freshConversation.activeGenerations.some(
+				(generation) => generation.generationId === outcome.generationId,
+			)
+		) {
+			dispatchPendingStarts({ type: "settled", startId });
+		} else {
+			dispatchPendingStarts({
+				type: "accepted",
+				startId,
+				generationId: outcome.generationId,
+			});
+		}
+		currentAssemblyRequestIdRef.current = 0;
 	};
 
 	const beginStart = () => {
 		const startId = nextStartIdRef.current;
 		nextStartIdRef.current += 1;
 		dispatchPendingStarts({ type: "started", startId });
-		setStartError(null);
 		runner.dispatch({ type: "errors-acknowledged" });
 		return startId;
 	};
 
 	const sendPromptPlanPreview = () => {
-		if (conversation === null || promptPlanPreview === null || promptPlanPreviewPending) return;
+		if (conversation === null || assembly?.phase !== "ready" || assembly.preview === null) return;
 		const conversationId = conversation.id;
+		const { preview, request, requestId } = assembly;
+		if (acceptingAssemblyRequestIdRef.current === requestId) return;
+		acceptingAssemblyRequestIdRef.current = requestId;
 		const startId = beginStart();
-		const { preview, request } = promptPlanPreview;
+		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
 		const formatting = { timeZone: request.timeZone, locale: request.locale };
 		const start = request.kind === "send"
@@ -362,13 +423,9 @@ export function useGenerationController({
 		void startGeneration(
 			startId,
 			conversationId,
+			requestId,
 			start,
-			() => {
-				setPromptPlanPreview(null);
-				setPromptPlanPreviewError(null);
-				onPromptPlanPreviewClosed?.();
-				if (request.kind === "send") setDraft("");
-			},
+			request.kind === "send",
 		);
 	};
 
@@ -407,8 +464,7 @@ export function useGenerationController({
 	const assemblyAvailable = canStartAssembly({
 		playable: conversation?.playable === true,
 		isGenerating,
-		promptPlanOpen: promptPlanPreview !== null,
-		promptPlanPending: promptPlanPreviewPending,
+		assemblyActive: assembly !== null,
 		variantPreviewActive: story.preview !== null,
 	});
 
@@ -426,9 +482,8 @@ export function useGenerationController({
 		isGenerating,
 		stopPending,
 		generationError,
-		promptPlanPreview,
-		promptPlanPreviewPending,
-		promptPlanPreviewError,
+		assembly,
+		assemblyPending: isAssemblyPending(assembly),
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,

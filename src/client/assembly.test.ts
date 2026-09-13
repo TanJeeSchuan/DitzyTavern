@@ -6,8 +6,7 @@ describe("assembly gate", () => {
 		expect(canStartAssembly({
 			playable: true,
 			isGenerating: false,
-			promptPlanOpen: false,
-			promptPlanPending: false,
+			assemblyActive: false,
 			variantPreviewActive: false,
 		})).toBe(true);
 	});
@@ -16,14 +15,12 @@ describe("assembly gate", () => {
 		const base = {
 			playable: true,
 			isGenerating: false,
-			promptPlanOpen: false,
-			promptPlanPending: false,
+			assemblyActive: false,
 			variantPreviewActive: false,
 		};
 		for (const blocked of [
 			{ isGenerating: true },
-			{ promptPlanOpen: true },
-			{ promptPlanPending: true },
+			{ assemblyActive: true },
 			{ variantPreviewActive: true },
 			{ playable: false },
 		]) {

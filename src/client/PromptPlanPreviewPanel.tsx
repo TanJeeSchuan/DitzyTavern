@@ -2,6 +2,7 @@ import { RefreshCw, Send, X } from "lucide-react";
 import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
+import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -10,34 +11,35 @@ const kindLabel = (kind: GenerationPreview["kind"]): string => {
 };
 
 export function PromptPlanPreviewPanel({
-	preview,
-	pending,
-	error,
+	assembly,
 	onPlanChange,
 	onRefresh,
 	onSend,
 	onClose,
 }: {
-	preview: GenerationPreview;
-	pending: boolean;
-	error: string | null;
+	assembly: AssemblySession;
 	onPlanChange: (plan: PromptPlan) => void;
 	onRefresh: () => void;
 	onSend: () => void;
 	onClose: () => void;
 }) {
+	const preview = assembly.preview;
+	const pending = isAssemblyPending(assembly);
+	const editable = preview !== null && !pending;
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">
 			<PanelHeader title="Prompt Plan preview" onClose={onClose} />
 			<div className="panel-body generation-details-body">
-				<p className="generation-detail-status">{kindLabel(preview.kind)} · edit before sending</p>
-				<dl className="detail-list compact-detail-list">
+				{preview === null && pending && <p className="generation-detail-status">Assembling the Prompt Plan…</p>}
+				{preview === null && !pending && <p className="generation-detail-status">Prompt Plan assembly failed. Retry or cancel.</p>}
+				{preview !== null && <p className="generation-detail-status">{kindLabel(preview.kind)} · edit before sending</p>}
+				{preview !== null && <dl className="detail-list compact-detail-list">
 					<div><dt>Writing as</dt><dd>{preview.participants.human?.name ?? "Unavailable"}</dd></div>
 					<div><dt>Responding as</dt><dd>{preview.participants.model?.name ?? "Unavailable"}</dd></div>
 					<div><dt>Prompt estimate</dt><dd>{preview.budget.tokenEstimate.toLocaleString()}</dd></div>
 					<div><dt>Required total</dt><dd>{preview.budget.totalRequiredTokens.toLocaleString()} / {preview.budget.contextLimit.toLocaleString()}</dd></div>
-				</dl>
-				{preview.promptPlan.warnings.length > 0 && (
+				</dl>}
+				{preview !== null && preview.promptPlan.warnings.length > 0 && (
 					<section className="generation-detail-section">
 						<h3>Warnings</h3>
 						<ul>
@@ -45,7 +47,7 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
-				{preview.pendingWrites.length > 0 && (
+				{preview !== null && preview.pendingWrites.length > 0 && (
 					<section className="generation-detail-section">
 						<h3>Pending variable writes</h3>
 						<ul>
@@ -55,7 +57,7 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
-				<section className="generation-detail-section prompt-plan-edit-list">
+				{preview !== null && <section className="generation-detail-section prompt-plan-edit-list">
 					<h3>Expanded blocks</h3>
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}
 					{preview.promptPlan.blocks.map((block, index) => (
@@ -63,18 +65,19 @@ export function PromptPlanPreviewPanel({
 							<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 							<textarea
 								value={block.content}
+								disabled={!editable}
 								onChange={(event) => onPlanChange(updateBlock(preview.promptPlan, index, event.target.value))}
 								rows={Math.min(12, Math.max(2, block.content.split("\n").length))}
 							/>
 						</label>
 					))}
-				</section>
-				{error !== null && <p className="import-problem" role="alert">{error}</p>}
-				{!preview.budget.budgetFits && <p className="import-problem" role="alert">This plan exceeds the context limit. Shorten it or refresh.</p>}
+				</section>}
+				{assembly.error !== null && <p className="import-problem" role="alert">{assembly.error}</p>}
+				{preview !== null && !preview.budget.budgetFits && <p className="import-problem" role="alert">This plan exceeds the context limit. Shorten it or refresh.</p>}
 				<div className="prompt-plan-preview-actions">
-					<button className="secondary-button" type="button" onClick={onClose} disabled={pending}><X aria-hidden="true" /> Cancel</button>
-					<button className="secondary-button" type="button" onClick={onRefresh} disabled={pending}><RefreshCw aria-hidden="true" /> Refresh</button>
-					<button className="primary-button" type="button" onClick={onSend} disabled={pending || !preview.budget.budgetFits}><Send aria-hidden="true" /> {pending ? "Sending…" : "Send exact plan"}</button>
+					<button className="secondary-button" type="button" onClick={onClose} disabled={assembly.phase === "accepting"}><X aria-hidden="true" /> Cancel</button>
+					<button className="secondary-button" type="button" onClick={onRefresh} disabled={pending}><RefreshCw aria-hidden="true" /> {preview === null ? "Retry" : "Refresh"}</button>
+					<button className="primary-button" type="button" onClick={onSend} disabled={assembly.phase !== "ready" || preview === null || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
 				</div>
 			</div>
 		</aside>
