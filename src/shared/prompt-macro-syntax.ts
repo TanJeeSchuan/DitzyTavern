@@ -29,22 +29,79 @@ export const isEscaped = (source: string, index: number): boolean => {
 	return slashes % 2 === 1;
 };
 
-const macroEnd = (source: string, start: number, allowEscapedStart = false): number | null => {
-	if (!source.startsWith("{{", start)) return null;
+interface MacroScanIndex {
+	readonly macroEnds: ReadonlyMap<number, number>;
+	readonly escapedOpeners: ReadonlySet<number>;
+	readonly scopedCommentEnds: ReadonlyMap<number, number>;
+}
+
+const buildMacroScanIndex = (source: string): MacroScanIndex => {
+	const macroEnds = new Map<number, number>();
+	const escapedOpeners = new Set<number>();
+	const scopedCommentEnds = new Map<number, number>();
+	const openStack: number[] = [];
+	const escapedByTarget = new Map<number, number[]>();
+	const scopedCommentOpeners: number[] = [];
 	let depth = 0;
-	for (let index = start; index < source.length - 1; index += 1) {
-		if (source.startsWith("{{", index) && ((index === start && allowEscapedStart) || !isEscaped(source, index))) {
-			depth += 1;
+	let slashRun = 0;
+
+	for (let index = 0; index < source.length; index += 1) {
+		const escaped = slashRun % 2 === 1;
+		if (source.startsWith("{{", index)) {
+			if (source.startsWith("{{//}}", index)) scopedCommentOpeners.push(index);
+			if (escaped) {
+				escapedOpeners.add(index);
+				const target = depth - 1;
+				const pending = escapedByTarget.get(target) ?? [];
+				pending.push(index);
+				escapedByTarget.set(target, pending);
+			} else {
+				depth += 1;
+				openStack.push(index);
+			}
+		}
+		if (source.startsWith("{{///}}", index) && !escaped) {
+			for (const opener of scopedCommentOpeners) scopedCommentEnds.set(opener, index + "{{///}}".length);
+			scopedCommentOpeners.length = 0;
+		}
+		if (source.startsWith("}}", index) && !escaped) {
+			depth -= 1;
+			const opener = openStack.pop();
+			if (opener !== undefined) macroEnds.set(opener, index + 2);
+			const pending = escapedByTarget.get(depth);
+			if (pending !== undefined) {
+				for (const escapedOpener of pending) macroEnds.set(escapedOpener, index + 2);
+				escapedByTarget.delete(depth);
+			}
 			index += 1;
+			slashRun = 0;
 			continue;
 		}
-		if (source.startsWith("}}", index) && !isEscaped(source, index)) {
-			depth -= 1;
-			if (depth === 0) return index + 2;
+		if (source.startsWith("{{", index)) {
 			index += 1;
+			slashRun = 0;
+			continue;
 		}
+		if (source[index] === "\\") slashRun += 1;
+		else slashRun = 0;
 	}
-	return null;
+	return { macroEnds, escapedOpeners, scopedCommentEnds };
+};
+
+let cachedMacroScan: { source: string; index: MacroScanIndex } | undefined;
+
+const macroScanIndex = (source: string): MacroScanIndex => {
+	if (cachedMacroScan?.source === source) return cachedMacroScan.index;
+	const index = buildMacroScanIndex(source);
+	cachedMacroScan = { source, index };
+	return index;
+};
+
+const macroEnd = (source: string, start: number, allowEscapedStart = false): number | null => {
+	if (!source.startsWith("{{", start)) return null;
+	const index = macroScanIndex(source);
+	if (!allowEscapedStart && index.escapedOpeners.has(start)) return null;
+	return index.macroEnds.get(start) ?? null;
 };
 
 const balancedMacroAt = (source: string, start: number, allowEscapedStart = false): boolean =>
@@ -55,12 +112,7 @@ const balancedMacroAt = (source: string, start: number, allowEscapedStart = fals
 export const promptCommentEnd = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
 	if (source.startsWith("{{//}}", start)) {
-		for (let index = start + "{{//}}".length; index <= source.length - "{{///}}".length; index += 1) {
-			if (source.startsWith("{{///}}", index) && !isEscaped(source, index)) {
-				return index + "{{///}}".length;
-			}
-		}
-		return null;
+		return macroScanIndex(source).scopedCommentEnds.get(start) ?? null;
 	}
 	return macroEnd(source, start, true);
 };
