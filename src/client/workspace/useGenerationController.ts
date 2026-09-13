@@ -132,6 +132,19 @@ export function useGenerationController({
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
 
+	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
+	// current until a newer request, a cancellation, or a Chat switch advances it.
+	const issueAssemblyRequestId = (): number => {
+		const requestId = nextAssemblyRequestIdRef.current;
+		nextAssemblyRequestIdRef.current += 1;
+		return requestId;
+	};
+	const invalidateAssemblyRequests = (): void => {
+		nextAssemblyRequestIdRef.current += 1;
+	};
+	const isCurrentAssemblyRequest = (requestId: number): boolean =>
+		nextAssemblyRequestIdRef.current === requestId + 1;
+
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
 		runnerRef.current = createGenerationSessionRunner({
@@ -206,14 +219,14 @@ export function useGenerationController({
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
-		nextAssemblyRequestIdRef.current += 1;
+		invalidateAssemblyRequests();
 		dispatchAssembly({ type: "conversation-switched" });
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
 	const canApplyAssemblyEffect = (requestId: number, conversationId: number) =>
 		assemblyMountedRef.current &&
-		nextAssemblyRequestIdRef.current === requestId + 1 &&
+		isCurrentAssemblyRequest(requestId) &&
 		Number(activeChatIdRef.current) === conversationId;
 
 	const beginAssemblyRequest = (
@@ -222,8 +235,7 @@ export function useGenerationController({
 	) => {
 		if (conversation === null) return;
 		const conversationId = conversation.id;
-		const requestId = nextAssemblyRequestIdRef.current;
-		nextAssemblyRequestIdRef.current += 1;
+		const requestId = issueAssemblyRequestId();
 		dispatchAssembly({
 			type: "started",
 			conversationId,
@@ -270,7 +282,7 @@ export function useGenerationController({
 
 	const cancelPromptPlanPreview = () => {
 		if (assembly === null || assembly.phase === "accepting") return;
-		nextAssemblyRequestIdRef.current += 1;
+		invalidateAssemblyRequests();
 		dispatchAssembly({ type: "cancelled", requestId: assembly.requestId });
 	};
 
