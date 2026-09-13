@@ -93,7 +93,8 @@ export function ActiveWritingWorkspace({
 		activeChatIdRef: session.activeChatIdRef,
 		refreshStory: session.refreshStory,
 	});
-	const assemblyActive = generation.assembly !== null;
+	const assembly = generation.assembly;
+	const assemblyActive = assembly !== null;
 
 	useEffect(() => {
 		if (assemblyActive) {
@@ -335,9 +336,9 @@ export function ActiveWritingWorkspace({
 				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
 
-			{assemblyActive && (
+			{assembly !== null && (
 				<PromptPlanPreviewPanel
-					assembly={generation.assembly!}
+					assembly={assembly}
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}

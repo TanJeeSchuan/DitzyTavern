@@ -12,13 +12,13 @@ import {
 	captureContinuationGeneration,
 	captureSendGeneration,
 	captureSiblingGeneration,
-	generationPreparationFingerprint,
 	prepareGenerationInputs,
 	type GenerationAttemptKind,
 	type ContinuationGenerationCapture,
 	type SendGenerationCapture,
 	type CapturedGeneration,
 } from "./generate-capture";
+import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { promptPlan } from "../../shared/contract/conversation-schema";
 import { InvalidConversationCommandError } from "../conversation";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
@@ -39,16 +39,42 @@ export interface GenerationPreviewRecord {
 	readonly expiresAt: number;
 }
 
-export interface GenerationPreviewRequest {
-	readonly kind: GenerationPreviewKind;
+interface GenerationPreviewRequestBase {
 	readonly conversationId: number;
-	readonly content?: string;
-	readonly messageId?: number;
 	readonly formatting?: GenerationFormattingContext;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly tokenEstimator?: TokenEstimator;
 }
+
+export type GenerationPreviewRequest =
+	| (GenerationPreviewRequestBase & { kind: "send"; content: string })
+	| (GenerationPreviewRequestBase & { kind: "continuation" })
+	| (GenerationPreviewRequestBase & { kind: "sibling"; messageId: number });
+
+interface GenerationPreviewRequestInput extends GenerationPreviewRequestBase {
+	readonly kind: GenerationPreviewKind;
+	readonly content?: string;
+	readonly messageId?: number;
+}
+
+const resolveGenerationPreviewRequest = (
+	input: GenerationPreviewRequestInput,
+): GenerationPreviewRequest => {
+	if (input.kind === "send") {
+		if (input.content === undefined) {
+			throw new InvalidConversationCommandError("Send preview requires composer content.");
+		}
+		return { ...input, kind: "send", content: input.content };
+	}
+	if (input.kind === "sibling") {
+		if (input.messageId === undefined) {
+			throw new InvalidConversationCommandError("Sibling preview requires a target Message.");
+		}
+		return { ...input, kind: "sibling", messageId: input.messageId };
+	}
+	return { ...input, kind: "continuation" };
+};
 
 // ==[HUMAN APPROVED]== One process-local inspected-plan session per Conversation. Replacing a
 // preview abandons the previous plan immediately, so the store is bounded by
@@ -111,59 +137,39 @@ const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void
 
 export const createGenerationPreview = (
 	database: Database,
-	input: GenerationPreviewRequest,
+	input: GenerationPreviewRequestInput,
 ): GenerationPreviewRecord => {
 	ensureScheduledPreviewSweep();
 	sweepExpiredGenerationPreviews();
-	if (input.kind === "send" && input.content === undefined) {
-		throw new InvalidConversationCommandError("Send preview requires composer content.");
-	}
-	if (input.kind === "sibling" && input.messageId === undefined) {
-		throw new InvalidConversationCommandError("Sibling preview requires a target Message.");
-	}
-	const capture = input.kind === "send"
+	const request = resolveGenerationPreviewRequest(input);
+	const captureInput = {
+		database,
+		conversationId: request.conversationId,
+		connection: request.connection,
+		connectionSettings: request.connectionSettings,
+		tokenEstimator: request.tokenEstimator,
+		formatting: request.formatting,
+	};
+	const capture = request.kind === "send"
 		? {
 			kind: "send" as const,
-			capture: captureSendGeneration({
-				database,
-				conversationId: input.conversationId,
-				content: input.content!,
-				connection: input.connection,
-				connectionSettings: input.connectionSettings,
-				tokenEstimator: input.tokenEstimator,
-				formatting: input.formatting,
-			}),
-			content: input.content!,
+			capture: captureSendGeneration({ ...captureInput, content: request.content }),
+			content: request.content,
 		}
-		: input.kind === "continuation"
+		: request.kind === "continuation"
 			? {
 					kind: "continuation" as const,
-					capture: captureContinuationGeneration({
-						database,
-					conversationId: input.conversationId,
-						connection: input.connection,
-						connectionSettings: input.connectionSettings,
-						tokenEstimator: input.tokenEstimator,
-						formatting: input.formatting,
-					}),
+					capture: captureContinuationGeneration(captureInput),
 				}
 			: {
 					kind: "sibling" as const,
-					capture: captureSiblingGeneration({
-						database,
-					conversationId: input.conversationId,
-						messageId: input.messageId!,
-						connection: input.connection,
-						connectionSettings: input.connectionSettings,
-						tokenEstimator: input.tokenEstimator,
-						formatting: input.formatting,
-					}),
-					messageId: input.messageId!,
+					capture: captureSiblingGeneration({ ...captureInput, messageId: request.messageId }),
+					messageId: request.messageId,
 				};
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
-		conversationId: input.conversationId,
+		conversationId: request.conversationId,
 		fingerprint: generationPreparationFingerprint(capture.capture.preparation),
 		capture,
 		createdAt: now,
@@ -181,7 +187,7 @@ export const generationCaptureForPreview = (
 	record: GenerationPreviewRecord,
 	editedPlan: PromptPlan,
 	connection: ModelClientConnectionSnapshot | null | undefined,
-	input: Pick<GenerationPreviewRequest, "content" | "messageId" | "formatting">,
+	input: Pick<GenerationPreviewRequestInput, "content" | "messageId" | "formatting">,
 ): GenerationPreviewCapture => {
 	const source = record.capture;
 	const kind = source.kind;

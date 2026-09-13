@@ -18,14 +18,13 @@ import { parseGenerationJson } from "../../shared/generation-provenance";
 // selected Variants rather than from one mutable Conversation map.
 export const MACRO_DATA_NAMESPACE = "prompt-macro";
 
-const initialPrefix = (presetId: number): string => `initial:${presetId}:`;
 const writePrefix = (presetId: number): string => `write:${presetId}`;
 const encodedName = (name: string): string => encodeURIComponent(name);
 
-export const macroInitialValueKey = (presetId: number, name: string): string =>
-	`${initialPrefix(presetId)}${encodedName(name)}`;
+export const macroInitialValuePrefix = (presetId: number): string => `initial:${presetId}:`;
 
-export const macroInitialValuePrefix = (presetId: number): string => initialPrefix(presetId);
+export const macroInitialValueKey = (presetId: number, name: string): string =>
+	`${macroInitialValuePrefix(presetId)}${encodedName(name)}`;
 
 export const macroWritesKey = (presetId: number): string => writePrefix(presetId);
 
@@ -64,7 +63,7 @@ const parsedInitial = (
 	entry: ConversationDataEntry,
 	presetId: number,
 ): { name: string; value: MacroValue } | undefined => {
-	const prefix = initialPrefix(presetId);
+	const prefix = macroInitialValuePrefix(presetId);
 	if (entry.namespace !== MACRO_DATA_NAMESPACE || !entry.key.startsWith(prefix)) return undefined;
 	let name: string;
 	try {

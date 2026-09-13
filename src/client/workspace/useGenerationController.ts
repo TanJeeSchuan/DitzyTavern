@@ -130,8 +130,6 @@ export function useGenerationController({
 	const nextStartIdRef = useRef(1);
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
 	const nextAssemblyRequestIdRef = useRef(1);
-	const currentAssemblyRequestIdRef = useRef(0);
-	const acceptingAssemblyRequestIdRef = useRef<number | null>(null);
 	const assemblyMountedRef = useRef(true);
 
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
@@ -156,8 +154,6 @@ export function useGenerationController({
 		assemblyMountedRef.current = true;
 		return () => {
 			assemblyMountedRef.current = false;
-			currentAssemblyRequestIdRef.current = 0;
-			acceptingAssemblyRequestIdRef.current = null;
 			runner.dispose();
 		};
 	}, [runner]);
@@ -210,16 +206,14 @@ export function useGenerationController({
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
-		currentAssemblyRequestIdRef.current = 0;
-		acceptingAssemblyRequestIdRef.current = null;
 		nextAssemblyRequestIdRef.current += 1;
 		dispatchAssembly({ type: "conversation-switched" });
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
-	const ownsAssemblyRequest = (requestId: number, conversationId: number) =>
+	const canApplyAssemblyEffect = (requestId: number, conversationId: number) =>
 		assemblyMountedRef.current &&
-		currentAssemblyRequestIdRef.current === requestId &&
+		nextAssemblyRequestIdRef.current === requestId + 1 &&
 		Number(activeChatIdRef.current) === conversationId;
 
 	const beginAssemblyRequest = (
@@ -230,8 +224,6 @@ export function useGenerationController({
 		const conversationId = conversation.id;
 		const requestId = nextAssemblyRequestIdRef.current;
 		nextAssemblyRequestIdRef.current += 1;
-		currentAssemblyRequestIdRef.current = requestId;
-		acceptingAssemblyRequestIdRef.current = null;
 		dispatchAssembly({
 			type: "started",
 			conversationId,
@@ -241,7 +233,7 @@ export function useGenerationController({
 		});
 		void previewConversationGeneration(conversationId, request)
 			.then((outcome) => {
-				if (!ownsAssemblyRequest(requestId, conversationId)) return;
+				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 				if (outcome.status === "available") {
 					dispatchAssembly({ type: "preview-available", requestId, preview: outcome.preview });
 					return;
@@ -257,7 +249,7 @@ export function useGenerationController({
 				});
 			})
 			.catch(() => {
-				if (!ownsAssemblyRequest(requestId, conversationId)) return;
+				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
 				dispatchAssembly({
 					type: "preview-failed",
 					requestId,
@@ -267,23 +259,17 @@ export function useGenerationController({
 	};
 
 	const openPromptPlanPreview = (request: GenerationPreviewBody) => {
-		if (conversation === null || assembly !== null || currentAssemblyRequestIdRef.current !== 0) return;
+		if (conversation === null || assembly !== null) return;
 		beginAssemblyRequest(request);
 	};
 
 	const refreshPromptPlanPreview = () => {
-		if (
-			assembly === null ||
-			isAssemblyPending(assembly) ||
-			currentAssemblyRequestIdRef.current !== assembly.requestId
-		) return;
+		if (assembly === null || isAssemblyPending(assembly)) return;
 		beginAssemblyRequest(assembly.request, assembly.preview);
 	};
 
 	const cancelPromptPlanPreview = () => {
 		if (assembly === null || assembly.phase === "accepting") return;
-		currentAssemblyRequestIdRef.current = 0;
-		acceptingAssemblyRequestIdRef.current = null;
 		nextAssemblyRequestIdRef.current += 1;
 		dispatchAssembly({ type: "cancelled", requestId: assembly.requestId });
 	};
@@ -342,9 +328,8 @@ export function useGenerationController({
 		try {
 			outcome = await request;
 		} catch {
-			if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+			if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
 			dispatchPendingStarts({ type: "settled", startId });
-			acceptingAssemblyRequestIdRef.current = null;
 			dispatchAssembly({
 				type: "acceptance-failed",
 				requestId: assemblyRequestId,
@@ -352,10 +337,9 @@ export function useGenerationController({
 			});
 			return;
 		}
-		if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+		if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
 		if (outcome.outcome !== "accepted") {
 			dispatchPendingStarts({ type: "settled", startId });
-			acceptingAssemblyRequestIdRef.current = null;
 			dispatchAssembly({
 				type: "acceptance-failed",
 				requestId: assemblyRequestId,
@@ -367,19 +351,17 @@ export function useGenerationController({
 			return;
 		}
 
-		acceptingAssemblyRequestIdRef.current = null;
 		dispatchAssembly({ type: "acceptance-succeeded", requestId: assemblyRequestId });
 		if (clearDraftOnAccepted) setDraft("");
 		let freshConversation: ConversationSummary | null;
 		try {
 			freshConversation = await refreshStory(conversationId);
 		} catch {
-			if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+			if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
 			dispatchPendingStarts({ type: "settled", startId });
-			currentAssemblyRequestIdRef.current = 0;
 			return;
 		}
-		if (!ownsAssemblyRequest(assemblyRequestId, conversationId)) return;
+		if (!canApplyAssemblyEffect(assemblyRequestId, conversationId)) return;
 		if (
 			freshConversation === null ||
 			!freshConversation.activeGenerations.some(
@@ -394,7 +376,6 @@ export function useGenerationController({
 				generationId: outcome.generationId,
 			});
 		}
-		currentAssemblyRequestIdRef.current = 0;
 	};
 
 	const beginStart = () => {
@@ -415,8 +396,6 @@ export function useGenerationController({
 		) return;
 		const conversationId = conversation.id;
 		const { preview, request, requestId } = currentAssembly;
-		if (acceptingAssemblyRequestIdRef.current === requestId) return;
-		acceptingAssemblyRequestIdRef.current = requestId;
 		const startId = beginStart();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };

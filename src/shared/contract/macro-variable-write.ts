@@ -8,11 +8,12 @@ import type { GenerationJsonObject, GenerationJsonValue } from "../generation-js
 export type MacroValue = string | number | boolean | null | readonly MacroValue[];
 
 const macroVariableNamePattern = "^[A-Za-z](?:[\\w-]*[\\w])?$";
+const macroVariableNameRegex = new RegExp(macroVariableNamePattern);
 
 export const macroVariableName = Type.String({ pattern: macroVariableNamePattern });
 
 export const isMacroVariableName = (value: string): boolean =>
-	new RegExp(macroVariableNamePattern).test(value);
+	macroVariableNameRegex.test(value);
 
 // Macro values deliberately remain provider-neutral scalar/array JSON. This
 // recursive schema keeps the transport boundary and the MacroValue domain

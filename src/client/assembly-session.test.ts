@@ -98,4 +98,14 @@ describe("assembly session", () => {
 		expect(reduceAssemblySession(accepting, { type: "acceptance-succeeded", requestId: 1 })).toBeNull();
 		expect(reduceAssemblySession(accepting, { type: "cancelled", requestId: 1 })).toBeNull();
 	});
+
+	test("conversation switching closes the session", () => {
+		const ready = reduceAssemblySession(started(), {
+			type: "preview-available",
+			requestId: 1,
+			preview: preview(),
+		})!;
+
+		expect(reduceAssemblySession(ready, { type: "conversation-switched" })).toBeNull();
+	});
 });
