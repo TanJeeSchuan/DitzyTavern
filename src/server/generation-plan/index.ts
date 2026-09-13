@@ -7,6 +7,7 @@ export {
 	assertGenerationPlan,
 	compileGenerationPlan,
 	continuationIntentFor,
+	effectiveGenerationSettingsFor,
 } from "./compiler";
 export type {
 	CompileGenerationPlanInput,

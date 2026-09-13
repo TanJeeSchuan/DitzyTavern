@@ -1,29 +1,33 @@
 import type { Database } from "bun:sqlite";
+import { Value } from "@sinclair/typebox/value";
 import {
 	createConversationModule,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	ContinuationUnavailableError,
 	deriveMessageSwipeEligibility,
-	hasActiveGeneration,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
 	type AcceptTailGenerationInput,
 	type ConversationDataEntry,
 	type ConversationJsonValue,
 	type ConversationSnapshot,
+	type AuthorStampSnapshot,
+	type HistoricalControlSnapshot,
 } from "../conversation";
 import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipe } from "../prompt-preset";
-import type { PromptPresetSlot } from "../prompt-preset";
+import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import {
 	compileGenerationPlan,
 	continuationIntentFor,
+	effectiveGenerationSettingsFor,
 	type EffectiveGenerationSettings,
 	type GenerationConnectionFacts,
 	type GenerationPlan,
 } from "../generation-plan";
+import { referencedDefinitionBlocks } from "../prompt-compiler";
 import type {
 	GenerationIntent,
 	PromptBudgetResult,
@@ -54,11 +58,22 @@ import {
 	type MacroAttemptState,
 	type MacroEnvironment,
 } from "../../shared/prompt-macro-engine";
-import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
+import {
+	conversationGenerationSettings,
+	type GenerationFormattingContext,
+} from "../../shared/contract/conversation-schema";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
-import { deriveMacroState } from "../prompt-macros";
+import {
+	deriveMacroState,
+	MACRO_DATA_NAMESPACE,
+	macroInitialValuePrefix,
+	macroWritesKey,
+} from "../prompt-macros";
+import type { MacroValue } from "../../shared/contract/macro-variable-write";
+import type { SelectedHistoryRead } from "../conversation";
+import type { GenerationJsonObject, GenerationJsonValue } from "../../shared/generation-json";
 
-// ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation snapshot and
+// ==[HUMAN APPROVED]== Generation-start capture: from one authoritative Conversation preparation and
 // the captured configuration this module derives the complete Generation Plan
 // through the one Generation Plan Compiler, together with the captured
 // participants and Control pair and the provenance record every server-owned
@@ -79,35 +94,42 @@ export interface GenerationDerivation {
 export type GenerationAttemptKind = "send" | "continuation" | "sibling";
 
 export interface ParticipatingHistory {
-	readonly messages: readonly ConversationSnapshot["messages"][number][];
+	readonly messages: readonly ParticipatingHistoryMessage[];
 	readonly control: ConversationSnapshot["control"];
-	readonly target: ConversationSnapshot["messages"][number] | undefined;
+	readonly target: ParticipatingHistoryMessage | undefined;
 }
 
-// ==[HUMAN APPROVED]== One boundary decides the history and historical Control pair an attempt
-// sees. A missing sibling target contributes no history and falls back to the
-// current Control pair; the generation-specific eligibility check still rejects
-// that target before any provider request can start.
-export const participatingHistoryFor = (
-	snapshot: ConversationSnapshot,
-	kind: GenerationAttemptKind,
-	messageId?: number,
-): ParticipatingHistory => {
-	if (kind !== "sibling" || messageId === undefined) {
-		return {
-			messages: snapshot.messages,
-			control: snapshot.control,
-			target: undefined,
-		};
-	}
-	const targetIndex = snapshot.messages.findIndex((message) => message.id === messageId);
-	const target = targetIndex < 0 ? undefined : snapshot.messages[targetIndex];
-	return {
-		messages: target === undefined ? [] : snapshot.messages.slice(0, targetIndex),
-		control: target?.historicalContext ?? snapshot.control,
-		target,
-	};
-};
+export interface ParticipatingHistoryMessage {
+	readonly id: number;
+	readonly position: number;
+	readonly author: AuthorStampSnapshot | null;
+	readonly historicalContext: HistoricalControlSnapshot | null;
+	readonly variant: {
+		readonly id: number;
+		readonly position: number;
+		readonly content: string;
+		readonly data: readonly ConversationDataEntry[];
+	} | null;
+}
+
+const participatingMessageFromRead = (
+	message: SelectedHistoryRead["messages"][number],
+): ParticipatingHistoryMessage => ({
+	id: message.id,
+	position: message.position,
+	author: message.author,
+	historicalContext: message.historicalContext,
+	variant: message.variant,
+});
+
+const participatingHistoryFromRead = (
+	read: SelectedHistoryRead,
+	control: ConversationSnapshot["control"],
+): ParticipatingHistory => ({
+	messages: read.messages.map(participatingMessageFromRead),
+	control,
+	target: read.target === undefined ? undefined : participatingMessageFromRead(read.target),
+});
 
 // ==[HUMAN APPROVED]== The one authorship rule every Generation kind uses. A Message is model
 // writing when its Author Stamp matches the current model Control seat or the
@@ -117,7 +139,7 @@ export const participatingHistoryFor = (
 // writer's own; deriving the role from current Control alone made Send and
 // Sibling disagree with Continuation about the same Message.
 const roleForMessage = (
-	message: ConversationSnapshot["messages"][number],
+	message: Pick<ParticipatingHistoryMessage, "author" | "historicalContext">,
 	humanParticipantId: number,
 	modelParticipantId: number,
 ): "human" | "model" | null => {
@@ -143,42 +165,24 @@ const roleForMessage = (
 // The caller supplies the already-bounded participating Messages, so this
 // helper cannot accidentally include a sibling target or its later history.
 const selectedHistoryFrom = (
-	messages: readonly ConversationSnapshot["messages"][number][],
+	messages: readonly ParticipatingHistoryMessage[],
 	humanParticipantId: number,
 	modelParticipantId: number,
 ): readonly PromptContextEntry[] => {
 	const entries: PromptContextEntry[] = [];
 
 	for (const message of messages) {
-		const selected = message.variants.find((variant) => variant.selected);
-		if (selected === undefined) continue;
+		if (message.variant === null) continue;
 
 		entries.push({
 			kind: "message",
 			speakerName: message.author?.capturedName ?? null,
-			content: selected.content,
+			content: message.variant.content,
 			role: roleForMessage(message, humanParticipantId, modelParticipantId),
 		});
 	}
 
 	return entries;
-};
-
-export const deriveGeneration = (
-	snapshot: ConversationSnapshot,
-): GenerationDerivation | null => {
-	const participation = participatingHistoryFor(snapshot, "send");
-	const human = snapshot.cast.find(
-		(participant) => participant.id === participation.control.humanParticipantId,
-	);
-	const model = snapshot.cast.find(
-		(participant) => participant.id === participation.control.modelParticipantId,
-	);
-	if (human === undefined || model === undefined || human.id === model.id) {
-		return null;
-	}
-
-	return { human, model, context: selectedHistoryFrom(participation.messages, human.id, model.id) };
 };
 
 /**
@@ -234,62 +238,320 @@ interface AttemptConfiguration {
 	connection: ModelClientConnectionSnapshot | null;
 }
 
-// ==[HUMAN APPROVED]== The one attempt-configuration read: every Generation start and the
-// read-only inspection capture the same settings and the same recipe slots, so
-// a missing Conversation fails identically wherever an attempt is captured.
-export interface CaptureConfigurationInput {
-	database: Database;
-	snapshot: ConversationSnapshot;
-	derivation: GenerationDerivation;
-	participation: ParticipatingHistory;
-	connection?: ModelClientConnectionSnapshot | null | undefined;
-	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
-	formatting?: GenerationFormattingContext | undefined;
+export interface GenerationPreparation {
+	readonly conversationId: number;
+	readonly kind: GenerationAttemptKind;
+	readonly content?: string;
+	readonly messageId?: number;
+	readonly formatting: GenerationFormattingContext;
+	readonly derivation: GenerationDerivation;
+	readonly participation: ParticipatingHistory;
+	readonly settings: ConversationGenerationSettings;
+	readonly effectiveSettings: EffectiveGenerationSettings;
+	readonly recipe: PromptPresetRecipe;
+	readonly connection: ModelClientConnectionSnapshot | null;
+	readonly macroState: ReadonlyMap<string, MacroValue>;
 }
 
-export function captureConfiguration(input: CaptureConfigurationInput): AttemptConfiguration {
-	const {
-		database,
-		snapshot,
+const canonicalize = (value: GenerationJsonValue): GenerationJsonValue => {
+	if (Array.isArray(value)) return value.map(canonicalize);
+	if (value === null || Object.prototype.toString.call(value) !== "[object Object]") return value;
+	// ==[HUMAN APPROVED]== SAFETY: GenerationJsonValue only permits plain JSON objects at this branch.
+	const object = value as GenerationJsonObject;
+	return Object.fromEntries(
+		Object.entries(object)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, entry]) => [key, canonicalize(entry)]),
+	);
+};
+
+const effectiveSettingsForPreparation = (input: Pick<
+	GenerationPreparation,
+	"settings" | "connection" | "kind"
+>): EffectiveGenerationSettings => {
+	const intent = input.kind === "continuation"
+		? continuationIntentFor(input.settings)
+		: input.kind === "sibling"
+			? { type: "sibling" as const }
+			: undefined;
+	return effectiveGenerationSettingsFor(input.settings, intent, input.connection);
+};
+
+const effectivePreparationSettings = (
+	preparation: GenerationPreparation,
+): GenerationJsonObject => generationSettingsJson(preparation.effectiveSettings);
+
+const relevantPreparationSources = (preparation: GenerationPreparation) => {
+	const channels = {
+		human: new Set(),
+		model: new Set(),
+	} satisfies Record<"human" | "model", Set<keyof CastParticipantSnapshot["prompt"]>>;
+	let hasAuthoredSlot = false;
+	for (const slot of preparation.recipe.slots) {
+		if (!slot.enabled || slot.reference === "history") continue;
+		hasAuthoredSlot = true;
+		if (slot.reference === "instruction") continue;
+		channels[referencedDefinitionBlocks[slot.reference].owner].add(
+			referencedDefinitionBlocks[slot.reference].channel,
+		);
+	}
+	if (!hasAuthoredSlot) return [];
+	return ([
+		["human", preparation.derivation.human],
+		["model", preparation.derivation.model],
+	] as const).map(([owner, participant]) => ({
+		id: participant.id,
+		name: participant.name,
+		prompt: Object.fromEntries(
+			[...channels[owner]].sort().map((channel) => [channel, participant.prompt[channel]]),
+		),
+	}));
+};
+
+const relevantPreparationHistory = (preparation: GenerationPreparation) => {
+	if (!preparation.recipe.slots.some((slot) => slot.enabled && slot.reference === "history")) return [];
+	return preparation.participation.messages.map((message) => ({
+		messageId: message.id,
+		position: message.position,
+		author: message.author === null ? null : {
+			participantId: message.author.participantId,
+			capturedName: message.author.capturedName,
+		},
+		historicalContext: message.historicalContext === null ? null : {
+			humanParticipantId: message.historicalContext.humanParticipantId,
+			modelParticipantId: message.historicalContext.modelParticipantId,
+		},
+		variantId: message.variant?.id ?? null,
+		content: message.variant?.content ?? null,
+	}));
+};
+
+const semanticRecipeSlot = (slot: PromptPresetSlot): GenerationJsonObject => {
+	if (slot.reference === "history") {
+		return { reference: slot.reference, enabled: slot.enabled };
+	}
+	if (slot.reference === "instruction") {
+		return {
+			reference: slot.reference,
+			enabled: slot.enabled,
+			role: slot.role,
+			name: slot.name,
+			content: slot.content,
+		};
+	}
+	return { reference: slot.reference, enabled: slot.enabled, role: slot.role };
+};
+
+const continuationTarget = (preparation: GenerationPreparation): GenerationJsonValue => {
+	if (preparation.kind !== "continuation") return null;
+	const latest = preparation.participation.messages.at(-1);
+	return {
+		messageId: latest?.id ?? null,
+		variantId: latest?.variant?.id ?? null,
+		content: latest?.variant?.content ?? null,
+	};
+};
+
+const sendReuseTarget = (preparation: GenerationPreparation): GenerationJsonValue => {
+	if (preparation.kind !== "send") return null;
+	const latest = preparation.participation.messages.at(-1);
+	const variant = latest?.variant;
+	if (
+		latest === undefined ||
+		variant === null ||
+		variant === undefined ||
+		latest.author?.participantId !== preparation.derivation.human.id ||
+		variant.content !== preparation.content
+	) return null;
+	return {
+		messageId: latest.id,
+		variantId: variant.id,
+	};
+};
+
+/** ==[HUMAN APPROVED]== Fingerprint the semantic inputs an inspected plan actually participates in. */
+export const generationPreparationFingerprint = (
+	preparation: GenerationPreparation,
+): string => {
+	const input: GenerationJsonObject = {
+		kind: preparation.kind,
+		content: preparation.content ?? null,
+		messageId: preparation.messageId ?? null,
+		formatting: {
+			timeZone: preparation.formatting.timeZone ?? null,
+			locale: preparation.formatting.locale ?? null,
+		},
+		control: {
+			humanParticipantId: preparation.participation.control.humanParticipantId,
+			modelParticipantId: preparation.participation.control.modelParticipantId,
+		},
+		participants: relevantPreparationSources(preparation),
+		recipe: {
+			id: preparation.recipe.id,
+			slots: preparation.recipe.slots.filter((slot) => slot.enabled).map(semanticRecipeSlot),
+		},
+		settings: effectivePreparationSettings(preparation),
+		macroState: [...preparation.macroState.entries()]
+			.sort(([left], [right]) => left.localeCompare(right)),
+		continuationTarget: continuationTarget(preparation),
+		sendReuseTarget: sendReuseTarget(preparation),
+		connection: preparation.connection === null ? null : {
+			profileId: preparation.connection.profileId,
+			settingsRevision: preparation.connection.settingsRevision,
+			backend: preparation.connection.backend,
+			adapter: preparation.connection.adapter,
+			apiFormat: preparation.connection.apiFormat,
+		},
+		history: relevantPreparationHistory(preparation),
+	};
+	return JSON.stringify(canonicalize(input));
+};
+
+export interface PrepareGenerationInputs {
+	readonly database: Database;
+	readonly conversationId: number;
+	readonly kind: GenerationAttemptKind;
+	readonly content?: string;
+	readonly messageId?: number;
+	readonly connection?: ModelClientConnectionSnapshot | null;
+	readonly connectionSettings?: ConnectionSettingsModuleOptions;
+	readonly formatting?: GenerationFormattingContext;
+}
+
+/** ==[HUMAN APPROVED]==
+ * Read the deterministic inputs for one attempt through the focused Conversation seams. The
+ * returned object is safe to retain: compilation and preview validation can use it without
+ * rereading mutable history or executing macros.
+ */
+export function prepareGenerationInputs(
+	input: PrepareGenerationInputs,
+): GenerationPreparation {
+	const conversation = createConversationModule(input.database);
+	const summary = conversation.getSummary(input.conversationId);
+	if (summary === undefined) throw new ConversationNotFoundError(input.conversationId);
+	if (input.kind === "sibling" && input.messageId === undefined) {
+		throw new InvalidConversationCommandError("Sibling preview requires a target Message.");
+	}
+	const recipe = readConversationPromptPresetRecipe(input.database, input.conversationId);
+	const settings = conversation.getGenerationSettings(input.conversationId);
+	if (recipe === undefined || settings === undefined) {
+		throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
+	}
+	if (!Value.Check(conversationGenerationSettings, settings)) {
+		throw new Error("Conversation Generation Settings are corrupt.");
+	}
+	if (input.kind === "continuation" && summary.activeGenerations.length > 0) {
+		throw new ContinuationUnavailableError("active-generation");
+	}
+	const selected = conversation.readSelectedHistory(input.conversationId, {
+		targetMessageId: input.kind === "sibling" ? input.messageId : undefined,
+		conversationDataNamespace: MACRO_DATA_NAMESPACE,
+		conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
+		variantDataKeys: [macroWritesKey(recipe.id), "reasoning"],
+	});
+	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
+	if (input.kind === "sibling") {
+		const eligibility = deriveMessageSwipeEligibility(
+			summary.playable,
+			selected.target?.historicalContext ?? null,
+			summary.cast.map((participant) => participant.id),
+		);
+		if (!eligibility.eligible) {
+			if (eligibility.reason === "conversation-not-playable") {
+				throw new ConversationNotPlayableError(input.conversationId);
+			}
+			throw new SiblingVariantUnavailableError(eligibility.reason);
+		}
+	}
+	const participation = participatingHistoryFromRead(selected, {
+		humanParticipantId: selected.target?.historicalContext?.humanParticipantId
+			?? summary.control.humanParticipantId,
+		modelParticipantId: selected.target?.historicalContext?.modelParticipantId
+			?? summary.control.modelParticipantId,
+	});
+	const human = summary.cast.find((participant) =>
+		participant.id === participation.control.humanParticipantId);
+	const model = summary.cast.find((participant) =>
+		participant.id === participation.control.modelParticipantId);
+	if (human === undefined || model === undefined || human.id === model.id) {
+		throw new ConversationNotPlayableError(input.conversationId);
+	}
+	const derivation: GenerationDerivation = {
+		human,
+		model,
+		context: selectedHistoryFrom(participation.messages, human.id, model.id),
+	};
+	if (input.kind === "continuation") {
+		const latest = participation.messages.at(-1);
+		const selectedVariant = latest?.variant;
+		const latestWasModelAuthored = latest?.author?.participantId !== null &&
+			latest?.author?.participantId !== undefined &&
+			(model.id === latest.author.participantId ||
+				latest.historicalContext?.modelParticipantId === latest.author.participantId);
+		const hasUsableOutput = selectedVariant !== null && selectedVariant !== undefined &&
+			(selectedVariant.content.length > 0 || selectedVariant.data.some(
+				(entry) => entry.namespace === "generation" && entry.key === "reasoning" && entry.value.length > 0,
+			));
+		if (latest === undefined || !latestWasModelAuthored || !hasUsableOutput) {
+			throw new ContinuationUnavailableError("not-terminal-model-message");
+		}
+		if (settings.continuationStrategy === "assistant-prefill" && selectedVariant.content.length === 0) {
+			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
+		}
+	}
+	const formatting = {
+		timeZone: input.formatting?.timeZone,
+		locale: input.formatting?.locale,
+	};
+	const connection = input.connection === undefined
+		? resolveConnectionSnapshot(input.database, input.connectionSettings)
+		: input.connection;
+	const effectiveSettings = effectiveSettingsForPreparation({ kind: input.kind, settings, connection });
+	return {
+		conversationId: input.conversationId,
+		kind: input.kind,
+		content: input.content,
+		messageId: input.messageId,
+		formatting,
 		derivation,
 		participation,
-		connection,
-		connectionSettings,
-		formatting = {},
-	} = input;
-	const conversation = createConversationModule(database);
-	const settings = conversation.getGenerationSettings(snapshot.id);
-	const recipe = readConversationPromptPresetRecipe(database, snapshot.id);
-	if (settings === undefined || recipe === undefined) {
-		throw new ConversationNotFoundError(snapshot.id);
-	}
-	const capturedConnection = connection === undefined
-		? resolveConnectionSnapshot(database, connectionSettings)
-		: connection;
-	const attempt = createAttemptEnvironment({
-		self: derivation.human.name,
-		other: derivation.model.name,
-		conversationId: snapshot.id,
-		promptPresetId: recipe.id,
-		now: new Date(),
-		timeZone: formatting.timeZone,
-		locale: formatting.locale,
-		variables: deriveMacroState({
-			initialData: snapshot.data,
-			presetId: recipe.id,
-			selectedVariants: participation.messages
-				.flatMap((message) => message.variants.filter((variant) => variant.selected)),
-		}),
-	});
-	return {
 		settings,
-		slots: recipe.slots,
-		promptPresetId: recipe.id,
-		macroEnvironment: attempt.environment,
-		macroAttemptState: attempt.state,
-		connection: capturedConnection,
+		effectiveSettings,
+		recipe,
+		connection,
+		macroState: new Map(deriveMacroState({
+			initialData: selected.initialData,
+			presetId: recipe.id,
+			selectedVariants: participation.messages.map((message) => ({
+				selected: message.variant !== null,
+				data: message.variant?.data ?? [],
+			})),
+		})),
 	};
 }
+
+export const captureConfigurationFromPreparation = (
+	preparation: GenerationPreparation,
+): AttemptConfiguration => {
+	const attempt = createAttemptEnvironment({
+		self: preparation.derivation.human.name,
+		other: preparation.derivation.model.name,
+		conversationId: preparation.conversationId,
+		promptPresetId: preparation.recipe.id,
+		now: new Date(),
+		timeZone: preparation.formatting.timeZone,
+		locale: preparation.formatting.locale,
+		variables: preparation.macroState,
+	});
+	return {
+		settings: preparation.settings,
+		slots: preparation.recipe.slots,
+		promptPresetId: preparation.recipe.id,
+		macroEnvironment: attempt.environment,
+		macroAttemptState: attempt.state,
+		connection: preparation.connection,
+	};
+};
 
 // ==[HUMAN APPROVED]== The retained provenance record: safe connection identity, model identity,
 // and the attempt's Effective Generation Settings. Only fields in the shared
@@ -333,6 +595,7 @@ const generationProvenanceEntry = (
 };
 
 export interface CapturedGeneration {
+	readonly preparation: GenerationPreparation;
 	readonly plan: GenerationPlan;
 	readonly context: readonly PromptContextEntry[];
 	readonly humanParticipant: ParticipantPreview;
@@ -403,10 +666,12 @@ export function modelRequestFor(
  * pair, the model author stamp, and the provenance capture.
  */
 const toCapturedGeneration = (
+	preparation: GenerationPreparation,
 	derivation: GenerationDerivation,
 	configuration: AttemptConfiguration,
 	plan: GenerationPlan,
 ): CapturedGeneration => ({
+	preparation,
 	plan,
 	context: plan.budget.retainedContext,
 	humanParticipant: { id: derivation.human.id, name: derivation.human.name },
@@ -463,23 +728,25 @@ export type PersistedGenerationSettings = {
 	readonly [K in GenerationSettingsField]: ConversationJsonValue;
 };
 
-export const generationSettingsJson = (
+export function generationSettingsJson(
 	effective: EffectiveGenerationSettings,
-): PersistedGenerationSettings => ({
-	modelId: effective.modelId,
-	siblingGenerationLimit: effective.siblingGenerationLimit,
-	temperature: effective.temperature,
-	topP: effective.topP,
-	frequencyPenalty: effective.frequencyPenalty,
-	presencePenalty: effective.presencePenalty,
-	contextLimit: effective.contextLimit,
-	responseBudget: effective.responseBudget,
-	safetyAllowance: effective.safetyAllowance,
-	continuationStrategy: effective.continuationStrategy,
-	continuationInstruction: effective.continuationInstruction,
-	continuationPrefillSuffix: effective.continuationPrefillSuffix,
-	requestOverrides: effective.requestOverrides,
-});
+): PersistedGenerationSettings {
+	return {
+		modelId: effective.modelId,
+		siblingGenerationLimit: effective.siblingGenerationLimit,
+		temperature: effective.temperature,
+		topP: effective.topP,
+		frequencyPenalty: effective.frequencyPenalty,
+		presencePenalty: effective.presencePenalty,
+		contextLimit: effective.contextLimit,
+		responseBudget: effective.responseBudget,
+		safetyAllowance: effective.safetyAllowance,
+		continuationStrategy: effective.continuationStrategy,
+		continuationInstruction: effective.continuationInstruction,
+		continuationPrefillSuffix: effective.continuationPrefillSuffix,
+		requestOverrides: effective.requestOverrides,
+	};
+}
 
 export const connectionJson = (
 	connection: ModelClientConnectionSnapshot | null,
@@ -517,7 +784,7 @@ export interface SendGenerationCapture extends CapturedGeneration {
 
 export interface GenerationCaptureInput {
 	database: Database;
-	snapshot: ConversationSnapshot;
+	conversationId: number;
 	content?: string | undefined;
 	messageId?: number | undefined;
 	connection?: ModelClientConnectionSnapshot | null | undefined;
@@ -535,22 +802,20 @@ export type SiblingGenerationCaptureInput = GenerationCaptureInput & { messageId
 export function captureSendGeneration(
 	input: SendGenerationCaptureInput,
 ): SendGenerationCapture {
-	const { database, snapshot, content } = input;
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-	const participation = participatingHistoryFor(snapshot, "send");
-	const configuration = captureConfiguration({
-		database,
-		snapshot,
-		derivation,
-		participation,
+	const { conversationId, content } = input;
+	const preparation = prepareGenerationInputs({
+		database: input.database,
+		conversationId,
+		kind: "send",
+		content,
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 	});
-
-	const latest = snapshot.messages.at(-1);
-	const latestSelected = latest?.variants.find((variant) => variant.selected);
+	const { derivation } = preparation;
+	const configuration = captureConfigurationFromPreparation(preparation);
+	const latest = preparation.participation.messages.at(-1);
+	const latestSelected = latest?.variant;
 	const reuseHumanMessageId = latest !== undefined &&
 		latest.author?.participantId === derivation.human.id &&
 		latestSelected?.content === content
@@ -574,7 +839,7 @@ export function captureSendGeneration(
 	// compiled plan has no applicable Continuation operand either.
 	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
 	return {
-		...toCapturedGeneration(derivation, configuration, plan),
+		...toCapturedGeneration(preparation, derivation, configuration, plan),
 		humanContent: content,
 		reuseHumanMessageId,
 	};
@@ -587,53 +852,25 @@ export interface ContinuationGenerationCapture extends CapturedGeneration {
 	assistantPrefill?: AssistantPrefill;
 }
 
-function continuationHasUsableOutput(
-	variant: ConversationSnapshot["messages"][number]["variants"][number],
-): boolean {
-	if (variant.content.length > 0) return true;
-	return variant.data.some(
-		(entry) => entry.namespace === "generation" &&
-			entry.key === "reasoning" &&
-			entry.value.length > 0,
-	);
-}
-
 export function captureContinuationGeneration(
 	input: GenerationCaptureInput,
 ): ContinuationGenerationCapture {
-	const { database, snapshot } = input;
-	if (hasActiveGeneration(database, snapshot.id)) {
-		throw new ContinuationUnavailableError("active-generation");
-	}
-	if (!snapshot.playable) throw new ConversationNotPlayableError(snapshot.id);
-	const latest = snapshot.messages.at(-1);
-	const selected = latest?.variants.find((variant) => variant.selected);
-	const modelParticipantId = snapshot.control.modelParticipantId;
-	const latestWasModelAuthored = latest?.author?.participantId !== null &&
-		latest?.author?.participantId !== undefined &&
-		(modelParticipantId === latest.author.participantId ||
-			latest.historicalContext?.modelParticipantId === latest.author.participantId);
-	if (
-		latest === undefined ||
-		selected === undefined ||
-		modelParticipantId === null ||
-		!latestWasModelAuthored ||
-		!continuationHasUsableOutput(selected)
-	) {
-		throw new ContinuationUnavailableError("not-terminal-model-message");
-	}
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) throw new ConversationNotPlayableError(snapshot.id);
-	const participation = participatingHistoryFor(snapshot, "continuation");
-	const configuration = captureConfiguration({
-		database,
-		snapshot,
-		derivation,
-		participation,
+	const { conversationId } = input;
+	const preparation = prepareGenerationInputs({
+		database: input.database,
+		conversationId,
+		kind: "continuation",
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 	});
+	const { derivation } = preparation;
+	const latest = preparation.participation.messages.at(-1);
+	const selected = latest?.variant;
+	if (latest === undefined || selected === null || selected === undefined) {
+		throw new ContinuationUnavailableError("not-terminal-model-message");
+	}
+	const configuration = captureConfigurationFromPreparation(preparation);
 	if (configuration.settings.continuationStrategy !== "instruction") {
 		if (selected.content.length === 0) {
 			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
@@ -646,7 +883,7 @@ export function captureContinuationGeneration(
 	// applicable Continuation operand.
 	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
 	return {
-		...toCapturedGeneration(derivation, configuration, plan),
+		...toCapturedGeneration(preparation, derivation, configuration, plan),
 		precedingMessageId: latest.id,
 		precedingVariantId: selected.id,
 		intent,
@@ -659,78 +896,26 @@ export function captureContinuationGeneration(
 	};
 }
 
-const deriveSiblingDerivation = (
-	snapshot: ConversationSnapshot,
-	messageId: number,
-): GenerationDerivation => {
-	const participation = participatingHistoryFor(snapshot, "sibling", messageId);
-	const target = participation.target;
-	if (target === undefined) {
-		throw new InvalidConversationCommandError(
-			`Message ${messageId} does not belong to Conversation ${snapshot.id}.`,
-		);
-	}
-
-	// ==[HUMAN APPROVED]== Same derived rule as the snapshot exposes: playable Conversation,
-	// captured historical pair, and both historical Participants still in
-	// the Cast with usable Definitions.
-	const eligibility = deriveMessageSwipeEligibility(
-		snapshot.playable,
-		target.historicalContext,
-		snapshot.cast.map((participant) => participant.id),
-	);
-	if (!eligibility.eligible) {
-		if (eligibility.reason === "conversation-not-playable") {
-			throw new ConversationNotPlayableError(snapshot.id);
-		}
-		// ==[HUMAN APPROVED]== The discriminated eligibility narrows the remaining reasons to the
-		// two historical denials; no fallback reason is ever fabricated.
-		throw new SiblingVariantUnavailableError(eligibility.reason);
-	}
-
-	const historicalPair = participation.control;
-	const human = snapshot.cast.find(
-		(participant) => participant.id === historicalPair.humanParticipantId,
-	);
-	const model = snapshot.cast.find(
-		(participant) => participant.id === historicalPair.modelParticipantId,
-	);
-	if (human === undefined || model === undefined) {
-		throw new SiblingVariantUnavailableError(
-			"historical-participant-unavailable",
-		);
-	}
-
-	// ==[HUMAN APPROVED]== Selected history strictly preceding the target Message. Excluding the
-	// target by construction also excludes all of its existing sibling
-	// Variants: an alternative never prompts on another alternative.
-	const context = selectedHistoryFrom(participation.messages, human.id, model.id);
-
-	// ==[HUMAN APPROVED]== The historical pair's current Definitions and names, so a rename or
-	// Prompt edit before this generation starts contributes; the Message
-	// itself keeps displaying its captured author name.
-	return { human, model, context };
-};
-
 export function captureSiblingGeneration(
 	input: SiblingGenerationCaptureInput,
 ): CapturedGeneration {
-	const derivation = deriveSiblingDerivation(input.snapshot, input.messageId);
-	const participation = participatingHistoryFor(input.snapshot, "sibling", input.messageId);
-	const configuration = captureConfiguration({
+	const { conversationId } = input;
+	const preparation = prepareGenerationInputs({
 		database: input.database,
-		snapshot: input.snapshot,
-		derivation,
-		participation,
+		conversationId,
+		kind: "sibling",
+		messageId: input.messageId,
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 	});
+	const { derivation } = preparation;
+	const configuration = captureConfigurationFromPreparation(preparation);
 	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
 	// Continuation operand.
 	const plan = compilePlanFrom(derivation, configuration, {
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,
 	});
-	return toCapturedGeneration(derivation, configuration, plan);
+	return toCapturedGeneration(preparation, derivation, configuration, plan);
 }

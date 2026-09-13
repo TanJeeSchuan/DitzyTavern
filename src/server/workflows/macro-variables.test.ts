@@ -53,9 +53,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
 		});
 
-		const first = captureSendGeneration(
-			{ database, snapshot: conversation, content: "Hello" },
-		);
+		const first = captureSendGeneration({ database, conversationId: conversation.id, content: "Hello" });
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");
 		expect(first.macroWrites).toEqual([
 			{ name: "turn", value: 6, operation: "set" },
@@ -80,7 +78,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
 		expect(readMacroWrites(generated.data, 1)).toEqual([...first.macroWrites]);
 
-		const second = captureSendGeneration({ database, snapshot: after, content: "Again" });
+		const second = captureSendGeneration({ database, conversationId: after.id, content: "Again" });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
 	});
 
@@ -113,7 +111,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
-		const capture = captureSendGeneration({ database, snapshot, content: "Again" });
+		const capture = captureSendGeneration({ database, conversationId: snapshot.id, content: "Again" });
 		expect(capture.plan.promptPlan.blocks.map((block) => block.content)).toContain("greeted=yes");
 	});
 
@@ -138,7 +136,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const capture = captureSendGeneration({ database, snapshot: conversation, content: "Hello" });
+		const capture = captureSendGeneration({ database, conversationId: conversation.id, content: "Hello" });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,

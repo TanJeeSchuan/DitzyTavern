@@ -82,7 +82,7 @@ const continuationOperands = (
 // ==[HUMAN APPROVED]== The Effective Generation Settings for one attempt. The literal is
 // compile-locked to the canonical vocabulary: adding a canonical field fails
 // typecheck until the compiler states how it participates.
-const effectiveGenerationSettings = (
+export const effectiveGenerationSettingsFor = (
 	settings: CanonicalGenerationSettings,
 	intent: GenerationIntent | undefined,
 	connection: GenerationConnectionFacts | null,
@@ -160,7 +160,7 @@ export const compileGenerationPlan = (
 	return {
 		promptPlan: budget.plan,
 		budget,
-		effectiveSettings: effectiveGenerationSettings(
+		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,

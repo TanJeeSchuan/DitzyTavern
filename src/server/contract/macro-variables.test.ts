@@ -15,6 +15,7 @@ import {
 	macroVariablesAppliedResponse,
 	type MacroVariablesEditBody,
 } from "../../shared/contract/macro-variables";
+import type { GenerationJsonObject } from "../../shared/generation-json";
 
 const prompt = {
 	systemInstruction: "",
@@ -135,6 +136,71 @@ describe("Macro Variables transport", () => {
 		));
 		// SAFETY: the route response is validated by its declared macro-variable contract.
 		expect(Value.Decode(macroVariables, await read.json()).variables).toEqual([]);
+	});
+
+	test("rejects invalid names and object values without changing Macro State", async () => {
+		const conversation = createChat(database);
+		const app = createConversationRoutes(database);
+		const edit = (body: GenerationJsonObject) => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/macro-variables`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			},
+		));
+
+		const invalidName = await edit({
+			expectedRevision: conversation.revision,
+			promptPresetId: 1,
+			position: 0,
+			operation: "set",
+			name: "not valid",
+			value: "ignored",
+		});
+		expect(invalidName.status).toBe(422);
+		const invalidValue = await edit({
+			expectedRevision: conversation.revision,
+			promptPresetId: 1,
+			position: 0,
+			operation: "set",
+			name: "valid",
+			value: { nested: true },
+		});
+		expect(invalidValue.status).toBe(422);
+
+		const read = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/macro-variables`,
+		));
+		expect(Value.Decode(macroVariables, await read.json()).variables).toEqual([]);
+		expect(createConversationModule(database).getSummary(conversation.id)?.revision).toBe(conversation.revision);
+	});
+
+	test("retains scalar and nested-array Macro Value types through storage and reads", async () => {
+		const conversation = createChat(database);
+		const app = createConversationRoutes(database);
+		const response = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/macro-variables`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: conversation.revision,
+					promptPresetId: 1,
+					position: 0,
+					operation: "set",
+					name: "typed",
+					value: [1, ["two", false, null]],
+				}),
+			},
+		));
+		expect(response.status).toBe(200);
+		const payload = Value.Decode(macroVariablesAppliedResponse, await response.json());
+		expect(payload.variables.variables).toEqual([{
+			name: "typed",
+			value: [1, ["two", false, null]],
+			source: { type: "initial" },
+		}]);
 	});
 
 	test("feeds an HTTP-edited selected Variant value into the next Generation", async () => {

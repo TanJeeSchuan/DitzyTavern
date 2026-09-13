@@ -6,7 +6,7 @@ import {
 	type MacroValue,
 	type MacroVariableWrite,
 } from "../../shared/contract/macro-variable-write";
-import type { ConversationDataEntry, ConversationVariantSnapshot } from "../conversation/types";
+import type { ConversationDataEntry } from "../conversation/types";
 import type {
 	MacroVariable,
 	MacroVariableSource,
@@ -184,7 +184,7 @@ const foldMacroVariables = <Variant extends SelectedVariant>(
 export const deriveMacroState = (input: {
 	initialData: readonly ConversationDataEntry[];
 	presetId: number;
-	selectedVariants: readonly Pick<ConversationVariantSnapshot, "selected" | "data">[];
+	selectedVariants: readonly SelectedVariant[];
 }): Map<string, MacroValue> => new Map(
 	[...foldMacroVariables(input, null, () => null)].map(([name, value]) => [name, value.value]),
 );

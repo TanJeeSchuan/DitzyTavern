@@ -7,29 +7,36 @@ import type { GenerationJsonObject, GenerationJsonValue } from "../generation-js
 // the shared write declaration from depending on a larger response contract.
 export type MacroValue = string | number | boolean | null | readonly MacroValue[];
 
-export const isMacroVariableName = (value: string): boolean => /^[A-Za-z](?:[\w-]*[\w])?$/.test(value);
+const macroVariableNamePattern = "^[A-Za-z](?:[\\w-]*[\\w])?$";
 
-export const isMacroValue = (value: unknown): value is MacroValue =>
-	value === null ||
-	typeof value === "string" ||
-	typeof value === "number" && Number.isFinite(value) ||
-	typeof value === "boolean" ||
-	Array.isArray(value) && value.every(isMacroValue);
+export const macroVariableName = Type.String({ pattern: macroVariableNamePattern });
+
+export const isMacroVariableName = (value: string): boolean =>
+	new RegExp(macroVariableNamePattern).test(value);
 
 // Macro values deliberately remain provider-neutral scalar/array JSON. This
 // recursive schema keeps the transport boundary and the MacroValue domain
-// union on the same contract.
-export const macroValue = Type.Unsafe<MacroValue>(Type.Unknown());
+// union on the same contract while rejecting objects and non-finite numbers.
+export const macroValue = Type.Unsafe<MacroValue>(Type.Recursive((self) => Type.Union([
+	Type.String(),
+	Type.Number(),
+	Type.Boolean(),
+	Type.Null(),
+	Type.Array(self),
+])));
+
+export const isMacroValue = (value: unknown): value is MacroValue =>
+	Value.Check(macroValue, value);
 
 export const macroVariableSetWrite = Type.Object({
 	operation: Type.Literal("set"),
-	name: Type.String(),
+	name: macroVariableName,
 	value: macroValue,
 });
 
 export const macroVariableDeleteWrite = Type.Object({
 	operation: Type.Literal("delete"),
-	name: Type.String(),
+	name: macroVariableName,
 	value: Type.Optional(Type.Undefined()),
 });
 
@@ -48,10 +55,7 @@ export const encodeMacroVariableWrite = (write: MacroVariableWrite): GenerationJ
 /** Decode one persisted or wire value against the shared write declaration. */
 export const decodeMacroVariableWrite = (value: GenerationJsonValue): MacroVariableWrite | undefined => {
 	try {
-		const write = Value.Decode(macroVariableWrite, value);
-		if (!isMacroVariableName(write.name)) return undefined;
-		if (write.operation === "set" && !isMacroValue(write.value)) return undefined;
-		return write;
+		return Value.Decode(macroVariableWrite, value);
 	} catch {
 		return undefined;
 	}

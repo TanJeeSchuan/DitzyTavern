@@ -3,6 +3,7 @@ import { conversationSummary } from "./conversation-schema";
 import { numericWire } from "./wire";
 import {
 	macroValue,
+	macroVariableName,
 	macroVariableDeleteWrite,
 	macroVariableSetWrite,
 } from "./macro-variable-write";
@@ -10,6 +11,7 @@ export {
 	isMacroValue,
 	isMacroVariableName,
 	macroValue,
+	macroVariableName,
 	macroVariableWrite,
 } from "./macro-variable-write";
 export type { MacroValue, MacroVariableWrite } from "./macro-variable-write";
@@ -26,7 +28,7 @@ const macroVariableLocation = Type.Union([
 ]);
 
 export const macroVariable = Type.Object({
-	name: Type.String(),
+	name: macroVariableName,
 	value: macroValue,
 	source: macroVariableLocation,
 });

@@ -1,8 +1,8 @@
 // ==[HUMAN APPROVED]== Server-owned Generation workflows.
 //
 // Composes the deep Conversation seam and the pure Prompt Compiler in one
-// deterministic flow: read one authoritative snapshot, compile the
-// provider-neutral Prompt Plan from the two controlled Participants and
+// deterministic flow: prepare one immutable set of generation inputs, compile
+// the provider-neutral Prompt Plan from the two controlled Participants and
 // selected history, hand the plan to the injected model transport, and
 // finally commit the transport's reply as a new Message authored by the
 // Participant that occupied model Control when generation started. Everything
@@ -26,7 +26,6 @@ import {
 	StaleConversationRevisionError,
 	type ConversationModule,
 	type ConversationDataEntry,
-	type ConversationSnapshot,
 	type ConversationSummary,
 	type AcceptedTailGeneration,
 	type AcceptedContinuationGeneration,
@@ -54,12 +53,11 @@ import {
 	captureSendGeneration,
 	captureContinuationGeneration,
 	captureSiblingGeneration,
-	captureConfiguration,
+	captureConfigurationFromPreparation,
 	capturedAcceptanceFields,
 	compilePlanFrom,
 	modelRequestFor,
-	deriveGeneration,
-	participatingHistoryFor,
+	prepareGenerationInputs,
 	type CapturedGeneration,
 	type ParticipantPreview,
 } from "./generate-capture";
@@ -107,7 +105,7 @@ interface GenerationLifecyclePolicy<
 > {
 	capture: (
 		database: Database,
-		snapshot: ConversationSnapshot,
+		conversationId: number,
 		input: Input,
 	) => Capture;
 	accept: (
@@ -127,7 +125,7 @@ interface GenerationLifecyclePolicy<
 
 const capturePreview = (
 	database: Database,
-	snapshot: ConversationSnapshot,
+	conversationId: number,
 	input: {
 		preview?: { record: GenerationPreviewRecord; editedPlan: PromptPlan };
 		connection?: ModelClientConnectionSnapshot | null;
@@ -141,7 +139,7 @@ const capturePreview = (
 	}
 	const prepared = generationCaptureForPreview(
 		database,
-		snapshot,
+		conversationId,
 		input.preview.record,
 		input.preview.editedPlan,
 		input.connection,
@@ -172,19 +170,19 @@ async function runGenerationLifecycle<
 	policy: GenerationLifecyclePolicy<Input, Capture, Accepted>,
 ): Promise<Accepted> {
 	const conversation = createConversationModule(database);
-	const snapshot = conversation.getSnapshot(input.conversationId);
-	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
+	const revision = conversation.getRevision(input.conversationId);
+	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
 	// ==[HUMAN APPROVED]== A revisioned lifecycle fails fast before the Prompt Plan is
 	// compiled. The acceptance transaction re-checks the revision under its
 	// own lock and stays authoritative; this only avoids budgeting a
 	// Conversation that has already moved on.
 	if (
 		input.expectedRevision !== undefined &&
-		snapshot.revision !== input.expectedRevision
+		revision !== input.expectedRevision
 	) {
-		throw new StaleConversationRevisionError(input.expectedRevision, snapshot.revision);
+		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const capture = policy.capture(database, snapshot, input);
+	const capture = policy.capture(database, input.conversationId, input);
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
@@ -297,13 +295,13 @@ export function inspectGenerationPrompt(
 		readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	} = {},
 ): GenerationPromptInspection {
-	const snapshot = createConversationModule(database).getSnapshot(conversationId);
-	if (snapshot === undefined) {
+	const conversation = createConversationModule(database);
+	const summary = conversation.getSummary(conversationId);
+	if (summary === undefined) {
 		throw new ConversationNotFoundError(conversationId);
 	}
 
-	const derivation = deriveGeneration(snapshot);
-	if (derivation === null) {
+	if (!summary.playable) {
 		return {
 			conversationId,
 			playable: false,
@@ -323,20 +321,20 @@ export function inspectGenerationPrompt(
 			budgetFailure: null,
 		};
 	}
-	const configuration = captureConfiguration({
+	const preparation = prepareGenerationInputs({
 		database,
-		snapshot,
-		derivation,
-		participation: participatingHistoryFor(snapshot, "send"),
+		conversationId,
+		kind: "send",
 		connectionSettings: options.connectionSettings,
 	});
+	const configuration = captureConfigurationFromPreparation(preparation);
 	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
 	// Compiler, so the same captured inputs cannot produce drifting plans.
 	// Like Send, the inspected attempt is an ordinary Tail Generation: the
 	// compiled plan carries no Continuation intent, and the impossible-budget
 	// failure is reported instead of thrown.
 	const plan = compilePlanFrom(
-		derivation,
+		preparation.derivation,
 		{
 			settings: configuration.settings,
 			slots: configuration.slots,
@@ -356,8 +354,8 @@ export function inspectGenerationPrompt(
 	return {
 		conversationId,
 		playable: true,
-		humanParticipant: { id: derivation.human.id, name: derivation.human.name },
-		modelParticipant: { id: derivation.model.id, name: derivation.model.name },
+		humanParticipant: { id: preparation.derivation.human.id, name: preparation.derivation.human.name },
+		modelParticipant: { id: preparation.derivation.model.id, name: preparation.derivation.model.name },
 		plan: plan.promptPlan,
 		effectiveSettings: plan.effectiveSettings,
 		continuationIntent,
@@ -383,9 +381,9 @@ export async function sendThroughProvisionalTailGeneration(
 	input: SendThroughProvisionalTailGenerationInput,
 ): Promise<SendThroughProvisionalTailGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => {
+		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, snapshot, current);
+				const prepared = capturePreview(currentDatabase, conversationId, current);
 				if (prepared.kind !== "send") {
 					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Send.");
 				}
@@ -394,7 +392,7 @@ export async function sendThroughProvisionalTailGeneration(
 			}
 			return captureSendGeneration({
 				database: currentDatabase,
-				snapshot,
+				conversationId,
 				content: current.content,
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
@@ -436,9 +434,9 @@ export async function continueGeneration(
 	input: ContinueGenerationInput,
 ): Promise<ContinueGenerationResult> {
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => {
+		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, snapshot, current);
+				const prepared = capturePreview(currentDatabase, conversationId, current);
 				if (prepared.kind !== "continuation") {
 					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Continue.");
 				}
@@ -446,7 +444,7 @@ export async function continueGeneration(
 			}
 			return captureContinuationGeneration({
 				database: currentDatabase,
-				snapshot,
+				conversationId,
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
@@ -526,19 +524,18 @@ export async function generateSiblingVariant(
 	// ==[HUMAN APPROVED]== Sibling capture remains revision-neutral: the target's historical pair
 	// and the sibling acceptance seam own its distinct eligibility and parallel-at-position rules.
 	return runGenerationLifecycle(database, input, input.onAccepted, {
-		capture: (currentDatabase, snapshot, current) => {
+		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const prepared = capturePreview(currentDatabase, snapshot, current);
+				const prepared = capturePreview(currentDatabase, conversationId, current);
 				if (prepared.kind !== "sibling") {
 					throw new InvalidConversationCommandError("The Prompt Plan intent does not match Swipe.");
 				}
 				return prepared.capture;
 			}
-				return captureSiblingGeneration({
-					database: currentDatabase,
-					snapshot,
-					...current,
-				});
+			return captureSiblingGeneration({
+				database: currentDatabase,
+				...current,
+			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {

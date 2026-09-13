@@ -248,4 +248,113 @@ describe("Prompt Plan inspection", () => {
 		));
 		expect(accepted.status).toBe(200);
 	});
+
+	test("keeps an ordinary Send preview valid when only the inactive Continuation instruction changes", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		const module = createConversationModule(database);
+		const settings = module.getGenerationSettings(conversation.id);
+		if (settings === undefined) throw new Error("Generation settings missing.");
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: { ...settings, continuationInstruction: "A different instruction." },
+			},
+		});
+		const current = module.getSummary(conversation.id);
+		if (current === undefined) throw new Error("Conversation summary missing.");
+		const accepted = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: current.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(accepted.status).toBe(200);
+	});
+
+	test("keeps a preview valid when an unused Definition field changes", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		const module = createConversationModule(database);
+		const human = module.getSnapshot(conversation.id)?.cast[0];
+		if (human === undefined) throw new Error("Human Participant missing.");
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "replace-participant-prompt",
+				participantId: human.id,
+				prompt: { ...human.prompt, scenario: "Unused scenario." },
+			},
+		});
+		const current = module.getSummary(conversation.id);
+		if (current === undefined) throw new Error("Conversation summary missing.");
+		const accepted = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: current.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(accepted.status).toBe(200);
+	});
+
+	test("requires a refresh when selected history changes", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch(() => {}),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+		const module = createConversationModule(database);
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-09-13T00:00:00.000Z",
+				variantContents: ["A changed direction."],
+				authorParticipantId: conversation.cast[0]!.id,
+			},
+		});
+		const current = module.getSummary(conversation.id);
+		if (current === undefined) throw new Error("Conversation summary missing.");
+		const rejected = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: current.revision,
+					content: "hello",
+					previewId: plan.previewId,
+				}),
+			},
+		));
+		expect(rejected.status).toBe(422);
+	});
 });

@@ -8,23 +8,19 @@ import {
 } from "../prompt-compiler";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
-import type { ConversationSnapshot } from "../conversation";
 import {
 	captureContinuationGeneration,
 	captureSendGeneration,
 	captureSiblingGeneration,
-	participatingHistoryFor,
+	generationPreparationFingerprint,
+	prepareGenerationInputs,
 	type GenerationAttemptKind,
-	type ParticipatingHistory,
 	type ContinuationGenerationCapture,
 	type SendGenerationCapture,
 	type CapturedGeneration,
 } from "./generate-capture";
-import { createConversationModule } from "../conversation";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
-import { conversationGenerationSettings, promptPlan } from "../../shared/contract/conversation-schema";
-import { ConversationNotFoundError, InvalidConversationCommandError } from "../conversation";
-import { deriveMacroState, readMacroWrites } from "../prompt-macros";
+import { promptPlan } from "../../shared/contract/conversation-schema";
+import { InvalidConversationCommandError } from "../conversation";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 export type GenerationPreviewKind = GenerationAttemptKind;
@@ -84,98 +80,6 @@ export const clearGenerationPreviewRegistry = (): void => {
 	previews.clear();
 };
 
-const relevantMessages = (
-	participatingMessages: ParticipatingHistory["messages"],
-	presetId: number,
-) => {
-	return participatingMessages
-		.map((message) => ({
-			id: message.id,
-			position: message.position,
-			author: message.author === null ? null : {
-				participantId: message.author.participantId,
-				capturedName: message.author.capturedName,
-			},
-			historicalContext: message.historicalContext,
-			variant: (() => {
-				const selected = message.variants.find((variant) => variant.selected);
-				return selected === undefined ? null : {
-					id: selected.id,
-					position: selected.position,
-					content: selected.content,
-					writes: readMacroWrites(selected.data, presetId),
-				};
-			})(),
-		}));
-};
-
-const relevantParticipants = (
-	snapshot: ConversationSnapshot,
-	participation: ParticipatingHistory,
-) => {
-	const pair = participation.control;
-	return [pair.humanParticipantId, pair.modelParticipantId]
-		.map((id) => snapshot.cast.find((participant) => participant.id === id))
-		.filter((participant): participant is NonNullable<typeof participant> => participant !== undefined)
-		.map((participant) => ({
-			id: participant.id,
-			name: participant.name,
-			prompt: participant.prompt,
-		}));
-};
-
-/**
- * ==[HUMAN APPROVED]== Fingerprint only the inputs which can change the compiled attempt. Revision
- * is intentionally absent: an unrelated Conversation edit must not force a
- * refresh, while selected history, definitions, preset, settings, and macro
- * state all remain explicit.
- */
-export const generationPreviewFingerprint = (
-	database: Database,
-	snapshot: ConversationSnapshot,
-	input: Pick<GenerationPreviewRequest, "kind" | "content" | "messageId" | "formatting" | "connection">,
-): string => {
-	const recipe = readConversationPromptPresetRecipe(database, snapshot.id);
-	const settings = createConversationModule(database).getGenerationSettings(snapshot.id);
-	if (recipe === undefined || settings === undefined) {
-		throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
-	}
-	if (!Value.Check(conversationGenerationSettings, settings)) {
-		throw new InvalidConversationCommandError("The Conversation's Generation Settings are invalid.");
-	}
-	const participation = participatingHistoryFor(snapshot, input.kind, input.messageId);
-	return JSON.stringify({
-		kind: input.kind,
-		content: input.content ?? null,
-		messageId: input.messageId ?? null,
-		timeZone: input.formatting?.timeZone ?? null,
-		locale: input.formatting?.locale ?? null,
-		control: participation.control,
-		participants: relevantParticipants(snapshot, participation),
-		recipe,
-		settings,
-		macroState: [...deriveMacroState({
-			initialData: snapshot.data,
-			presetId: recipe.id,
-			selectedVariants: participation.messages
-				.map((message) => {
-					const selected = message.variants.find((variant) => variant.selected);
-					return { selected: selected !== undefined, data: selected?.data ?? [] };
-				}),
-		})],
-		connection: input.connection === undefined || input.connection === null
-			? input.connection ?? null
-			: {
-				profileId: input.connection.profileId,
-				settingsRevision: input.connection.settingsRevision,
-				backend: input.connection.backend,
-				adapter: input.connection.adapter,
-				apiFormat: input.connection.apiFormat,
-			},
-		messages: relevantMessages(participation.messages, recipe.id),
-	});
-};
-
 const ensureRecord = (id: string, conversationId: number): GenerationPreviewRecord => {
 	sweepExpiredGenerationPreviews();
 	const record = previews.get(conversationId);
@@ -211,8 +115,6 @@ export const createGenerationPreview = (
 ): GenerationPreviewRecord => {
 	ensureScheduledPreviewSweep();
 	sweepExpiredGenerationPreviews();
-	const snapshot = createConversationModule(database).getSnapshot(input.conversationId);
-	if (snapshot === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.kind === "send" && input.content === undefined) {
 		throw new InvalidConversationCommandError("Send preview requires composer content.");
 	}
@@ -224,7 +126,7 @@ export const createGenerationPreview = (
 			kind: "send" as const,
 			capture: captureSendGeneration({
 				database,
-				snapshot,
+				conversationId: input.conversationId,
 				content: input.content!,
 				connection: input.connection,
 				connectionSettings: input.connectionSettings,
@@ -238,7 +140,7 @@ export const createGenerationPreview = (
 					kind: "continuation" as const,
 					capture: captureContinuationGeneration({
 						database,
-						snapshot,
+					conversationId: input.conversationId,
 						connection: input.connection,
 						connectionSettings: input.connectionSettings,
 						tokenEstimator: input.tokenEstimator,
@@ -249,7 +151,7 @@ export const createGenerationPreview = (
 					kind: "sibling" as const,
 					capture: captureSiblingGeneration({
 						database,
-						snapshot,
+					conversationId: input.conversationId,
 						messageId: input.messageId!,
 						connection: input.connection,
 						connectionSettings: input.connectionSettings,
@@ -262,10 +164,7 @@ export const createGenerationPreview = (
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
 		conversationId: input.conversationId,
-		fingerprint: generationPreviewFingerprint(database, snapshot, {
-			...input,
-			connection: capture.capture.connection,
-		}),
+		fingerprint: generationPreparationFingerprint(capture.capture.preparation),
 		capture,
 		createdAt: now,
 		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
@@ -278,7 +177,7 @@ export const previewRecordFor = (id: string, conversationId: number): Generation
 
 export const generationCaptureForPreview = (
 	database: Database,
-	snapshot: ConversationSnapshot,
+	conversationId: number,
 	record: GenerationPreviewRecord,
 	editedPlan: PromptPlan,
 	connection: ModelClientConnectionSnapshot | null | undefined,
@@ -292,14 +191,16 @@ export const generationCaptureForPreview = (
 	if (kind === "sibling" && input.messageId !== source.messageId) {
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}
-	const fingerprint = generationPreviewFingerprint(database, snapshot, {
+	const preparation = prepareGenerationInputs({
+		database,
+		conversationId,
 		kind,
 		content: kind === "send" ? source.content : undefined,
 		messageId: kind === "sibling" ? source.messageId : undefined,
 		formatting: input.formatting,
 		connection,
 	});
-	if (fingerprint !== record.fingerprint) {
+	if (generationPreparationFingerprint(preparation) !== record.fingerprint) {
 		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
 	}
 	if (!Value.Check(promptPlan, editedPlan)) {
