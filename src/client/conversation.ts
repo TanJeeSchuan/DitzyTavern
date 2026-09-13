@@ -324,6 +324,7 @@ export type StartConversationGenerationResult = GenerationStartResponse;
 export type GenerationPreviewOutcome =
 	| { status: "available"; preview: GenerationPreview }
 	| { status: "not-found" }
+	| { status: "not-playable"; reason: string }
 	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
@@ -335,6 +336,7 @@ export async function previewConversationGeneration(
 		const { data, error } = await api.api.conversations({ id: conversationId }).generations.preview.post(input);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 409) return { status: "not-playable", reason: error.value.reason };
 			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
 			return { status: "network" };
 		}

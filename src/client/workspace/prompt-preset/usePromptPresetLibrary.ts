@@ -204,13 +204,13 @@ export function usePromptPresetLibrary({
 					}
 					case "conflict": {
 						let message = `That preset changed elsewhere. It is now "${outcome.conflict.currentPreset.name}".`;
+						const refresh = await load();
+						if (!ownsOperation(claim)) return;
+						if (reportRefreshFailure(refresh)) break;
 						if (command.type === "delete") {
 							// ==[HUMAN APPROVED]== Either confirmed deletion value can conflict. Refresh before
 							// the notice so a renewed confirmation shows the current name, revision
 							// and impact instead of the values the author already confirmed.
-							const refresh = await load();
-							if (!ownsOperation(claim)) return;
-							if (reportRefreshFailure(refresh)) break;
 							if (outcome.conflict.reason === "deletion-impact") {
 								message = presetDeletionImpactChangedNotice(
 									outcome.conflict.currentPreset.name,
@@ -349,8 +349,8 @@ export function usePromptPresetLibrary({
 					type: "review-changed",
 					review: { ...currentReview, preview: outcome.preview, orderListId },
 				});
-			} else if (outcome.status === "invalid") {
-				dispatch({ type: "notice-changed", notice: outcome.reason });
+			} else {
+				reportImportFailure(outcome);
 			}
 		});
 	};

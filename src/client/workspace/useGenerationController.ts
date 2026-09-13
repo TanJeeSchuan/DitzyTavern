@@ -252,7 +252,7 @@ export function useGenerationController({
 				dispatchAssembly({
 					type: "preview-failed",
 					requestId,
-					error: outcome.status === "invalid"
+					error: outcome.status === "invalid" || outcome.status === "not-playable"
 						? outcome.reason
 						: outcome.status === "not-found"
 							? "The Conversation no longer exists."
@@ -412,10 +412,10 @@ export function useGenerationController({
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
 		const formatting = { timeZone: request.timeZone, locale: request.locale };
 		const start = request.kind === "send"
-			? startConversationGeneration(conversationId, conversation.revision, request.content ?? "", formatting, previewInput)
+			? startConversationGeneration(conversationId, conversation.revision, request.content, formatting, previewInput)
 			: request.kind === "continuation"
 				? startConversationContinuationGeneration(conversationId, conversation.revision, formatting, previewInput)
-				: startConversationSiblingGeneration(conversationId, request.messageId!, formatting, previewInput);
+				: startConversationSiblingGeneration(conversationId, request.messageId, formatting, previewInput);
 		void startGeneration(
 			startId,
 			conversationId,

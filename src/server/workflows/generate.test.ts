@@ -20,9 +20,9 @@ import {
 } from "../model-client";
 import {
 	generateSiblingVariant,
-	inspectGenerationPrompt,
 	sendThroughProvisionalTailGeneration,
 } from ".";
+import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 
@@ -52,6 +52,27 @@ const fakeModelClient = (
 ) =>
 	createFakeModelClient(({ promptPlan }) => response(promptPlan));
 
+const sendPreview = (
+	database: Database,
+	conversationId: number,
+	options: { content?: string; tokenEstimator?: () => number } = {},
+) => {
+	const preview = createGenerationPreview(database, {
+		conversationId,
+		kind: "send",
+		content: options.content ?? "Draft",
+		tokenEstimator: options.tokenEstimator,
+	});
+	if (preview.capture.kind !== "send") throw new Error("Expected a Send preview.");
+	return preview.capture.capture;
+};
+
+const continuationPreview = (database: Database, conversationId: number) => {
+	const preview = createGenerationPreview(database, { conversationId, kind: "continuation" });
+	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+	return preview.capture.capture;
+};
+
 describe("Generation runtime behavior", () => {
 	let database: Database;
 	let conversationId: number;
@@ -79,21 +100,23 @@ describe("Generation runtime behavior", () => {
 	});
 
 	afterEach(() => {
+		clearGenerationPreviewRegistry();
 		database.close();
 	});
 
-	test("inspection compiles the plan with ordered blocks and participant context", () => {
-		const inspection = inspectGenerationPrompt(database, conversationId);
+	test("preview compiles the plan with ordered blocks and participant context", () => {
+		const capture = sendPreview(database, conversationId);
+		const plan = capture.plan.promptPlan;
 
-		expect(inspection.playable).toBe(true);
-		expect(inspection.humanParticipant).toEqual({ id: humanId, name: "Writer" });
-		expect(inspection.modelParticipant).toEqual({ id: modelId, name: "Maren Voss" });
-		expect(inspection.plan?.blocks.map((block) => block.kind)).toEqual([
+		expect(capture.humanParticipant).toEqual({ id: humanId, name: "Writer" });
+		expect(capture.author).toEqual({ participantId: modelId, capturedName: "Maren Voss" });
+		expect(plan.blocks.map((block) => block.kind)).toEqual([
 			"system-instruction",
 			"identity",
 			"identity",
 			"scenario",
 			"example-dialogue",
+			"history",
 			"history",
 			"post-history-instruction",
 		]);
@@ -101,7 +124,7 @@ describe("Generation runtime behavior", () => {
 		// the stored Default recipe presents the human Identity as user and the
 		// model Identity as assistant.
 		expect(
-			inspection.plan?.blocks.filter((block) => block.kind === "identity"),
+			plan.blocks.filter((block) => block.kind === "identity"),
 		).toEqual([
 			{
 				kind: "identity",
@@ -116,7 +139,7 @@ describe("Generation runtime behavior", () => {
 		]);
 		// The greeting is selected history, stamped with the captured name.
 		expect(
-			inspection.plan?.blocks.filter((block) => block.kind === "history"),
+			plan.blocks.filter((block) => block.kind === "history"),
 		).toEqual([
 			{
 				kind: "history",
@@ -124,28 +147,29 @@ describe("Generation runtime behavior", () => {
 				content: "The lamp turns above you.",
 				role: "model",
 			},
+			{
+				kind: "history",
+				speakerName: "Writer",
+				content: "Draft",
+				role: "human",
+			},
 		]);
 		// Unknown macros in Example Dialogue surface as warnings.
-		expect(inspection.plan?.warnings).toContainEqual({
+		expect(plan.warnings).toContainEqual({
 			block: "example-dialogue",
 			macro: "{{user}}",
 		});
-		expect(inspection.responseBudget).toBe(1_024);
-		expect(inspection.safetyAllowance).toBe(500);
-		expect(inspection.tokenEstimateIsApproximate).toBe(true);
-		expect(inspection.budgetFits).toBe(true);
-		expect(inspection.omittedContext).toEqual([]);
-		// Provider vocabulary never leaks into the inspection.
-		expect(JSON.stringify(inspection)).not.toContain("assistant");
-		expect(JSON.stringify(inspection)).not.toContain('"user"');
+		expect(capture.plan.budget.responseBudget).toBe(1_024);
+		expect(capture.plan.budget.safetyAllowance).toBe(500);
+		expect(capture.plan.budget.fits).toBe(true);
+		expect(capture.plan.budget.omittedContext).toEqual([]);
+		// Provider vocabulary never leaks into the Prompt Plan.
+		expect(JSON.stringify(plan)).not.toContain("assistant");
+		expect(JSON.stringify(plan)).not.toContain('"user"');
 	});
 
 	test("the terminal fixture creates a Message authored by the model seat at generation start", async () => {
-		const inspection = inspectGenerationPrompt(database, conversationId);
-		const expectedPlan = inspection.plan;
-		if (expectedPlan === null || inspection.continuationIntent === null) {
-			throw new Error("Expected a compiled plan for the playable Conversation.");
-		}
+		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
 		let receivedPlan: PromptPlan | undefined;
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -156,9 +180,8 @@ describe("Generation runtime behavior", () => {
 			}),
 		});
 
-		// The transport received exactly the plan inspection would compile,
-		// carrying the Continuation intent inspection exposes separately.
-		expect(receivedPlan).toEqual({ ...expectedPlan, intent: inspection.continuationIntent });
+		// The transport receives exactly the canonical Continuation preview plan.
+		expect(receivedPlan).toEqual(expectedPlan);
 
 		const message = committed.messages.at(-1);
 		expect(message?.author).toEqual({
@@ -184,11 +207,7 @@ describe("Generation runtime behavior", () => {
 	test("the terminal fixture forwards normalized events and freezes the captured generation input", async () => {
 		const receivedEvents: unknown[] = [];
 		let receivedInput: ModelClientGenerationInput | undefined;
-		const inspection = inspectGenerationPrompt(database, conversationId);
-		const expectedPlan = inspection.plan;
-		if (expectedPlan === null || inspection.continuationIntent === null) {
-			throw new Error("Expected a compiled plan for the playable Conversation.");
-		}
+		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
 
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -206,7 +225,7 @@ describe("Generation runtime behavior", () => {
 			},
 		});
 
-		expect(receivedInput?.promptPlan).toEqual({ ...expectedPlan, intent: inspection.continuationIntent });
+		expect(receivedInput?.promptPlan).toEqual(expectedPlan);
 		expect(receivedInput?.generationSettings).toMatchObject({
 			contextLimit: 32_768,
 			responseBudget: 1_024,
@@ -312,16 +331,11 @@ describe("Generation runtime behavior", () => {
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
-		// Inspection reports the same unplayable state without a plan.
-		const inspection = inspectGenerationPrompt(database, incomplete.id);
-		expect(inspection.playable).toBe(false);
-		expect(inspection.plan).toBeNull();
-		expect(inspection.humanParticipant).toBeNull();
-		expect(inspection.modelParticipant).toBeNull();
+		expect(() => sendPreview(database, incomplete.id)).toThrow(ConversationNotPlayableError);
 	});
 
-	test("missing Conversations fail inspection and generation with the typed not-found result", async () => {
-		expect(() => inspectGenerationPrompt(database, 424242)).toThrow(
+	test("missing Conversations fail preview and generation with the typed not-found result", async () => {
+		expect(() => sendPreview(database, 424242)).toThrow(
 			ConversationNotFoundError,
 		);
 		await expect(
@@ -559,9 +573,9 @@ describe("Generation runtime behavior", () => {
 		});
 
 		// The next generation compiles from the updated authoritative Prompt.
-		const inspection = inspectGenerationPrompt(database, conversationId);
+		const capture = sendPreview(database, conversationId);
 		expect(
-			inspection.plan?.blocks.find(
+			capture.plan.promptPlan.blocks.find(
 				(block) => block.kind === "identity" && block.role === "model",
 			)?.content,
 		).toBe("I am the edited Maren.");
@@ -734,12 +748,13 @@ describe("Generation runtime behavior", () => {
 			safetyAllowance: 5,
 			contextLimit: 25,
 		});
-		// Read-only inspection of the stored Conversation reports the same
+		// Read-only preview of the stored Conversation reports the same
 		// impossible budget without contacting anything.
-		const inspection = inspectGenerationPrompt(database, conversationId, {
+		const capture = sendPreview(database, conversationId, {
+			content: "Protected human input.",
 			tokenEstimator: () => 20,
 		});
-		expect(inspection.budgetFits).toBe(false);
+		expect(capture.plan.budget.fits).toBe(false);
 	});
 
 	test("reduces Sibling history before its target and never prompts on the target or later Messages", async () => {
@@ -852,10 +867,10 @@ describe("Prompt Comments", () => {
 		database.close();
 	});
 
-	test("inspection renders authored text without its comments and without warning about their contents", () => {
-		const inspection = inspectGenerationPrompt(database, conversationId);
+	test("preview renders authored text without its comments and without warning about their contents", () => {
+		const capture = sendPreview(database, conversationId);
 		const content = (kind: string) =>
-			inspection.plan?.blocks.find((block) => block.kind === kind)?.content;
+			capture.plan.promptPlan.blocks.find((block) => block.kind === kind)?.content;
 
 		expect(content("system-instruction")).toBe("Keep it terse. ");
 		expect(content("scenario")).toBe("The fog closes in.\n\nWind rises.");
@@ -868,11 +883,11 @@ describe("Prompt Comments", () => {
 		// ordinary unknown macro in Example Dialogue warns: the unknown macros
 		// enclosed by the two comments neither expanded nor warned.
 		expect(
-			inspection.plan?.blocks.find(
+			capture.plan.promptPlan.blocks.find(
 				(block) => block.kind === "identity" && block.role === "model",
 			)?.content,
 		).toBe("I am Maren Voss, speaking to Writer.");
-		expect(inspection.plan?.warnings).toEqual([
+		expect(capture.plan.promptPlan.warnings).toEqual([
 			{ block: "example-dialogue", macro: "{{user}}" },
 		]);
 	});

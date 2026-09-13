@@ -74,6 +74,7 @@ import {
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
 import {
+	classifyGenerationFailure,
 	generationAcceptanceResponse,
 	siblingGenerationAcceptanceResponse,
 } from "./generation-error-mapping";
@@ -266,14 +267,18 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations/preview",
 			({ params, body }) => {
 				try {
-					const preview = withDatabase(database, (connection) => createGenerationPreview(connection, {
+					const common = {
 						conversationId: params.id,
-						kind: body.kind,
-						content: body.content,
-						messageId: body.messageId,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
-					}));
+					};
+					const input = body.kind === "send"
+						? { ...common, kind: body.kind, content: body.content }
+						: body.kind === "sibling"
+							? { ...common, kind: body.kind, messageId: body.messageId }
+							: { ...common, kind: body.kind };
+					const preview = withDatabase(database, (connection) =>
+						createGenerationPreview(connection, input));
 					const capture = preview.capture.capture;
 					return {
 						outcome: "available" as const,
@@ -297,15 +302,23 @@ export const createConversationRoutes = (
 						},
 					};
 				} catch (error) {
-					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
-					throw error;
+					if (!(error instanceof Error)) throw error;
+					const failure = classifyGenerationFailure(error);
+					if (failure === undefined || failure.body.outcome === "conflict") throw error;
+					if (failure.status === 404) return status(404, failure.body);
+					if (failure.status === 409) return status(409, failure.body);
+					return status(422, failure.body);
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: generationPreviewBody,
-				response: { 200: generationPreview, 404: notFoundOutcome, 422: invalidOutcome },
+				response: {
+					200: generationPreview,
+					404: notFoundOutcome,
+					409: notPlayableOutcome,
+					422: invalidOutcome,
+				},
 			},
 		)
 		.get(

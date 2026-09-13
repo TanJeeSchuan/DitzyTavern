@@ -5,9 +5,10 @@ import type { ParticipantDefinition } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
 import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
-import { continueGeneration, inspectGenerationPrompt } from ".";
+import { continueGeneration } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
 
 const definition = (name: string): ParticipantDefinition => ({
 	name,
@@ -47,7 +48,10 @@ describe("Continuation Generation", () => {
 		modelId = snapshot.cast[1]?.id ?? -1;
 	});
 
-	afterEach(() => database.close());
+	afterEach(() => {
+		clearGenerationPreviewRegistry();
+		database.close();
+	});
 
 	// Generation results carry the Conversation header; Message assertions
 	// re-read the full snapshot immediately after the attempt they follow.
@@ -240,14 +244,15 @@ describe("Continuation Generation", () => {
 			},
 		});
 		let received: ModelClientGenerationInput | undefined;
-		const inspection = inspectGenerationPrompt(database, conversationId);
-		expect(inspection.continuationIntent).toEqual({
+		const preview = createGenerationPreview(database, { conversationId, kind: "continuation" });
+		if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+		const promptPlan = preview.capture.capture.plan.promptPlan;
+		expect(promptPlan.intent).toEqual({
 			type: "continuation",
 			strategy: "assistant-prefill",
 			suffix: "\n",
 		});
-		expect(inspection.plan?.intent).toBeUndefined();
-		expect(inspection.plan?.blocks.filter((block) => block.kind === "history")).toHaveLength(1);
+		expect(promptPlan.blocks.filter((block) => block.kind === "history")).toHaveLength(1);
 		await continueGeneration(database, {
 			conversationId,
 			expectedRevision: configured.revision,

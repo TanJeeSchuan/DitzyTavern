@@ -15,7 +15,7 @@ import {
 } from "../database/schema";
 import type { ConversationDatabase } from "./internal";
 import { toAuthorStamp, toHistoricalContext } from "./message-read-projection";
-import { runConversationTransaction } from "./commands/transaction";
+import { runConversationReadTransaction } from "./commands/transaction";
 import type {
 	ConversationDataEntry,
 	AuthorStampSnapshot,
@@ -240,7 +240,7 @@ export const readSelectedHistory = (
 	database: Database,
 	conversationId: number,
 	request: SelectedHistoryReadRequest = {},
-): SelectedHistoryRead | undefined => runConversationTransaction(
+): SelectedHistoryRead | undefined => runConversationReadTransaction(
 	database,
 	(db) => readSelectedHistoryFromConnection(db, conversationId, request),
 );

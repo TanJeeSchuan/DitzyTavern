@@ -665,12 +665,22 @@ const generationPreviewKind = Type.Union([
 	Type.Literal("sibling"),
 ]);
 
-export const generationPreviewBody = Type.Object({
-	kind: generationPreviewKind,
-	content: Type.Optional(Type.String()),
-	messageId: Type.Optional(Type.Integer()),
-	...generationFormattingContext.properties,
-});
+export const generationPreviewBody = Type.Union([
+	Type.Object({
+		kind: Type.Literal("send"),
+		content: Type.String(),
+		...generationFormattingContext.properties,
+	}),
+	Type.Object({
+		kind: Type.Literal("continuation"),
+		...generationFormattingContext.properties,
+	}),
+	Type.Object({
+		kind: Type.Literal("sibling"),
+		messageId: Type.Integer(),
+		...generationFormattingContext.properties,
+	}),
+]);
 
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),

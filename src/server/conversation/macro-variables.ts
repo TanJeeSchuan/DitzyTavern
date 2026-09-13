@@ -31,6 +31,7 @@ import { readSelectedHistoryFromConnection } from "./selected-history";
 import {
 	advanceConversationRevisionGuarded,
 	requireConversationSummary,
+	runConversationReadTransaction,
 	runConversationTransaction,
 } from "./commands/transaction";
 import {
@@ -148,7 +149,7 @@ export const readMacroVariables = (
 	database: Database,
 	conversationId: number,
 	input: ReadMacroVariablesInput = {},
-): MacroVariables | undefined => runConversationTransaction(
+): MacroVariables | undefined => runConversationReadTransaction(
 	database,
 	(db) => readMacroVariablesFromConnection(db, conversationId, input),
 );

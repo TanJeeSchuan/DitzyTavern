@@ -47,6 +47,21 @@ const preview = async (
 	return await response.json() as Pick<GenerationPreview, "previewId" | "promptPlan">;
 };
 
+type PreviewRequestBody = GenerationPreviewBody | { kind: "send" } | { kind: "sibling" };
+
+const previewResponse = (
+	app: ReturnType<typeof createConversationRoutes>,
+	conversationId: number,
+	body: PreviewRequestBody,
+) => app.handle(new Request(
+	`http://localhost/api/conversations/${conversationId}/generations/preview`,
+	{
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	},
+));
+
 const readVariantData = (database: Database) => {
 	// ==[HUMAN APPROVED]== SAFETY: this fixture selects the three scalar columns asserted below.
 	return database.query("SELECT namespace, key, value FROM message_variant_data").all() as { namespace: string; key: string; value: string }[];
@@ -60,6 +75,72 @@ describe("Prompt Plan inspection", () => {
 		setSystemTime();
 		clearGenerationPreviewRegistry();
 		database.close();
+	});
+
+	test("presents recoverable preview failures with their domain reason", async () => {
+		const module = createConversationModule(database);
+		const incomplete = module.create({
+			name: "Incomplete Preview Chat",
+			messages: [{
+				timestamp: "2026-09-13T00:00:00.000Z",
+				variants: [{
+					content: "Preserved",
+					timestamp: "2026-09-13T00:00:00.000Z",
+					selected: true,
+				}],
+			}],
+		});
+		const playable = createChat(database);
+		const siblingUnavailable = module.create({
+			name: "Imported Preview Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+			messages: [{
+				timestamp: "2026-09-13T00:00:00.000Z",
+				variants: [{
+					content: "Imported",
+					timestamp: "2026-09-13T00:00:00.000Z",
+					selected: true,
+				}],
+			}],
+		});
+		const importedMessage = siblingUnavailable.messages[0];
+		if (importedMessage === undefined) throw new Error("Imported Message missing.");
+		const app = createConversationRoutes(database);
+
+		const notPlayable = await previewResponse(app, incomplete.id, { kind: "send", content: "hello" });
+		expect(notPlayable.status).toBe(409);
+		expect(await notPlayable.json()).toEqual({
+			outcome: "not-playable",
+			reason: `Conversation ${incomplete.id} is not playable: two distinct Participants must occupy the human and model seats.`,
+		});
+
+		const continuation = await previewResponse(app, playable.id, { kind: "continuation" });
+		expect(continuation.status).toBe(422);
+		expect(await continuation.json()).toEqual({
+			outcome: "invalid",
+			reason: "Continue is available only after a terminal model-authored Message.",
+		});
+
+		const sibling = await previewResponse(app, siblingUnavailable.id, {
+			kind: "sibling",
+			messageId: importedMessage.id,
+		});
+		expect(sibling.status).toBe(422);
+		expect(await sibling.json()).toEqual({
+			outcome: "invalid",
+			reason: "A new sibling Variant cannot be generated: the target Message has no captured historical Control context.",
+		});
+	});
+
+	test("rejects preview intents missing their required operand", async () => {
+		const conversation = createChat(database);
+		const app = createConversationRoutes(database);
+		expect((await previewResponse(app, conversation.id, { kind: "send" })).status).toBe(422);
+		expect((await previewResponse(app, conversation.id, { kind: "sibling" })).status).toBe(422);
 	});
 
 	test("sends the edited plan literally and preserves expansion-time writes", async () => {

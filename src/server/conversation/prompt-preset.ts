@@ -11,7 +11,7 @@ import {
 	readControlAssignment,
 	type ActiveCastRow,
 } from "./internal";
-import { runConversationTransaction } from "./commands/transaction";
+import { runConversationReadTransaction } from "./commands/transaction";
 import type {
 	ConversationPromptPreset,
 	PromptPresetRecipe,
@@ -76,7 +76,7 @@ export const readConversationPromptPreset = (
 	database: Database,
 	conversationId: number,
 ): ConversationPromptPreset | undefined =>
-	runConversationTransaction(database, (db) => {
+	runConversationReadTransaction(database, (db) => {
 		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId);
 		if (recipe === undefined) return undefined;
 		const control = readControlAssignment(db, conversationId);

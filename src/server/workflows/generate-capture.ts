@@ -19,7 +19,7 @@ import type { CastParticipantSnapshot } from "../conversation/types";
 import { readConversationSummaryFromConnection } from "../conversation/snapshot";
 import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
 import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
-import { runConversationTransaction } from "../conversation/commands/transaction";
+import { runConversationReadTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
 	continuationIntentFor,
@@ -214,11 +214,8 @@ interface AttemptConfiguration {
 	connection: ModelClientConnectionSnapshot | null;
 }
 
-export interface GenerationPreparation {
+interface GenerationPreparationBase {
 	readonly conversationId: number;
-	readonly kind: GenerationAttemptKind;
-	readonly content?: string;
-	readonly messageId?: number;
 	readonly formatting: GenerationFormattingContext;
 	readonly derivation: GenerationDerivation;
 	readonly participation: ParticipatingHistory;
@@ -228,6 +225,12 @@ export interface GenerationPreparation {
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly macroState: ReadonlyMap<string, MacroValue>;
 }
+
+export type GenerationPreparation = GenerationPreparationBase & (
+	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "continuation" }
+	| { readonly kind: "sibling"; readonly messageId: number }
+);
 
 export interface SendReuseTarget {
 	messageId: number;
@@ -249,10 +252,11 @@ export const sendReuseTargetOf = (
 		: undefined;
 };
 
-const effectiveSettingsForPreparation = (input: Pick<
-	GenerationPreparation,
-	"settings" | "connection" | "kind"
->): EffectiveGenerationSettings => {
+const effectiveSettingsForPreparation = (input: {
+	readonly settings: ConversationGenerationSettings;
+	readonly connection: ModelClientConnectionSnapshot | null;
+	readonly kind: GenerationAttemptKind;
+}): EffectiveGenerationSettings => {
 	const intent = input.kind === "continuation"
 		? continuationIntentFor(input.settings)
 		: input.kind === "sibling"
@@ -261,16 +265,19 @@ const effectiveSettingsForPreparation = (input: Pick<
 	return effectiveGenerationSettingsFor(input.settings, intent, input.connection);
 };
 
-export interface PrepareGenerationInputs {
+interface PrepareGenerationInputsBase {
 	readonly database: Database;
 	readonly conversationId: number;
-	readonly kind: GenerationAttemptKind;
-	readonly content?: string;
-	readonly messageId?: number;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly formatting?: GenerationFormattingContext;
 }
+
+export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
+	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "continuation" }
+	| { readonly kind: "sibling"; readonly messageId: number }
+);
 
 /** ==[HUMAN APPROVED]==
  * Read the deterministic inputs for one attempt through the focused Conversation seams. The
@@ -280,10 +287,7 @@ export interface PrepareGenerationInputs {
 export function prepareGenerationInputs(
 	input: PrepareGenerationInputs,
 ): GenerationPreparation {
-	if (input.kind === "sibling" && input.messageId === undefined) {
-		throw new InvalidConversationCommandError("Sibling preview requires a target Message.");
-	}
-	const { summary, recipe, settings, selected, connection } = runConversationTransaction(
+	const { summary, recipe, settings, selected, connection } = runConversationReadTransaction(
 		input.database,
 		(db) => {
 			const summary = readConversationSummaryFromConnection(db, input.conversationId);
@@ -364,11 +368,8 @@ export function prepareGenerationInputs(
 		locale: input.formatting?.locale,
 	};
 	const effectiveSettings = effectiveSettingsForPreparation({ kind: input.kind, settings, connection });
-	return {
+	const preparation = {
 		conversationId: input.conversationId,
-		kind: input.kind,
-		content: input.content,
-		messageId: input.messageId,
 		formatting,
 		derivation,
 		participation,
@@ -385,6 +386,9 @@ export function prepareGenerationInputs(
 			})),
 		})),
 	};
+	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
+	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
+	return { ...preparation, kind: input.kind };
 }
 
 export const captureConfigurationFromPreparation = (

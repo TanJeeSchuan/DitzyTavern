@@ -31,8 +31,7 @@ import {
 	type AcceptedContinuationGeneration,
 	type AcceptedSiblingGeneration,
 } from "../conversation";
-import type { PromptBudgetFailure, PromptPlan, GenerationIntent, TokenEstimator } from "../prompt-compiler";
-import type { PromptContextEntry } from "../prompt-compiler";
+import type { PromptPlan, TokenEstimator } from "../prompt-compiler";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
@@ -53,13 +52,9 @@ import {
 	captureSendGeneration,
 	captureContinuationGeneration,
 	captureSiblingGeneration,
-	captureConfigurationFromPreparation,
 	capturedAcceptanceFields,
-	compilePlanFrom,
 	modelRequestFor,
-	prepareGenerationInputs,
 	type CapturedGeneration,
-	type ParticipantPreview,
 } from "./generate-capture";
 import {
 	generationCaptureForPreview,
@@ -68,8 +63,6 @@ import {
 } from "./generation-preview";
 import {
 	assertGenerationPlan,
-	continuationIntentFor,
-	type EffectiveGenerationSettings,
 } from "../generation-plan";
 
 export type {
@@ -216,34 +209,6 @@ async function runGenerationLifecycle<
 	});
 }
 
-// ==[HUMAN APPROVED]== Read-only prompt inspection result. `playable: false` means the
-// Conversation cannot currently generate because the two distinct Control
-// seats are not both occupied; the plan is then null.
-export interface GenerationPromptInspection {
-	conversationId: number;
-	playable: boolean;
-	humanParticipant: ParticipantPreview | null;
-	modelParticipant: ParticipantPreview | null;
-	plan: PromptPlan | null;
-	// ==[HUMAN APPROVED]== The Effective Generation Settings a generation from the current captured
-	// state would use: an ordinary Tail attempt, so the Continuation group is
-	// absent and Request Overrides are narrowed to the active API Format.
-	effectiveSettings: EffectiveGenerationSettings | null;
-	// ==[HUMAN APPROVED]== The selected Continue request intent is exposed separately from the
-	// ordinary Generate plan. Assistant prefill remains metadata here, never a
-	// synthetic Conversation history block.
-	continuationIntent: GenerationIntent | null;
-	tokenEstimate: number | null;
-	responseBudget: number | null;
-	safetyAllowance: number | null;
-	contextLimit: number | null;
-	totalRequiredTokens: number | null;
-	omittedContext: readonly PromptContextEntry[];
-	budgetFits: boolean | null;
-	tokenEstimateIsApproximate: boolean;
-	budgetFailure: PromptBudgetFailure | null;
-}
-
 export interface SendThroughProvisionalTailGenerationInput extends GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Send is a revisioned acceptance operation. The submitted text is
 	// included in Prompt preflight before the server writes either Message.
@@ -282,93 +247,6 @@ export function startServerOwnedSendGeneration(
 		sendThroughProvisionalTailGeneration,
 		callbacks,
 	);
-}
-
-// ==[HUMAN APPROVED]== Compiles the Prompt Plan the server would send for a Tail Generation
-// without contacting any transport. Exposes the agreed participant context
-// (the Control pair and their plan) using provider-neutral vocabulary only.
-export function inspectGenerationPrompt(
-	database: Database,
-	conversationId: number,
-	options: {
-		readonly tokenEstimator?: TokenEstimator;
-		readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	} = {},
-): GenerationPromptInspection {
-	const conversation = createConversationModule(database);
-	const summary = conversation.getSummary(conversationId);
-	if (summary === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
-
-	if (!summary.playable) {
-		return {
-			conversationId,
-			playable: false,
-			humanParticipant: null,
-			modelParticipant: null,
-			plan: null,
-			effectiveSettings: null,
-			continuationIntent: null,
-			tokenEstimate: null,
-			responseBudget: null,
-			safetyAllowance: null,
-			contextLimit: null,
-			totalRequiredTokens: null,
-			omittedContext: [],
-			budgetFits: null,
-			tokenEstimateIsApproximate: false,
-			budgetFailure: null,
-		};
-	}
-	const preparation = prepareGenerationInputs({
-		database,
-		conversationId,
-		kind: "send",
-		connectionSettings: options.connectionSettings,
-	});
-	const configuration = captureConfigurationFromPreparation(preparation);
-	// ==[HUMAN APPROVED]== Inspection and execution compile through the one Generation Plan
-	// Compiler, so the same captured inputs cannot produce drifting plans.
-	// Like Send, the inspected attempt is an ordinary Tail Generation: the
-	// compiled plan carries no Continuation intent, and the impossible-budget
-	// failure is reported instead of thrown.
-	const plan = compilePlanFrom(
-		preparation.derivation,
-		{
-			settings: configuration.settings,
-			slots: configuration.slots,
-			// ==[HUMAN APPROVED]== The safe Connection fact narrows before compilation so Request
-			// Overrides are narrowed exactly as an executed attempt would narrow
-			// them.
-			connection: configuration.connection === null
-				? null
-				: { apiFormat: configuration.connection.apiFormat },
-			macroEnvironment: configuration.macroEnvironment,
-			macroAttemptState: configuration.macroAttemptState,
-		},
-		{ estimator: options.tokenEstimator },
-	);
-	const continuationIntent = continuationIntentFor(configuration.settings);
-
-	return {
-		conversationId,
-		playable: true,
-		humanParticipant: { id: preparation.derivation.human.id, name: preparation.derivation.human.name },
-		modelParticipant: { id: preparation.derivation.model.id, name: preparation.derivation.model.name },
-		plan: plan.promptPlan,
-		effectiveSettings: plan.effectiveSettings,
-		continuationIntent,
-		tokenEstimate: plan.budget.tokenEstimate,
-		responseBudget: plan.budget.responseBudget,
-		safetyAllowance: plan.budget.safetyAllowance,
-		contextLimit: plan.budget.contextLimit,
-		totalRequiredTokens: plan.budget.totalRequiredTokens,
-		omittedContext: plan.budget.omittedContext,
-		budgetFits: plan.budget.fits,
-		tokenEstimateIsApproximate: true,
-		budgetFailure: plan.budget.failure,
-	};
 }
 
 // ==[HUMAN APPROVED]== Send's accepted lifecycle is intentionally separate from the legacy

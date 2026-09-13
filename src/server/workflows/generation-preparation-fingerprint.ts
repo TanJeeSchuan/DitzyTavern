@@ -102,8 +102,8 @@ export const generationPreparationFingerprint = (
 	const sendReuseTarget = sendReuseTargetOf(preparation);
 	const input: GenerationJsonObject = {
 		kind: preparation.kind,
-		content: preparation.content ?? null,
-		messageId: preparation.messageId ?? null,
+		content: preparation.kind === "send" ? preparation.content : null,
+		messageId: preparation.kind === "sibling" ? preparation.messageId : null,
 		formatting: {
 			timeZone: preparation.formatting.timeZone ?? null,
 			locale: preparation.formatting.locale ?? null,
