@@ -406,9 +406,15 @@ export function useGenerationController({
 	};
 
 	const sendPromptPlanPreview = () => {
-		if (conversation === null || assembly?.phase !== "ready" || assembly.preview === null) return;
+		const currentAssembly = assembly;
+		if (
+			conversation === null ||
+			currentAssembly === null ||
+			currentAssembly.preview === null ||
+			(currentAssembly.phase !== "ready" && currentAssembly.phase !== "failed")
+		) return;
 		const conversationId = conversation.id;
-		const { preview, request, requestId } = assembly;
+		const { preview, request, requestId } = currentAssembly;
 		if (acceptingAssemblyRequestIdRef.current === requestId) return;
 		acceptingAssemblyRequestIdRef.current = requestId;
 		const startId = beginStart();
@@ -483,7 +489,6 @@ export function useGenerationController({
 		stopPending,
 		generationError,
 		assembly,
-		assemblyPending: isAssemblyPending(assembly),
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,

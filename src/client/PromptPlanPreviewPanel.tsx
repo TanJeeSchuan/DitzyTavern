@@ -26,6 +26,7 @@ export function PromptPlanPreviewPanel({
 	const preview = assembly.preview;
 	const pending = isAssemblyPending(assembly);
 	const editable = preview !== null && !pending;
+	const canSend = preview !== null && (assembly.phase === "ready" || assembly.phase === "failed");
 	return (
 		<aside className="details-panel prompt-plan-preview-panel" data-open="true" aria-label="Prompt Plan preview">
 			<PanelHeader title="Prompt Plan preview" onClose={onClose} />
@@ -77,7 +78,7 @@ export function PromptPlanPreviewPanel({
 				<div className="prompt-plan-preview-actions">
 					<button className="secondary-button" type="button" onClick={onClose} disabled={assembly.phase === "accepting"}><X aria-hidden="true" /> Cancel</button>
 					<button className="secondary-button" type="button" onClick={onRefresh} disabled={pending}><RefreshCw aria-hidden="true" /> {preview === null ? "Retry" : "Refresh"}</button>
-					<button className="primary-button" type="button" onClick={onSend} disabled={assembly.phase !== "ready" || preview === null || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
+					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
 				</div>
 			</div>
 		</aside>
