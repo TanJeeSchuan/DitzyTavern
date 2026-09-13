@@ -89,6 +89,16 @@ export interface ConversationDataRead {
 	entries: ConversationDataEntry[];
 }
 
+export interface SelectedHistoryReadRequest {
+	position?: number | undefined;
+	targetMessageId?: number | undefined;
+	conversationDataNamespace?: string | undefined;
+	conversationDataKeys?: readonly string[] | undefined;
+	conversationDataKeyPrefix?: string | undefined;
+	variantDataNamespace?: string | undefined;
+	variantDataKeys?: readonly string[] | undefined;
+}
+
 // Generic filesystem artifact ownership seed. The metadata row commits
 // atomically with the Conversation through the creation seam; the exact
 // bytes live outside SQLite under the caller-provided unique managed
@@ -329,6 +339,10 @@ export interface ConversationModule {
 		conversationId: number,
 		filter?: ConversationDataReadFilter,
 	): ConversationDataRead | undefined;
+	readSelectedHistory(
+		conversationId: number,
+		request?: SelectedHistoryReadRequest,
+	): import("./selected-history").SelectedHistoryRead | undefined;
 	readMacroVariables(
 		conversationId: number,
 		input?: { promptPresetId?: number; position?: number },

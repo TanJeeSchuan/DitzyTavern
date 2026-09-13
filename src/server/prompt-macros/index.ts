@@ -5,6 +5,7 @@ export {
 	isMacroDataNamespace,
 	macroInitialValuesToData,
 	macroInitialValueKey,
+	macroInitialValuePrefix,
 	macroWritesKey,
 	macroWritesToData,
 	parseMacroWrites,

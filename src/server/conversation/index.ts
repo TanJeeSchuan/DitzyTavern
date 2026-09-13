@@ -21,6 +21,7 @@ import {
 	readConversationSummary,
 } from "./snapshot";
 import { readConversationData } from "./read-data";
+import { readSelectedHistory } from "./selected-history";
 import { readConversationPromptPreset } from "./prompt-preset";
 import {
 	readActiveGenerationDetails,
@@ -36,6 +37,12 @@ export type {
 	EditedMacroVariables,
 	ReadMacroVariablesInput,
 } from "./macro-variables";
+export type {
+	SelectedHistoryMessage,
+	SelectedHistoryRead,
+	SelectedHistoryReadRequest,
+	SelectedHistoryVariant,
+} from "./selected-history";
 import type { ConversationModule } from "./types";
 
 export {
@@ -164,6 +171,8 @@ export function createConversationModule(database: Database): ConversationModule
 			readChatHistory(database, conversationId, request),
 		readConversationData: (conversationId, filter) =>
 			readConversationData(database, conversationId, filter),
+		readSelectedHistory: (conversationId, request) =>
+			readSelectedHistory(database, conversationId, request),
 		readMacroVariables: (conversationId, input) =>
 			readMacroVariables(database, conversationId, input),
 		editMacroVariables: (input) => editMacroVariables(database, input),

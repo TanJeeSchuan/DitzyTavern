@@ -29,4 +29,15 @@ describe("Macro state persistence", () => {
 			{ name: "old", operation: "delete", value: undefined },
 		]);
 	});
+
+	test("compacts durable writes to each variable's final assignment or deletion", () => {
+		expect(readMacroWrites(macroWritesToData(4, [
+			{ name: "long", operation: "set", value: "obsolete" },
+			{ name: "other", operation: "set", value: true },
+			{ name: "long", operation: "delete", value: undefined },
+		]), 4)).toEqual([
+			{ name: "long", operation: "delete", value: undefined },
+			{ name: "other", operation: "set", value: true },
+		]);
+	});
 });

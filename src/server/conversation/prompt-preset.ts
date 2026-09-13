@@ -1,8 +1,18 @@
 import type { Database } from "bun:sqlite";
+import { and, count, eq } from "drizzle-orm";
 import { referencedDefinitionBlocks } from "../prompt-compiler";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
-import { readConversationSnapshot } from "./snapshot";
-import type { CastParticipantSnapshot, ConversationSnapshot } from "./types";
+import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
+import {
+	conversationPromptPresetTable,
+	messageTable,
+	messageVariantTable,
+} from "../database/schema";
+import {
+	readActiveCast,
+	readControlAssignment,
+	type ActiveCastRow,
+} from "./internal";
+import { runConversationTransaction } from "./commands/transaction";
 import type {
 	ConversationPromptPreset,
 	PromptPresetRecipe,
@@ -13,27 +23,16 @@ import type {
 // against that Chat's own Conversation-local Participant Definitions and
 // selected narrative path. The preset stores references, never rendered
 // character text or history, so this read is the only place they meet. The
-// projection is Conversation-owned because it reads the Conversation snapshot;
-// the preset library stays independent of the Conversation module.
+// projection is Conversation-owned while the preset library stays independent
+// of the Conversation module.
 const projectPromptPreset = (
 	recipe: PromptPresetRecipe,
-	snapshot: ConversationSnapshot,
+	context: {
+		owners: { human: ActiveCastRow | undefined; model: ActiveCastRow | undefined };
+		historyEntryCount: number;
+	},
 ): ConversationPromptPreset => {
-	const seated = (
-		participantId: number | null,
-	): CastParticipantSnapshot | undefined => snapshot.cast.find(
-		(participant) => participant.id === participantId,
-	);
-	const owners = {
-		human: seated(snapshot.control.humanParticipantId),
-		model: seated(snapshot.control.modelParticipantId),
-	};
-	// ==[HUMAN APPROVED]== The history slot contributes one entry per Message on the selected
-	// narrative path; unlike a Definition slot it has no authored source text
-	// to display read-only.
-	const historyEntryCount = snapshot.messages.filter(
-		(message) => message.variants.some((variant) => variant.selected),
-	).length;
+	const { owners, historyEntryCount } = context;
 
 	const slots: ResolvedPromptPresetSlot[] = recipe.slots.map((slot) => {
 		if (slot.reference === "history") {
@@ -66,7 +65,7 @@ const projectPromptPreset = (
 			enabled: slot.enabled,
 			role: slot.role,
 			sourceName: owner?.name ?? null,
-			content: owner?.prompt[referenced.channel] ?? "",
+			content: owner?.[referenced.channel] ?? "",
 		};
 	});
 
@@ -77,10 +76,37 @@ const projectPromptPreset = (
 export const readConversationPromptPreset = (
 	database: Database,
 	conversationId: number,
-): ConversationPromptPreset | undefined => {
-	const recipe = readConversationPromptPresetRecipe(database, conversationId);
-	if (recipe === undefined) return undefined;
-	const snapshot = readConversationSnapshot(database, conversationId);
-	if (snapshot === undefined) return undefined;
-	return projectPromptPreset(recipe, snapshot);
-};
+): ConversationPromptPreset | undefined =>
+	runConversationTransaction(database, (db) => {
+		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId);
+		if (recipe === undefined) return undefined;
+		const conversation = db
+			.select({ id: conversationPromptPresetTable.conversation_id })
+			.from(conversationPromptPresetTable)
+			.where(eq(conversationPromptPresetTable.conversation_id, conversationId))
+			.get();
+		if (conversation === undefined) return undefined;
+		const control = readControlAssignment(db, conversationId);
+		const controlledIds = [control.humanParticipantId, control.modelParticipantId]
+			.filter((id): id is number => id !== null);
+		const cast = controlledIds.length === 0
+			? []
+			: readActiveCast(db, conversationId, controlledIds);
+		const owners = {
+			human: cast.find((participant) => participant.id === control.humanParticipantId),
+			model: cast.find((participant) => participant.id === control.modelParticipantId),
+		};
+		// ==[HUMAN APPROVED]== A selected Variant is one history entry. Count it in SQL instead of
+		// materializing all Messages and alternative Variants just to inspect the
+		// resolved recipe.
+		const historyEntryCount = db
+			.select({ value: count(messageTable.id) })
+			.from(messageTable)
+			.innerJoin(messageVariantTable, and(
+				eq(messageVariantTable.message_id, messageTable.id),
+				eq(messageVariantTable.selected, true),
+			))
+			.where(eq(messageTable.conversation_id, conversationId))
+			.get()?.value ?? 0;
+		return projectPromptPreset(recipe, { owners, historyEntryCount });
+	});

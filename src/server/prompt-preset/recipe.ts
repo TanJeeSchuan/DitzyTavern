@@ -211,8 +211,16 @@ export const readPromptPresetRecipe = (
 export const readConversationPromptPresetRecipe = (
 	database: Database,
 	conversationId: number,
+): PromptPresetRecipe | undefined => readConversationPromptPresetRecipeFromConnection(
+	connect(database),
+	conversationId,
+);
+
+/** ==[HUMAN APPROVED]== Read the selected recipe through an existing coherent database view. */
+export const readConversationPromptPresetRecipeFromConnection = (
+	db: PromptPresetDatabase,
+	conversationId: number,
 ): PromptPresetRecipe | undefined => {
-	const db = connect(database);
 	const selection = db
 		.select({ prompt_preset_id: conversationPromptPresetTable.prompt_preset_id })
 		.from(conversationPromptPresetTable)

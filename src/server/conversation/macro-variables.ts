@@ -4,14 +4,15 @@ import {
 	conversationDataTable,
 	conversationPromptPresetTable,
 	conversationTable,
-	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
+	messageTable,
 	promptPresetTable,
 } from "../database/schema";
 import {
 	deriveMacroVariables,
 	MACRO_DATA_NAMESPACE,
+	macroInitialValuePrefix,
 	macroInitialValueKey,
 	macroWritesKey,
 	macroWritesToData,
@@ -25,8 +26,8 @@ import {
 } from "../../shared/contract/macro-variable-write";
 import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
-import { connectConversationDatabase, type ConversationDatabase } from "./internal";
-import { readConversationSnapshotFromConnection } from "./snapshot";
+import type { ConversationDatabase } from "./internal";
+import { readSelectedHistoryFromConnection } from "./selected-history";
 import {
 	advanceConversationRevisionGuarded,
 	requireConversationSummary,
@@ -91,8 +92,6 @@ const readMacroVariablesFromConnection = (
 	conversationId: number,
 	input: ReadMacroVariablesInput = {},
 ): MacroVariables | undefined => {
-	const snapshot = readConversationSnapshotFromConnection(db, conversationId);
-	if (snapshot === undefined) return undefined;
 	const preset = readConversationPreset(db, conversationId);
 	if (preset === undefined) return undefined;
 	const presetId = input.promptPresetId ?? preset.id;
@@ -109,32 +108,29 @@ const readMacroVariablesFromConnection = (
 	if (requestedPreset === undefined) return undefined;
 	const requestedPosition = input.position;
 	if (requestedPosition !== undefined) requireNumber(requestedPosition, "History position");
-
-	const lastPosition = snapshot.messages.at(-1)?.position ?? 0;
-	const position = requestedPosition ?? lastPosition;
-	if (position > lastPosition) {
-		throw new InvalidConversationCommandError(
-			`History position ${position} is beyond the end of this Conversation.`,
-		);
-	}
-	const history = snapshot.messages.filter((message) => message.position <= position);
-	const selectedVariants = history.flatMap((message) => message.variants
-		.filter((variant) => variant.selected)
-		.map((selected) => ({
+	const history = readSelectedHistoryFromConnection(db, conversationId, {
+		position: requestedPosition,
+		conversationDataNamespace: MACRO_DATA_NAMESPACE,
+		conversationDataKeyPrefix: macroInitialValuePrefix(presetId),
+		variantDataNamespace: MACRO_DATA_NAMESPACE,
+		variantDataKeys: [macroWritesKey(presetId)],
+	});
+	if (history === undefined) return undefined;
+	const selectedVariants = history.messages.flatMap((message) => message.variant === null ? [] : [{
 			selected: true as const,
-			data: selected.data,
+			data: message.variant.data,
 			messageId: message.id,
 			messagePosition: message.position,
-			variantId: selected.id,
-			variantPosition: selected.position,
-		})));
+			variantId: message.variant.id,
+			variantPosition: message.variant.position,
+		}]);
 	const targetVariant = selectedVariants.at(-1);
-	const variables = deriveMacroVariables({ initialData: snapshot.data, presetId, selectedVariants });
+	const variables = deriveMacroVariables({ initialData: history.initialData, presetId, selectedVariants });
 	return {
 		conversationId,
 		promptPresetId: presetId,
 		promptPresetName: requestedPreset.name,
-		position,
+		position: history.position,
 		target: targetVariant === undefined
 			? { type: "initial" }
 			: {
@@ -152,8 +148,10 @@ export const readMacroVariables = (
 	database: Database,
 	conversationId: number,
 	input: ReadMacroVariablesInput = {},
-): MacroVariables | undefined =>
-	readMacroVariablesFromConnection(connectConversationDatabase(database), conversationId, input);
+): MacroVariables | undefined => runConversationTransaction(
+	database,
+	(db) => readMacroVariablesFromConnection(db, conversationId, input),
+);
 
 export const editMacroVariables = (database: Database, input: EditMacroVariablesInput): EditedMacroVariables =>
 	runConversationTransaction(database, (db) => {

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, eq, isNull, max, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
@@ -73,10 +73,12 @@ export interface ActiveCastRow {
 
 // ==[HUMAN APPROVED]== Every Conversation read model uses the same active Cast query. The
 // complete row keeps lightweight history reads and detailed snapshots on one
-// active-membership definition while callers choose their own projection.
+// active-membership definition while callers choose their own projection. An
+// optional Participant allow-list keeps focused reads at the controlled rows.
 export const readActiveCast = (
 	db: ConversationDatabase,
 	conversationId: number,
+	participantIds?: readonly number[],
 ): ActiveCastRow[] =>
 	db
 		.select({
@@ -98,6 +100,9 @@ export const readActiveCast = (
 			and(
 				eq(participantTable.conversation_id, conversationId),
 				isNull(participantTable.deleted_at),
+				...(participantIds === undefined
+					? []
+					: [inArray(participantTable.id, participantIds)]),
 			),
 		)
 		.orderBy(asc(participantTable.position))

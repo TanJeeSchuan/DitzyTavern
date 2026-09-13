@@ -25,6 +25,8 @@ const encodedName = (name: string): string => encodeURIComponent(name);
 export const macroInitialValueKey = (presetId: number, name: string): string =>
 	`${initialPrefix(presetId)}${encodedName(name)}`;
 
+export const macroInitialValuePrefix = (presetId: number): string => initialPrefix(presetId);
+
 export const macroWritesKey = (presetId: number): string => writePrefix(presetId);
 
 const parsedWrites = (
@@ -79,13 +81,19 @@ const parsedInitial = (
 export const macroWritesToData = (
 	presetId: number,
 	writes: readonly MacroVariableWrite[],
-): ConversationDataEntry[] => writes.length === 0
-	? []
-	: [{
+): ConversationDataEntry[] => {
+	if (writes.length === 0) return [];
+	// ==[HUMAN APPROVED]== The evaluator keeps every write in order so later macros observe earlier
+	// values. Durable Variant state only needs the final write for each name;
+	// retaining the tombstone is essential because it masks inherited state.
+	const finalWrites = new Map<string, MacroVariableWrite>();
+	for (const write of writes) finalWrites.set(write.name, write);
+	return [{
 		namespace: MACRO_DATA_NAMESPACE,
 		key: macroWritesKey(presetId),
-		value: JSON.stringify(writes.map(encodeMacroVariableWrite)),
+		value: JSON.stringify([...finalWrites.values()].map(encodeMacroVariableWrite)),
 	}];
+};
 
 /** ==[HUMAN APPROVED]== Convert initial preset-scoped values into Conversation records. */
 export const macroInitialValuesToData = (
