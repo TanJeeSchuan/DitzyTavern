@@ -1,4 +1,5 @@
 import { streamText } from "ai";
+import { getErrorMessage } from "@ai-sdk/provider";
 import type {
 	ConnectionProfile,
 	ConnectionProfileSecretSnapshot,
@@ -25,9 +26,7 @@ import {
 } from "./errors";
 import {
 	formatProviderError,
-	snapshotProviderError,
 	snapshotProviderResponse,
-	type ProviderErrorLike,
 } from "./provider-errors";
 import { monitorSseActivity } from "./sse-activity";
 
@@ -235,11 +234,9 @@ async function* generateOpenAICompatibleStream(options: {
 						cancellation ?? "cancelled",
 					);
 				case "error":
-					if (part.error instanceof Error) {
-						throw normalizeProviderStreamError(part.error);
-					}
+					if (part.error instanceof ModelClientTransportError) throw part.error;
 					throw new ModelClientTransportError(
-						"The provider stream returned an error.",
+						getErrorMessage(part.error),
 						"provider",
 					);
 				default:
@@ -285,22 +282,6 @@ async function rejectProviderResponse(
 	if (response.ok) return;
 	const snapshot = await snapshotProviderResponse(response);
 	throw new ModelClientTransportError(
-		formatProviderError(snapshot),
-		"provider",
-	);
-}
-
-function normalizeProviderStreamError(
-	error: Error,
-): ModelClientTransportError {
-	if (error instanceof ModelClientTransportError) return error;
-	// ==[HUMAN APPROVED]== SAFETY: AI SDK provider failures expose the optional status/body fields
-	// represented by ProviderErrorLike; snapshotProviderError reads only those fields.
-	const snapshot = snapshotProviderError(error as ProviderErrorLike);
-	if (snapshot.body === undefined && snapshot.status === undefined) {
-		return new ModelClientTransportError("The provider stream returned an error.", "provider");
-	}
-	return new ModelClientTransportError(
 		formatProviderError(snapshot),
 		"provider",
 	);

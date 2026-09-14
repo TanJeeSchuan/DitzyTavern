@@ -124,6 +124,26 @@ describe("OpenAI Compatible Model Client", () => {
 		expect(body?.max_completion_tokens).toBeUndefined();
 	});
 
+	test("returns a provider stream error without replacing it", async () => {
+		const client = createOpenAICompatibleModelClient({
+			profile,
+			secrets: null,
+			fetch: async () => new Response(
+				`data: ${JSON.stringify({ error: { message: "raw upstream failure" } })}\n\n`,
+				{ headers: { "content-type": "text/event-stream" } },
+			),
+		});
+
+		await expect(collectModelClientGeneration(client, {
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			modelId: "local-model",
+			generationSettings: settings,
+		})).rejects.toMatchObject({
+			kind: "provider",
+			message: JSON.stringify({ message: "raw upstream failure" }),
+		});
+	});
+
 	test("preserves prompt block presentation roles and history authorship at the transport boundary", async () => {
 		let body: CapturedBody | undefined;
 		const client = createOpenAICompatibleModelClient({
