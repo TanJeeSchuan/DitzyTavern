@@ -67,6 +67,9 @@ export function StoryMessageView({
 		? message.activeSwipe
 		: message.swipes.findIndex((variant) => variant.id === active.id);
 	const atLastSwipe = activeIndex === message.swipes.length - 1;
+	const previousSwipeDisabled = (mutationsDisabled && !previewTarget) || activeIndex === 0;
+	const nextSwipeDisabled = (mutationsDisabled && !previewTarget) || (atLastSwipe && onSibling === undefined);
+	const [swipeDirection, setSwipeDirection] = useState<"next" | "previous">();
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
@@ -83,6 +86,15 @@ export function StoryMessageView({
 		onEdit(message.id, value);
 		setIsEditing(false);
 	};
+	const movePrevious = () => {
+		setSwipeDirection("previous");
+		onMoveSwipe(message.id, -1);
+	};
+	const moveNext = () => {
+		setSwipeDirection("next");
+		if (atLastSwipe) onSibling?.(message.id);
+		else onMoveSwipe(message.id, 1);
+	};
 
 	return (
 		<article
@@ -94,6 +106,17 @@ export function StoryMessageView({
 			data-preview-downstream={previewDownstream}
 			inert={previewDownstream || undefined}
 			data-selected={advancedActionsSelected}
+			onKeyDown={(event) => {
+				if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+				if (event.key === "ArrowLeft" && !previousSwipeDisabled) {
+					event.preventDefault();
+					movePrevious();
+				}
+				if (event.key === "ArrowRight" && !nextSwipeDisabled) {
+					event.preventDefault();
+					moveNext();
+				}
+			}}
 			onPointerUp={(event) => {
 				if (event.pointerType !== "touch") return;
 				if (event.target instanceof Element && event.target.closest("button, textarea, input")) return;
@@ -167,7 +190,11 @@ export function StoryMessageView({
 					</div>
 				</div>
 			) : (
-				<>
+				<div
+					key={active?.id}
+					className="variant-content"
+					data-swipe-direction={swipeDirection}
+				>
 					{active?.reasoning !== undefined && active.reasoning !== "" && (
 						<Collapsible.Root className="reasoning-content" aria-label="Reasoning Content">
 							<Collapsible.Trigger className="reasoning-trigger">
@@ -193,7 +220,7 @@ export function StoryMessageView({
 							: null}
 						{generationActive && <GenerationSphere authorName={authorName} />}
 					</div>
-				</>
+				</div>
 			)}
 
 			<footer className="message-actions">
@@ -219,8 +246,8 @@ export function StoryMessageView({
 					<button
 						className="icon-button"
 						type="button"
-						onClick={() => onMoveSwipe(message.id, -1)}
-						disabled={(mutationsDisabled && !previewTarget) || activeIndex === 0}
+						onClick={movePrevious}
+						disabled={previousSwipeDisabled}
 						aria-label="Previous Swipe"
 					>
 						<ChevronLeft aria-hidden="true" />
@@ -231,11 +258,8 @@ export function StoryMessageView({
 					<button
 						className="icon-button"
 						type="button"
-						onClick={() => atLastSwipe ? onSibling?.(message.id) : onMoveSwipe(message.id, 1)}
-						disabled={
-							(mutationsDisabled && !previewTarget) ||
-							(atLastSwipe && onSibling === undefined)
-						}
+						onClick={moveNext}
+						disabled={nextSwipeDisabled}
 						aria-label={atLastSwipe ? "New Swipe" : "Next Swipe"}
 					>
 						<ChevronRight aria-hidden="true" />

@@ -323,6 +323,22 @@
 	letter-spacing: -0.006em;
 }
 
+.variant-content[data-swipe-direction="next"] {
+	animation: variant-swipe-next 160ms ease-out;
+}
+
+.variant-content[data-swipe-direction="previous"] {
+	animation: variant-swipe-previous 160ms ease-out;
+}
+
+@keyframes variant-swipe-next {
+	from { opacity: 0.72; transform: translateX(0.4rem); }
+}
+
+@keyframes variant-swipe-previous {
+	from { opacity: 0.72; transform: translateX(-0.4rem); }
+}
+
 .prose p {
 	margin: 0;
 }
