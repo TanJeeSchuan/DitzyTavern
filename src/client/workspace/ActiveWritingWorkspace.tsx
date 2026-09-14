@@ -412,7 +412,15 @@ export function ActiveWritingWorkspace({
 			)}
 		</div>
 		{generation.generationError !== null && (
-			<Toast.Root className="generation-error-toast" type="foreground" open={generationToastOpen} onOpenChange={setGenerationToastOpen}>
+			<Toast.Root
+				className="generation-error-toast"
+				type="foreground"
+				open={generationToastOpen}
+				onOpenChange={(open) => {
+					setGenerationToastOpen(open);
+					if (!open) generation.acknowledgeGenerationError();
+				}}
+			>
 				<div>
 					<Toast.Title className="generation-error-toast-title">Generation failed</Toast.Title>
 					<Toast.Description className="generation-error-toast-description">{generation.generationError}</Toast.Description>

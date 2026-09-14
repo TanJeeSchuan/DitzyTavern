@@ -259,6 +259,7 @@ export function useAssemblyController({
 	return {
 		assembly,
 		directStartError,
+		acknowledgeDirectStartError: () => setDirectStartError(null),
 		assemblyAvailable,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,

@@ -398,7 +398,7 @@ const observeState = (
 		// stale subscription- or stop-level errors from before the terminal
 		// outcome was observed.
 		stopPending: terminal === null ? session.stopPending : false,
-		error: null,
+		error: terminal?.outcome === "failed" ? terminal.reason : null,
 		reconnects: 0,
 		terminal,
 	};

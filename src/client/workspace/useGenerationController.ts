@@ -221,8 +221,13 @@ export function useGenerationController({
 		sendPromptPlanPreview,
 		requestGeneration,
 		directStartError,
+		acknowledgeDirectStartError,
 	} = assemblyController;
 	const generationError = directStartError ?? sessionError;
+	const acknowledgeGenerationError = () => {
+		acknowledgeDirectStartError();
+		runner.dispatch({ type: "errors-acknowledged" });
+	};
 
 	const conversationSwitched = () => {
 		dispatchPendingStarts({ type: "conversation-switched" });
@@ -314,6 +319,7 @@ export function useGenerationController({
 		isGenerating,
 		stopPending,
 		generationError,
+		acknowledgeGenerationError,
 		assembly,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,

@@ -237,6 +237,7 @@ describe("the Generation session collection", () => {
 		state = settled.state;
 		expect(stateText(state, 7)?.phase).toBe("terminal");
 		expect(stateText(state, 7)?.terminal).toEqual({ outcome: "failed", reason: "The provider went quiet." });
+		expect(firstActiveGenerationSessionError(state)).toBe("The provider went quiet.");
 		expect(settled.effects.filter((effect) => effect.kind === "refresh-conversation")).toEqual([
 			{ kind: "refresh-conversation", conversationId: 42 },
 		]);
