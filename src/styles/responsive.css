@@ -281,7 +281,7 @@ body > .details-panel > .panel-body {
 		left: 0.7rem;
 		right: 0.7rem;
 		bottom: 0.7rem;
-		grid-template-columns: auto 1fr auto;
+		grid-template-columns: minmax(0, 1fr) auto auto;
 		gap: 0.4rem;
 		padding: 0.5rem;
 		border-radius: 1rem;

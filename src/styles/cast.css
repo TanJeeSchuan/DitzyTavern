@@ -121,51 +121,94 @@
 /* ── Composer Control selectors ─────────────────────────────────────── */
 
 .composer-controls-row {
-	grid-column: 1 / -1;
+	grid-column: 1 / 3;
+	grid-row: 1;
 	display: flex;
-	flex-wrap: wrap;
 	align-items: center;
-	gap: 0.6rem 1rem;
-	padding-bottom: 0.3rem;
+	min-width: 0;
+	padding: 0 0.15rem 0.55rem;
 	border-bottom: 1px solid var(--border);
 }
 
 .composer-controls {
-	display: flex;
-	flex-wrap: wrap;
+	position: relative;
+	display: grid;
+	grid-template-columns: auto auto 1fr;
 	align-items: center;
-	gap: 0.6rem 1rem;
+	width: 100%;
+	gap: 0;
 }
 
 .control-select {
-	display: grid;
-	gap: 0.15rem;
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
 }
 
 .control-select label {
 	color: var(--text-muted);
-	font-size: 0.64rem;
-	font-weight: 650;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
+	font-size: 0.72rem;
+	font-weight: 560;
 }
 
 .control-select select {
-	min-width: 9rem;
+	height: 2rem;
+	min-width: 7rem;
 	max-width: 13rem;
-	padding: 0.35rem 1.6rem 0.35rem 0.6rem;
-	border: 1px solid var(--border-strong);
-	border-radius: 0.6rem;
+	padding: 0.25rem 1.6rem 0.25rem 0.6rem;
+	border: 1px solid transparent;
+	border-radius: 0.65rem 0 0 0.65rem;
 	background: var(--surface-muted);
 	color: var(--foreground);
 	font-size: 0.78rem;
+	font-weight: 620;
+}
+
+.control-select:last-of-type::before {
+	content: "→";
+	display: grid;
+	height: 2rem;
+	place-items: center;
+	padding-inline: 0.45rem;
+	background: var(--surface-muted);
+	color: var(--accent);
+}
+
+.control-select:last-of-type label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+}
+
+.control-select:last-of-type select {
+	border-radius: 0 0.65rem 0.65rem 0;
+	background: color-mix(in oklch, var(--accent-soft) 58%, var(--surface-muted));
+}
+
+.control-select select:focus-visible {
+	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
+	outline-offset: 2px;
 }
 
 .model-selector {
-	position: relative;
-	display: grid;
+	position: absolute;
+	z-index: 3;
+	bottom: calc(100% + 0.55rem);
+	right: -2.6rem;
+	display: none;
 	gap: 0.15rem;
-	min-width: 12rem;
+	min-width: min(22rem, 76vw);
+	padding: 0.65rem;
+	border: 1px solid var(--border);
+	border-radius: 0.8rem;
+	background: var(--surface-raised);
+	box-shadow: 0 0.8rem 2rem var(--shadow-soft);
+}
+
+.composer[data-controls-open="true"] .model-selector {
+	display: grid;
 }
 
 .model-selector > label {
@@ -273,6 +316,7 @@
 }
 
 .composer-control-note {
+	grid-column: 1 / -1;
 	margin: 0;
 	color: var(--text-muted);
 	font-size: 0.72rem;
@@ -281,5 +325,16 @@
 
 .composer-control-note.is-error {
 	color: var(--accent);
+}
+
+@media (max-width: 720px) {
+	.control-select:first-child label {
+		display: none;
+	}
+
+	.control-select select {
+		min-width: 0;
+		max-width: 8rem;
+	}
 }
 

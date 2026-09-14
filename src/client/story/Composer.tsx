@@ -1,5 +1,5 @@
-import { Send, Square } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import { MoreHorizontal, Send, Square } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
 
 export function Composer({
 	draft,
@@ -24,11 +24,14 @@ export function Composer({
 	onCancel?: () => void;
 	stopPending?: boolean;
 }) {
+	const [controlsOpen, setControlsOpen] = useState(false);
+
 	return (
 		<form
 			className="composer"
 			data-disabled={!canWrite}
 			data-receded={isReceded}
+			data-controls-open={controlsOpen}
 			onSubmit={onSubmit}
 			onFocus={() => onFocusChange(true)}
 			onBlur={(event) => {
@@ -40,6 +43,17 @@ export function Composer({
 			{controlSelectors !== undefined && (
 				<div className="composer-controls-row">{controlSelectors}</div>
 			)}
+			{controlSelectors !== undefined && (
+				<button
+					className="composer-more-button"
+					type="button"
+					aria-label="Composer options"
+					aria-expanded={controlsOpen}
+					onClick={() => setControlsOpen((open) => !open)}
+				>
+					<MoreHorizontal aria-hidden="true" />
+				</button>
+			)}
 			<label htmlFor="writer-message" className="sr-only">
 				Message draft
 			</label>
@@ -47,7 +61,7 @@ export function Composer({
 				id="writer-message"
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder="Write a message to continue the story…"
+				placeholder="Write the next part of the story…"
 				disabled={!canWrite}
 				rows={1}
 			/>
