@@ -66,6 +66,7 @@ export function StoryMessageView({
 	const activeIndex = active === undefined
 		? message.activeSwipe
 		: message.swipes.findIndex((variant) => variant.id === active.id);
+	const atLastSwipe = activeIndex === message.swipes.length - 1;
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
@@ -230,12 +231,12 @@ export function StoryMessageView({
 					<button
 						className="icon-button"
 						type="button"
-						onClick={() => onMoveSwipe(message.id, 1)}
+						onClick={() => atLastSwipe ? onSibling?.(message.id) : onMoveSwipe(message.id, 1)}
 						disabled={
 							(mutationsDisabled && !previewTarget) ||
-							activeIndex === message.swipes.length - 1
+							(atLastSwipe && onSibling === undefined)
 						}
-						aria-label="Next Swipe"
+						aria-label={atLastSwipe ? "New Swipe" : "Next Swipe"}
 					>
 						<ChevronRight aria-hidden="true" />
 					</button>

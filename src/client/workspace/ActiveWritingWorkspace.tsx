@@ -1,3 +1,5 @@
+import { X } from "lucide-react";
+import { Toast } from "radix-ui";
 import { useEffect, useReducer, useState } from "react";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
@@ -78,6 +80,7 @@ export function ActiveWritingWorkspace({
 	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
+	const [generationToastOpen, setGenerationToastOpen] = useState(false);
 
 	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
@@ -96,6 +99,10 @@ export function ActiveWritingWorkspace({
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
+
+	useEffect(() => {
+		if (generation.generationError !== null) setGenerationToastOpen(true);
+	}, [generation.generationError]);
 
 	useEffect(() => {
 		window.localStorage.setItem(PROMPT_PLAN_INSPECTION_KEY, String(inspectPromptPlanBeforeGenerating));
@@ -205,6 +212,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	return (
+		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
 			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={togglePanel} />
@@ -341,7 +349,6 @@ export function ActiveWritingWorkspace({
 						/>
 					) : null}
 				/>
-				{generation.generationError !== null && <p className="generation-error" role="alert">{generation.generationError}</p>}
 			</main>
 
 			{assembly !== null && (
@@ -404,5 +411,18 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 		</div>
+		{generation.generationError !== null && (
+			<Toast.Root className="generation-error-toast" type="foreground" open={generationToastOpen} onOpenChange={setGenerationToastOpen}>
+				<div>
+					<Toast.Title className="generation-error-toast-title">Generation failed</Toast.Title>
+					<Toast.Description className="generation-error-toast-description">{generation.generationError}</Toast.Description>
+				</div>
+				<Toast.Close className="icon-button" aria-label="Dismiss generation error">
+					<X aria-hidden="true" />
+				</Toast.Close>
+			</Toast.Root>
+		)}
+		<Toast.Viewport className="toast-viewport" />
+		</Toast.Provider>
 	);
 }

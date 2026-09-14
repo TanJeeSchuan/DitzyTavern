@@ -445,7 +445,7 @@ const settleSubscription = (
 			...session,
 			phase: "terminal",
 			stopPending: false,
-			error: null,
+			error: action.result.reason,
 			terminal: { outcome: "failed", reason: action.result.reason },
 		};
 	}
@@ -589,7 +589,6 @@ export const firstActiveGenerationSessionError = (
 	for (const session of state.sessions.values()) {
 		if (
 			session.conversationId === state.activeConversationId &&
-			session.terminal === null &&
 			session.error !== null
 		) {
 			return session.error;

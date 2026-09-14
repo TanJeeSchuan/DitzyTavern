@@ -266,6 +266,9 @@ describe("the Generation session collection", () => {
 			state = settled.state;
 			expect(stateText(state, 7)?.terminal).toEqual(example.terminal);
 			expect(stateText(state, 7)?.phase).toBe("terminal");
+			expect(firstActiveGenerationSessionError(state)).toBe(
+				example.terminal?.outcome === "failed" ? example.terminal.reason : null,
+			);
 			expect(settled.effects).toEqual([{ kind: "refresh-conversation", conversationId: 42 }]);
 		}
 	});
