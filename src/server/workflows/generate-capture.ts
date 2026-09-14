@@ -313,7 +313,7 @@ export function prepareGenerationInputs(
 			});
 			if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 			const connection = input.connection === undefined
-				? resolveConnectionSnapshot(input.database, input.connectionSettings)
+				? resolveConnectionSnapshot(input.database, settings.connectionProfileId, input.connectionSettings)
 				: input.connection;
 			return { summary, recipe, settings, selected, connection };
 		},
@@ -560,13 +560,12 @@ const toCapturedGeneration = (
 
 function resolveConnectionSnapshot(
 	database: Database,
+	profileId: number | null,
 	options: ConnectionSettingsModuleOptions | undefined,
 ): ModelClientConnectionSnapshot | null {
 	const settings = createConnectionSettingsModule(database, options).get();
-	if (settings.activeProfileId === null) return null;
-	const profile = settings.profiles.find(
-		(entry) => entry.id === settings.activeProfileId,
-	);
+	if (profileId === null) return null;
+	const profile = settings.profiles.find((entry) => entry.id === profileId);
 	if (profile === undefined) return null;
 	return connectionSnapshotOf(settings, profile);
 }

@@ -38,7 +38,7 @@ export interface GenerationAttemptInput {
 	connection?: ModelClientConnectionSnapshot | null;
 	connectionSettings?: ConnectionSettingsModuleOptions;
 	// ==[HUMAN APPROVED]== The signal belongs to this one Generation. A cancelled attempt never
-	// changes the active Profile or another Conversation.
+	// changes another Conversation's model selection.
 	signal?: AbortSignal;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 	/** ==[HUMAN APPROVED]== Flush process-local output before the workflow performs a terminal write. */

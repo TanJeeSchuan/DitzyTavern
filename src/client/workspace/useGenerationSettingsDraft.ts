@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
-import { loadConnectionSettings } from "../connection-settings";
+import type { ConnectionProfile } from "../connection-settings";
 import {
 	applyConversationCommand,
 	loadConversationGenerationSettings,
@@ -118,7 +118,7 @@ type LoadStatus = "loading" | "ready" | "saving" | "load-error";
 interface GenerationSettingsDraftOptions {
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	transmittingNamespace?: OverridesNamespace | null;
+	connectionProfiles?: readonly ConnectionProfile[];
 }
 
 /**
@@ -131,7 +131,7 @@ interface GenerationSettingsDraftOptions {
 export function useGenerationSettingsDraft({
 	conversation,
 	onConversationChange,
-	transmittingNamespace: externalTransmittingNamespace,
+	connectionProfiles,
 }: GenerationSettingsDraftOptions) {
 	const [settings, setSettings] = useState<ConversationGenerationSettings | null>(null);
 	const [instruction, setInstruction] = useState("");
@@ -188,34 +188,22 @@ export function useGenerationSettingsDraft({
 			});
 	}, [conversation?.id]);
 
-	// ==[HUMAN APPROVED]== The active Connection Profile is global. The workspace supplies its
-	// current namespace when available so activating a Profile updates this indication without
-	// reloading or replacing the local Generation draft.
-	useAsyncEffect((isCancelled) => {
-		if (externalTransmittingNamespace !== undefined) {
-			setTransmittingNamespace(
-				externalTransmittingNamespace === null
-					? { status: "no-active-profile" }
-					: { status: "known", namespace: externalTransmittingNamespace },
-			);
+	useEffect(() => {
+		if (connectionProfiles === undefined || settings === null) {
+			setTransmittingNamespace({ status: "loading" });
 			return;
 		}
-		void loadConnectionSettings()
-			.then((settings) => {
-				if (isCancelled()) return;
-				const active = settings.profiles.find(
-					(profile) => profile.id === settings.activeProfileId,
-				);
-				setTransmittingNamespace(
-					active === undefined
-						? { status: "no-active-profile" }
-						: { status: "known", namespace: active.apiFormat },
-				);
-			})
-			.catch(() => {
-				if (!isCancelled()) setTransmittingNamespace({ status: "unavailable" });
-			});
-	}, [externalTransmittingNamespace]);
+		const selectedProfile = connectionProfiles.find(
+			(profile) => profile.id === settings.connectionProfileId,
+		);
+		setTransmittingNamespace(selectedProfile === undefined
+			? { status: "no-active-profile" }
+			: { status: "known", namespace: selectedProfile.apiFormat });
+	}, [connectionProfiles, settings]);
+
+	const adoptModelSelection = (connectionProfileId: number, modelId: string) => {
+		setSettings((current) => current === null ? null : { ...current, connectionProfileId, modelId });
+	};
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
@@ -333,6 +321,7 @@ export function useGenerationSettingsDraft({
 		status,
 		problem,
 		transmittingNamespace,
+		adoptModelSelection,
 		instruction,
 		strategy,
 		setStrategy: updateStrategy,

@@ -226,7 +226,7 @@ export function resolveSamplingValues(
 
 // ==[HUMAN APPROVED]== Request Overrides drafts. Each namespace is an independent JSON object and
 // the closed namespace set mirrors the Conversation Generation Settings
-// contract, so switching the active Connection Profile never transmits
+// contract, so switching the selected Connection Profile never transmits
 // overrides authored for another API Format.
 export type OverridesNamespace =
 	| "chat-completions"

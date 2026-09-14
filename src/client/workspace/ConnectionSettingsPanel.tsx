@@ -55,9 +55,6 @@ export function ConnectionSettingsPanel({
 			{controller.pendingDeletionProfile && (
 				<ConnectionProfileDeletion
 					profile={controller.pendingDeletionProfile}
-					settings={settings}
-					replacementProfileId={controller.replacementProfileId}
-					onReplacementChange={controller.setReplacementProfileId}
 					onCancel={() => controller.setPendingDeletionProfileId(null)}
 					onDelete={() => void controller.deletePendingProfile()}
 				/>

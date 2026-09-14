@@ -24,8 +24,7 @@ type ConnectionCommandPayload =
 	| { type: "apply-profile"; expectedRevision: number; profileId: number; profile: ConnectionProfileDraft }
 	| { type: "set-credential"; expectedRevision: number; profileId: number; credential: string }
 	| { type: "reset-credential"; expectedRevision: number; profileId: number; confirmed: boolean }
-	| { type: "activate-profile"; expectedRevision: number; profileId: number }
-	| { type: "delete-profile"; expectedRevision: number; profileId: number; replacementProfileId?: number | null };
+	| { type: "delete-profile"; expectedRevision: number; profileId: number };
 
 describe("Connection Settings transport adapter", () => {
 	let database: Database;
@@ -65,7 +64,6 @@ describe("Connection Settings transport adapter", () => {
 		expect(settings.status).toBe(200);
 		expect(await settings.json()).toEqual({
 			revision: 0,
-			activeProfileId: null,
 			profiles: [],
 		});
 
@@ -89,7 +87,6 @@ describe("Connection Settings transport adapter", () => {
 		expect(response.status).toBe(200);
 		const body = await response.json();
 		expect(body.outcome).toBe("applied");
-		expect(body.settings.activeProfileId).toBe(body.settings.profiles[0].id);
 		expect(body.settings.profiles[0].credentialConfigured).toBe(true);
 		expect(JSON.stringify(body)).not.toContain("secret-value-never-returned");
 
@@ -237,7 +234,7 @@ describe("Connection Settings transport adapter", () => {
 		});
 	});
 
-	test("activates and deletes Profiles through revisioned commands", async () => {
+	test("deletes any saved Profile without choosing a replacement", async () => {
 		const firstResponse = await post({
 			type: "create-profile",
 			expectedRevision: 0,
@@ -250,72 +247,15 @@ describe("Connection Settings transport adapter", () => {
 			profile: { ...deepSeekProfile, displayName: "Local" },
 		});
 		const secondBody = await secondResponse.json();
-		const firstId = firstBody.settings.profiles[0].id;
 		const secondId = secondBody.settings.profiles[1].id;
-
-		const activated = await post({
-			type: "activate-profile",
-			expectedRevision: secondBody.settings.revision,
-			profileId: secondId,
-		});
-		expect(activated.status).toBe(200);
-		expect((await activated.json()).settings.activeProfileId).toBe(secondId);
-
-		const missingReplacement = await post({
-			type: "delete-profile",
-			expectedRevision: secondBody.settings.revision + 1,
-			profileId: secondId,
-		});
-		expect(missingReplacement.status).toBe(422);
-		expect((await missingReplacement.json()).reason).toContain("requires a replacement");
 
 		const deleted = await post({
 			type: "delete-profile",
-			expectedRevision: secondBody.settings.revision + 1,
+			expectedRevision: secondBody.settings.revision,
 			profileId: secondId,
-			replacementProfileId: firstId,
 		});
 		expect(deleted.status).toBe(200);
-		expect((await deleted.json()).settings).toMatchObject({
-			activeProfileId: firstId,
-			profiles: [{ id: firstId }],
-		});
-	});
-
-	test("returns a typed authoritative conflict for stale activation", async () => {
-		const firstResponse = await post({
-			type: "create-profile",
-			expectedRevision: 0,
-			profile: deepSeekProfile,
-		});
-		const firstBody = await firstResponse.json();
-		const secondResponse = await post({
-			type: "create-profile",
-			expectedRevision: firstBody.settings.revision,
-			profile: { ...deepSeekProfile, displayName: "Local" },
-		});
-		const secondBody = await secondResponse.json();
-		const secondId = secondBody.settings.profiles[1].id;
-
-		const activated = await post({
-			type: "activate-profile",
-			expectedRevision: secondBody.settings.revision,
-			profileId: secondId,
-		});
-		expect(activated.status).toBe(200);
-
-		const stale = await post({
-			type: "activate-profile",
-			expectedRevision: secondBody.settings.revision,
-			profileId: secondBody.settings.profiles[0].id,
-		});
-		expect(stale.status).toBe(409);
-		expect(await stale.json()).toMatchObject({
-			outcome: "conflict",
-			expectedRevision: secondBody.settings.revision,
-			actualRevision: secondBody.settings.revision + 1,
-			currentSettings: { activeProfileId: secondId },
-		});
+		expect((await deleted.json()).settings.profiles).toEqual([firstBody.settings.profiles[0]]);
 	});
 
 	test("tests the unsaved draft with kept or replacement credentials without durable side effects", async () => {

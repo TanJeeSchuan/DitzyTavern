@@ -35,6 +35,7 @@ export const DEFAULT_CONTINUATION_INSTRUCTION =
 // declaration: adding a canonical field fails typecheck until the default
 // states its value, so the stored settings cannot silently omit a field.
 export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSettings = {
+	connectionProfileId: null,
 	modelId: "deepseek-chat",
 	temperature: null,
 	topP: null,
@@ -82,7 +83,7 @@ type SettingsRowValues = {
 	[K in GenerationSettingsField as (typeof settingsColumn)[K]]: SettingsRow[(typeof settingsColumn)[K]];
 };
 
-const settingsRowValues = (settings: ConversationGenerationSettings): SettingsRowValues => ({
+const settingsRowValues = (settings: CanonicalGenerationSettings): SettingsRowValues => ({
 	model_id: settings.modelId,
 	temperature: settings.temperature,
 	top_p: settings.topP,
@@ -96,6 +97,11 @@ const settingsRowValues = (settings: ConversationGenerationSettings): SettingsRo
 	continuation_instruction: settings.continuationInstruction,
 	continuation_prefill_suffix: settings.continuationPrefillSuffix,
 	request_overrides_json: JSON.stringify(settings.requestOverrides),
+});
+
+const modelSelectionRowValues = (settings: ConversationGenerationSettings) => ({
+	connection_profile_id: settings.connectionProfileId,
+	model_id: settings.modelId,
 });
 
 export function readConversationGenerationSettings(
@@ -217,8 +223,8 @@ const requirePositiveWholeNumber = (label: string, value: number): number => {
 };
 
 const normalizeGenerationSettings = (
-	draft: ConversationGenerationSettings,
-): ConversationGenerationSettings => ({
+	draft: CanonicalGenerationSettings,
+): CanonicalGenerationSettings => ({
 	modelId: normalizeSettingsField.modelId(draft.modelId),
 	temperature: normalizeSettingsField.temperature(draft.temperature),
 	topP: normalizeSettingsField.topP(draft.topP),
@@ -260,6 +266,7 @@ const readSettingsFieldValue: SettingsFieldRowReader = {
 };
 
 const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => ({
+	connectionProfileId: row.connection_profile_id,
 	modelId: readSettingsFieldValue.modelId(row),
 	temperature: readSettingsFieldValue.temperature(row),
 	topP: readSettingsFieldValue.topP(row),
@@ -274,6 +281,21 @@ const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSett
 	continuationPrefillSuffix: readSettingsFieldValue.continuationPrefillSuffix(row),
 	requestOverrides: readSettingsFieldValue.requestOverrides(row),
 });
+
+export function updateConversationModelSelection(
+	db: ConversationDatabase,
+	conversationId: number,
+	settings: ConversationGenerationSettings,
+): ConversationGenerationSettings {
+	const updated = db
+		.update(conversationGenerationSettingsTable)
+		.set(modelSelectionRowValues(settings))
+		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
+		.returning()
+		.get();
+	if (updated === undefined) throw new ConversationNotFoundError(conversationId);
+	return readGenerationSettingsRow(updated);
+}
 
 function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffix {
 	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;

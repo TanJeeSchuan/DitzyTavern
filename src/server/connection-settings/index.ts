@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import {
 	connectionProfileDiscoveryModelTable,
 	connectionProfileTable,
+	conversationGenerationSettingsTable,
 } from "../database/schema";
 import {
 	getConnectionSecretKey,
@@ -11,7 +12,6 @@ import {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
-	ConnectionProfileReplacementRequiredError,
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from "./errors";
@@ -47,7 +47,6 @@ import {
 } from "./validation";
 import type {
 	ApplyConnectionProfileInput,
-	ActivateConnectionProfileInput,
 	ConnectionProfile,
 	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
@@ -70,13 +69,9 @@ interface RevisionedProfileWriteTx extends RevisionedWriteTx {
 	readonly profile: ConnectionProfileRow;
 }
 
-// ==[HUMAN APPROVED]== A revisioned mutate reports whether it changed state and, when it
-// did, the active Profile the seam should record. Every advanced outcome
-// bumps the revision exactly once; "unchanged" (re-activating the
-// already-active Profile) deliberately skips the bump.
-type RevisionedWriteOutcome =
-	| { readonly kind: "advanced"; readonly nextActiveProfileId: number | null }
-	| { readonly kind: "unchanged" };
+// ==[HUMAN APPROVED]== Every successful revisioned mutation advances the
+// Connection Settings revision exactly once.
+type RevisionedWriteOutcome = { readonly kind: "advanced" };
 
 export interface ConnectionSettingsModuleOptions {
 	readonly masterKey?: Uint8Array;
@@ -85,7 +80,7 @@ export interface ConnectionSettingsModuleOptions {
 /** ==[HUMAN APPROVED]==
  * Creates the safe connection identity captured by runtime attempts and
  * persisted for generation inspection. Both paths use this constructor so
- * their provenance cannot disagree about the active Profile or revision.
+ * their provenance cannot disagree about the selected Profile or revision.
  */
 export function connectionSnapshotOf(
 	settings: ConnectionSettingsSnapshot,
@@ -119,22 +114,8 @@ export function createConnectionSettingsModule(
 			.orderBy(asc(connectionProfileTable.id))
 			.all()
 			.map((profile) => readProfile(db, profile, getKey()));
-		const activeProfileId = settings.active_profile_id;
-		if (profiles.length === 0 && activeProfileId !== null) {
-			throw new Error("Connection Settings active Profile invariant is broken.");
-		}
-		if (
-			activeProfileId !== null &&
-			!profiles.some((profile) => profile.id === activeProfileId)
-		) {
-			throw new Error("Connection Settings active Profile invariant is broken.");
-		}
-		if (profiles.length > 0 && activeProfileId === null) {
-			throw new Error("Connection Settings active Profile invariant is broken.");
-		}
 		return {
 			revision: settings.revision,
-			activeProfileId,
 			profiles,
 		};
 	};
@@ -163,10 +144,8 @@ export function createConnectionSettingsModule(
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
 			requireRevision(read, settings.revision, input.expectedRevision);
-			const outcome = input.mutate({ db, settings });
-			if (outcome.kind === "advanced") {
-				advanceRevision(db, settings.revision, outcome.nextActiveProfileId);
-			}
+			input.mutate({ db, settings });
+			advanceRevision(db, settings.revision);
 			return read();
 		});
 		return write.immediate();
@@ -205,7 +184,7 @@ export function createConnectionSettingsModule(
 		const headerOperations = validateHeaderOperations(input.headers ?? []);
 		return revisionedWrite({
 			expectedRevision: input.expectedRevision,
-			mutate: ({ db, settings }) => {
+			mutate: ({ db }) => {
 				ensureProfileNameAvailable(db, profile.displayName);
 
 				const inserted = db
@@ -218,15 +197,16 @@ export function createConnectionSettingsModule(
 				}
 
 				writePinnedModels(db, inserted.id, profile.pinnedModels);
+				db.update(conversationGenerationSettingsTable)
+					.set({ connection_profile_id: inserted.id })
+					.where(isNull(conversationGenerationSettingsTable.connection_profile_id))
+					.run();
 				writeSecretState(db, inserted.id, {
 					credential,
 					headers: applyHeaderOperations({}, headerOperations),
 				}, getKey());
 
-				return {
-					kind: "advanced",
-					nextActiveProfileId: settings.active_profile_id ?? inserted.id,
-				};
+				return { kind: "advanced" };
 			},
 		});
 	};
@@ -237,7 +217,7 @@ export function createConnectionSettingsModule(
 		return revisionedProfileWrite({
 			expectedRevision: input.expectedRevision,
 			profileId: input.profileId,
-			mutate: ({ db, profile: current, settings }) => {
+			mutate: ({ db, profile: current }) => {
 				ensureProfileNameAvailable(db, profile.displayName, input.profileId);
 				const currentSecret = readSecret(db, input.profileId, getKey());
 				const modelsUrlChanged = current.models_url !== profile.modelsUrl;
@@ -256,46 +236,16 @@ export function createConnectionSettingsModule(
 					credential: currentSecret?.credential ?? null,
 					headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
 				}, getKey());
-				return {
-					kind: "advanced",
-					nextActiveProfileId: settings.active_profile_id,
-				};
+				return { kind: "advanced" };
 			},
 		});
 	};
-
-	const activateProfile = (input: ActivateConnectionProfileInput) =>
-		revisionedProfileWrite({
-			expectedRevision: input.expectedRevision,
-			profileId: input.profileId,
-			mutate: ({ settings }) =>
-				settings.active_profile_id === input.profileId
-					? { kind: "unchanged" }
-					: { kind: "advanced", nextActiveProfileId: input.profileId },
-		});
 
 	const deleteProfile = (input: DeleteConnectionProfileInput) =>
 		revisionedProfileWrite({
 			expectedRevision: input.expectedRevision,
 			profileId: input.profileId,
-			mutate: ({ db, settings }) => {
-				const profiles = db
-					.select({ id: connectionProfileTable.id })
-					.from(connectionProfileTable)
-					.orderBy(asc(connectionProfileTable.id))
-					.all();
-				const deletingActive = settings.active_profile_id === input.profileId;
-				let nextActiveProfileId = settings.active_profile_id;
-				if (deletingActive && profiles.length > 1) {
-					const replacementProfileId = input.replacementProfileId ?? null;
-					if (replacementProfileId === null || replacementProfileId === input.profileId) {
-						throw new ConnectionProfileReplacementRequiredError();
-					}
-					requireProfile(db, replacementProfileId);
-					nextActiveProfileId = replacementProfileId;
-				} else if (deletingActive) {
-					nextActiveProfileId = null;
-				}
+			mutate: ({ db }) => {
 
 				// ==[HUMAN APPROVED]== The row is deleted before the seam advances: when the deleted
 				// Profile holds the active seat, the foreign key nulls the selection
@@ -305,7 +255,7 @@ export function createConnectionSettingsModule(
 				db.delete(connectionProfileTable)
 					.where(eq(connectionProfileTable.id, input.profileId))
 					.run();
-				return { kind: "advanced", nextActiveProfileId };
+				return { kind: "advanced" };
 			},
 		});
 
@@ -318,10 +268,7 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: (tx) => {
 				writeCredentialKeepingHeaders(tx, input.credential);
-				return {
-					kind: "advanced",
-					nextActiveProfileId: tx.settings.active_profile_id,
-				};
+				return { kind: "advanced" };
 			},
 		});
 	};
@@ -331,12 +278,9 @@ export function createConnectionSettingsModule(
 		return revisionedProfileWrite({
 			expectedRevision: input.expectedRevision,
 			profileId: input.profileId,
-			mutate: ({ db, settings }) => {
+			mutate: ({ db }) => {
 				writePinnedModels(db, input.profileId, pinnedModels);
-				return {
-					kind: "advanced",
-					nextActiveProfileId: settings.active_profile_id,
-				};
+				return { kind: "advanced" };
 			},
 		});
 	};
@@ -382,10 +326,7 @@ export function createConnectionSettingsModule(
 			profileId: input.profileId,
 			mutate: (tx) => {
 				writeCredentialKeepingHeaders(tx, null);
-				return {
-					kind: "advanced",
-					nextActiveProfileId: tx.settings.active_profile_id,
-				};
+				return { kind: "advanced" };
 			},
 		});
 	};
@@ -399,7 +340,6 @@ export function createConnectionSettingsModule(
 		})),
 		createProfile,
 		applyProfile,
-		activateProfile,
 		deleteProfile,
 		setPinnedModels,
 		replaceDiscoveryCatalog,
@@ -431,7 +371,6 @@ export {
 	ConnectionCredentialConfirmationError,
 	ConnectionProfileNameConflictError,
 	ConnectionProfileNotFoundError,
-	ConnectionProfileReplacementRequiredError,
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 	listConnectionPresets,
@@ -439,7 +378,6 @@ export {
 };
 export type {
 	ApplyConnectionProfileInput,
-	ActivateConnectionProfileInput,
 	ConnectionAdapter,
 	ConnectionApiFormat,
 	ConnectionPreset,

@@ -15,6 +15,7 @@ import type {
 	ConversationCapabilities as SharedConversationCapabilities,
 	ConversationControl as SharedConversationControl,
 	ConversationControlValidity as SharedConversationControlValidity,
+	ConversationGenerationSettings as SharedConversationGenerationSettings,
 	ParticipantDefinition as SharedParticipantDefinition,
 	PromptPlan,
 	VariantDetails as SharedVariantDetails,
@@ -51,9 +52,9 @@ export type MacroVariables = SharedMacroVariables;
 // fields: adding a canonical field changes the domain type, the defaults,
 // and the storage adapter together, so the copies cannot drift. Request
 // Overrides retain separate namespaces for each API Format so switching a
-// global Connection Profile never transmits settings authored for another
+// selected Connection Profile never transmits settings authored for another
 // wire format.
-export type ConversationGenerationSettings = CanonicalGenerationSettings;
+export type ConversationGenerationSettings = SharedConversationGenerationSettings;
 
 export type {
 	GenerationJsonObject as GenerationRequestOverrides,

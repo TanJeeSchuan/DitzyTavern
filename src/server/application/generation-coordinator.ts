@@ -161,7 +161,7 @@ interface AcceptedGeneration {
 
 /**
  * ==[HUMAN APPROVED]== The attempt fields the Coordinator resolves itself: the transport it builds
- * from the active Profile, the detached signal and observers the runtime
+ * from the Conversation-selected Profile, the detached signal and observers the runtime
  * owns, and the terminal checkpoint flush. A caller supplies only the rest.
  */
 export type GenerationStartRequest<TInput> = Omit<
@@ -223,7 +223,7 @@ interface ResolvedGenerationTransport {
  *
  * The workflow module owns prompt capture and Conversation lifecycle rules;
  * this seam owns the concerns specific to an HTTP-started attempt: resolving
- * the active Profile, constructing its Model Client, attaching the process
+ * the Conversation-selected Profile, constructing its Model Client, attaching the process
  * runtime, checkpointing output, retaining inspection state, and closing a
  * short-lived request database after terminal work.
  */
@@ -428,7 +428,9 @@ export class GenerationCoordinator {
 			if (!createConversationModule(database).exists(input.conversationId)) {
 				throw new ConversationNotFoundError(input.conversationId);
 			}
-			const transport = this.resolveTransport(database);
+			const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
+			if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
+			const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
 			const runtimeRegistry = generationRuntimeFor(this.configuredDatabase);
 			let runtime: GenerationRuntime | undefined;
 			const started = input.start({
@@ -510,15 +512,15 @@ export class GenerationCoordinator {
 		};
 	}
 
-	private resolveTransport(database: Database): ResolvedGenerationTransport {
+	private resolveTransport(database: Database, profileId: number | null): ResolvedGenerationTransport {
 		const settingsModule = createConnectionSettingsModule(database, this.options);
 		const settings = settingsModule.get();
-		if (settings.activeProfileId === null) {
-			throw new GenerationConfigurationError("An active Connection Profile is required for Generation.");
+		if (profileId === null) {
+			throw new GenerationConfigurationError("Choose a model and connection before generating.");
 		}
-		const profile = settings.profiles.find((entry) => entry.id === settings.activeProfileId);
+		const profile = settings.profiles.find((entry) => entry.id === profileId);
 		if (profile === undefined) {
-			throw new GenerationConfigurationError("The active Connection Profile is unavailable.");
+			throw new GenerationConfigurationError("The selected Connection Profile is unavailable.");
 		}
 		return {
 			modelClient: createModelClient({

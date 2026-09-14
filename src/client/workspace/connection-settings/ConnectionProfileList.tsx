@@ -1,4 +1,4 @@
-import { Check, Ellipsis, Plus, Trash2 } from "lucide-react";
+import { Ellipsis, Plus, Trash2 } from "lucide-react";
 import type { ConnectionProfile, ConnectionPreset, ConnectionSettings } from "../../connection-settings";
 
 type Props = {
@@ -39,12 +39,11 @@ export function ConnectionProfileList({
 			{settings.profiles.length > 0 && (
 				<div className="connection-profile-list" aria-label="Connections">
 					{settings.profiles.map((profile) => (
-						<div className="connection-profile-card" key={profile.id} data-selected={profile.id === selectedProfileId} data-active={profile.id === settings.activeProfileId}>
+						<div className="connection-profile-card" key={profile.id} data-selected={profile.id === selectedProfileId}>
 							<button className="connection-profile-choice" type="button" onClick={() => onChooseProfile(profile)}>
 								<span>{profile.displayName}</span>
 								<small>
-									{profile.id === settings.activeProfileId ? <strong><Check aria-hidden="true" /> Active</strong> : "Available"}
-									{profile.credentialConfigured ? ", credential saved" : ", no credential saved"}
+									Available to every Chat{profile.credentialConfigured ? ", credential saved" : ", no credential saved"}
 								</small>
 							</button>
 							<details

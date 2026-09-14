@@ -545,16 +545,18 @@ export const generationReplayTable = sqliteTable(
 	},
 );
 
-// ==[HUMAN APPROVED]== Conversation-owned generation controls. These values are deliberately
-// separate from the application-global Connection Profile: activating or
-// editing a Profile changes the transport used by later Generations, never
-// the model selection or sampling choices of an existing Conversation.
+// ==[HUMAN APPROVED]== Conversation-owned generation controls. A model selection is the
+// Connection Profile and provider model ID together, so changing one Chat
+// never redirects another Chat's later Generations.
 export const conversationGenerationSettingsTable = sqliteTable(
 	"conversation_generation_settings",
 	{
 		conversation_id: int()
 			.primaryKey()
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
+		connection_profile_id: int().references(() => connectionProfileTable.id, {
+			onDelete: "set null",
+		}),
 		model_id: text().notNull().default("deepseek-chat"),
 		temperature: real(),
 		top_p: real(),
@@ -575,10 +577,8 @@ export const conversationGenerationSettingsTable = sqliteTable(
 	},
 );
 
-// ==[HUMAN APPROVED]== Application-global model connection configuration. These tables are
-// deliberately separate from Chat/Conversation state: changing the active
-// Profile changes only future Generations and never rewrites Conversation
-// data.
+// ==[HUMAN APPROVED]== Application-global catalog of model connections. Every saved Profile is
+// available to every Chat; the Chat stores which one its model selection uses.
 export const connectionProfileTable = sqliteTable(
 	"connection_profile",
 	{
@@ -606,9 +606,6 @@ export const connectionProfileTable = sqliteTable(
 export const connectionSettingsTable = sqliteTable("connection_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
-	active_profile_id: int().references(() => connectionProfileTable.id, {
-		onDelete: "set null",
-	}),
 });
 
 // ==[HUMAN APPROVED]== One encrypted payload per Profile. The dedicated credential and custom

@@ -225,9 +225,10 @@ describe("generationSettingsUpdate", () => {
 
 describe("conversationGenerationSettings", () => {
 	test("keeps the canonical validation semantics on the transport boundary", () => {
-		expect(Value.Check(conversationGenerationSettings, validSettings())).toBe(true);
-		expect(Value.Check(conversationGenerationSettings, { ...validSettings(), responseBudget: 0 })).toBe(false);
-		expect(Value.Check(conversationGenerationSettings, { ...validSettings(), continuationPrefillSuffix: "\t" })).toBe(false);
+		const settings = { connectionProfileId: null, ...validSettings() };
+		expect(Value.Check(conversationGenerationSettings, settings)).toBe(true);
+		expect(Value.Check(conversationGenerationSettings, { ...settings, responseBudget: 0 })).toBe(false);
+		expect(Value.Check(conversationGenerationSettings, { ...settings, continuationPrefillSuffix: "\t" })).toBe(false);
 	});
 });
 

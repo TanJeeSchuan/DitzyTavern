@@ -1,5 +1,5 @@
 import { MoreHorizontal, Send, Square } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export function Composer({
 	draft,
@@ -25,9 +25,24 @@ export function Composer({
 	stopPending?: boolean;
 }) {
 	const [controlsOpen, setControlsOpen] = useState(false);
+	const composerRef = useRef<HTMLFormElement>(null);
+
+	useEffect(() => {
+		if (!controlsOpen) return;
+		const close = (event: PointerEvent) => {
+			if (!(event.target instanceof Node)) return;
+			const composer = composerRef.current;
+			if (composer?.querySelector(".model-selector")?.contains(event.target)
+				|| composer?.querySelector(".composer-more-button")?.contains(event.target)) return;
+			setControlsOpen(false);
+		};
+		document.addEventListener("pointerdown", close);
+		return () => document.removeEventListener("pointerdown", close);
+	}, [controlsOpen]);
 
 	return (
 		<form
+			ref={composerRef}
 			className="composer"
 			data-disabled={!canWrite}
 			data-receded={isReceded}

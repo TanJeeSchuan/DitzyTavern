@@ -44,7 +44,6 @@ const preset: ConnectionPreset = {
 
 const controllerSettings = {
 	revision: 2,
-	activeProfileId: 2,
 	profiles: [profile(1, "First"), profile(2, "Second", ["second-model"])],
 };
 
@@ -57,7 +56,6 @@ const controllerState = (): ConnectionSettingsControllerState => ({
 	headerEditorData: { "X-Client": { configured: true, operation: "replace", replacement: "local" } },
 	testModelId: "local-model",
 	testResult: { outcome: "success", message: "Connected." },
-	replacementProfileId: 2,
 	pendingDeletionProfileId: 1,
 	openProfileMenuId: 1,
 	presetChoicesOpen: true,
@@ -98,7 +96,7 @@ describe("copyDraft", () => {
 });
 
 describe("reduceConnectionSettingsController", () => {
-	test("loads settings and initializes the active profile editor atomically", () => {
+	test("loads settings and initializes the first profile editor atomically", () => {
 		const next = reduceConnectionSettingsController(
 			createConnectionSettingsControllerState(),
 			{ type: "load-succeeded", settings: controllerSettings, presets: [preset] },
@@ -106,11 +104,11 @@ describe("reduceConnectionSettingsController", () => {
 
 		expect(next.settings).toBe(controllerSettings);
 		expect(next.presets).toEqual([preset]);
-		expect(next.selectedProfileId).toBe(2);
-		expect(next.draft).toEqual(copyDraft(controllerSettings.profiles[1]!));
-		expect(next.testModelId).toBe("second-model");
+		expect(next.selectedProfileId).toBe(1);
+		expect(next.draft).toEqual(copyDraft(controllerSettings.profiles[0]!));
+		expect(next.testModelId).toBe("model");
 		expect(next.headerEditorData).toEqual(
-			headerEditorDataFor(controllerSettings.profiles[1]!.headers),
+			headerEditorDataFor(controllerSettings.profiles[0]!.headers),
 		);
 	});
 
@@ -148,7 +146,6 @@ describe("reduceConnectionSettingsController", () => {
 			actualRevision: 3,
 			currentSettings: {
 				revision: 3,
-				activeProfileId: 2,
 				profiles: [profile(2, "Authoritative")],
 			},
 		};
@@ -171,11 +168,9 @@ describe("reduceConnectionSettingsController", () => {
 			type: "delete-succeeded",
 			settings: {
 				revision: 3,
-				activeProfileId: 2,
 				profiles: [profile(2, "Second", ["replacement-model"])],
 			},
 			deletedDisplayName: "First",
-			replacementProfileId: 2,
 			editorVersion: 0,
 			commandId: 0,
 		});
@@ -199,7 +194,6 @@ describe("reduceConnectionSettingsController", () => {
 			type: "apply-succeeded",
 			settings: {
 				revision: 3,
-				activeProfileId: 1,
 				profiles: [profile(1, "Older saved edit"), profile(2, "Second")],
 			},
 			selectedProfileId: 1,
@@ -218,12 +212,12 @@ describe("reduceConnectionSettingsController", () => {
 	test("a stale completion cannot replace newer server settings", () => {
 		const refreshed = reduceConnectionSettingsController(controllerState(), {
 			type: "refresh-succeeded",
-			settings: { revision: 4, activeProfileId: 2, profiles: [profile(1, "Fresh"), profile(2, "Second")] },
+			settings: { revision: 4, profiles: [profile(1, "Fresh"), profile(2, "Second")] },
 			notice: "refreshed",
 		});
 		const next = reduceConnectionSettingsController(refreshed, {
 			type: "apply-succeeded",
-			settings: { revision: 3, activeProfileId: 1, profiles: [profile(1, "Stale")] },
+			settings: { revision: 3, profiles: [profile(1, "Stale")] },
 			selectedProfileId: 1,
 			draftDisplayName: "Local edit",
 			credentialWasProvided: false,

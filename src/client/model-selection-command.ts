@@ -19,6 +19,7 @@ const MODEL_COMMIT_NOTICES = {
 
 export interface CommitConversationModelOptions {
 	conversation: ConversationSummary;
+	connectionProfileId: number;
 	modelId: string;
 	reconciliation: ConversationCommandReconciliation;
 	// ==[HUMAN APPROVED]== Applied-commit work owned by the selector's own state (display sync,
@@ -40,6 +41,7 @@ export function commitConversationModel(options: CommitConversationModelOptions)
 		send: (expectedRevision) =>
 			applyConversationCommand(options.conversation.id, expectedRevision, {
 				type: "set-generation-model",
+				connectionProfileId: options.connectionProfileId,
 				modelId: options.modelId,
 			}),
 		reconciliation: options.reconciliation,

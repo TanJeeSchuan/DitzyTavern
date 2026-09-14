@@ -101,9 +101,9 @@ export const effectiveGenerationSettingsFor = (
 	// this attempt and must not appear as an effective value.
 	siblingGenerationLimit: null,
 	...continuationOperands(intent),
-	// ==[HUMAN APPROVED]== Only the namespace matching the active Connection Profile's format is
+	// ==[HUMAN APPROVED]== Only the namespace matching the selected Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never
-	// transmitted. Without an active Profile no namespace applies.
+	// transmitted. Without a selected Profile no namespace applies.
 	requestOverrides: connection === null
 		? {}
 		: settings.requestOverrides[connection.apiFormat],

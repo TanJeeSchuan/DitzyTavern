@@ -26,7 +26,6 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 		applyDraft,
 		updateCredential,
 		resetCredential,
-		activateSelectedProfile,
 	} = controller;
 	const updateDraft = (patch: Partial<ConnectionProfileDraft>) => setDraft({ ...draft, ...patch });
 	const modelOptions = Array.from(new Set([...(selectedProfile?.discoveryCatalog ?? []), ...draft.pinnedModels]));
@@ -40,11 +39,8 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 			<div className="connection-editor-heading">
 				<div>
 					<h3>{selectedProfile ? `Edit ${selectedProfile.displayName}` : "New connection"}</h3>
-					<span>{selectedProfile?.id === controller.settings?.activeProfileId ? "Active for new generations" : selectedProfile ? "Saved, not active" : "Not saved yet"}</span>
+					<span>{selectedProfile ? "Available to every Chat" : "Not saved yet"}</span>
 				</div>
-				{selectedProfile && selectedProfile.id !== controller.settings?.activeProfileId && (
-					<button className="secondary-button connection-activate-button" type="button" onClick={() => void activateSelectedProfile()}><Zap aria-hidden="true" /> Set as active</button>
-				)}
 			</div>
 			<div className="definition-form">
 				<label className="field"><span>Display name</span><input className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} /></label>

@@ -1,34 +1,23 @@
 import { ChevronDown, Star } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-	loadConversationGenerationSettings,
-	type ConversationSummary,
-} from "./conversation";
-import {
-	commitConversationModel,
-	MODEL_SELECTION_UNAVAILABLE_NOTICE,
-} from "./model-selection-command";
-import {
-	loadConnectionSettings,
-	saveConnectionCommand,
-	type ConnectionSettings,
-} from "./connection-settings";
+import { loadConversationGenerationSettings, type ConversationSummary } from "./conversation";
+import { commitConversationModel, MODEL_SELECTION_UNAVAILABLE_NOTICE } from "./model-selection-command";
+import { loadConnectionSettings, saveConnectionCommand, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
-import { modelSuggestions, commitModelId, togglePinnedModel } from "./model-selection";
+import { commitModelId, modelSuggestions, togglePinnedModel } from "./model-selection";
 
-export function ModelSelector({
-	conversation,
-	disabled = false,
-	onConversationChange,
-}: {
+interface SelectedModel {
+	connectionProfileId: number | null;
+	modelId: string;
+}
+
+export function ModelSelector({ conversation, disabled = false, onConversationChange, onSelectionChange }: {
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onSelectionChange: (connectionProfileId: number, modelId: string) => void;
 }) {
-	// ==[HUMAN APPROVED]== The selector reads the current model ID for display and commits model
-	// selections through the focused set-generation-model command; it owns no
-	// Generation Settings snapshot and never writes the settings object.
-	const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+	const [selected, setSelected] = useState<SelectedModel | null>(null);
 	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
@@ -38,14 +27,11 @@ export function ModelSelector({
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	useAsyncEffect((isCancelled) => {
-		void Promise.all([
-			loadConversationGenerationSettings(conversation.id),
-			loadConnectionSettings(),
-		])
-			.then(([loadedGeneration, loadedSettings]) => {
+		void Promise.all([loadConversationGenerationSettings(conversation.id), loadConnectionSettings()])
+			.then(([generation, connections]) => {
 				if (isCancelled()) return;
-				setSelectedModelId(loadedGeneration.modelId);
-				setSettings(loadedSettings);
+				setSelected({ connectionProfileId: generation.connectionProfileId, modelId: generation.modelId });
+				setSettings(connections);
 			})
 			.catch(() => {
 				if (!isCancelled()) setError("Model settings could not be loaded.");
@@ -59,151 +45,117 @@ export function ModelSelector({
 	useEffect(() => {
 		if (!open) return;
 		const close = (event: MouseEvent) => {
-			const target = event.target;
-			if (target instanceof Node && rootRef.current?.contains(target)) return;
+			if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
 			setOpen(false);
 		};
 		document.addEventListener("mousedown", close);
 		return () => document.removeEventListener("mousedown", close);
 	}, [open]);
 
-	const activeProfile = settings?.profiles.find(
-		(profile) => profile.id === settings.activeProfileId,
-	);
-	const suggestions = useMemo(() => {
-		if (activeProfile === undefined) return [];
-		return modelSuggestions({
-			query,
-			discoveryCatalog: activeProfile.discoveryCatalog,
-			pinnedModels: activeProfile.pinnedModels,
-		});
-	}, [activeProfile, query]);
+	const groups = useMemo(() => (settings?.profiles ?? []).map((profile) => ({
+		profile,
+		models: modelSuggestions({ query, discoveryCatalog: profile.discoveryCatalog, pinnedModels: profile.pinnedModels }),
+	})).filter(({ models }) => models.length > 0), [settings, query]);
+	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
 
-	const updateGeneration = async (submitted: string) => {
+	const updateSelection = async (profile: ConnectionProfile, submitted: string) => {
 		if (disabled) return;
-		const committed = commitModelId(submitted);
-		if (committed === null || selectedModelId === null || committed === selectedModelId) {
-			if (committed !== null) setQuery("");
+		const modelId = commitModelId(submitted);
+		if (modelId === null) return;
+		if (selected?.connectionProfileId === profile.id && selected.modelId === modelId) {
+			setQuery("");
 			setOpen(false);
 			return;
 		}
 		setPending(true);
 		setError(null);
 		setNotice(null);
-		const showUnreachable = () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE);
+		const showUnavailable = () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE);
 		try {
 			await commitConversationModel({
 				conversation,
-				modelId: committed,
-				reconciliation: {
-					adoptSnapshot: onConversationChange,
-					showNotice: setError,
-				},
+				connectionProfileId: profile.id,
+				modelId,
+				reconciliation: { adoptSnapshot: onConversationChange, showNotice: setError },
 				onCommitted: () => {
-					setSelectedModelId(committed);
-					setNotice(`Model set to ${committed}.`);
+					setSelected({ connectionProfileId: profile.id, modelId });
+					onSelectionChange(profile.id, modelId);
+					setNotice(`Model set to ${profile.displayName} / ${modelId}.`);
 					setQuery("");
 					setOpen(false);
 				},
-				onUnavailable: showUnreachable,
+				onUnavailable: showUnavailable,
 			});
 		} finally {
 			setPending(false);
 		}
 	};
 
-	const togglePin = async (modelId: string) => {
-		if (disabled) return;
-		if (settings === null || activeProfile === undefined) return;
+	const togglePin = async (profile: ConnectionProfile, modelId: string) => {
+		if (disabled || settings === null) return;
 		setPending(true);
 		setError(null);
 		setNotice(null);
-		const nextPins = togglePinnedModel(activeProfile.pinnedModels, modelId);
+		const pinnedModels = togglePinnedModel(profile.pinnedModels, modelId);
 		try {
 			const result = await saveConnectionCommand({
 				type: "set-pinned-models",
 				expectedRevision: settings.revision,
-				profileId: activeProfile.id,
-				pinnedModels: nextPins,
+				profileId: profile.id,
+				pinnedModels,
 			});
 			if (result.outcome === "applied") {
 				setSettings(result.settings);
-				setNotice(nextPins.includes(modelId) ? `${modelId} pinned.` : `${modelId} unpinned.`);
+				setNotice(pinnedModels.includes(modelId) ? `${modelId} pinned.` : `${modelId} unpinned.`);
 			} else if (result.outcome === "conflict") {
 				setSettings(result.currentSettings);
 				setError("Connection Settings changed elsewhere; pins were not changed.");
 			} else if (result.outcome === "invalid") {
 				setError(result.reason);
 			} else {
-				setError("The active connection could not be reached.");
+				setError("The connection could not be reached.");
 			}
 		} catch {
-			setError("The active connection could not be reached.");
+			setError("The connection could not be reached.");
 		} finally {
 			setPending(false);
 		}
 	};
 
-	if (selectedModelId === null) return null;
+	if (selected === null) return null;
 
 	return (
 		<div className="model-selector" ref={rootRef}>
-			<label htmlFor={`model-selector-${conversation.id}`}>Model</label>
-			<button
-				id={`model-selector-${conversation.id}`}
-				className="model-selector-trigger"
-				type="button"
-				aria-haspopup="listbox"
-				aria-expanded={open}
-				disabled={disabled || pending}
-				onClick={() => {
-					setOpen((current) => !current);
-					setQuery("");
-					void loadConnectionSettings().then(setSettings).catch(() => setError("Connection Settings could not be loaded."));
-				}}
-			>
-				<span>{selectedModelId}</span>
+			<label htmlFor={`model-selector-${conversation.id}`}>Model connection</label>
+			<button id={`model-selector-${conversation.id}`} className="model-selector-trigger" type="button" aria-haspopup="listbox" aria-expanded={open} disabled={disabled || pending} onClick={() => {
+				setOpen((current) => !current);
+				setQuery("");
+				void loadConnectionSettings().then(setSettings).catch(() => setError("Connection Settings could not be loaded."));
+			}}>
+				<span><small>{selectedProfile?.displayName ?? "Choose a connection"}</small><strong>{selectedProfile === undefined ? "Choose a model" : selected.modelId}</strong></span>
 				<ChevronDown aria-hidden="true" />
 			</button>
-			{open && (
-				<div className="model-selector-menu">
-					<input
-						className="field-input"
-						aria-label="Search models"
-						value={query}
-						disabled={disabled}
-						autoFocus
-						placeholder="Search or enter any model ID"
-						onChange={(event) => setQuery(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter") {
-								event.preventDefault();
-								void updateGeneration(query);
-							}
-						}}
-					/>
-					<div className="model-selector-options" role="listbox" aria-label="Model choices">
-						{suggestions.map((modelId) => (
-							<div className="model-selector-option" key={modelId} role="option" aria-selected={modelId === selectedModelId}>
-								<button type="button" disabled={disabled || pending} onClick={() => void updateGeneration(modelId)}>{modelId}</button>
-								<button
-									type="button"
-									className="model-pin-button"
-									aria-label={`${activeProfile?.pinnedModels.includes(modelId) ? "Unstar" : "Star"} ${modelId}`}
-									disabled={disabled || pending}
-									onClick={(event) => {
-										event.stopPropagation();
-										void togglePin(modelId);
-									}}
-								>
-									<Star aria-hidden="true" fill={activeProfile?.pinnedModels.includes(modelId) ? "currentColor" : "none"} />
-								</button>
-							</div>
-						))}
-						{suggestions.length === 0 && <p className="model-selector-empty">No pinned or discovered models match. Press Enter to use the typed ID.</p>}
-					</div>
+			{open && <div className="model-selector-menu">
+				<input className="field-input" aria-label="Search models" value={query} disabled={disabled} autoFocus placeholder="Search or enter any model ID" onChange={(event) => setQuery(event.target.value)} />
+				<div className="model-selector-options" role="listbox" aria-label="Model choices">
+					{groups.map(({ profile, models }) => <section className="model-selector-group" key={profile.id} aria-label={profile.displayName}>
+						<h4>{profile.displayName}</h4>
+						{models.map((modelId) => {
+							const isSelected = profile.id === selected.connectionProfileId && modelId === selected.modelId;
+							const isPinned = profile.pinnedModels.includes(modelId);
+							return <div className="model-selector-option" key={modelId} role="option" aria-selected={isSelected}>
+								<button type="button" disabled={disabled || pending} onClick={() => void updateSelection(profile, modelId)}>{modelId}</button>
+								<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={disabled || pending} onClick={(event) => {
+									event.stopPropagation();
+									void togglePin(profile, modelId);
+								}}><Star aria-hidden="true" fill={isPinned ? "currentColor" : "none"} /></button>
+							</div>;
+						})}
+					</section>)}
+					{settings?.profiles.length === 0 && <p className="model-selector-empty">Add a connection before choosing a model.</p>}
+					{settings !== null && settings.profiles.length > 0 && groups.length === 0 && <p className="model-selector-empty">No pinned models yet. Search or enter a model ID to choose it for a connection.</p>}
 				</div>
-			)}
+			</div>}
 			{(notice !== null || error !== null) && <small className={error === null ? "model-selector-note" : "model-selector-note is-error"} role={error === null ? "status" : "alert"}>{error ?? notice}</small>}
 		</div>
 	);

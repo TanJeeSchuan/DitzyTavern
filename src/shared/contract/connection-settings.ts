@@ -59,7 +59,6 @@ const profile = Type.Object({
 
 const settings = Type.Object({
 	revision: Type.Integer(),
-	activeProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	profiles: Type.Array(profile),
 });
 
@@ -98,15 +97,9 @@ const commandBody = Type.Union([
 		confirmed: Type.Boolean(),
 	}),
 	Type.Object({
-		type: Type.Literal("activate-profile"),
-		expectedRevision: Type.Integer(),
-		profileId: Type.Integer(),
-	}),
-	Type.Object({
 		type: Type.Literal("delete-profile"),
 		expectedRevision: Type.Integer(),
 		profileId: Type.Integer(),
-		replacementProfileId: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
 	}),
 	Type.Object({
 		type: Type.Literal("set-pinned-models"),

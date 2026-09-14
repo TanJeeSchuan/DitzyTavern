@@ -253,7 +253,7 @@ describe("Generation transport contract", () => {
 		});
 	});
 
-	test("does not contact a provider when no active Profile exists", async () => {
+	test("does not contact a provider when the Conversation has no selected Profile", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Unconfigured Generation",
 			participants: [

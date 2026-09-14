@@ -18,12 +18,14 @@ interface ComposerControlSelectorsProps {
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onModelSelectionChange: (connectionProfileId: number, modelId: string) => void;
 }
 
 export function ComposerControlSelectors({
 	conversation,
 	disabled = false,
 	onConversationChange,
+	onModelSelectionChange,
 }: ComposerControlSelectorsProps) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -113,7 +115,8 @@ export function ComposerControlSelectors({
 			<ModelSelector
 				conversation={conversation}
 				disabled={disabled}
-				onConversationChange={onConversationChange}
+				 onConversationChange={onConversationChange}
+				onSelectionChange={onModelSelectionChange}
 			/>
 			<div className="control-select">
 				<label htmlFor="composer-model">Responding as</label>

@@ -46,11 +46,10 @@ describe("Connection Settings", () => {
 		database.close();
 	});
 
-	test("starts usable with no Profiles and no active connection", () => {
+	test("starts with no Profiles", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		expect(settings.get()).toEqual({
 			revision: 0,
-			activeProfileId: null,
 			profiles: [],
 		});
 
@@ -160,7 +159,6 @@ describe("Connection Settings", () => {
 		const profile = created.profiles[0];
 
 		expect(created.revision).toBe(1);
-		expect(created.activeProfileId).toBe(profile?.id);
 		expect(profile?.displayName).toBe("Deep Seek");
 		expect(profile?.credentialConfigured).toBe(true);
 		expect(JSON.stringify(created)).not.toContain("sk-deepseek-secret");
@@ -326,7 +324,7 @@ describe("Connection Settings", () => {
 	test("revisioned writes bump one revision, return the post-write read, and attach conflict snapshots to stale throws", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		const profileId = created.activeProfileId ?? 0;
+		const profileId = created.profiles[0]!.id;
 
 		const pinned = settings.setPinnedModels({
 			expectedRevision: created.revision,
@@ -353,7 +351,7 @@ describe("Connection Settings", () => {
 		}
 	});
 
-	test("keeps the first active Profile active while creating and applying another Profile", () => {
+	test("keeps every saved Profile available", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const first = settings.createProfile({
 			expectedRevision: 0,
@@ -365,68 +363,26 @@ describe("Connection Settings", () => {
 		});
 
 		expect(second.revision).toBe(2);
-		expect(second.activeProfileId).toBe(first.activeProfileId);
 		expect(second.profiles.map((profile) => profile.displayName)).toEqual([
 			"Deep Seek",
 			"Local",
 		]);
 	});
 
-	test("activates another Profile with one atomic revision advance", () => {
+	test("deletes one Profile without replacing it", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
 		const second = settings.createProfile({
 			expectedRevision: first.revision,
 			profile: { ...deepSeekDraft(), displayName: "Local" },
 		});
-		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
-
-		const activated = settings.activateProfile({
-			expectedRevision: second.revision,
-			profileId: secondId,
-		});
-
-		expect(activated.revision).toBe(3);
-		expect(activated.activeProfileId).toBe(secondId);
-		expect(activated.profiles).toHaveLength(2);
-	});
-
-	test("re-activating the active Profile does not bump the revision", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-
-		const reactivated = settings.activateProfile({
-			expectedRevision: created.revision,
-			profileId: created.activeProfileId ?? 0,
-		});
-
-		expect(reactivated.revision).toBe(created.revision);
-		expect(reactivated.activeProfileId).toBe(created.activeProfileId);
-	});
-
-	test("requires a replacement before deleting the active Profile when another exists", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		const second = settings.createProfile({
-			expectedRevision: first.revision,
-			profile: { ...deepSeekDraft(), displayName: "Local" },
-		});
-		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
-
-		expect(() => settings.deleteProfile({
-			expectedRevision: second.revision,
-			profileId: first.activeProfileId ?? 0,
-		})).toThrow("requires a replacement");
-		expect(settings.get().revision).toBe(second.revision);
-
 		const deleted = settings.deleteProfile({
 			expectedRevision: second.revision,
-			profileId: first.activeProfileId ?? 0,
-			replacementProfileId: secondId,
+			profileId: first.profiles[0]!.id,
 		});
 		expect(deleted.revision).toBe(second.revision + 1);
-		expect(deleted.activeProfileId).toBe(secondId);
 		expect(deleted.profiles).toHaveLength(1);
+		expect(deleted.profiles[0]?.displayName).toBe("Local");
 	});
 
 	test("deleting the final Profile returns to the unconfigured state", () => {
@@ -435,10 +391,10 @@ describe("Connection Settings", () => {
 
 		const deleted = settings.deleteProfile({
 			expectedRevision: created.revision,
-			profileId: created.activeProfileId ?? 0,
+			profileId: created.profiles[0]!.id,
 		});
 
-		expect(deleted).toEqual({ revision: 2, activeProfileId: null, profiles: [] });
+		expect(deleted).toEqual({ revision: 2, profiles: [] });
 	});
 
 	test("rejects case-insensitive duplicate names without changing the aggregate", () => {
@@ -453,17 +409,4 @@ describe("Connection Settings", () => {
 		expect(settings.get().profiles).toHaveLength(1);
 	});
 
-	test("returns authoritative state when activation is stale", () => {
-		const settings = createConnectionSettingsModule(database, { masterKey: key });
-		const first = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
-		const second = settings.createProfile({
-			expectedRevision: first.revision,
-			profile: { ...deepSeekDraft(), displayName: "Local" },
-		});
-		const secondId = second.profiles.find((profile) => profile.displayName === "Local")?.id ?? 0;
-
-		settings.activateProfile({ expectedRevision: second.revision, profileId: secondId });
-		expect(() => settings.activateProfile({ expectedRevision: second.revision, profileId: first.activeProfileId ?? 0 }))
-			.toThrow(StaleConnectionSettingsRevisionError);
-	});
 });

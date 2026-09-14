@@ -1,10 +1,13 @@
 import type { Database } from "bun:sqlite";
+import { asc, eq } from "drizzle-orm";
 import { compileOpening } from "../prompt-compiler";
 import {
 	artifactTable,
 	conversationDataTable,
 	conversationTable,
 	conversationGenerationSettingsTable,
+	connectionProfilePinnedModelTable,
+	connectionProfileTable,
 	messageDataTable,
 	messageVariantDataTable,
 } from "../database/schema";
@@ -375,9 +378,22 @@ export function createConversation(
 				"Conversation insertion did not return an identifier.",
 			);
 		}
-		db.insert(conversationGenerationSettingsTable)
-			.values({ conversation_id: conversation.id })
-			.run();
+		const defaultProfile = db.select({ id: connectionProfileTable.id })
+			.from(connectionProfileTable)
+			.orderBy(asc(connectionProfileTable.id))
+			.get();
+		const defaultModel = defaultProfile === undefined ? undefined : db
+			.select({ modelId: connectionProfilePinnedModelTable.model_id })
+			.from(connectionProfilePinnedModelTable)
+			.where(eq(connectionProfilePinnedModelTable.profile_id, defaultProfile.id))
+			.orderBy(asc(connectionProfilePinnedModelTable.position))
+			.get();
+		const generationSettings: typeof conversationGenerationSettingsTable.$inferInsert = {
+			conversation_id: conversation.id,
+			connection_profile_id: defaultProfile?.id ?? null,
+		};
+		if (defaultModel !== undefined) generationSettings.model_id = defaultModel.modelId;
+		db.insert(conversationGenerationSettingsTable).values(generationSettings).run();
 		// ==[HUMAN APPROVED]== A new Conversation selects the shared Default preset. The selection
 		// is persisted rather than derived, so a later Default change never
 		// silently rewrites what an existing Conversation assembles through.

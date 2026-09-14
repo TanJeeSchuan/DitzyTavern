@@ -241,6 +241,24 @@
 	flex: 0 0 auto;
 }
 
+.model-selector-trigger > span {
+	display: grid;
+	min-width: 0;
+}
+
+.model-selector-trigger small,
+.model-selector-trigger strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.model-selector-trigger small {
+	color: var(--text-muted);
+	font-size: 0.64rem;
+	font-weight: 550;
+}
+
 .model-selector-menu {
 	position: absolute;
 	z-index: 20;
@@ -259,6 +277,20 @@
 	max-height: 14rem;
 	overflow-y: auto;
 	margin-top: 0.4rem;
+}
+
+.model-selector-group + .model-selector-group {
+	margin-top: 0.35rem;
+	padding-top: 0.35rem;
+	border-top: 1px solid var(--border-subtle);
+}
+
+.model-selector-group h4 {
+	margin: 0;
+	padding: 0.25rem 0.5rem;
+	color: var(--text-muted);
+	font-size: 0.68rem;
+	font-weight: 650;
 }
 
 .model-selector-option {

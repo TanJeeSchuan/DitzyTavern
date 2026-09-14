@@ -85,7 +85,6 @@ export type ConnectionSettingsController = {
 	testResult: TestConnectionResult | null;
 	testPending: boolean;
 	discoveryPending: boolean;
-	replacementProfileId: number | null;
 	pendingDeletionProfileId: number | null;
 	openProfileMenuId: number | null;
 	presetChoicesOpen: boolean;
@@ -109,13 +108,11 @@ export type ConnectionSettingsController = {
 	setTestModelId: (value: string) => void;
 	setPresetChoicesOpen: (value: boolean) => void;
 	setOpenProfileMenuId: (value: number | null) => void;
-	setReplacementProfileId: (value: number | null) => void;
 	setPendingDeletionProfileId: (value: number | null) => void;
 	testDraft: () => Promise<void>;
 	refreshModels: () => Promise<void>;
 	applyDraft: () => Promise<void>;
 	updateCredential: () => Promise<void>;
-	activateSelectedProfile: () => Promise<void>;
 	requestProfileDeletion: (profile: ConnectionProfile) => void;
 	deletePendingProfile: () => Promise<void>;
 	resetCredential: () => Promise<void>;
@@ -142,7 +139,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		headerEditorData,
 		testModelId,
 		testResult,
-		replacementProfileId,
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
@@ -163,7 +159,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const setTestModelId = (value: string) => dispatch({ type: "set-test-model-id", value });
 	const setPresetChoicesOpen = (value: boolean) => dispatch({ type: "set-preset-choices-open", value });
 	const setOpenProfileMenuId = (value: number | null) => dispatch({ type: "set-open-profile-menu", value });
-	const setReplacementProfileId = (value: number | null) => dispatch({ type: "set-replacement-profile", value });
 	const setPendingDeletionProfileId = (value: number | null) => dispatch({ type: "set-pending-deletion", value });
 
 	useAsyncEffect((isCancelled) => {
@@ -335,39 +330,22 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		dispatch({ type: "credential-succeeded", settings: applied.settings, profileId, editorVersion: requestEditorVersion, commandId });
 	};
 
-	const activateSelectedProfile = async () => {
-		if (settings === null || selectedProfileId === null || selectedProfileId === settings.activeProfileId) return;
-		dispatch({ type: "clear-feedback" });
-		const applied = await runConnectionCommand(
-			() => saveConnectionCommand({ type: "activate-profile", expectedRevision: settings.revision, profileId: selectedProfileId }),
-			APPLY_CONFLICT_ERROR,
-		);
-		if (applied === null) return;
-		dispatch({ type: "activate-succeeded", settings: applied.settings });
-	};
-
 	const requestProfileDeletion = (profile: ConnectionProfile) => {
 		dispatch({
 			type: "request-deletion",
 			profileId: profile.id,
-			replacementProfileId: profile.id === settings?.activeProfileId
-				? settings.profiles.find((entry) => entry.id !== profile.id)?.id ?? null
-				: null,
 		});
 	};
 
 	const deletePendingProfile = async () => {
 		if (settings === null || pendingDeletionProfileId === null || !pendingDeletionProfile) return;
-		const deletingActive = pendingDeletionProfile.id === settings.activeProfileId;
-		const replacement = deletingActive && settings.profiles.length > 1 ? replacementProfileId : null;
-		if (deletingActive && settings.profiles.length > 1 && replacement === null) { dispatch({ type: "set-error", message: "Choose a replacement Profile before deleting the active Profile." }); return; }
 		dispatch({ type: "clear-feedback" });
 		const deletedDisplayName = pendingDeletionProfile.displayName;
 		const requestEditorVersion = editorVersion;
 		const commandId = ++commandIdRef.current;
 		dispatch({ type: "command-started", commandId });
 		const applied = await runConnectionCommand(
-			() => saveConnectionCommand({ type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id, replacementProfileId: replacement }),
+			() => saveConnectionCommand({ type: "delete-profile", expectedRevision: settings.revision, profileId: pendingDeletionProfile.id }),
 			APPLY_CONFLICT_ERROR,
 			commandId,
 		);
@@ -376,7 +354,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 			type: "delete-succeeded",
 			settings: applied.settings,
 			deletedDisplayName,
-			replacementProfileId: replacement,
 			editorVersion: requestEditorVersion,
 			commandId,
 		});
@@ -410,7 +387,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testResult,
 		testPending,
 		discoveryPending,
-		replacementProfileId,
 		pendingDeletionProfileId,
 		openProfileMenuId,
 		presetChoicesOpen,
@@ -434,13 +410,11 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		setTestModelId,
 		setPresetChoicesOpen,
 		setOpenProfileMenuId,
-		setReplacementProfileId,
 		setPendingDeletionProfileId,
 		testDraft,
 		refreshModels,
 		applyDraft,
 		updateCredential,
-		activateSelectedProfile,
 		requestProfileDeletion,
 		deletePendingProfile,
 		resetCredential,

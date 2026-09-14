@@ -219,7 +219,10 @@ export type ConversationSummary = Static<typeof conversationSummary>;
 // validator — and the canonical declaration must stay pristine for the
 // adapters that derive from it. The established export name stays for
 // every existing consumer.
-export const conversationGenerationSettings = Value.Clone(canonicalGenerationSettings);
+export const conversationGenerationSettings = Type.Object({
+	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
+	...Value.Clone(canonicalGenerationSettings).properties,
+});
 
 export type ConversationGenerationSettings = Static<typeof conversationGenerationSettings>;
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
@@ -531,6 +534,7 @@ const updateGenerationSettingsAction = Type.Object({
 // fields the way a second full-object writer could.
 const setGenerationModelAction = Type.Object({
 	type: Type.Literal("set-generation-model"),
+	connectionProfileId: Type.Integer(),
 	modelId: Type.String({ pattern: "\\S" }),
 });
 

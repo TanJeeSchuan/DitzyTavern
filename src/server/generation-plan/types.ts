@@ -42,7 +42,7 @@ export interface GenerationPlan {
 }
 
 /**
- * The safe Connection facts compilation consumes: the active Profile's API
+ * The safe Connection facts compilation consumes: the selected Profile's API
  * Format. Resolution happens before compilation so only the matching
  * Request Overrides namespace participates; credentials, headers, and
  * connection URLs stay behind the transport seam and never reach the

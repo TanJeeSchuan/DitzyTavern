@@ -193,8 +193,6 @@ export const createConnectionSettingsRoutes = (
 								return domain.setCredential(body);
 							case "reset-credential":
 								return domain.resetCredential(body);
-							case "activate-profile":
-								return domain.activateProfile(body);
 							case "delete-profile":
 								return domain.deleteProfile(body);
 							case "set-pinned-models":
@@ -236,7 +234,6 @@ export const createConnectionSettingsRoutes = (
 function toSettingsPayload(snapshot: ConnectionSettingsSnapshot) {
 	return {
 		revision: snapshot.revision,
-		activeProfileId: snapshot.activeProfileId,
 		profiles: snapshot.profiles.map(toProfilePayload),
 	};
 }

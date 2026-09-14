@@ -1,12 +1,16 @@
 import type { ConversationDatabase } from "../internal";
+import { eq } from "drizzle-orm";
+import { connectionProfileTable } from "../../database/schema";
 import {
 	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
 	readConversationGenerationSettingsFromConnection,
-	updateConversationGenerationSettings,
+	updateConversationModelSelection,
 } from "../generation-settings";
+import { InvalidConversationCommandError } from "../errors";
 
 export interface SetGenerationModelInput {
 	conversationId: number;
+	connectionProfileId: number;
 	modelId: string;
 }
 
@@ -19,9 +23,17 @@ export function setGenerationModel(
 	db: ConversationDatabase,
 	input: SetGenerationModelInput,
 ) {
+	const modelId = input.modelId.trim();
+	if (modelId.length === 0) throw new InvalidConversationCommandError("A model ID is required.");
+	const profile = db.select({ id: connectionProfileTable.id })
+		.from(connectionProfileTable)
+		.where(eq(connectionProfileTable.id, input.connectionProfileId))
+		.get();
+	if (profile === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
 	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
-	return updateConversationGenerationSettings(db, input.conversationId, {
+	return updateConversationModelSelection(db, input.conversationId, {
 		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),
-		modelId: input.modelId,
+		connectionProfileId: input.connectionProfileId,
+		modelId,
 	});
 }

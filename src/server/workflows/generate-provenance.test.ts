@@ -86,7 +86,7 @@ describe("Generation capture and provenance", () => {
 			credential: "credential-never-stored-in-provenance",
 		});
 		const conversation = createConversationModule(database);
-		const updatedConversation = conversation.execute({
+		const configuredConversation = conversation.execute({
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -112,6 +112,12 @@ describe("Generation capture and provenance", () => {
 					},
 			},
 		});
+		const profileId = created.profiles[0]!.id;
+		const updatedConversation = conversation.execute({
+			conversationId,
+			expectedRevision: configuredConversation.revision,
+			action: { type: "set-generation-model", connectionProfileId: profileId, modelId: "custom-before-discovery" },
+		});
 		expect(conversation.getGenerationSettings(conversationId)?.modelId).toBe(
 			"custom-before-discovery",
 		);
@@ -136,8 +142,6 @@ describe("Generation capture and provenance", () => {
 
 		// A Profile edit during transport is authoritative for the next
 		// Generation, never for the already captured one.
-		const profileId = created.activeProfileId;
-		if (profileId === null) throw new Error("Profile activation missing.");
 		settingsModule.applyProfile({
 			expectedRevision: created.revision,
 			profileId,
@@ -166,7 +170,7 @@ describe("Generation capture and provenance", () => {
 			generationSettings: { responseBudget: number };
 		};
 		expect(parsed).toMatchObject({
-			connectionProfileId: created.activeProfileId,
+			connectionProfileId: profileId,
 			connectionSettingsRevision: created.revision,
 			modelBackend: "ai-sdk",
 			adapter: "deepseek",
@@ -175,13 +179,13 @@ describe("Generation capture and provenance", () => {
 		});
 		expect(provenance.value).not.toContain("credential-never-stored-in-provenance");
 		expect(provenance.value).not.toContain("api.deepseek.com");
-		expect(updatedConversation.revision).toBe(1);
+		expect(updatedConversation.revision).toBe(2);
 	});
 
 	test("supplies only the active API Format's Request Overrides and matches the inspected effective settings", async () => {
 		const key = new Uint8Array(32).fill(23);
 		const settingsModule = createConnectionSettingsModule(database, { masterKey: key });
-		settingsModule.createProfile({
+		const created = settingsModule.createProfile({
 			expectedRevision: 0,
 			profile: {
 				displayName: "Chat Completions",
@@ -196,7 +200,7 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 		const conversation = createConversationModule(database);
-		conversation.execute({
+		const configuredConversation = conversation.execute({
 			conversationId,
 			expectedRevision: 0,
 			action: {
@@ -222,6 +226,15 @@ describe("Generation capture and provenance", () => {
 				},
 			},
 		});
+		conversation.execute({
+			conversationId,
+			expectedRevision: configuredConversation.revision,
+			action: {
+				type: "set-generation-model",
+				connectionProfileId: created.profiles[0]!.id,
+				modelId: "override-model",
+			},
+		});
 
 		const preview = createGenerationPreview(database, {
 			conversationId,
@@ -235,7 +248,7 @@ describe("Generation capture and provenance", () => {
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;
 		await sendThroughProvisionalTailGeneration(database, {
 			conversationId,
-			expectedRevision: 1,
+			expectedRevision: 2,
 			content: "Send with narrowed overrides.",
 			connectionSettings: { masterKey: key },
 			modelClient: createFakeModelClient((input) => {

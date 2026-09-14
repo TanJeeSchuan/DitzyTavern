@@ -11,6 +11,7 @@ import {
 	GENERATION_SETTINGS_FIELDS,
 	type CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
+import { createConnectionSettingsModule } from "../connection-settings";
 
 const prompt = {
 	systemInstruction: "",
@@ -60,11 +61,30 @@ describe("set-generation-model", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
+const createConnection = (database: Database): number => {
+	const created = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(3) }).createProfile({
+		expectedRevision: 0,
+		profile: {
+			displayName: "Test connection",
+			apiFormat: "chat-completions",
+			requestUrl: "https://example.invalid/v1/",
+			modelsUrl: "",
+			modelBackend: "automatic",
+			adapter: "openai-compatible",
+			outputTokenRepresentation: "automatic",
+			timeoutMs: 120_000,
+			pinnedModels: [],
+		},
+	});
+	return created.profiles[0]!.id;
+};
+
 	afterEach(() => {
 		database.close();
 	});
 
 	test("changes only the model selection between full writes", () => {
+		const connectionProfileId = createConnection(database);
 		const conversation = createConversation(database, "Focused model command");
 		const module = createConversationModule(database);
 		module.execute({
@@ -78,7 +98,7 @@ describe("set-generation-model", () => {
 		const updated = module.execute({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision + 1,
-			action: { type: "set-generation-model", modelId: "  qwen3-max  " },
+			action: { type: "set-generation-model", connectionProfileId, modelId: "  qwen3-max  " },
 		});
 		const stored = module.getGenerationSettings(conversation.id);
 		if (stored === undefined) throw new Error("Stored settings missing.");
@@ -87,6 +107,7 @@ describe("set-generation-model", () => {
 		// survives normalized while every other canonical field keeps the
 		// other editor's committed values.
 		expect(stored.modelId).toBe("qwen3-max");
+		expect(stored.connectionProfileId).toBe(connectionProfileId);
 		for (const field of GENERATION_SETTINGS_FIELDS) {
 			if (field === "modelId") continue;
 			expect(stored[field]).toEqual(before[field]);
@@ -95,20 +116,34 @@ describe("set-generation-model", () => {
 	});
 
 	test("creates the default settings under the submitted model when none are stored", () => {
+		const connectionProfileId = createConnection(database);
 		const conversation = createConversation(database, "Unconfigured model command");
 		const module = createConversationModule(database);
 
 		module.execute({
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
-			action: { type: "set-generation-model", modelId: "qwen3-max" },
+			action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
 		});
 
 		const stored = module.getGenerationSettings(conversation.id);
-		expect(stored).toEqual({ ...DEFAULT_CONVERSATION_GENERATION_SETTINGS, modelId: "qwen3-max" });
+		expect(stored).toEqual({ ...DEFAULT_CONVERSATION_GENERATION_SETTINGS, connectionProfileId, modelId: "qwen3-max" });
+	});
+
+	test("clears the Conversation selection when its Connection Profile is deleted", () => {
+		const connectionProfileId = createConnection(database);
+		const conversation = createConversation(database, "Deleted connection");
+		const connections = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(3) });
+
+		expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBe(
+			connectionProfileId,
+		);
+		connections.deleteProfile({ expectedRevision: 1, profileId: connectionProfileId });
+		expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBeNull();
 	});
 
 	test("rejects a blank model ID and keeps the stored settings", () => {
+		const connectionProfileId = createConnection(database);
 		const conversation = createConversation(database, "Blank model command");
 		const module = createConversationModule(database);
 		module.execute({
@@ -121,13 +156,14 @@ describe("set-generation-model", () => {
 			module.execute({
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision + 1,
-				action: { type: "set-generation-model", modelId: "   " },
+				action: { type: "set-generation-model", connectionProfileId, modelId: "   " },
 			}),
 		).toThrow(InvalidConversationCommandError);
 		expect(module.getGenerationSettings(conversation.id)?.modelId).toBe("deepseek-chat");
 	});
 
 	test("requires the current Conversation revision", () => {
+		const connectionProfileId = createConnection(database);
 		const conversation = createConversation(database, "Stale model command");
 		const module = createConversationModule(database);
 
@@ -135,7 +171,7 @@ describe("set-generation-model", () => {
 			module.execute({
 				conversationId: conversation.id,
 				expectedRevision: conversation.revision + 5,
-				action: { type: "set-generation-model", modelId: "qwen3-max" },
+				action: { type: "set-generation-model", connectionProfileId, modelId: "qwen3-max" },
 			}),
 		).toThrow(StaleConversationRevisionError);
 		expect(module.getGenerationSettings(conversation.id)?.modelId).toBe(

@@ -8,6 +8,13 @@
       "when": 1789177809362,
       "tag": "0000_special_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789352047946,
+      "tag": "0001_striped_doomsday",
+      "breakpoints": true
     }
   ]
 }

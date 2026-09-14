@@ -224,7 +224,7 @@ describe("Generation Plan Compiler", () => {
 		expect(JSON.stringify(anthropicMessages)).not.toContain("logit_bias");
 	});
 
-	test("applies no Request Overrides without an active Profile", () => {
+	test("applies no Request Overrides without a selected Profile", () => {
 		const plan = compile({ connection: null });
 
 		expect(plan.effectiveSettings.requestOverrides).toEqual({});

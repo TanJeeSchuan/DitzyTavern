@@ -62,15 +62,9 @@ export interface ResetConnectionCredentialInput {
 	readonly confirmed: boolean;
 }
 
-export interface ActivateConnectionProfileInput {
-	readonly expectedRevision: number;
-	readonly profileId: number;
-}
-
 export interface DeleteConnectionProfileInput {
 	readonly expectedRevision: number;
 	readonly profileId: number;
-	readonly replacementProfileId?: number | null;
 }
 
 export interface SetPinnedModelsInput {
@@ -85,7 +79,6 @@ export interface ConnectionSettingsModule {
 	listPresets(): readonly ConnectionPreset[];
 	createProfile(input: CreateConnectionProfileInput): ConnectionSettingsSnapshot;
 	applyProfile(input: ApplyConnectionProfileInput): ConnectionSettingsSnapshot;
-	activateProfile(input: ActivateConnectionProfileInput): ConnectionSettingsSnapshot;
 	deleteProfile(input: DeleteConnectionProfileInput): ConnectionSettingsSnapshot;
 	setPinnedModels(input: SetPinnedModelsInput): ConnectionSettingsSnapshot;
 	replaceDiscoveryCatalog(

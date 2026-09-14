@@ -81,15 +81,10 @@ export function ActiveWritingWorkspace({
 
 	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
-	const activeConnectionProfile = connectionSettings.settings?.profiles.find(
-		(profile) => profile.id === connectionSettings.settings?.activeProfileId,
-	);
 	const generationSettings = useGenerationSettingsDraft({
 		conversation: session.conversation,
 		onConversationChange: (conversation) => session.setConversation(conversation),
-		transmittingNamespace: connectionSettings.settings === null
-			? undefined
-			: activeConnectionProfile?.apiFormat ?? null,
+		connectionProfiles: connectionSettings.settings?.profiles,
 	});
 	const generation = useGenerationController({
 		conversation: session.conversation,
@@ -342,6 +337,7 @@ export function ActiveWritingWorkspace({
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
 							onConversationChange={session.setConversation}
+							onModelSelectionChange={generationSettings.adoptModelSelection}
 						/>
 					) : null}
 				/>

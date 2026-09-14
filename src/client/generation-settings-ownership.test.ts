@@ -49,6 +49,7 @@ const summary = (revision: number): ConversationSummary => ({
 });
 
 const baseSettings = (): ConversationGenerationSettings => ({
+	connectionProfileId: 7,
 	modelId: "deepseek-chat",
 	temperature: null,
 	topP: null,
@@ -107,7 +108,7 @@ function createConversationBackend() {
 			// body to JSON, so parsing the recorded body restores that shape.
 			const body = JSON.parse(String(init?.body)) as {
 				expectedRevision: number;
-				action: { type: string; modelId?: string; settings?: ConversationGenerationSettings };
+				action: { type: string; connectionProfileId?: number; modelId?: string; settings?: ConversationGenerationSettings };
 			};
 			if (body.expectedRevision !== revision) {
 				return Response.json(
@@ -119,8 +120,8 @@ function createConversationBackend() {
 			if (body.action.type === "update-generation-settings" && body.action.settings !== undefined) {
 				settings = body.action.settings;
 			}
-			if (body.action.type === "set-generation-model" && body.action.modelId !== undefined) {
-				settings = { ...settings, modelId: body.action.modelId };
+			if (body.action.type === "set-generation-model" && body.action.connectionProfileId !== undefined && body.action.modelId !== undefined) {
+				settings = { ...settings, connectionProfileId: body.action.connectionProfileId, modelId: body.action.modelId };
 			}
 			revision += 1;
 			return Response.json({ outcome: "applied", conversation: summary(revision) });
@@ -181,6 +182,7 @@ function createSession() {
 	const commitModel = async (modelId: string) => {
 		await commitConversationModel({
 			conversation,
+			connectionProfileId: 9,
 			modelId,
 			reconciliation: { adoptSnapshot, showNotice: showError },
 			onCommitted: (committed) => {
@@ -202,7 +204,7 @@ describe("generation settings client ownership", () => {
 
 		// The payload carries the model ID and nothing else: the selector has
 		// no settings snapshot to spill into the command.
-		expect(backend.commands).toEqual([{ type: "set-generation-model", modelId: "qwen3-max" }]);
+		expect(backend.commands).toEqual([{ type: "set-generation-model", connectionProfileId: 9, modelId: "qwen3-max" }]);
 		expect(session.events).toEqual(["adopt:6", "model-committed:qwen3-max"]);
 	});
 
@@ -227,13 +229,13 @@ describe("generation settings client ownership", () => {
 		// sends, in order, and each carries the shape asserted here.
 		const [firstPanelWrite, modelCommit, secondPanelWrite] = backend.commands as [
 			{ type: string; settings: ConversationGenerationSettings },
-			{ type: string; modelId: string },
+			{ type: string; connectionProfileId: number; modelId: string },
 			{ type: string; settings: ConversationGenerationSettings },
 		];
 		expect(firstPanelWrite.type).toBe("update-generation-settings");
 		expect(firstPanelWrite.settings.modelId).toBe("deepseek-chat");
 		expect(firstPanelWrite.settings.temperature).toBe(1.5);
-		expect(modelCommit).toEqual({ type: "set-generation-model", modelId: "qwen3-max" });
+		expect(modelCommit).toEqual({ type: "set-generation-model", connectionProfileId: 9, modelId: "qwen3-max" });
 		expect(secondPanelWrite.type).toBe("update-generation-settings");
 		expect(secondPanelWrite.settings.modelId).toBe("qwen3-max");
 		expect(secondPanelWrite.settings.temperature).toBe(1.5);

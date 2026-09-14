@@ -129,7 +129,7 @@ export function RequestOverridesEditor({
 			<h3 id="generation-overrides-title">Request Overrides</h3>
 			<p>
 				Extra request body fields for this Chat, kept per API Format. Only
-				the namespace of the active Connection Profile is transmitted; the
+				the namespace of the selected Connection Profile is transmitted; the
 				others stay editable and are never sent.
 			</p>
 			{transmittingNamespace.status === "unavailable" && (
@@ -140,7 +140,7 @@ export function RequestOverridesEditor({
 			)}
 			{transmittingNamespace.status === "no-active-profile" && (
 				<small className="overrides-namespace-status" role="note">
-					No Connection Profile is active, so no namespace is transmitted.
+				No model connection is selected, so no namespace is transmitted.
 				</small>
 			)}
 			{OVERRIDES_NAMESPACES.map((namespace) => {
