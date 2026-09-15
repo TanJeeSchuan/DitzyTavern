@@ -147,6 +147,56 @@ _Avoid_: guidance record, instruction message
 The Participant responsible for producing a Message, independent of any fictional speakers or actions represented inside its content.
 _Avoid_: detected speaker, character attribution
 
+## Lorebooks
+
+**Lorebook**:
+A shared, reusable collection of Lore Entries. Chats using the same Lorebook share its saved edits; an independent version is a duplicate of the book.
+_Avoid_: World Info when naming DitzyTavern's native concept
+
+**Lorebook Attachment**:
+An association between a Lorebook and a Character, Participant or Chat. The attachment owns the scope of that use; the Lorebook remains independent of its attachments.
+_Avoid_: scoped lorebook
+
+**Lorebook Attachment Scope**:
+The condition under which an attachment makes its Lorebook eligible: Controlled Participant requires its Participant to occupy either control seat, Cast requires its Participant to belong to the Chat's Cast, and Chat applies independently of Participants.
+_Avoid_: lorebook tag, Participant scope when referring specifically to control-seat eligibility
+
+**Lore Entry**:
+A unit of authored lore content together with the conditions describing when it is relevant to a Conversation.
+_Avoid_: memory when referring to authored lore
+
+**Keyword**:
+An authored lexical trigger for a Lore Entry, separate from its Semantic Triggers.
+_Avoid_: Semantic Trigger
+
+**Semantic Trigger**:
+An author-written phrase describing a context in which a Lore Entry is relevant by meaning. It is separate from the entry's Keywords and lore content.
+_Avoid_: embedded keyword, entry content
+
+**Lore Scan Window**:
+The recent Messages whose text determines which Lore Entries are relevant for a Generation. Both Keywords and Semantic Triggers examine this window within the Generation's Selected narrative path.
+_Avoid_: context window, Prompt Plan
+
+**Always Entry**:
+A Lore Entry whose relevance does not depend on Keywords, Semantic Triggers or secondary Keyword conditions.
+_Avoid_: matched entry
+
+**Lore Block**:
+A Referenced Prompt Block containing the Lore Entries selected for a Generation. The Prompt Preset determines its placement and role.
+_Avoid_: Lorebook, Lore Entry
+
+**Lore Allowance**:
+A Chat's limit on the estimated token space allocated to lore in a Generation. The available prompt space can restrict lore further.
+_Avoid_: context limit, guaranteed lore reservation
+
+**Lore Activation Record**:
+The retained explanation of which lore a Variant's Generation considered and included or omitted, together with the evidence for those decisions. It describes that attempt even after its source Lorebooks change.
+_Avoid_: current match test, full Prompt Plan
+
+**Secondary Keyword Condition**:
+An additional lexical requirement or exclusion for a conditional Lore Entry, regardless of whether its primary match came from Keywords or Semantic Triggers.
+_Avoid_: semantic exclusion
+
 ## Chat provenance and imports
 
 **Native Conversation**:
