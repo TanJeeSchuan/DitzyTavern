@@ -99,6 +99,78 @@ const compile = (
 });
 
 describe("Generation Plan Compiler", () => {
+	test("admits Lore by Always, priority, and stable source order", () => {
+		const recipe = [
+			{ reference: "lore", enabled: true, role: "system" },
+		] as const;
+		const entries = [
+			{ content: "priority", priority: 5, bookOrder: 2, entryOrder: 1 },
+			{ content: "always", always: true, priority: -10, bookOrder: 9, entryOrder: 9 },
+			{ content: "tie-first", priority: 5, bookOrder: 1, entryOrder: 3 },
+			{ content: "tie-second", priority: 5, bookOrder: 1, entryOrder: 4 },
+		];
+		const plan = compile({
+			recipe,
+			context: [],
+			lore: entries,
+			loreAllowance: 2_048,
+		});
+
+		expect(plan.promptPlan.blocks).toEqual([{
+			kind: "lore",
+			role: "system",
+			content: "always\n\ntie-first\n\ntie-second\n\npriority",
+		}]);
+	});
+
+	test("skips an oversized Lore entry and continues with later entries", () => {
+		const recipe = [{ reference: "lore", enabled: true, role: "system" }] as const;
+		const plan = compile({
+			recipe,
+			context: [],
+			lore: [
+				{ content: "too-large" },
+				{ content: "ok" },
+			],
+			loreAllowance: 3,
+			estimator: (transcript) => {
+				const content = transcript.split("\u001eCONTENT\u001f")[1] ?? "";
+				return content.length;
+			},
+		});
+
+		expect(plan.promptPlan.blocks).toEqual([{
+			kind: "lore",
+			role: "system",
+			content: "ok",
+		}]);
+	});
+
+	test("budgets Lore against the protected history before trimming older history", () => {
+		const recipe = [
+			{ reference: "lore", enabled: true, role: "system" },
+			{ reference: "history", enabled: true },
+		] as const;
+		const plan = compile({
+			recipe,
+			context: [
+				entry("Maren", "old", "model"),
+				entry("Writer", "latest", "human"),
+			],
+			lore: [{ content: "fact" }],
+			loreAllowance: 2_048,
+			settings: configuredSettings({ contextLimit: 180, responseBudget: 1, safetyAllowance: 0 }),
+			estimator: (transcript) => transcript.length,
+		});
+
+		expect(plan.budget.fits).toBe(true);
+		expect(plan.budget.omittedContext).toEqual([entry("Maren", "old", "model")]);
+		expect(plan.promptPlan.blocks).toEqual([
+			{ kind: "lore", role: "system", content: "fact" },
+			{ kind: "history", speakerName: "Writer", content: "latest", role: "human" },
+		]);
+	});
+
 	test("compiles the ordinary Tail plan with no applicable Continuation operand", () => {
 		const plan = compile({ intent: undefined });
 

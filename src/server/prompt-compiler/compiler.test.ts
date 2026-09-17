@@ -80,6 +80,38 @@ const filled = (): CompilePromptInput =>
 	});
 
 describe("Prompt compiler", () => {
+	test("renders admitted Lore literally in its recipe position", () => {
+		const plan = compilePrompt(source({
+			recipe: [
+				{ reference: "model-identity", enabled: true, role: "assistant" },
+				{ reference: "lore", enabled: true, role: "system" },
+				{ reference: "history", enabled: true },
+			],
+			context: [
+				{ kind: "message", speakerName: "Writer", content: "History", role: "human" },
+			],
+			lore: [
+				{ content: "{{random::one::two}}", always: true },
+				{ content: "A second fact." },
+			],
+		}));
+
+		expect(plan.blocks).toEqual([
+			{ kind: "lore", role: "system", content: "{{random::one::two}}\n\nA second fact." },
+			{ kind: "history", speakerName: "Writer", content: "History", role: "human" },
+		]);
+		expect(plan.warnings).toEqual([]);
+	});
+
+	test("does not render Lore from a disabled slot", () => {
+		const plan = compilePrompt(source({
+			recipe: [{ reference: "lore", enabled: false, role: "system" }],
+			lore: [{ content: "This must stay out." }],
+		}));
+
+		expect(plan.blocks).toEqual([]);
+	});
+
 	test("compiles blocks in the fixed deterministic order", () => {
 		const plan = compilePrompt(filled());
 		expect(plan.blocks.map((block) => block.kind)).toEqual([
