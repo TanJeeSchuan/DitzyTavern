@@ -18,6 +18,7 @@ import {
 	LorebookNotFoundError,
 	StaleLorebookRevisionError,
 } from "./errors";
+import { validateLorebookExpressions } from "./matching";
 
 const connect = (database: Database) => drizzle(database);
 type LorebookDatabase = ReturnType<typeof connect>;
@@ -98,17 +99,10 @@ const validateEntry = (entry: LoreEntryFields): LoreEntryFields => {
 		throw new InvalidLorebookCommandError("Semantic threshold must be between 0 and 1.");
 	}
 	try {
-		if (entry.keywordMode === "regex") {
 		// ==[HUMAN APPROVED]== Validate flags even when the entry currently has no expressions. A
-			// later edit must not inherit a malformed configuration that was
-			// accepted merely because its lists happened to be empty.
-			new RegExp("", entry.regexFlags);
-			for (const keyword of [...entry.keywords, ...entry.requireAny, ...entry.requireAll, ...entry.excludeAny, ...entry.excludeAll]) {
-				new RegExp(keyword, entry.regexFlags);
-			}
-		} else if (entry.regexFlags !== "") {
-			throw new Error("flags");
-		}
+		// later edit must not inherit a malformed configuration that was
+		// accepted merely because its lists happened to be empty.
+		validateLorebookExpressions(entry);
 	} catch {
 		throw new InvalidLorebookCommandError("Lorebook regular-expression syntax or flags are invalid.");
 	}

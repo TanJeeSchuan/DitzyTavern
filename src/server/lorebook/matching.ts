@@ -99,6 +99,25 @@ const regexFor = (expression: string, entry: LoreEntryFields): RegExp => {
 	}
 };
 
+export const validateLorebookExpressions = (entry: LoreEntryFields): void => {
+	if (entry.keywordMode !== "regex") {
+		if (entry.regexFlags !== "") throw new InvalidLorebookExpressionError(entry.regexFlags);
+		return;
+	}
+	try {
+		new RegExp("", entry.regexFlags);
+	} catch (cause) {
+		throw new InvalidLorebookExpressionError(entry.regexFlags, cause);
+	}
+	for (const expression of [
+		...entry.keywords,
+		...entry.requireAny,
+		...entry.requireAll,
+		...entry.excludeAny,
+		...entry.excludeAll,
+	]) regexFor(expression, entry);
+};
+
 const expressionMatches = (messages: readonly LoreScanMessage[], expression: string, entry: LoreEntryFields): boolean =>
 	entry.keywordMode === "regex"
 		? messages.some((message) => regexFor(expression, entry).test(message.content))
