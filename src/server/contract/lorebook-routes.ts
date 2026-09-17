@@ -31,6 +31,8 @@ import {
 	sillyTavernLorebookImportBody,
 	loreAttachmentCommandBody,
 	loreAttachmentCommandResponse,
+	loreAttachmentQuery,
+	loreAttachmentState,
 } from "../../shared/contract/lorebook";
 import {
 	attachLorebookToCharacter,
@@ -39,6 +41,7 @@ import {
 	detachLorebookFromCharacter,
 	detachLorebookFromParticipant,
 	detachLorebookFromConversation,
+	readLorebookAttachmentState,
 	saveLoreSettings,
 } from "../lorebook/attachments";
 import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
@@ -138,6 +141,10 @@ export const createLorebookRoutes = (database: Database | undefined) => new Elys
 	.use(createLorebookAttachmentRoutes(database));
 
 export const createLorebookAttachmentRoutes = (database: Database | undefined) => new Elysia()
+	.get("/api/lorebooks/attachments", ({ query }) => {
+		const state = withDatabase(database, (connection) => readLorebookAttachmentState(connection, query.conversationId));
+		return state ?? notFoundResponse();
+	}, { query: loreAttachmentQuery, response: { 200: loreAttachmentState, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
 		withDatabase(database, (connection) => {
 			const command = body;

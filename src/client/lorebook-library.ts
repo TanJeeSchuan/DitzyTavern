@@ -8,6 +8,8 @@ import {
 	lorebookImportApplied,
 	lorebookListResponse,
 	loreMatchTestResponse,
+	loreAttachmentState,
+	type LoreAttachmentState,
 	nativeLorebook,
 	type LoreMatchTestResponse,
 	type LorebookCommand,
@@ -19,6 +21,15 @@ import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse };
 export type LoreMatchTest = LoreMatchTestResponse;
+
+export async function getLorebookAttachmentState(conversationId: number): Promise<LoreAttachmentState | null> {
+	const { data, error } = await api.api.lorebooks.attachments.get({ query: { conversationId } });
+	if (error) {
+		if (error.status === 404) return null;
+		throw new Error("Unable to load Lorebook attachments");
+	}
+	return decodeWirePayload(loreAttachmentState, data);
+}
 
 export async function listLorebooks(): Promise<LorebookListResponse["books"]> {
 	const { data, error } = await api.api.lorebooks.get();

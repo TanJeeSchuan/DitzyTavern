@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterLorebookAttachmentTable,
+	conversationTable,
 	conversationControlTable,
 	conversationLoreSettingsTable,
 	conversationLorebookAttachmentTable,
@@ -134,6 +135,23 @@ export const readLorebookAttachmentEligibility = (
 		rows.push({ id: attachment.id, owner: "participant", ownerId: attachment.participant_id, bookId: attachment.lorebook_id, scope: participantScope(attachment.scope), enabled: attachment.enabled, eligible, reason: !attachment.enabled ? "disabled" : eligible ? "eligible" : attachment.scope === "cast" ? "not-in-cast" : "not-controlled" });
 	}
 	return rows;
+};
+
+export const readLorebookAttachmentState = (
+	database: Database,
+	conversationId: number,
+) => {
+	const db = connect(database);
+	const conversation = db.select({ id: conversationTable.id }).from(conversationTable)
+		.where(eq(conversationTable.id, conversationId)).get();
+	if (conversation === undefined) return undefined;
+	const settings = readLoreSettings(database, conversationId);
+	return {
+		conversationId,
+		scanDepth: settings.scanDepth,
+		allowance: settings.allowance,
+		attachments: readLorebookAttachmentEligibility(database, conversationId),
+	};
 };
 
 export const readLoreSettings = (database: Database, conversationId: number): LoreSettings => {

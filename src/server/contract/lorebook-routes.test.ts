@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createLorebookRoutes } from "./lorebook-routes";
 import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
+import { createConversationModule } from "../conversation";
 
 const request = (path: string, init?: RequestInit) =>
 	new Request(`http://localhost${path}`, {
@@ -185,5 +186,25 @@ describe("Lorebook library transport", () => {
 		}));
 		expect(response.status).toBe(422);
 		expect(await (await app.handle(request("/api/lorebooks"))).json()).toEqual({ books: [] });
+	});
+
+	test("reads attachment eligibility and Chat Lore settings", async () => {
+		const created = await postCommand(app, { type: "create", name: "World" });
+		const conversation = createConversationModule(database).create({
+			name: "Story",
+			participants: [
+				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const initial = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
+		expect(initial.status).toBe(200);
+		expect(await initial.json()).toMatchObject({ conversationId: conversation.id, scanDepth: 4, allowance: 2048, attachments: [] });
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-chat", conversationId: conversation.id, bookId: 1 }) }));
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, scanDepth: 2, allowance: 900 }) }));
+		const updated = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
+		expect(await updated.json()).toMatchObject({ scanDepth: 2, allowance: 900, attachments: [{ bookId: 1, owner: "conversation", scope: "chat", enabled: true, eligible: true, reason: "eligible" }] });
+		void created;
 	});
 });

@@ -22,6 +22,23 @@ export const loreAttachmentCommandBody = Type.Union([
 ]);
 export type LoreAttachmentCommand = Static<typeof loreAttachmentCommandBody>;
 export const loreAttachmentCommandResponse = Type.Object({ outcome: Type.Literal("applied") });
+export const loreAttachmentQuery = Type.Object({ conversationId: numericWire });
+export const loreAttachmentState = Type.Object({
+	conversationId: Type.Integer(),
+	scanDepth: Type.Integer({ minimum: 0 }),
+	allowance: Type.Integer({ minimum: 0 }),
+	attachments: Type.Array(Type.Object({
+		id: Type.Integer(),
+		owner: Type.Union([Type.Literal("character"), Type.Literal("participant"), Type.Literal("conversation")]),
+		ownerId: Type.Integer(),
+		bookId: Type.Integer(),
+		scope: loreAttachmentScope,
+		enabled: Type.Boolean(),
+		eligible: Type.Boolean(),
+		reason: Type.Union([Type.Literal("eligible"), Type.Literal("disabled"), Type.Literal("not-in-cast"), Type.Literal("not-controlled")]),
+	})),
+});
+export type LoreAttachmentState = Static<typeof loreAttachmentState>;
 
 export const loreEntryFields = Type.Object({
 	title: Type.String(),
