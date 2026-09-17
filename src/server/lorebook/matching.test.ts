@@ -62,9 +62,10 @@ describe("lore entry matching", () => {
 	});
 
 	test("uses keyword fallback for AND entries and skips semantic-only entries", () => {
-		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 });
+		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7, fallbackReason: "Embedding service unavailable." });
 		expect(fallback.active).toBe(true);
 		expect(fallback.fallback).toBe(true);
+		expect(fallback.semantic.fallbackReason).toBe("Embedding service unavailable.");
 		expect(matchLoreEntry(entry({ keywords: [], semanticTriggers: ["a fortified place"] }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 }).active).toBe(false);
 	});
 

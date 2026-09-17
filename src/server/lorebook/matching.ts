@@ -3,7 +3,7 @@ import { InvalidLorebookExpressionError } from "./errors";
 
 /** ==[HUMAN APPROVED]== A complete selected Message. Matching never receives concatenated history. */
 export interface LoreScanMessage {
-	/** Null identifies the pending Send text captured before a Message exists. */
+	/** ==[HUMAN APPROVED]== Null identifies the pending Send text captured before a Message exists. */
 	readonly id?: number | null;
 	readonly content: string;
 }
@@ -44,6 +44,7 @@ export interface LoreEntryMatch {
 		readonly matched: boolean;
 		readonly threshold: number | null;
 		readonly matches: readonly LoreSemanticMatch[];
+		readonly fallbackReason?: string;
 	};
 	readonly reasons: readonly string[];
 }
@@ -169,16 +170,18 @@ const semanticEvidence = (
 		matched: false,
 		threshold: null,
 		matches: NO_SEMANTIC_MATCHES,
+		fallbackReason: evaluation?.fallbackReason,
 	};
 	if (evaluation?.available !== true) return {
 		available: false,
 		matched: false,
 		threshold,
 		matches: NO_SEMANTIC_MATCHES,
+		fallbackReason: evaluation?.fallbackReason,
 	};
 	const matches = (evaluation.matches ?? []).filter((match) =>
 		entry.semanticTriggers.includes(match.trigger) && match.score >= threshold);
-	return { available: true, matched: matches.length > 0, threshold, matches };
+	return { available: true, matched: matches.length > 0, threshold, matches, fallbackReason: evaluation.fallbackReason };
 };
 
 /** ==[HUMAN APPROVED]==

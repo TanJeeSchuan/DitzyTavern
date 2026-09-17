@@ -196,6 +196,42 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
+// ==[HUMAN APPROVED]== Semantic matching is application-wide and independent of the writing
+// model. Credentials remain in the dedicated encrypted table; this row contains only the safe
+// endpoint identity and matching policy.
+export const embeddingSettingsTable = sqliteTable("embedding_settings", {
+	id: int().primaryKey(),
+	revision: int().notNull().default(0),
+	endpoint: text().notNull().default(""),
+	model: text().notNull().default(""),
+	threshold: real().notNull().default(0.7),
+	deadline_ms: int().notNull().default(5000),
+});
+
+export const embeddingSecretTable = sqliteTable("embedding_secret", {
+	settings_id: int().primaryKey().references(() => embeddingSettingsTable.id, { onDelete: "cascade" }),
+	format_version: int().notNull(),
+	key_id: text().notNull(),
+	nonce: text().notNull(),
+	ciphertext: text().notNull(),
+	tag: text().notNull(),
+});
+
+// ==[HUMAN APPROVED]== Derived vectors are reusable only when endpoint, model and source kind
+// are identical. Authored content and trigger text remain the cache key, never provider data.
+export const embeddingCacheTable = sqliteTable(
+	"embedding_cache",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		endpoint: text().notNull(),
+		model: text().notNull(),
+		source_kind: text().notNull(),
+		source_text: text().notNull(),
+		vector_json: text().notNull(),
+	},
+	(table) => [uniqueIndex("embedding_cache_source_unique").on(table.endpoint, table.model, table.source_kind, table.source_text)],
+);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

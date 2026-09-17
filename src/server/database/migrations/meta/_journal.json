@@ -43,6 +43,13 @@
       "when": 1789638207029,
       "tag": "0005_orange_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789638926768,
+      "tag": "0006_damp_misty_knight",
+      "breakpoints": true
     }
   ]
 }
