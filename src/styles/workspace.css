@@ -923,6 +923,69 @@
 	border-top: 1px solid var(--border);
 }
 
+.embedding-settings-editor {
+	display: grid;
+	gap: 0.85rem;
+}
+
+.embedding-settings-grid {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.embedding-settings-grid .field {
+	display: grid;
+	gap: 0.35rem;
+}
+
+.embedding-settings-grid .field > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	font-size: 0.76rem;
+	font-weight: 620;
+}
+
+.embedding-settings-grid .field > span em {
+	color: var(--text-muted);
+	font-size: 0.68rem;
+	font-style: normal;
+	font-weight: 500;
+}
+
+.embedding-settings-grid .field small {
+	color: var(--text-muted);
+	font-size: 0.7rem;
+	line-height: 1.4;
+}
+
+.embedding-credential-field svg {
+	width: 0.85rem;
+	height: 0.85rem;
+	color: var(--accent);
+}
+
+.embedding-settings-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.settings-feedback,
+.settings-feedback-error {
+	margin: 0;
+	font-size: 0.74rem;
+	line-height: 1.4;
+}
+
+.settings-feedback {
+	color: var(--text-muted);
+}
+
+.settings-feedback-error {
+	color: var(--destructive);
+}
+
 .settings-toggle-row {
 	display: flex;
 	align-items: center;
