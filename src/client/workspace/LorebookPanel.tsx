@@ -9,6 +9,8 @@ import {
 	importSillyTavernLorebook,
 	listLorebooks,
 	parseNativeLorebook,
+	testLorebookMatch,
+	type LoreMatchTest,
 	type Lorebook,
 	type LorebookCommand,
 } from "../lorebook-library";
@@ -42,7 +44,7 @@ const joinList = (value: string[]): string => value.join(", ");
 const entryListKeys = ["keywords", "semanticTriggers", "requireAny", "requireAll", "excludeAny", "excludeAll"] as const;
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
 
-export function LorebookPanel({ onClose, mutationsDisabled = false }: { onClose: () => void; mutationsDisabled?: boolean }) {
+export function LorebookPanel({ conversationId, onClose, mutationsDisabled = false }: { conversationId: number; onClose: () => void; mutationsDisabled?: boolean }) {
 	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
 	const [book, setBook] = useState<Lorebook | null>(null);
 	const [entryId, setEntryId] = useState<number | null>(null);
@@ -52,6 +54,10 @@ export function LorebookPanel({ onClose, mutationsDisabled = false }: { onClose:
 	const [search, setSearch] = useState("");
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
+	const [testWriting, setTestWriting] = useState("");
+	const [testResult, setTestResult] = useState<LoreMatchTest | null>(null);
+	const [testPending, setTestPending] = useState(false);
+	const [testError, setTestError] = useState<string | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 
 	const refresh = useCallback(async () => {
@@ -108,6 +114,17 @@ export function LorebookPanel({ onClose, mutationsDisabled = false }: { onClose:
 		if (book === null) return;
 		void run({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
 	};
+	const runMatchTest = async () => {
+		setTestPending(true);
+		setTestError(null);
+		try {
+			setTestResult(await testLorebookMatch(conversationId, testWriting));
+		} catch (error) {
+			setTestError(error instanceof Error ? error.message : "Lorebook matching could not be tested.");
+		} finally {
+			setTestPending(false);
+		}
+	};
 	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) }));
 	const importFile = async (file: File) => {
 		setPending(true);
@@ -133,12 +150,51 @@ export function LorebookPanel({ onClose, mutationsDisabled = false }: { onClose:
 			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library">{filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <button type="button" key={item.id} className="rounded-lg border border-border p-3 text-left hover:bg-muted/50" onClick={() => void openBook(item.id)}><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></button>)}</div> : <>
 				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => { setBook(null); setEntryId(null); }}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => { if (window.confirm(`Delete ${book.name}?`)) void run({ type: "delete", bookId: book.id, expectedRevision: book.revision }); }}>Delete</Button></div></div>
 				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void run({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
+				<MatchTester writing={testWriting} onWritingChange={(value) => { setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
 				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { setEntryId(null); setEntryDraft(blankEntry()); }}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => { setEntryId(entry.id); setEntryDraft(fieldsOf(entry)); }}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></button><Button type="button" size="xs" variant="ghost" disabled={pending || index === 0} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === book.entries.length - 1} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void run({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
 				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={setEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => void run({ type: "delete-entry", bookId: book.id, entryId, expectedRevision: book.revision }, "Entry deleted.")} pending={pending} />}
 			</>}
 			{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
 	</>;
+}
+
+function MatchTester({ writing, onWritingChange, result, error, pending, onTest }: { writing: string; onWritingChange: (value: string) => void; result: LoreMatchTest | null; error: string | null; pending: boolean; onTest: () => void }) {
+	return <section className="lore-match-tester flex flex-col gap-2" aria-labelledby="lore-match-tester-title">
+		<div><h2 id="lore-match-tester-title" className="text-sm font-medium">Match tester</h2><p className="panel-intro">Test the current Chat writing without starting Generation. This does not change saved entries or historical Variants.</p></div>
+		<textarea className="field-input min-h-24" value={writing} onChange={(event) => onWritingChange(event.target.value)} placeholder="Paste the writing to test…" aria-label="Writing to test" />
+		<Button type="button" size="sm" className="self-start" disabled={pending} onClick={onTest}>Test matches</Button>
+		{error !== null && <p className="settings-feedback-error" role="alert">{error}</p>}
+		{result !== null && <MatchTesterResult result={result} />}
+	</section>;
+}
+
+function MatchTesterResult({ result }: { result: LoreMatchTest }) {
+	return <div className="lore-match-result" aria-label="Lore match test result">
+		<div className="lore-match-result-heading"><strong>{result.mode === "semantic" ? "Semantic evaluation" : result.mode === "keyword-fallback" ? "Keyword fallback" : "No eligible Lorebooks"}</strong><span>{result.matches.filter((entry) => entry.active).length} active entries</span></div>
+		{result.fallbackReason !== undefined && <p className="settings-feedback-error">{result.fallbackReason}</p>}
+		{result.scan.length > 0 && <p className="lore-match-scan-note">Compared against {result.scan.length} scanned {result.scan.length === 1 ? "Message" : "Messages"}, plus the supplied writing.</p>}
+		{result.matches.length === 0 ? <p className="panel-intro">No eligible entries were found.</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
+			<summary><span>{entry.title || "Untitled entry"}</span><strong data-active={entry.active}>{entry.active ? "Active" : entry.skipped ? "Skipped" : "Not active"}</strong></summary>
+			<div className="lore-match-entry-body">
+				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "—"})</p></div>}
+				<div><small>Primary Keywords</small><p>{entry.primary.matched ? `Matched: ${entry.primary.matchedExpressions.join(", ") || "semantic trigger"}` : "No primary match"}</p></div>
+				<div><small>Secondary conditions</small><p>{secondarySummary(entry)}</p></div>
+				{entry.reasons.length > 0 && <p className="lore-match-reasons">{entry.reasons.join(" · ")}</p>}
+			</div>
+		</details>)}
+	</div>;
+}
+
+function secondarySummary(entry: LoreMatchTest["matches"][number]): string {
+	const conditions = [
+		["require any", entry.secondary.requireAny],
+		["require all", entry.secondary.requireAll],
+		["exclude any", entry.secondary.excludeAny],
+		["exclude all", entry.secondary.excludeAll],
+	] as const;
+	const populated = conditions.filter(([, condition]) => condition.matchedExpressions.length > 0 || condition.missingExpressions.length > 0);
+	return populated.length === 0 ? "No secondary conditions" : populated.map(([name, condition]) => `${name}: ${condition.matched ? "passed" : "failed"}`).join(" · ");
 }
 
 function EntryEditor({ entry, onChange, onListChange, onSave, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => void; onSave: () => void; onDelete?: () => void; pending: boolean }) {

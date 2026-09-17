@@ -7,7 +7,9 @@ import {
 	lorebookDeleted,
 	lorebookImportApplied,
 	lorebookListResponse,
+	loreMatchTestResponse,
 	nativeLorebook,
+	type LoreMatchTestResponse,
 	type LorebookCommand,
 	type NativeLorebook,
 	type Lorebook as LorebookValue,
@@ -16,6 +18,7 @@ import {
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse };
+export type LoreMatchTest = LoreMatchTestResponse;
 
 export async function listLorebooks(): Promise<LorebookListResponse["books"]> {
 	const { data, error } = await api.api.lorebooks.get();
@@ -32,6 +35,17 @@ export async function getLorebook(bookId: number): Promise<LorebookValue | null>
 		throw new Error("Unable to load Lorebook");
 	}
 	return data === null ? null : decodeWirePayload(lorebook, data);
+}
+
+export async function testLorebookMatch(conversationId: number, writing: string): Promise<LoreMatchTest> {
+	const { data, error } = await api.api.lorebooks["match-test"].post({ conversationId, writing });
+	if (error || data === undefined || data === null) {
+		if (error?.status === 404) throw new Error("That Chat no longer exists.");
+		throw new Error("Lorebook matching could not be tested.");
+	}
+	const decoded = decodeWirePayload(loreMatchTestResponse, data);
+	if (decoded === null) throw new Error("Lorebook matching returned an invalid result.");
+	return decoded;
 }
 
 export type LorebookCommandOutcome =

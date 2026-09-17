@@ -14,7 +14,16 @@ export interface ScopedLoreEvaluation {
 	readonly candidates: readonly PromptLoreEntry[];
 	readonly activation: LoreActivationRecord;
 	readonly scan: readonly LoreScanMessage[];
+	readonly matches: readonly ScopedLoreMatch[];
 	readonly allowance: number;
+}
+
+export interface ScopedLoreMatch {
+	readonly bookId: number;
+	readonly bookName: string;
+	readonly entryId: number;
+	readonly title: string;
+	readonly match: LoreEntryMatch;
 }
 
 const evidenceFor = (input: {
@@ -120,11 +129,13 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 		})),
 	}];
 	const candidates: PromptLoreEntry[] = [];
+	const matches: ScopedLoreMatch[] = [];
 	let hasSemanticTriggers = false;
 	for (const { book, attachmentIds } of sources.books) {
 		for (const entry of book.entries) {
 			hasSemanticTriggers ||= entry.enabled && entry.semanticTriggers.length > 0;
 			const matched = matchLoreEntry(entry, sources.scanMessages, semantic);
+			matches.push({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matched });
 			evidence.push(evidenceFor({ book, entryId: entry.id, match: matched, attachmentIds, messages: sources.scanMessages }));
 			if (!matched.active) continue;
 			candidates.push({ content: entry.content, always: entry.always, priority: entry.priority, bookOrder: book.id, entryOrder: entry.position });
@@ -136,6 +147,7 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 	return {
 		candidates,
 		scan: sources.scanMessages,
+		matches,
 		allowance: sources.allowance,
 		activation: {
 			version: 1,
@@ -182,4 +194,5 @@ export const noLoreEvaluation = (): ScopedLoreEvaluation => ({
 		finalLoreText: "",
 		manuallyEdited: false,
 	},
+	matches: [],
 });

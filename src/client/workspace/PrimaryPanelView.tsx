@@ -122,7 +122,7 @@ export function PrimaryPanelView({
 					)}
 					{panel === "lorebooks" && (
 						<div className="panel-fill">
-							<LorebookPanel onClose={onClose} mutationsDisabled={mutationsDisabled} />
+							<LorebookPanel conversationId={Number(activeChat.id)} onClose={onClose} mutationsDisabled={mutationsDisabled} />
 						</div>
 					)}
 					{panel === "settings" && (

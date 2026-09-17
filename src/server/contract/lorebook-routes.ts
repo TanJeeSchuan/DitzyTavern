@@ -25,6 +25,8 @@ import {
 	lorebookConflict,
 	lorebookImportApplied,
 	lorebookListResponse,
+	loreMatchTestBody,
+	loreMatchTestResponse,
 	nativeLorebook,
 	sillyTavernLorebookImportBody,
 	loreAttachmentCommandBody,
@@ -39,6 +41,8 @@ import {
 	detachLorebookFromConversation,
 	saveLoreSettings,
 } from "../lorebook/attachments";
+import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
+import { readSelectedHistory } from "../conversation/selected-history";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
 
@@ -96,6 +100,41 @@ export const createLorebookRoutes = (database: Database | undefined) => new Elys
 			? { outcome: "deleted" as const, bookId: result.value.deleted }
 			: { outcome: "applied" as const, book: result.value };
 	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
+	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
+		const result = await withDatabase(database, async (connection) => {
+			const history = readSelectedHistory(connection, body.conversationId);
+			if (history === undefined) return undefined;
+			return evaluateScopedLoreAsync({
+				database: connection,
+				conversationId: body.conversationId,
+				messages: history.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
+				pendingHumanText: body.writing,
+			});
+		});
+		if (result === undefined) return respond(404, { outcome: "not-found" as const });
+		return respond(200, {
+			mode: result.activation.mode,
+			fallbackReason: result.activation.mode === "keyword-fallback"
+				? result.matches.find((item) => item.match.semantic.fallbackReason !== undefined)?.match.semantic.fallbackReason
+				: undefined,
+			scan: result.scan.map((message) => ({ id: message.id ?? null, content: message.content })),
+			matches: result.matches.map(({ bookId, bookName, entryId, title, match }) => ({
+				bookId, bookName, entryId, title,
+				active: match.active,
+				skipped: match.skipped,
+				fallback: match.fallback,
+				primary: { ...match.primary, matchedExpressions: [...match.primary.matchedExpressions], missingExpressions: [...match.primary.missingExpressions] },
+				secondary: {
+					requireAny: { ...match.secondary.requireAny, matchedExpressions: [...match.secondary.requireAny.matchedExpressions], missingExpressions: [...match.secondary.requireAny.missingExpressions] },
+					requireAll: { ...match.secondary.requireAll, matchedExpressions: [...match.secondary.requireAll.matchedExpressions], missingExpressions: [...match.secondary.requireAll.missingExpressions] },
+					excludeAny: { ...match.secondary.excludeAny, matchedExpressions: [...match.secondary.excludeAny.matchedExpressions], missingExpressions: [...match.secondary.excludeAny.missingExpressions] },
+					excludeAll: { ...match.secondary.excludeAll, matchedExpressions: [...match.secondary.excludeAll.matchedExpressions], missingExpressions: [...match.secondary.excludeAll.missingExpressions] },
+				},
+				semantic: { ...match.semantic, matches: match.semantic.matches.map((semanticMatch) => ({ ...semanticMatch })) },
+				reasons: [...match.reasons],
+			})),
+		});
+	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
 
 export const createLorebookAttachmentRoutes = (database: Database | undefined) => new Elysia()

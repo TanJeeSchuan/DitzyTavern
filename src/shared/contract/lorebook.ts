@@ -148,6 +148,35 @@ export const lorebookImportApplied = Type.Object({
 export const lorebookCommandApplied = Type.Object({ outcome: Type.Literal("applied"), book: lorebook });
 export const lorebookDeleted = Type.Object({ outcome: Type.Literal("deleted"), bookId: Type.Integer() });
 export const lorebookCommandResponse = Type.Union([lorebookCommandApplied, lorebookDeleted]);
+export const loreMatchTestBody = Type.Object({ conversationId: Type.Integer(), writing: Type.String() });
+const loreMatchTestCondition = Type.Object({ matched: Type.Boolean(), matchedExpressions: Type.Array(Type.String()), missingExpressions: Type.Array(Type.String()) });
+const loreMatchTestSemantic = Type.Object({
+	available: Type.Boolean(),
+	matched: Type.Boolean(),
+	threshold: Type.Union([Type.Number(), Type.Null()]),
+	matches: Type.Array(Type.Object({ trigger: Type.String(), score: Type.Number(), sentence: Type.String() })),
+	fallbackReason: Type.Optional(Type.String()),
+});
+const loreMatchTestEntry = Type.Object({
+	bookId: Type.Integer(),
+	bookName: Type.String(),
+	entryId: Type.Integer(),
+	title: Type.String(),
+	active: Type.Boolean(),
+	skipped: Type.Boolean(),
+	fallback: Type.Boolean(),
+	primary: loreMatchTestCondition,
+	secondary: Type.Object({ requireAny: loreMatchTestCondition, requireAll: loreMatchTestCondition, excludeAny: loreMatchTestCondition, excludeAll: loreMatchTestCondition }),
+	semantic: loreMatchTestSemantic,
+	reasons: Type.Array(Type.String()),
+});
+export const loreMatchTestResponse = Type.Object({
+	mode: Type.Union([Type.Literal("semantic"), Type.Literal("keyword-fallback"), Type.Literal("none")]),
+	fallbackReason: Type.Optional(Type.String()),
+	scan: Type.Array(Type.Object({ id: Type.Union([Type.Integer(), Type.Null()]), content: Type.String() })),
+	matches: Type.Array(loreMatchTestEntry),
+});
+export type LoreMatchTestResponse = Static<typeof loreMatchTestResponse>;
 export const lorebookConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.Literal("stale-revision"),
