@@ -49,8 +49,11 @@ import {
 } from "./generate-server-owned";
 import {
 	captureSendGeneration,
+	captureSendGenerationAsync,
 	captureContinuationGeneration,
+	captureContinuationGenerationAsync,
 	captureSiblingGeneration,
+	captureSiblingGenerationAsync,
 	capturedAcceptanceFields,
 	modelRequestFor,
 	type CapturedGeneration,
@@ -102,7 +105,7 @@ interface GenerationLifecyclePolicy<
 		database: Database,
 		conversationId: number,
 		input: Input,
-	) => Capture;
+	) => Capture | Promise<Capture>;
 	accept: (
 		conversation: ConversationModule,
 		input: Input,
@@ -152,7 +155,8 @@ async function runGenerationLifecycle<
 	) {
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const capture = policy.capture(database, input.conversationId, input);
+	const captured = policy.capture(database, input.conversationId, input);
+	const capture = captured instanceof Promise ? await captured : captured;
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
@@ -248,7 +252,7 @@ export async function sendThroughProvisionalTailGeneration(
 					formatting: current.formatting,
 				});
 			}
-			return captureSendGeneration({
+			const captured = captureSendGeneration({
 				database: currentDatabase,
 				conversationId,
 				content: current.content,
@@ -256,7 +260,20 @@ export async function sendThroughProvisionalTailGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
+				embeddingFetch: current.embeddingFetch,
 			});
+			return captured.plan.loreActivation?.mode === "keyword-fallback"
+				? captureSendGenerationAsync({
+					database: currentDatabase,
+					conversationId,
+					content: current.content,
+					connection: current.connection,
+					connectionSettings: current.connectionSettings,
+					tokenEstimator: current.tokenEstimator,
+					formatting: current.formatting,
+					embeddingFetch: current.embeddingFetch,
+				})
+				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -302,14 +319,26 @@ export async function continueGeneration(
 					formatting: current.formatting,
 				});
 			}
-			return captureContinuationGeneration({
+			const captured = captureContinuationGeneration({
 				database: currentDatabase,
 				conversationId,
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
+				embeddingFetch: current.embeddingFetch,
 			});
+			return captured.plan.loreActivation?.mode === "keyword-fallback"
+				? captureContinuationGenerationAsync({
+					database: currentDatabase,
+					conversationId,
+					connection: current.connection,
+					connectionSettings: current.connectionSettings,
+					tokenEstimator: current.tokenEstimator,
+					formatting: current.formatting,
+					embeddingFetch: current.embeddingFetch,
+				})
+				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -367,6 +396,7 @@ export interface GenerateSiblingVariantInput {
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
 	formatting?: GenerationFormattingContext;
+	embeddingFetch?: import("../model-client/types").ModelFetch;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -395,10 +425,16 @@ export async function generateSiblingVariant(
 					formatting: current.formatting,
 				});
 			}
-			return captureSiblingGeneration({
+			const captured = captureSiblingGeneration({
 				database: currentDatabase,
 				...current,
 			});
+			return captured.plan.loreActivation?.mode === "keyword-fallback"
+				? captureSiblingGenerationAsync({
+					database: currentDatabase,
+					...current,
+				})
+				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {

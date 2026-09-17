@@ -64,7 +64,7 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
-	createGenerationPreview,
+	createGenerationPreviewAsync,
 	previewRecordFor,
 	type GenerationPreviewAcceptanceFor,
 	type GenerationPreviewKind,
@@ -265,7 +265,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations/preview",
-			({ params, body }) => {
+			async ({ params, body }) => {
 				try {
 					const common = {
 						conversationId: params.id,
@@ -277,8 +277,8 @@ export const createConversationRoutes = (
 						: body.kind === "sibling"
 							? { ...common, kind: body.kind, messageId: body.messageId }
 							: { ...common, kind: body.kind };
-					const preview = withDatabase(database, (connection) =>
-						createGenerationPreview(connection, input));
+					const preview = await withDatabase(database, (connection) =>
+						createGenerationPreviewAsync(connection, input));
 					const capture = preview.capture.capture;
 					return {
 						outcome: "available" as const,

@@ -442,6 +442,21 @@ export async function prepareGenerationInputsAsync(
 ): Promise<GenerationPreparation> {
 	const preparation = prepareGenerationInputs(input);
 	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
+	// The synchronous capture already proves that no enabled entry has semantic
+	// triggers when its mode is not keyword-fallback. Avoid an unnecessary
+	// Promise turn in that common path: acceptance must remain atomic with the
+	// captured author/control facts even when another edit races the attempt.
+	const evidenceList = Array.isArray(preparation.lore.activation.evidence)
+		? preparation.lore.activation.evidence
+		: [];
+	const needsSemantic = evidenceList.some((evidence) => {
+		if (evidence === null || typeof evidence !== "object" || Array.isArray(evidence)) return false;
+		const match = evidence["match"];
+		if (match === null || typeof match !== "object" || Array.isArray(match)) return false;
+		const semantic = match["semantic"];
+		return semantic !== null && typeof semantic === "object" && !Array.isArray(semantic) && semantic["threshold"] !== null;
+	});
+	if (!needsSemantic) return preparation;
 	const lore = await evaluateScopedLoreAsync({
 		database: input.database,
 		conversationId: input.conversationId,

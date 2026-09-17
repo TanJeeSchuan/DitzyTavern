@@ -10,8 +10,11 @@ import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
 import {
 	captureContinuationGeneration,
+	captureContinuationGenerationAsync,
 	captureSendGeneration,
+	captureSendGenerationAsync,
 	captureSiblingGeneration,
+	captureSiblingGenerationAsync,
 	prepareGenerationInputs,
 	type ContinuationGenerationCapture,
 	type SendGenerationCapture,
@@ -100,6 +103,28 @@ const buildPreviewCapture = (
 				capture: captureSiblingGeneration({ ...captureInput, messageId: request.messageId }),
 				messageId: request.messageId,
 			};
+	}
+};
+
+const buildPreviewCaptureAsync = async (
+	database: Database,
+	request: GenerationPreviewRequest,
+): Promise<GenerationPreviewCapture> => {
+	const captureInput = {
+		database,
+		conversationId: request.conversationId,
+		connection: request.connection,
+		connectionSettings: request.connectionSettings,
+		tokenEstimator: request.tokenEstimator,
+		formatting: request.formatting,
+	};
+	switch (request.kind) {
+		case "send":
+			return { kind: "send", capture: await captureSendGenerationAsync({ ...captureInput, content: request.content }), content: request.content };
+		case "continuation":
+			return { kind: "continuation", capture: await captureContinuationGenerationAsync(captureInput) };
+		case "sibling":
+			return { kind: "sibling", capture: await captureSiblingGenerationAsync({ ...captureInput, messageId: request.messageId }), messageId: request.messageId };
 	}
 };
 
@@ -198,6 +223,28 @@ export const createGenerationPreview = (
 	ensureScheduledPreviewSweep();
 	sweepExpiredGenerationPreviews();
 	const capture = buildPreviewCapture(database, input);
+	const now = Date.now();
+	const record: GenerationPreviewRecord = {
+		id: crypto.randomUUID(),
+		conversationId: input.conversationId,
+		fingerprint: generationPreparationFingerprint(capture.capture.preparation),
+		capture,
+		createdAt: now,
+		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
+	};
+	previews.set(record.conversationId, record);
+	return record;
+};
+
+/** Asynchronous preview path used by the HTTP inspection route so semantic
+ * activation is captured before the inspected plan is exposed. */
+export const createGenerationPreviewAsync = async (
+	database: Database,
+	input: GenerationPreviewRequest,
+): Promise<GenerationPreviewRecord> => {
+	ensureScheduledPreviewSweep();
+	sweepExpiredGenerationPreviews();
+	const capture = await buildPreviewCaptureAsync(database, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
