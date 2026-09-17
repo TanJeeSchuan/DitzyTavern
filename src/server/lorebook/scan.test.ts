@@ -26,4 +26,8 @@ describe("Lore Scan Window", () => {
 		expect(() => captureLoreScanWindow({ messages, depth: -1 })).toThrow("non-negative");
 		expect(captureLoreScanWindow({ messages, beforeMessageId: 999 }).map((message) => message.id)).toEqual([2, 3, 4, 5]);
 	});
+
+	test("does not scan when the configured depth is zero", () => {
+		expect(captureLoreScanWindow({ messages, pendingHumanText: "Pending", depth: 0 })).toEqual([]);
+	});
 });

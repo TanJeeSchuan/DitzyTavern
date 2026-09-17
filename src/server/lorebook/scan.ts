@@ -29,6 +29,7 @@ export const captureLoreScanWindow = (
 ): readonly LoreScanWindowMessage[] => {
 	const depth = input.depth ?? DEFAULT_LORE_SCAN_DEPTH;
 	if (!Number.isInteger(depth) || depth < 0) throw new Error("Lore scan depth must be a non-negative whole number.");
+	if (depth === 0) return [];
 	const targetIndex = input.beforeMessageId === undefined
 		? input.messages.length
 		: input.messages.findIndex((message) => message.id === input.beforeMessageId);
