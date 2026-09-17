@@ -17,9 +17,12 @@ import {
 	budgetPromptPlan,
 	compilePrompt,
 	PromptBudgetExceededError,
+	toEstimationTranscript,
+	tokenxEstimator,
 	type GenerationIntent,
 	type PromptPlan,
 	type PromptContextEntry,
+	type PromptLoreEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
@@ -126,12 +129,22 @@ export const compileGenerationPlan = (
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
-	const compile = (context: readonly PromptContextEntry[]): PromptPlan => {
+	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
+	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
+	const loreAllowance = input.loreAllowance ?? 2_048;
+	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
+		throw new Error("Lore allowance must be a non-negative whole number.");
+	}
+	const compileWith = (
+		context: readonly PromptContextEntry[],
+		lore: readonly PromptLoreEntry[],
+	): PromptPlan => {
 		const compiled = compilePrompt({
 			human: input.human,
 			model: input.model,
 			context,
 			recipe: input.recipe,
+			lore,
 			attempt,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
@@ -150,6 +163,23 @@ export const compileGenerationPlan = (
 			"An assistant-prefill Continuation requires preceding model history to prefill from.",
 		);
 	}
+	const loreProtectedIndex = protectedHistoryIndex ?? [...input.context.keys()]
+		.reverse()
+		.find((index) => input.context[index]?.role === "human");
+	const protectedContext = loreProtectedIndex === undefined
+		? []
+		: [input.context[loreProtectedIndex]];
+	const selectedLore = admitLore({
+		candidates,
+		compile: compileWith,
+		protectedContext,
+		contextLimit: input.settings.contextLimit,
+		responseBudget: input.settings.responseBudget,
+		safetyAllowance: input.settings.safetyAllowance,
+		loreAllowance,
+		estimator: input.estimator ?? tokenxEstimator,
+	});
+	const compile = (context: readonly PromptContextEntry[]): PromptPlan => compileWith(context, selectedLore);
 	const budget = budgetPromptPlan({
 		plan: compile(input.context),
 		compile,
@@ -169,6 +199,42 @@ export const compileGenerationPlan = (
 			input.connection,
 		),
 	};
+};
+
+const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {
+	if (left.always !== right.always) return left.always === true ? -1 : 1;
+	const priority = (right.priority ?? 0) - (left.priority ?? 0);
+	if (priority !== 0) return priority;
+	const book = (left.bookOrder ?? 0) - (right.bookOrder ?? 0);
+	if (book !== 0) return book;
+	return (left.entryOrder ?? 0) - (right.entryOrder ?? 0);
+});
+
+const admitLore = (input: {
+	candidates: readonly PromptLoreEntry[];
+	compile: (context: readonly PromptContextEntry[], lore: readonly PromptLoreEntry[]) => PromptPlan;
+	protectedContext: readonly PromptContextEntry[];
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	loreAllowance: number;
+	estimator: (transcript: string) => number;
+}): PromptLoreEntry[] => {
+	if (input.candidates.length === 0 || input.loreAllowance === 0) return [];
+	const base = input.compile(input.protectedContext, []);
+	const baseEstimate = Math.ceil(input.estimator(toEstimationTranscript(base)));
+	const selected: PromptLoreEntry[] = [];
+	let loreEstimate = 0;
+	for (const candidate of input.candidates) {
+		const trial = input.compile(input.protectedContext, [...selected, candidate]);
+		const estimate = Math.ceil(input.estimator(toEstimationTranscript(trial)));
+		const candidateCost = Math.max(0, estimate - baseEstimate);
+		if (loreEstimate + candidateCost > input.loreAllowance) continue;
+		if (estimate + input.responseBudget + input.safetyAllowance > input.contextLimit) continue;
+		selected.push(candidate);
+		loreEstimate += candidateCost;
+	}
+	return selected;
 };
 
 /**

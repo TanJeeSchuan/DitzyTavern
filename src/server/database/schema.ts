@@ -94,6 +94,12 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
+			) OR (
+				${table.reference} = 'lore'
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
 			)`,
 		),
 	],

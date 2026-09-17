@@ -186,7 +186,10 @@ export const addPromptPresetBlock = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		if (reference === "lore" && recipe.slots.some((slot) => slot.reference === "lore")) {
+			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
+		}
 		const count = orderedIdsOf(db, presetId).length;
 		db.insert(promptPresetBlockTable)
 			.values({
@@ -271,6 +274,9 @@ export const duplicatePromptPresetBlock = (
 	blockId: number,
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
+		if (original.reference === "lore") {
+			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
+		}
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.

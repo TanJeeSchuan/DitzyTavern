@@ -34,6 +34,7 @@ import type {
 	PromptBlock,
 	PromptPlan,
 	PromptWarning,
+	PromptLoreEntry,
 } from "./types";
 
 // ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
@@ -103,6 +104,9 @@ const planRoleFor = {
 	user: "human",
 	assistant: "model",
 } as const satisfies Record<PromptOutgoingRole, "system" | "human" | "model">;
+
+const loreText = (entries: readonly PromptLoreEntry[]): string =>
+	entries.map((entry) => entry.content).filter((content) => content.length > 0).join("\n\n");
 
 // ==[HUMAN APPROVED]== Compiles one authored opening with the owner's macro context. The position
 // is the one-based ordered position used to label warnings.
@@ -188,6 +192,13 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 					content: entry.content,
 					role: entry.role,
 				});
+			}
+			continue;
+		}
+		if (slot.reference === "lore") {
+			const content = loreText(input.lore ?? []);
+			if (content.length > 0) {
+				blocks.push({ kind: "lore", role: planRoleFor[slot.role], content });
 			}
 			continue;
 		}

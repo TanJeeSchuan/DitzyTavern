@@ -32,6 +32,15 @@ export interface CompilePromptDefinition {
 	prompt: PromptChannels;
 }
 
+/** A captured, already-admitted lore entry. Matching is owned by the lore domain. */
+export interface PromptLoreEntry {
+	readonly content: string;
+	readonly always?: boolean;
+	readonly priority?: number;
+	readonly bookOrder?: number;
+	readonly entryOrder?: number;
+}
+
 // The authorship an entry carries into the provider request. Null means the
 // entry's author matched neither controlled Participant and no captured
 // historical pair claimed it — a preservation import, or a Participant
@@ -59,6 +68,8 @@ export interface CompilePromptInput {
 	// The selected Prompt Preset's ordered recipe. It decides which blocks the
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];
+	/** Captured lore selected by the generation workflow; rendered literally. */
+	lore?: readonly PromptLoreEntry[];
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
 	attempt?: AttemptEnvironment;

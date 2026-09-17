@@ -148,6 +148,9 @@ export const importNativePromptPreset = (
 		throw new InvalidPromptPresetCommandError("The native Prompt Preset JSON is invalid.");
 	}
 	const name = requireCommandName(native.name);
+	if (native.slots.filter((slot) => slot.reference === "lore").length > 1) {
+		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Lore block.");
+	}
 	const db = connect(database);
 	const execute = database.transaction(() => {
 		const inserted = db

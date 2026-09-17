@@ -42,8 +42,6 @@ const supportedReferences = {
 } as const;
 
 const unsupportedPlaceholders = new Set([
-	"worldInfoBefore",
-	"worldInfoAfter",
 	"groupNudge",
 	"impersonation",
 	"new_chat",
@@ -290,6 +288,7 @@ const reportDefinitionNormalization = (
 // placement are applied separately by the caller.
 type ConvertedDefinition =
 	| { slot: { reference: "history" } }
+	| { slot: { reference: "lore"; role: PromptOutgoingRole } }
 	| { slot: { reference: "model-identity" | "human-identity" | "model-scenario" | "model-example-dialogue"; role: PromptOutgoingRole } }
 	| { slot: { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string } }
 	| { unsupported: SillyTavernImportDiagnostic };
@@ -300,6 +299,9 @@ const classifyDefinition = (definition: SourceDefinition): ConvertedDefinition =
 		const reference = supportedReferences[sourceReference];
 		if (reference === "history") return { slot: { reference } };
 		return { slot: { reference, role: defaultOutgoingRoles[reference] } };
+	}
+	if (definition.identifier === "worldInfoBefore" || definition.identifier === "worldInfoAfter") {
+		return { slot: { reference: "lore", role: "system" } };
 	}
 	if (definition.identifier === "charPersonality") {
 		return {
@@ -339,6 +341,9 @@ const withEnablement = (
 	if (converted.slot.reference === "history") {
 		return { reference: "history", enabled };
 	}
+	if (converted.slot.reference === "lore") {
+		return { reference: "lore", enabled, role: converted.slot.role };
+	}
 	if (converted.slot.reference === "instruction") {
 		return {
 			reference: "instruction",
@@ -376,6 +381,10 @@ const buildSillyTavernPreview = (
 	const diagnostics: SillyTavernImportDiagnostic[] = [];
 	const diagnosticKeys = new Set<string>();
 	const listedIdentifiers = new Set(order.entries.map((entry) => entry.identifier));
+	const worldInfoIdentifiers = new Set(["worldInfoBefore", "worldInfoAfter"]);
+	const worldInfoEntries = order.entries.filter((entry) => worldInfoIdentifiers.has(entry.identifier));
+	const loreKeeperIdentifier = worldInfoEntries.find((entry) => entry.enabled)?.identifier ?? worldInfoEntries[0]?.identifier;
+	let omittedWorldInfo = false;
 	const regular: NativePromptPreset["slots"] = [];
 	const depthPlaced: NativePromptPreset["slots"] = [];
 	const unlisted: NativePromptPreset["slots"] = [];
@@ -402,6 +411,13 @@ const buildSillyTavernPreview = (
 			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
 			continue;
 		}
+		if (converted.slot.reference === "lore" && entry.identifier !== loreKeeperIdentifier) {
+			if (!omittedWorldInfo) {
+				pushOnce(diagnostics, diagnosticKeys, diagnostic("collapsed-world-info", "Multiple World Info positions were collapsed into one Lore block."));
+				omittedWorldInfo = true;
+			}
+			continue;
+		}
 		reportDefinitionNormalization(diagnostics, diagnosticKeys, definition, converted);
 		const slot = withEnablement(converted, entry.enabled);
 		if (converted.slot.reference === "instruction" && definition.injectionPosition === 1) {
@@ -420,6 +436,10 @@ const buildSillyTavernPreview = (
 		const converted = classifyDefinition(definition);
 		if ("unsupported" in converted) {
 			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
+			continue;
+		}
+		if (converted.slot.reference === "lore") {
+			pushOnce(diagnostics, diagnosticKeys, diagnostic("collapsed-world-info", "World Info positions outside the selected order were omitted."));
 			continue;
 		}
 		reportDefinitionNormalization(diagnostics, diagnosticKeys, definition, converted);

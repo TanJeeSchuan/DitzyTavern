@@ -53,6 +53,7 @@ const promptDefinitionBlockKind = Type.Union([
 	// role; unlike them its text was authored in the preset, not resolved from
 	// a Participant.
 	Type.Literal("instruction"),
+	Type.Literal("lore"),
 ]);
 
 const promptBlock = Type.Union([

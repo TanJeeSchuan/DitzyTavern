@@ -10,6 +10,8 @@ import type {
 	EffectiveGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
+
+export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
@@ -17,6 +19,7 @@ import type {
 	PromptBudgetResult,
 	PromptContextEntry,
 	PromptPlan,
+	PromptLoreEntry,
 	TokenEstimator,
 } from "../prompt-compiler";
 
@@ -63,6 +66,10 @@ export interface CompileGenerationPlanInput {
 	// The selected Prompt Preset's ordered recipe, captured with the rest of
 	// the attempt's inputs so execution never rereads mutable preset state.
 	readonly recipe: readonly PromptPresetSlot[];
+	/** Captured lore candidates. They are admitted once before history trimming. */
+	readonly lore?: readonly PromptLoreEntry[];
+	/** Chat-owned estimated-token allowance for the Lore block. */
+	readonly loreAllowance?: number;
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;

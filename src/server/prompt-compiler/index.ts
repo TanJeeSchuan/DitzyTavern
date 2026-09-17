@@ -17,6 +17,7 @@ export {
 } from "./budget";
 export type {
 	CompilePromptDefinition,
+	PromptLoreEntry,
 	CompilePromptInput,
 	GenerationIntent,
 	MacroEnvironment,
