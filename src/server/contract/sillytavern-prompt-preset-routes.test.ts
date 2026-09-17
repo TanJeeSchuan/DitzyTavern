@@ -245,10 +245,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(preview.native.slots).toEqual([
 			{ reference: "instruction", enabled: true, role: "system", name: "Main", content: "main" },
 			{ reference: "instruction", enabled: true, role: "user", name: "Jailbreak", content: "jailbreak" },
+			{ reference: "lore", enabled: true, role: "system" },
 			{ reference: "instruction", enabled: false, role: "assistant", name: "Unlisted", content: "later" },
 		]);
 		expect(preview.diagnostics.map((item) => item.code)).toEqual([
-			"unsupported-placeholder",
 			"unsupported-placeholder",
 			"missing-definition",
 		]);
@@ -475,7 +475,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		]);
 		expect(preview.diagnostics.map((item) => item.code)).toEqual([
 			"unsupported-placeholder",
-			"unsupported-placeholder",
+			"collapsed-world-info",
 		]);
 
 		const imported = await postImport(app, source);
