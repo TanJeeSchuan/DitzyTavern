@@ -48,6 +48,14 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 		};
 		const triggerVectors = await vectorsFor(input.database, "trigger", triggers, client);
 		const sentenceVectors = await vectorsFor(input.database, "sentence", sentences, client);
+		// A provider can return individually well-shaped vectors with different
+		// dimensions for the two batches.  Treat that as an unusable complete
+		// result instead of turning every cross-dimension comparison into a
+		// misleading zero score.
+		const dimensions = triggerVectors[0]?.length ?? sentenceVectors[0]?.length ?? 0;
+		if (dimensions === 0 || triggerVectors.some((vector) => vector.length !== dimensions) || sentenceVectors.some((vector) => vector.length !== dimensions)) {
+			throw new Error("The embedding endpoint returned vectors with incompatible dimensions.");
+		}
 		const matches: LoreSemanticMatch[] = [];
 		for (let triggerIndex = 0; triggerIndex < triggers.length; triggerIndex += 1) {
 			const trigger = triggers[triggerIndex];
@@ -119,7 +127,7 @@ async function vectorsFor(
 			const vector = fetched[index];
 			const target = missingIndexes[index];
 			const text = missing[index];
-			if (vector === undefined || target === undefined || text === undefined) throw new Error("The embedding endpoint returned incomplete vectors.");
+			if (vector === undefined || target === undefined || text === undefined || !isVector(vector)) throw new Error("The embedding endpoint returned an unusable vector set.");
 			vectors[target] = vector;
 			db.insert(embeddingCacheTable).values({
 				endpoint: client.endpoint,
@@ -140,7 +148,8 @@ async function vectorsFor(
 
 type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
-const isVector = (value: JsonValue): value is readonly number[] => Array.isArray(value) && value.length > 0 && value.every(isFiniteNumber);
+const isVector = (value: JsonValue): value is readonly number[] =>
+	Array.isArray(value) && value.length > 0 && value.every(isFiniteNumber) && value.some((component) => component !== 0);
 
 function isFiniteNumber(value: JsonValue): value is number {
 	if (Object.prototype.toString.call(value) !== "[object Number]") return false;

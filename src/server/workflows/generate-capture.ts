@@ -15,7 +15,7 @@ import {
 import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
-import { evaluateScopedLore, noLoreEvaluation, type ScopedLoreEvaluation } from "../lorebook/evaluation";
+import { evaluateScopedLore, evaluateScopedLoreAsync, noLoreEvaluation, type ScopedLoreEvaluation } from "../lorebook/evaluation";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import { readConversationSummaryFromConnection } from "../conversation/snapshot";
 import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
@@ -46,6 +46,7 @@ import {
 	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
 } from "../model-client";
+import type { ModelFetch } from "../model-client/types";
 import { projectModelClientGenerationSettings } from "../model-client";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 import {
@@ -297,6 +298,8 @@ interface PrepareGenerationInputsBase {
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly formatting?: GenerationFormattingContext;
+	/** Test/control seam for the application-wide OpenAI-compatible embedding service. */
+	readonly embeddingFetch?: ModelFetch;
 }
 
 export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
@@ -425,6 +428,28 @@ export function prepareGenerationInputs(
 	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
 	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
 	return { ...preparation, kind: input.kind };
+}
+
+/**
+ * Capture the same immutable inputs as prepareGenerationInputs, completing the one
+ * asynchronous semantic pass before a Generation Plan is compiled. Keeping this
+ * beside the synchronous seam gives callers that do not need embedding I/O a
+ * deterministic fast path while ensuring Generation-capable callers never need
+ * to reimplement scope, scan-window, or fallback policy.
+ */
+export async function prepareGenerationInputsAsync(
+	input: PrepareGenerationInputs,
+): Promise<GenerationPreparation> {
+	const preparation = prepareGenerationInputs(input);
+	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
+	const lore = await evaluateScopedLoreAsync({
+		database: input.database,
+		conversationId: input.conversationId,
+		messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
+		pendingHumanText: input.kind === "send" ? input.content : undefined,
+		fetch: input.embeddingFetch,
+	});
+	return { ...preparation, lore };
 }
 
 export const captureConfigurationFromPreparation = (
@@ -680,6 +705,7 @@ export interface GenerationCaptureInput {
 	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
 	tokenEstimator?: TokenEstimator | undefined;
 	formatting?: GenerationFormattingContext | undefined;
+	embeddingFetch?: ModelFetch | undefined;
 }
 
 export type SendGenerationCaptureInput = GenerationCaptureInput & { content: string };
@@ -800,5 +826,82 @@ export function captureSiblingGeneration(
 		intent: { type: "sibling" },
 		estimator: input.tokenEstimator,
 	});
+	return toCapturedGeneration(preparation, derivation, configuration, plan);
+}
+
+/** Semantic counterparts used by Generation/inspection entry points. */
+export async function captureSendGenerationAsync(
+	input: SendGenerationCaptureInput,
+): Promise<SendGenerationCapture> {
+	const { conversationId, content } = input;
+	const preparation = await prepareGenerationInputsAsync({
+		database: input.database,
+		conversationId,
+		kind: "send",
+		content,
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+		embeddingFetch: input.embeddingFetch,
+	});
+	const { derivation } = preparation;
+	const configuration = captureConfigurationFromPreparation(preparation);
+	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
+	const submitted = reuseHumanMessageId === undefined
+		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
+		: derivation;
+	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
+	return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
+}
+
+export async function captureContinuationGenerationAsync(
+	input: GenerationCaptureInput,
+): Promise<ContinuationGenerationCapture> {
+	const preparation = await prepareGenerationInputsAsync({
+		database: input.database,
+		conversationId: input.conversationId,
+		kind: "continuation",
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+		embeddingFetch: input.embeddingFetch,
+	});
+	const { derivation } = preparation;
+	const latest = preparation.participation.messages.at(-1);
+	const selected = latest?.variant;
+	if (latest === undefined || selected === null || selected === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
+	const configuration = captureConfigurationFromPreparation(preparation);
+	if (configuration.settings.continuationStrategy !== "instruction" && selected.content.length === 0) {
+		throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
+	}
+	const intent = continuationIntentFor(configuration.settings);
+	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
+	return {
+		...toCapturedGeneration(preparation, derivation, configuration, plan),
+		precedingMessageId: latest.id,
+		precedingVariantId: selected.id,
+		intent,
+		assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
+			? { prefix: selected.content, suffix: configuration.settings.continuationPrefillSuffix }
+			: undefined,
+	};
+}
+
+export async function captureSiblingGenerationAsync(
+	input: SiblingGenerationCaptureInput,
+): Promise<CapturedGeneration> {
+	const preparation = await prepareGenerationInputsAsync({
+		database: input.database,
+		conversationId: input.conversationId,
+		kind: "sibling",
+		messageId: input.messageId,
+		connection: input.connection,
+		connectionSettings: input.connectionSettings,
+		formatting: input.formatting,
+		embeddingFetch: input.embeddingFetch,
+	});
+	const { derivation } = preparation;
+	const configuration = captureConfigurationFromPreparation(preparation);
+	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });
 	return toCapturedGeneration(preparation, derivation, configuration, plan);
 }

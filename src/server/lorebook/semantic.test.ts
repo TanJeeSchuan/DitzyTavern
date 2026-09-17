@@ -46,4 +46,28 @@ describe("semantic Lore evaluation", () => {
 		const result = await evaluateSemanticLore({ database, entries: [entry], messages: [{ content: "A ship arrives." }], fetch: async () => new Response("offline", { status: 503 }) });
 		expect(result).toMatchObject({ available: false, threshold: 0.7 });
 	});
+
+	test("falls back when provider batches have incompatible or zero vectors", async () => {
+		const dimensions = await evaluateSemanticLore({
+			database,
+			entries: [entry],
+			messages: [{ content: "A ship arrives." }],
+			fetch: async (_input, init) => {
+				const body = JSON.parse(String(init?.body)) as { input: string[] };
+				return new Response(JSON.stringify({ data: body.input.map((value) => ({ embedding: value === "ships arrive" ? [1, 0] : [1, 0, 0] })) }), { status: 200 });
+			},
+		});
+		expect(dimensions.available).toBe(false);
+
+		const zero = await evaluateSemanticLore({
+			database,
+			entries: [{ ...entry, semanticTriggers: ["zero vector"] }],
+			messages: [{ content: "A zero vector." }],
+			fetch: async (_input, init) => {
+				const body = JSON.parse(String(init?.body)) as { input: string[] };
+				return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [0, 0] })) }), { status: 200 });
+			},
+		});
+		expect(zero.available).toBe(false);
+	});
 });
