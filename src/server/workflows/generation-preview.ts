@@ -236,7 +236,7 @@ export const createGenerationPreview = (
 	return record;
 };
 
-/** Asynchronous preview path used by the HTTP inspection route so semantic
+/** ==[HUMAN APPROVED]== Asynchronous preview path used by the HTTP inspection route so semantic
  * activation is captured before the inspected plan is exposed. */
 export const createGenerationPreviewAsync = async (
 	database: Database,

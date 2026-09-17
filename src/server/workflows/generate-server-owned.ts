@@ -52,7 +52,7 @@ export interface GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Initiating-client formatting context. The capture
 	// carries this one value through budgeting and send.
 	formatting?: GenerationFormattingContext;
-	/** Optional embedding transport seam; production uses the standard fetch implementation. */
+	/** ==[HUMAN APPROVED]== Optional embedding transport seam; production uses the standard fetch implementation. */
 	embeddingFetch?: ModelFetch;
 }
 

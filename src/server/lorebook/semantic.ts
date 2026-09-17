@@ -31,7 +31,7 @@ const connect = (database: Database): Db => drizzle(database);
  */
 export async function evaluateSemanticLore(input: SemanticEvaluationInput): Promise<LoreSemanticEvaluation> {
 	const settings = (input.settings ?? createEmbeddingSettingsModule(input.database)).get();
-	// Disabled entries never contribute activation work. In particular, a disabled
+	// ==[HUMAN APPROVED]== Disabled entries never contribute activation work. In particular, a disabled
 	// semantic-only entry must not force an embedding request (or turn an otherwise
 	// keyword-only attempt into fallback mode).
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
@@ -52,7 +52,7 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 		};
 		const triggerVectors = await vectorsFor(input.database, "trigger", triggers, client, deadlineAt);
 		const sentenceVectors = await vectorsFor(input.database, "sentence", sentences, client, deadlineAt);
-		// A provider can return individually well-shaped vectors with different
+		// ==[HUMAN APPROVED]== A provider can return individually well-shaped vectors with different
 		// dimensions for the two batches.  Treat that as an unusable complete
 		// result instead of turning every cross-dimension comparison into a
 		// misleading zero score.

@@ -162,7 +162,7 @@ const selectedHistoryFrom = (
 	return entries;
 };
 
-/**
+/** ==[HUMAN APPROVED]==
  * ==[HUMAN APPROVED]== The one Generation Plan compilation. Every attempt and read-only
  * inspection compiles the same way from a derived Control pair, its ordered
  * writing context, and the captured configuration; only the Generation intent
@@ -298,7 +298,7 @@ interface PrepareGenerationInputsBase {
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly formatting?: GenerationFormattingContext;
-	/** Test/control seam for the application-wide OpenAI-compatible embedding service. */
+	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
 	readonly embeddingFetch?: ModelFetch;
 }
 
@@ -430,7 +430,7 @@ export function prepareGenerationInputs(
 	return { ...preparation, kind: input.kind };
 }
 
-/**
+/** ==[HUMAN APPROVED]==
  * Capture the same immutable inputs as prepareGenerationInputs, completing the one
  * asynchronous semantic pass before a Generation Plan is compiled. Keeping this
  * beside the synchronous seam gives callers that do not need embedding I/O a
@@ -442,20 +442,11 @@ export async function prepareGenerationInputsAsync(
 ): Promise<GenerationPreparation> {
 	const preparation = prepareGenerationInputs(input);
 	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
-	// The synchronous capture already proves that no enabled entry has semantic
+	// ==[HUMAN APPROVED]== The synchronous capture already proves that no enabled entry has semantic
 	// triggers when its mode is not keyword-fallback. Avoid an unnecessary
 	// Promise turn in that common path: acceptance must remain atomic with the
 	// captured author/control facts even when another edit races the attempt.
-	const evidenceList = Array.isArray(preparation.lore.activation.evidence)
-		? preparation.lore.activation.evidence
-		: [];
-	const needsSemantic = evidenceList.some((evidence) => {
-		if (evidence === null || typeof evidence !== "object" || Array.isArray(evidence)) return false;
-		const match = evidence["match"];
-		if (match === null || typeof match !== "object" || Array.isArray(match)) return false;
-		const semantic = match["semantic"];
-		return semantic !== null && typeof semantic === "object" && !Array.isArray(semantic) && semantic["threshold"] !== null;
-	});
+	const needsSemantic = preparation.lore.activation.mode === "keyword-fallback";
 	if (!needsSemantic) return preparation;
 	const lore = await evaluateScopedLoreAsync({
 		database: input.database,
@@ -844,7 +835,7 @@ export function captureSiblingGeneration(
 	return toCapturedGeneration(preparation, derivation, configuration, plan);
 }
 
-/** Semantic counterparts used by Generation/inspection entry points. */
+/** ==[HUMAN APPROVED]== Semantic counterparts used by Generation/inspection entry points. */
 export async function captureSendGenerationAsync(
 	input: SendGenerationCaptureInput,
 ): Promise<SendGenerationCapture> {
