@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
 	applyLorebookCommand,
+	applyLorebookAttachmentCommand,
 	exportNativeLorebook,
+	getLorebookAttachmentState,
 	getLorebook,
 	importNativeLorebook,
 	importSillyTavernLorebook,
@@ -14,6 +16,7 @@ import {
 	type LoreMatchTest,
 	type Lorebook,
 	type LorebookCommand,
+	type LoreAttachmentState,
 } from "../lorebook-library";
 import type { LoreEntry, LoreEntryFields } from "../../shared/contract/lorebook";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
@@ -66,6 +69,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [testResult, setTestResult] = useState<LoreMatchTest | null>(null);
 	const [testPending, setTestPending] = useState(false);
 	const [testError, setTestError] = useState<string | null>(null);
+	const [attachmentState, setAttachmentState] = useState<LoreAttachmentState | null>(null);
+	const [attachmentPending, setAttachmentPending] = useState(false);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 
@@ -86,6 +91,9 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 
 	// ==[HUMAN APPROVED]== The first load is intentionally initial-only; mutations update local state.
 	useEffect(() => { void refresh(); }, []);
+	useEffect(() => {
+		void getLorebookAttachmentState(conversationId).then(setAttachmentState).catch(() => setNotice("Lorebook attachment settings could not be loaded."));
+	}, [conversationId]);
 
 	const openBook = async (id: number) => {
 		setPending(true);
@@ -219,6 +227,19 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			setTestPending(false);
 		}
 	};
+	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => {
+		setAttachmentPending(true);
+		try {
+			await applyLorebookAttachmentCommand(command);
+			setAttachmentState(await getLorebookAttachmentState(conversationId));
+		} catch { setNotice("Lorebook attachment settings could not be saved."); }
+		finally { setAttachmentPending(false); }
+	};
+	const saveChatSettings = (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (attachmentState === null) return;
+		void updateAttachment({ type: "save-settings", conversationId, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
+	};
 	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) }));
 	const importFile = async (file: File) => {
 		setPending(true);
@@ -235,6 +256,16 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	return <>
 		<PanelHeader title="Lorebooks" onClose={() => requestLeave({ type: "close" })} />
 		<div className="panel-body flex flex-col gap-4" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+			{attachmentState !== null && <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
+				<h2 className="text-sm font-medium">Chat Lore settings</h2>
+				<form className="flex flex-wrap items-end gap-2" onSubmit={saveChatSettings}>
+					<label className="flex flex-col gap-1 text-xs">Scan Messages<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) })} /></label>
+					<label className="flex flex-col gap-1 text-xs">Lore allowance<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) })} /></label>
+					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
+				</form>
+				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId })}>Detach</Button></span></div>)}</div>
+				{book !== null && !attachmentState.attachments.some((attachment) => attachment.owner === "conversation" && attachment.bookId === book.id) && <Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id })}>Attach this book to Chat</Button>}
+			</section>}
 			<div className="flex items-center gap-2">
 				<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
 				<Button size="sm" variant="outline" type="button" disabled={pending} onClick={() => importInput.current?.click()}><Upload aria-hidden="true" /> Import</Button>
