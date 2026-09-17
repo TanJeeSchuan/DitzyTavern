@@ -31,7 +31,10 @@ const connect = (database: Database): Db => drizzle(database);
  */
 export async function evaluateSemanticLore(input: SemanticEvaluationInput): Promise<LoreSemanticEvaluation> {
 	const settings = (input.settings ?? createEmbeddingSettingsModule(input.database)).get();
-	const triggers = [...new Set(input.entries.flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
+	// Disabled entries never contribute activation work. In particular, a disabled
+	// semantic-only entry must not force an embedding request (or turn an otherwise
+	// keyword-only attempt into fallback mode).
+	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
 	const sentences = input.messages.flatMap((message) => splitLoreSentences(message.content));
 	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
 	if (settings.endpoint.length === 0 || settings.model.length === 0) {
@@ -39,6 +42,7 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 	}
 	try {
 		const credential = input.settings?.getCredential() ?? createEmbeddingSettingsModule(input.database).getCredential();
+		const deadlineAt = Date.now() + settings.deadlineMs;
 		const client: EmbeddingClientOptions = {
 			endpoint: settings.endpoint,
 			model: settings.model,
@@ -46,8 +50,8 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 			timeoutMs: settings.deadlineMs,
 			fetch: input.fetch,
 		};
-		const triggerVectors = await vectorsFor(input.database, "trigger", triggers, client);
-		const sentenceVectors = await vectorsFor(input.database, "sentence", sentences, client);
+		const triggerVectors = await vectorsFor(input.database, "trigger", triggers, client, deadlineAt);
+		const sentenceVectors = await vectorsFor(input.database, "sentence", sentences, client, deadlineAt);
 		// A provider can return individually well-shaped vectors with different
 		// dimensions for the two batches.  Treat that as an unusable complete
 		// result instead of turning every cross-dimension comparison into a
@@ -87,6 +91,7 @@ async function vectorsFor(
 	kind: SemanticSource["kind"],
 	texts: readonly string[],
 	client: EmbeddingClientOptions,
+	deadlineAt: number,
 ): Promise<readonly (readonly number[])[]> {
 	if (texts.length === 0) return [];
 	const db = connect(database);
@@ -122,7 +127,9 @@ async function vectorsFor(
 		}
 	}
 	if (missing.length > 0) {
-		const fetched = await requestEmbeddings(missing, client);
+		const timeoutMs = deadlineAt - Date.now();
+		if (timeoutMs <= 0) throw new Error("The embedding evaluation deadline elapsed.");
+		const fetched = await requestEmbeddings(missing, { ...client, timeoutMs });
 		for (let index = 0; index < missing.length; index += 1) {
 			const vector = fetched[index];
 			const target = missingIndexes[index];

@@ -123,7 +123,7 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 	let hasSemanticTriggers = false;
 	for (const { book, attachmentIds } of sources.books) {
 		for (const entry of book.entries) {
-			hasSemanticTriggers ||= entry.semanticTriggers.length > 0;
+			hasSemanticTriggers ||= entry.enabled && entry.semanticTriggers.length > 0;
 			const matched = matchLoreEntry(entry, sources.scanMessages, semantic);
 			evidence.push(evidenceFor({ book, entryId: entry.id, match: matched, attachmentIds, messages: sources.scanMessages }));
 			if (!matched.active) continue;
