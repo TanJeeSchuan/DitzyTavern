@@ -193,6 +193,7 @@ export const compileGenerationPlan = (
 	return {
 		promptPlan: budget.plan,
 		budget,
+		loreActivation: input.loreActivation ?? null,
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,

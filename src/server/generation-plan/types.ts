@@ -10,6 +10,7 @@ import type {
 	EffectiveGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
+import type { LoreActivationRecord } from "../../shared/lore-activation";
 
 export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
@@ -42,6 +43,7 @@ export interface GenerationPlan {
 	readonly promptPlan: PromptPlan;
 	readonly budget: PromptBudgetResult;
 	readonly effectiveSettings: EffectiveGenerationSettings;
+	readonly loreActivation: LoreActivationRecord | null;
 }
 
 /**
@@ -70,6 +72,8 @@ export interface CompileGenerationPlanInput {
 	readonly lore?: readonly PromptLoreEntry[];
 	/** Chat-owned estimated-token allowance for the Lore block. */
 	readonly loreAllowance?: number;
+	/** Captured activation evidence. It is never recomputed during budgeting. */
+	readonly loreActivation?: LoreActivationRecord | null;
 	// The Generation intent this attempt serves. An ordinary Tail Generation
 	// carries no intent; a Continuation or Sibling attempt carries its own.
 	readonly intent?: GenerationIntent | undefined;

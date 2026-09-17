@@ -22,6 +22,8 @@ import type {
 	ProvenanceSettingsField,
 } from "../generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
+import { loreActivationRecord } from "../lore-activation";
+export type { LoreActivationRecord } from "../lore-activation";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -310,6 +312,7 @@ export const activeGenerationDetails = Type.Object({
 	}),
 	promptPlan,
 	promptContext: jsonValue,
+	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -347,6 +350,9 @@ export const variantDetails = Type.Object({
 		modelParticipantId: Type.Integer(),
 	})]),
 	provenance: generationProvenance,
+	// Captured activation evidence is independent from compact Generation provenance
+	// and survives the transient inspection/replay lifecycle.
+	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
 });
 
 export type GenerationProvenance = SharedGenerationProvenance;
@@ -708,6 +714,7 @@ export const generationPreview = Type.Object({
 	}),
 	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(macroVariableWrite),
+	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	budget: generationPreviewBudget,
 });
 

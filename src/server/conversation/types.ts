@@ -29,6 +29,7 @@ import type {
 	MacroVariables as SharedMacroVariables,
 } from "../../shared/contract/macro-variables";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
+import type { LoreActivationRecord } from "../../shared/lore-activation";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -432,6 +433,8 @@ export interface GenerationAcceptanceCapture {
 	promptContext: ConversationJsonValue;
 	generationSettings: ConversationJsonValue;
 	connection: ConversationJsonValue;
+	/** Captured server-owned lore evidence retained with the terminal Variant. */
+	loreActivation?: LoreActivationRecord | null;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only

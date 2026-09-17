@@ -53,6 +53,7 @@ export type {
 	GenerationRequestOverrides,
 	ParticipantDefinition,
 	VariantDetails,
+	LoreActivationRecord,
 } from "../shared/contract/conversation-schema";
 export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
 export type { GenerationPreview, GenerationPreviewBody } from "../shared/contract/conversation-schema";

@@ -14,7 +14,7 @@ import {
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
-import { isImportOwnedDataNamespace } from "../../shared/import-data";
+import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	InvalidConversationCommandError,
@@ -301,9 +301,9 @@ export const hasRetainedParticipantReference = (
 // at Conversation creation (ADR-0028); no generic write or delete may ever
 // address them, in any scope.
 export const requireGenericDataNamespace = (namespace: string): void => {
-	if (isImportOwnedDataNamespace(namespace)) {
+	if (isServerOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
-			`The ${namespace} namespace is import-owned provenance; generic data commands cannot address it.`,
+			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
 	if (isMacroDataNamespace(namespace)) {

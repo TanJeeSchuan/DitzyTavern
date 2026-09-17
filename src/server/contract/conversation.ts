@@ -292,6 +292,7 @@ export const createConversationRoutes = (
 						},
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
+						loreActivation: capture.plan.loreActivation,
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,

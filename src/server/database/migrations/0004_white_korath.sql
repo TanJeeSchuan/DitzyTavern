@@ -1,0 +1,2 @@
+ALTER TABLE `active_generation` ADD `lore_activation_json` text DEFAULT 'null' NOT NULL;--> statement-breakpoint
+ALTER TABLE `generation_replay` ADD `lore_activation_json` text DEFAULT 'null' NOT NULL;

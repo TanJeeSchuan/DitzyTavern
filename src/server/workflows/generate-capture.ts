@@ -503,6 +503,7 @@ export function capturedAcceptanceFields(
 		promptContext: promptContextJson(capture.context),
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
+		loreActivation: capture.plan.loreActivation,
 		provenance: capture.provenance,
 		macroPresetId: capture.macroPresetId,
 		macroWrites: capture.macroWrites,
@@ -510,7 +511,7 @@ export function capturedAcceptanceFields(
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "provenance" |
+		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "provenance" |
 		"macroPresetId" | "macroWrites"
 	>;
 }

@@ -15,6 +15,7 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
+import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, loreActivationRecord, type LoreActivationRecord } from "../../shared/lore-activation";
 import {
 	connectConversationDatabase,
 	readActiveCast,
@@ -134,6 +135,11 @@ const safeProvenance = (
 	data: readonly { namespace: string; key: string; value: string }[],
 ): GenerationProvenance | null => generationProvenanceCodec.decodeStored(value, data);
 
+const persistedLoreActivation = (value: ConversationJsonValue): LoreActivationRecord | null =>
+	// ==[HUMAN APPROVED]== SAFETY: Value.Check validates the complete persisted record shape before this
+	// projection crosses the server-owned details boundary.
+	Value.Check(loreActivationRecord, value) ? value as LoreActivationRecord : null;
+
 const deriveGenerationStatus = (
 	active: boolean,
 	terminalStatus: string | null | undefined,
@@ -197,6 +203,7 @@ export function readActiveGenerationDetailsFromConnection(
 	const inspectionRecord = generationJsonObject(inspection);
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
+	const loreActivation = persistedLoreActivation(parseGenerationJson(row.lore_activation_json, null));
 	return {
 		conversationId,
 		generationId: row.id,
@@ -211,6 +218,7 @@ export function readActiveGenerationDetailsFromConnection(
 		},
 		promptPlan: persistedPromptPlan(row.prompt_plan_json),
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
+		loreActivation,
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
@@ -265,8 +273,12 @@ export function readVariantDetailsFromConnection(
 		.where(eq(messageVariantDataTable.message_variant_id, variantId))
 		.all();
 	const provenanceEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "provenance");
+	const loreActivationEntry = data.find((entry) => entry.namespace === LORE_ACTIVATION_NAMESPACE && entry.key === LORE_ACTIVATION_KEY);
 	let provenanceValue: ConversationJsonValue | null = null;
 	if (provenanceEntry !== undefined) provenanceValue = parseGenerationJson(provenanceEntry.value, null);
+	const loreActivation = loreActivationEntry === undefined
+		? null
+		: persistedLoreActivation(parseGenerationJson(loreActivationEntry.value, null));
 	const castIds = message.author_participant_id === null
 		? new Set<number>()
 		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));
@@ -279,5 +291,6 @@ export function readVariantDetailsFromConnection(
 		author: toAuthorStamp(message, castIds),
 		historicalContext: toHistoricalContext(message),
 		provenance: safeProvenance(provenanceValue, data),
+		loreActivation,
 	};
 }

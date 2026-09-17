@@ -24,6 +24,7 @@ import type {
 	GenerationFormattingContext,
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
+import type { LoreActivationRecord } from "../../shared/lore-activation";
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }
@@ -233,7 +234,23 @@ const acceptedEditedPlan = (
 		safetyAllowance: settings.safetyAllowance,
 	});
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
-	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget };
+	const sourceLore = record.capture.capture.plan.loreActivation;
+	const loreActivation = sourceLore === null
+		? null
+		: editedLoreActivation(sourceLore, editedPlan);
+	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation };
+};
+
+const editedLoreActivation = (
+	source: LoreActivationRecord,
+	plan: PromptPlan,
+): LoreActivationRecord => {
+	const finalLoreText = plan.blocks.find((block) => block.kind === "lore")?.content ?? "";
+	return {
+		...source,
+		finalLoreText,
+		manuallyEdited: finalLoreText !== source.automaticLoreText,
+	};
 };
 
 interface PreviewAcceptanceContext {

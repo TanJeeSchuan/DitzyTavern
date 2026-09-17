@@ -15,11 +15,16 @@ export const IMPORT_NAMESPACE = "import.sillytavern";
 // immutable parsed source values preserved at commit.
 export const ARCHIVE_NAMESPACE = "archive";
 
+import { LORE_ACTIVATION_NAMESPACE } from "./lore-activation";
+
 // ==[HUMAN APPROVED]== True for every namespace whose Conversation-scoped data is import-owned.
 // The generic put-data/delete-data commands reject these namespaces in
 // every scope; the import projection is the only writer.
 export const isImportOwnedDataNamespace = (namespace: string): boolean =>
 	namespace === IMPORT_NAMESPACE || namespace === ARCHIVE_NAMESPACE;
+
+export const isServerOwnedDataNamespace = (namespace: string): boolean =>
+	isImportOwnedDataNamespace(namespace) || namespace === LORE_ACTIVATION_NAMESPACE;
 
 // ==[HUMAN APPROVED]== The same reservation expressed as the wire pattern for the generic data
 // commands' namespace field: the transport rejects command bodies that
@@ -32,6 +37,7 @@ const escapeRegExp = (value: string) =>
 export const genericDataNamespacePattern = `^(?!(?:${[
 	IMPORT_NAMESPACE,
 	ARCHIVE_NAMESPACE,
+	LORE_ACTIVATION_NAMESPACE,
 ]
 	.map(escapeRegExp)
 	.join("|")})$).*`;

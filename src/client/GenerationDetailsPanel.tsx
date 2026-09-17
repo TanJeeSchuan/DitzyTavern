@@ -153,8 +153,31 @@ function VariantDetailsView({ details }: { details: VariantDetails }) {
 				</>}
 			</dl>
 			{provenance !== null && <ProvenanceSettings provenance={provenance} />}
+			{details.loreActivation !== null && <LoreActivationDetails record={details.loreActivation} />}
 			{provenance === null && <p className="panel-note">This Variant has no Generation provenance.</p>}
 		</>
+	);
+}
+
+function LoreActivationDetails({ record }: { record: NonNullable<VariantDetails["loreActivation"]> }) {
+	return (
+		<section className="generation-detail-section">
+			<h3>Lore activation</h3>
+			<dl className="detail-list compact-detail-list">
+				<div><dt>Evaluation</dt><dd>{record.mode}</dd></div>
+				<div><dt>Manual edit</dt><dd>{record.manuallyEdited ? "Yes" : "No"}</dd></div>
+			</dl>
+			<details>
+				<summary>Automatic activation evidence</summary>
+				<p className="generation-detail-preformatted">{record.automaticLoreText || "No Lore text was selected automatically."}</p>
+				<pre>{JSON.stringify(record.evidence, null, 2)}</pre>
+			</details>
+			{record.manuallyEdited && <p className="panel-note">The final Lore text was edited after automatic activation.</p>}
+			<details>
+				<summary>Final Lore text</summary>
+				<p className="generation-detail-preformatted">{record.finalLoreText || "No Lore text was sent."}</p>
+			</details>
+		</section>
 	);
 }
 
@@ -202,4 +225,3 @@ function inspectionStatusLabel(status: GenerationInspectionStatus): string {
 function formatUsage(usage: Record<string, number>): string {
 	return Object.entries(usage).map(([key, value]) => `${key}: ${value}`).join(" · ");
 }
-

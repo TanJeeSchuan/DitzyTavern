@@ -32,6 +32,11 @@ import {
 	readGenerationTerminalMetadata,
 } from "../../../shared/generation-provenance";
 import { macroWritesToData, parseMacroWrites } from "../../prompt-macros";
+import {
+	LORE_ACTIVATION_KEY,
+	LORE_ACTIVATION_NAMESPACE,
+	isLoreActivationRecord,
+} from "../../../shared/lore-activation";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -124,6 +129,7 @@ const replayCarriedColumns = (
 	prompt_plan_json: active.prompt_plan_json,
 	prompt_inspection_json: active.prompt_inspection_json,
 	prompt_context_json: active.prompt_context_json,
+	lore_activation_json: active.lore_activation_json,
 	generation_settings_json: active.generation_settings_json,
 	connection_json: active.connection_json,
 	generation_intent_json: active.generation_intent_json,
@@ -176,6 +182,16 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 	return macroWritesToData(active.macro_preset_id, writes);
 };
 
+const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+	const value = parseGenerationJson(active.lore_activation_json, null);
+	if (!isLoreActivationRecord(value)) return [];
+	return [{
+		namespace: LORE_ACTIVATION_NAMESPACE,
+		key: LORE_ACTIVATION_KEY,
+		value: active.lore_activation_json,
+	}];
+};
+
 /**
  * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
@@ -191,16 +207,21 @@ export const persistTerminalVariantData = (
 		reasoning?: string | undefined;
 		suppliedData: readonly ConversationDataEntry[];
 		macroData?: readonly ConversationDataEntry[];
+		loreActivationData?: readonly ConversationDataEntry[];
 	},
 ): void => {
+	const suppliedData = input.suppliedData.filter((entry) =>
+		entry.namespace !== LORE_ACTIVATION_NAMESPACE,
+	);
 	const data = [
 		...(input.macroData ?? []),
+		...(input.loreActivationData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
-			!input.suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
+			!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
 			? [{ namespace: "generation", key: "reasoning", value: input.reasoning }]
 			: []),
-		...input.suppliedData,
+		...suppliedData,
 	];
 	if (data.length > 0) {
 		db.insert(messageVariantDataTable)
@@ -252,6 +273,7 @@ function commitDurableTerminalGenerationInTransaction(
 		reasoning: input.reasoning,
 		suppliedData: input.suppliedData,
 		macroData: terminalMacroData(active),
+		loreActivationData: terminalLoreActivationData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)
