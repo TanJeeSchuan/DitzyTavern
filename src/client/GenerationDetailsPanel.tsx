@@ -12,6 +12,7 @@ import {
 	generationJsonString,
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
+import type { LoreActivationRecord } from "../shared/lore-activation";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -110,6 +111,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 					</ul>
 				</section>
 			)}
+			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
 			<PromptPlan plan={details.promptPlan} />
 		</>
 	);
@@ -159,7 +161,7 @@ function VariantDetailsView({ details }: { details: VariantDetails }) {
 	);
 }
 
-function LoreActivationDetails({ record }: { record: NonNullable<VariantDetails["loreActivation"]> }) {
+export function LoreActivationDetails({ record }: { record: LoreActivationRecord }) {
 	return (
 		<section className="generation-detail-section">
 			<h3>Lore activation</h3>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
 	applyLorebookAttachmentCommand,
 	getCharacterLorebookAttachments,
@@ -73,9 +74,9 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 				<option value="cast">Cast</option>
 				<option value="controlled-participant">Controlled Participant</option>
 			</select>
-			<button className="secondary-button" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</button>
+			<Button variant="outline" size="sm" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</Button>
 		</div>
-		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><button className="secondary-button" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</button><button className="secondary-button" type="button" disabled={disabled || pending} onClick={() => detach(attachment.bookId)}>Detach</button></li>)}</ul>}
+		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment.bookId)}>Detach</Button></li>)}</ul>}
 		{notice !== null && <p className="panel-note" role="status">{notice}</p>}
 	</section>;
 }

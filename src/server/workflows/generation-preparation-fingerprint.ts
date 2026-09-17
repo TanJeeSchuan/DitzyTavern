@@ -18,6 +18,14 @@ const loreFingerprintOf = (preparation: GenerationPreparation) => ({
 	allowance: preparation.lore.allowance,
 	scan: preparation.lore.scan,
 	evidence: capturedLoreEvidence(preparation.lore.activation.evidence),
+	embedding: preparation.lore.sources === undefined
+		? null
+		: {
+				endpoint: preparation.lore.sources.semanticSettings.endpoint,
+				model: preparation.lore.sources.semanticSettings.model,
+				threshold: preparation.lore.sources.semanticSettings.threshold,
+				deadlineMs: preparation.lore.sources.semanticSettings.deadlineMs,
+			},
 });
 
 /** ==[HUMAN APPROVED]==

@@ -3,6 +3,7 @@ import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
+import { LoreActivationDetails } from "./GenerationDetailsPanel";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
 	if (kind === "continuation") return "Continuation";
@@ -58,6 +59,7 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
+				{preview?.loreActivation != null && <LoreActivationDetails record={preview.loreActivation} />}
 				{preview !== null && <section className="generation-detail-section prompt-plan-edit-list">
 					<h3>Expanded blocks</h3>
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}

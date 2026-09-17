@@ -1,6 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
-import type { SillyTavernJsonValue } from "./prompt-preset";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
 export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
@@ -180,7 +179,6 @@ export const nativeLorebook = Type.Object({
 });
 export type NativeLorebook = Static<typeof nativeLorebook>;
 export const sillyTavernLorebookImportBody = Type.Object({ source: Type.Unknown() });
-export type SillyTavernLorebookImportBody = { source: SillyTavernJsonValue };
 
 export const lorebookImportApplied = Type.Object({
 	outcome: Type.Literal("applied"),
@@ -228,8 +226,6 @@ export const lorebookConflict = Type.Object({
 });
 
 export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSummary) });
-export const lorebookResponse = lorebook;
 export const bookIdParams = Type.Object({ bookId: numericWire });
-export const entryIdParams = Type.Object({ bookId: numericWire, entryId: numericWire });
 
 export type LorebookListResponse = Static<typeof lorebookListResponse>;

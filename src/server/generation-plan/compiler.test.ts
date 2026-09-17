@@ -169,8 +169,8 @@ describe("Generation Plan Compiler", () => {
 			budget: {
 				allowance: 3,
 				candidates: [
-					{ bookId: 4, entryId: 8, admitted: false },
-					{ bookId: 4, entryId: 9, admitted: true },
+					{ bookId: 4, entryId: 8, admitted: false, reason: "oversized" },
+					{ bookId: 4, entryId: 9, admitted: true, reason: "admitted" },
 				],
 			},
 		});

@@ -243,5 +243,3 @@ export const splitLoreSentences = (content: string): string[] => content
 	.split(/(?<=[.!?。！？])\s+|\n+/u)
 	.map((sentence) => sentence.trim())
 	.filter((sentence) => sentence.length > 0);
-
-export const DEFAULT_LORE_SEMANTIC_THRESHOLD = DEFAULT_SEMANTIC_THRESHOLD;

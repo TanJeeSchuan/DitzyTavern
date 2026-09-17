@@ -215,8 +215,3 @@ export const saveLoreSettings = (database: Database, conversationId: number, set
 		.onConflictDoUpdate({ target: conversationLoreSettingsTable.conversation_id, set: { scan_depth: settings.scanDepth, allowance: settings.allowance } }).run();
 	return settings;
 };
-
-export const readAttachedLorebookIds = (database: Database, conversationId: number): number[] => {
-	const rows = readLorebookAttachmentEligibility(database, conversationId).filter((row) => row.eligible);
-	return [...new Set(rows.map((row) => row.bookId))];
-};
