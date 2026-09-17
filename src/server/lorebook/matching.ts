@@ -3,7 +3,8 @@ import { InvalidLorebookExpressionError } from "./errors";
 
 /** ==[HUMAN APPROVED]== A complete selected Message. Matching never receives concatenated history. */
 export interface LoreScanMessage {
-	readonly id?: number;
+	/** Null identifies the pending Send text captured before a Message exists. */
+	readonly id?: number | null;
 	readonly content: string;
 }
 

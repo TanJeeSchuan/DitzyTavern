@@ -94,4 +94,67 @@ describe("permanent Lore Activation Records", () => {
 			},
 		})).toThrow("server-owned provenance");
 	});
+
+	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
+		const created = createConversationModule(database).create({
+			name: "Interrupted lore",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const module = createConversationModule(database);
+		const human = created.cast[0];
+		const model = created.cast[1];
+		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+		const accepted = module.acceptTailGeneration({
+			conversationId: created.id,
+			expectedRevision: created.revision,
+			timestamp: "2026-09-17T10:00:00Z",
+			humanContent: "Mention the tower.",
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedHumanName: human.name,
+			capturedModelName: model.name,
+			promptPlan: { blocks: [], warnings: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: null,
+			loreActivation: evidence,
+		});
+		module.checkpointGeneration({
+			conversationId: created.id,
+			generationId: accepted.generationId,
+			content: "The tower appeared.",
+		});
+		module.stopGeneration({ conversationId: created.id, generationId: accepted.generationId });
+		const interrupted = module.getSnapshot(created.id)!.messages.at(-1)!;
+		const interruptedVariant = interrupted.variants.at(-1)!;
+		expect(module.readVariantDetails(created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
+
+		const fresh = module.getSnapshot(created.id)!;
+		const zeroOutput = module.acceptTailGeneration({
+			conversationId: created.id,
+			expectedRevision: fresh.revision,
+			timestamp: "2026-09-17T10:00:02Z",
+			humanContent: "Try again.",
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedHumanName: human.name,
+			capturedModelName: model.name,
+			promptPlan: { blocks: [], warnings: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: null,
+			loreActivation: evidence,
+		});
+		module.stopGeneration({ conversationId: created.id, generationId: zeroOutput.generationId });
+		const afterCleanup = module.getSnapshot(created.id)!;
+		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({
+			namespace: "lore-activation",
+			key: "record",
+			value: JSON.stringify(evidence),
+		});
+	});
 });
