@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
 	applyLorebookCommand,
 	exportNativeLorebook,
@@ -43,6 +44,13 @@ const splitList = (value: string): string[] => value.split(",").map((part) => pa
 const joinList = (value: string[]): string => value.join(", ");
 const entryListKeys = ["keywords", "semanticTriggers", "requireAny", "requireAll", "excludeAny", "excludeAll"] as const;
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
+const sameEntry = (left: LoreEntryFields, right: LoreEntryFields): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+type LeaveIntent =
+	| { type: "close" }
+	| { type: "library" }
+	| { type: "book"; id: number }
+	| { type: "entry"; id: number | null };
 
 export function LorebookPanel({ conversationId, onClose, mutationsDisabled = false }: { conversationId: number; onClose: () => void; mutationsDisabled?: boolean }) {
 	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
@@ -58,6 +66,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [testResult, setTestResult] = useState<LoreMatchTest | null>(null);
 	const [testPending, setTestPending] = useState(false);
 	const [testError, setTestError] = useState<string | null>(null);
+	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 
 	const refresh = useCallback(async () => {
@@ -87,6 +96,85 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		} catch { setNotice("The Lorebook could not be loaded."); } finally { setPending(false); }
 	};
 
+	const selectedEntry = book?.entries.find((entry) => entry.id === entryId);
+	const bookDirty = book !== null && (name !== book.name || description !== book.description);
+	const entryDirty = book !== null && !sameEntry(entryDraft, selectedEntry === undefined ? blankEntry() : fieldsOf(selectedEntry));
+	const dirty = bookDirty || entryDirty;
+
+	const performLeave = (intent: LeaveIntent) => {
+		if (intent.type === "close") {
+			onClose();
+		} else if (intent.type === "library") {
+			setBook(null);
+			setEntryId(null);
+		} else if (intent.type === "book") {
+			void openBook(intent.id);
+		} else {
+			setEntryId(intent.id);
+			const target = book?.entries.find((entry) => entry.id === intent.id);
+			setEntryDraft(target === undefined ? blankEntry() : fieldsOf(target));
+		}
+	};
+
+	const requestLeave = (intent: LeaveIntent) => {
+		if (dirty) setLeaveIntent(intent);
+		else performLeave(intent);
+	};
+
+	const discardAndLeave = () => {
+		if (book !== null) {
+			setName(book.name);
+			setDescription(book.description);
+		}
+		setEntryDraft(selectedEntry === undefined ? blankEntry() : fieldsOf(selectedEntry));
+		const intent = leaveIntent;
+		setLeaveIntent(null);
+		if (intent !== null) performLeave(intent);
+	};
+
+	const saveDirty = async (): Promise<boolean> => {
+		if (book === null) return true;
+		let current = book;
+		if (bookDirty) {
+			const result = await applyLorebookCommand({ type: "update-book", bookId: current.id, expectedRevision: current.revision, name, description });
+			if (result.status !== "applied") {
+				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
+				if (result.status === "conflict") {
+					setBook(result.currentBook);
+				}
+				return false;
+			}
+			current = result.book;
+			setBook(current);
+			setName(current.name);
+			setDescription(current.description);
+		}
+		if (entryDirty) {
+			const result = await applyLorebookCommand({ type: "save-entry", bookId: current.id, entryId: entryId ?? undefined, expectedRevision: current.revision, entry: entryDraft });
+			if (result.status !== "applied") {
+				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
+				if (result.status === "conflict") setBook(result.currentBook);
+				return false;
+			}
+			setBook(result.book);
+		}
+		return true;
+	};
+
+	const saveAndLeave = async () => {
+		if (leaveIntent === null) return;
+		setPending(true);
+		try {
+			if (await saveDirty()) {
+				const intent = leaveIntent;
+				setLeaveIntent(null);
+				performLeave(intent);
+			}
+		} finally {
+			setPending(false);
+		}
+	};
+
 	const run = async (command: LorebookCommand, success?: string) => {
 		setPending(true);
 		try {
@@ -98,16 +186,22 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 						? items.map((item) => item.id === result.book.id ? summary : item)
 						: [...items, summary];
 				}); setNotice(success ?? null);
+				if (command.type === "save-entry" && command.entryId === undefined) {
+					const saved = result.book.entries.at(-1);
+					if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
+				}
 			} else if (result.status === "deleted") {
 				setBook(null); setEntryId(null); setBooks((items) => items.filter((item) => item.id !== result.bookId)); setNotice("Lorebook deleted.");
 			} else if (result.status === "conflict") {
-				setBook(result.currentBook); setName(result.currentBook.name); setDescription(result.currentBook.description); setNotice("This Lorebook changed elsewhere. Your saved view was refreshed.");
+				const preserveBookDraft = command.type === "update-book" && bookDirty;
+				setBook(result.currentBook);
+				if (!preserveBookDraft) { setName(result.currentBook.name); setDescription(result.currentBook.description); }
+				setNotice("This Lorebook changed elsewhere. Your saved view was refreshed.");
 			} else setNotice(result.status === "invalid" ? result.reason : result.status === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed.");
 		} finally { setPending(false); }
 	};
 
 	const create = () => void run({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
-	const selectedEntry = book?.entries.find((entry) => entry.id === entryId);
 	const filteredBooks = useMemo(() => books.filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [books, search]);
 
 	const saveEntry = () => {
@@ -139,7 +233,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	};
 
 	return <>
-		<PanelHeader title="Lorebooks" onClose={onClose} />
+		<PanelHeader title="Lorebooks" onClose={() => requestLeave({ type: "close" })} />
 		<div className="panel-body flex flex-col gap-4" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 			<div className="flex items-center gap-2">
 				<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
@@ -148,15 +242,32 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			</div>
 			<div className="flex gap-2"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /><Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button></div>
 			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library">{filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <button type="button" key={item.id} className="rounded-lg border border-border p-3 text-left hover:bg-muted/50" onClick={() => void openBook(item.id)}><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></button>)}</div> : <>
-				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => { setBook(null); setEntryId(null); }}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => { if (window.confirm(`Delete ${book.name}?`)) void run({ type: "delete", bookId: book.id, expectedRevision: book.revision }); }}>Delete</Button></div></div>
+				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => { if (window.confirm(`Delete ${book.name}?`)) void run({ type: "delete", bookId: book.id, expectedRevision: book.revision }); }}>Delete</Button></div></div>
 				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void run({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
 				<MatchTester writing={testWriting} onWritingChange={(value) => { setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
-				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { setEntryId(null); setEntryDraft(blankEntry()); }}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => { setEntryId(entry.id); setEntryDraft(fieldsOf(entry)); }}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></button><Button type="button" size="xs" variant="ghost" disabled={pending || index === 0} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === book.entries.length - 1} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void run({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
+				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></button><Button type="button" size="xs" variant="ghost" disabled={pending || index === 0} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === book.entries.length - 1} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void run({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
 				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={setEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => { if (window.confirm(`Delete ${entryDraft.title || "this entry"}?`)) void run({ type: "delete-entry", bookId: book.id, entryId, expectedRevision: book.revision }, "Entry deleted."); }} pending={pending} />}
 			</>}
 			{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
+		<UnsavedLorebookDialog open={leaveIntent !== null} pending={pending} onKeepEditing={() => setLeaveIntent(null)} onDiscard={discardAndLeave} onSave={() => void saveAndLeave()} />
 	</>;
+}
+
+function UnsavedLorebookDialog({ open, pending, onKeepEditing, onDiscard, onSave }: { open: boolean; pending: boolean; onKeepEditing: () => void; onDiscard: () => void; onSave: () => void }) {
+	return <Dialog open={open} onOpenChange={(next) => { if (!next && !pending) onKeepEditing(); }}>
+		<DialogContent showCloseButton={false} className="sm:max-w-sm">
+			<DialogHeader>
+				<DialogTitle>Unsaved Lorebook edits</DialogTitle>
+				<DialogDescription>Save the current book and entry edits before leaving this view?</DialogDescription>
+			</DialogHeader>
+			<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+				<Button variant="ghost" disabled={pending} onClick={onKeepEditing}>Keep editing</Button>
+				<Button variant="outline" disabled={pending} onClick={onDiscard}>Discard</Button>
+				<Button disabled={pending} onClick={onSave}>Save and leave</Button>
+			</div>
+		</DialogContent>
+	</Dialog>;
 }
 
 function MatchTester({ writing, onWritingChange, result, error, pending, onTest }: { writing: string; onWritingChange: (value: string) => void; result: LoreMatchTest | null; error: string | null; pending: boolean; onTest: () => void }) {
