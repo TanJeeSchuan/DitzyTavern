@@ -28,7 +28,7 @@ export interface ScopedLoreMatch {
 
 const evidenceFor = (input: {
 	book: Lorebook;
-	entryId: number;
+	entry: Lorebook["entries"][number];
 	match: LoreEntryMatch;
 	attachmentIds: readonly number[];
 	messages: readonly LoreScanMessage[];
@@ -48,9 +48,33 @@ const evidenceFor = (input: {
 			fallbackReason: input.match.semantic.fallbackReason,
 		};
 	return {
-	bookId: input.book.id,
-	bookName: input.book.name,
-	entryId: input.entryId,
+	book: {
+		id: input.book.id,
+		name: input.book.name,
+		description: input.book.description,
+		revision: input.book.revision,
+	},
+	entry: {
+		id: input.entry.id,
+		position: input.entry.position,
+		title: input.entry.title,
+		content: input.entry.content,
+		keywords: [...input.entry.keywords],
+		semanticTriggers: [...input.entry.semanticTriggers],
+		matchOperator: input.entry.matchOperator,
+		always: input.entry.always,
+		requireAny: [...input.entry.requireAny],
+		requireAll: [...input.entry.requireAll],
+		excludeAny: [...input.entry.excludeAny],
+		excludeAll: [...input.entry.excludeAll],
+		caseSensitive: input.entry.caseSensitive,
+		wholeWord: input.entry.wholeWord,
+		keywordMode: input.entry.keywordMode,
+		regexFlags: input.entry.regexFlags,
+		semanticThreshold: input.entry.semanticThreshold,
+		priority: input.entry.priority,
+		enabled: input.entry.enabled,
+	},
 	attachmentIds: [...input.attachmentIds],
 	messages: input.messages.map((message) => ({ id: message.id ?? null, content: message.content })),
 	match: {
@@ -136,9 +160,17 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 			hasSemanticTriggers ||= entry.enabled && entry.semanticTriggers.length > 0;
 			const matched = matchLoreEntry(entry, sources.scanMessages, semantic);
 			matches.push({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matched });
-			evidence.push(evidenceFor({ book, entryId: entry.id, match: matched, attachmentIds, messages: sources.scanMessages }));
+			evidence.push(evidenceFor({ book, entry, match: matched, attachmentIds, messages: sources.scanMessages }));
 			if (!matched.active) continue;
-			candidates.push({ content: entry.content, always: entry.always, priority: entry.priority, bookOrder: book.id, entryOrder: entry.position });
+			candidates.push({
+				content: entry.content,
+				always: entry.always,
+				priority: entry.priority,
+				bookOrder: book.id,
+				entryOrder: entry.position,
+				bookId: book.id,
+				entryId: entry.id,
+			});
 		}
 	}
 	const mode = sources.eligibleUses.some((use) => use.eligible)

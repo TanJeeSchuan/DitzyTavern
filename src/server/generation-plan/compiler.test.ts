@@ -146,6 +146,36 @@ describe("Generation Plan Compiler", () => {
 		}]);
 	});
 
+	test("retains Lore budget admissions and omissions in activation evidence", () => {
+		const plan = compile({
+			recipe: [{ reference: "lore", enabled: true, role: "system" }],
+			lore: [
+				{ content: "too-large", bookId: 4, entryId: 8 },
+				{ content: "ok", bookId: 4, entryId: 9 },
+			],
+			loreAllowance: 3,
+			estimator: (transcript) => (transcript.split("\u001eCONTENT\u001f")[1] ?? "").length,
+			loreActivation: {
+				version: 1,
+				mode: "keyword-fallback",
+				evidence: [],
+				automaticLoreText: "",
+				finalLoreText: "",
+				manuallyEdited: false,
+			},
+		});
+
+		expect(plan.loreActivation?.evidence).toContainEqual({
+			budget: {
+				allowance: 3,
+				candidates: [
+					{ bookId: 4, entryId: 8, admitted: false },
+					{ bookId: 4, entryId: 9, admitted: true },
+				],
+			},
+		});
+	});
+
 	test("measures the complete admitted Lore set instead of summing rounded totals", () => {
 		const plan = compile({
 			recipe: [{ reference: "lore", enabled: true, role: "system" }],

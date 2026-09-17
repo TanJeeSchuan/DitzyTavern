@@ -26,6 +26,7 @@ import {
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
 	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,
@@ -193,13 +194,37 @@ export const compileGenerationPlan = (
 	return {
 		promptPlan: budget.plan,
 		budget,
-		loreActivation: input.loreActivation ?? null,
+		loreActivation: input.loreActivation === undefined || input.loreActivation === null
+			? null
+			: withLoreBudgetEvidence(input.loreActivation, candidates, selectedLore, loreAllowance),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,
 		),
 	};
+};
+
+const withLoreBudgetEvidence = (
+	record: NonNullable<CompileGenerationPlanInput["loreActivation"]>,
+	candidates: readonly PromptLoreEntry[],
+	admitted: readonly PromptLoreEntry[],
+	allowance: number,
+): NonNullable<CompileGenerationPlanInput["loreActivation"]> => {
+	const evidence = Array.isArray(record.evidence)
+		? [...record.evidence]
+		: [record.evidence];
+	const admissionEvidence: GenerationJsonValue = {
+		budget: {
+			allowance,
+			candidates: candidates.map((candidate) => ({
+				bookId: candidate.bookId ?? null,
+				entryId: candidate.entryId ?? null,
+				admitted: admitted.includes(candidate),
+			})),
+		},
+	};
+	return { ...record, evidence: [...evidence, admissionEvidence] };
 };
 
 const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {

@@ -39,6 +39,9 @@ export interface PromptLoreEntry {
 	readonly priority?: number;
 	readonly bookOrder?: number;
 	readonly entryOrder?: number;
+	/** Stable source identity retained for activation-budget evidence. */
+	readonly bookId?: number;
+	readonly entryId?: number;
 }
 
 // The authorship an entry carries into the provider request. Null means the
