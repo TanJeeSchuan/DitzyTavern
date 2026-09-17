@@ -9,6 +9,7 @@ import {
 	conversationLorebookAttachmentTable,
 	participantLorebookAttachmentTable,
 	participantTable,
+	lorebookTable,
 } from "../database/schema";
 import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
 
@@ -151,6 +152,28 @@ export const readLorebookAttachmentState = (
 		scanDepth: settings.scanDepth,
 		allowance: settings.allowance,
 		attachments: readLorebookAttachmentEligibility(database, conversationId),
+	};
+};
+
+export const readLorebookAttachmentImpact = (
+	database: Database,
+	bookId: number,
+) => {
+	const db = connect(database);
+	if (db.select({ id: lorebookTable.id }).from(lorebookTable).where(eq(lorebookTable.id, bookId)).get() === undefined) return undefined;
+	return {
+		bookId,
+		attachments: [
+			...db.select({ id: characterLorebookAttachmentTable.id, ownerId: characterLorebookAttachmentTable.character_id, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
+				.from(characterLorebookAttachmentTable).where(eq(characterLorebookAttachmentTable.lorebook_id, bookId)).all()
+				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "character" as const })),
+			...db.select({ id: participantLorebookAttachmentTable.id, ownerId: participantLorebookAttachmentTable.participant_id, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
+				.from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.lorebook_id, bookId)).all()
+				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "participant" as const })),
+			...db.select({ id: conversationLorebookAttachmentTable.id, ownerId: conversationLorebookAttachmentTable.conversation_id, enabled: conversationLorebookAttachmentTable.enabled })
+				.from(conversationLorebookAttachmentTable).where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId)).all()
+				.map((row) => ({ ...row, scope: "chat" as const, owner: "conversation" as const })),
+		],
 	};
 };
 

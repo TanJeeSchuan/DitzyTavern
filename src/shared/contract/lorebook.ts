@@ -40,6 +40,18 @@ export const loreAttachmentState = Type.Object({
 });
 export type LoreAttachmentState = Static<typeof loreAttachmentState>;
 
+export const lorebookAttachmentImpact = Type.Object({
+	bookId: Type.Integer(),
+	attachments: Type.Array(Type.Object({
+		id: Type.Integer(),
+		owner: Type.Union([Type.Literal("character"), Type.Literal("participant"), Type.Literal("conversation")]),
+		ownerId: Type.Integer(),
+		scope: loreAttachmentScope,
+		enabled: Type.Boolean(),
+	})),
+});
+export type LorebookAttachmentImpact = Static<typeof lorebookAttachmentImpact>;
+
 export const loreEntryFields = Type.Object({
 	title: Type.String(),
 	content: Type.String(),

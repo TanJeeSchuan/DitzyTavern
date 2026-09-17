@@ -4,6 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createLorebookRoutes } from "./lorebook-routes";
 import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
 import { createConversationModule } from "../conversation";
+import { createCharacterLibraryModule } from "../character-library";
 
 const request = (path: string, init?: RequestInit) =>
 	new Request(`http://localhost${path}`, {
@@ -206,5 +207,45 @@ describe("Lorebook library transport", () => {
 		const updated = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
 		expect(await updated.json()).toMatchObject({ scanDepth: 2, allowance: 900, attachments: [{ bookId: 1, owner: "conversation", scope: "chat", enabled: true, eligible: true, reason: "eligible" }] });
 		void created;
+	});
+
+	test("reports every attachment before deletion and cascades them on confirmation", async () => {
+		await postCommand(app, { type: "create", name: "World" });
+		const character = createCharacterLibraryModule(database).execute({
+			type: "create",
+			definition: {
+				name: "Archivist",
+				prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				openings: [],
+			},
+		});
+		const conversation = createConversationModule(database).create({
+			name: "Story",
+			participants: [
+				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const participantId = conversation.cast[0]?.id;
+		if (participantId === undefined) throw new Error("Conversation participant was not created.");
+		for (const command of [
+			{ type: "attach-character", characterId: character.id, bookId: 1, scope: "cast" },
+			{ type: "attach-participant", participantId, bookId: 1, scope: "controlled-participant" },
+			{ type: "attach-chat", conversationId: conversation.id, bookId: 1 },
+		] as const) {
+			const response = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify(command) }));
+			expect(response.status).toBe(200);
+		}
+		const impact = await app.handle(request("/api/lorebooks/1/attachments"));
+		expect(impact.status).toBe(200);
+		expect(await impact.json()).toMatchObject({ bookId: 1, attachments: [
+			{ owner: "character", ownerId: character.id, scope: "cast" },
+			{ owner: "participant", ownerId: participantId, scope: "controlled-participant" },
+			{ owner: "conversation", ownerId: conversation.id, scope: "chat" },
+		] });
+		const deleted = await postCommand(app, { type: "delete", bookId: 1, expectedRevision: 0 });
+		expect(deleted.status).toBe(200);
+		expect((await app.handle(request("/api/lorebooks/1/attachments"))).status).toBe(404);
 	});
 });

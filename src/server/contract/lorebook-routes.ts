@@ -33,6 +33,7 @@ import {
 	loreAttachmentCommandResponse,
 	loreAttachmentQuery,
 	loreAttachmentState,
+	lorebookAttachmentImpact,
 } from "../../shared/contract/lorebook";
 import {
 	attachLorebookToCharacter,
@@ -42,6 +43,7 @@ import {
 	detachLorebookFromParticipant,
 	detachLorebookFromConversation,
 	readLorebookAttachmentState,
+	readLorebookAttachmentImpact,
 	saveLoreSettings,
 } from "../lorebook/attachments";
 import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
@@ -153,6 +155,10 @@ export const createLorebookAttachmentRoutes = (database: Database | undefined) =
 		const state = withDatabase(database, (connection) => readLorebookAttachmentState(connection, query.conversationId));
 		return state ?? notFoundResponse();
 	}, { query: loreAttachmentQuery, response: { 200: loreAttachmentState, 404: notFoundOutcome } })
+	.get("/api/lorebooks/:bookId/attachments", ({ params }) => {
+		const impact = withDatabase(database, (connection) => readLorebookAttachmentImpact(connection, params.bookId));
+		return impact ?? notFoundResponse();
+	}, { params: bookIdParams, response: { 200: lorebookAttachmentImpact, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
 		withDatabase(database, (connection) => {
 			const command = body;

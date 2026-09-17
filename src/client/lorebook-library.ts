@@ -9,7 +9,9 @@ import {
 	lorebookListResponse,
 	loreMatchTestResponse,
 	loreAttachmentState,
+	lorebookAttachmentImpact,
 	type LoreAttachmentState,
+	type LorebookAttachmentImpact,
 	type LoreAttachmentCommand,
 	nativeLorebook,
 	type LoreMatchTestResponse,
@@ -21,6 +23,7 @@ import {
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState };
+export type { LorebookAttachmentImpact };
 export type LoreMatchTest = LoreMatchTestResponse;
 
 export async function getLorebookAttachmentState(conversationId: number): Promise<LoreAttachmentState | null> {
@@ -35,6 +38,15 @@ export async function getLorebookAttachmentState(conversationId: number): Promis
 export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand): Promise<void> {
 	const { error } = await api.api.lorebooks.attachments.commands.post(command);
 	if (error) throw new Error("Unable to update Lorebook attachments");
+}
+
+export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
+	const { data, error } = await api.api.lorebooks({ bookId }).attachments.get();
+	if (error) {
+		if (error.status === 404) return null;
+		throw new Error("Unable to load Lorebook deletion impact");
+	}
+	return decodeWirePayload(lorebookAttachmentImpact, data);
 }
 
 export async function listLorebooks(): Promise<LorebookListResponse["books"]> {
