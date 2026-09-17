@@ -382,6 +382,7 @@ export function prepareGenerationInputs(
 			conversationId: input.conversationId,
 			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: input.kind === "send" ? input.content : undefined,
+			embeddingSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
 	if (input.kind === "continuation") {
@@ -454,7 +455,7 @@ export async function prepareGenerationInputsAsync(
 		messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 		pendingHumanText: input.kind === "send" ? input.content : undefined,
 		fetch: input.embeddingFetch,
-	});
+	}, preparation.lore.sources);
 	return { ...preparation, lore };
 }
 

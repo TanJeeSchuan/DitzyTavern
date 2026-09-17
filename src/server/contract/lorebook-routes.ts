@@ -48,6 +48,12 @@ import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
 import { readSelectedHistory } from "../conversation/selected-history";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
+import type { EmbeddingSettingsModuleOptions } from "../embedding-settings";
+import type { ModelFetch } from "../model-client/types";
+
+export interface LorebookRouteOptions extends EmbeddingSettingsModuleOptions {
+	readonly fetch?: ModelFetch;
+}
 
 const classify = (cause: unknown) => {
 	if (cause instanceof LorebookNotFoundError || cause instanceof LorebookEntryNotFoundError) return { outcome: "not-found" as const };
@@ -70,7 +76,7 @@ const execute = <T>(operation: () => T) => {
 	}
 };
 
-export const createLorebookRoutes = (database: Database | undefined) => new Elysia()
+export const createLorebookRoutes = (database: Database | undefined, options: LorebookRouteOptions = {}) => new Elysia()
 	.get("/api/lorebooks", () => ({ books: withDatabase(database, listLorebooks) }), { response: lorebookListResponse })
 	.get("/api/lorebooks/:bookId", ({ params }) => {
 		const book = withDatabase(database, (connection) => readLorebook(connection, params.bookId));
@@ -112,6 +118,8 @@ export const createLorebookRoutes = (database: Database | undefined) => new Elys
 				conversationId: body.conversationId,
 				messages: history.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 				pendingHumanText: body.writing,
+				embeddingSettings: options,
+				fetch: options.fetch,
 			});
 		});
 		if (result === undefined) return respond(404, { outcome: "not-found" as const });

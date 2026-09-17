@@ -17,7 +17,17 @@ export interface SemanticEvaluationInput {
 	readonly entries: readonly Lorebook["entries"][number][];
 	readonly messages: readonly LoreScanMessage[];
 	readonly settings?: ReturnType<typeof createEmbeddingSettingsModule>;
+	/** ==[HUMAN APPROVED]== Immutable settings captured before asynchronous embedding work begins. */
+	readonly capturedSettings?: SemanticSettingsSnapshot;
 	readonly fetch?: import("../model-client/types").ModelFetch;
+}
+
+export interface SemanticSettingsSnapshot {
+	readonly endpoint: string;
+	readonly model: string;
+	readonly threshold: number;
+	readonly deadlineMs: number;
+	readonly credential: string | null;
 }
 
 type Db = ReturnType<typeof drizzle>;
@@ -30,7 +40,8 @@ const connect = (database: Database): Db => drizzle(database);
  * keyword-only policy rather than mixing semantic successes with fallback results.
  */
 export async function evaluateSemanticLore(input: SemanticEvaluationInput): Promise<LoreSemanticEvaluation> {
-	const settings = (input.settings ?? createEmbeddingSettingsModule(input.database)).get();
+	const settingsModule = input.settings ?? createEmbeddingSettingsModule(input.database);
+	const settings = input.capturedSettings ?? { ...settingsModule.get(), credential: settingsModule.getCredential() };
 	// ==[HUMAN APPROVED]== Disabled entries never contribute activation work. In particular, a disabled
 	// semantic-only entry must not force an embedding request (or turn an otherwise
 	// keyword-only attempt into fallback mode).
@@ -41,12 +52,11 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 		return { available: false, threshold: settings.threshold, fallbackReason: "Semantic matching is not configured." };
 	}
 	try {
-		const credential = input.settings?.getCredential() ?? createEmbeddingSettingsModule(input.database).getCredential();
 		const deadlineAt = Date.now() + settings.deadlineMs;
 		const client: EmbeddingClientOptions = {
 			endpoint: settings.endpoint,
 			model: settings.model,
-			credential,
+			credential: settings.credential,
 			timeoutMs: settings.deadlineMs,
 			fetch: input.fetch,
 		};

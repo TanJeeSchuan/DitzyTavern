@@ -7,7 +7,8 @@ import { readLorebook } from "./library";
 import { matchLoreEntry, type LoreEntryMatch, type LoreScanMessage } from "./matching";
 import { captureLoreScanWindow, type LoreScanSourceMessage } from "./scan";
 import { readLoreSettings, readLorebookAttachmentEligibility } from "./attachments";
-import { evaluateSemanticLore } from "./semantic";
+import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
+import { createEmbeddingSettingsModule, type EmbeddingSettingsModuleOptions } from "../embedding-settings";
 import type { ModelFetch } from "../model-client";
 
 export interface ScopedLoreEvaluation {
@@ -16,6 +17,8 @@ export interface ScopedLoreEvaluation {
 	readonly scan: readonly LoreScanMessage[];
 	readonly matches: readonly ScopedLoreMatch[];
 	readonly allowance: number;
+	/** ==[HUMAN APPROVED]== Reuse captured Lore inputs so asynchronous semantic work cannot observe later edits. */
+	readonly sources?: ScopedLoreSources;
 }
 
 export interface ScopedLoreMatch {
@@ -104,16 +107,26 @@ interface ScopedLoreInput {
 	messages: readonly LoreScanSourceMessage[];
 	pendingHumanText?: string;
 	beforeMessageId?: number;
+	embeddingSettings?: EmbeddingSettingsModuleOptions;
 }
 
-interface ScopedLoreSources {
+export interface ScopedLoreSources {
 	scanMessages: readonly LoreScanMessage[];
 	eligibleUses: ReturnType<typeof readLorebookAttachmentEligibility>;
 	books: readonly { book: Lorebook; attachmentIds: readonly number[] }[];
 	allowance: number;
+	semanticSettings: SemanticSettingsSnapshot;
 }
 
 const collectSources = (input: ScopedLoreInput): ScopedLoreSources => {
+	const embeddingSettings = createEmbeddingSettingsModule(input.database, input.embeddingSettings);
+	const configuredSemanticSettings = embeddingSettings.get();
+	const semanticSettings: SemanticSettingsSnapshot = {
+		...configuredSemanticSettings,
+		credential: configuredSemanticSettings.endpoint.length > 0 && configuredSemanticSettings.model.length > 0
+			? embeddingSettings.getCredential()
+			: null,
+	};
 	const settings = readLoreSettings(input.database, input.conversationId);
 	const scan = captureLoreScanWindow({
 		messages: input.messages,
@@ -136,10 +149,16 @@ const collectSources = (input: ScopedLoreInput): ScopedLoreSources => {
 		if (book === undefined) continue;
 		books.push({ book, attachmentIds });
 	}
-	return { scanMessages, eligibleUses, books, allowance: settings.allowance };
+	return {
+		scanMessages,
+		eligibleUses,
+		books,
+		allowance: settings.allowance,
+		semanticSettings,
+	};
 };
 
-const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, semantic?: import("./matching").LoreSemanticEvaluation): ScopedLoreEvaluation => {
+const assembleEvaluation = (sources: ScopedLoreSources, semantic?: import("./matching").LoreSemanticEvaluation): ScopedLoreEvaluation => {
 	const evidence: GenerationJsonValue[] = [{
 		attachments: sources.eligibleUses.map((use) => ({
 			id: use.id,
@@ -181,6 +200,7 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 		scan: sources.scanMessages,
 		matches,
 		allowance: sources.allowance,
+		sources,
 		activation: {
 			version: 1,
 			mode,
@@ -194,8 +214,7 @@ const assembleEvaluation = (input: ScopedLoreInput, sources: ScopedLoreSources, 
 
 /** ==[HUMAN APPROVED]== Resolve scope and run the deterministic lexical/fallback policy. */
 export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation => {
-	const sources = collectSources(input);
-	return assembleEvaluation(input, sources, undefined);
+	return assembleEvaluation(collectSources(input), undefined);
 };
 
 /** ==[HUMAN APPROVED]==
@@ -203,15 +222,16 @@ export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation
  * performed once for the captured window; any incomplete provider pass is represented as one
  * unavailable result so every entry follows the same keyword fallback policy.
  */
-export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch }): Promise<ScopedLoreEvaluation> => {
-	const sources = collectSources(input);
+export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch }, capturedSources?: ScopedLoreSources): Promise<ScopedLoreEvaluation> => {
+	const sources = capturedSources ?? collectSources(input);
 	const semantic = await evaluateSemanticLore({
 		database: input.database,
 		entries: sources.books.flatMap(({ book }) => book.entries),
 		messages: sources.scanMessages,
+		capturedSettings: sources.semanticSettings,
 		fetch: input.fetch,
 	});
-	return assembleEvaluation(input, sources, semantic);
+	return assembleEvaluation(sources, semantic);
 };
 
 export const noLoreEvaluation = (): ScopedLoreEvaluation => ({

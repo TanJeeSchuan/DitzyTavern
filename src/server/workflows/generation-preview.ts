@@ -8,6 +8,7 @@ import {
 } from "../prompt-compiler";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
+import type { ModelFetch } from "../model-client/types";
 import {
 	captureContinuationGeneration,
 	captureContinuationGenerationAsync,
@@ -70,6 +71,7 @@ export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> 
 	readonly formatting?: GenerationFormattingContext;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
+	readonly embeddingFetch?: ModelFetch;
 	readonly tokenEstimator?: TokenEstimator;
 };
 
@@ -84,6 +86,7 @@ const buildPreviewCapture = (
 		connectionSettings: request.connectionSettings,
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
+		embeddingFetch: request.embeddingFetch,
 	};
 	switch (request.kind) {
 		case "send":
@@ -117,6 +120,7 @@ const buildPreviewCaptureAsync = async (
 		connectionSettings: request.connectionSettings,
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
+		embeddingFetch: request.embeddingFetch,
 	};
 	switch (request.kind) {
 		case "send":
