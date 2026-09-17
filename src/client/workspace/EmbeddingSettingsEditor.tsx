@@ -1,6 +1,7 @@
 import { KeyRound, RotateCcw, Save } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
 	draftFromEmbeddingSettings,
 	loadEmbeddingSettings,
@@ -30,6 +31,7 @@ const initialState: EditorState = {
 
 export function EmbeddingSettingsEditor() {
 	const [state, setState] = useState<EditorState>(initialState);
+	const [confirmingCredentialReset, setConfirmingCredentialReset] = useState(false);
 
 	const refresh = useCallback(async () => {
 		setState((current) => ({ ...current, loading: true, error: null }));
@@ -76,7 +78,6 @@ export function EmbeddingSettingsEditor() {
 
 	const resetCredential = async () => {
 		if (state.settings === null) return;
-		if (!window.confirm("Remove the saved embedding credential?")) return;
 		setState((current) => ({ ...current, pending: true, notice: null, error: null }));
 		const result = await saveEmbeddingSettings({ type: "reset-credential", expectedRevision: state.settings.revision, confirmed: true });
 		if (result.outcome === "applied") {
@@ -86,10 +87,11 @@ export function EmbeddingSettingsEditor() {
 		} else setState((current) => ({ ...current, pending: false, error: result.reason }));
 	};
 
-	if (state.loading) return <section className="settings-section"><h3>Semantic Lore</h3><p>Loading embedding settings…</p></section>;
+	if (state.loading) return <EmbeddingSettingsLoading />;
 	if (state.draft === null || state.settings === null) return <section className="settings-section"><h3>Semantic Lore</h3><p className="settings-feedback-error" role="alert">{state.error ?? "Embedding Settings could not be loaded."}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></section>;
 
-	return <section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-title">
+	return <>
+	<section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-title">
 		<div>
 			<h3 id="embedding-settings-title">Semantic Lore</h3>
 			<p>Use a separate OpenAI-compatible embedding service to match authored Semantic Triggers.</p>
@@ -101,8 +103,35 @@ export function EmbeddingSettingsEditor() {
 			<label className="field"><span>Required-work deadline</span><input className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /><small>Milliseconds. Starts at 5,000.</small></label>
 			<label className="field embedding-credential-field"><span><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</span><input className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /><small>Write-only. The saved value is never read back or included in prompt data.</small></label>
 		</div>
-		<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void apply()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => void resetCredential()} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button>}</div>
+		<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void apply()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => setConfirmingCredentialReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button>}</div>
 		{state.error !== null && <p className="settings-feedback-error" role="alert">{state.error}</p>}
 		{state.notice !== null && <p className="settings-feedback" role="status">{state.notice}</p>}
+	</section>
+	<Dialog open={confirmingCredentialReset} onOpenChange={(open) => { if (!state.pending) setConfirmingCredentialReset(open); }}>
+		<DialogContent showCloseButton={false} className="sm:max-w-sm">
+			<DialogHeader>
+				<DialogTitle>Remove saved credential?</DialogTitle>
+				<DialogDescription>This removes the saved embedding credential. You can enter a new one later.</DialogDescription>
+			</DialogHeader>
+			<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+				<Button type="button" variant="ghost" disabled={state.pending} onClick={() => setConfirmingCredentialReset(false)}>Keep credential</Button>
+				<Button type="button" variant="destructive" disabled={state.pending} onClick={() => { setConfirmingCredentialReset(false); void resetCredential(); }}>Remove credential</Button>
+			</div>
+		</DialogContent>
+	</Dialog>
+	</>;
+}
+
+function EmbeddingSettingsLoading() {
+	return <section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-loading-title" aria-busy="true">
+		<div>
+			<h3 id="embedding-settings-loading-title">Semantic Lore</h3>
+			<div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" />
+			<p className="sr-only" role="status">Loading embedding settings…</p>
+		</div>
+		<div className="embedding-settings-grid">
+			{["Embedding endpoint", "Model", "Default cosine threshold", "Required-work deadline", "Credential"].map((label) => <div className="field" key={label}><span>{label}</span><div className="h-9 animate-pulse rounded-md bg-muted/50" /><div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" /></div>)}
+		</div>
+		<div className="embedding-settings-actions"><div className="h-9 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-36 animate-pulse rounded-md bg-muted/50" /></div>
 	</section>;
 }

@@ -383,7 +383,10 @@ const buildSillyTavernPreview = (
 	const listedIdentifiers = new Set(order.entries.map((entry) => entry.identifier));
 	const worldInfoIdentifiers = new Set(["worldInfoBefore", "worldInfoAfter"]);
 	const worldInfoEntries = order.entries.filter((entry) => worldInfoIdentifiers.has(entry.identifier));
-	const loreKeeperIdentifier = worldInfoEntries.find((entry) => entry.enabled)?.identifier ?? worldInfoEntries[0]?.identifier;
+	// ==[HUMAN APPROVED]== Keep the first enabled occurrence, not the identifier: an order may list the
+	// same World Info placeholder more than once, and only one occurrence can map
+	// to the native Lore block.
+	const loreKeeperEntry = worldInfoEntries.find((entry) => entry.enabled) ?? worldInfoEntries[0];
 	let omittedWorldInfo = false;
 	const regular: NativePromptPreset["slots"] = [];
 	const depthPlaced: NativePromptPreset["slots"] = [];
@@ -411,7 +414,7 @@ const buildSillyTavernPreview = (
 			pushOnce(diagnostics, diagnosticKeys, converted.unsupported);
 			continue;
 		}
-		if (converted.slot.reference === "lore" && entry.identifier !== loreKeeperIdentifier) {
+		if (converted.slot.reference === "lore" && entry !== loreKeeperEntry) {
 			if (!omittedWorldInfo) {
 				pushOnce(diagnostics, diagnosticKeys, diagnostic("collapsed-world-info", "Multiple World Info positions were collapsed into one Lore block."));
 				omittedWorldInfo = true;

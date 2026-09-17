@@ -75,7 +75,7 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 			const trigger = triggers[triggerIndex];
 			const triggerVector = triggerVectors[triggerIndex];
 			if (trigger === undefined || triggerVector === undefined) continue;
-			let strongestScore = -1;
+			let strongestScore = Number.NEGATIVE_INFINITY;
 			let strongestSentence = "";
 			for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
 				const sentence = sentences[sentenceIndex];
@@ -84,7 +84,7 @@ export async function evaluateSemanticLore(input: SemanticEvaluationInput): Prom
 				const score = cosineSimilarity(triggerVector, sentenceVector);
 				if (score > strongestScore) { strongestScore = score; strongestSentence = sentence; }
 			}
-			if (strongestScore >= 0) matches.push({ trigger, score: strongestScore, sentence: strongestSentence });
+			if (strongestScore > Number.NEGATIVE_INFINITY) matches.push({ trigger, score: strongestScore, sentence: strongestSentence });
 		}
 		return { available: true, threshold: settings.threshold, matches };
 	} catch (error) {

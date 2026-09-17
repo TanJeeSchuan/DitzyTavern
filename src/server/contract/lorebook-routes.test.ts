@@ -131,10 +131,34 @@ describe("Lorebook library transport", () => {
 			outcome: "applied",
 			book: { name: "ST", entries: [{ title: "Fact", content: "Keep {{literal}}", keywords: ["port"], enabled: false, semanticTriggers: [] }] },
 			warnings: [
-				"Entry 1 uses unsupported SillyTavern behavior; supported fields were imported.",
-				"Entry 1 contains macro-looking text; it remains literal.",
+				"Entry 1 uses unsupported full-content semantic matching; authored Keywords remain usable.",
+				"Entry 1 contains unsupported macros; they remain literal.",
 			],
 		});
+	});
+
+	test("reports each unsupported SillyTavern behavior separately", async () => {
+		const response = await app.handle(request("/api/lorebooks/import/sillytavern", {
+			method: "POST",
+			body: JSON.stringify({ source: {
+				name: "Unsupported",
+				entries: [{
+					content: "Fact {{macro}}", key: ["port"], recursion: true, delay: 2, sticky: true,
+					probability: 50, useProbability: true, group: "harbor", position: 3,
+				}],
+			} }),
+		}));
+		expect(response.status).toBe(200);
+		// SAFETY: the successful route response is the public import result and includes warnings.
+		const body = await response.json() as { warnings: string[] };
+		expect(body.warnings).toEqual([
+			"Entry 1 uses unsupported recursion behavior; recursion was not imported.",
+			"Entry 1 uses unsupported timing behavior; sticky, delay and cooldown settings were not imported.",
+			"Entry 1 uses unsupported probability behavior; probability settings were not imported.",
+			"Entry 1 uses unsupported group behavior; group settings were not imported.",
+			"Entry 1 uses unsupported placement behavior; source placement settings were not imported.",
+			"Entry 1 contains unsupported macros; they remain literal.",
+		]);
 	});
 
 	test("maps native SillyTavern disable and secondary-key fields", async () => {

@@ -60,6 +60,7 @@ type LeaveIntent =
 
 export function LorebookPanel({ conversationId, onClose, mutationsDisabled = false }: { conversationId: number; onClose: () => void; mutationsDisabled?: boolean }) {
 	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
+	const [booksLoading, setBooksLoading] = useState(true);
 	const [book, setBook] = useState<Lorebook | null>(null);
 	const [entryId, setEntryId] = useState<number | null>(null);
 	const [entryDraft, setEntryDraft] = useState<LoreEntryFields>(blankEntry());
@@ -76,9 +77,12 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [attachmentPending, setAttachmentPending] = useState(false);
 	const [selectedPreset, setSelectedPreset] = useState<Awaited<ReturnType<typeof loadConversationPromptPreset>>>(null);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
+	const [bookDeleteConfirmation, setBookDeleteConfirmation] = useState<{ name: string; detail: string } | null>(null);
+	const [entryDeleteConfirmation, setEntryDeleteConfirmation] = useState(false);
 	const importInput = useRef<HTMLInputElement>(null);
 
 	const refresh = useCallback(async () => {
+		setBooksLoading(true);
 		try {
 			const loaded = await listLorebooks();
 			setBooks(loaded);
@@ -91,6 +95,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				}
 			}
 		} catch { setNotice("The Lorebook library could not be loaded."); }
+		finally { setBooksLoading(false); }
 	}, [book]);
 
 	// ==[HUMAN APPROVED]== The first load is intentionally initial-only; mutations update local state.
@@ -188,7 +193,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		}
 	};
 
-	const run = async (command: LorebookCommand, success?: string) => {
+	const executeLorebookCommand = async (command: LorebookCommand, success?: string) => {
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
@@ -203,6 +208,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					const saved = result.book.entries.at(-1);
 					if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
 				}
+				if (command.type === "set-entry-enabled" && command.entryId === entryId) setEntryDraft((draft) => ({ ...draft, enabled: command.enabled }));
 			} else if (result.status === "deleted") {
 				setBook(null); setEntryId(null); setBooks((items) => items.filter((item) => item.id !== result.bookId)); setNotice("Lorebook deleted.");
 			} else if (result.status === "conflict") {
@@ -214,12 +220,12 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		} finally { setPending(false); }
 	};
 
-	const create = () => void run({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
+	const create = () => void executeLorebookCommand({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
 	const filteredBooks = useMemo(() => books.filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [books, search]);
 
 	const saveEntry = () => {
 		if (book === null) return;
-		void run({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
+		void executeLorebookCommand({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
 	};
 	const confirmDeleteBook = async () => {
 		if (book === null) return;
@@ -230,9 +236,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			const detail = attachments.length === 0
 				? "It has no attachments."
 				: `Deleting it also removes these attachments:\n${attachments}`;
-			if (window.confirm(`Delete ${book.name}?\n\n${detail}`)) {
-				await run({ type: "delete", bookId: book.id, expectedRevision: book.revision });
-			}
+			setBookDeleteConfirmation({ name: book.name, detail });
 		} catch (error) {
 			setNotice(error instanceof Error ? error.message : "Unable to load Lorebook deletion impact.");
 		}
@@ -292,7 +296,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	return <>
 		<PanelHeader title="Lorebooks" onClose={() => requestLeave({ type: "close" })} />
 		<div className="panel-body flex flex-col gap-4" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-			{attachmentState !== null && <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
+			{attachmentState === null ? <ChatLoreSettingsLoading /> : <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
 				<h2 className="text-sm font-medium">Chat Lore settings</h2>
 				<form className="flex flex-wrap items-end gap-2" onSubmit={saveChatSettings}>
 					<label className="flex flex-col gap-1 text-xs">Scan Messages<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) })} /></label>
@@ -309,16 +313,44 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				<Button size="sm" variant="outline" type="button" disabled={pending || book === null} onClick={async () => { if (!book) return; const value = await exportNativeLorebook(book.id); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" })); link.download = `${value.name}.json`; link.click(); URL.revokeObjectURL(link.href); }}><Download aria-hidden="true" /> Export</Button>
 			</div>
 			<div className="flex gap-2"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /><Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button></div>
-			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library">{filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div> : <>
-				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete</Button></div></div>
-				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void run({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
+			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div> : <>
+				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void executeLorebookCommand({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete</Button></div></div>
+				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void executeLorebookCommand({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
 				<MatchTester writing={testWriting} onWritingChange={(value) => { setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
-				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start truncate text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === 0} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === book.entries.length - 1} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void run({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
-				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={setEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => { if (window.confirm(`Delete ${entryDraft.title || "this entry"}?`)) void run({ type: "delete-entry", bookId: book.id, entryId, expectedRevision: book.revision }, "Entry deleted."); }} pending={pending} />}
+				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start truncate text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
+				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={setEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => setEntryDeleteConfirmation(true)} pending={pending} />}
 			</>}
 			{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
 		<UnsavedLorebookDialog open={leaveIntent !== null} pending={pending} onKeepEditing={() => setLeaveIntent(null)} onDiscard={discardAndLeave} onSave={() => void saveAndLeave()} />
+		<Dialog open={bookDeleteConfirmation !== null} onOpenChange={(open) => { if (!open) setBookDeleteConfirmation(null); }}>
+			<DialogContent showCloseButton={false} className="sm:max-w-sm">
+				<DialogHeader><DialogTitle>Delete {bookDeleteConfirmation?.name}?</DialogTitle><DialogDescription>{bookDeleteConfirmation?.detail}</DialogDescription></DialogHeader>
+				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="ghost" disabled={pending} onClick={() => setBookDeleteConfirmation(null)}>Keep Lorebook</Button><Button type="button" variant="destructive" disabled={pending} onClick={() => { const target = book; setBookDeleteConfirmation(null); if (target !== null) void executeLorebookCommand({ type: "delete", bookId: target.id, expectedRevision: target.revision }); }}>Delete Lorebook</Button></div>
+			</DialogContent>
+		</Dialog>
+		<Dialog open={entryDeleteConfirmation} onOpenChange={(open) => { if (!open) setEntryDeleteConfirmation(false); }}>
+			<DialogContent showCloseButton={false} className="sm:max-w-sm">
+				<DialogHeader><DialogTitle>Delete {entryDraft.title || "this entry"}?</DialogTitle><DialogDescription>This permanently removes the current entry from this Lorebook.</DialogDescription></DialogHeader>
+				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEntryDeleteConfirmation(false)}>Keep entry</Button><Button type="button" variant="destructive" disabled={pending} onClick={() => { const target = book; const targetEntryId = entryId; setEntryDeleteConfirmation(false); if (target !== null && targetEntryId !== null) void executeLorebookCommand({ type: "delete-entry", bookId: target.id, entryId: targetEntryId, expectedRevision: target.revision }, "Entry deleted."); }}>Delete entry</Button></div>
+			</DialogContent>
+		</Dialog>
+	</>;
+}
+
+function ChatLoreSettingsLoading() {
+	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings" aria-busy="true">
+		<h2 className="text-sm font-medium">Chat Lore settings</h2>
+		<p className="sr-only" role="status">Loading Chat Lore settings…</p>
+		<div className="flex flex-wrap items-end gap-2"><div className="h-14 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-14 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-28 animate-pulse rounded-md bg-muted/50" /></div>
+		<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong><div className="h-5 w-3/4 animate-pulse rounded bg-muted/50" /><div className="h-5 w-2/3 animate-pulse rounded bg-muted/50" /></div>
+	</section>;
+}
+
+function LorebookLibraryLoading() {
+	return <>
+		<p className="sr-only" role="status">Loading Lorebooks…</p>
+		{["first", "second", "third"].map((key) => <div className="h-14 animate-pulse rounded-lg border border-border bg-muted/50" key={key} />)}
 	</>;
 }
 

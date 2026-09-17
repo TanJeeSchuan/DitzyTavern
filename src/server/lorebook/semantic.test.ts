@@ -72,4 +72,18 @@ describe("semantic Lore evaluation", () => {
 		});
 		expect(zero.available).toBe(false);
 	});
+
+	test("retains the strongest semantic evidence when its cosine score is negative", async () => {
+		const result = await evaluateSemanticLore({
+			database,
+			entries: [entry],
+			messages: [{ content: "An unrelated sentence." }],
+			fetch: async (_input, init) => {
+				// ==[HUMAN APPROVED]== SAFETY: the test client sends the exact request body shape asserted here.
+				const body = JSON.parse(String(init?.body)) as { input: string[] };
+				return new Response(JSON.stringify({ data: body.input.map((value) => ({ embedding: value === "ships arrive" ? [1, 0] : [-1, 0] })) }), { status: 200 });
+			},
+		});
+		expect(result).toMatchObject({ available: true, matches: [{ trigger: "ships arrive", score: -1, sentence: "An unrelated sentence." }] });
+	});
 });

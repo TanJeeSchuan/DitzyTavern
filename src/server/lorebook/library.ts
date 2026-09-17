@@ -230,11 +230,28 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 		const enabled = item.disable !== undefined
 			? !sourceBoolean(item.disable, false)
 			: sourceBoolean(item.enabled, true);
-		if (item.vectorized === true || item.useProbability === true || item.sticky === true || item.delay !== undefined || item.group !== undefined || item.recursion !== undefined || item.position !== undefined) {
-			warnings.push(`Entry ${index + 1} uses unsupported SillyTavern behavior; supported fields were imported.`);
+		const entryLabel = `Entry ${index + 1}`;
+		if (item.recursion !== undefined || item.recursive !== undefined || item.excludeRecursion !== undefined || item.preventRecursion !== undefined) {
+			warnings.push(`${entryLabel} uses unsupported recursion behavior; recursion was not imported.`);
 		}
-		if (item.content && /\{\{[^}]+\}\}/.test(String(item.content))) warnings.push(`Entry ${index + 1} contains macro-looking text; it remains literal.`);
-		if (item.vectorized === true && keys.length === 0) warnings.push(`Entry ${index + 1} has full-content semantic matching but no authored Semantic Triggers; it remains unmatched until edited.`);
+		if (item.sticky !== undefined || item.delay !== undefined || item.cooldown !== undefined) {
+			warnings.push(`${entryLabel} uses unsupported timing behavior; sticky, delay and cooldown settings were not imported.`);
+		}
+		if (item.useProbability === true || item.probability !== undefined) {
+			warnings.push(`${entryLabel} uses unsupported probability behavior; probability settings were not imported.`);
+		}
+		if (item.group !== undefined || item.inclusionGroup !== undefined) {
+			warnings.push(`${entryLabel} uses unsupported group behavior; group settings were not imported.`);
+		}
+		if (item.position !== undefined || item.depth !== undefined || item.scanDepth !== undefined) {
+			warnings.push(`${entryLabel} uses unsupported placement behavior; source placement settings were not imported.`);
+		}
+		if (item.vectorized === true) {
+			warnings.push(`${entryLabel} uses unsupported full-content semantic matching; authored Keywords remain usable.`);
+		}
+		const hasMacros = [item.content, ...keys, ...secondaryStrings].some((value) => isJsonString(value) && /\{\{[^}]+\}\}/.test(value));
+		if (hasMacros) warnings.push(`${entryLabel} contains unsupported macros; they remain literal.`);
+		if (item.vectorized === true && keys.length === 0) warnings.push(`${entryLabel} has full-content semantic matching but no authored Semantic Triggers; it remains unmatched until edited.`);
 		return validateEntry({
 			title: sourceString(item.comment ?? item.title),
 			content: sourceString(item.content),

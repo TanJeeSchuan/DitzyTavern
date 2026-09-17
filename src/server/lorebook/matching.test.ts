@@ -91,5 +91,6 @@ describe("lore entry matching", () => {
 
 	test("splits sentences for semantic adapters without changing lexical boundaries", () => {
 		expect(splitLoreSentences("One. Two!\nThree?")).toEqual(["One.", "Two!", "Three?"]);
+		expect(splitLoreSentences("Mr. Smith arrived. The value is 3.14. Next.")).toEqual(["Mr. Smith arrived.", "The value is 3.14.", "Next."]);
 	});
 });

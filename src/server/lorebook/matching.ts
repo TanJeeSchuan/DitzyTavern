@@ -238,8 +238,54 @@ export const matchLoreEntry = (
 	};
 };
 
+const SENTENCE_ABBREVIATIONS = new Set([
+	"a.m", "apr", "aug", "dec", "dr", "e.g", "etc", "feb", "i.e", "jan", "jr", "mar", "mr", "mrs", "ms", "nov", "oct", "p.m", "prof", "sep", "sept", "sr", "st", "vs",
+]);
+
+const isLetter = (character: string | undefined): boolean => character !== undefined && /\p{L}/u.test(character);
+const isDigit = (character: string | undefined): boolean => character !== undefined && /\d/u.test(character);
+
+const periodToken = (content: string, periodIndex: number): string => {
+	let start = periodIndex;
+	while (start > 0 && !/\s/u.test(content[start - 1] ?? "")) start -= 1;
+	return content.slice(start, periodIndex).replace(/^[^\p{L}\p{N}]+/u, "").toLocaleLowerCase();
+};
+
+const periodEndsSentence = (content: string, periodIndex: number): boolean => {
+	const previous = content[periodIndex - 1];
+	const next = content[periodIndex + 1];
+	if (next === ".") return false;
+	if (isDigit(previous) && isDigit(next)) return false;
+	const token = periodToken(content, periodIndex);
+	if (SENTENCE_ABBREVIATIONS.has(token)) return false;
+	// ==[HUMAN APPROVED]== A single capital and dotted initials (A. Smith, A.B. Smith) are names, not sentences.
+	if (token.length === 1 && isLetter(content[periodIndex - 1]) && content[periodIndex - 1] === content[periodIndex - 1]?.toUpperCase()) return false;
+	if (/^(?:[a-z]\.)+[a-z]?$/u.test(token)) return false;
+	return true;
+};
+
 /** ==[HUMAN APPROVED]== Split only for semantic adapters; lexical matching receives complete Messages. */
-export const splitLoreSentences = (content: string): string[] => content
-	.split(/(?<=[.!?。！？])\s+|\n+/u)
-	.map((sentence) => sentence.trim())
-	.filter((sentence) => sentence.length > 0);
+export const splitLoreSentences = (content: string): string[] => {
+	const sentences: string[] = [];
+	let start = 0;
+	const append = (end: number): void => {
+		const sentence = content.slice(start, end).trim();
+		if (sentence.length > 0) sentences.push(sentence);
+	};
+	for (let index = 0; index < content.length; index += 1) {
+		const character = content[index];
+		if (character === "\n" || character === "\r") {
+			append(index);
+			start = index + 1;
+			continue;
+		}
+		if (character !== "." && character !== "!" && character !== "?" && character !== "。" && character !== "！" && character !== "？") continue;
+		if (character === "." && !periodEndsSentence(content, index)) continue;
+		const next = content[index + 1];
+		if (next !== undefined && !/\s/u.test(next)) continue;
+		append(index + 1);
+		start = index + 1;
+	}
+	append(content.length);
+	return sentences;
+};

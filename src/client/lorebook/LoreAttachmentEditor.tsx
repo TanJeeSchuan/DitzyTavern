@@ -46,7 +46,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 		finally { setPending(false); }
 	};
 
-	if (state === null) return <section className="editor-section"><h3>Lorebooks</h3><p className="panel-note">Loading Lorebook attachments…</p></section>;
+	if (state === null) return <LoreAttachmentLoading owner={owner} />;
 
 	const attach = () => {
 		const bookId = Number(selectedBookId);
@@ -78,5 +78,19 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 		</div>
 		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment.bookId)}>Detach</Button></li>)}</ul>}
 		{notice !== null && <p className="panel-note" role="status">{notice}</p>}
+	</section>;
+}
+
+function LoreAttachmentLoading({ owner }: { owner: Owner }) {
+	return <section className="editor-section" aria-label={`${ownerLabel(owner)} Lorebooks`} aria-busy="true">
+		<h3>Lorebooks</h3>
+		<p className="sr-only" role="status">Loading Lorebook attachments…</p>
+		<p className="panel-note">Attach shared books to this {ownerLabel(owner)}. Scope controls when the book can activate.</p>
+		<div className="apply-row">
+			<div className="h-9 min-w-40 flex-1 animate-pulse rounded-md bg-muted/50" />
+			<div className="h-9 min-w-40 animate-pulse rounded-md bg-muted/50" />
+			<div className="h-9 w-16 animate-pulse rounded-md bg-muted/50" />
+		</div>
+		<ul className="lore-attachment-list" aria-hidden="true">{["first", "second"].map((key) => <li className="apply-row" key={key}><div className="h-5 flex-1 animate-pulse rounded bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /></li>)}</ul>
 	</section>;
 }
