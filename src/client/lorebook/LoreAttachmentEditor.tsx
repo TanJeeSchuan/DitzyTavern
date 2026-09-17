@@ -20,9 +20,13 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 	const [selectedScope, setSelectedScope] = useState<"controlled-participant" | "cast">("cast");
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
+	const [loadingError, setLoadingError] = useState(false);
+	const [loadAttempt, setLoadAttempt] = useState(0);
 
 	useEffect(() => {
 		let cancelled = false;
+		setState(null);
+		setLoadingError(false);
 		void Promise.all([
 			listLorebooks(),
 			owner === "character" ? getCharacterLorebookAttachments(ownerId) : getParticipantLorebookAttachments(ownerId),
@@ -30,37 +34,44 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			if (cancelled) return;
 			setBooks(loadedBooks);
 			setState(loadedState);
-		}).catch(() => { if (!cancelled) setNotice("Lorebook attachments could not be loaded."); });
+		}).catch(() => { if (!cancelled) setLoadingError(true); });
 		return () => { cancelled = true; };
-	}, [owner, ownerId]);
+	}, [owner, ownerId, loadAttempt]);
 
 	const bookNames = useMemo(() => new Map(books.map((book) => [book.id, book.name])), [books]);
 	const send = async (command: LoreAttachmentCommand) => {
 		setPending(true);
 		setNotice(null);
 		try {
-			await applyLorebookAttachmentCommand(command);
+			const result = await applyLorebookAttachmentCommand(command);
+			if (result.status !== "applied") {
+				if (result.status === "conflict") setState(await (owner === "character" ? getCharacterLorebookAttachments(ownerId) : getParticipantLorebookAttachments(ownerId)));
+				throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment changed elsewhere.");
+			}
 			const refreshed = owner === "character" ? await getCharacterLorebookAttachments(ownerId) : await getParticipantLorebookAttachments(ownerId);
 			setState(refreshed);
 		} catch { setNotice("Lorebook attachment could not be saved."); }
 		finally { setPending(false); }
 	};
 
-	if (state === null) return <LoreAttachmentLoading owner={owner} />;
+	if (state === null) {
+		if (loadingError) return <LoreAttachmentLoadError owner={owner} onRetry={() => { setState(null); setLoadAttempt((attempt) => attempt + 1); }} />;
+		return <LoreAttachmentLoading owner={owner} />;
+	}
 
 	const attach = () => {
 		const bookId = Number(selectedBookId);
 		if (!Number.isInteger(bookId)) return;
 		void send(owner === "character"
-			? { type: "attach-character", characterId: ownerId, bookId, scope: selectedScope }
-			: { type: "attach-participant", participantId: ownerId, bookId, scope: selectedScope });
+			? { type: "attach-character", characterId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope }
+			: { type: "attach-participant", participantId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope });
 	};
 	const detach = (bookId: number) => void send(owner === "character"
-		? { type: "detach-character", characterId: ownerId, bookId }
-		: { type: "detach-participant", participantId: ownerId, bookId });
+		? { type: "detach-character", characterId: ownerId, bookId, expectedRevision: state.revision }
+		: { type: "detach-participant", participantId: ownerId, bookId, expectedRevision: state.revision });
 	const toggle = (attachment: LorebookOwnerAttachmentState["attachments"][number]) => void send(owner === "character"
-		? { type: "attach-character", characterId: ownerId, bookId: attachment.bookId, scope: attachment.scope, enabled: !attachment.enabled }
-		: { type: "attach-participant", participantId: ownerId, bookId: attachment.bookId, scope: attachment.scope, enabled: !attachment.enabled });
+		? { type: "attach-character", characterId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled }
+		: { type: "attach-participant", participantId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled });
 
 	return <section className="editor-section" aria-label={`${ownerLabel(owner)} Lorebooks`}>
 		<h3>Lorebooks</h3>
@@ -92,5 +103,13 @@ function LoreAttachmentLoading({ owner }: { owner: Owner }) {
 			<div className="h-9 w-16 animate-pulse rounded-md bg-muted/50" />
 		</div>
 		<ul className="lore-attachment-list" aria-hidden="true">{["first", "second"].map((key) => <li className="apply-row" key={key}><div className="h-5 flex-1 animate-pulse rounded bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-20 animate-pulse rounded-md bg-muted/50" /></li>)}</ul>
+	</section>;
+}
+
+function LoreAttachmentLoadError({ owner, onRetry }: { owner: Owner; onRetry: () => void }) {
+	return <section className="editor-section" aria-label={`${ownerLabel(owner)} Lorebooks`}>
+		<h3>Lorebooks</h3>
+		<p className="panel-note" role="alert">The {ownerLabel(owner).toLowerCase()} Lorebooks could not be loaded. Check your connection and try again.</p>
+		<Button variant="outline" size="sm" type="button" onClick={onRetry}>Retry</Button>
 	</section>;
 }

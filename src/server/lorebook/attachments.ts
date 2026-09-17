@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterLorebookAttachmentTable,
@@ -12,7 +12,7 @@ import {
 	participantTable,
 	lorebookTable,
 } from "../database/schema";
-import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
+import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
 
 export type LoreAttachmentOwner = "character" | "participant" | "conversation";
 
@@ -33,6 +33,34 @@ export interface LoreAttachmentEligibility extends LoreAttachment {
 export interface LoreSettings {
 	readonly scanDepth: number;
 	readonly allowance: number;
+}
+
+export class StaleLoreAttachmentRevisionError extends Error {
+	readonly expectedRevision: number;
+	readonly actualRevision: number;
+	readonly command: LoreAttachmentCommand;
+
+	constructor(command: LoreAttachmentCommand, actualRevision: number) {
+		super(`Expected Lore attachment revision ${command.expectedRevision}, but the current revision is ${actualRevision}.`);
+		this.name = "StaleLoreAttachmentRevisionError";
+		this.expectedRevision = command.expectedRevision;
+		this.actualRevision = actualRevision;
+		this.command = command;
+	}
+}
+
+export class LoreAttachmentOwnerNotFoundError extends Error {
+	constructor() {
+		super("The Lore attachment owner was not found.");
+		this.name = "LoreAttachmentOwnerNotFoundError";
+	}
+}
+
+export class InvalidLoreAttachmentCommandError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidLoreAttachmentCommandError";
+	}
 }
 
 type LoreDatabase = ReturnType<typeof drizzle>;
@@ -150,6 +178,7 @@ export const readLorebookAttachmentState = (
 	const settings = readLoreSettings(database, conversationId);
 	return {
 		conversationId,
+		revision: db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get()?.revision ?? 0,
 		scanDepth: settings.scanDepth,
 		allowance: settings.allowance,
 		attachments: readLorebookAttachmentEligibility(database, conversationId),
@@ -180,10 +209,12 @@ export const readLorebookAttachmentImpact = (
 
 export const readCharacterLorebookAttachments = (database: Database, characterId: number) => {
 	const db = connect(database);
-	if (db.select({ id: characterTable.id }).from(characterTable).where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at))).get() === undefined) return undefined;
+	const character = db.select({ id: characterTable.id, revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at))).get();
+	if (character === undefined) return undefined;
 	return {
 		owner: "character" as const,
 		ownerId: characterId,
+		revision: character.revision,
 		attachments: db.select({ id: characterLorebookAttachmentTable.id, bookId: characterLorebookAttachmentTable.lorebook_id, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
 			.from(characterLorebookAttachmentTable).where(eq(characterLorebookAttachmentTable.character_id, characterId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
 	};
@@ -191,10 +222,14 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 
 export const readParticipantLorebookAttachments = (database: Database, participantId: number) => {
 	const db = connect(database);
-	if (db.select({ id: participantTable.id }).from(participantTable).where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get() === undefined) return undefined;
+	const participant = db.select({ id: participantTable.id, conversationId: participantTable.conversation_id }).from(participantTable).where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get();
+	if (participant === undefined) return undefined;
+	const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, participant.conversationId)).get();
+	if (conversation === undefined) return undefined;
 	return {
 		owner: "participant" as const,
 		ownerId: participantId,
+		revision: conversation.revision,
 		attachments: db.select({ id: participantLorebookAttachmentTable.id, bookId: participantLorebookAttachmentTable.lorebook_id, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
 			.from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.participant_id, participantId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
 	};
@@ -208,10 +243,91 @@ export const readLoreSettings = (database: Database, conversationId: number): Lo
 };
 
 export const saveLoreSettings = (database: Database, conversationId: number, settings: LoreSettings): LoreSettings => {
-	if (!Number.isInteger(settings.scanDepth) || settings.scanDepth < 0) throw new Error("Lore scan depth must be a non-negative whole number.");
-	if (!Number.isInteger(settings.allowance) || settings.allowance < 0) throw new Error("Lore allowance must be a non-negative whole number.");
+	if (!Number.isInteger(settings.scanDepth) || settings.scanDepth < 0) throw new InvalidLoreAttachmentCommandError("Lore scan depth must be a non-negative whole number.");
+	if (!Number.isInteger(settings.allowance) || settings.allowance < 0) throw new InvalidLoreAttachmentCommandError("Lore allowance must be a non-negative whole number.");
 	const db = connect(database);
 	db.insert(conversationLoreSettingsTable).values({ conversation_id: conversationId, scan_depth: settings.scanDepth, allowance: settings.allowance })
 		.onConflictDoUpdate({ target: conversationLoreSettingsTable.conversation_id, set: { scan_depth: settings.scanDepth, allowance: settings.allowance } }).run();
 	return settings;
+};
+
+const advanceCharacterRevision = (db: LoreDatabase, command: LoreAttachmentCommand & { characterId: number }) => {
+	const advanced = db.update(characterTable)
+		.set({ revision: sql`${characterTable.revision} + 1` })
+		.where(and(eq(characterTable.id, command.characterId), eq(characterTable.revision, command.expectedRevision)))
+		.returning({ revision: characterTable.revision })
+		.get();
+	if (advanced === undefined) {
+		const current = db.select({ revision: characterTable.revision }).from(characterTable).where(eq(characterTable.id, command.characterId)).get();
+		throw new StaleLoreAttachmentRevisionError(command, current?.revision ?? command.expectedRevision);
+	}
+};
+
+const advanceConversationRevision = (db: LoreDatabase, command: LoreAttachmentCommand & { conversationId: number }) => {
+	const advanced = db.update(conversationTable)
+		.set({ revision: sql`${conversationTable.revision} + 1` })
+		.where(and(eq(conversationTable.id, command.conversationId), eq(conversationTable.revision, command.expectedRevision)))
+		.returning({ revision: conversationTable.revision })
+		.get();
+	if (advanced === undefined) {
+		const current = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, command.conversationId)).get();
+		throw new StaleLoreAttachmentRevisionError(command, current?.revision ?? command.expectedRevision);
+	}
+};
+
+/** ==[HUMAN APPROVED]== Every public attachment/settings mutation checks and advances its owning revision in one transaction. */
+export const executeLorebookAttachmentCommand = (database: Database, command: LoreAttachmentCommand): void => {
+	const db = connect(database);
+	database.transaction(() => {
+		switch (command.type) {
+			case "attach-character": {
+				const owner = db.select({ revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at))).get();
+				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				if (owner.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, owner.revision);
+				attachLorebookToCharacter(database, command);
+				advanceCharacterRevision(db, command);
+				return;
+			}
+			case "detach-character": {
+				const owner = db.select({ revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at))).get();
+				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				if (owner.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, owner.revision);
+				detachLorebookFromCharacter(database, command.characterId, command.bookId);
+				advanceCharacterRevision(db, command);
+				return;
+			}
+			case "attach-participant": {
+				const owner = db.select({ conversationId: participantTable.conversation_id }).from(participantTable).where(and(eq(participantTable.id, command.participantId), isNull(participantTable.deleted_at))).get();
+				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, owner.conversationId)).get();
+				if (conversation === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				if (conversation.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, conversation.revision);
+				attachLorebookToParticipant(database, command);
+				advanceConversationRevision(db, { ...command, conversationId: owner.conversationId });
+				return;
+			}
+			case "detach-participant": {
+				const owner = db.select({ conversationId: participantTable.conversation_id }).from(participantTable).where(and(eq(participantTable.id, command.participantId), isNull(participantTable.deleted_at))).get();
+				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, owner.conversationId)).get();
+				if (conversation === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				if (conversation.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, conversation.revision);
+				detachLorebookFromParticipant(database, command.participantId, command.bookId);
+				advanceConversationRevision(db, { ...command, conversationId: owner.conversationId });
+				return;
+			}
+			case "attach-chat":
+			case "detach-chat":
+			case "save-settings": {
+				const owner = db.select({ id: conversationTable.id, revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, command.conversationId)).get();
+				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
+				if (owner.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, owner.revision);
+				if (command.type === "attach-chat") attachLorebookToConversation(database, command);
+				else if (command.type === "detach-chat") detachLorebookFromConversation(database, command.conversationId, command.bookId);
+				else saveLoreSettings(database, command.conversationId, { scanDepth: command.scanDepth, allowance: command.allowance });
+				advanceConversationRevision(db, command);
+				return;
+			}
+		}
+	}).immediate();
 };

@@ -11,19 +11,20 @@ export const loreAttachmentScope = Type.Union([
 export type LoreAttachmentScope = Static<typeof loreAttachmentScope>;
 
 export const loreAttachmentCommandBody = Type.Union([
-	Type.Object({ type: Type.Literal("attach-character"), characterId: Type.Integer(), bookId: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("attach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("attach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer() }),
-	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer() }),
-	Type.Object({ type: Type.Literal("detach-chat"), conversationId: Type.Integer(), bookId: Type.Integer() }),
-	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
+	Type.Object({ type: Type.Literal("attach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("attach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("attach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
+	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
+	Type.Object({ type: Type.Literal("detach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
+	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), expectedRevision: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
 ]);
 export type LoreAttachmentCommand = Static<typeof loreAttachmentCommandBody>;
 export const loreAttachmentCommandResponse = Type.Object({ outcome: Type.Literal("applied") });
 export const loreAttachmentQuery = Type.Object({ conversationId: numericWire });
 export const loreAttachmentState = Type.Object({
 	conversationId: Type.Integer(),
+	revision: Type.Integer(),
 	scanDepth: Type.Integer({ minimum: 0 }),
 	allowance: Type.Integer({ minimum: 0 }),
 	attachments: Type.Array(Type.Object({
@@ -43,6 +44,7 @@ export const lorebookOwnerAttachmentQuery = Type.Object({ ownerId: numericWire }
 export const lorebookOwnerAttachmentState = Type.Object({
 	owner: Type.Union([Type.Literal("character"), Type.Literal("participant")]),
 	ownerId: Type.Integer(),
+	revision: Type.Integer(),
 	attachments: Type.Array(Type.Object({
 		id: Type.Integer(),
 		bookId: Type.Integer(),
@@ -51,6 +53,13 @@ export const lorebookOwnerAttachmentState = Type.Object({
 	})),
 });
 export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachmentState>;
+export const loreAttachmentConflict = Type.Object({
+	outcome: Type.Literal("conflict"),
+	reason: Type.Literal("stale-revision"),
+	expectedRevision: Type.Integer(),
+	actualRevision: Type.Integer(),
+	currentState: Type.Union([loreAttachmentState, lorebookOwnerAttachmentState]),
+});
 
 export const lorebookAttachmentImpact = Type.Object({
 	bookId: Type.Integer(),
@@ -212,6 +221,7 @@ const loreMatchTestEntry = Type.Object({
 });
 export const loreMatchTestResponse = Type.Object({
 	mode: Type.Union([Type.Literal("semantic"), Type.Literal("keyword-fallback"), Type.Literal("none")]),
+	skipReason: Type.Optional(Type.Literal("no-enabled-lore-block")),
 	fallbackReason: Type.Optional(Type.String()),
 	scan: Type.Array(Type.Object({ id: Type.Union([Type.Integer(), Type.Null()]), content: Type.String() })),
 	matches: Type.Array(loreMatchTestEntry),

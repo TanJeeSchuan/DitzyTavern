@@ -38,9 +38,35 @@ export async function getLorebookAttachmentState(conversationId: number): Promis
 	return decodeWirePayload(loreAttachmentState, data);
 }
 
-export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand): Promise<void> {
-	const { error } = await api.api.lorebooks.attachments.commands.post(command);
-	if (error) throw new Error("Unable to update Lorebook attachments");
+export type LoreAttachmentCommandOutcome =
+	| { status: "applied" }
+	| { status: "conflict"; expectedRevision: number; actualRevision: number; currentState: LoreAttachmentState | LorebookOwnerAttachmentState }
+	| { status: "invalid"; reason: string }
+	| { status: "not-found" }
+	| { status: "network" };
+
+export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand): Promise<LoreAttachmentCommandOutcome> {
+	try {
+		const { error } = await api.api.lorebooks.attachments.commands.post(command);
+		if (error) {
+			// ==[HUMAN APPROVED]== SAFETY: Eden exposes the typed public error union; this assertion names only its shared outcome fields.
+			const value = error.value as { outcome?: string; reason?: string; expectedRevision?: number; actualRevision?: number; currentState?: LoreAttachmentState | LorebookOwnerAttachmentState } | null;
+			if (value?.outcome === "conflict" && value.currentState !== undefined) {
+				return {
+					status: "conflict",
+					expectedRevision: value.expectedRevision ?? command.expectedRevision,
+					actualRevision: value.actualRevision ?? value.currentState.revision,
+					currentState: value.currentState,
+				};
+			}
+			if (value?.outcome === "invalid") return { status: "invalid", reason: value.reason ?? "Invalid Lorebook attachment command." };
+			if (error.status === 404) return { status: "not-found" };
+			return { status: "network" };
+		}
+		return { status: "applied" };
+	} catch {
+		return { status: "network" };
+	}
 }
 
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {

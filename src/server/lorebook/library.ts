@@ -226,6 +226,12 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 		const order = sourceNumber(item.order);
 		const always = sourceBoolean(item.constant, false);
 		const secondaryStrings = sourceStrings(secondary);
+		const explicitSecondaryStrings = [
+			...sourceStrings(item.requireAny),
+			...sourceStrings(item.requireAll),
+			...sourceStrings(item.excludeAny),
+			...sourceStrings(item.excludeAll),
+		];
 		const hasExplicitRegex = [...keys, ...secondaryStrings].some((expression) => expression.startsWith("/"));
 		const enabled = item.disable !== undefined
 			? !sourceBoolean(item.disable, false)
@@ -249,7 +255,7 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 		if (item.vectorized === true) {
 			warnings.push(`${entryLabel} uses unsupported full-content semantic matching; authored Keywords remain usable.`);
 		}
-		const hasMacros = [item.content, ...keys, ...secondaryStrings].some((value) => isJsonString(value) && /\{\{[^}]+\}\}/.test(value));
+		const hasMacros = [item.content, ...keys, ...secondaryStrings, ...explicitSecondaryStrings].some((value) => isJsonString(value) && /\{\{[^}]+\}\}/.test(value));
 		if (hasMacros) warnings.push(`${entryLabel} contains unsupported macros; they remain literal.`);
 		if (item.vectorized === true && keys.length === 0) warnings.push(`${entryLabel} has full-content semantic matching but no authored Semantic Triggers; it remains unmatched until edited.`);
 		return validateEntry({

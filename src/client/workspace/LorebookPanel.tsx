@@ -255,7 +255,11 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => {
 		setAttachmentPending(true);
 		try {
-			await applyLorebookAttachmentCommand(command);
+			const result = await applyLorebookAttachmentCommand(command);
+			if (result.status !== "applied") {
+				if (result.status === "conflict" && "conversationId" in result.currentState) setAttachmentState(result.currentState);
+				throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
+			}
 			setAttachmentState(await getLorebookAttachmentState(conversationId));
 		} catch { setNotice("Lorebook attachment settings could not be saved."); }
 		finally { setAttachmentPending(false); }
@@ -263,7 +267,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const saveChatSettings = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		if (attachmentState === null) return;
-		void updateAttachment({ type: "save-settings", conversationId, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
+		void updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
 	};
 	const enableLoreSlot = async () => {
 		if (selectedPreset === null) return;
@@ -279,6 +283,21 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		} catch (error) {
 			setNotice(error instanceof Error ? error.message : "The Lore block could not be updated.");
 		} finally { setAttachmentPending(false); }
+	};
+	const exportBook = async () => {
+		if (book === null) return;
+		setPending(true);
+		try {
+			const value = await exportNativeLorebook(book.id);
+			const link = document.createElement("a");
+			link.href = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }));
+			link.download = `${value.name}.json`;
+			link.click();
+			URL.revokeObjectURL(link.href);
+			setNotice(`Lorebook "${value.name}" exported.`);
+		} catch {
+			setNotice(`Lorebook "${book.name}" could not be exported. Please try again.`);
+		} finally { setPending(false); }
 	};
 	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) }));
 	const importFile = async (file: File) => {
@@ -303,14 +322,14 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					<label className="flex flex-col gap-1 text-xs">Lore allowance<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) })} /></label>
 					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
 				</form>
-				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId })}>Detach</Button></span></div>)}</div>
+				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision })}>Detach</Button></span></div>)}</div>
 				{attachmentState.attachments.some((attachment) => attachment.enabled) && selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled) && <div className="rounded-md border border-border p-2 text-sm"><p>Attached Lorebooks are inactive because the selected Prompt Preset has no enabled Lore block.</p><Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button></div>}
-				{book !== null && !attachmentState.attachments.some((attachment) => attachment.owner === "conversation" && attachment.bookId === book.id) && <Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id })}>Attach this book to Chat</Button>}
+				{book !== null && !attachmentState.attachments.some((attachment) => attachment.owner === "conversation" && attachment.bookId === book.id) && <Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id, expectedRevision: attachmentState.revision })}>Attach this book to Chat</Button>}
 			</section>}
 			<div className="flex items-center gap-2">
 				<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
 				<Button size="sm" variant="outline" type="button" disabled={pending} onClick={() => importInput.current?.click()}><Upload aria-hidden="true" /> Import</Button>
-				<Button size="sm" variant="outline" type="button" disabled={pending || book === null} onClick={async () => { if (!book) return; const value = await exportNativeLorebook(book.id); const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" })); link.download = `${value.name}.json`; link.click(); URL.revokeObjectURL(link.href); }}><Download aria-hidden="true" /> Export</Button>
+				<Button size="sm" variant="outline" type="button" disabled={pending || book === null} onClick={() => void exportBook()}><Download aria-hidden="true" /> Export</Button>
 			</div>
 			<div className="flex gap-2"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /><Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button></div>
 			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div> : <>
@@ -382,30 +401,36 @@ function MatchTester({ writing, onWritingChange, result, error, pending, onTest 
 
 function MatchTesterResult({ result }: { result: LoreMatchTest }) {
 	return <div className="lore-match-result" aria-label="Lore match test result">
-		<div className="lore-match-result-heading"><strong>{result.mode === "semantic" ? "Semantic evaluation" : result.mode === "keyword-fallback" ? "Keyword fallback" : "No eligible Lorebooks"}</strong><span>{result.matches.filter((entry) => entry.active).length} active entries</span></div>
+		<div className="lore-match-result-heading"><strong>{result.skipReason === "no-enabled-lore-block" ? "Lore matching skipped" : result.mode === "semantic" ? "Semantic evaluation" : result.mode === "keyword-fallback" ? "Keyword fallback" : "No eligible Lorebooks"}</strong><span>{result.matches.filter((entry) => entry.active).length} active entries</span></div>
 		{result.fallbackReason !== undefined && <p className="settings-feedback-error">{result.fallbackReason}</p>}
+		{result.skipReason === "no-enabled-lore-block" && <p className="panel-intro">The selected Prompt Preset has no enabled Lore block, so matching and embedding work were skipped.</p>}
 		{result.scan.length > 0 && <p className="lore-match-scan-note">Compared against {result.scan.length} scanned {result.scan.length === 1 ? "Message" : "Messages"}, plus the supplied writing.</p>}
-		{result.matches.length === 0 ? <p className="panel-intro">No eligible entries were found.</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
+		{result.matches.length === 0 ? <p className="panel-intro">{result.skipReason === "no-enabled-lore-block" ? "Enable a Lore block in the selected Prompt Preset to run matching." : "No eligible entries were found."}</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
 			<summary><span>{entry.title || "Untitled entry"}</span><strong data-active={entry.active}>{entry.active ? "Active" : entry.skipped ? "Skipped" : "Not active"}</strong></summary>
 			<div className="lore-match-entry-body">
 				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "Unavailable"})</p></div>}
-				<div><small>Primary Keywords</small><p>{entry.primary.matched ? `Matched: ${entry.primary.matchedExpressions.join(", ") || "semantic trigger"}` : "No primary match"}</p></div>
-				<div><small>Secondary conditions</small><p>{secondarySummary(entry)}</p></div>
+				<div><small>Primary Keywords</small><p>{conditionSummary(entry.primary)}</p></div>
+				<div><small>Secondary conditions</small>{secondarySummary(entry)}</div>
 				{entry.reasons.length > 0 && <p className="lore-match-reasons">{entry.reasons.join(" · ")}</p>}
 			</div>
 		</details>)}
 	</div>;
 }
 
-function secondarySummary(entry: LoreMatchTest["matches"][number]): string {
+function conditionSummary(condition: LoreMatchTest["matches"][number]["primary"]): string {
+	const matched = condition.matchedExpressions.length === 0 ? "none" : condition.matchedExpressions.join(", ");
+	const missing = condition.missingExpressions.length === 0 ? "none" : condition.missingExpressions.join(", ");
+	return `Matched: ${matched} · Missing: ${missing}`;
+}
+
+function secondarySummary(entry: LoreMatchTest["matches"][number]) {
 	const conditions = [
 		["require any", entry.secondary.requireAny],
 		["require all", entry.secondary.requireAll],
 		["exclude any", entry.secondary.excludeAny],
 		["exclude all", entry.secondary.excludeAll],
 	] as const;
-	const populated = conditions.filter(([, condition]) => condition.matchedExpressions.length > 0 || condition.missingExpressions.length > 0);
-	return populated.length === 0 ? "No secondary conditions" : populated.map(([name, condition]) => `${name}: ${condition.matched ? "passed" : "failed"}`).join(" · ");
+	return <div className="flex flex-col gap-1">{conditions.map(([name, condition]) => <p key={name}>{name}: {conditionSummary(condition)}</p>)}</div>;
 }
 
 function EntryEditor({ entry, onChange, onListChange, onSave, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => void; onSave: () => void; onDelete?: () => void; pending: boolean }) {
