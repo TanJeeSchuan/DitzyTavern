@@ -1,0 +1,146 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Database } from "bun:sqlite";
+import { openInitializedDatabase } from "../database/database";
+import { createLorebookRoutes } from "./lorebook-routes";
+import type { Lorebook, LorebookCommand } from "../../shared/contract/lorebook";
+
+const request = (path: string, init?: RequestInit) =>
+	new Request(`http://localhost${path}`, {
+		headers: { "content-type": "application/json", ...init?.headers },
+		...init,
+	});
+
+const postCommand = (app: ReturnType<typeof createLorebookRoutes>, command: LorebookCommand) =>
+	app.handle(request("/api/lorebooks/commands", { method: "POST", body: JSON.stringify(command) }));
+
+// SAFETY: each caller has already asserted the route status and owns the expected response shape.
+const readBody = async <T>(response: Response): Promise<T> => await response.json() as T;
+
+describe("Lorebook library transport", () => {
+	let database: Database;
+	let app: ReturnType<typeof createLorebookRoutes>;
+
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		app = createLorebookRoutes(database);
+	});
+	afterEach(() => database.close());
+
+	test("creates, edits, orders and toggles authored entries", async () => {
+		const created = await postCommand(app, { type: "create", name: "World", description: "Canon" });
+		expect(created.status).toBe(200);
+		const book = (await readBody<{ book: Lorebook }>(created)).book;
+		expect(book).toMatchObject({ id: 1, name: "World", description: "Canon", revision: 0, entries: [] });
+
+		const entry = {
+			title: "Harbor",
+			content: "The harbor is old.",
+			keywords: ["harbor"],
+			semanticTriggers: ["ships arrive"],
+			matchOperator: "and" as const,
+			always: false,
+			requireAny: [],
+			requireAll: [],
+			excludeAny: [],
+			excludeAll: [],
+			caseSensitive: false,
+			wholeWord: true,
+			keywordMode: "literal" as const,
+			regexFlags: "",
+			semanticThreshold: 0.8,
+			priority: 4,
+			enabled: true,
+		};
+		const added = await postCommand(app, { type: "save-entry", bookId: 1, expectedRevision: 0, entry });
+		expect(added.status).toBe(200);
+		const addedBook = (await readBody<{ book: Lorebook }>(added)).book;
+		expect(addedBook.entries[0]).toMatchObject({ position: 1, ...entry });
+
+		const second = await postCommand(app, {
+			type: "save-entry",
+			bookId: 1,
+			expectedRevision: 1,
+			entry: { ...entry, title: "Tower", content: "The tower watches the harbor.", keywords: ["tower"] },
+		});
+		const secondBook = (await readBody<{ book: Lorebook }>(second)).book;
+		const reordered = await postCommand(app, {
+			type: "reorder-entry", bookId: 1, entryId: secondBook.entries[1].id,
+			expectedRevision: 2, toPosition: 1,
+		});
+		expect(reordered.status).toBe(200);
+		const reorderedBook = (await readBody<{ book: Lorebook }>(reordered)).book;
+		expect(reorderedBook.entries.map((item) => item.title)).toEqual(["Tower", "Harbor"]);
+
+		const disabled = await postCommand(app, {
+			type: "set-entry-enabled", bookId: 1, entryId: reorderedBook.entries[0].id,
+			expectedRevision: 3, enabled: false,
+		});
+		expect((await readBody<{ book: Lorebook }>(disabled)).book.entries[0].enabled).toBe(false);
+	});
+
+	test("rejects stale edits without mutating the authoritative book", async () => {
+		const created = await postCommand(app, { type: "create", name: "World" });
+		const renamed = await postCommand(app, {
+			type: "update-book", bookId: 1, expectedRevision: 0, name: "Updated", description: "" ,
+		});
+		expect(renamed.status).toBe(200);
+		const stale = await postCommand(app, {
+			type: "update-book", bookId: 1, expectedRevision: 0, name: "Wrong", description: "changed",
+		});
+		expect(stale.status).toBe(409);
+		expect(await stale.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentBook: { name: "Updated" } });
+		expect(await (await app.handle(request("/api/lorebooks/1"))).json()).toMatchObject({ name: "Updated", description: "" });
+		void created;
+	});
+
+	test("round trips native fields into independent identities", async () => {
+		const native = {
+			name: "Imported",
+			description: "A book",
+			entries: [{
+				title: "Entry", content: "Literal {{macro}}", keywords: ["key"], semanticTriggers: ["meaning"],
+				matchOperator: "or" as const, always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
+				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i", semanticThreshold: null,
+				priority: 0, enabled: false,
+			}],
+		};
+		const imported = await app.handle(request("/api/lorebooks/import", { method: "POST", body: JSON.stringify(native) }));
+		expect(imported.status).toBe(200);
+		const original = (await readBody<{ book: Lorebook }>(imported)).book;
+		const exported = await app.handle(request(`/api/lorebooks/${original.id}/export`));
+		expect(await exported.json()).toEqual(native);
+		const duplicated = await postCommand(app, { type: "duplicate", bookId: original.id, expectedRevision: 0 });
+		expect(duplicated.status).toBe(200);
+		const copy = (await readBody<{ book: Lorebook }>(duplicated)).book;
+		expect(copy.id).not.toBe(original.id);
+		expect(copy.entries[0].id).not.toBe(original.entries[0].id);
+	});
+
+	test("imports supported SillyTavern fields and reports unsupported behavior", async () => {
+		const response = await app.handle(request("/api/lorebooks/import/sillytavern", {
+			method: "POST",
+			body: JSON.stringify({ source: {
+				name: "ST",
+				entries: [{ comment: "Fact", content: "Keep {{literal}}", key: ["port"], constant: false, enabled: false, vectorized: true, order: 7 }],
+			} }),
+		}));
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: "applied",
+			book: { name: "ST", entries: [{ title: "Fact", content: "Keep {{literal}}", keywords: ["port"], enabled: false, semanticTriggers: [] }] },
+			warnings: [
+				"Entry 1 uses unsupported SillyTavern behavior; supported fields were imported.",
+				"Entry 1 contains macro-looking text; it remains literal.",
+			],
+		});
+	});
+
+	test("invalid native imports do not partially create a book", async () => {
+		const response = await app.handle(request("/api/lorebooks/import", {
+			method: "POST",
+			body: JSON.stringify({ name: "Broken", description: "", entries: [{ title: "x", content: "x", keywords: [], semanticTriggers: [], matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true, keywordMode: "regex", regexFlags: "invalid flag", semanticThreshold: null, priority: 0, enabled: true }] }),
+		}));
+		expect(response.status).toBe(422);
+		expect(await (await app.handle(request("/api/lorebooks"))).json()).toEqual({ books: [] });
+	});
+});

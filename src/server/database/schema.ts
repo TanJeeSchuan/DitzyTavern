@@ -99,6 +99,47 @@ export const promptPresetBlockTable = sqliteTable(
 	],
 );
 
+// ==[HUMAN APPROVED]== Shared authored lore is independent of its future attachment uses.
+// JSON columns keep the authoring vocabulary extensible while the library validates every
+// value before persistence; identities and ordering remain relational and stable.
+export const lorebookTable = sqliteTable("lorebook", {
+	id: int().primaryKey({ autoIncrement: true }),
+	name: text().notNull(),
+	description: text().notNull().default(""),
+	revision: int().notNull().default(0),
+});
+
+export const lorebookEntryTable = sqliteTable(
+	"lorebook_entry",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		lorebook_id: int()
+			.notNull()
+			.references(() => lorebookTable.id, { onDelete: "cascade" }),
+		position: int().notNull(),
+		title: text().notNull(),
+		content: text().notNull(),
+		keywords_json: text().notNull().default("[]"),
+		semantic_triggers_json: text().notNull().default("[]"),
+		match_operator: text().notNull().default("or"),
+		always: int({ mode: "boolean" }).notNull().default(false),
+		require_any_json: text().notNull().default("[]"),
+		require_all_json: text().notNull().default("[]"),
+		exclude_any_json: text().notNull().default("[]"),
+		exclude_all_json: text().notNull().default("[]"),
+		case_sensitive: int({ mode: "boolean" }).notNull().default(false),
+		whole_word: int({ mode: "boolean" }).notNull().default(true),
+		keyword_mode: text().notNull().default("literal"),
+		regex_flags: text().notNull().default(""),
+		semantic_threshold: real(),
+		priority: int().notNull().default(0),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+	},
+	(table) => [
+		uniqueIndex("lorebook_entry_position_unique").on(table.lorebook_id, table.position),
+	],
+);
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

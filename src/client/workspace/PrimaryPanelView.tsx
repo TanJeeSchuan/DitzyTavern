@@ -12,6 +12,7 @@ import type {
 import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import { GenerationPanel } from "./GenerationPanel";
+import { LorebookPanel } from "./LorebookPanel";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
 import type { SplitInspector } from "./panel-coordination";
@@ -24,6 +25,7 @@ import type { PrimaryPanel } from "./types";
 const sharedHeaderTitles = {
 	cast: "Cast",
 	library: "Character Library",
+	lorebooks: "Lorebooks",
 	models: "Model Settings",
 	generation: "Generation Settings",
 	settings: "Settings",
@@ -118,6 +120,11 @@ export function PrimaryPanelView({
 							/>
 						</div>
 					)}
+					{panel === "lorebooks" && (
+						<div className="panel-fill">
+							<LorebookPanel onClose={onClose} mutationsDisabled={mutationsDisabled} />
+						</div>
+					)}
 					{panel === "settings" && (
 						<SettingsPanel
 							theme={theme}
@@ -155,4 +162,3 @@ export function PrimaryPanelView({
 		</aside>
 	);
 }
-
