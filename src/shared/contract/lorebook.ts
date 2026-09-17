@@ -4,6 +4,24 @@ import type { SillyTavernJsonValue } from "./prompt-preset";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
 export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
+export const loreAttachmentScope = Type.Union([
+	Type.Literal("controlled-participant"),
+	Type.Literal("cast"),
+	Type.Literal("chat"),
+]);
+export type LoreAttachmentScope = Static<typeof loreAttachmentScope>;
+
+export const loreAttachmentCommandBody = Type.Union([
+	Type.Object({ type: Type.Literal("attach-character"), characterId: Type.Integer(), bookId: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("attach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("attach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("detach-chat"), conversationId: Type.Integer(), bookId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
+]);
+export type LoreAttachmentCommand = Static<typeof loreAttachmentCommandBody>;
+export const loreAttachmentCommandResponse = Type.Object({ outcome: Type.Literal("applied") });
 
 export const loreEntryFields = Type.Object({
 	title: Type.String(),

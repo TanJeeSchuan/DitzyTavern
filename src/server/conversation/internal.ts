@@ -3,12 +3,14 @@ import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
+	characterLorebookAttachmentTable,
 	characterTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
 	participantOpeningTable,
 	participantPromptTable,
+	participantLorebookAttachmentTable,
 	participantTable,
 	toPromptChannelRow,
 } from "../database/schema";
@@ -419,6 +421,16 @@ export const insertParticipant = (
 				})),
 			)
 			.run();
+	}
+	if (sourceCharacterId !== null) {
+		const attachments = db.select().from(characterLorebookAttachmentTable)
+			.where(eq(characterLorebookAttachmentTable.character_id, sourceCharacterId)).all();
+		if (attachments.length > 0) db.insert(participantLorebookAttachmentTable).values(attachments.map((row) => ({
+			participant_id: inserted.id,
+			lorebook_id: row.lorebook_id,
+			scope: row.scope,
+			enabled: row.enabled,
+		}))).run();
 	}
 
 	return { id: inserted.id, name, openings };

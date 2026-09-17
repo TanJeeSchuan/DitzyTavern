@@ -17,6 +17,7 @@ export { createConversationRoutes } from "./conversation";
 export { createNativeConversationRoutes } from "./native-conversation";
 export { createPromptPresetRoutes } from "./prompt-preset-routes";
 export { createLorebookRoutes } from "./lorebook-routes";
+export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 
 export const contract = new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })

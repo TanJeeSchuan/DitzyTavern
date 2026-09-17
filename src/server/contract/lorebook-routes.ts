@@ -27,7 +27,18 @@ import {
 	lorebookListResponse,
 	nativeLorebook,
 	sillyTavernLorebookImportBody,
+	loreAttachmentCommandBody,
+	loreAttachmentCommandResponse,
 } from "../../shared/contract/lorebook";
+import {
+	attachLorebookToCharacter,
+	attachLorebookToParticipant,
+	attachLorebookToConversation,
+	detachLorebookFromCharacter,
+	detachLorebookFromParticipant,
+	detachLorebookFromConversation,
+	saveLoreSettings,
+} from "../lorebook/attachments";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
 
@@ -84,4 +95,22 @@ export const createLorebookRoutes = (database: Database | undefined) => new Elys
 		return "deleted" in result.value
 			? { outcome: "deleted" as const, bookId: result.value.deleted }
 			: { outcome: "applied" as const, book: result.value };
-	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } });
+	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
+	.use(createLorebookAttachmentRoutes(database));
+
+export const createLorebookAttachmentRoutes = (database: Database | undefined) => new Elysia()
+	.post("/api/lorebooks/attachments/commands", ({ body }) => {
+		withDatabase(database, (connection) => {
+			const command = body;
+			switch (command.type) {
+				case "attach-character": return attachLorebookToCharacter(connection, command);
+				case "attach-participant": return attachLorebookToParticipant(connection, command);
+				case "attach-chat": return attachLorebookToConversation(connection, { conversationId: command.conversationId, bookId: command.bookId, enabled: command.enabled });
+				case "detach-character": return detachLorebookFromCharacter(connection, command.characterId, command.bookId);
+				case "detach-participant": return detachLorebookFromParticipant(connection, command.participantId, command.bookId);
+				case "detach-chat": return detachLorebookFromConversation(connection, command.conversationId, command.bookId);
+				case "save-settings": return saveLoreSettings(connection, command.conversationId, { scanDepth: command.scanDepth, allowance: command.allowance });
+			}
+		});
+		return { outcome: "applied" as const };
+	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse } });

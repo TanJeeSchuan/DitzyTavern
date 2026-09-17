@@ -15,6 +15,7 @@ import {
 import type { ConversationGenerationSettings } from "../conversation";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
+import { evaluateScopedLore, noLoreEvaluation, type ScopedLoreEvaluation } from "../lorebook/evaluation";
 import type { CastParticipantSnapshot } from "../conversation/types";
 import { readConversationSummaryFromConnection } from "../conversation/snapshot";
 import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
@@ -174,22 +175,37 @@ export const compilePlanFrom = (
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
 		connection: GenerationConnectionFacts | null;
+		lore: ScopedLoreEvaluation;
 	},
 	options: {
 		intent?: GenerationIntent | undefined;
 		estimator?: TokenEstimator | undefined;
 	} = {},
-): GenerationPlan => compileGenerationPlan({
-	human: toCompilerDefinition(derivation.human),
-	model: toCompilerDefinition(derivation.model),
-	context: derivation.context,
-	recipe: configuration.slots,
-	attempt: configuration.attempt,
-	intent: options.intent,
-	settings: configuration.settings,
-	connection: configuration.connection,
-	estimator: options.estimator,
-});
+): GenerationPlan => {
+	const compiled = compileGenerationPlan({
+		human: toCompilerDefinition(derivation.human),
+		model: toCompilerDefinition(derivation.model),
+		context: derivation.context,
+		recipe: configuration.slots,
+		lore: configuration.lore.candidates,
+		loreAllowance: configuration.lore.allowance,
+		loreActivation: configuration.lore.activation,
+		attempt: configuration.attempt,
+		intent: options.intent,
+		settings: configuration.settings,
+		connection: configuration.connection,
+		estimator: options.estimator,
+	});
+	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
+	return {
+		...compiled,
+		loreActivation: compiled.loreActivation === null ? null : {
+			...compiled.loreActivation,
+			automaticLoreText,
+			finalLoreText: automaticLoreText,
+		},
+	};
+};
 
 export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	name: participant.name,
@@ -208,6 +224,7 @@ interface AttemptConfiguration {
 	promptPresetId: number;
 	attempt: AttemptEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
+	lore: ScopedLoreEvaluation;
 }
 
 interface GenerationPreparationBase {
@@ -220,6 +237,7 @@ interface GenerationPreparationBase {
 	readonly recipe: PromptPresetRecipe;
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly macroState: ReadonlyMap<string, MacroValue>;
+	readonly lore: ScopedLoreEvaluation;
 }
 
 const connectionIdentityOf = (
@@ -355,6 +373,14 @@ export function prepareGenerationInputs(
 		model,
 		context: selectedHistoryFrom(participation.messages, human.id, model.id),
 	};
+	const lore = recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)
+		? evaluateScopedLore({
+			database: input.database,
+			conversationId: input.conversationId,
+			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
+			pendingHumanText: input.kind === "send" ? input.content : undefined,
+		})
+		: noLoreEvaluation();
 	if (input.kind === "continuation") {
 		const latest = participation.messages.at(-1);
 		const selectedVariant = latest?.variant;
@@ -394,6 +420,7 @@ export function prepareGenerationInputs(
 		recipe,
 		connection,
 		macroState,
+		lore,
 	};
 	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
 	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
@@ -419,6 +446,7 @@ export const captureConfigurationFromPreparation = (
 		promptPresetId: preparation.recipe.id,
 		attempt,
 		connection: preparation.connection,
+		lore: preparation.lore,
 	};
 };
 

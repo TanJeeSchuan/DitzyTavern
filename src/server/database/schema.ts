@@ -146,6 +146,56 @@ export const lorebookEntryTable = sqliteTable(
 	],
 );
 
+// ==[HUMAN APPROVED]== Lore content is shared; scope and enablement belong to each use. Character
+// uses are copied into a Participant when that Participant is forked, while
+// Chat uses remain independent of the Cast.
+export const characterLorebookAttachmentTable = sqliteTable(
+	"character_lorebook_attachment",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		character_id: int().notNull().references(() => characterTable.id, { onDelete: "cascade" }),
+		lorebook_id: int().notNull().references(() => lorebookTable.id, { onDelete: "cascade" }),
+		scope: text().notNull().default("cast"),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+	},
+	(table) => [
+		uniqueIndex("character_lorebook_attachment_unique").on(table.character_id, table.lorebook_id, table.scope),
+		check("character_lorebook_attachment_scope_check", sql`${table.scope} IN ('controlled-participant', 'cast')`),
+	],
+);
+
+export const participantLorebookAttachmentTable = sqliteTable(
+	"participant_lorebook_attachment",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		participant_id: int().notNull().references(() => participantTable.id, { onDelete: "cascade" }),
+		lorebook_id: int().notNull().references(() => lorebookTable.id, { onDelete: "cascade" }),
+		scope: text().notNull().default("cast"),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+	},
+	(table) => [
+		uniqueIndex("participant_lorebook_attachment_unique").on(table.participant_id, table.lorebook_id, table.scope),
+		check("participant_lorebook_attachment_scope_check", sql`${table.scope} IN ('controlled-participant', 'cast')`),
+	],
+);
+
+export const conversationLorebookAttachmentTable = sqliteTable(
+	"conversation_lorebook_attachment",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
+		lorebook_id: int().notNull().references(() => lorebookTable.id, { onDelete: "cascade" }),
+		enabled: int({ mode: "boolean" }).notNull().default(true),
+	},
+	(table) => [uniqueIndex("conversation_lorebook_attachment_unique").on(table.conversation_id, table.lorebook_id)],
+);
+
+export const conversationLoreSettingsTable = sqliteTable("conversation_lore_settings", {
+	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
+	scan_depth: int().notNull().default(4),
+	allowance: int().notNull().default(2048),
+});
+
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
 	name: text().notNull(),

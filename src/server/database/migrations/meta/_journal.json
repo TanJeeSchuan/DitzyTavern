@@ -36,6 +36,13 @@
       "when": 1789637044539,
       "tag": "0004_white_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789638207029,
+      "tag": "0005_orange_nighthawk",
+      "breakpoints": true
     }
   ]
 }
