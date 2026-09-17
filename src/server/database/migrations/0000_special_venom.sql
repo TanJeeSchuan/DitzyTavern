@@ -307,7 +307,7 @@ CREATE TABLE `prompt_preset_block` (
 		AND "prompt_preset_block"."name" IS NOT NULL
 		AND "prompt_preset_block"."content" IS NOT NULL
 	) OR (
-		"prompt_preset_block"."reference" IN ('model-system-instruction', 'human-identity', 'model-identity', 'model-scenario', 'model-example-dialogue', 'model-post-history-instruction')
+		"prompt_preset_block"."reference" IN ('model-system-instruction', 'human-identity', 'model-identity', 'model-scenario', 'model-example-dialogue', 'lore', 'model-post-history-instruction')
 		AND "prompt_preset_block"."role" IS NOT NULL
 		AND "prompt_preset_block"."role" IN ('system', 'user', 'assistant')
 		AND "prompt_preset_block"."name" IS NULL
@@ -336,6 +336,7 @@ FROM `prompt_preset`, (
 	UNION ALL SELECT 3, 'model-identity', 'assistant'
 	UNION ALL SELECT 4, 'model-scenario', 'system'
 	UNION ALL SELECT 5, 'model-example-dialogue', 'user'
-	UNION ALL SELECT 6, 'history', NULL
-	UNION ALL SELECT 7, 'model-post-history-instruction', 'system'
+	UNION ALL SELECT 6, 'lore', 'system'
+	UNION ALL SELECT 7, 'history', NULL
+	UNION ALL SELECT 8, 'model-post-history-instruction', 'system'
 ) AS `recipe` WHERE `prompt_preset`.`is_default` = 1;

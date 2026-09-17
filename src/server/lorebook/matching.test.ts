@@ -79,6 +79,16 @@ describe("lore entry matching", () => {
 		expect(result.semantic.matches[0]?.sentence).toContain("stronghold");
 	});
 
+	test("retains the strongest semantic evidence below the activation threshold", () => {
+		const result = matchLoreEntry(entry({ keywords: [], semanticTriggers: ["fortified place"] }), [{ content: "A distant valley." }], {
+			available: true,
+			threshold: 0.7,
+			matches: [{ trigger: "fortified place", score: 0.42, sentence: "A distant valley." }],
+		});
+		expect(result.active).toBe(false);
+		expect(result.semantic.matches).toEqual([{ trigger: "fortified place", score: 0.42, sentence: "A distant valley." }]);
+	});
+
 	test("splits sentences for semantic adapters without changing lexical boundaries", () => {
 		expect(splitLoreSentences("One. Two!\nThree?")).toEqual(["One.", "Two!", "Three?"]);
 	});

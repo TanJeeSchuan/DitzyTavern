@@ -141,6 +141,7 @@ describe("Prompt Preset library transport", () => {
 			"model-identity",
 			"model-scenario",
 			"model-example-dialogue",
+			"lore",
 			"history",
 			"model-post-history-instruction",
 		]);

@@ -95,6 +95,7 @@ describe("Prompt Preset transport", () => {
 			"model-identity",
 			"model-scenario",
 			"model-example-dialogue",
+			"lore",
 			"history",
 			"model-post-history-instruction",
 		]);
@@ -228,6 +229,7 @@ describe("Prompt Preset transport", () => {
 			"model-identity",
 			"model-scenario",
 			"model-example-dialogue",
+			"lore",
 			"history",
 			"history",
 		]);
@@ -252,6 +254,7 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["model-example-dialogue", true],
+			["lore", true],
 			["history", true],
 			["history", true],
 			["model-scenario", true],
@@ -294,6 +297,7 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["model-example-dialogue", true],
+			["lore", true],
 			["history", true],
 			["history", true],
 		]);
@@ -378,6 +382,7 @@ describe("Prompt Preset transport", () => {
 			["human-identity", true],
 			["model-identity", true],
 			["model-scenario", false],
+			["lore", true],
 			["history", true],
 			["model-post-history-instruction", true],
 		]);

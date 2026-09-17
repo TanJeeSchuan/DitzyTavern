@@ -6,6 +6,7 @@ import {
 	applyLorebookCommand,
 	applyLorebookAttachmentCommand,
 	exportNativeLorebook,
+	getLorebookAttachmentImpact,
 	getLorebookAttachmentState,
 	getLorebook,
 	importNativeLorebook,
@@ -21,6 +22,8 @@ import {
 import type { LoreEntry, LoreEntryFields } from "../../shared/contract/lorebook";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 import { PanelHeader } from "../PanelHeader";
+import { loadConversationPromptPreset } from "../conversation";
+import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 
 const blankEntry = (): LoreEntryFields => ({
 	title: "",
@@ -71,6 +74,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [testError, setTestError] = useState<string | null>(null);
 	const [attachmentState, setAttachmentState] = useState<LoreAttachmentState | null>(null);
 	const [attachmentPending, setAttachmentPending] = useState(false);
+	const [selectedPreset, setSelectedPreset] = useState<Awaited<ReturnType<typeof loadConversationPromptPreset>>>(null);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
 	const importInput = useRef<HTMLInputElement>(null);
 
@@ -93,6 +97,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	useEffect(() => { void refresh(); }, []);
 	useEffect(() => {
 		void getLorebookAttachmentState(conversationId).then(setAttachmentState).catch(() => setNotice("Lorebook attachment settings could not be loaded."));
+		void loadConversationPromptPreset(conversationId).then(setSelectedPreset).catch(() => setNotice("The selected Prompt Preset could not be loaded."));
 	}, [conversationId]);
 
 	const openBook = async (id: number) => {
@@ -216,6 +221,22 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		if (book === null) return;
 		void run({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
 	};
+	const confirmDeleteBook = async () => {
+		if (book === null) return;
+		try {
+			const impact = await getLorebookAttachmentImpact(book.id);
+			const attachments = impact?.attachments.map((attachment) =>
+				`${attachment.owner} ${attachment.ownerId} (${attachment.scope})`).join("\n") ?? "";
+			const detail = attachments.length === 0
+				? "It has no attachments."
+				: `Deleting it also removes these attachments:\n${attachments}`;
+			if (window.confirm(`Delete ${book.name}?\n\n${detail}`)) {
+				await run({ type: "delete", bookId: book.id, expectedRevision: book.revision });
+			}
+		} catch (error) {
+			setNotice(error instanceof Error ? error.message : "Unable to load Lorebook deletion impact.");
+		}
+	};
 	const runMatchTest = async () => {
 		setTestPending(true);
 		setTestError(null);
@@ -239,6 +260,21 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		event.preventDefault();
 		if (attachmentState === null) return;
 		void updateAttachment({ type: "save-settings", conversationId, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
+	};
+	const enableLoreSlot = async () => {
+		if (selectedPreset === null) return;
+		setAttachmentPending(true);
+		try {
+			const lore = selectedPreset.slots.find((slot) => slot.reference === "lore");
+			const outcome = lore === undefined
+				? await addPromptPresetReference(selectedPreset.id, "lore")
+				: await setPromptPresetBlockEnabled(selectedPreset.id, lore.id, true);
+			if (outcome.status !== "applied") throw new Error("The Prompt Preset rejected the Lore block change.");
+			setSelectedPreset(await loadConversationPromptPreset(conversationId));
+			setNotice(lore === undefined ? "Lore block added to the selected Prompt Preset." : "Lore block enabled in the selected Prompt Preset.");
+		} catch (error) {
+			setNotice(error instanceof Error ? error.message : "The Lore block could not be updated.");
+		} finally { setAttachmentPending(false); }
 	};
 	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) }));
 	const importFile = async (file: File) => {
@@ -264,6 +300,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
 				</form>
 				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId })}>Detach</Button></span></div>)}</div>
+				{attachmentState.attachments.some((attachment) => attachment.enabled) && selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled) && <div className="rounded-md border border-border p-2 text-sm"><p>Attached Lorebooks are inactive because the selected Prompt Preset has no enabled Lore block.</p><Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button></div>}
 				{book !== null && !attachmentState.attachments.some((attachment) => attachment.owner === "conversation" && attachment.bookId === book.id) && <Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id })}>Attach this book to Chat</Button>}
 			</section>}
 			<div className="flex items-center gap-2">
@@ -273,7 +310,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			</div>
 			<div className="flex gap-2"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /><Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button></div>
 			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library">{filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <button type="button" key={item.id} className="rounded-lg border border-border p-3 text-left hover:bg-muted/50" onClick={() => void openBook(item.id)}><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></button>)}</div> : <>
-				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => { if (window.confirm(`Delete ${book.name}?`)) void run({ type: "delete", bookId: book.id, expectedRevision: book.revision }); }}>Delete</Button></div></div>
+				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete</Button></div></div>
 				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void run({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
 				<MatchTester writing={testWriting} onWritingChange={(value) => { setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
 				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><button type="button" className="min-w-0 flex-1 truncate text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></button><Button type="button" size="xs" variant="ghost" disabled={pending || index === 0} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" disabled={pending || index === book.entries.length - 1} onClick={() => void run({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void run({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
@@ -319,7 +356,7 @@ function MatchTesterResult({ result }: { result: LoreMatchTest }) {
 		{result.matches.length === 0 ? <p className="panel-intro">No eligible entries were found.</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
 			<summary><span>{entry.title || "Untitled entry"}</span><strong data-active={entry.active}>{entry.active ? "Active" : entry.skipped ? "Skipped" : "Not active"}</strong></summary>
 			<div className="lore-match-entry-body">
-				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "—"})</p></div>}
+				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "Unavailable"})</p></div>}
 				<div><small>Primary Keywords</small><p>{entry.primary.matched ? `Matched: ${entry.primary.matchedExpressions.join(", ") || "semantic trigger"}` : "No primary match"}</p></div>
 				<div><small>Secondary conditions</small><p>{secondarySummary(entry)}</p></div>
 				{entry.reasons.length > 0 && <p className="lore-match-reasons">{entry.reasons.join(" · ")}</p>}
@@ -341,5 +378,5 @@ function secondarySummary(entry: LoreMatchTest["matches"][number]): string {
 
 function EntryEditor({ entry, onChange, onListChange, onSave, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => void; onSave: () => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3"><h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3><input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only title" aria-label="Entry title" /><textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal content" aria-label="Entry content" />{entryListKeys.map((key) => <input key={key} className="field-input" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} placeholder={key} aria-label={key} />)}<div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={entry.always} onChange={(event) => set("always", event.target.checked)} /> Always</label><label><input type="checkbox" checked={entry.enabled} onChange={(event) => set("enabled", event.target.checked)} /> Enabled</label><label><input type="checkbox" checked={entry.caseSensitive} onChange={(event) => set("caseSensitive", event.target.checked)} /> Case sensitive</label><label><input type="checkbox" checked={entry.wholeWord} onChange={(event) => set("wholeWord", event.target.checked)} /> Whole word</label><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label><label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className="field-input inline-block w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className="field-input inline-block w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div><Button type="button" size="sm" className="self-start" disabled={pending} onClick={onSave}>Save entry</Button>{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}</section>;
+	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3"><h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3><input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only title" aria-label="Entry title" /><textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal content" aria-label="Entry content" />{entryListKeys.map((key) => <input key={key} className="field-input" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} placeholder={key} aria-label={key} />)}<div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={entry.always} onChange={(event) => set("always", event.target.checked)} /> Always</label><label><input type="checkbox" checked={entry.enabled} onChange={(event) => set("enabled", event.target.checked)} /> Enabled</label><label><input type="checkbox" checked={entry.caseSensitive} onChange={(event) => set("caseSensitive", event.target.checked)} /> Case sensitive</label><label><input type="checkbox" checked={entry.wholeWord} onChange={(event) => set("wholeWord", event.target.checked)} /> Whole word</label><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className="field-input inline-block w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className="field-input inline-block w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className="field-input inline-block w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div><Button type="button" size="sm" className="self-start" disabled={pending} onClick={onSave}>Save entry</Button>{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}</section>;
 }

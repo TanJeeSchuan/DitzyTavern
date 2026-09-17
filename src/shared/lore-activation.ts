@@ -32,8 +32,5 @@ export interface LoreActivationRecord {
 	readonly manuallyEdited: boolean;
 }
 
-export const isLoreActivationNamespace = (namespace: string): boolean =>
-	namespace === LORE_ACTIVATION_NAMESPACE;
-
 export const isLoreActivationRecord = (value: GenerationJsonValue): value is LoreActivationRecord =>
 	Value.Check(loreActivationRecord, value);

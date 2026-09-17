@@ -179,9 +179,8 @@ const semanticEvidence = (
 		matches: NO_SEMANTIC_MATCHES,
 		fallbackReason: evaluation?.fallbackReason,
 	};
-	const matches = (evaluation.matches ?? []).filter((match) =>
-		entry.semanticTriggers.includes(match.trigger) && match.score >= threshold);
-	return { available: true, matched: matches.length > 0, threshold, matches, fallbackReason: evaluation.fallbackReason };
+	const matches = (evaluation.matches ?? []).filter((match) => entry.semanticTriggers.includes(match.trigger));
+	return { available: true, matched: matches.some((match) => match.score >= threshold), threshold, matches, fallbackReason: evaluation.fallbackReason };
 };
 
 /** ==[HUMAN APPROVED]==

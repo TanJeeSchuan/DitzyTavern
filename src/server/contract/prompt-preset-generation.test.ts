@@ -111,6 +111,7 @@ describe("Prompt Preset durability", () => {
 				["human-identity", true],
 				["model-scenario", true],
 				["model-example-dialogue", false],
+				["lore", true],
 				["history", true],
 				["model-post-history-instruction", true],
 			]);
