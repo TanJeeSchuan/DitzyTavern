@@ -10,9 +10,11 @@ import {
 	loreMatchTestResponse,
 	loreAttachmentState,
 	lorebookAttachmentImpact,
+	lorebookOwnerAttachmentState,
 	type LoreAttachmentState,
-	type LorebookAttachmentImpact,
 	type LoreAttachmentCommand,
+	type LorebookAttachmentImpact,
+	type LorebookOwnerAttachmentState,
 	nativeLorebook,
 	type LoreMatchTestResponse,
 	type LorebookCommand,
@@ -22,8 +24,9 @@ import {
 } from "../shared/contract/lorebook";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
-export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState };
+export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
 export type { LorebookAttachmentImpact };
+export type { LorebookOwnerAttachmentState };
 export type LoreMatchTest = LoreMatchTestResponse;
 
 export async function getLorebookAttachmentState(conversationId: number): Promise<LoreAttachmentState | null> {
@@ -47,6 +50,24 @@ export async function getLorebookAttachmentImpact(bookId: number): Promise<Loreb
 		throw new Error("Unable to load Lorebook deletion impact");
 	}
 	return decodeWirePayload(lorebookAttachmentImpact, data);
+}
+
+export async function getCharacterLorebookAttachments(characterId: number): Promise<LorebookOwnerAttachmentState | null> {
+	const { data, error } = await api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } });
+	if (error) {
+		if (error.status === 404) return null;
+		throw new Error("Unable to load Character Lorebooks");
+	}
+	return decodeWirePayload(lorebookOwnerAttachmentState, data);
+}
+
+export async function getParticipantLorebookAttachments(participantId: number): Promise<LorebookOwnerAttachmentState | null> {
+	const { data, error } = await api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } });
+	if (error) {
+		if (error.status === 404) return null;
+		throw new Error("Unable to load Participant Lorebooks");
+	}
+	return decodeWirePayload(lorebookOwnerAttachmentState, data);
 }
 
 export async function listLorebooks(): Promise<LorebookListResponse["books"]> {

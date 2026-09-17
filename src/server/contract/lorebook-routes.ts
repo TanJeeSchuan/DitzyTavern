@@ -34,6 +34,8 @@ import {
 	loreAttachmentQuery,
 	loreAttachmentState,
 	lorebookAttachmentImpact,
+	lorebookOwnerAttachmentQuery,
+	lorebookOwnerAttachmentState,
 } from "../../shared/contract/lorebook";
 import {
 	attachLorebookToCharacter,
@@ -44,6 +46,8 @@ import {
 	detachLorebookFromConversation,
 	readLorebookAttachmentState,
 	readLorebookAttachmentImpact,
+	readCharacterLorebookAttachments,
+	readParticipantLorebookAttachments,
 	saveLoreSettings,
 } from "../lorebook/attachments";
 import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
@@ -159,6 +163,14 @@ export const createLorebookAttachmentRoutes = (database: Database | undefined) =
 		const impact = withDatabase(database, (connection) => readLorebookAttachmentImpact(connection, params.bookId));
 		return impact ?? notFoundResponse();
 	}, { params: bookIdParams, response: { 200: lorebookAttachmentImpact, 404: notFoundOutcome } })
+	.get("/api/lorebooks/attachments/character", ({ query }) => {
+		const state = withDatabase(database, (connection) => readCharacterLorebookAttachments(connection, query.ownerId));
+		return state ?? notFoundResponse();
+	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
+	.get("/api/lorebooks/attachments/participant", ({ query }) => {
+		const state = withDatabase(database, (connection) => readParticipantLorebookAttachments(connection, query.ownerId));
+		return state ?? notFoundResponse();
+	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
 		withDatabase(database, (connection) => {
 			const command = body;

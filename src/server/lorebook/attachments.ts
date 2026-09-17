@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterLorebookAttachmentTable,
+	characterTable,
 	conversationTable,
 	conversationControlTable,
 	conversationLoreSettingsTable,
@@ -174,6 +175,28 @@ export const readLorebookAttachmentImpact = (
 				.from(conversationLorebookAttachmentTable).where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId)).all()
 				.map((row) => ({ ...row, scope: "chat" as const, owner: "conversation" as const })),
 		],
+	};
+};
+
+export const readCharacterLorebookAttachments = (database: Database, characterId: number) => {
+	const db = connect(database);
+	if (db.select({ id: characterTable.id }).from(characterTable).where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at))).get() === undefined) return undefined;
+	return {
+		owner: "character" as const,
+		ownerId: characterId,
+		attachments: db.select({ id: characterLorebookAttachmentTable.id, bookId: characterLorebookAttachmentTable.lorebook_id, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
+			.from(characterLorebookAttachmentTable).where(eq(characterLorebookAttachmentTable.character_id, characterId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
+	};
+};
+
+export const readParticipantLorebookAttachments = (database: Database, participantId: number) => {
+	const db = connect(database);
+	if (db.select({ id: participantTable.id }).from(participantTable).where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get() === undefined) return undefined;
+	return {
+		owner: "participant" as const,
+		ownerId: participantId,
+		attachments: db.select({ id: participantLorebookAttachmentTable.id, bookId: participantLorebookAttachmentTable.lorebook_id, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
+			.from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.participant_id, participantId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
 	};
 };
 

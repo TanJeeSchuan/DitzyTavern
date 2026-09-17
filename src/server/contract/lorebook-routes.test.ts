@@ -248,4 +248,32 @@ describe("Lorebook library transport", () => {
 		expect(deleted.status).toBe(200);
 		expect((await app.handle(request("/api/lorebooks/1/attachments"))).status).toBe(404);
 	});
+
+	test("reads Character and Participant attachment lists for management", async () => {
+		await postCommand(app, { type: "create", name: "World" });
+		const character = createCharacterLibraryModule(database).execute({
+			type: "create",
+			definition: {
+				name: "Archivist",
+				prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				openings: [],
+			},
+		});
+		const conversation = createConversationModule(database).create({
+			name: "Story",
+			participants: [
+				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const participantId = conversation.cast[0]?.id;
+		if (participantId === undefined) throw new Error("Conversation participant was not created.");
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, scope: "cast", enabled: false }) }));
+		await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant", participantId, bookId: 1, scope: "controlled-participant" }) }));
+		const characterState = await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`));
+		const participantState = await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`));
+		expect(await characterState.json()).toMatchObject({ owner: "character", ownerId: character.id, attachments: [{ bookId: 1, scope: "cast", enabled: false }] });
+		expect(await participantState.json()).toMatchObject({ owner: "participant", ownerId: participantId, attachments: [{ bookId: 1, scope: "controlled-participant", enabled: true }] });
+	});
 });

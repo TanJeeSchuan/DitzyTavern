@@ -7,6 +7,7 @@ import {
 import { runConversationCommand } from "../conversation-command-runner";
 import { openingsFromText, openingsToText } from "./definition";
 import { emptyPromptChannels, promptChannelFields } from "../../shared/definition";
+import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 
 // ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -207,7 +208,8 @@ export function ParticipantEditor({
 					</button>
 				</div>
 			</section>
+
+			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
 		</div>
 	);
 }
-
