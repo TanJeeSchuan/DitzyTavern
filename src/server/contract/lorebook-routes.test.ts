@@ -135,6 +135,49 @@ describe("Lorebook library transport", () => {
 		});
 	});
 
+	test("maps native SillyTavern disable and secondary-key fields", async () => {
+		const response = await app.handle(request("/api/lorebooks/import/sillytavern", {
+			method: "POST",
+			body: JSON.stringify({ source: {
+				name: "Native ST",
+				entries: [{
+					comment: "All secondary keys", content: "Fact", key: ["primary"], keysecondary: ["required one", "required two"],
+					selective: true, selectiveLogic: 1, constant: false, disable: true, order: 9,
+				}],
+			} }),
+		}));
+		expect(response.status).toBe(200);
+		expect((await response.json())).toMatchObject({
+			book: {
+				entries: [{
+					matchOperator: "or",
+					requireAny: [],
+					requireAll: ["required one", "required two"],
+					enabled: false,
+					priority: 9,
+				}],
+			},
+		});
+	});
+
+	test("preserves SillyTavern slash-delimited keyword regexes", async () => {
+		const response = await app.handle(request("/api/lorebooks/import/sillytavern", {
+			method: "POST",
+			body: JSON.stringify({ source: { name: "Regex", entries: [{ content: "Fact", key: ["/harbor/i"] }] } }),
+		}));
+		expect(response.status).toBe(200);
+		expect((await response.json())).toMatchObject({ book: { entries: [{ keywords: ["/harbor/i"], keywordMode: "regex", regexFlags: "" }] } });
+	});
+
+	test("rejects malformed SillyTavern entry collections atomically", async () => {
+		const response = await app.handle(request("/api/lorebooks/import/sillytavern", {
+			method: "POST",
+			body: JSON.stringify({ source: { name: "Broken", entries: null } }),
+		}));
+		expect(response.status).toBe(422);
+		expect(await (await app.handle(request("/api/lorebooks"))).json()).toEqual({ books: [] });
+	});
+
 	test("invalid native imports do not partially create a book", async () => {
 		const response = await app.handle(request("/api/lorebooks/import", {
 			method: "POST",

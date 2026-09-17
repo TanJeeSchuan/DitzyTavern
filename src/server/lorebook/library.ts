@@ -195,6 +195,8 @@ const sourceString = (value: SillyTavernJsonValue | undefined, fallback = ""): s
 	isJsonString(value) ? value : fallback;
 const sourceBoolean = (value: SillyTavernJsonValue | undefined, fallback: boolean): boolean =>
 	isJsonBoolean(value) ? value : fallback;
+const sourceNumber = (value: SillyTavernJsonValue | undefined): number | undefined =>
+	value?.constructor === Number && Number.isFinite(value) ? value : undefined;
 const sourceStrings = (value: SillyTavernJsonValue | undefined): string[] =>
 	value?.constructor === String
 		? [value]
@@ -207,19 +209,27 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 	const root = sourceObject(source);
 	const data = sourceObject(root.data ?? root);
 	const sourceEntries = data.entries;
+	if (sourceEntries === undefined) throw new InvalidLorebookCommandError("SillyTavern lorebook entries are required.");
 	const rawEntries = Array.isArray(sourceEntries)
 		? sourceEntries
-		: sourceEntries && isJsonObject(sourceEntries)
+		: isJsonObject(sourceEntries)
 			? Object.values(sourceEntries)
-			: [];
-	if (rawEntries.length === 0 && sourceEntries === undefined) throw new InvalidLorebookCommandError("SillyTavern lorebook entries are required.");
+			: null;
+	if (rawEntries === null) throw new InvalidLorebookCommandError("SillyTavern lorebook entries must be an array or object.");
 	const warnings: string[] = [];
 	const entries: LoreEntryFields[] = rawEntries.map((raw, index) => {
 		const item = sourceObject(raw);
 		const keys = sourceStrings(item.key ?? item.keys);
-		const secondary = item.secondary_keys;
+		const secondary = item.keysecondary ?? item.secondary_keys;
+		const selective = sourceBoolean(item.selective, secondary !== undefined);
 		const selectiveLogic = String(item.selectiveLogic ?? "0");
+		const order = sourceNumber(item.order);
 		const always = sourceBoolean(item.constant, false);
+		const secondaryStrings = sourceStrings(secondary);
+		const hasExplicitRegex = [...keys, ...secondaryStrings].some((expression) => expression.startsWith("/"));
+		const enabled = item.disable !== undefined
+			? !sourceBoolean(item.disable, false)
+			: sourceBoolean(item.enabled, true);
 		if (item.vectorized === true || item.useProbability === true || item.sticky === true || item.delay !== undefined || item.group !== undefined || item.recursion !== undefined || item.position !== undefined) {
 			warnings.push(`Entry ${index + 1} uses unsupported SillyTavern behavior; supported fields were imported.`);
 		}
@@ -230,19 +240,19 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 			content: sourceString(item.content),
 			keywords: keys,
 			semanticTriggers: [],
-			matchOperator: selectiveLogic === "1" ? "and" : "or",
+			matchOperator: "or",
 			always,
-			requireAny: Array.isArray(secondary) ? sourceStrings(secondary) : sourceStrings(item.requireAny),
-			requireAll: Array.isArray(secondary) ? [] : sourceStrings(item.requireAll),
-			excludeAny: sourceStrings(item.excludeAny),
-			excludeAll: sourceStrings(item.excludeAll),
+			requireAny: selective && selectiveLogic === "0" ? secondaryStrings : sourceStrings(item.requireAny),
+			requireAll: selective && selectiveLogic === "1" ? secondaryStrings : sourceStrings(item.requireAll),
+			excludeAny: selective && selectiveLogic === "2" ? secondaryStrings : sourceStrings(item.excludeAny),
+			excludeAll: selective && selectiveLogic === "3" ? secondaryStrings : sourceStrings(item.excludeAll),
 			caseSensitive: sourceBoolean(item.caseSensitive, false),
-			wholeWord: sourceBoolean(item.matchWholeWords, true),
-			keywordMode: "literal",
+			wholeWord: sourceBoolean(item.matchWholeWords ?? item.wholeWords, true),
+			keywordMode: hasExplicitRegex ? "regex" : "literal",
 			regexFlags: "",
 			semanticThreshold: null,
-			priority: Number.isInteger(item.order) ? Number(item.order) : 0,
-			enabled: sourceBoolean(item.enabled, true),
+			priority: order !== undefined && Number.isInteger(order) ? order : 0,
+			enabled,
 		});
 	});
 	return { book: importNativeLorebook(database, {
