@@ -224,15 +224,13 @@ const admitLore = (input: {
 	const base = input.compile(input.protectedContext, []);
 	const baseEstimate = Math.ceil(input.estimator(toEstimationTranscript(base)));
 	const selected: PromptLoreEntry[] = [];
-	let loreEstimate = 0;
 	for (const candidate of input.candidates) {
 		const trial = input.compile(input.protectedContext, [...selected, candidate]);
 		const estimate = Math.ceil(input.estimator(toEstimationTranscript(trial)));
-		const candidateCost = Math.max(0, estimate - baseEstimate);
-		if (loreEstimate + candidateCost > input.loreAllowance) continue;
+		const loreEstimate = Math.max(0, estimate - baseEstimate);
+		if (loreEstimate > input.loreAllowance) continue;
 		if (estimate + input.responseBudget + input.safetyAllowance > input.contextLimit) continue;
 		selected.push(candidate);
-		loreEstimate += candidateCost;
 	}
 	return selected;
 };

@@ -146,6 +146,25 @@ describe("Generation Plan Compiler", () => {
 		}]);
 	});
 
+	test("measures the complete admitted Lore set instead of summing rounded totals", () => {
+		const plan = compile({
+			recipe: [{ reference: "lore", enabled: true, role: "system" }],
+			context: [],
+			lore: [{ content: "a" }, { content: "b" }],
+			loreAllowance: 5,
+			estimator: (transcript) => {
+				const content = transcript.split("\u001eCONTENT\u001f")[1] ?? "";
+				return content.length;
+			},
+		});
+
+		expect(plan.promptPlan.blocks).toEqual([{
+			kind: "lore",
+			role: "system",
+			content: "a\n\nb",
+		}]);
+	});
+
 	test("budgets Lore against the protected history before trimming older history", () => {
 		const recipe = [
 			{ reference: "lore", enabled: true, role: "system" },
