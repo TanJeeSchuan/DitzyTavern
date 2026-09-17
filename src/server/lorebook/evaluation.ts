@@ -29,11 +29,37 @@ export interface ScopedLoreMatch {
 	readonly match: LoreEntryMatch;
 }
 
+export interface ScopedLoreBookSource {
+	readonly book: Lorebook;
+	/** ==[HUMAN APPROVED]== All eligible uses retained for the existing eligibility evidence. */
+	readonly attachmentIds: readonly number[];
+	/** ==[HUMAN APPROVED]== The first eligible use represents this book after book-identity deduplication. */
+	readonly selectedAttachmentId: number;
+	/** ==[HUMAN APPROVED]== Later eligible uses of the same book are not evaluated again. */
+	readonly deduplicatedAttachmentIds: readonly number[];
+}
+
+export interface LoreBookAttachmentSelectionEvidence {
+	readonly [key: string]: GenerationJsonValue;
+	readonly selectedAttachmentId: number;
+	readonly deduplicatedAttachmentIds: readonly number[];
+	readonly reason: string;
+}
+
+const attachmentSelectionEvidence = (source: Pick<ScopedLoreBookSource, "selectedAttachmentId" | "deduplicatedAttachmentIds">): LoreBookAttachmentSelectionEvidence => ({
+	selectedAttachmentId: source.selectedAttachmentId,
+	deduplicatedAttachmentIds: [...source.deduplicatedAttachmentIds],
+	reason: source.deduplicatedAttachmentIds.length > 0
+		? "The first eligible use was selected; later eligible uses were deduplicated because this book is evaluated once by book identity."
+		: "The only eligible use was selected for this book.",
+});
+
 const evidenceFor = (input: {
 	book: Lorebook;
 	entry: Lorebook["entries"][number];
 	match: LoreEntryMatch;
 	attachmentIds: readonly number[];
+	attachmentSelection: LoreBookAttachmentSelectionEvidence;
 	messages: readonly LoreScanMessage[];
 }) => {
 	const semantic: GenerationJsonValue = input.match.semantic.fallbackReason === undefined
@@ -79,6 +105,7 @@ const evidenceFor = (input: {
 		enabled: input.entry.enabled,
 	},
 	attachmentIds: [...input.attachmentIds],
+	attachmentSelection: input.attachmentSelection,
 	messages: input.messages.map((message) => ({ id: message.id ?? null, content: message.content })),
 	match: {
 		active: input.match.active,
@@ -113,7 +140,7 @@ interface ScopedLoreInput {
 export interface ScopedLoreSources {
 	scanMessages: readonly LoreScanMessage[];
 	eligibleUses: ReturnType<typeof readLorebookAttachmentEligibility>;
-	books: readonly { book: Lorebook; attachmentIds: readonly number[] }[];
+	books: readonly ScopedLoreBookSource[];
 	allowance: number;
 	semanticSettings: SemanticSettingsSnapshot;
 }
@@ -143,11 +170,13 @@ const collectSources = (input: ScopedLoreInput): ScopedLoreSources => {
 		owners.push(use.id);
 		eligibleByBook.set(use.bookId, owners);
 	}
-	const books: { book: Lorebook; attachmentIds: readonly number[] }[] = [];
+	const books: ScopedLoreBookSource[] = [];
 	for (const [bookId, attachmentIds] of eligibleByBook) {
 		const book = readLorebook(input.database, bookId);
 		if (book === undefined) continue;
-		books.push({ book, attachmentIds });
+		const [selectedAttachmentId, ...deduplicatedAttachmentIds] = attachmentIds;
+		if (selectedAttachmentId === undefined) continue;
+		books.push({ book, attachmentIds, selectedAttachmentId, deduplicatedAttachmentIds });
 	}
 	return {
 		scanMessages,
@@ -170,16 +199,21 @@ const assembleEvaluation = (sources: ScopedLoreSources, semantic?: import("./mat
 			eligible: use.eligible,
 			reason: use.reason,
 		})),
+		books: sources.books.map((source) => ({
+			bookId: source.book.id,
+			...attachmentSelectionEvidence(source),
+		})),
 	}];
 	const candidates: PromptLoreEntry[] = [];
 	const matches: ScopedLoreMatch[] = [];
 	let hasSemanticTriggers = false;
-	for (const { book, attachmentIds } of sources.books) {
+	for (const source of sources.books) {
+		const { book, attachmentIds } = source;
 		for (const entry of book.entries) {
 			hasSemanticTriggers ||= entry.enabled && entry.semanticTriggers.length > 0;
 			const matched = matchLoreEntry(entry, sources.scanMessages, semantic);
 			matches.push({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matched });
-			evidence.push(evidenceFor({ book, entry, match: matched, attachmentIds, messages: sources.scanMessages }));
+			evidence.push(evidenceFor({ book, entry, match: matched, attachmentIds, attachmentSelection: attachmentSelectionEvidence(source), messages: sources.scanMessages }));
 			if (!matched.active) continue;
 			candidates.push({
 				content: entry.content,

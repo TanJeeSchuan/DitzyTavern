@@ -331,6 +331,48 @@ describe("Lorebook library transport", () => {
 		expect(await participantState.json()).toMatchObject({ owner: "participant", ownerId: participantId, attachments: [{ bookId: 1, scope: "controlled-participant", enabled: true }] });
 	});
 
+	test("detaches only the requested Character and Participant attachment scope", async () => {
+		await postCommand(app, { type: "create", name: "World" });
+		const character = createCharacterLibraryModule(database).execute({
+			type: "create",
+			definition: {
+				name: "Archivist",
+				prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				openings: [],
+			},
+		});
+		const conversation = createConversationModule(database).create({
+			name: "Story",
+			participants: [
+				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const participantId = conversation.cast[0]?.id;
+		if (participantId === undefined) throw new Error("Conversation participant was not created.");
+
+		for (const command of [
+			{ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast" },
+			{ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 1, scope: "controlled-participant", enabled: false },
+		] as const) {
+			expect((await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify(command) }))).status).toBe(200);
+		}
+		const characterDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
+		expect(characterDetach.status).toBe(200);
+		expect(await (await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`))).json()).toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
+
+		for (const command of [
+			{ type: "attach-participant", participantId, bookId: 1, expectedRevision: 0, scope: "cast" },
+			{ type: "attach-participant", participantId, bookId: 1, expectedRevision: 1, scope: "controlled-participant", enabled: false },
+		] as const) {
+			expect((await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify(command) }))).status).toBe(200);
+		}
+		const participantDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-participant", participantId, bookId: 1, scope: "cast", expectedRevision: 2 }) }));
+		expect(participantDetach.status).toBe(200);
+		expect(await (await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`))).json()).toMatchObject({ attachments: [{ bookId: 1, scope: "controlled-participant", enabled: false }] });
+	});
+
 	test("rejects stale attachment and Chat Lore settings writes atomically", async () => {
 		await postCommand(app, { type: "create", name: "World" });
 		const character = createCharacterLibraryModule(database).execute({
@@ -359,7 +401,7 @@ describe("Lorebook library transport", () => {
 
 		const staleCharacter = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-character", characterId: character.id, bookId: 1, expectedRevision: 0, scope: "cast" }) }));
 		expect(staleCharacter.status).toBe(200);
-		const staleDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, expectedRevision: 0 }) }));
+		const staleDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 0 }) }));
 		expect(staleDetach.status).toBe(409);
 		expect(await staleDetach.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentState: { revision: 1, attachments: [{ bookId: 1 }] } });
 	});

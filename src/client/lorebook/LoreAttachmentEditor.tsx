@@ -66,9 +66,9 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			? { type: "attach-character", characterId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope }
 			: { type: "attach-participant", participantId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope });
 	};
-	const detach = (bookId: number) => void send(owner === "character"
-		? { type: "detach-character", characterId: ownerId, bookId, expectedRevision: state.revision }
-		: { type: "detach-participant", participantId: ownerId, bookId, expectedRevision: state.revision });
+	const detach = (attachment: LorebookOwnerAttachmentState["attachments"][number]) => void send(owner === "character"
+		? { type: "detach-character", characterId: ownerId, bookId: attachment.bookId, scope: attachment.scope, expectedRevision: state.revision }
+		: { type: "detach-participant", participantId: ownerId, bookId: attachment.bookId, scope: attachment.scope, expectedRevision: state.revision });
 	const toggle = (attachment: LorebookOwnerAttachmentState["attachments"][number]) => void send(owner === "character"
 		? { type: "attach-character", characterId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled }
 		: { type: "attach-participant", participantId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled });
@@ -87,7 +87,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			</select>
 			<Button variant="outline" size="sm" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</Button>
 		</div>
-		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment.bookId)}>Detach</Button></li>)}</ul>}
+		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment)}>Detach</Button></li>)}</ul>}
 		{notice !== null && <p className="panel-note" role="status">{notice}</p>}
 	</section>;
 }

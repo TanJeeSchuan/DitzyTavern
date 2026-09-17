@@ -53,5 +53,22 @@ describe("scoped Lore activation", () => {
 		expect(result.candidates).toHaveLength(1);
 		expect(result.activation.mode).toBe("semantic");
 		expect(result.activation.evidence).toHaveLength(2);
+		const evidence = result.activation.evidence;
+		if (!Array.isArray(evidence)) throw new Error("Lore activation evidence is not an array.");
+		expect(evidence[0]).toMatchObject({
+			books: [{
+				bookId: book.id,
+				selectedAttachmentId: uses[0]?.id,
+				deduplicatedAttachmentIds: [uses[1]?.id],
+				reason: "The first eligible use was selected; later eligible uses were deduplicated because this book is evaluated once by book identity.",
+			}],
+		});
+		expect(evidence[1]).toMatchObject({
+			attachmentIds: uses.filter((use) => use.eligible).map((use) => use.id),
+			attachmentSelection: {
+				selectedAttachmentId: uses[0]?.id,
+				deduplicatedAttachmentIds: [uses[1]?.id],
+			},
+		});
 	});
 });

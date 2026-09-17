@@ -14,8 +14,8 @@ export const loreAttachmentCommandBody = Type.Union([
 	Type.Object({ type: Type.Literal("attach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
 	Type.Object({ type: Type.Literal("attach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
 	Type.Object({ type: Type.Literal("attach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
-	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
+	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]) }),
+	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]) }),
 	Type.Object({ type: Type.Literal("detach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
 	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), expectedRevision: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
 ]);

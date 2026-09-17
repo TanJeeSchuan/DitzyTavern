@@ -123,16 +123,18 @@ export const attachLorebookToConversation = (
 	}).run();
 };
 
-export const detachLorebookFromCharacter = (database: Database, characterId: number, bookId: number) =>
+export const detachLorebookFromCharacter = (database: Database, characterId: number, bookId: number, scope: Exclude<LoreAttachmentScope, "chat">) =>
 	connect(database).delete(characterLorebookAttachmentTable).where(and(
 		eq(characterLorebookAttachmentTable.character_id, characterId),
 		eq(characterLorebookAttachmentTable.lorebook_id, bookId),
+		eq(characterLorebookAttachmentTable.scope, requireScope(scope)),
 	)).run();
 
-export const detachLorebookFromParticipant = (database: Database, participantId: number, bookId: number) =>
+export const detachLorebookFromParticipant = (database: Database, participantId: number, bookId: number, scope: Exclude<LoreAttachmentScope, "chat">) =>
 	connect(database).delete(participantLorebookAttachmentTable).where(and(
 		eq(participantLorebookAttachmentTable.participant_id, participantId),
 		eq(participantLorebookAttachmentTable.lorebook_id, bookId),
+		eq(participantLorebookAttachmentTable.scope, requireScope(scope)),
 	)).run();
 
 export const detachLorebookFromConversation = (database: Database, conversationId: number, bookId: number) =>
@@ -292,7 +294,7 @@ export const executeLorebookAttachmentCommand = (database: Database, command: Lo
 				const owner = db.select({ revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at))).get();
 				if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
 				if (owner.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, owner.revision);
-				detachLorebookFromCharacter(database, command.characterId, command.bookId);
+				detachLorebookFromCharacter(database, command.characterId, command.bookId, command.scope);
 				advanceCharacterRevision(db, command);
 				return;
 			}
@@ -312,7 +314,7 @@ export const executeLorebookAttachmentCommand = (database: Database, command: Lo
 				const conversation = db.select({ revision: conversationTable.revision }).from(conversationTable).where(eq(conversationTable.id, owner.conversationId)).get();
 				if (conversation === undefined) throw new LoreAttachmentOwnerNotFoundError();
 				if (conversation.revision !== command.expectedRevision) throw new StaleLoreAttachmentRevisionError(command, conversation.revision);
-				detachLorebookFromParticipant(database, command.participantId, command.bookId);
+				detachLorebookFromParticipant(database, command.participantId, command.bookId, command.scope);
 				advanceConversationRevision(db, { ...command, conversationId: owner.conversationId });
 				return;
 			}
