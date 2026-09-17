@@ -21,6 +21,14 @@ export class InvalidLorebookCommandError extends Error {
 	}
 }
 
+export class InvalidLorebookExpressionError extends Error {
+	constructor(readonly expression: string, cause?: unknown) {
+		super(`Lorebook expression ${JSON.stringify(expression)} is invalid.`);
+		this.name = "InvalidLorebookExpressionError";
+		if (cause !== undefined) this.cause = cause;
+	}
+}
+
 export class StaleLorebookRevisionError extends Error {
 	constructor(
 		readonly bookId: number,

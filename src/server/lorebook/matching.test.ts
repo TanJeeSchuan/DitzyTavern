@@ -1,0 +1,84 @@
+import { describe, expect, test } from "bun:test";
+import type { LoreEntryFields } from "../../shared/contract/lorebook";
+import { InvalidLorebookExpressionError } from "./errors";
+import { matchLoreEntry, splitLoreSentences } from "./matching";
+
+const entry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => ({
+	title: "Entry",
+	content: "The fact.",
+	keywords: ["Silver Keep"],
+	semanticTriggers: [],
+	matchOperator: "or",
+	always: false,
+	requireAny: [],
+	requireAll: [],
+	excludeAny: [],
+	excludeAll: [],
+	caseSensitive: false,
+	wholeWord: true,
+	keywordMode: "literal",
+	regexFlags: "",
+	semanticThreshold: null,
+	priority: 0,
+	enabled: true,
+	...overrides,
+});
+
+describe("lore entry matching", () => {
+	test("matches case-insensitive whole-word phrases inside one Message", () => {
+		expect(matchLoreEntry(entry(), [{ content: "The SILVER KEEP stands." }]).active).toBe(true);
+		expect(matchLoreEntry(entry(), [{ content: "The Silver Keeper stands." }]).active).toBe(false);
+		expect(matchLoreEntry(entry(), [{ content: "Silver" }, { content: "Keep" }]).active).toBe(false);
+	});
+
+	test("supports case-sensitive and substring literal modes", () => {
+		expect(matchLoreEntry(entry({ caseSensitive: true }), [{ content: "silver keep" }]).active).toBe(false);
+		expect(matchLoreEntry(entry({ wholeWord: false }), [{ content: "Silver Keeper" }]).active).toBe(true);
+	});
+
+	test("supports slash-delimited regular expressions and reports invalid syntax", () => {
+		expect(matchLoreEntry(entry({ keywordMode: "regex", keywords: ["/silver\\s+keep/i"] }), [{ content: "Silver   Keep" }]).active).toBe(true);
+		expect(() => matchLoreEntry(entry({ keywordMode: "regex", keywords: ["/[broken/"] }), [{ content: "anything" }])).toThrow(InvalidLorebookExpressionError);
+	});
+
+	test("combines secondary conditions across the complete scan window", () => {
+		const matched = matchLoreEntry(entry({
+		requireAny: ["moon"],
+		requireAll: ["night", "quiet"],
+		excludeAny: ["day"],
+		excludeAll: ["storm", "rain"],
+	}), [
+			{ content: "Silver Keep at night." },
+			{ content: "The moon is quiet." },
+		]);
+		expect(matched.active).toBe(true);
+		expect(matched.secondary.requireAll.matchedExpressions).toEqual(["night", "quiet"]);
+		expect(matchLoreEntry(entry({ excludeAny: ["moon"] }), [{ content: "Silver Keep and moon." }]).active).toBe(false);
+	});
+
+	test("Always bypasses primary and secondary conditions, while disabled entries do not match", () => {
+		expect(matchLoreEntry(entry({ always: true, keywords: [], excludeAny: ["anything"] }), [{ content: "anything" }]).active).toBe(true);
+		expect(matchLoreEntry(entry({ enabled: false, always: true }), [{ content: "Silver Keep" }]).skipped).toBe(true);
+	});
+
+	test("uses keyword fallback for AND entries and skips semantic-only entries", () => {
+		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 });
+		expect(fallback.active).toBe(true);
+		expect(fallback.fallback).toBe(true);
+		expect(matchLoreEntry(entry({ keywords: [], semanticTriggers: ["a fortified place"] }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 }).active).toBe(false);
+	});
+
+	test("uses semantic evidence only after a complete semantic pass", () => {
+		const result = matchLoreEntry(entry({ keywords: [], semanticTriggers: ["fortified place"] }), [{ content: "A stronghold overlooks the valley." }], {
+			available: true,
+			threshold: 0.7,
+			matches: [{ trigger: "fortified place", score: 0.81, sentence: "A stronghold overlooks the valley." }],
+		});
+		expect(result.active).toBe(true);
+		expect(result.semantic.matches[0]?.sentence).toContain("stronghold");
+	});
+
+	test("splits sentences for semantic adapters without changing lexical boundaries", () => {
+		expect(splitLoreSentences("One. Two!\nThree?")).toEqual(["One.", "Two!", "Three?"]);
+	});
+});
