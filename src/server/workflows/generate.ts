@@ -272,7 +272,7 @@ export async function sendThroughProvisionalTailGeneration(
 					tokenEstimator: current.tokenEstimator,
 					formatting: current.formatting,
 					embeddingFetch: current.embeddingFetch,
-				})
+				}, captured)
 				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
@@ -337,7 +337,7 @@ export async function continueGeneration(
 					tokenEstimator: current.tokenEstimator,
 					formatting: current.formatting,
 					embeddingFetch: current.embeddingFetch,
-				})
+				}, captured)
 				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
@@ -433,7 +433,7 @@ export async function generateSiblingVariant(
 				? captureSiblingGenerationAsync({
 					database: currentDatabase,
 					...current,
-				})
+				}, captured)
 				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({

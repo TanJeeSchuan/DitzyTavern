@@ -440,8 +440,12 @@ export function prepareGenerationInputs(
  */
 export async function prepareGenerationInputsAsync(
 	input: PrepareGenerationInputs,
+	capturedPreparation?: GenerationPreparation,
 ): Promise<GenerationPreparation> {
-	const preparation = prepareGenerationInputs(input);
+	// ==[HUMAN APPROVED]== Active Generations pass their already-captured preparation here. The
+	// semantic request may suspend, but books, attachments, history, settings, and
+	// participant data must remain the exact values captured before that suspension.
+	const preparation = capturedPreparation ?? prepareGenerationInputs(input);
 	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
 	// ==[HUMAN APPROVED]== The synchronous capture already proves that no enabled entry has semantic
 	// triggers when its mode is not keyword-fallback. Avoid an unnecessary
@@ -451,9 +455,9 @@ export async function prepareGenerationInputsAsync(
 	if (!needsSemantic) return preparation;
 	const lore = await evaluateScopedLoreAsync({
 		database: input.database,
-		conversationId: input.conversationId,
+		conversationId: preparation.conversationId,
 		messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-		pendingHumanText: input.kind === "send" ? input.content : undefined,
+		pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
 		fetch: input.embeddingFetch,
 	}, preparation.lore.sources);
 	return { ...preparation, lore };
@@ -839,8 +843,11 @@ export function captureSiblingGeneration(
 /** ==[HUMAN APPROVED]== Semantic counterparts used by Generation/inspection entry points. */
 export async function captureSendGenerationAsync(
 	input: SendGenerationCaptureInput,
+	captured?: SendGenerationCapture,
 ): Promise<SendGenerationCapture> {
-	const { conversationId, content } = input;
+	const initial = captured ?? captureSendGeneration(input);
+	const { conversationId } = input;
+	const content = initial.humanContent;
 	const preparation = await prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId,
@@ -850,10 +857,10 @@ export async function captureSendGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	});
+	}, initial.preparation);
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
+	const reuseHumanMessageId = initial.reuseHumanMessageId;
 	const submitted = reuseHumanMessageId === undefined
 		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
 		: derivation;
@@ -863,7 +870,9 @@ export async function captureSendGenerationAsync(
 
 export async function captureContinuationGenerationAsync(
 	input: GenerationCaptureInput,
+	captured?: ContinuationGenerationCapture,
 ): Promise<ContinuationGenerationCapture> {
+	const initial = captured ?? captureContinuationGeneration(input);
 	const preparation = await prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId: input.conversationId,
@@ -872,7 +881,7 @@ export async function captureContinuationGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	});
+	}, initial.preparation);
 	const { derivation } = preparation;
 	const latest = preparation.participation.messages.at(-1);
 	const selected = latest?.variant;
@@ -896,7 +905,9 @@ export async function captureContinuationGenerationAsync(
 
 export async function captureSiblingGenerationAsync(
 	input: SiblingGenerationCaptureInput,
+	captured?: CapturedGeneration,
 ): Promise<CapturedGeneration> {
+	const initial = captured ?? captureSiblingGeneration(input);
 	const preparation = await prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId: input.conversationId,
@@ -906,7 +917,7 @@ export async function captureSiblingGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	});
+	}, initial.preparation);
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
 	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });
