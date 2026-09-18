@@ -36,9 +36,20 @@ describe("lore entry matching", () => {
 		expect(matchLoreEntry(entry({ wholeWord: false }), [{ content: "Silver Keeper" }]).active).toBe(true);
 	});
 
+	test("keeps whole-word boundaries across Unicode code points", () => {
+		expect(matchLoreEntry(entry({ keywords: ["𐐀"] }), [{ content: "𐐀" }]).active).toBe(true);
+		expect(matchLoreEntry(entry({ keywords: ["silver"] }), [{ content: "𐐀silver" }]).active).toBe(false);
+		expect(matchLoreEntry(entry({ keywords: ["silver"] }), [{ content: "silver𐐀" }]).active).toBe(false);
+	});
+
 	test("supports slash-delimited regular expressions and reports invalid syntax", () => {
 		expect(matchLoreEntry(entry({ keywordMode: "regex", keywords: ["/silver\\s+keep/i"] }), [{ content: "Silver   Keep" }]).active).toBe(true);
 		expect(() => matchLoreEntry(entry({ keywordMode: "regex", keywords: ["/[broken/"] }), [{ content: "anything" }])).toThrow(InvalidLorebookExpressionError);
+	});
+
+	test("runs backtracking-prone regex expressions in linear time", () => {
+		const result = matchLoreEntry(entry({ keywordMode: "regex", keywords: ["(a+)+$"] }), [{ content: `${"a".repeat(20_000)}b` }]);
+		expect(result.active).toBe(false);
 	});
 
 	test("combines secondary conditions across the complete scan window", () => {

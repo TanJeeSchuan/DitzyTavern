@@ -110,7 +110,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		try {
 			const loaded = await getLorebook(id);
 			if (loaded === null) { setNotice("That Lorebook no longer exists."); return; }
-			setBook(loaded); setName(loaded.name); setDescription(loaded.description); setEntryId(null); setNotice(null);
+			setBook(loaded); setName(loaded.name); setDescription(loaded.description); setEntryId(null); setEntryDraft(blankEntry()); setNotice(null);
 		} catch { setNotice("The Lorebook could not be loaded."); } finally { setPending(false); }
 	};
 
