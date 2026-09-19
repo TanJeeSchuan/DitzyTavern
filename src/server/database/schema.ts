@@ -68,6 +68,9 @@ export const promptPresetBlockTable = sqliteTable(
 			table.preset_id,
 			table.position,
 		),
+		uniqueIndex("prompt_preset_single_lore_block")
+			.on(table.preset_id)
+			.where(sql`${table.reference} = 'lore'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(

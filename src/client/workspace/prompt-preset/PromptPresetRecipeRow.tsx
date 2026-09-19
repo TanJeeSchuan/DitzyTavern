@@ -59,7 +59,7 @@ const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
 		return <p className="mt-1 text-sm text-muted-foreground">{slot.entryCount === 1 ? "1 Message from the selected narrative path." : `${slot.entryCount} Messages from the selected narrative path.`}</p>;
 	}
 	if (slot.reference === "lore") {
-		return <p className="mt-1 text-sm text-muted-foreground">{slot.entryCount === 1 ? "1 admitted Lore Entry." : `${slot.entryCount} admitted Lore Entries.`}</p>;
+		return <p className="mt-1 text-sm text-muted-foreground">Lore Entries are admitted when a Generation is assembled.</p>;
 	}
 	if (slot.reference === "instruction") return null;
 	if (slot.sourceName === null) return <p className="mt-1 text-sm text-muted-foreground">No Participant holds this Control seat yet.</p>;

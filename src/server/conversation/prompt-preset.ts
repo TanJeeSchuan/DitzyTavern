@@ -62,7 +62,6 @@ const projectPromptPreset = (
 				reference: slot.reference,
 				enabled: slot.enabled,
 				role: slot.role,
-				entryCount: 0,
 			};
 		}
 		const referenced = referencedDefinitionBlocks[slot.reference];

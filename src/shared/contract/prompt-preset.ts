@@ -183,7 +183,6 @@ export const resolvedPromptPresetSlot = Type.Union([
 		reference: promptLoreReference,
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
-		entryCount: Type.Integer(),
 	}),
 	Type.Object({
 		id: Type.Integer(),
