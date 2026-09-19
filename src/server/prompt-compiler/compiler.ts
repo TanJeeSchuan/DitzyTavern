@@ -160,6 +160,9 @@ const expandInto = (
 };
 
 export function compilePrompt(input: CompilePromptInput): PromptPlan {
+	if (input.recipe.filter((slot) => slot.reference === "lore").length > 1) {
+		throw new Error("A Prompt Preset may contain at most one Lore block.");
+	}
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };

@@ -173,6 +173,7 @@ describe("generation capture coherence", () => {
 				firstStarted();
 				await firstRelease;
 			}
+			// SAFETY: the embedding client always sends a JSON body containing the requested input strings.
 			const body = JSON.parse(String(init?.body)) as { input: readonly string[] };
 			return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [1, 0] })) }), { status: 200 });
 		};

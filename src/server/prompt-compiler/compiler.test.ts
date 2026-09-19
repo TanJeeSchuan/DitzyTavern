@@ -112,6 +112,16 @@ describe("Prompt compiler", () => {
 		expect(plan.blocks).toEqual([]);
 	});
 
+	test("rejects duplicate Lore slots before compilation", () => {
+		expect(() => compilePrompt(source({
+			recipe: [
+				{ reference: "lore", enabled: true, role: "system" },
+				{ reference: "lore", enabled: false, role: "user" },
+			],
+			lore: [{ content: "This must not render twice." }],
+		}))).toThrow("A Prompt Preset may contain at most one Lore block.");
+	});
+
 	test("compiles blocks in the fixed deterministic order", () => {
 		const plan = compilePrompt(filled());
 		expect(plan.blocks.map((block) => block.kind)).toEqual([
