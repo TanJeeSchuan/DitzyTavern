@@ -124,6 +124,9 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	useEffect(() => {
 		invalidateView();
 		matchRequestRef.current += 1;
+		setTestPending(false);
+		setTestResult(null);
+		setTestError(null);
 		const attachmentRequest = ++attachmentRequestRef.current;
 		const presetRequest = ++presetRequestRef.current;
 		void getLorebookAttachmentState(conversationId).then((state) => {
