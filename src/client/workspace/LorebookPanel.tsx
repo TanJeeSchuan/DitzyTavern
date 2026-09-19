@@ -92,10 +92,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const bookDraftVersionRef = useRef(0);
 	const entryDraftVersionRef = useRef(0);
 	const currentBookIdRef = useRef<number | null>(null);
-	const currentEntryIdRef = useRef<number | null>(null);
 	const currentConversationIdRef = useRef(conversationId);
 	currentBookIdRef.current = book?.id ?? null;
-	currentEntryIdRef.current = entryId;
 	currentConversationIdRef.current = conversationId;
 
 	const invalidateView = () => { viewTokenRef.current += 1; };
