@@ -264,19 +264,35 @@ export interface SendReuseTarget {
 	variantId: number;
 }
 
-export const sendReuseTargetOf = (
-	preparation: GenerationPreparation,
-): SendReuseTarget | undefined => {
-	if (preparation.kind !== "send") return undefined;
-	const latest = preparation.participation.messages.at(-1);
+const reusableHumanMessageId = (
+	messages: readonly ParticipatingHistoryMessage[],
+	humanParticipantId: number,
+	content: string,
+): number | undefined => {
+	const latest = messages.at(-1);
 	const variant = latest?.variant;
 	return latest !== undefined &&
 		variant !== null &&
 		variant !== undefined &&
-		latest.author?.participantId === preparation.derivation.human.id &&
-		variant.content === preparation.content
-		? { messageId: latest.id, variantId: variant.id }
+		latest.author?.participantId === humanParticipantId &&
+		variant.content === content
+		? latest.id
 		: undefined;
+};
+
+export const sendReuseTargetOf = (
+	preparation: GenerationPreparation,
+): SendReuseTarget | undefined => {
+	if (preparation.kind !== "send") return undefined;
+	const messageId = reusableHumanMessageId(
+		preparation.participation.messages,
+		preparation.derivation.human.id,
+		preparation.content,
+	);
+	if (messageId === undefined) return undefined;
+	const variant = preparation.participation.messages.at(-1)?.variant;
+	if (variant === null || variant === undefined) return undefined;
+	return { messageId, variantId: variant.id };
 };
 
 const effectiveSettingsForPreparation = (input: {
@@ -376,12 +392,15 @@ export function prepareGenerationInputs(
 		model,
 		context: selectedHistoryFrom(participation.messages, human.id, model.id),
 	};
+	const reuseHumanMessageId = input.kind === "send"
+		? reusableHumanMessageId(participation.messages, human.id, input.content)
+		: undefined;
 	const lore = recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)
 		? evaluateScopedLore({
 			database: input.database,
 			conversationId: input.conversationId,
 			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-			pendingHumanText: input.kind === "send" ? input.content : undefined,
+			pendingHumanText: input.kind === "send" && reuseHumanMessageId === undefined ? input.content : undefined,
 			embeddingSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();

@@ -25,6 +25,9 @@ import {
 import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
+import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
+import { importNativeLorebook } from "../lorebook/library";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -684,6 +687,90 @@ describe("Generation runtime behavior", () => {
 			{ kind: "history", speakerName: "Writer", content: "Latest human input.", role: "human" },
 		]);
 		expect(requireSnapshot(conversation, conversationId).messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
+	});
+
+	test("retries a zero-output Send with the same bounded Lore scan window", async () => {
+		const conversation = createConversationModule(database);
+		const current = requireSnapshot(conversation, conversationId);
+		const withRecentHistory = applyCommand(conversation, {
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:01:00Z",
+				variantContents: ["Recent history."],
+				authorParticipantId: humanId,
+			},
+		});
+		const preset = importNativePromptPreset(database, {
+			name: "Retry Lore",
+			slots: [
+				{ reference: "history", enabled: true },
+				{ reference: "lore", enabled: true, role: "system" },
+			],
+		});
+		selectConversationPromptPreset(drizzle(database), conversationId, preset.id);
+		const book = importNativeLorebook(database, {
+			name: "Retry Lorebook",
+			description: "",
+			entries: [{
+				title: "Opening memory",
+				content: "The opening remains relevant.",
+				keywords: ["The lamp turns above you"],
+				semanticTriggers: [],
+				matchOperator: "or",
+				always: false,
+				requireAny: [],
+				requireAll: [],
+				excludeAny: [],
+				excludeAll: [],
+				caseSensitive: false,
+				wholeWord: true,
+				keywordMode: "literal",
+				regexFlags: "",
+				semanticThreshold: null,
+				priority: 1,
+				enabled: true,
+			}],
+		});
+		attachLorebookToConversation(database, { conversationId, bookId: book.id });
+		saveLoreSettings(database, conversationId, { scanDepth: 3, allowance: 2048 });
+
+		const plans: PromptPlan[] = [];
+		let attempts = 0;
+		await expect(sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: withRecentHistory.revision,
+			content: "Please try again.",
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				plans.push(promptPlan);
+				attempts += 1;
+				return attempts === 1
+					? [{ type: "failed", kind: "provider", message: "No answer." }]
+					: "Recovered answer.";
+			}),
+		})).rejects.toThrow("No answer.");
+
+		const afterFailure = requireSnapshot(conversation, conversationId);
+		await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: afterFailure.revision,
+			content: "Please try again.",
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				plans.push(promptPlan);
+				return "Recovered answer.";
+			}),
+		});
+
+		const firstHistory = plans[0]?.blocks.filter((block) => block.kind === "history");
+		const retryHistory = plans[1]?.blocks.filter((block) => block.kind === "history");
+		expect(retryHistory).toEqual(firstHistory);
+		expect(plans[1]?.blocks.filter((block) => block.kind === "lore")).toEqual(
+			plans[0]?.blocks.filter((block) => block.kind === "lore"),
+		);
+		const afterRetry = requireSnapshot(conversation, conversationId);
+		expect(afterRetry.messages).toHaveLength(4);
+		expect(afterRetry.messages.at(-1)?.variants[0]?.content).toBe("Recovered answer.");
 	});
 
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
