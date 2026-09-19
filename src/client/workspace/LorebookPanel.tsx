@@ -212,6 +212,10 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(current.name); setDescription(current.description); }
 		}
 		if (entryDirty) {
+			// ==[HUMAN APPROVED]== The book save above may have yielded to a newer entry edit. Do not
+			// send the stale closure value after that edit; leave it dirty for an
+			// explicit save instead.
+			if (!isCurrentView(token, initialBookId) || entryDraftVersionRef.current !== initialEntryDraftVersion) return false;
 			const result = await applyLorebookCommand({ type: "save-entry", bookId: current.id, entryId: entryId ?? undefined, expectedRevision: current.revision, entry: entryDraft });
 			if (result.status !== "applied") {
 				if (!isCurrentView(token, initialBookId)) return false;
