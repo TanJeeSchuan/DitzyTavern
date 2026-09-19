@@ -489,15 +489,23 @@ describe("Generation runtime behavior", () => {
 
 	test("a mid-flight rename does not rewrite the in-flight generation and the next one uses the new state", async () => {
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// While the transport streams, the model Participant is renamed. The
 		// Participant rename command arrives with ticket 04; the concurrent
@@ -542,15 +550,23 @@ describe("Generation runtime behavior", () => {
 
 	test("a mid-flight Definition edit does not rewrite the in-flight generation and the next one compiles the edited Prompt", async () => {
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// The model Prompt is edited while the transport streams (the
 		// Participant edit command arrives with ticket 04; the authoritative
@@ -587,15 +603,23 @@ describe("Generation runtime behavior", () => {
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {
 		const module = createConversationModule(database);
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// A concurrent client command lands while the transport streams.
 		const midFlight = module.getSnapshot(conversationId);
