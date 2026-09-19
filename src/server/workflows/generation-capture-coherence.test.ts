@@ -18,6 +18,11 @@ import {
 	captureSiblingGeneration,
 	captureSiblingGenerationAsync,
 } from "./generate-capture";
+import {
+	clearGenerationPreviewRegistry,
+	createGenerationPreviewAsync,
+	previewRecordFor,
+} from "./generation-preview";
 import type { PromptPlan } from "../prompt-compiler";
 
 const prompt = {
@@ -89,6 +94,7 @@ describe("generation capture coherence", () => {
 	afterEach(() => {
 		for (const database of databases) database.close();
 		databases = [];
+		clearGenerationPreviewRegistry();
 	});
 
 	for (const kind of ["send", "continuation", "sibling"] as const) {
@@ -152,4 +158,30 @@ describe("generation capture coherence", () => {
 			}
 		});
 	}
+
+	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {
+		const state = setup();
+		databases.push(state.database);
+		let releaseFirst!: () => void;
+		let firstStarted!: () => void;
+		const firstReady = new Promise<void>((resolve) => { firstStarted = resolve; });
+		const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		let requests = 0;
+		const embeddingFetch = async (_url: RequestInfo | URL, init?: RequestInit) => {
+			requests += 1;
+			if (requests === 1) {
+				firstStarted();
+				await firstRelease;
+			}
+			const body = JSON.parse(String(init?.body)) as { input: readonly string[] };
+			return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [1, 0] })) }), { status: 200 });
+		};
+		const input = { database: state.database, conversationId: state.conversationId, embeddingFetch };
+		const older = createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "older" });
+		await firstReady;
+		const newer = await createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "newer" });
+		releaseFirst();
+		await older;
+		expect(previewRecordFor(newer.id, state.conversationId, "send").id).toBe(newer.id);
+	});
 });

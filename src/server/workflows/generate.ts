@@ -61,8 +61,11 @@ import {
 import {
 	consumeGenerationPreview,
 	captureContinuationGenerationPreview,
+	captureContinuationGenerationPreviewAsync,
 	captureSendGenerationPreview,
+	captureSendGenerationPreviewAsync,
 	captureSiblingGenerationPreview,
+	captureSiblingGenerationPreviewAsync,
 	type GenerationPreviewAcceptance,
 	type GenerationPreviewAcceptanceFor,
 } from "./generation-preview";
@@ -243,14 +246,19 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSendGenerationPreview({
+				const previewCapture = current.preview.record.capture.capture;
+				const captureInput = {
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					content: current.content,
 					connection: current.connection,
 					formatting: current.formatting,
-				});
+					embeddingFetch: current.embeddingFetch,
+				};
+				return previewCapture.plan.loreActivation?.mode === "semantic"
+					? captureSendGenerationPreviewAsync(captureInput)
+					: captureSendGenerationPreview(captureInput);
 			}
 			const captured = captureSendGeneration({
 				database: currentDatabase,
@@ -311,13 +319,18 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureContinuationGenerationPreview({
+				const previewCapture = current.preview.record.capture.capture;
+				const captureInput = {
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					connection: current.connection,
 					formatting: current.formatting,
-				});
+					embeddingFetch: current.embeddingFetch,
+				};
+				return previewCapture.plan.loreActivation?.mode === "semantic"
+					? captureContinuationGenerationPreviewAsync(captureInput)
+					: captureContinuationGenerationPreview(captureInput);
 			}
 			const captured = captureContinuationGeneration({
 				database: currentDatabase,
@@ -416,14 +429,19 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSiblingGenerationPreview({
+				const previewCapture = current.preview.record.capture.capture;
+				const captureInput = {
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					messageId: current.messageId,
 					connection: current.connection,
 					formatting: current.formatting,
-				});
+					embeddingFetch: current.embeddingFetch,
+				};
+				return previewCapture.plan.loreActivation?.mode === "semantic"
+					? captureSiblingGenerationPreviewAsync(captureInput)
+					: captureSiblingGenerationPreview(captureInput);
 			}
 			const captured = captureSiblingGeneration({
 				database: currentDatabase,
