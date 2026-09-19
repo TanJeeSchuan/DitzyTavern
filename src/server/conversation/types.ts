@@ -29,7 +29,7 @@ import type {
 	MacroVariables as SharedMacroVariables,
 } from "../../shared/contract/macro-variables";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
-import type { LoreActivationRecord } from "../../shared/lore-activation";
+import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;

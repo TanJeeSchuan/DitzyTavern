@@ -22,8 +22,8 @@ import type {
 	ProvenanceSettingsField,
 } from "../generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
-import { loreActivationRecord } from "../lore-activation";
-export type { LoreActivationRecord } from "../lore-activation";
+import { loreActivationRecord } from "./lore-activation";
+export type { LoreActivationRecord } from "./lore-activation";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 

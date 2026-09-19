@@ -10,7 +10,7 @@ import type {
 	EffectiveGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
-import type { LoreActivationRecord } from "../../shared/lore-activation";
+import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 
 export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";

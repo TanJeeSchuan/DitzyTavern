@@ -15,7 +15,7 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, loreActivationRecord, type LoreActivationRecord } from "../../shared/lore-activation";
+import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, loreActivationRecord, type LoreActivationRecord } from "../../shared/contract/lore-activation";
 import {
 	connectConversationDatabase,
 	readActiveCast,

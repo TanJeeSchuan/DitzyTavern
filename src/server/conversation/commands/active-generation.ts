@@ -36,7 +36,7 @@ import {
 	LORE_ACTIVATION_KEY,
 	LORE_ACTIVATION_NAMESPACE,
 	isLoreActivationRecord,
-} from "../../../shared/lore-activation";
+} from "../../../shared/contract/lore-activation";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in

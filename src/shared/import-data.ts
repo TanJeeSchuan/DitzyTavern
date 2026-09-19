@@ -15,7 +15,7 @@ export const IMPORT_NAMESPACE = "import.sillytavern";
 // immutable parsed source values preserved at commit.
 export const ARCHIVE_NAMESPACE = "archive";
 
-import { LORE_ACTIVATION_NAMESPACE } from "./lore-activation";
+import { LORE_ACTIVATION_NAMESPACE } from "./contract/lore-activation";
 
 // ==[HUMAN APPROVED]== True for every namespace whose Conversation-scoped data is import-owned.
 // The generic put-data/delete-data commands reject these namespaces in

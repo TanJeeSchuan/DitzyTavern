@@ -28,7 +28,7 @@ import type {
 	GenerationFormattingContext,
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
-import type { LoreActivationRecord } from "../../shared/lore-activation";
+import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }

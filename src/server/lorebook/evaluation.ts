@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { PromptLoreEntry } from "../prompt-compiler";
-import type { LoreActivationRecord } from "../../shared/lore-activation";
+import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type { Lorebook } from "../../shared/contract/lorebook";
 import { readLorebook } from "./library";

@@ -12,7 +12,7 @@ import {
 	generationJsonString,
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
-import type { LoreActivationRecord } from "../shared/lore-activation";
+import type { LoreActivationRecord } from "../shared/contract/lore-activation";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
