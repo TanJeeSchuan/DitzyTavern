@@ -22,7 +22,7 @@ import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
 } from ".";
-import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
+import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
@@ -55,12 +55,12 @@ const fakeModelClient = (
 ) =>
 	createFakeModelClient(({ promptPlan }) => response(promptPlan));
 
-const sendPreview = (
+const sendPreview = async (
 	database: Database,
 	conversationId: number,
 	options: { content?: string; tokenEstimator?: () => number } = {},
 ) => {
-	const preview = createGenerationPreview(database, {
+	const preview = await createGenerationPreviewAsync(database, {
 		conversationId,
 		kind: "send",
 		content: options.content ?? "Draft",
@@ -70,8 +70,8 @@ const sendPreview = (
 	return preview.capture.capture;
 };
 
-const continuationPreview = (database: Database, conversationId: number) => {
-	const preview = createGenerationPreview(database, { conversationId, kind: "continuation" });
+const continuationPreview = async (database: Database, conversationId: number) => {
+	const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
 	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture.capture;
 };
@@ -107,8 +107,8 @@ describe("Generation runtime behavior", () => {
 		database.close();
 	});
 
-	test("preview compiles the plan with ordered blocks and participant context", () => {
-		const capture = sendPreview(database, conversationId);
+	test("preview compiles the plan with ordered blocks and participant context", async () => {
+		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
 		expect(capture.humanParticipant).toEqual({ id: humanId, name: "Writer" });
@@ -172,7 +172,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("the terminal fixture creates a Message authored by the model seat at generation start", async () => {
-		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
+		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
 		let receivedPlan: PromptPlan | undefined;
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -210,7 +210,7 @@ describe("Generation runtime behavior", () => {
 	test("the terminal fixture forwards normalized events and freezes the captured generation input", async () => {
 		const receivedEvents: unknown[] = [];
 		let receivedInput: ModelClientGenerationInput | undefined;
-		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
+		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
 
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -334,11 +334,11 @@ describe("Generation runtime behavior", () => {
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
-		expect(() => sendPreview(database, incomplete.id)).toThrow(ConversationNotPlayableError);
+		await expect(sendPreview(database, incomplete.id)).rejects.toThrow(ConversationNotPlayableError);
 	});
 
 	test("missing Conversations fail preview and generation with the typed not-found result", async () => {
-		expect(() => sendPreview(database, 424242)).toThrow(
+		await expect(sendPreview(database, 424242)).rejects.toThrow(
 			ConversationNotFoundError,
 		);
 		await expect(
@@ -576,7 +576,7 @@ describe("Generation runtime behavior", () => {
 		});
 
 		// The next generation compiles from the updated authoritative Prompt.
-		const capture = sendPreview(database, conversationId);
+		const capture = await sendPreview(database, conversationId);
 		expect(
 			capture.plan.promptPlan.blocks.find(
 				(block) => block.kind === "identity" && block.role === "model",
@@ -837,7 +837,7 @@ describe("Generation runtime behavior", () => {
 		});
 		// Read-only preview of the stored Conversation reports the same
 		// impossible budget without contacting anything.
-		const capture = sendPreview(database, conversationId, {
+		const capture = await sendPreview(database, conversationId, {
 			content: "Protected human input.",
 			tokenEstimator: () => 20,
 		});
@@ -954,8 +954,8 @@ describe("Prompt Comments", () => {
 		database.close();
 	});
 
-	test("preview renders authored text without its comments and without warning about their contents", () => {
-		const capture = sendPreview(database, conversationId);
+	test("preview renders authored text without its comments and without warning about their contents", async () => {
+		const capture = await sendPreview(database, conversationId);
 		const content = (kind: string) =>
 			capture.plan.promptPlan.blocks.find((block) => block.kind === kind)?.content;
 

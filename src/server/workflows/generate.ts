@@ -48,11 +48,8 @@ import {
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
 import {
-	captureSendGeneration,
 	captureSendGenerationAsync,
-	captureContinuationGeneration,
 	captureContinuationGenerationAsync,
-	captureSiblingGeneration,
 	captureSiblingGenerationAsync,
 	capturedAcceptanceFields,
 	modelRequestFor,
@@ -60,11 +57,8 @@ import {
 } from "./generate-capture";
 import {
 	consumeGenerationPreview,
-	captureContinuationGenerationPreview,
 	captureContinuationGenerationPreviewAsync,
-	captureSendGenerationPreview,
 	captureSendGenerationPreviewAsync,
-	captureSiblingGenerationPreview,
 	captureSiblingGenerationPreviewAsync,
 	type GenerationPreviewAcceptance,
 	type GenerationPreviewAcceptanceFor,
@@ -246,8 +240,7 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const previewCapture = current.preview.record.capture.capture;
-				const captureInput = {
+				return captureSendGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
@@ -255,12 +248,9 @@ export async function sendThroughProvisionalTailGeneration(
 					connection: current.connection,
 					formatting: current.formatting,
 					embeddingFetch: current.embeddingFetch,
-				};
-				return previewCapture.plan.loreActivation?.mode === "semantic"
-					? captureSendGenerationPreviewAsync(captureInput)
-					: captureSendGenerationPreview(captureInput);
+				});
 			}
-			const captured = captureSendGeneration({
+			return captureSendGenerationAsync({
 				database: currentDatabase,
 				conversationId,
 				content: current.content,
@@ -270,18 +260,6 @@ export async function sendThroughProvisionalTailGeneration(
 				formatting: current.formatting,
 				embeddingFetch: current.embeddingFetch,
 			});
-			return captured.plan.loreActivation?.mode === "keyword-fallback"
-				? captureSendGenerationAsync({
-					database: currentDatabase,
-					conversationId,
-					content: current.content,
-					connection: current.connection,
-					connectionSettings: current.connectionSettings,
-					tokenEstimator: current.tokenEstimator,
-					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
-				}, captured)
-				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -319,20 +297,16 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const previewCapture = current.preview.record.capture.capture;
-				const captureInput = {
+				return captureContinuationGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					connection: current.connection,
 					formatting: current.formatting,
 					embeddingFetch: current.embeddingFetch,
-				};
-				return previewCapture.plan.loreActivation?.mode === "semantic"
-					? captureContinuationGenerationPreviewAsync(captureInput)
-					: captureContinuationGenerationPreview(captureInput);
+				});
 			}
-			const captured = captureContinuationGeneration({
+			return captureContinuationGenerationAsync({
 				database: currentDatabase,
 				conversationId,
 				connection: current.connection,
@@ -341,17 +315,6 @@ export async function continueGeneration(
 				formatting: current.formatting,
 				embeddingFetch: current.embeddingFetch,
 			});
-			return captured.plan.loreActivation?.mode === "keyword-fallback"
-				? captureContinuationGenerationAsync({
-					database: currentDatabase,
-					conversationId,
-					connection: current.connection,
-					connectionSettings: current.connectionSettings,
-					tokenEstimator: current.tokenEstimator,
-					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
-				}, captured)
-				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
 			...capturedAcceptanceFields(capture, {
@@ -429,8 +392,7 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				const previewCapture = current.preview.record.capture.capture;
-				const captureInput = {
+				return captureSiblingGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
@@ -438,21 +400,12 @@ export async function generateSiblingVariant(
 					connection: current.connection,
 					formatting: current.formatting,
 					embeddingFetch: current.embeddingFetch,
-				};
-				return previewCapture.plan.loreActivation?.mode === "semantic"
-					? captureSiblingGenerationPreviewAsync(captureInput)
-					: captureSiblingGenerationPreview(captureInput);
+				});
 			}
-			const captured = captureSiblingGeneration({
+			return captureSiblingGenerationAsync({
 				database: currentDatabase,
 				...current,
 			});
-			return captured.plan.loreActivation?.mode === "keyword-fallback"
-				? captureSiblingGenerationAsync({
-					database: currentDatabase,
-					...current,
-				}, captured)
-				: captured;
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptSiblingGeneration({
 			...capturedAcceptanceFields(capture, {

@@ -452,15 +452,14 @@ export function prepareGenerationInputs(
 
 /** ==[HUMAN APPROVED]==
  * Capture the same immutable inputs as prepareGenerationInputs, completing the one
- * asynchronous semantic pass before a Generation Plan is compiled. Keeping this
- * beside the synchronous seam gives callers that do not need embedding I/O a
- * deterministic fast path while ensuring Generation-capable callers never need
- * to reimplement scope, scan-window, or fallback policy.
+ * asynchronous semantic pass before a Generation Plan is compiled. The returned
+ * value stays synchronous when no semantic pass is needed, so generation can
+ * reserve its captured inputs before another command races the attempt.
  */
-export async function prepareGenerationInputsAsync(
+export function prepareGenerationInputsAsync(
 	input: PrepareGenerationInputs,
 	capturedPreparation?: GenerationPreparation,
-): Promise<GenerationPreparation> {
+): GenerationPreparation | Promise<GenerationPreparation> {
 	// ==[HUMAN APPROVED]== Active Generations pass their already-captured preparation here. The
 	// semantic request may suspend, but books, attachments, history, settings, and
 	// participant data must remain the exact values captured before that suspension.
@@ -472,14 +471,13 @@ export async function prepareGenerationInputsAsync(
 	// captured author/control facts even when another edit races the attempt.
 	const needsSemantic = preparation.lore.activation.mode === "keyword-fallback";
 	if (!needsSemantic) return preparation;
-	const lore = await evaluateScopedLoreAsync({
+	return evaluateScopedLoreAsync({
 		database: input.database,
 		conversationId: preparation.conversationId,
 		messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 		pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
 		fetch: input.embeddingFetch,
-	}, preparation.lore.sources);
-	return { ...preparation, lore };
+	}, preparation.lore.sources).then((lore) => ({ ...preparation, lore }));
 }
 
 export const captureConfigurationFromPreparation = (
@@ -860,14 +858,14 @@ export function captureSiblingGeneration(
 }
 
 /** ==[HUMAN APPROVED]== Semantic counterparts used by Generation/inspection entry points. */
-export async function captureSendGenerationAsync(
+export function captureSendGenerationAsync(
 	input: SendGenerationCaptureInput,
 	captured?: SendGenerationCapture,
-): Promise<SendGenerationCapture> {
+): SendGenerationCapture | Promise<SendGenerationCapture> {
 	const initial = captured ?? captureSendGeneration(input);
 	const { conversationId } = input;
 	const content = initial.humanContent;
-	const preparation = await prepareGenerationInputsAsync({
+	const preparation = prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId,
 		kind: "send",
@@ -877,22 +875,26 @@ export async function captureSendGenerationAsync(
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
 	}, initial.preparation);
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	const reuseHumanMessageId = initial.reuseHumanMessageId;
-	const submitted = reuseHumanMessageId === undefined
-		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
-		: derivation;
-	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
-	return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
+	const complete = (preparation: GenerationPreparation): SendGenerationCapture => {
+		if (preparation === initial.preparation) return initial;
+		const { derivation } = preparation;
+		const configuration = captureConfigurationFromPreparation(preparation);
+		const reuseHumanMessageId = initial.reuseHumanMessageId;
+		const submitted = reuseHumanMessageId === undefined
+			? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
+			: derivation;
+		const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
+		return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
+	};
+	return preparation instanceof Promise ? preparation.then(complete) : complete(preparation);
 }
 
-export async function captureContinuationGenerationAsync(
+export function captureContinuationGenerationAsync(
 	input: GenerationCaptureInput,
 	captured?: ContinuationGenerationCapture,
-): Promise<ContinuationGenerationCapture> {
+): ContinuationGenerationCapture | Promise<ContinuationGenerationCapture> {
 	const initial = captured ?? captureContinuationGeneration(input);
-	const preparation = await prepareGenerationInputsAsync({
+	const preparation = prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId: input.conversationId,
 		kind: "continuation",
@@ -901,33 +903,37 @@ export async function captureContinuationGenerationAsync(
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
 	}, initial.preparation);
-	const { derivation } = preparation;
-	const latest = preparation.participation.messages.at(-1);
-	const selected = latest?.variant;
-	if (latest === undefined || selected === null || selected === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
-	const configuration = captureConfigurationFromPreparation(preparation);
-	if (configuration.settings.continuationStrategy !== "instruction" && selected.content.length === 0) {
-		throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-	}
-	const intent = continuationIntentFor(configuration.settings);
-	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
-	return {
-		...toCapturedGeneration(preparation, derivation, configuration, plan),
-		precedingMessageId: latest.id,
-		precedingVariantId: selected.id,
-		intent,
-		assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
-			? { prefix: selected.content, suffix: configuration.settings.continuationPrefillSuffix }
-			: undefined,
+	const complete = (preparation: GenerationPreparation): ContinuationGenerationCapture => {
+		if (preparation === initial.preparation) return initial;
+		const { derivation } = preparation;
+		const latest = preparation.participation.messages.at(-1);
+		const selected = latest?.variant;
+		if (latest === undefined || selected === null || selected === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
+		const configuration = captureConfigurationFromPreparation(preparation);
+		if (configuration.settings.continuationStrategy !== "instruction" && selected.content.length === 0) {
+			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
+		}
+		const intent = continuationIntentFor(configuration.settings);
+		const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
+		return {
+			...toCapturedGeneration(preparation, derivation, configuration, plan),
+			precedingMessageId: latest.id,
+			precedingVariantId: selected.id,
+			intent,
+			assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
+				? { prefix: selected.content, suffix: configuration.settings.continuationPrefillSuffix }
+				: undefined,
+		};
 	};
+	return preparation instanceof Promise ? preparation.then(complete) : complete(preparation);
 }
 
-export async function captureSiblingGenerationAsync(
+export function captureSiblingGenerationAsync(
 	input: SiblingGenerationCaptureInput,
 	captured?: CapturedGeneration,
-): Promise<CapturedGeneration> {
+): CapturedGeneration | Promise<CapturedGeneration> {
 	const initial = captured ?? captureSiblingGeneration(input);
-	const preparation = await prepareGenerationInputsAsync({
+	const preparation = prepareGenerationInputsAsync({
 		database: input.database,
 		conversationId: input.conversationId,
 		kind: "sibling",
@@ -937,8 +943,12 @@ export async function captureSiblingGenerationAsync(
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
 	}, initial.preparation);
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });
-	return toCapturedGeneration(preparation, derivation, configuration, plan);
+	const complete = (preparation: GenerationPreparation): CapturedGeneration => {
+		if (preparation === initial.preparation) return initial;
+		const { derivation } = preparation;
+		const configuration = captureConfigurationFromPreparation(preparation);
+		const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });
+		return toCapturedGeneration(preparation, derivation, configuration, plan);
+	};
+	return preparation instanceof Promise ? preparation.then(complete) : complete(preparation);
 }

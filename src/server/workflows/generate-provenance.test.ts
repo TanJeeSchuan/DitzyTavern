@@ -16,7 +16,7 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
+import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -236,7 +236,7 @@ describe("Generation capture and provenance", () => {
 			},
 		});
 
-		const preview = createGenerationPreview(database, {
+		const preview = await createGenerationPreviewAsync(database, {
 			conversationId,
 			kind: "send",
 			content: "Send with narrowed overrides.",
