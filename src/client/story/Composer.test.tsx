@@ -16,6 +16,6 @@ describe("Composer", () => {
 			/>,
 		);
 
-		expect(markup).toContain('placeholder="Write a message to continue the story…"');
+		expect(markup).toContain('placeholder="Write the next part of the story…"');
 	});
 });

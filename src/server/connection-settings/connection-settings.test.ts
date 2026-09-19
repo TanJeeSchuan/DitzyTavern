@@ -32,7 +32,7 @@ const deepSeekDraft = (): ConnectionProfileDraft => ({
 	adapter: "deepseek",
 	outputTokenRepresentation: "automatic",
 	timeoutMs: 120000,
-	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+	pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
 });
 
 describe("Connection Settings", () => {
@@ -72,7 +72,7 @@ describe("Connection Settings", () => {
 			adapter: "deepseek",
 			outputTokenRepresentation: "automatic",
 			timeoutMs: 120000,
-			pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+			pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
 		});
 	});
 
@@ -146,7 +146,7 @@ describe("Connection Settings", () => {
 		(listedProfile.pinnedModels as string[]).push("temporary-edit");
 
 		const reread = settings.listPresets().find((preset) => preset.id === "deepseek")?.profile;
-		expect(reread?.pinnedModels).toEqual(["deepseek-v4-flash", "deepseek-v4-pro"]);
+		expect(reread?.pinnedModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
 	});
 
 	test("creates the first Profile and credential atomically, redacting the credential", () => {
