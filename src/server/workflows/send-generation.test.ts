@@ -250,6 +250,10 @@ describe("Send through provisional Tail Generation", () => {
 			release = resolve;
 		});
 		let generationId: number | undefined;
+		let markAccepted!: () => void;
+		const acceptedReady = new Promise<void>((resolve) => {
+			markAccepted = resolve;
+		});
 		const generation = sendThroughProvisionalTailGeneration(database, {
 			conversationId,
 			expectedRevision: 1,
@@ -260,8 +264,10 @@ describe("Send through provisional Tail Generation", () => {
 			}),
 			onAccepted: (accepted) => {
 				generationId = accepted.generationId;
+				markAccepted();
 			},
 		});
+		await acceptedReady;
 
 		// The workflow persisted the attempt's Effective Generation Settings at
 		// acceptance: every participating value is retained (including the
