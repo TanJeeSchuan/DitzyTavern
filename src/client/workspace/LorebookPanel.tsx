@@ -46,8 +46,11 @@ const blankEntry = (): LoreEntryFields => ({
 });
 
 const fieldsOf = ({ id: _id, position: _position, ...entry }: LoreEntry): LoreEntryFields => entry;
-const splitList = (value: string): string[] => value.split(",").map((part) => part.trim()).filter(Boolean);
-const joinList = (value: string[]): string => value.join(", ");
+// ==[HUMAN APPROVED]== Expressions are newline-delimited in the editor. Commas are valid expression
+// content (especially in quantified regular expressions), so they cannot be a
+// list separator.
+const splitList = (value: string): string[] => value.split(/\r?\n/).filter((part) => part.length > 0);
+const joinList = (value: string[]): string => value.join("\n");
 const entryListKeys = ["keywords", "semanticTriggers", "requireAny", "requireAll", "excludeAny", "excludeAll"] as const;
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
 const sameEntry = (left: LoreEntryFields, right: LoreEntryFields): boolean => JSON.stringify(left) === JSON.stringify(right);
@@ -80,38 +83,68 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [bookDeleteConfirmation, setBookDeleteConfirmation] = useState<{ name: string; detail: string } | null>(null);
 	const [entryDeleteConfirmation, setEntryDeleteConfirmation] = useState(false);
 	const importInput = useRef<HTMLInputElement>(null);
+	const viewTokenRef = useRef(0);
+	const libraryRequestRef = useRef(0);
+	const matchRequestRef = useRef(0);
+	const attachmentRequestRef = useRef(0);
+	const presetRequestRef = useRef(0);
+	const impactRequestRef = useRef(0);
+	const bookDraftVersionRef = useRef(0);
+	const entryDraftVersionRef = useRef(0);
+	const currentBookIdRef = useRef<number | null>(null);
+	const currentEntryIdRef = useRef<number | null>(null);
+	const currentConversationIdRef = useRef(conversationId);
+	currentBookIdRef.current = book?.id ?? null;
+	currentEntryIdRef.current = entryId;
+	currentConversationIdRef.current = conversationId;
+
+	const invalidateView = () => { viewTokenRef.current += 1; };
+	const isCurrentView = (token: number, bookId: number | null): boolean =>
+		token === viewTokenRef.current && currentBookIdRef.current === bookId;
 
 	const refresh = useCallback(async () => {
+		const request = ++libraryRequestRef.current;
 		setBooksLoading(true);
 		try {
 			const loaded = await listLorebooks();
+			if (request !== libraryRequestRef.current) return;
 			setBooks(loaded);
 			if (book !== null) {
 				const current = await getLorebook(book.id);
-				if (current !== null) {
+				if (request === libraryRequestRef.current && current !== null && currentBookIdRef.current === book.id) {
 					setBook(current);
 					setName(current.name);
 					setDescription(current.description);
 				}
 			}
-		} catch { setNotice("The Lorebook library could not be loaded."); }
-		finally { setBooksLoading(false); }
+		} catch { if (request === libraryRequestRef.current) setNotice("The Lorebook library could not be loaded."); }
+		finally { if (request === libraryRequestRef.current) setBooksLoading(false); }
 	}, [book]);
 
 	// ==[HUMAN APPROVED]== The first load is intentionally initial-only; mutations update local state.
 	useEffect(() => { void refresh(); }, []);
 	useEffect(() => {
-		void getLorebookAttachmentState(conversationId).then(setAttachmentState).catch(() => setNotice("Lorebook attachment settings could not be loaded."));
-		void loadConversationPromptPreset(conversationId).then(setSelectedPreset).catch(() => setNotice("The selected Prompt Preset could not be loaded."));
+		invalidateView();
+		matchRequestRef.current += 1;
+		const attachmentRequest = ++attachmentRequestRef.current;
+		const presetRequest = ++presetRequestRef.current;
+		void getLorebookAttachmentState(conversationId).then((state) => {
+			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setAttachmentState(state);
+		}).catch(() => { if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("Lorebook attachment settings could not be loaded."); });
+		void loadConversationPromptPreset(conversationId).then((preset) => {
+			if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setSelectedPreset(preset);
+		}).catch(() => { if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("The selected Prompt Preset could not be loaded."); });
 	}, [conversationId]);
 
 	const openBook = async (id: number) => {
+		const token = ++viewTokenRef.current;
 		setPending(true);
 		try {
 			const loaded = await getLorebook(id);
+			if (token !== viewTokenRef.current) return;
 			if (loaded === null) { setNotice("That Lorebook no longer exists."); return; }
-			setBook(loaded); setName(loaded.name); setDescription(loaded.description); setEntryId(null); setEntryDraft(blankEntry()); setNotice(null);
-		} catch { setNotice("The Lorebook could not be loaded."); } finally { setPending(false); }
+			setBook(loaded); setName(loaded.name); setDescription(loaded.description); setEntryId(null); setEntryDraft(blankEntry()); entryDraftVersionRef.current += 1; setNotice(null);
+		} catch { if (token === viewTokenRef.current) setNotice("The Lorebook could not be loaded."); } finally { if (token === viewTokenRef.current) setPending(false); }
 	};
 
 	const selectedEntry = book?.entries.find((entry) => entry.id === entryId);
@@ -121,16 +154,20 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 
 	const performLeave = (intent: LeaveIntent) => {
 		if (intent.type === "close") {
+			invalidateView();
 			onClose();
 		} else if (intent.type === "library") {
+			invalidateView();
 			setBook(null);
 			setEntryId(null);
 		} else if (intent.type === "book") {
 			void openBook(intent.id);
 		} else {
+			invalidateView();
 			setEntryId(intent.id);
 			const target = book?.entries.find((entry) => entry.id === intent.id);
 			setEntryDraft(target === undefined ? blankEntry() : fieldsOf(target));
+			entryDraftVersionRef.current += 1;
 		}
 	};
 
@@ -145,6 +182,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			setDescription(book.description);
 		}
 		setEntryDraft(selectedEntry === undefined ? blankEntry() : fieldsOf(selectedEntry));
+		bookDraftVersionRef.current += 1;
+		entryDraftVersionRef.current += 1;
 		const intent = leaveIntent;
 		setLeaveIntent(null);
 		if (intent !== null) performLeave(intent);
@@ -152,31 +191,40 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 
 	const saveDirty = async (): Promise<boolean> => {
 		if (book === null) return true;
+		const token = viewTokenRef.current;
+		const initialBookId = book.id;
+		const initialBookDraftVersion = bookDraftVersionRef.current;
+		const initialEntryDraftVersion = entryDraftVersionRef.current;
 		let current = book;
 		if (bookDirty) {
 			const result = await applyLorebookCommand({ type: "update-book", bookId: current.id, expectedRevision: current.revision, name, description });
 			if (result.status !== "applied") {
+				if (!isCurrentView(token, initialBookId)) return false;
 				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
 				if (result.status === "conflict") {
 					setBook(result.currentBook);
 				}
 				return false;
 			}
+			if (!isCurrentView(token, initialBookId)) return false;
 			current = result.book;
 			setBook(current);
-			setName(current.name);
-			setDescription(current.description);
+			if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(current.name); setDescription(current.description); }
 		}
 		if (entryDirty) {
 			const result = await applyLorebookCommand({ type: "save-entry", bookId: current.id, entryId: entryId ?? undefined, expectedRevision: current.revision, entry: entryDraft });
 			if (result.status !== "applied") {
+				if (!isCurrentView(token, initialBookId)) return false;
 				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
 				if (result.status === "conflict") setBook(result.currentBook);
 				return false;
 			}
+			if (!isCurrentView(token, initialBookId)) return false;
 			setBook(result.book);
 		}
-		return true;
+		return isCurrentView(token, initialBookId)
+			&& bookDraftVersionRef.current === initialBookDraftVersion
+			&& entryDraftVersionRef.current === initialEntryDraftVersion;
 	};
 
 	const saveAndLeave = async () => {
@@ -194,30 +242,36 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	};
 
 	const executeLorebookCommand = async (command: LorebookCommand, success?: string) => {
+		const token = viewTokenRef.current;
+		const commandBookId = "bookId" in command ? command.bookId : null;
+		const initialBookDraftVersion = bookDraftVersionRef.current;
+		const initialEntryDraftVersion = entryDraftVersionRef.current;
+		const initialEntryId = entryId;
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
+			if (!isCurrentView(token, commandBookId)) return;
 			if (result.status === "applied") {
-				setBook(result.book); setName(result.book.name); setDescription(result.book.description); setBooks((items) => {
+				setBook(result.book); if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(result.book.name); setDescription(result.book.description); } setBooks((items) => {
 					const summary = { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length };
 					return items.some((item) => item.id === result.book.id)
 						? items.map((item) => item.id === result.book.id ? summary : item)
 						: [...items, summary];
 				}); setNotice(success ?? null);
-				if (command.type === "save-entry" && command.entryId === undefined) {
+				if (command.type === "save-entry" && command.entryId === undefined && entryDraftVersionRef.current === initialEntryDraftVersion) {
 					const saved = result.book.entries.at(-1);
 					if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
 				}
-				if (command.type === "set-entry-enabled" && command.entryId === entryId) setEntryDraft((draft) => ({ ...draft, enabled: command.enabled }));
+				if (command.type === "set-entry-enabled" && command.entryId === initialEntryId && entryDraftVersionRef.current === initialEntryDraftVersion) setEntryDraft((draft) => ({ ...draft, enabled: command.enabled }));
 			} else if (result.status === "deleted") {
 				setBook(null); setEntryId(null); setBooks((items) => items.filter((item) => item.id !== result.bookId)); setNotice("Lorebook deleted.");
 			} else if (result.status === "conflict") {
-				const preserveBookDraft = command.type === "update-book" && bookDirty;
+				const preserveBookDraft = bookDraftVersionRef.current !== initialBookDraftVersion;
 				setBook(result.currentBook);
 				if (!preserveBookDraft) { setName(result.currentBook.name); setDescription(result.currentBook.description); }
 				setNotice("This Lorebook changed elsewhere. Your saved view was refreshed.");
 			} else setNotice(result.status === "invalid" ? result.reason : result.status === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed.");
-		} finally { setPending(false); }
+		} finally { if (token === viewTokenRef.current) setPending(false); }
 	};
 
 	const create = () => void executeLorebookCommand({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
@@ -227,10 +281,15 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		if (book === null) return;
 		void executeLorebookCommand({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
 	};
+	const updateEntryDraft = (next: LoreEntryFields) => { entryDraftVersionRef.current += 1; setEntryDraft(next); };
 	const confirmDeleteBook = async () => {
 		if (book === null) return;
+		const token = viewTokenRef.current;
+		const bookId = book.id;
+		const request = ++impactRequestRef.current;
 		try {
-			const impact = await getLorebookAttachmentImpact(book.id);
+			const impact = await getLorebookAttachmentImpact(bookId);
+			if (request !== impactRequestRef.current || !isCurrentView(token, bookId)) return;
 			const attachments = impact?.attachments.map((attachment) =>
 				`${attachment.owner} ${attachment.ownerId} (${attachment.scope})`).join("\n") ?? "";
 			const detail = attachments.length === 0
@@ -238,31 +297,39 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				: `Deleting it also removes these attachments:\n${attachments}`;
 			setBookDeleteConfirmation({ name: book.name, detail });
 		} catch (error) {
+			if (request !== impactRequestRef.current || !isCurrentView(token, bookId)) return;
 			setNotice(error instanceof Error ? error.message : "Unable to load Lorebook deletion impact.");
 		}
 	};
 	const runMatchTest = async () => {
+		const request = ++matchRequestRef.current;
+		const token = viewTokenRef.current;
 		setTestPending(true);
 		setTestError(null);
 		try {
-			setTestResult(await testLorebookMatch(conversationId, testWriting));
+			const result = await testLorebookMatch(conversationId, testWriting);
+			if (request === matchRequestRef.current && token === viewTokenRef.current) setTestResult(result);
 		} catch (error) {
-			setTestError(error instanceof Error ? error.message : "Lorebook matching could not be tested.");
+			if (request === matchRequestRef.current && token === viewTokenRef.current) setTestError(error instanceof Error ? error.message : "Lorebook matching could not be tested.");
 		} finally {
-			setTestPending(false);
+			if (request === matchRequestRef.current) setTestPending(false);
 		}
 	};
 	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => {
+		const request = ++attachmentRequestRef.current;
+		const requestConversationId = conversationId;
 		setAttachmentPending(true);
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
+			if (request !== attachmentRequestRef.current || currentConversationIdRef.current !== requestConversationId) return;
 			if (result.status !== "applied") {
 				if (result.status === "conflict" && "conversationId" in result.currentState) setAttachmentState(result.currentState);
 				throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			}
-			setAttachmentState(await getLorebookAttachmentState(conversationId));
-		} catch { setNotice("Lorebook attachment settings could not be saved."); }
-		finally { setAttachmentPending(false); }
+			const state = await getLorebookAttachmentState(requestConversationId);
+			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setAttachmentState(state);
+		} catch { if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setNotice("Lorebook attachment settings could not be saved."); }
+		finally { if (request === attachmentRequestRef.current) setAttachmentPending(false); }
 	};
 	const saveChatSettings = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -271,6 +338,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	};
 	const enableLoreSlot = async () => {
 		if (selectedPreset === null) return;
+		const request = ++presetRequestRef.current;
+		const requestConversationId = conversationId;
 		setAttachmentPending(true);
 		try {
 			const lore = selectedPreset.slots.find((slot) => slot.reference === "lore");
@@ -278,11 +347,12 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				? await addPromptPresetReference(selectedPreset.id, "lore")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, lore.id, true);
 			if (outcome.status !== "applied") throw new Error("The Prompt Preset rejected the Lore block change.");
-			setSelectedPreset(await loadConversationPromptPreset(conversationId));
+			const preset = await loadConversationPromptPreset(requestConversationId);
+			if (request === presetRequestRef.current && currentConversationIdRef.current === requestConversationId) setSelectedPreset(preset);
 			setNotice(lore === undefined ? "Lore block added to the selected Prompt Preset." : "Lore block enabled in the selected Prompt Preset.");
 		} catch (error) {
-			setNotice(error instanceof Error ? error.message : "The Lore block could not be updated.");
-		} finally { setAttachmentPending(false); }
+			if (request === presetRequestRef.current && currentConversationIdRef.current === requestConversationId) setNotice(error instanceof Error ? error.message : "The Lore block could not be updated.");
+		} finally { if (request === presetRequestRef.current) setAttachmentPending(false); }
 	};
 	const exportBook = async () => {
 		if (book === null) return;
@@ -299,17 +369,23 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			setNotice(`Lorebook "${book.name}" could not be exported. Please try again.`);
 		} finally { setPending(false); }
 	};
-	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) }));
+	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => { entryDraftVersionRef.current += 1; setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) })); };
 	const importFile = async (file: File) => {
+		const token = viewTokenRef.current;
+		const request = ++libraryRequestRef.current;
 		setPending(true);
 		try {
 			const parsed: unknown = JSON.parse(await file.text());
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
-			if (result.status === "applied") { setBook(result.book); setName(result.book.name); setDescription(result.book.description); setBooks((items) => [...items, { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length }]); setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" ")); }
+			if (request !== libraryRequestRef.current || token !== viewTokenRef.current) return;
+			if (result.status === "applied") {
+				invalidateView();
+				setBook(result.book); setName(result.book.name); setDescription(result.book.description); setEntryId(null); setEntryDraft(blankEntry()); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setBooks((items) => [...items, { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length }]); setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
+			}
 			else setNotice(result.status === "invalid" ? result.reason : "The Lorebook import failed.");
-		} catch { setNotice("The selected file is not valid JSON."); } finally { setPending(false); }
+		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 
 	return <>
@@ -334,10 +410,10 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			<div className="flex gap-2"><input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /><Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button></div>
 			{book === null ? <div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div> : <>
 				<div className="flex items-center justify-between"><Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>← All Lorebooks</Button><div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void executeLorebookCommand({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button><Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete</Button></div></div>
-				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => setName(event.target.value)} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => setDescription(event.target.value)} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void executeLorebookCommand({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
-				<MatchTester writing={testWriting} onWritingChange={(value) => { setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
+				<section className="flex flex-col gap-2"><h2 className="text-sm font-medium">Book details</h2><input className="field-input" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void executeLorebookCommand({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
+				<MatchTester writing={testWriting} onWritingChange={(value) => { matchRequestRef.current += 1; setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
 				<section className="flex flex-col gap-2"><div className="flex items-center justify-between"><h2 className="text-sm font-medium">Entries</h2><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className="flex items-center gap-2 rounded-lg border border-border p-2" key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start truncate text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong>{entry.title || "Untitled entry"}</strong><span className="ml-2 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
-				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={setEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => setEntryDeleteConfirmation(true)} pending={pending} />}
+				{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={updateEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => setEntryDeleteConfirmation(true)} pending={pending} />}
 			</>}
 			{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
@@ -435,5 +511,5 @@ function secondarySummary(entry: LoreMatchTest["matches"][number]) {
 
 function EntryEditor({ entry, onChange, onListChange, onSave, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => void; onSave: () => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3"><h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3><input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only title" aria-label="Entry title" /><textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal content" aria-label="Entry content" />{entryListKeys.map((key) => <input key={key} className="field-input" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} placeholder={key} aria-label={key} />)}<div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={entry.always} onChange={(event) => set("always", event.target.checked)} /> Always</label><label><input type="checkbox" checked={entry.enabled} onChange={(event) => set("enabled", event.target.checked)} /> Enabled</label><label><input type="checkbox" checked={entry.caseSensitive} onChange={(event) => set("caseSensitive", event.target.checked)} /> Case sensitive</label><label><input type="checkbox" checked={entry.wholeWord} onChange={(event) => set("wholeWord", event.target.checked)} /> Whole word</label><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className="field-input inline-block w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className="field-input inline-block w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className="field-input inline-block w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div><Button type="button" size="sm" className="self-start" disabled={pending} onClick={onSave}>Save entry</Button>{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}</section>;
+	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3"><h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3><input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only title" aria-label="Entry title" /><textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal content" aria-label="Entry content" />{entryListKeys.map((key) => <textarea key={key} className="field-input min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} placeholder={`${key} (one expression per line; commas are literal)`} aria-label={key} />)}<div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={entry.always} onChange={(event) => set("always", event.target.checked)} /> Always</label><label><input type="checkbox" checked={entry.enabled} onChange={(event) => set("enabled", event.target.checked)} /> Enabled</label><label><input type="checkbox" checked={entry.caseSensitive} onChange={(event) => set("caseSensitive", event.target.checked)} /> Case sensitive</label><label><input type="checkbox" checked={entry.wholeWord} onChange={(event) => set("wholeWord", event.target.checked)} /> Whole word</label><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className="field-input inline-block w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className="field-input inline-block w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className="field-input inline-block w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div><Button type="button" size="sm" className="self-start" disabled={pending} onClick={onSave}>Save entry</Button>{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}</section>;
 }
