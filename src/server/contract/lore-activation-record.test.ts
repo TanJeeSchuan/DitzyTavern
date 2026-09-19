@@ -95,6 +95,65 @@ describe("permanent Lore Activation Records", () => {
 		})).toThrow("server-owned provenance");
 	});
 
+	test("reports corrupt persisted records through detail contracts", async () => {
+		const created = createConversationModule(database).create({
+			name: "Corrupt lore details",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		const module = createConversationModule(database);
+		const accepted = module.acceptTailGeneration({
+			conversationId: created.id,
+			expectedRevision: created.revision,
+			timestamp: "2026-09-17T10:00:00Z",
+			humanContent: "Mention the tower.",
+			humanParticipantId: created.cast[0]!.id,
+			modelParticipantId: created.cast[1]!.id,
+			capturedHumanName: "Writer",
+			capturedModelName: "Maren",
+			promptPlan: { blocks: [], warnings: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: null,
+			loreActivation: evidence,
+		});
+		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", ["{", accepted.generationId]);
+		const app = createConversationRoutes(database);
+		const inspection = await app.handle(new Request(
+			`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`,
+		));
+		expect(inspection.status).toBe(422);
+		expect(await inspection.json()).toEqual({
+			outcome: "invalid",
+			reason: "Persisted Lore Activation Record is not valid JSON.",
+		});
+
+		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", [JSON.stringify(evidence), accepted.generationId]);
+		module.resolveGeneration({
+			conversationId: created.id,
+			generationId: accepted.generationId,
+			timestamp: "2026-09-17T10:00:01Z",
+			content: "The tower appeared.",
+		});
+		const message = module.getSnapshot(created.id)!.messages.at(-1)!;
+		const variant = message.variants.at(-1)!;
+		database.run(
+			"UPDATE message_variant_data SET value = ? WHERE message_variant_id = ? AND namespace = ? AND key = ?",
+			["{\"version\":1}", variant.id, "lore-activation", "record"],
+		);
+		const details = await app.handle(new Request(
+			`http://localhost/api/conversations/${created.id}/messages/${message.id}/variants/${variant.id}/details`,
+		));
+		expect(details.status).toBe(422);
+		expect(await details.json()).toEqual({
+			outcome: "invalid",
+			reason: "Persisted Lore Activation Record does not match the canonical schema.",
+		});
+	});
+
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
 		const created = createConversationModule(database).create({
 			name: "Interrupted lore",

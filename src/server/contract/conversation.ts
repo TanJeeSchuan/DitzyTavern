@@ -86,6 +86,7 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
+import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
 
 const withConversationModule = <T>(
 	database: Database | undefined,
@@ -325,31 +326,43 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/generations/:generationId/inspection",
-			({ params }) =>
-				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readActiveGenerationDetails(
-						params.id,
-						params.generationId,
-					),
-				),
+			({ params }) => {
+				try {
+					return readConversationOr404(database, (conversationModule) =>
+						conversationModule.readActiveGenerationDetails(
+							params.id,
+							params.generationId,
+						),
+					);
+				} catch (error) {
+					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					throw error;
+				}
+			},
 			{
 				params: generationIdParams,
-				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+				response: { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome },
 			},
 		)
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
-			({ params }) =>
-				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readVariantDetails(
-						params.id,
-						params.messageId,
-						params.variantId,
-					),
-				),
+			({ params }) => {
+				try {
+					return readConversationOr404(database, (conversationModule) =>
+						conversationModule.readVariantDetails(
+							params.id,
+							params.messageId,
+							params.variantId,
+						),
+					);
+				} catch (error) {
+					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					throw error;
+				}
+			},
 			{
 				params: variantIdParams,
-				response: { 200: variantDetails, 404: notFoundOutcome },
+				response: { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome },
 			},
 		)
 		.get(
