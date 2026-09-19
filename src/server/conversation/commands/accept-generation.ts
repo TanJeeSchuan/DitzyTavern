@@ -49,6 +49,7 @@ import type {
 	ConversationSummary,
 } from "../types";
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
+import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -108,6 +109,12 @@ const persistActiveGeneration = (
 	db: ConversationDatabase,
 	input: PersistActiveGenerationInput,
 ): number => {
+	const loreActivation = input.loreActivation ?? null;
+	if (loreActivation !== null && !isLoreActivationRecord(loreActivation)) {
+		throw new InvalidConversationCommandError(
+			"The Lore Activation Record does not match the canonical schema.",
+		);
+	}
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -126,7 +133,7 @@ const persistActiveGeneration = (
 			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
-			lore_activation_json: jsonText(input.loreActivation ?? null, "Lore activation evidence"),
+			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,

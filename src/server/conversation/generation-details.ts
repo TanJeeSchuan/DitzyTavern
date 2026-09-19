@@ -15,7 +15,7 @@ import {
 	messageVariantTable,
 	participantTable,
 } from "../database/schema";
-import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, loreActivationRecord, type LoreActivationRecord } from "../../shared/contract/lore-activation";
+import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, parseLoreActivationRecord, type LoreActivationRecord } from "../../shared/contract/lore-activation";
 import {
 	connectConversationDatabase,
 	readActiveCast,
@@ -135,11 +135,6 @@ const safeProvenance = (
 	data: readonly { namespace: string; key: string; value: string }[],
 ): GenerationProvenance | null => generationProvenanceCodec.decodeStored(value, data);
 
-const persistedLoreActivation = (value: ConversationJsonValue): LoreActivationRecord | null =>
-	// ==[HUMAN APPROVED]== SAFETY: Value.Check validates the complete persisted record shape before this
-	// projection crosses the server-owned details boundary.
-	Value.Check(loreActivationRecord, value) ? value as LoreActivationRecord : null;
-
 const deriveGenerationStatus = (
 	active: boolean,
 	terminalStatus: string | null | undefined,
@@ -203,7 +198,7 @@ export function readActiveGenerationDetailsFromConnection(
 	const inspectionRecord = generationJsonObject(inspection);
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
-	const loreActivation = persistedLoreActivation(parseGenerationJson(row.lore_activation_json, null));
+	const loreActivation = parseLoreActivationRecord(row.lore_activation_json);
 	return {
 		conversationId,
 		generationId: row.id,
@@ -278,7 +273,7 @@ export function readVariantDetailsFromConnection(
 	if (provenanceEntry !== undefined) provenanceValue = parseGenerationJson(provenanceEntry.value, null);
 	const loreActivation = loreActivationEntry === undefined
 		? null
-		: persistedLoreActivation(parseGenerationJson(loreActivationEntry.value, null));
+		: parseLoreActivationRecord(loreActivationEntry.value);
 	const castIds = message.author_participant_id === null
 		? new Set<number>()
 		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));

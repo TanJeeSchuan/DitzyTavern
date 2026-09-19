@@ -35,7 +35,7 @@ import { macroWritesToData, parseMacroWrites } from "../../prompt-macros";
 import {
 	LORE_ACTIVATION_KEY,
 	LORE_ACTIVATION_NAMESPACE,
-	isLoreActivationRecord,
+	parseLoreActivationRecord,
 } from "../../../shared/contract/lore-activation";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
@@ -183,8 +183,15 @@ const terminalMacroData = (active: ActiveGenerationRow): ConversationDataEntry[]
 };
 
 const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
-	const value = parseGenerationJson(active.lore_activation_json, null);
-	if (!isLoreActivationRecord(value)) return [];
+	let value;
+	try {
+		value = parseLoreActivationRecord(active.lore_activation_json);
+	} catch (error) {
+		throw new InvalidConversationCommandError(
+			error instanceof Error ? error.message : "The Active Generation has invalid persisted Lore Activation evidence.",
+		);
+	}
+	if (value === null) return [];
 	return [{
 		namespace: LORE_ACTIVATION_NAMESPACE,
 		key: LORE_ACTIVATION_KEY,
