@@ -18,18 +18,17 @@ import type { GenerationSettingsDraftController } from "./useGenerationSettingsD
 import type { SplitInspector } from "./panel-coordination";
 import type { PrimaryPanel } from "./types";
 
-// ==[HUMAN APPROVED]== Panels that share the parent-rendered header state their title here. Chats and
-// Prompt Presets render their own header (the preset panel owns the
+// ==[HUMAN APPROVED]== Panels that share the parent-rendered header state their title here. Chats,
+// Prompt Presets, and Lorebooks render their own header (those panels own the
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.
 const sharedHeaderTitles = {
 	cast: "Cast",
 	library: "Character Library",
-	lorebooks: "Lorebooks",
 	models: "Model Settings",
 	generation: "Generation Settings",
 	settings: "Settings",
-} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | null>, string>;
+} satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | null>, string>;
 
 export function PrimaryPanelView({
 	panel,
@@ -74,7 +73,7 @@ export function PrimaryPanelView({
 	onOpenInspector: (inspector: SplitInspector) => void;
 	mutationsDisabled?: boolean;
 }) {
-	const headerTitle = panel === null || panel === "chats" || panel === "prompts"
+	const headerTitle = panel === null || panel === "chats" || panel === "prompts" || panel === "lorebooks"
 		? undefined
 		: sharedHeaderTitles[panel];
 	return (
