@@ -326,10 +326,10 @@ export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
 
 /** ==[HUMAN APPROVED]==
  * Read the deterministic inputs for one attempt through the focused Conversation seams. The
- * returned object is safe to retain: compilation and preview validation can use it without
- * rereading mutable history or executing macros.
+ * returned snapshot is safe to retain while the canonical async preparation completes semantic
+ * evaluation: compilation and preview validation never reread mutable history or execute macros.
  */
-export function prepareGenerationInputs(
+function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
 ): GenerationPreparation {
 	const { summary, recipe, settings, selected, connection } = runConversationReadTransaction(
@@ -451,19 +451,18 @@ export function prepareGenerationInputs(
 }
 
 /** ==[HUMAN APPROVED]==
- * Capture the same immutable inputs as prepareGenerationInputs, completing the one
+ * Capture the same immutable inputs as prepareGenerationInputsSnapshot, completing the one
  * asynchronous semantic pass before a Generation Plan is compiled. Every caller
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
 export async function prepareGenerationInputsAsync(
 	input: PrepareGenerationInputs,
-	capturedPreparation?: GenerationPreparation,
 ): Promise<GenerationPreparation> {
-	// ==[HUMAN APPROVED]== Active Generations pass their already-captured preparation here. The
-	// semantic request may suspend, but books, attachments, history, settings, and
-	// participant data must remain the exact values captured before that suspension.
-	const preparation = capturedPreparation ?? prepareGenerationInputs(input);
+	// ==[HUMAN APPROVED]== The snapshot is captured before semantic work can suspend, so books,
+	// attachments, history, settings, and participant data remain the exact values observed at
+	// generation start.
+	const preparation = prepareGenerationInputsSnapshot(input);
 	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
 	const needsSemantic = preparation.lore.activation.mode === "keyword-fallback";
 	if (!needsSemantic) return preparation;
@@ -739,46 +738,6 @@ export type SiblingGenerationCaptureInput = GenerationCaptureInput & { messageId
 // ==[HUMAN APPROVED]== Build the candidate Prompt Plan without writing it. A retry reuses the
 // already accepted trailing human Message; a fresh Send appends the submitted
 // human writing to the selected narrative path before budgeting.
-export function captureSendGeneration(
-	input: SendGenerationCaptureInput,
-): SendGenerationCapture {
-	const { conversationId, content } = input;
-	const preparation = prepareGenerationInputs({
-		database: input.database,
-		conversationId,
-		kind: "send",
-		content,
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-	});
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
-	// ==[HUMAN APPROVED]== A fresh Send budgets the submitted human writing as part of the context;
-	// a retry reuses the already accepted trailing human Message, which is
-	// already in it.
-	const submitted = reuseHumanMessageId === undefined
-		? {
-			...derivation,
-			context: [...derivation.context, {
-				kind: "message",
-				speakerName: derivation.human.name,
-				content,
-				role: "human",
-			}] satisfies readonly PromptContextEntry[],
-		}
-		: derivation;
-	// ==[HUMAN APPROVED]== An ordinary Tail Generation carries no Continuation intent, so the
-	// compiled plan has no applicable Continuation operand either.
-	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
-	return {
-		...toCapturedGeneration(preparation, derivation, configuration, plan),
-		humanContent: content,
-		reuseHumanMessageId,
-	};
-}
-
 export interface ContinuationGenerationCapture extends CapturedGeneration {
 	precedingMessageId: number;
 	precedingVariantId: number;
@@ -786,78 +745,9 @@ export interface ContinuationGenerationCapture extends CapturedGeneration {
 	assistantPrefill?: AssistantPrefill;
 }
 
-export function captureContinuationGeneration(
-	input: GenerationCaptureInput,
-): ContinuationGenerationCapture {
-	const { conversationId } = input;
-	const preparation = prepareGenerationInputs({
-		database: input.database,
-		conversationId,
-		kind: "continuation",
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-	});
-	const { derivation } = preparation;
-	const latest = preparation.participation.messages.at(-1);
-	const selected = latest?.variant;
-	if (latest === undefined || selected === null || selected === undefined) {
-		throw new ContinuationUnavailableError("not-terminal-model-message");
-	}
-	const configuration = captureConfigurationFromPreparation(preparation);
-	if (configuration.settings.continuationStrategy !== "instruction") {
-		if (selected.content.length === 0) {
-			throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
-		}
-	}
-	const intent = continuationIntentFor(configuration.settings);
-	// ==[HUMAN APPROVED]== The compiler owns intent applicability: an assistant-prefill Continuation
-	// protects its prefixed model text, an instruction Continuation protects
-	// the latest human entry, and the effective settings retain exactly the
-	// applicable Continuation operand.
-	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
-	return {
-		...toCapturedGeneration(preparation, derivation, configuration, plan),
-		precedingMessageId: latest.id,
-		precedingVariantId: selected.id,
-		intent,
-		assistantPrefill: configuration.settings.continuationStrategy === "assistant-prefill"
-			? {
-				prefix: selected.content,
-				suffix: configuration.settings.continuationPrefillSuffix,
-			}
-			: undefined,
-	};
-}
-
-export function captureSiblingGeneration(
-	input: SiblingGenerationCaptureInput,
-): CapturedGeneration {
-	const { conversationId } = input;
-	const preparation = prepareGenerationInputs({
-		database: input.database,
-		conversationId,
-		kind: "sibling",
-		messageId: input.messageId,
-		connection: input.connection,
-		connectionSettings: input.connectionSettings,
-		formatting: input.formatting,
-	});
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	// ==[HUMAN APPROVED]== A Sibling Generation carries the sibling intent and no applicable
-	// Continuation operand.
-	const plan = compilePlanFrom(derivation, configuration, {
-		intent: { type: "sibling" },
-		estimator: input.tokenEstimator,
-	});
-	return toCapturedGeneration(preparation, derivation, configuration, plan);
-}
-
 /** ==[HUMAN APPROVED]== Semantic counterparts used by Generation/inspection entry points. */
 export async function captureSendGenerationAsync(
 	input: SendGenerationCaptureInput,
-	captured?: SendGenerationCapture,
 ): Promise<SendGenerationCapture> {
 	const { conversationId } = input;
 	const content = input.content;
@@ -870,7 +760,7 @@ export async function captureSendGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	}, captured?.preparation);
+	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
 	const reuseHumanMessageId = sendReuseTargetOf(preparation)?.messageId;
@@ -883,7 +773,6 @@ export async function captureSendGenerationAsync(
 
 export async function captureContinuationGenerationAsync(
 	input: GenerationCaptureInput,
-	captured?: ContinuationGenerationCapture,
 ): Promise<ContinuationGenerationCapture> {
 	const preparation = await prepareGenerationInputsAsync({
 		database: input.database,
@@ -893,7 +782,7 @@ export async function captureContinuationGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	}, captured?.preparation);
+	});
 	const { derivation } = preparation;
 	const latest = preparation.participation.messages.at(-1);
 	const selected = latest?.variant;
@@ -917,7 +806,6 @@ export async function captureContinuationGenerationAsync(
 
 export async function captureSiblingGenerationAsync(
 	input: SiblingGenerationCaptureInput,
-	captured?: CapturedGeneration,
 ): Promise<CapturedGeneration> {
 	const preparation = await prepareGenerationInputsAsync({
 		database: input.database,
@@ -928,7 +816,7 @@ export async function captureSiblingGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
-	}, captured?.preparation);
+	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
 	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });

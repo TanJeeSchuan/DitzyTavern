@@ -102,7 +102,7 @@ interface GenerationLifecyclePolicy<
 		database: Database,
 		conversationId: number,
 		input: Input,
-	) => Capture | Promise<Capture>;
+	) => Promise<Capture>;
 	accept: (
 		conversation: ConversationModule,
 		input: Input,
@@ -152,8 +152,7 @@ async function runGenerationLifecycle<
 	) {
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const captured = policy.capture(database, input.conversationId, input);
-	const capture = captured instanceof Promise ? await captured : captured;
+	const capture = await policy.capture(database, input.conversationId, input);
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);

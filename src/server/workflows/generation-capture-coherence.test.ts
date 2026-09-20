@@ -11,11 +11,8 @@ import {
 import { importNativeLorebook, executeLorebookCommand } from "../lorebook/library";
 import { attachLorebookToConversation } from "../lorebook/attachments";
 import {
-	captureContinuationGeneration,
 	captureContinuationGenerationAsync,
-	captureSendGeneration,
 	captureSendGenerationAsync,
-	captureSiblingGeneration,
 	captureSiblingGenerationAsync,
 } from "./generate-capture";
 import {
@@ -124,15 +121,12 @@ describe("generation capture coherence", () => {
 			const input = { database: state.database, conversationId: state.conversationId, embeddingFetch };
 			const pending = (() => {
 				if (kind === "send") {
-					const captured = captureSendGeneration({ ...input, content: "signal" });
-					return captureSendGenerationAsync({ ...input, content: "signal" }, captured);
+					return captureSendGenerationAsync({ ...input, content: "signal" });
 				}
 				if (kind === "continuation") {
-					const captured = captureContinuationGeneration(input);
-					return captureContinuationGenerationAsync(input, captured);
+					return captureContinuationGenerationAsync(input);
 				}
-				const captured = captureSiblingGeneration({ ...input, messageId: targetMessageId });
-				return captureSiblingGenerationAsync({ ...input, messageId: targetMessageId }, captured);
+				return captureSiblingGenerationAsync({ ...input, messageId: targetMessageId });
 			})();
 
 			await semanticStarted;
