@@ -56,6 +56,14 @@ const projectPromptPreset = (
 				content: slot.content,
 			};
 		}
+		if (slot.reference === "lore") {
+			return {
+				id: slot.id,
+				reference: slot.reference,
+				enabled: slot.enabled,
+				role: slot.role,
+			};
+		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = owners[referenced.owner];
 		return {

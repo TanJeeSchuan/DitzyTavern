@@ -1,5 +1,6 @@
 import {
 	BookOpen,
+	BookMarked,
 	Cpu,
 	ListOrdered,
 	MessageSquare,
@@ -43,6 +44,13 @@ export function NavigationRail({
 					onClick={() => onOpenPanel("library")}
 				>
 					<BookOpen aria-hidden="true" />
+				</RailButton>
+				<RailButton
+					label="Lorebooks"
+					active={activePanel === "lorebooks"}
+					onClick={() => onOpenPanel("lorebooks")}
+				>
+					<BookMarked aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Prompt Presets"

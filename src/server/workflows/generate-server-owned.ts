@@ -11,6 +11,7 @@ import {
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
+import type { ModelFetch } from "../model-client/types";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 
 // ==[HUMAN APPROVED]== Detached server-owned Generation scaffolding: the attempt input shared by
@@ -51,6 +52,8 @@ export interface GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Initiating-client formatting context. The capture
 	// carries this one value through budgeting and send.
 	formatting?: GenerationFormattingContext;
+	/** ==[HUMAN APPROVED]== Optional embedding transport seam; production uses the standard fetch implementation. */
+	embeddingFetch?: ModelFetch;
 }
 
 /** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */

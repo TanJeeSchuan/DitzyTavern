@@ -7,7 +7,7 @@ import { checkpointConversationGeneration, resolveConversationGeneration } from 
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import {
-	captureSendGeneration,
+	captureSendGenerationAsync,
 	capturedAcceptanceFields,
 } from "./generate-capture";
 import { recoverActiveGenerations } from "./generation-recovery";
@@ -18,7 +18,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	test("threads recipe writes and carries only the selected Variant's resolved journal", () => {
+	test("threads recipe writes and carries only the selected Variant's resolved journal", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Macro variables",
 			participants: [
@@ -53,7 +53,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
 		});
 
-		const first = captureSendGeneration({ database, conversationId: conversation.id, content: "Hello" });
+		const first = await captureSendGenerationAsync({ database, conversationId: conversation.id, content: "Hello" });
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");
 		expect(first.macroWrites).toEqual([
 			{ name: "turn", value: 6, operation: "set" },
@@ -80,11 +80,11 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const second = captureSendGeneration({ database, conversationId: after.id, content: "Again" });
+		const second = await captureSendGenerationAsync({ database, conversationId: after.id, content: "Again" });
 		expect(second.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=7");
 	});
 
-	test("records one-time opening writes on the selected greeting Variant", () => {
+	test("records one-time opening writes on the selected greeting Variant", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Macro greeting",
 			participants: [
@@ -113,11 +113,11 @@ describe("Conversation-persistent prompt macro variables", () => {
 		expect(readMacroWrites(greetingVariant.data, 1)).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
-		const capture = captureSendGeneration({ database, conversationId: snapshot.id, content: "Again" });
+		const capture = await captureSendGenerationAsync({ database, conversationId: snapshot.id, content: "Again" });
 		expect(capture.plan.promptPlan.blocks.map((block) => block.content)).toContain("greeted=yes");
 	});
 
-	test("retains pending writes when restart recovery terminalizes checkpointed output", () => {
+	test("retains pending writes when restart recovery terminalizes checkpointed output", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Recover macro writes",
 			participants: [
@@ -138,7 +138,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const capture = captureSendGeneration({ database, conversationId: conversation.id, content: "Hello" });
+		const capture = await captureSendGenerationAsync({ database, conversationId: conversation.id, content: "Hello" });
 		const accepted = acceptConversationTailGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,

@@ -3,18 +3,20 @@ import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	activeGenerationTable,
+	characterLorebookAttachmentTable,
 	characterTable,
 	conversationControlTable,
 	messageTable,
 	messageVariantTable,
 	participantOpeningTable,
 	participantPromptTable,
+	participantLorebookAttachmentTable,
 	participantTable,
 	toPromptChannelRow,
 } from "../database/schema";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
-import { isImportOwnedDataNamespace } from "../../shared/import-data";
+import { isServerOwnedDataNamespace } from "../../shared/import-data";
 import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	InvalidConversationCommandError,
@@ -301,9 +303,9 @@ export const hasRetainedParticipantReference = (
 // at Conversation creation (ADR-0028); no generic write or delete may ever
 // address them, in any scope.
 export const requireGenericDataNamespace = (namespace: string): void => {
-	if (isImportOwnedDataNamespace(namespace)) {
+	if (isServerOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(
-			`The ${namespace} namespace is import-owned provenance; generic data commands cannot address it.`,
+			`The ${namespace} namespace is server-owned provenance; generic data commands cannot address it.`,
 		);
 	}
 	if (isMacroDataNamespace(namespace)) {
@@ -419,6 +421,16 @@ export const insertParticipant = (
 				})),
 			)
 			.run();
+	}
+	if (sourceCharacterId !== null) {
+		const attachments = db.select().from(characterLorebookAttachmentTable)
+			.where(eq(characterLorebookAttachmentTable.character_id, sourceCharacterId)).all();
+		if (attachments.length > 0) db.insert(participantLorebookAttachmentTable).values(attachments.map((row) => ({
+			participant_id: inserted.id,
+			lorebook_id: row.lorebook_id,
+			scope: row.scope,
+			enabled: row.enabled,
+		}))).run();
 	}
 
 	return { id: inserted.id, name, openings };

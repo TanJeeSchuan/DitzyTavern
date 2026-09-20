@@ -64,7 +64,7 @@ import {
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
-	createGenerationPreview,
+	createGenerationPreviewAsync,
 	previewRecordFor,
 	type GenerationPreviewAcceptanceFor,
 	type GenerationPreviewKind,
@@ -86,6 +86,7 @@ import {
 	notFoundOutcome,
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
+import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
 
 const withConversationModule = <T>(
 	database: Database | undefined,
@@ -265,20 +266,21 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations/preview",
-			({ params, body }) => {
+			async ({ params, body }) => {
 				try {
 					const common = {
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
+						embeddingFetch: options.fetch,
 					};
 					const input = body.kind === "send"
 						? { ...common, kind: body.kind, content: body.content }
 						: body.kind === "sibling"
 							? { ...common, kind: body.kind, messageId: body.messageId }
 							: { ...common, kind: body.kind };
-					const preview = withDatabase(database, (connection) =>
-						createGenerationPreview(connection, input));
+					const preview = await withDatabase(database, (connection) =>
+						createGenerationPreviewAsync(connection, input));
 					const capture = preview.capture.capture;
 					return {
 						outcome: "available" as const,
@@ -292,6 +294,7 @@ export const createConversationRoutes = (
 						},
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
+						loreActivation: capture.plan.loreActivation,
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,
@@ -323,31 +326,43 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/generations/:generationId/inspection",
-			({ params }) =>
-				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readActiveGenerationDetails(
-						params.id,
-						params.generationId,
-					),
-				),
+			({ params }) => {
+				try {
+					return readConversationOr404(database, (conversationModule) =>
+						conversationModule.readActiveGenerationDetails(
+							params.id,
+							params.generationId,
+						),
+					);
+				} catch (error) {
+					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					throw error;
+				}
+			},
 			{
 				params: generationIdParams,
-				response: { 200: activeGenerationDetails, 404: notFoundOutcome },
+				response: { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome },
 			},
 		)
 		.get(
 			"/api/conversations/:id/messages/:messageId/variants/:variantId/details",
-			({ params }) =>
-				readConversationOr404(database, (conversationModule) =>
-					conversationModule.readVariantDetails(
-						params.id,
-						params.messageId,
-						params.variantId,
-					),
-				),
+			({ params }) => {
+				try {
+					return readConversationOr404(database, (conversationModule) =>
+						conversationModule.readVariantDetails(
+							params.id,
+							params.messageId,
+							params.variantId,
+						),
+					);
+				} catch (error) {
+					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					throw error;
+				}
+			},
 			{
 				params: variantIdParams,
-				response: { 200: variantDetails, 404: notFoundOutcome },
+				response: { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome },
 			},
 		)
 		.get(

@@ -2,6 +2,7 @@ import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { Switch } from "radix-ui";
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../workspace";
+import { EmbeddingSettingsEditor } from "./EmbeddingSettingsEditor";
 
 export function SettingsPanel({
 	theme,
@@ -57,7 +58,7 @@ export function SettingsPanel({
 					</Switch.Root>
 				</div>
 			</section>
+			<EmbeddingSettingsEditor />
 		</div>
 	);
 }
-

@@ -17,12 +17,16 @@ import {
 	budgetPromptPlan,
 	compilePrompt,
 	PromptBudgetExceededError,
+	toEstimationTranscript,
+	tokenxEstimator,
 	type GenerationIntent,
 	type PromptPlan,
 	type PromptContextEntry,
+	type PromptLoreEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
 	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,
@@ -126,12 +130,22 @@ export const compileGenerationPlan = (
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
-	const compile = (context: readonly PromptContextEntry[]): PromptPlan => {
+	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
+	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
+	const loreAllowance = input.loreAllowance ?? 2_048;
+	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
+		throw new Error("Lore allowance must be a non-negative whole number.");
+	}
+	const compileWith = (
+		context: readonly PromptContextEntry[],
+		lore: readonly PromptLoreEntry[],
+	): PromptPlan => {
 		const compiled = compilePrompt({
 			human: input.human,
 			model: input.model,
 			context,
 			recipe: input.recipe,
+			lore,
 			attempt,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
@@ -150,6 +164,23 @@ export const compileGenerationPlan = (
 			"An assistant-prefill Continuation requires preceding model history to prefill from.",
 		);
 	}
+	const loreProtectedIndex = protectedHistoryIndex ?? [...input.context.keys()]
+		.reverse()
+		.find((index) => input.context[index]?.role === "human");
+	const protectedContext = loreProtectedIndex === undefined
+		? []
+		: [input.context[loreProtectedIndex]];
+	const loreAdmission = admitLore({
+		candidates,
+		compile: compileWith,
+		protectedContext,
+		contextLimit: input.settings.contextLimit,
+		responseBudget: input.settings.responseBudget,
+		safetyAllowance: input.settings.safetyAllowance,
+		loreAllowance,
+		estimator: input.estimator ?? tokenxEstimator,
+	});
+	const compile = (context: readonly PromptContextEntry[]): PromptPlan => compileWith(context, loreAdmission.selected);
 	const budget = budgetPromptPlan({
 		plan: compile(input.context),
 		compile,
@@ -163,12 +194,103 @@ export const compileGenerationPlan = (
 	return {
 		promptPlan: budget.plan,
 		budget,
+		loreActivation: input.loreActivation === undefined || input.loreActivation === null
+			? null
+			: withLoreBudgetEvidence(input.loreActivation, candidates, loreAdmission.decisions, loreAllowance),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,
 		),
 	};
+};
+
+const withLoreBudgetEvidence = (
+	record: NonNullable<CompileGenerationPlanInput["loreActivation"]>,
+	candidates: readonly PromptLoreEntry[],
+	decisions: readonly LoreBudgetDecision[],
+	allowance: number,
+): NonNullable<CompileGenerationPlanInput["loreActivation"]> => {
+	const evidence = Array.isArray(record.evidence)
+		? [...record.evidence]
+		: [record.evidence];
+	const admissionEvidence: GenerationJsonValue = {
+		budget: {
+			allowance,
+			candidates: candidates.map((candidate) => ({
+				bookId: candidate.bookId ?? null,
+				entryId: candidate.entryId ?? null,
+				admitted: decisions.find((decision) => decision.candidate === candidate)?.reason === "admitted",
+				reason: decisions.find((decision) => decision.candidate === candidate)?.reason ?? "allowance",
+			})),
+		},
+	};
+	return { ...record, evidence: [...evidence, admissionEvidence] };
+};
+
+const orderedLore = (entries: readonly PromptLoreEntry[]): PromptLoreEntry[] => [...entries].sort((left, right) => {
+	if (left.always !== right.always) return left.always === true ? -1 : 1;
+	const priority = (right.priority ?? 0) - (left.priority ?? 0);
+	if (priority !== 0) return priority;
+	const book = (left.bookOrder ?? 0) - (right.bookOrder ?? 0);
+	if (book !== 0) return book;
+	return (left.entryOrder ?? 0) - (right.entryOrder ?? 0);
+});
+
+type LoreBudgetDecision = {
+	candidate: PromptLoreEntry;
+	reason: "admitted" | "allowance" | "oversized" | "context-limit";
+};
+
+type LoreAdmission = {
+	selected: PromptLoreEntry[];
+	decisions: LoreBudgetDecision[];
+};
+
+const admitLore = (input: {
+	candidates: readonly PromptLoreEntry[];
+	compile: (context: readonly PromptContextEntry[], lore: readonly PromptLoreEntry[]) => PromptPlan;
+	protectedContext: readonly PromptContextEntry[];
+	contextLimit: number;
+	responseBudget: number;
+	safetyAllowance: number;
+	loreAllowance: number;
+	estimator: (transcript: string) => number;
+}): LoreAdmission => {
+	if (input.candidates.length === 0) return { selected: [], decisions: [] };
+	if (input.loreAllowance === 0) {
+		return {
+			selected: [],
+			decisions: input.candidates.map((candidate) => ({ candidate, reason: "allowance" })),
+		};
+	}
+	const base = input.compile(input.protectedContext, []);
+	const baseEstimate = Math.ceil(input.estimator(toEstimationTranscript(base)));
+	const selected: PromptLoreEntry[] = [];
+	const decisions: LoreBudgetDecision[] = [];
+	for (const candidate of input.candidates) {
+		const individualTrial = input.compile(input.protectedContext, [candidate]);
+		const individualEstimate = Math.ceil(input.estimator(toEstimationTranscript(individualTrial)));
+		const candidateEstimate = Math.max(0, individualEstimate - baseEstimate);
+		const trial = input.compile(input.protectedContext, [...selected, candidate]);
+		const estimate = Math.ceil(input.estimator(toEstimationTranscript(trial)));
+		const loreEstimate = Math.max(0, estimate - baseEstimate);
+		if (candidateEstimate > input.loreAllowance) {
+			decisions.push({ candidate, reason: "oversized" });
+			continue;
+		}
+		if (loreEstimate > input.loreAllowance) {
+			decisions.push({ candidate, reason: "allowance" });
+			continue;
+		}
+		if (estimate + input.responseBudget + input.safetyAllowance > input.contextLimit) {
+			decisions.push({ candidate, reason: "context-limit" });
+			continue;
+		}
+		selected.push(candidate);
+		decisions.push({ candidate, reason: "admitted" });
+	}
+	return { selected, decisions };
 };
 
 /**

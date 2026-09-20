@@ -13,6 +13,7 @@ import {
 	openingsFromText,
 	type Drafts,
 } from "./definition";
+import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 
 export function CharacterEditor({
 	snapshot,
@@ -184,6 +185,8 @@ export function CharacterEditor({
 				</div>
 			</section>
 
+			<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null} />
+
 			<section className="editor-section">
 				<h3>Delete</h3>
 				<p className="panel-note">{deleteCopy.impact}</p>
@@ -233,4 +236,3 @@ export function CharacterEditor({
 		</div>
 	);
 }
-

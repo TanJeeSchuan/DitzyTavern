@@ -7,7 +7,7 @@ Object.defineProperty(globalThis, "window", {
 	// SAFETY: the test supplies the minimal browser location read by Eden.
 	value: { location: { origin: "http://localhost" } } as Window,
 });
-const { loadActiveGenerationDetails } = await import("./conversation");
+const { loadActiveGenerationDetails, loadVariantDetails } = await import("./conversation");
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -75,5 +75,23 @@ describe("Generation details client", () => {
 		installFetch(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
 
 		expect(await loadActiveGenerationDetails(3, 7)).toEqual({ status: "not-found" });
+	});
+
+	test("reports a corrupt retained inspection with the server reason", async () => {
+		installFetch(async () => Response.json({ outcome: "invalid", reason: "Stored Lore activation evidence is invalid." }, { status: 422 }));
+
+		expect(await loadActiveGenerationDetails(3, 7)).toEqual({
+			status: "invalid",
+			reason: "Stored Lore activation evidence is invalid.",
+		});
+	});
+
+	test("reports corrupt Variant details with the server reason", async () => {
+		installFetch(async () => Response.json({ outcome: "invalid", reason: "Stored Lore activation evidence is invalid." }, { status: 422 }));
+
+		expect(await loadVariantDetails(3, 11, 13)).toEqual({
+			status: "invalid",
+			reason: "Stored Lore activation evidence is invalid.",
+		});
 	});
 });

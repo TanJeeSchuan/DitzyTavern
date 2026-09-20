@@ -74,6 +74,16 @@ describe("Prompt Preset stored contract boundary", () => {
 			`UPDATE prompt_preset_block SET role = NULL WHERE id = ${instruction.id}`,
 		)).toThrow("CHECK constraint failed");
 	});
+
+	test("enforces one Lore block at the persistence boundary, including disabled blocks", () => {
+		const lore = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "lore");
+		if (lore === undefined) throw new Error("The Default recipe is missing its Lore block.");
+
+		database.exec(`UPDATE prompt_preset_block SET enabled = 0 WHERE id = ${lore.id}`);
+		expect(() => database.exec(
+			"INSERT INTO prompt_preset_block (preset_id, position, reference, enabled, role) VALUES (1, 99, 'lore', 1, 'system')",
+		)).toThrow("UNIQUE constraint failed");
+	});
 });
 
 describe("Prompt Preset transport", () => {
@@ -95,6 +105,7 @@ describe("Prompt Preset transport", () => {
 			"model-identity",
 			"model-scenario",
 			"model-example-dialogue",
+			"lore",
 			"history",
 			"model-post-history-instruction",
 		]);
@@ -130,6 +141,12 @@ describe("Prompt Preset transport", () => {
 			role: "system",
 			sourceName: "Maren",
 			content: "Answer briefly.",
+		}]);
+		expect(slots("lore")).toEqual([{
+			id: expect.any(Number),
+			reference: "lore",
+			enabled: true,
+			role: "system",
 		}]);
 		expect(slots("history")).toEqual([{
 			id: expect.any(Number),
@@ -228,6 +245,7 @@ describe("Prompt Preset transport", () => {
 			"model-identity",
 			"model-scenario",
 			"model-example-dialogue",
+			"lore",
 			"history",
 			"history",
 		]);
@@ -252,6 +270,7 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["model-example-dialogue", true],
+			["lore", true],
 			["history", true],
 			["history", true],
 			["model-scenario", true],
@@ -294,6 +313,7 @@ describe("Prompt Preset transport", () => {
 			["model-identity", true],
 			["model-scenario", false],
 			["model-example-dialogue", true],
+			["lore", true],
 			["history", true],
 			["history", true],
 		]);
@@ -378,6 +398,7 @@ describe("Prompt Preset transport", () => {
 			["human-identity", true],
 			["model-identity", true],
 			["model-scenario", false],
+			["lore", true],
 			["history", true],
 			["model-post-history-instruction", true],
 		]);
@@ -407,6 +428,18 @@ describe("Prompt Preset transport", () => {
 		const preset = await readPreset(createConversationRoutes(database), conversation.id);
 		const missingBlock = await toggleBlock(database, preset.id, 987654, false);
 		expect(missingBlock.status).toBe(404);
+	});
+
+	test("rejects adding a second Lore block after disabling the existing one", async () => {
+		const conversation = createChat(database);
+		const preset = await readPreset(createConversationRoutes(database), conversation.id);
+		const lore = slotOf(preset, "lore");
+		if (lore === undefined) throw new Error("The Default recipe has no Lore block.");
+
+		await readOperation(toggleBlock(database, preset.id, lore.id, false));
+		const response = await addBlock(database, preset.id, "lore");
+		expect(response.status).toBe(422);
+		expect(await response.json()).toMatchObject({ outcome: "invalid" });
 	});
 });
 

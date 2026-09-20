@@ -12,6 +12,7 @@ import {
 	generationJsonString,
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
+import type { LoreActivationRecord } from "../shared/contract/lore-activation";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -35,13 +36,15 @@ export function GenerationDetailsPanel({
 
 	useAsyncEffect((isCancelled) => {
 		setState({ status: "loading" });
-		const showError = (status: "not-found" | "network") => {
+		const showError = (status: "not-found" | "invalid" | "network", reason?: string) => {
 			if (isCancelled()) return;
 			setState({
 				status: "error",
 				message: status === "not-found"
 					? "These Generation details are no longer available."
-					: "Generation details could not be loaded.",
+					: status === "invalid"
+						? reason ?? "Stored Generation details are invalid."
+						: "Generation details could not be loaded.",
 			});
 		};
 		if (target.type === "active") {
@@ -51,7 +54,7 @@ export function GenerationDetailsPanel({
 					setState({ status: "inspection", details: outcome.details });
 					return;
 				}
-				showError(outcome.status);
+				showError(outcome.status, outcome.status === "invalid" ? outcome.reason : undefined);
 			});
 		} else {
 			void loadVariantDetails(target.conversationId, target.messageId, target.variantId).then((outcome) => {
@@ -60,7 +63,7 @@ export function GenerationDetailsPanel({
 					setState({ status: "variant", details: outcome.details });
 					return;
 				}
-				showError(outcome.status);
+				showError(outcome.status, outcome.status === "invalid" ? outcome.reason : undefined);
 			});
 		}
 	}, [target]);
@@ -110,6 +113,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 					</ul>
 				</section>
 			)}
+			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
 			<PromptPlan plan={details.promptPlan} />
 		</>
 	);
@@ -153,8 +157,31 @@ function VariantDetailsView({ details }: { details: VariantDetails }) {
 				</>}
 			</dl>
 			{provenance !== null && <ProvenanceSettings provenance={provenance} />}
+			{details.loreActivation !== null && <LoreActivationDetails record={details.loreActivation} />}
 			{provenance === null && <p className="panel-note">This Variant has no Generation provenance.</p>}
 		</>
+	);
+}
+
+export function LoreActivationDetails({ record }: { record: LoreActivationRecord }) {
+	return (
+		<section className="generation-detail-section">
+			<h3>Lore activation</h3>
+			<dl className="detail-list compact-detail-list">
+				<div><dt>Evaluation</dt><dd>{record.mode}</dd></div>
+				<div><dt>Manual edit</dt><dd>{record.manuallyEdited ? "Yes" : "No"}</dd></div>
+			</dl>
+			<details>
+				<summary>Automatic activation evidence</summary>
+				<p className="generation-detail-preformatted">{record.automaticLoreText || "No Lore text was selected automatically."}</p>
+				<pre>{JSON.stringify(record.evidence, null, 2)}</pre>
+			</details>
+			{record.manuallyEdited && <p className="panel-note">The final Lore text was edited after automatic activation.</p>}
+			<details>
+				<summary>Final Lore text</summary>
+				<p className="generation-detail-preformatted">{record.finalLoreText || "No Lore text was sent."}</p>
+			</details>
+		</section>
 	);
 }
 
@@ -202,4 +229,3 @@ function inspectionStatusLabel(status: GenerationInspectionStatus): string {
 function formatUsage(usage: Record<string, number>): string {
 	return Object.entries(usage).map(([key, value]) => `${key}: ${value}`).join(" · ");
 }
-

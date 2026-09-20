@@ -15,6 +15,48 @@
       "when": 1789352047946,
       "tag": "0001_striped_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789632341392,
+      "tag": "0002_mighty_roland_deschain",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789635534310,
+      "tag": "0003_next_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789637044539,
+      "tag": "0004_white_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789638207029,
+      "tag": "0005_orange_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789638926768,
+      "tag": "0006_damp_misty_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789828047378,
+      "tag": "0007_sturdy_ser_duncan",
+      "breakpoints": true
     }
   ]
 }

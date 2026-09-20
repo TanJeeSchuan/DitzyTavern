@@ -14,4 +14,5 @@ export type {
 	EffectiveGenerationSettings,
 	GenerationConnectionFacts,
 	GenerationPlan,
+	PromptLoreEntry,
 } from "./types";

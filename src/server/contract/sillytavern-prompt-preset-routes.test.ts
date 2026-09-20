@@ -245,10 +245,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		expect(preview.native.slots).toEqual([
 			{ reference: "instruction", enabled: true, role: "system", name: "Main", content: "main" },
 			{ reference: "instruction", enabled: true, role: "user", name: "Jailbreak", content: "jailbreak" },
+			{ reference: "lore", enabled: true, role: "system" },
 			{ reference: "instruction", enabled: false, role: "assistant", name: "Unlisted", content: "later" },
 		]);
 		expect(preview.diagnostics.map((item) => item.code)).toEqual([
-			"unsupported-placeholder",
 			"unsupported-placeholder",
 			"missing-definition",
 		]);
@@ -304,6 +304,26 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			{ code: "default-role", message: 'Authored block "unsupported-role" had no supported role; the system role was used.', identifier: "unsupported-role" },
 			{ code: "invalid-injection-position", message: 'Injection position for authored block "invalid-position" was invalid; it was placed using ordinary recipe order.', identifier: "invalid-position" },
 		]);
+	});
+
+	test("collapses repeated World Info occurrences to the first enabled occurrence", async () => {
+		const app = createPromptPresetRoutes(database);
+		const source: SillyTavernJsonValue = {
+			prompts: [
+				{ identifier: "worldInfoBefore", name: "Before", content: "", marker: true },
+				{ identifier: "worldInfoAfter", name: "After", content: "", marker: true },
+			],
+			prompt_order: [{ character_id: 100001, order: [
+				{ identifier: "worldInfoBefore", enabled: false },
+				{ identifier: "worldInfoBefore", enabled: true },
+				{ identifier: "worldInfoAfter", enabled: true },
+			] }],
+		};
+		const reviewed = await postReview(app, source);
+		expect(reviewed.status).toBe(200);
+		const preview = requirePreview(reviewed.body);
+		expect(preview.native.slots).toEqual([{ reference: "lore", enabled: true, role: "system" }]);
+		expect(preview.diagnostics).toEqual([{ code: "collapsed-world-info", message: "Multiple World Info positions were collapsed into one Lore block." }]);
 	});
 
 	test("reports every excluded settings family without importing its behavior", async () => {
@@ -475,7 +495,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		]);
 		expect(preview.diagnostics.map((item) => item.code)).toEqual([
 			"unsupported-placeholder",
-			"unsupported-placeholder",
+			"collapsed-world-info",
 		]);
 
 		const imported = await postImport(app, source);

@@ -48,18 +48,18 @@ import {
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
 import {
-	captureSendGeneration,
-	captureContinuationGeneration,
-	captureSiblingGeneration,
+	captureSendGenerationAsync,
+	captureContinuationGenerationAsync,
+	captureSiblingGenerationAsync,
 	capturedAcceptanceFields,
 	modelRequestFor,
 	type CapturedGeneration,
 } from "./generate-capture";
 import {
 	consumeGenerationPreview,
-	captureContinuationGenerationPreview,
-	captureSendGenerationPreview,
-	captureSiblingGenerationPreview,
+	captureContinuationGenerationPreviewAsync,
+	captureSendGenerationPreviewAsync,
+	captureSiblingGenerationPreviewAsync,
 	type GenerationPreviewAcceptance,
 	type GenerationPreviewAcceptanceFor,
 } from "./generation-preview";
@@ -102,7 +102,7 @@ interface GenerationLifecyclePolicy<
 		database: Database,
 		conversationId: number,
 		input: Input,
-	) => Capture;
+	) => Promise<Capture>;
 	accept: (
 		conversation: ConversationModule,
 		input: Input,
@@ -152,7 +152,7 @@ async function runGenerationLifecycle<
 	) {
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
-	const capture = policy.capture(database, input.conversationId, input);
+	const capture = await policy.capture(database, input.conversationId, input);
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
@@ -239,16 +239,17 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSendGenerationPreview({
+				return captureSendGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					content: current.content,
 					connection: current.connection,
 					formatting: current.formatting,
+					embeddingFetch: current.embeddingFetch,
 				});
 			}
-			return captureSendGeneration({
+			return captureSendGenerationAsync({
 				database: currentDatabase,
 				conversationId,
 				content: current.content,
@@ -256,6 +257,7 @@ export async function sendThroughProvisionalTailGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
+				embeddingFetch: current.embeddingFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
@@ -294,21 +296,23 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureContinuationGenerationPreview({
+				return captureContinuationGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					connection: current.connection,
 					formatting: current.formatting,
+					embeddingFetch: current.embeddingFetch,
 				});
 			}
-			return captureContinuationGeneration({
+			return captureContinuationGenerationAsync({
 				database: currentDatabase,
 				conversationId,
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
+				embeddingFetch: current.embeddingFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
@@ -367,6 +371,7 @@ export interface GenerateSiblingVariantInput {
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
 	formatting?: GenerationFormattingContext;
+	embeddingFetch?: import("../model-client/types").ModelFetch;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -386,16 +391,17 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSiblingGenerationPreview({
+				return captureSiblingGenerationPreviewAsync({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					messageId: current.messageId,
 					connection: current.connection,
 					formatting: current.formatting,
+					embeddingFetch: current.embeddingFetch,
 				});
 			}
-			return captureSiblingGeneration({
+			return captureSiblingGenerationAsync({
 				database: currentDatabase,
 				...current,
 			});

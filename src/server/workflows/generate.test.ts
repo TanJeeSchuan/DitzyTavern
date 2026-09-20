@@ -22,9 +22,12 @@ import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
 } from ".";
-import { clearGenerationPreviewRegistry, createGenerationPreview } from "./generation-preview";
+import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
+import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
+import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
+import { importNativeLorebook } from "../lorebook/library";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -52,12 +55,12 @@ const fakeModelClient = (
 ) =>
 	createFakeModelClient(({ promptPlan }) => response(promptPlan));
 
-const sendPreview = (
+const sendPreview = async (
 	database: Database,
 	conversationId: number,
 	options: { content?: string; tokenEstimator?: () => number } = {},
 ) => {
-	const preview = createGenerationPreview(database, {
+	const preview = await createGenerationPreviewAsync(database, {
 		conversationId,
 		kind: "send",
 		content: options.content ?? "Draft",
@@ -67,8 +70,8 @@ const sendPreview = (
 	return preview.capture.capture;
 };
 
-const continuationPreview = (database: Database, conversationId: number) => {
-	const preview = createGenerationPreview(database, { conversationId, kind: "continuation" });
+const continuationPreview = async (database: Database, conversationId: number) => {
+	const preview = await createGenerationPreviewAsync(database, { conversationId, kind: "continuation" });
 	if (preview.capture.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture.capture;
 };
@@ -104,8 +107,8 @@ describe("Generation runtime behavior", () => {
 		database.close();
 	});
 
-	test("preview compiles the plan with ordered blocks and participant context", () => {
-		const capture = sendPreview(database, conversationId);
+	test("preview compiles the plan with ordered blocks and participant context", async () => {
+		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
 		expect(capture.humanParticipant).toEqual({ id: humanId, name: "Writer" });
@@ -169,7 +172,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	test("the terminal fixture creates a Message authored by the model seat at generation start", async () => {
-		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
+		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
 		let receivedPlan: PromptPlan | undefined;
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -207,7 +210,7 @@ describe("Generation runtime behavior", () => {
 	test("the terminal fixture forwards normalized events and freezes the captured generation input", async () => {
 		const receivedEvents: unknown[] = [];
 		let receivedInput: ModelClientGenerationInput | undefined;
-		const expectedPlan = continuationPreview(database, conversationId).plan.promptPlan;
+		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
 
 		const committed = await generateTerminalTailFixture(database, {
 			conversationId,
@@ -331,11 +334,11 @@ describe("Generation runtime behavior", () => {
 		expect(after?.messages).toHaveLength(1);
 		expect(after?.revision).toBe(0);
 
-		expect(() => sendPreview(database, incomplete.id)).toThrow(ConversationNotPlayableError);
+		await expect(sendPreview(database, incomplete.id)).rejects.toThrow(ConversationNotPlayableError);
 	});
 
 	test("missing Conversations fail preview and generation with the typed not-found result", async () => {
-		expect(() => sendPreview(database, 424242)).toThrow(
+		await expect(sendPreview(database, 424242)).rejects.toThrow(
 			ConversationNotFoundError,
 		);
 		await expect(
@@ -486,15 +489,23 @@ describe("Generation runtime behavior", () => {
 
 	test("a mid-flight rename does not rewrite the in-flight generation and the next one uses the new state", async () => {
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// While the transport streams, the model Participant is renamed. The
 		// Participant rename command arrives with ticket 04; the concurrent
@@ -539,15 +550,23 @@ describe("Generation runtime behavior", () => {
 
 	test("a mid-flight Definition edit does not rewrite the in-flight generation and the next one compiles the edited Prompt", async () => {
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// The model Prompt is edited while the transport streams (the
 		// Participant edit command arrives with ticket 04; the authoritative
@@ -573,7 +592,7 @@ describe("Generation runtime behavior", () => {
 		});
 
 		// The next generation compiles from the updated authoritative Prompt.
-		const capture = sendPreview(database, conversationId);
+		const capture = await sendPreview(database, conversationId);
 		expect(
 			capture.plan.promptPlan.blocks.find(
 				(block) => block.kind === "identity" && block.role === "model",
@@ -584,15 +603,23 @@ describe("Generation runtime behavior", () => {
 	test("concurrent edits advancing the revision do not conflict with the generation commit", async () => {
 		const module = createConversationModule(database);
 		let release!: (content: string) => void;
+		let markStarted!: () => void;
 		const pending = new Promise<string>((resolve) => {
 			release = resolve;
+		});
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 
 		const generation = generateTerminalTailFixture(database, {
 			conversationId,
 			timestamp: "2026-08-20T14:00:00Z",
-			modelClient: fakeModelClient(async () => pending),
+			modelClient: fakeModelClient(async () => {
+				markStarted();
+				return pending;
+			}),
 		});
+		await started;
 
 		// A concurrent client command lands while the transport streams.
 		const midFlight = module.getSnapshot(conversationId);
@@ -686,6 +713,90 @@ describe("Generation runtime behavior", () => {
 		expect(requireSnapshot(conversation, conversationId).messages.at(-1)?.variants[0]?.content).toBe("Budgeted Tail output.");
 	});
 
+	test("retries a zero-output Send with the same bounded Lore scan window", async () => {
+		const conversation = createConversationModule(database);
+		const current = requireSnapshot(conversation, conversationId);
+		const withRecentHistory = applyCommand(conversation, {
+			conversationId,
+			expectedRevision: current.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-08-20T12:01:00Z",
+				variantContents: ["Recent history."],
+				authorParticipantId: humanId,
+			},
+		});
+		const preset = importNativePromptPreset(database, {
+			name: "Retry Lore",
+			slots: [
+				{ reference: "history", enabled: true },
+				{ reference: "lore", enabled: true, role: "system" },
+			],
+		});
+		selectConversationPromptPreset(drizzle(database), conversationId, preset.id);
+		const book = importNativeLorebook(database, {
+			name: "Retry Lorebook",
+			description: "",
+			entries: [{
+				title: "Opening memory",
+				content: "The opening remains relevant.",
+				keywords: ["The lamp turns above you"],
+				semanticTriggers: [],
+				matchOperator: "or",
+				always: false,
+				requireAny: [],
+				requireAll: [],
+				excludeAny: [],
+				excludeAll: [],
+				caseSensitive: false,
+				wholeWord: true,
+				keywordMode: "literal",
+				regexFlags: "",
+				semanticThreshold: null,
+				priority: 1,
+				enabled: true,
+			}],
+		});
+		attachLorebookToConversation(database, { conversationId, bookId: book.id });
+		saveLoreSettings(database, conversationId, { scanDepth: 3, allowance: 2048 });
+
+		const plans: PromptPlan[] = [];
+		let attempts = 0;
+		await expect(sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: withRecentHistory.revision,
+			content: "Please try again.",
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				plans.push(promptPlan);
+				attempts += 1;
+				return attempts === 1
+					? [{ type: "failed", kind: "provider", message: "No answer." }]
+					: "Recovered answer.";
+			}),
+		})).rejects.toThrow("No answer.");
+
+		const afterFailure = requireSnapshot(conversation, conversationId);
+		await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: afterFailure.revision,
+			content: "Please try again.",
+			modelClient: createFakeModelClient(({ promptPlan }) => {
+				plans.push(promptPlan);
+				return "Recovered answer.";
+			}),
+		});
+
+		const firstHistory = plans[0]?.blocks.filter((block) => block.kind === "history");
+		const retryHistory = plans[1]?.blocks.filter((block) => block.kind === "history");
+		expect(retryHistory).toEqual(firstHistory);
+		expect(plans[1]?.blocks.filter((block) => block.kind === "lore")).toEqual(
+			plans[0]?.blocks.filter((block) => block.kind === "lore"),
+		);
+		const afterRetry = requireSnapshot(conversation, conversationId);
+		expect(afterRetry.messages).toHaveLength(4);
+		expect(afterRetry.messages.at(-1)?.variants[0]?.content).toBe("Recovered answer.");
+	});
+
 	test("rejects an oversized protected human input before contacting the Model Client", async () => {
 		const conversation = createConversationModule(database);
 		let current = conversation.getSnapshot(conversationId);
@@ -750,7 +861,7 @@ describe("Generation runtime behavior", () => {
 		});
 		// Read-only preview of the stored Conversation reports the same
 		// impossible budget without contacting anything.
-		const capture = sendPreview(database, conversationId, {
+		const capture = await sendPreview(database, conversationId, {
 			content: "Protected human input.",
 			tokenEstimator: () => 20,
 		});
@@ -867,8 +978,8 @@ describe("Prompt Comments", () => {
 		database.close();
 	});
 
-	test("preview renders authored text without its comments and without warning about their contents", () => {
-		const capture = sendPreview(database, conversationId);
+	test("preview renders authored text without its comments and without warning about their contents", async () => {
+		const capture = await sendPreview(database, conversationId);
 		const content = (kind: string) =>
 			capture.plan.promptPlan.blocks.find((block) => block.kind === kind)?.content;
 
