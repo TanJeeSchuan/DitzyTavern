@@ -278,6 +278,7 @@ export async function editMacroVariable(
 export type GenerationDetailsOutcome<T> =
 	| { status: "available"; details: T }
 	| { status: "not-found" }
+	| { status: "invalid"; reason: string }
 	| { status: "network" };
 
 export async function loadActiveGenerationDetails(
@@ -289,7 +290,11 @@ export async function loadActiveGenerationDetails(
 			.conversations({ id: conversationId })
 			.generations({ generationId })
 			.inspection.get();
-		if (error) return error.status === 404 ? { status: "not-found" } : { status: "network" };
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
 		const details = decodeWirePayload(activeGenerationDetails, data);
 		return details === null
 			? { status: "network" }
@@ -310,7 +315,11 @@ export async function loadVariantDetails(
 			.messages({ messageId })
 			.variants({ variantId })
 			.details.get();
-		if (error) return error.status === 404 ? { status: "not-found" } : { status: "network" };
+		if (error) {
+			if (error.status === 404) return { status: "not-found" };
+			if (error.status === 422) return { status: "invalid", reason: error.value.reason };
+			return { status: "network" };
+		}
 		const details = decodeWirePayload(variantDetails, data);
 		return details === null
 			? { status: "network" }
