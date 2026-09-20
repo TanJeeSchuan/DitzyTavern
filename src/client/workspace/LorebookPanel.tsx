@@ -260,21 +260,26 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
-			if (!isCurrentView(token, commandBookId)) return;
 			if (result.status === "applied") {
-				setBook(result.book); if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(result.book.name); setDescription(result.book.description); } setBooks((items) => {
+				setBooks((items) => {
 					const summary = { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length };
 					return items.some((item) => item.id === result.book.id)
 						? items.map((item) => item.id === result.book.id ? summary : item)
 						: [...items, summary];
-				}); setNotice(success ?? null);
+				});
+			} else if (result.status === "deleted") {
+				setBooks((items) => items.filter((item) => item.id !== result.bookId));
+			}
+			if (!isCurrentView(token, commandBookId)) return;
+			if (result.status === "applied") {
+				setBook(result.book); if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(result.book.name); setDescription(result.book.description); } setNotice(success ?? null);
 				if (command.type === "save-entry" && command.entryId === undefined && entryDraftVersionRef.current === initialEntryDraftVersion) {
 					const saved = result.book.entries.at(-1);
 					if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
 				}
 				if (command.type === "set-entry-enabled" && command.entryId === initialEntryId && entryDraftVersionRef.current === initialEntryDraftVersion) setEntryDraft((draft) => ({ ...draft, enabled: command.enabled }));
 			} else if (result.status === "deleted") {
-				setBook(null); setEntryId(null); setBooks((items) => items.filter((item) => item.id !== result.bookId)); setNotice("Lorebook deleted.");
+				setBook(null); setEntryId(null); setNotice("Lorebook deleted.");
 			} else if (result.status === "conflict") {
 				const preserveBookDraft = bookDraftVersionRef.current !== initialBookDraftVersion;
 				setBook(result.currentBook);
@@ -403,10 +408,11 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
+			if (result.status === "applied") setBooks((items) => [...items, { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length }]);
 			if (request !== libraryRequestRef.current || token !== viewTokenRef.current) return;
 			if (result.status === "applied") {
 				invalidateView();
-				setBook(result.book); setName(result.book.name); setDescription(result.book.description); setEntryId(null); setEntryDraft(blankEntry()); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setBooks((items) => [...items, { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length }]); setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
+				setBook(result.book); setName(result.book.name); setDescription(result.book.description); setEntryId(null); setEntryDraft(blankEntry()); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
 			}
 			else setNotice(result.status === "invalid" ? result.reason : "The Lorebook import failed.");
 		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
