@@ -5,6 +5,8 @@ There is `playwright-cli` installed
 
 For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS
 
+When user asks for UI iterration / rapid iterration, keep the playwright-cli session running to keep the screenshots fast
+
 Use Radix / Shadcn components when possible, handroll as last resort
 
 Do not preserve backward compatibility. Remove obsolete paths. Do not create compatibility layers, fallbacks, or mitigations.
