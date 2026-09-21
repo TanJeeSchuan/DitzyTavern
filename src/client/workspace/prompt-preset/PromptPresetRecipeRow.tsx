@@ -199,6 +199,7 @@ export function PromptPresetRecipeRow({
 				<Button
 					variant="ghost"
 					size="icon-sm"
+					className="border-0 text-muted-foreground"
 					disabled={pending}
 					title={`Edit ${title}`}
 					aria-label={`Edit ${title}`}

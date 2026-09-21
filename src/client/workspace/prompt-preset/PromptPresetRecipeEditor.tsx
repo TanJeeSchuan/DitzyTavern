@@ -38,7 +38,7 @@ const AddBlockMenu = ({
 	return (
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger asChild>
-				<Button type="button" size="xs" variant="outline" disabled={disabled}>
+				<Button type="button" size="xs" variant="ghost" className="border-0 text-muted-foreground" disabled={disabled}>
 					<span className="flex items-center gap-1.5"><Plus aria-hidden="true" /> Add block</span>
 					<ChevronDown aria-hidden="true" />
 				</Button>
