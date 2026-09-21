@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Save, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,19 +54,25 @@ const OutgoingRoleSelect = ({
 	/>
 );
 
-const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
+type ReferenceSlot = Exclude<ResolvedPromptPresetSlot, { reference: "instruction" }>;
+interface ReferenceBlockCopy { description: string; source: string }
+
+const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockCopy => {
 	if (slot.reference === "history") {
-		return <p className="mt-1 text-sm text-muted-foreground">{slot.entryCount === 1 ? "1 Message from the selected narrative path." : `${slot.entryCount} Messages from the selected narrative path.`}</p>;
+		return {
+			description: "Uses Messages from the selected narrative path.",
+			source: "This Chat",
+		};
 	}
 	if (slot.reference === "lore") {
-		return <p className="mt-1 text-sm text-muted-foreground">Lore Entries are admitted when a Generation is assembled.</p>;
+		return {
+			description: "Uses Lore Entries admitted when a Generation is assembled.",
+			source: "Attached lorebooks",
+		};
 	}
-	if (slot.reference === "instruction") return null;
-	if (slot.sourceName === null) return <p className="mt-1 text-sm text-muted-foreground">No Participant holds this Control seat yet.</p>;
-	return <>
-		<p className="mt-1 text-sm text-muted-foreground">From {slot.sourceName}</p>
-		{slot.content === "" ? <p className="text-sm text-muted-foreground">No prompt text.</p> : <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-muted/50 p-2 font-sans text-sm whitespace-pre-wrap">{slot.content}</pre>}
-	</>;
+	return slot.sourceName === null
+		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
+		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };
 };
 
 const InstructionFieldEditor = ({
@@ -131,6 +137,8 @@ export function PromptPresetRecipeRow({
 	slotCount,
 	draft,
 	pending,
+	autoOpenEditor,
+	onAutoOpenEditorHandled,
 	onDraftChange,
 	onDraftCancel,
 	onOperation,
@@ -141,9 +149,17 @@ export function PromptPresetRecipeRow({
 	slotCount: number;
 	draft: BlockDraft | undefined;
 	pending: boolean;
+	autoOpenEditor: boolean;
+	onAutoOpenEditorHandled: () => void;
 } & RecipeOperationHandlers) {
 	const [editing, setEditing] = useState(false);
 	const [confirmingRemove, setConfirmingRemove] = useState(false);
+	useEffect(() => {
+		if (!autoOpenEditor) return;
+		setConfirmingRemove(false);
+		setEditing(true);
+		onAutoOpenEditorHandled();
+	}, [autoOpenEditor, onAutoOpenEditorHandled]);
 	const { ref, handleRef, isDragging, isDropTarget } = useSortable({
 		id: slot.id,
 		index,
@@ -151,6 +167,7 @@ export function PromptPresetRecipeRow({
 		disabled: pending,
 	});
 	const title = slotTitle(slot);
+	const referenceCopy = slot.reference === "instruction" ? null : referenceBlockCopy(slot, title);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
 	const closeAndDiscard = (): void => {
@@ -161,22 +178,6 @@ export function PromptPresetRecipeRow({
 		if (draft !== undefined) saveDraftPatch(presetId, slot, draft, onOperation);
 		setEditing(false);
 	};
-	const actions = <div className="flex items-center gap-0.5" role="group" aria-label={`${title} actions`}>
-		<Button title="Move up" variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
-		<Button title="Move down" variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
-		<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
-		{confirmingRemove ? (
-			<div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
-				<span className="text-xs text-muted-foreground">Remove this block?</span>
-				<Button variant="destructive" size="xs" disabled={pending} onClick={() => { setEditing(false); onOperation(() => removePromptPresetBlock(presetId, slot.id)); }}>Remove</Button>
-				<Button variant="ghost" size="xs" disabled={pending} onClick={() => setConfirmingRemove(false)}>Keep</Button>
-			</div>
-		) : (
-			<div className="ml-3 border-l border-border pl-3">
-				<Button title="Remove block" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Remove ${title}`} onClick={() => setConfirmingRemove(true)}><Trash2 aria-hidden="true" /></Button>
-			</div>
-		)}
-	</div>;
 	return <li
 		ref={ref}
 		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${isDragging ? " z-10 bg-background shadow-lg ring-1 ring-border" : isDropTarget ? " bg-muted/60" : ""}`}
@@ -225,12 +226,18 @@ export function PromptPresetRecipeRow({
 		<Dialog open={editing} onOpenChange={(open) => { if (open || !dirty) setEditing(open); }}>
 			<DialogContent showCloseButton={!dirty} className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>{slot.reference === "instruction" ? "Edit prompt block" : `Edit ${title}`}</DialogTitle>
-					<DialogDescription>
-						{slot.reference === "history"
-							? "This block has no editable fields. Use the actions below to manage it."
-							: <>Changes are applied only when you choose Save &amp; Close.</>}
-					</DialogDescription>
+					{referenceCopy === null ? (
+						<>
+							<DialogTitle>Edit prompt block</DialogTitle>
+							<DialogDescription>Changes are applied only when you choose Save &amp; Close.</DialogDescription>
+						</>
+					) : (
+						<>
+							<p className="text-xs font-medium text-muted-foreground">Reference block</p>
+							<DialogTitle>{title}</DialogTitle>
+							<DialogDescription>{referenceCopy.description}</DialogDescription>
+						</>
+					)}
 				</DialogHeader>
 				<div className="min-h-0 overflow-y-auto pr-1">
 				{slot.reference === "instruction" ? (
@@ -241,8 +248,11 @@ export function PromptPresetRecipeRow({
 						onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 					/>
 				) : (
-					<div className="flex flex-col gap-3">
-						<SlotBody slot={slot} />
+					<div className="flex flex-col gap-5">
+						<dl>
+							<dt className="text-xs text-muted-foreground">Source</dt>
+							<dd className="mt-1 text-sm font-medium">{referenceCopy?.source}</dd>
+						</dl>
 						{slot.reference !== "history" && (
 							<div className="flex flex-wrap items-center gap-2">
 								<label className="text-xs text-muted-foreground" htmlFor={`slot-role-${slot.id}`}>Sent as</label>
@@ -257,14 +267,27 @@ export function PromptPresetRecipeRow({
 					</div>
 				)}
 				</div>
-				<div className="flex items-center justify-between border-t border-border pt-3">
-					{actions}
-					{dirty && (
-						<div className="ml-auto flex items-center gap-2">
-							<Button variant="ghost" size="sm" disabled={pending} onClick={closeAndDiscard}>Cancel</Button>
-							<Button size="sm" disabled={pending} onClick={saveAndClose}>Save &amp; Close</Button>
-						</div>
-					)}
+				<div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+					<div className="flex items-center gap-0.5" role="group" aria-label={`${title} structure actions`}>
+						{confirmingRemove ? (
+							<>
+								<span className="mr-1 text-xs text-muted-foreground">Delete block?</span>
+								<Button title="Keep block" variant="ghost" size="icon-sm" disabled={pending} aria-label="Keep block" onClick={() => setConfirmingRemove(false)}><X aria-hidden="true" /></Button>
+								<Button title="Confirm delete" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Delete ${title}`} onClick={() => { setEditing(false); onOperation(() => removePromptPresetBlock(presetId, slot.id)); }}><Trash2 aria-hidden="true" /></Button>
+							</>
+						) : (
+							<>
+								<Button title="Move up" variant="ghost" size="icon-sm" disabled={pending || index === 0} aria-label={`Move ${title} up`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}><ChevronUp aria-hidden="true" /></Button>
+								<Button title="Move down" variant="ghost" size="icon-sm" disabled={pending || index === slotCount - 1} aria-label={`Move ${title} down`} onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}><ChevronDown aria-hidden="true" /></Button>
+								<Button title="Duplicate block" variant="ghost" size="icon-sm" disabled={pending} aria-label={`Duplicate ${title}`} onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}><Copy aria-hidden="true" /></Button>
+								<Button title="Delete block" variant="destructive" size="icon-sm" disabled={pending} aria-label={`Delete ${title}`} onClick={() => setConfirmingRemove(true)}><Trash2 aria-hidden="true" /></Button>
+							</>
+						)}
+					</div>
+					<div className="ml-auto flex items-center gap-2">
+						<Button title="Cancel" variant="ghost" size="icon-sm" disabled={pending} aria-label="Cancel" onClick={closeAndDiscard}><X aria-hidden="true" /></Button>
+						<Button title="Save and close" size="icon-sm" disabled={pending} aria-label="Save and close" onClick={saveAndClose}><Save aria-hidden="true" /></Button>
+					</div>
 				</div>
 			</DialogContent>
 		</Dialog>

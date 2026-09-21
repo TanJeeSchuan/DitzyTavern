@@ -41,10 +41,6 @@ export function PromptPresetPanel({
 				inert={mutationsDisabled || undefined}
 				aria-disabled={mutationsDisabled}
 			>
-				<p className="panel-intro mb-0">
-					Shared recipes live in one library and each Chat selects one. Ordering
-					and enablement save immediately. Authored instruction text saves per block.
-				</p>
 				{editor.view.status === "loading" && (
 					<div role="status">
 						<span className="sr-only">Loading the Prompt Preset library…</span>
@@ -69,6 +65,8 @@ export function PromptPresetPanel({
 							presets={ready.presets}
 							selectedId={ready.selected.id}
 							pending={editor.busy}
+							problem={editor.problem}
+							notice={editor.notice}
 							onSelect={editor.selectPreset}
 							onCommand={(command, successNotice) =>
 								void editor.runPresetCommand(command, successNotice)
