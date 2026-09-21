@@ -53,7 +53,7 @@ Required embedding work has a configurable five-second deadline. Use a complete 
 
 In fallback, evaluate Keywords alone even for AND entries. Skip semantic-only entries, retain secondary Keyword conditions, and keep Always entries eligible. Indicate fallback in inspection and the retained record. Missing, failed or unusable required embedding results must not masquerade as semantic non-matches or silently use stale vectors.
 
-The match tester shows the strongest matching sentence, score and effective threshold, along with lexical and secondary-condition results. It evaluates the chosen current inputs and does not rewrite historical records.
+The match tester operates on the saved entries in the open Lorebook and the writing supplied to it. It is an independent entry-level check: it does not require Chat attachments, attachment eligibility, Chat history or an enabled Lore block in the Prompt Preset. It shows the strongest matching sentence, score and effective threshold, along with lexical and secondary-condition results, and does not rewrite historical records.
 
 ## Prompt placement and budget
 
@@ -72,7 +72,7 @@ Admission and final Lore text use this order:
 
 Admit whole entries within both the Lore Allowance and available prompt space. Skip an entry that does not fit and continue to smaller ones. The estimate must account for assembled content and its separators, rather than allowing formatting to escape the budget. Older history then uses remaining space. Always entries may be omitted for budget.
 
-When no Lore block is enabled, no lore matching or embedding work contributes to Generation. If books are attached, explain why lore is inactive and offer the appropriate add or enable action.
+When no Lore block is enabled, no lore matching or embedding work contributes to Generation. The independent match tester remains available for saved entries in the open Lorebook. If books are attached, explain why lore is inactive and offer the appropriate add or enable action.
 
 New Default recipes include Lore immediately before history. Existing saved recipes acquire it explicitly through Add Lore Block; do not silently change their authored order. Blank custom presets remain authored recipes to which the user can add the slot.
 

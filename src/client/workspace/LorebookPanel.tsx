@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, Plus, Upload } from "lucide-react";
+import { Switch as SwitchPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -51,7 +52,10 @@ const fieldsOf = ({ id: _id, position: _position, ...entry }: LoreEntry): LoreEn
 // list separator.
 const splitList = (value: string): string[] => value.split(/\r?\n/).filter((part) => part.length > 0);
 const joinList = (value: string[]): string => value.join("\n");
-const entryListKeys = ["keywords", "semanticTriggers", "requireAny", "requireAll", "excludeAny", "excludeAll"] as const;
+type EntryListKey = keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">;
+const entryMatchFields = [["keywords", "Keywords"], ["semanticTriggers", "Semantic triggers"]] as const satisfies readonly (readonly [EntryListKey, string])[];
+const entryConditionFields = [["requireAny", "Require any"], ["requireAll", "Require all"], ["excludeAny", "Exclude any"], ["excludeAll", "Exclude all"]] as const satisfies readonly (readonly [EntryListKey, string])[];
+const inlineField = "rounded-lg border border-border bg-muted/40 px-2 py-1";
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
 const sameEntry = (left: LoreEntryFields, right: LoreEntryFields): boolean => JSON.stringify(left) === JSON.stringify(right);
 
@@ -142,14 +146,23 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		}).catch(() => { if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("The selected Prompt Preset could not be loaded."); });
 	}, [conversationId]);
 
+	const selectFirstEntry = (target: Lorebook) => {
+		const first = target.entries[0];
+		setEntryId(first?.id ?? null);
+		setEntryDraft(first === undefined ? blankEntry() : fieldsOf(first));
+	};
+
 	const openBook = async (id: number) => {
 		const token = ++viewTokenRef.current;
+		setTestResult(null);
+		setTestError(null);
+		setTestPending(false);
 		setPending(true);
 		try {
 			const loaded = await getLorebook(id);
 			if (token !== viewTokenRef.current) return;
 			if (loaded === null) { setNotice("That Lorebook no longer exists."); return; }
-			setBook(loaded); setName(loaded.name); setDescription(loaded.description); setEntryId(null); setEntryDraft(blankEntry()); entryDraftVersionRef.current += 1; setNotice(null);
+			setBook(loaded); setName(loaded.name); setDescription(loaded.description); selectFirstEntry(loaded); entryDraftVersionRef.current += 1; setNotice(null);
 		} catch { if (token === viewTokenRef.current) setNotice("The Lorebook could not be loaded."); } finally { if (token === viewTokenRef.current) setPending(false); }
 	};
 
@@ -197,6 +210,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 
 	const saveDirty = async (): Promise<boolean> => {
 		if (book === null) return true;
+		const hadChanges = bookDirty || entryDirty;
 		const token = viewTokenRef.current;
 		const initialBookId = book.id;
 		const initialBookDraftVersion = bookDraftVersionRef.current;
@@ -231,10 +245,16 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			}
 			if (!isCurrentView(token, initialBookId)) return false;
 			setBook(result.book);
+			if (entryId === null && entryDraftVersionRef.current === initialEntryDraftVersion) {
+				const saved = result.book.entries.at(-1);
+				if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
+			}
 		}
-		return isCurrentView(token, initialBookId)
+		const settled = isCurrentView(token, initialBookId)
 			&& bookDraftVersionRef.current === initialBookDraftVersion
 			&& entryDraftVersionRef.current === initialEntryDraftVersion;
+		if (settled && hadChanges) setNotice("Lorebook saved.");
+		return settled;
 	};
 
 	const saveAndLeave = async () => {
@@ -292,9 +312,9 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const create = () => void executeLorebookCommand({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
 	const filteredBooks = useMemo(() => books.filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [books, search]);
 
-	const saveEntry = () => {
-		if (book === null) return;
-		void executeLorebookCommand({ type: "save-entry", bookId: book.id, entryId: entryId ?? undefined, expectedRevision: book.revision, entry: entryDraft }, "Entry saved.");
+	const saveAll = async () => {
+		setPending(true);
+		try { await saveDirty(); } finally { setPending(false); }
 	};
 	const updateEntryDraft = (next: LoreEntryFields) => { entryDraftVersionRef.current += 1; setEntryDraft(next); };
 	const confirmDeleteBook = async () => {
@@ -317,12 +337,13 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		}
 	};
 	const runMatchTest = async () => {
+		if (book === null) return;
 		const request = ++matchRequestRef.current;
 		const token = viewTokenRef.current;
 		setTestPending(true);
 		setTestError(null);
 		try {
-			const result = await testLorebookMatch(conversationId, testWriting);
+			const result = await testLorebookMatch(book.id, testWriting);
 			if (request === matchRequestRef.current && token === viewTokenRef.current) setTestResult(result);
 		} catch (error) {
 			if (request === matchRequestRef.current && token === viewTokenRef.current) setTestError(error instanceof Error ? error.message : "Lorebook matching could not be tested.");
@@ -398,7 +419,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			if (isCurrentRequest()) setPending(false);
 		}
 	};
-	const updateList = (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => { entryDraftVersionRef.current += 1; setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) })); };
+	const updateList = (key: EntryListKey, value: string) => { entryDraftVersionRef.current += 1; setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) })); };
 	const importFile = async (file: File) => {
 		const token = viewTokenRef.current;
 		const request = ++libraryRequestRef.current;
@@ -412,11 +433,16 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			if (request !== libraryRequestRef.current || token !== viewTokenRef.current) return;
 			if (result.status === "applied") {
 				invalidateView();
-				setBook(result.book); setName(result.book.name); setDescription(result.book.description); setEntryId(null); setEntryDraft(blankEntry()); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
+				setBook(result.book); setName(result.book.name); setDescription(result.book.description); selectFirstEntry(result.book); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
 			}
 			else setNotice(result.status === "invalid" ? result.reason : "The Lorebook import failed.");
 		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
+
+	const loreBlockNotice = selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled) && <div className="rounded-md border border-border p-2 text-sm">
+		<p>The selected Prompt Preset needs an enabled Lore block to use attached Lorebooks during Generation.</p>
+		<Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button>
+	</div>;
 
 	return <>
 		<PanelHeader title="Lorebooks" onClose={() => requestLeave({ type: "close" })} />
@@ -429,7 +455,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
 				</form>
 				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision })}>Detach</Button></span></div>)}</div>
-				{attachmentState.attachments.some((attachment) => attachment.enabled) && selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled) && <div className="rounded-md border border-border p-2 text-sm"><p>Attached Lorebooks are inactive because the selected Prompt Preset has no enabled Lore block.</p><Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button></div>}
+				{attachmentState.attachments.some((attachment) => attachment.enabled) && loreBlockNotice}
 			</section>}
 			<div className="flex items-center gap-2">
 				<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
@@ -441,28 +467,36 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			{book === null && notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
 		{book !== null && <Dialog open onOpenChange={(open) => { if (!open) requestLeave({ type: "library" }); }}>
-			<DialogContent showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-4 sm:max-w-3xl lg:max-w-5xl" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-				<DialogHeader>
-					<DialogTitle>Edit Lorebook</DialogTitle>
-					<DialogDescription>Details, entries, and match testing for “{book.name}”.</DialogDescription>
+			<DialogContent showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-4 sm:max-w-3xl lg:max-w-5xl" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled} onOpenAutoFocus={(event) => event.preventDefault()}>
+				<DialogHeader className="gap-1">
+					<DialogTitle className="sr-only">Edit Lorebook</DialogTitle>
+					<DialogDescription className="sr-only">Rename this Lorebook, edit its entries, and test matching against supplied writing.</DialogDescription>
+					<input className="lore-book-field lore-book-field-name" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" placeholder="Untitled Lorebook" />
+					<textarea rows={1} className="lore-book-field lore-book-field-description" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" placeholder="Add a description…" />
 				</DialogHeader>
 				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
-					<section className="flex flex-col gap-2"><h3 className="text-sm font-medium">Book details</h3><input className="field-input" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" /><textarea className="field-input min-h-16" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" /><Button type="button" size="sm" className="self-start" disabled={pending} onClick={() => void executeLorebookCommand({ type: "update-book", bookId: book.id, expectedRevision: book.revision, name, description }, "Book details saved.")}>Save book</Button></section>
 					<div className="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
+						<div className="flex min-w-0 flex-col gap-4">
 						<section className="flex min-w-0 flex-col gap-2"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">Entries</h3><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-lg border p-2 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong className="truncate">{entry.title || "Untitled entry"}</strong><span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
-						{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={updateEntryDraft} onListChange={updateList} onSave={saveEntry} onDelete={entryId === null ? undefined : () => setEntryDeleteConfirmation(true)} pending={pending} />}
+						{dirty && <p className="panel-intro">Save your entry edits before testing matches.</p>}
+						<MatchTester writing={testWriting} onWritingChange={(value) => { matchRequestRef.current += 1; setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending || pending || dirty} onTest={() => void runMatchTest()} />
+						</div>
+						{(entryId === null || selectedEntry !== undefined) && <EntryEditor entry={entryDraft} onChange={updateEntryDraft} onListChange={updateList} onDelete={entryId === null ? undefined : () => setEntryDeleteConfirmation(true)} pending={pending} />}
 					</div>
-					<MatchTester writing={testWriting} onWritingChange={(value) => { matchRequestRef.current += 1; setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending} onTest={() => void runMatchTest()} />
 					{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 				</div>
 				<DialogFooter className="flex-wrap sm:justify-between">
-					<div className="flex flex-wrap gap-2">
+					<div className="flex flex-wrap items-center gap-2">
+						<Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete Lorebook</Button>
+						<span className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
 						{attachmentState !== null && !attachmentState.attachments.some((attachment) => attachment.owner === "conversation" && attachment.bookId === book.id) && <Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id, expectedRevision: attachmentState.revision })}>Attach to Chat</Button>}
 						<Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void exportBook()}><Download aria-hidden="true" /> Export</Button>
 						<Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void executeLorebookCommand({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button>
-						<Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete</Button>
 					</div>
-					<Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>Close</Button>
+					<div className="flex items-center gap-2">
+						<Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>Close</Button>
+						<Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
+					</div>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>}
@@ -516,7 +550,7 @@ function UnsavedLorebookDialog({ open, pending, onKeepEditing, onDiscard, onSave
 
 function MatchTester({ writing, onWritingChange, result, error, pending, onTest }: { writing: string; onWritingChange: (value: string) => void; result: LoreMatchTest | null; error: string | null; pending: boolean; onTest: () => void }) {
 	return <section className="lore-match-tester flex flex-col gap-2" aria-labelledby="lore-match-tester-title">
-		<div><h3 id="lore-match-tester-title" className="text-sm font-medium">Match tester</h3><p className="panel-intro">Test the current Chat writing without starting Generation. This does not change saved entries or historical Variants.</p></div>
+		<div><h3 id="lore-match-tester-title" className="text-sm font-medium">Match tester</h3><p className="panel-intro">Test this Lorebook's saved entries against the writing below. Chat attachments, history, and the Prompt Preset do not affect this test.</p></div>
 		<textarea className="field-input min-h-24" value={writing} onChange={(event) => onWritingChange(event.target.value)} placeholder="Paste the writing to test…" aria-label="Writing to test" />
 		<Button type="button" size="sm" className="self-start" disabled={pending} onClick={onTest}>Test matches</Button>
 		{error !== null && <p className="settings-feedback-error" role="alert">{error}</p>}
@@ -526,11 +560,9 @@ function MatchTester({ writing, onWritingChange, result, error, pending, onTest 
 
 function MatchTesterResult({ result }: { result: LoreMatchTest }) {
 	return <div className="lore-match-result" aria-label="Lore match test result">
-		<div className="lore-match-result-heading"><strong>{result.skipReason === "no-enabled-lore-block" ? "Lore matching skipped" : result.mode === "semantic" ? "Semantic evaluation" : result.mode === "keyword-fallback" ? "Keyword fallback" : "No eligible Lorebooks"}</strong><span>{result.matches.filter((entry) => entry.active).length} active entries</span></div>
+		<div className="lore-match-result-heading"><strong>{result.mode === "semantic" ? "Match results" : result.mode === "keyword-fallback" ? "Keyword fallback" : "No entries"}</strong><span>{result.matches.filter((entry) => entry.active).length} active entries</span></div>
 		{result.fallbackReason !== undefined && <p className="settings-feedback-error">{result.fallbackReason}</p>}
-		{result.skipReason === "no-enabled-lore-block" && <p className="panel-intro">The selected Prompt Preset has no enabled Lore block, so matching and embedding work were skipped.</p>}
-		{result.scan.length > 0 && <p className="lore-match-scan-note">Compared against {result.scan.length} scanned {result.scan.length === 1 ? "Message" : "Messages"}, plus the supplied writing.</p>}
-		{result.matches.length === 0 ? <p className="panel-intro">{result.skipReason === "no-enabled-lore-block" ? "Enable a Lore block in the selected Prompt Preset to run matching." : "No eligible entries were found."}</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
+		{result.matches.length === 0 ? <p className="panel-intro">This Lorebook has no saved entries.</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
 			<summary><span>{entry.title || "Untitled entry"}</span><strong data-active={entry.active}>{entry.active ? "Active" : entry.skipped ? "Skipped" : "Not active"}</strong></summary>
 			<div className="lore-match-entry-body">
 				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "Unavailable"})</p></div>}
@@ -558,7 +590,39 @@ function secondarySummary(entry: LoreMatchTest["matches"][number]) {
 	return <div className="flex flex-col gap-1">{conditions.map(([name, condition]) => <p key={name}>{name}: {conditionSummary(condition)}</p>)}</div>;
 }
 
-function EntryEditor({ entry, onChange, onListChange, onSave, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">, value: string) => void; onSave: () => void; onDelete?: () => void; pending: boolean }) {
+function StateToggle({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+	const labelId = useId();
+	return <span className="flex items-center justify-between gap-2">
+		<span className="text-xs text-muted-foreground" id={labelId}>{label}</span>
+		<SwitchPrimitive.Root className="lore-toggle" checked={checked} onCheckedChange={onCheckedChange} aria-labelledby={labelId}>
+			<span className="lore-toggle-state">{checked ? "On" : "Off"}</span>
+			<SwitchPrimitive.Thumb className="lore-toggle-thumb" />
+		</SwitchPrimitive.Root>
+	</span>;
+}
+
+function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: EntryListKey, value: string) => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	return <section className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3"><h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3><input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only title" aria-label="Entry title" /><textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal content" aria-label="Entry content" />{entryListKeys.map((key) => <textarea key={key} className="field-input min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} placeholder={`${key} (one expression per line; commas are literal)`} aria-label={key} />)}<div className="flex flex-wrap gap-3 text-sm"><label><input type="checkbox" checked={entry.always} onChange={(event) => set("always", event.target.checked)} /> Always</label><label><input type="checkbox" checked={entry.enabled} onChange={(event) => set("enabled", event.target.checked)} /> Enabled</label><label><input type="checkbox" checked={entry.caseSensitive} onChange={(event) => set("caseSensitive", event.target.checked)} /> Case sensitive</label><label><input type="checkbox" checked={entry.wholeWord} onChange={(event) => set("wholeWord", event.target.checked)} /> Whole word</label><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className="field-input inline-block w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className="field-input inline-block w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className="field-input inline-block w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div><Button type="button" size="sm" className="self-start" disabled={pending} onClick={onSave}>Save entry</Button>{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}</section>;
+	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1 text-xs text-muted-foreground" key={key}>{label}<textarea className="field-input min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
+	return <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-3">
+		<h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Title<input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Content<textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal text inserted into the prompt" /></label>
+		<div className="flex flex-col gap-2">
+			<p className="text-xs text-muted-foreground">One expression per line. Commas are literal.</p>
+			{entryMatchFields.map(listField)}
+		</div>
+		<details className="rounded-lg border border-border">
+			<summary className="cursor-pointer px-3 py-2 text-xs font-medium">Secondary conditions</summary>
+			<div className="flex flex-col gap-2 px-3 pb-3">{entryConditionFields.map(listField)}</div>
+		</details>
+		<div className="grid gap-2 sm:grid-cols-2">
+			<StateToggle label="Always" checked={entry.always} onCheckedChange={(value) => set("always", value)} />
+			<StateToggle label="Enabled" checked={entry.enabled} onCheckedChange={(value) => set("enabled", value)} />
+			<StateToggle label="Case sensitive" checked={entry.caseSensitive} onCheckedChange={(value) => set("caseSensitive", value)} />
+			<StateToggle label="Whole word" checked={entry.wholeWord} onCheckedChange={(value) => set("wholeWord", value)} />
+		</div>
+		<div className="flex flex-wrap items-center gap-3 text-sm"><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className={`${inlineField} w-20`} value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className={`${inlineField} w-20`} type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className={`${inlineField} w-24`} type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div>
+		{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}
+	</section>;
 }

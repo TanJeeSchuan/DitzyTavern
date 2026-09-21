@@ -113,10 +113,10 @@ export async function getLorebook(bookId: number): Promise<LorebookValue | null>
 	return data === null ? null : decodeWirePayload(lorebook, data);
 }
 
-export async function testLorebookMatch(conversationId: number, writing: string): Promise<LoreMatchTest> {
-	const { data, error } = await api.api.lorebooks["match-test"].post({ conversationId, writing });
+export async function testLorebookMatch(bookId: number, writing: string): Promise<LoreMatchTest> {
+	const { data, error } = await api.api.lorebooks["match-test"].post({ bookId, writing });
 	if (error || data === undefined || data === null) {
-		if (error?.status === 404) throw new Error("That Chat no longer exists.");
+		if (error?.status === 404) throw new Error("That Lorebook no longer exists.");
 		throw new Error("Lorebook matching could not be tested.");
 	}
 	const decoded = decodeWirePayload(loreMatchTestResponse, data);

@@ -197,7 +197,7 @@ export const lorebookImportApplied = Type.Object({
 export const lorebookCommandApplied = Type.Object({ outcome: Type.Literal("applied"), book: lorebook });
 export const lorebookDeleted = Type.Object({ outcome: Type.Literal("deleted"), bookId: Type.Integer() });
 export const lorebookCommandResponse = Type.Union([lorebookCommandApplied, lorebookDeleted]);
-export const loreMatchTestBody = Type.Object({ conversationId: Type.Integer(), writing: Type.String() });
+export const loreMatchTestBody = Type.Object({ bookId: Type.Integer(), writing: Type.String() });
 const loreMatchTestCondition = Type.Object({ matched: Type.Boolean(), matchedExpressions: Type.Array(Type.String()), missingExpressions: Type.Array(Type.String()) });
 const loreMatchTestSemantic = Type.Object({
 	available: Type.Boolean(),
@@ -221,7 +221,6 @@ const loreMatchTestEntry = Type.Object({
 });
 export const loreMatchTestResponse = Type.Object({
 	mode: Type.Union([Type.Literal("semantic"), Type.Literal("keyword-fallback"), Type.Literal("none")]),
-	skipReason: Type.Optional(Type.Literal("no-enabled-lore-block")),
 	fallbackReason: Type.Optional(Type.String()),
 	scan: Type.Array(Type.Object({ id: Type.Union([Type.Integer(), Type.Null()]), content: Type.String() })),
 	matches: Type.Array(loreMatchTestEntry),
