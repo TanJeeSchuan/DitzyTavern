@@ -38,8 +38,8 @@ const AddBlockMenu = ({
 	return (
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger asChild>
-				<Button type="button" size="xs" variant="ghost" className="border-0 text-muted-foreground" disabled={disabled}>
-					<span className="flex items-center gap-1.5"><Plus aria-hidden="true" /> Add block</span>
+				<Button type="button" size="xs" variant="ghost" className="border-0 px-0 text-muted-foreground" disabled={disabled}>
+					<span className="flex items-center gap-1"><Plus aria-hidden="true" /> Add block</span>
 					<ChevronDown aria-hidden="true" />
 				</Button>
 			</DropdownMenu.Trigger>
@@ -118,8 +118,8 @@ export function PromptPresetRecipeEditor({
 	}, [orderedSlots.length, pending, preset.id, preset.slots.length]);
 
 	return <section aria-label="Preset contents" className="flex flex-col gap-3 border-t border-border pt-5">
-		<div className="flex items-center justify-between gap-3">
-			<h2 className="text-sm font-medium">Preset contents</h2>
+		<div className="flex items-center justify-between gap-2">
+			<h2 className="whitespace-nowrap text-sm font-medium">Preset contents</h2>
 			<AddBlockMenu
 				disabled={pending}
 				onAddReference={(reference) => onOperation(() => addPromptPresetReference(preset.id, reference))}
