@@ -1,4 +1,5 @@
 import { JsonEditor } from "json-edit-react";
+import { Field } from "@/components/ui/field";
 import {
 	BUDGET_FIELDS,
 	BUDGET_FIELD_ERROR,
@@ -60,8 +61,7 @@ export function SamplingEditor({
 			{SAMPLING_FIELDS.map((field) => {
 				const parsed = parseSamplingDraft(drafts[field]);
 				return (
-					<div className="field" key={field}>
-						<label htmlFor={`generation-${field}`}>{SAMPLING_FIELD_LABELS[field]}</label>
+					<Field key={field} htmlFor={`generation-${field}`} label={SAMPLING_FIELD_LABELS[field]} helper={parsed.status === "invalid" && <span className="field-error" role="alert">{SAMPLING_DRAFT_ERROR}</span>}>
 						<input
 							id={`generation-${field}`}
 							className="field-input"
@@ -71,10 +71,7 @@ export function SamplingEditor({
 							value={drafts[field]}
 							onChange={(event) => onChange(field, event.target.value)}
 						/>
-						{parsed.status === "invalid" && (
-							<small className="field-error" role="alert">{SAMPLING_DRAFT_ERROR}</small>
-						)}
-					</div>
+					</Field>
 				);
 			})}
 		</section>
@@ -95,8 +92,7 @@ export function BudgetEditor({
 			{BUDGET_FIELDS.map((field) => {
 				const parsed = parseBudgetDraft(field, drafts[field]);
 				return (
-					<div className="field" key={field}>
-						<label htmlFor={`generation-${field}`}>{BUDGET_FIELD_LABELS[field]}</label>
+					<Field key={field} htmlFor={`generation-${field}`} label={BUDGET_FIELD_LABELS[field]} helper={parsed.status === "invalid" && <span className="field-error" role="alert">{BUDGET_FIELD_ERROR[field]}</span>}>
 						<input
 							id={`generation-${field}`}
 							className="field-input"
@@ -105,10 +101,7 @@ export function BudgetEditor({
 							value={drafts[field]}
 							onChange={(event) => onChange(field, event.target.value)}
 						/>
-						{parsed.status === "invalid" && (
-							<small className="field-error" role="alert">{BUDGET_FIELD_ERROR[field]}</small>
-						)}
-					</div>
+					</Field>
 				);
 			})}
 		</section>

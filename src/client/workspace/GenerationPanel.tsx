@@ -1,4 +1,5 @@
 import { SlidersHorizontal } from "lucide-react";
+import { Field } from "@/components/ui/field";
 import type { ConversationSummary } from "../conversation";
 import { generationSettingsSummaryFromDrafts } from "../generation-settings-draft";
 import { BudgetEditor } from "./GenerationSettingsEditors";
@@ -75,8 +76,7 @@ function GenerationSettings({
 					<section aria-labelledby="continuation-settings-title">
 						<h3 id="continuation-settings-title">Continuation</h3>
 						<p>How the next model Message continues after a length limit.</p>
-						<div className="field">
-							<label htmlFor="continuation-strategy">Strategy</label>
+						<Field htmlFor="continuation-strategy" label="Strategy">
 							<select
 								id="continuation-strategy"
 								className="field-input"
@@ -86,10 +86,9 @@ function GenerationSettings({
 								<option value="instruction">Instruction</option>
 								<option value="assistant-prefill">Assistant prefill</option>
 							</select>
-						</div>
+						</Field>
 						{strategy === "assistant-prefill" && (
-							<div className="field">
-								<label htmlFor="continuation-prefill-suffix">Prefill suffix</label>
+							<Field htmlFor="continuation-prefill-suffix" label="Prefill suffix">
 								<select
 									id="continuation-prefill-suffix"
 									className="field-input"
@@ -101,20 +100,16 @@ function GenerationSettings({
 									<option value="\n">Newline</option>
 									<option value="\n\n">Double newline</option>
 								</select>
-							</div>
+							</Field>
 						)}
-						<div className="field">
-							<label htmlFor="continuation-instruction">Continuation instruction</label>
+						<Field htmlFor="continuation-instruction" label="Continuation instruction" helper={strategy === "assistant-prefill" && "Ignored while the Assistant prefill strategy is active."}>
 							<textarea
 								id="continuation-instruction"
 								value={instruction}
 								rows={3}
 								onChange={(event) => updateInstruction(event.target.value)}
 							/>
-							{strategy === "assistant-prefill" && (
-								<small>Ignored while the Assistant prefill strategy is active.</small>
-							)}
-						</div>
+						</Field>
 					</section>
 
 					<BudgetEditor drafts={budgetDrafts} onChange={updateBudget} />

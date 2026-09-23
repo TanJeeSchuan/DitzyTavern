@@ -1,20 +1,4 @@
 @media (min-width: 78.01rem) {
-/* Keep the Chats panel attached to the rail and viewport bottom. The right
-	   panel remains inset so its secondary-surface hierarchy stays intact. */
-	.details-panel {
-		height: calc(100dvh - 1.1rem);
-	}
-
-	.workspace > .primary-panel {
-		height: 100dvh;
-		margin-left: -0.75rem;
-		margin-right: 1.25rem;
-	}
-
-	.workspace > .details-panel {
-		margin-left: 1.25rem;
-	}
-
 	.composer[data-receded="true"] {
 		opacity: 0.24;
 		transform: translateY(72%);
@@ -54,15 +38,7 @@ body > .details-panel > .panel-body {
 			minmax(35rem, 45rem)
 			minmax(16rem, 1fr);
 		gap: 0.55rem;
-		padding: 0;
-	}
-
-	.details-panel {
-		height: calc(100dvh - 1.1rem);
-	}
-
-	.story-stage {
-		height: 100dvh;
+		padding: 0.75rem 0.75rem 0.75rem 0;
 	}
 
 	/* Panels nested in the workspace grid return to grid flow here so the
@@ -81,11 +57,7 @@ body > .details-panel > .panel-body {
 		border-radius: 1.35rem;
 	}
 
-	.workspace > .primary-panel {
-		width: auto;
-		margin-left: -0.55rem;
-	}
-
+	.workspace > .primary-panel,
 	.workspace > .details-panel {
 		width: auto;
 	}

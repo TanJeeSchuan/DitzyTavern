@@ -6,7 +6,7 @@
 	gap: 0.75rem;
 	min-height: 100dvh;
 	overflow: hidden;
-	padding: 0;
+	padding: 0.75rem 0.75rem 0.75rem 0;
 	background: var(--background);
 }
 
@@ -670,26 +670,27 @@
 
 .definition-form {
 	display: grid;
-	gap: 0.7rem;
+	gap: 1rem;
 }
 
 .field {
 	display: grid;
-	gap: 0.3rem;
+	gap: 6px;
 }
 
-.field label {
+.field > label,
+.field > .field-label {
 	color: var(--text-muted);
-	font-size: 0.74rem;
-	font-weight: 640;
+	font-size: 13px;
+	font-weight: 500;
 }
 
-.field small {
+.field > small {
 	color: var(--text-muted);
-	font-size: 0.72rem;
+	font-size: 12px;
 }
 
-.field small.field-error {
+.field .field-error {
 	color: var(--destructive);
 }
 
@@ -805,9 +806,11 @@
 .settings-panel-body section > p {
 	margin: 0.35rem 0 1rem;
 	color: var(--text-muted);
-	font-size: 0.78rem;
+	font-size: 12px;
 	line-height: 1.5;
 }
+
+.settings-panel-body section > .field + .field { margin-top: 16px; }
 
 .generation-settings-summary,
 .connection-advanced-summary {
@@ -928,25 +931,25 @@
 	gap: 0.85rem;
 }
 
+.embedding-settings-editor > div:first-child > p {
+	margin: 0.35rem 0 0;
+	color: var(--text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
 .embedding-settings-grid {
 	display: grid;
-	gap: 0.75rem;
+	gap: 16px;
 }
 
-.embedding-settings-grid .field {
-	display: grid;
-	gap: 0.35rem;
-}
-
-.embedding-settings-grid .field > span {
+.embedding-settings-grid .field > label {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35rem;
-	font-size: 0.76rem;
-	font-weight: 620;
 }
 
-.embedding-settings-grid .field > span em {
+.embedding-settings-grid .field > label em {
 	color: var(--text-muted);
 	font-size: 0.68rem;
 	font-style: normal;
@@ -954,8 +957,6 @@
 }
 
 .embedding-settings-grid .field small {
-	color: var(--text-muted);
-	font-size: 0.7rem;
 	line-height: 1.4;
 }
 

@@ -1,6 +1,7 @@
 import { KeyRound, RotateCcw, Save } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
 	draftFromEmbeddingSettings,
@@ -97,11 +98,11 @@ export function EmbeddingSettingsEditor() {
 			<p>Use a separate OpenAI-compatible embedding service to match authored Semantic Triggers.</p>
 		</div>
 		<div className="embedding-settings-grid">
-			<label className="field"><span>Embedding endpoint</span><input className="field-input" type="url" value={state.draft.endpoint} onChange={(event) => updateDraft({ endpoint: event.target.value })} placeholder="https://localhost:11434/v1/embeddings" autoComplete="url" /><small>HTTP or HTTPS. Leave empty to use keyword matching only.</small></label>
-			<label className="field"><span>Model</span><input className="field-input" value={state.draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder="text-embedding-3-small" autoComplete="off" /></label>
-			<label className="field"><span>Default cosine threshold</span><input className="field-input" type="number" min="0" max="1" step="0.01" value={state.draft.threshold} onChange={(event) => updateDraft({ threshold: Number(event.target.value) })} /><small>Starts at 0.70. This is an uncalibrated starting point for the selected model.</small></label>
-			<label className="field"><span>Required-work deadline</span><input className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /><small>Milliseconds. Starts at 5,000.</small></label>
-			<label className="field embedding-credential-field"><span><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</span><input className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /><small>Write-only. The saved value is never read back or included in prompt data.</small></label>
+			<Field htmlFor="embedding-endpoint" label="Embedding endpoint" helper="HTTP or HTTPS. Leave empty to use keyword matching only."><input id="embedding-endpoint" className="field-input" type="url" value={state.draft.endpoint} onChange={(event) => updateDraft({ endpoint: event.target.value })} placeholder="https://localhost:11434/v1/embeddings" autoComplete="url" /></Field>
+			<Field htmlFor="embedding-model" label="Model"><input id="embedding-model" className="field-input" value={state.draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder="text-embedding-3-small" autoComplete="off" /></Field>
+			<Field htmlFor="embedding-threshold" label="Default cosine threshold" helper="Starts at 0.70. This is an uncalibrated starting point for the selected model."><input id="embedding-threshold" className="field-input" type="number" min="0" max="1" step="0.01" value={state.draft.threshold} onChange={(event) => updateDraft({ threshold: Number(event.target.value) })} /></Field>
+			<Field htmlFor="embedding-deadline" label="Required-work deadline" helper="Milliseconds. Starts at 5,000."><input id="embedding-deadline" className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /></Field>
+			<Field htmlFor="embedding-credential" className="embedding-credential-field" label={<><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</>} helper="Write-only. The saved value is never read back or included in prompt data."><input id="embedding-credential" className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /></Field>
 		</div>
 		<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void apply()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => setConfirmingCredentialReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button>}</div>
 		{state.error !== null && <p className="settings-feedback-error" role="alert">{state.error}</p>}

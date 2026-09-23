@@ -1,5 +1,6 @@
 import { Check, ChevronDown, KeyRound, RefreshCw, RotateCcw, Save, SlidersHorizontal, Zap } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
+import { Field } from "@/components/ui/field";
 import type { ConnectionProfileDraft } from "../../connection-settings";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
@@ -43,19 +44,16 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 				</div>
 			</div>
 			<div className="definition-form">
-				<label className="field"><span>Display name</span><input className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} /></label>
-				<label className="field"><span>Provider</span><div className="field-input connection-provider-value">{draft.adapter === "deepseek" ? "DeepSeek" : draft.adapter === "openrouter" ? "OpenRouter" : "OpenAI Compatible"}</div></label>
-				<label className="field">
-					<span>Credential</span>
+				<Field htmlFor="connection-display-name" label="Display name"><input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} /></Field>
+				<Field label="Provider"><div className="field-input connection-provider-value">{draft.adapter === "deepseek" ? "DeepSeek" : draft.adapter === "openrouter" ? "OpenRouter" : "OpenAI Compatible"}</div></Field>
+				<Field htmlFor="connection-credential" label="Credential" helper={credentialDraft.length > 0 && selectedProfile ? "Update this credential before testing it." : credentialDraft.length > 0 ? "The credential will be saved when this connection is created." : "Saved credentials cannot be viewed. Enter a new one to replace it."}>
 					<div className="credential-field-row">
-						<div className="credential-input-row"><KeyRound aria-hidden="true" /><input className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Enter API key"} /></div>
+						<div className="credential-input-row"><KeyRound aria-hidden="true" /><input id="connection-credential" className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Enter API key"} /></div>
 						{selectedProfile?.credentialConfigured && <button className="secondary-button" type="button" onClick={() => void resetCredential()}><RotateCcw aria-hidden="true" /> Reset</button>}
 						{selectedProfile && credentialDraft.length > 0 && <button className="secondary-button" type="button" onClick={() => void updateCredential()}><KeyRound aria-hidden="true" /> Update credential</button>}
 					</div>
-					<small>{credentialDraft.length > 0 && selectedProfile ? "Update this credential before testing it." : credentialDraft.length > 0 ? "The credential will be saved when this connection is created." : "Saved credentials cannot be viewed. Enter a new one to replace it."}</small>
-				</label>
-				<div className="field">
-					<label htmlFor={`connection-model-${selectedProfileId ?? "new"}`}>Default and test model</label>
+				</Field>
+				<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default and test model" helper="Used for connection tests and saved as the default model.">
 					<div className="connection-model-field-row">
 						<div className="connection-model-picker">
 							<input id={`connection-model-${selectedProfileId ?? "new"}`} className="field-input connection-model-input" value={testModelId} onChange={(event) => updateTestModel(event.target.value)} placeholder="deepseek-flash" />
@@ -72,8 +70,7 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 							<button className="secondary-button connection-refresh-models-button" type="button" aria-label={discoveryPending ? "Refreshing models" : "Refresh models"} aria-busy={discoveryPending} disabled={refreshModelsDisabledReason !== undefined} onClick={() => void refreshModels()}><RefreshCw aria-hidden="true" /></button>
 						</span>
 					</div>
-					<small>Used for connection tests and saved as the default model.</small>
-				</div>
+				</Field>
 
 				<ConnectionAdvancedSummary controller={controller} onOpenInspector={onOpenInspector} />
 
