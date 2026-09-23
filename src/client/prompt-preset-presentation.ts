@@ -23,6 +23,7 @@ export const slotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 	lore: "Lore",
+	memory: "Memory",
 	instruction: "Instruction",
 } as const satisfies Record<PromptPresetBlockReference, string>;
 

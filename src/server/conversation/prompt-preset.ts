@@ -56,7 +56,7 @@ const projectPromptPreset = (
 				content: slot.content,
 			};
 		}
-		if (slot.reference === "lore") {
+		if (slot.reference === "lore" || slot.reference === "memory") {
 			return {
 				id: slot.id,
 				reference: slot.reference,

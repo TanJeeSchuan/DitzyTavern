@@ -28,6 +28,7 @@ import {
 	readPromptPresetRecipe,
 	type PromptPresetDatabase,
 } from "./recipe";
+import { invalidateMemoryWorkForPreset } from "../memory";
 import {
 	convertSillyTavernPromptPreset,
 } from "./sillytavern";
@@ -151,6 +152,9 @@ export const importNativePromptPreset = (
 	if (native.slots.filter((slot) => slot.reference === "lore").length > 1) {
 		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Lore block.");
 	}
+	if (native.slots.filter((slot) => slot.reference === "memory").length > 1) {
+		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Memory block.");
+	}
 	const db = connect(database);
 	const execute = database.transaction(() => {
 		const inserted = db
@@ -248,6 +252,7 @@ export function executePromptPresetCommand(
 				);
 			}
 			const defaultId = readDefaultPromptPresetId(db);
+			invalidateMemoryWorkForPreset(database, preset.id, "The selected Prompt Preset was deleted. Choose a preset with Memory and reset this source to process it again.");
 			const reassigned = db
 				.update(conversationPromptPresetTable)
 				.set({ prompt_preset_id: defaultId })
@@ -299,6 +304,7 @@ export function executePromptPresetCommand(
 			.set({ name: requireCommandName(command.name), revision: preset.revision + 1 })
 			.where(eq(promptPresetTable.id, preset.id))
 			.run();
+		invalidateMemoryWorkForPreset(database, preset.id);
 		return { kind: "preset", preset: requireSummary(db, preset.id) };
 	});
 

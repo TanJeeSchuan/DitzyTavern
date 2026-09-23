@@ -3,6 +3,7 @@ import { Switch } from "radix-ui";
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../workspace";
 import { EmbeddingSettingsEditor } from "./EmbeddingSettingsEditor";
+import { MemorySettingsEditor } from "./MemorySettingsEditor";
 
 export function SettingsPanel({
 	theme,
@@ -59,6 +60,7 @@ export function SettingsPanel({
 				</div>
 			</section>
 			<EmbeddingSettingsEditor />
+			<MemorySettingsEditor />
 		</div>
 	);
 }

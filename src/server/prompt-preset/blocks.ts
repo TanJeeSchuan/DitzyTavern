@@ -11,6 +11,7 @@ import {
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
+import { invalidateMemoryWorkForPreset } from "../memory";
 
 // ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
@@ -30,6 +31,14 @@ export class InvalidPromptPresetOperationError extends Error {
 		this.name = "InvalidPromptPresetOperationError";
 	}
 }
+
+const uniqueBlockName = (reference: string) =>
+	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : null;
+
+const assertNoSecondUniqueBlock = (reference: string, exists: boolean) => {
+	const name = uniqueBlockName(reference);
+	if (name !== null && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${name} block.`);
+};
 
 const validateBlockPatches = (
 	recipe: PromptPresetRecipe,
@@ -153,6 +162,7 @@ export const savePromptPresetBlockPatches = (
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		validateBlockPatches(recipe, patches);
 		patches.forEach((patch) => applyBlockPatch(db, patch));
+		if (patches.length > 0) invalidateMemoryWorkForPreset(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -174,6 +184,7 @@ const writePromptPresetBlock = (
 	return database.transaction(() => {
 		const occurrence = requireBlock(database, presetId, blockId);
 		write(db, occurrence);
+		invalidateMemoryWorkForPreset(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -187,9 +198,7 @@ export const addPromptPresetBlock = (
 	const db = drizzle(database);
 	return database.transaction(() => {
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-		if (reference === "lore" && recipe.slots.some((slot) => slot.reference === "lore")) {
-			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
-		}
+		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 		const count = orderedIdsOf(db, presetId).length;
 		db.insert(promptPresetBlockTable)
 			.values({
@@ -200,6 +209,7 @@ export const addPromptPresetBlock = (
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
 			.run();
+		invalidateMemoryWorkForPreset(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -227,6 +237,7 @@ export const addPromptPresetInstruction = (
 				content: "",
 			})
 			.run();
+		invalidateMemoryWorkForPreset(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -274,9 +285,7 @@ export const duplicatePromptPresetBlock = (
 	blockId: number,
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
-		if (original.reference === "lore") {
-			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
-		}
+		assertNoSecondUniqueBlock(original.reference, uniqueBlockName(original.reference) !== null);
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.

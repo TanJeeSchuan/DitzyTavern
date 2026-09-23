@@ -29,6 +29,8 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
+export const promptMemoryReference = Type.Literal("memory");
+export type PromptMemoryReference = Static<typeof promptMemoryReference>;
 
 // ==[HUMAN APPROVED]== The outgoing presentation role a Definition slot's content is sent as.
 // It controls model-request presentation only: it never changes which
@@ -53,12 +55,14 @@ export const defaultOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference, PromptOutgoingRole>;
+	memory: "system",
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
+	promptMemoryReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
@@ -90,7 +94,7 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: promptLoreReference,
+		reference: Type.Union([promptLoreReference, promptMemoryReference]),
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
 	}),
@@ -178,12 +182,8 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
-	Type.Object({
-		id: Type.Integer(),
-		reference: promptLoreReference,
-		enabled: Type.Boolean(),
-		role: promptOutgoingRole,
-	}),
+	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
+	Type.Object({ id: Type.Integer(), reference: promptMemoryReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
 		id: Type.Integer(),
 		reference: referencedDefinitionBlock,

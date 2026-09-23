@@ -17,9 +17,11 @@ import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPre
 
 const AddSlotSelect = ({
 	disabled,
+	existing,
 	onAdd,
 }: {
 	disabled: boolean;
+	existing: readonly ConversationPromptPreset["slots"][number][];
 	onAdd: (reference: PromptBlockReference) => void;
 }) => {
 	const [selection, setSelection] = useState<PromptBlockReference | "">("");
@@ -31,7 +33,7 @@ const AddSlotSelect = ({
 				value={selection}
 				emptyLabel="Choose a reference…"
 				labels={slotLabels}
-				isOption={isPromptBlockReference}
+				isOption={(value): value is PromptBlockReference => isPromptBlockReference(value) && !((value === "lore" || value === "memory") && existing.some((slot) => slot.reference === value))}
 				disabled={disabled}
 				onChange={setSelection}
 			/>
@@ -108,7 +110,7 @@ export function PromptPresetRecipeEditor({
 		</DragDropProvider>
 		{problem !== null && <p className="text-destructive text-sm" role="alert">{problem}</p>}
 		<div className="flex flex-wrap items-center gap-2">
-			<AddSlotSelect disabled={pending} onAdd={(reference) => onOperation(() => addPromptPresetReference(preset.id, reference))} />
+			<AddSlotSelect disabled={pending} existing={preset.slots} onAdd={(reference) => onOperation(() => addPromptPresetReference(preset.id, reference))} />
 			<Button size="xs" disabled={pending} onClick={() => onOperation(() => addPromptPresetInstruction(preset.id))}><Plus aria-hidden="true" /> Instruction</Button>
 		</div>
 	</section>;

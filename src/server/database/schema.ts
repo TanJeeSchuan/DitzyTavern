@@ -71,6 +71,9 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
+		uniqueIndex("prompt_preset_single_memory_block")
+			.on(table.preset_id)
+			.where(sql`${table.reference} = 'memory'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(
@@ -99,6 +102,12 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.content} IS NULL
 			) OR (
 				${table.reference} = 'lore'
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			) OR (
+				${table.reference} = 'memory'
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
@@ -220,6 +229,27 @@ export const embeddingSecretTable = sqliteTable("embedding_secret", {
 	tag: text().notNull(),
 });
 
+export const memorySettingsTable = sqliteTable("memory_settings", {
+	id: int().primaryKey(),
+	revision: int().notNull().default(0),
+	// ==[HUMAN APPROVED]== Preserve deleted Profile identity so settings reads can report the broken choice.
+	extraction_profile_id: int(),
+	extraction_model: text().notNull().default(""),
+	context_limit: int().notNull().default(16384),
+	output_reserve: int().notNull().default(2048),
+	safety_allowance: int().notNull().default(500),
+	jev_model: text().notNull().default("jev-1.13.0"),
+});
+
+export const memorySecretTable = sqliteTable("memory_secret", {
+	id: int().primaryKey(),
+	format_version: int().notNull(),
+	key_id: text().notNull(),
+	nonce: text().notNull(),
+	ciphertext: text().notNull(),
+	tag: text().notNull(),
+});
+
 // ==[HUMAN APPROVED]== Derived vectors are reusable only when endpoint, model and source kind
 // are identical. Authored content and trigger text remain the cache key, never provider data.
 export const embeddingCacheTable = sqliteTable(
@@ -318,6 +348,35 @@ export const messageVariantTable = sqliteTable(
 			.where(sql`${table.selected} = 1`),
 	],
 );
+
+export const conversationMemorySettingsTable = sqliteTable("conversation_memory_settings", {
+	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
+	allowance: int().notNull().default(2048),
+	revision: int().notNull().default(0),
+	chat_epoch: int().notNull().default(0),
+});
+
+export const memoryCollectionTable = sqliteTable("memory_collection", {
+	variant_id: int().primaryKey().references(() => messageVariantTable.id, { onDelete: "cascade" }),
+	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
+	message_id: int().notNull().references(() => messageTable.id, { onDelete: "cascade" }),
+	source_hash: text().notNull(),
+	revision: int().notNull().default(0),
+	ownership: text().notNull().default("automatic"),
+	work_epoch: int().notNull().default(0),
+	source_epoch: int().notNull().default(0),
+	chat_epoch: int().notNull().default(0),
+	status: text().notNull().default("pending"),
+	error: text(),
+	source_snapshot_json: text().notNull(),
+	claims_json: text().notNull().default("[]"),
+	provenance_json: text().notNull().default("[]"),
+	updated_at: text().notNull(),
+}, (table) => [
+	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
+	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
+	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
+]);
 
 // ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the
 // character_prompt and character_opening child tables, so a future

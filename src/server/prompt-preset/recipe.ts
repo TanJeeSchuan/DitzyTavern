@@ -13,6 +13,7 @@ import {
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
 import { PromptPresetNotFoundError } from "./errors";
+import { invalidateMemoryWorkForConversation } from "../memory";
 
 const connect = (database: Database) => drizzle(database);
 export type PromptPresetDatabase = ReturnType<typeof connect>;
@@ -29,7 +30,7 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference | "memory"; role: PromptOutgoingRole; name: null; content: null }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;
@@ -89,6 +90,7 @@ export const selectConversationPromptPreset = (
 			set: { prompt_preset_id: promptPresetId },
 		})
 		.run();
+	invalidateMemoryWorkForConversation(db.$client, conversationId);
 };
 
 const storedOccurrences = (

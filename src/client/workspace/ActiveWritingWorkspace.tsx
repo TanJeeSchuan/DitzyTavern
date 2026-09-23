@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { Toast } from "radix-ui";
 import { useEffect, useReducer, useState } from "react";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import { MemoriesPanel } from "./MemoriesPanel";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import {
@@ -261,6 +262,11 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "macro-variables-opened" });
 					}}
+					onOpenMemories={() => {
+						if (assemblyActive) return;
+						setGenerationDetailsTarget(null);
+						dispatchPanel({ type: "memories-opened" });
+					}}
 				/>
 
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
@@ -366,6 +372,15 @@ export function ActiveWritingWorkspace({
 					conversationId={Number(session.activeChatId)}
 					chatTitle={session.activeChat.title}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
+				/>
+			)}
+			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
+				<MemoriesPanel
+					conversationId={session.conversation.id}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
+					onNavigateSource={(messageId) => {
+						document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+					}}
 				/>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (

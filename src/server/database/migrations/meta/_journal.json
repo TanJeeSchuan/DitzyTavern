@@ -57,6 +57,27 @@
       "when": 1789828047378,
       "tag": "0007_sturdy_ser_duncan",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790153974089,
+      "tag": "0008_complex_exiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790154636190,
+      "tag": "0009_spicy_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790157467495,
+      "tag": "0010_peaceful_warbound",
+      "breakpoints": true
     }
   ]
 }

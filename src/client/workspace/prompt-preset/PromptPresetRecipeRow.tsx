@@ -61,6 +61,9 @@ const SlotBody = ({ slot }: { slot: ResolvedPromptPresetSlot }) => {
 	if (slot.reference === "lore") {
 		return <p className="mt-1 text-sm text-muted-foreground">Lore Entries are admitted when a Generation is assembled.</p>;
 	}
+	if (slot.reference === "memory") {
+		return <p className="mt-1 text-sm text-muted-foreground">Conversation Memories are included here when available.</p>;
+	}
 	if (slot.reference === "instruction") return null;
 	if (slot.sourceName === null) return <p className="mt-1 text-sm text-muted-foreground">No Participant holds this Control seat yet.</p>;
 	return <>

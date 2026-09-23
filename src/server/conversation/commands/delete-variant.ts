@@ -1,5 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
+import { invalidateMemoryWorkForVariant } from "../../memory";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -70,6 +71,7 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 			.set({ selected: true })
 			.where(eq(messageVariantTable.id, replacement.id))
 			.run();
+		invalidateMemoryWorkForVariant(db.$client, replacement.id);
 	}
 
 	db.delete(messageVariantTable)

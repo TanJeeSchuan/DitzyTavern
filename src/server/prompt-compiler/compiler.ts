@@ -163,6 +163,9 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	if (input.recipe.filter((slot) => slot.reference === "lore").length > 1) {
 		throw new Error("A Prompt Preset may contain at most one Lore block.");
 	}
+	if (input.recipe.filter((slot) => slot.reference === "memory").length > 1) {
+		throw new Error("A Prompt Preset may contain at most one Memory block.");
+	}
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
@@ -205,6 +208,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
+		if (slot.reference === "memory") continue;
 		if (slot.reference === "instruction") {
 			// ==[HUMAN APPROVED]== Authored preset text resolves `{{self}}` to the current
 			// human-controlled Participant and `{{other}}` to the current

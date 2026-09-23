@@ -4,10 +4,14 @@ import { contract } from "./contract";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
+import { extractAndJudgeMemorySource, startMemoryExtractionWorker } from "./memory";
 
 registerWireFormats();
 initializeConnectionSecretKey();
 const database = openInitializedDatabase();
+const stopMemoryWorker = startMemoryExtractionWorker(database, {
+	process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, undefined, signal),
+});
 // ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;
 // it never resumes or retries a provider request.
 const startupRecovery = recoverActiveGenerations(database);
@@ -40,8 +44,9 @@ const app = contract
 	})
 	.listen({ hostname: "127.0.0.1", port: 3000 });
 
-const shutdown = () => {
+const shutdown = async () => {
 	app.stop();
+	await stopMemoryWorker();
 	const shutdownRecovery = gracefullyShutdownGenerations(database);
 	if (shutdownRecovery.failed > 0) {
 		console.error(
