@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import { invalidateMemoryWorkForVariant } from "../../memory";
+import { invalidateMemoryWorkForVariant, queueMemorySource } from "../../memory";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
 
@@ -19,4 +19,5 @@ export function editVariant(db: ConversationDatabase, input: EditVariantInput) {
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
 	invalidateMemoryWorkForVariant(db.$client, input.variantId);
+	if (current.selected && input.content.trim()) queueMemorySource(db.$client, input.conversationId, input.messageId);
 }

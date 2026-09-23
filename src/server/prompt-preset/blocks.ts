@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { promptPresetBlockTable } from "../database/schema";
+import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
 	type PromptPresetBlockPatch,
@@ -11,7 +11,7 @@ import {
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
-import { invalidateMemoryWorkForPreset } from "../memory";
+import { invalidateMemoryWorkForPreset, queueMemoryTail } from "../memory";
 
 // ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
@@ -91,6 +91,11 @@ const applyBlockPatch = (
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
+const refreshSelectedMemoryTails = (database: Database, presetId: number) => {
+	invalidateMemoryWorkForPreset(database, presetId);
+	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) queueMemoryTail(database, conversationId);
+};
+
 // ==[HUMAN APPROVED]== The stored position of every slot is a dense 1-based order, so a
 // move target and a duplicate's neighbor stay meaningful. Renumbering goes
 // through one offset pass first because `position` is unique per preset:
@@ -162,7 +167,7 @@ export const savePromptPresetBlockPatches = (
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		validateBlockPatches(recipe, patches);
 		patches.forEach((patch) => applyBlockPatch(db, patch));
-		if (patches.length > 0) invalidateMemoryWorkForPreset(database, presetId);
+		if (patches.length > 0) refreshSelectedMemoryTails(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -184,7 +189,7 @@ const writePromptPresetBlock = (
 	return database.transaction(() => {
 		const occurrence = requireBlock(database, presetId, blockId);
 		write(db, occurrence);
-		invalidateMemoryWorkForPreset(database, presetId);
+		refreshSelectedMemoryTails(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -209,7 +214,7 @@ export const addPromptPresetBlock = (
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
 			.run();
-		invalidateMemoryWorkForPreset(database, presetId);
+		refreshSelectedMemoryTails(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -237,7 +242,7 @@ export const addPromptPresetInstruction = (
 				content: "",
 			})
 			.run();
-		invalidateMemoryWorkForPreset(database, presetId);
+		refreshSelectedMemoryTails(database, presetId);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };

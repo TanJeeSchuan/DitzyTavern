@@ -106,7 +106,7 @@ describe("Memory source public contract", () => {
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
-		const stop = startMemoryExtractionWorker(database, { process: async () => { await waiting; return []; } });
+		const stop = startMemoryExtractionWorker(database, { process: async (_source) => { await waiting; return [{ claim: "Late old result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Original story." }], judgment: { support: "supported", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 } } }]; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
 			const conversationRoutes = createConversationRoutes(database);
@@ -116,8 +116,9 @@ describe("Memory source public contract", () => {
 			expect((await edit(0, "Changed story.")).status).toBe(200);
 			expect((await edit(1, "Original story.")).status).toBe(200);
 			release();
-			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "failed")).toBe(true);
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "stale", claims: [] }]);
+			await stop();
+			expect(database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status).toBe("pending");
+			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "pending", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
 
@@ -155,7 +156,8 @@ describe("Memory source public contract", () => {
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
-		const stop = startMemoryExtractionWorker(database, { process: async () => { await waiting; return []; } });
+		let processCount = 0;
+		const stop = startMemoryExtractionWorker(database, { process: async () => { if (++processCount === 1) { await waiting; return [{ claim: "Late pre-disable result.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: "Source around a setting change." }], judgment: { support: "supported", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 } } }]; } return []; } });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
 			const preset = await readPreset(createConversationRoutes(database), conversation.id);
@@ -164,8 +166,8 @@ describe("Memory source public contract", () => {
 			await readOperation(toggleBlock(database, preset.id, memory.id, false));
 			await readOperation(toggleBlock(database, preset.id, memory.id, true));
 			release();
-			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "failed")).toBe(true);
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "failed", claims: [] }]);
+			expect(await waitFor(() => processCount === 2 && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete")).toBe(true);
+			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "complete", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
 

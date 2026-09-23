@@ -37,6 +37,7 @@ import {
 	LORE_ACTIVATION_NAMESPACE,
 	parseLoreActivationRecord,
 } from "../../../shared/contract/lore-activation";
+import { queueMemorySource } from "../../memory/collections";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -310,6 +311,7 @@ export function resolveConversationGeneration(
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
+		if (input.content.trim()) queueMemorySource(db.$client, input.conversationId, active.message_id);
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -343,6 +345,7 @@ export const removeConversationGeneration = (
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
+		if (transition.durableOutput && active.checkpoint_content.trim()) queueMemorySource(db.$client, input.conversationId, active.message_id);
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
@@ -610,6 +613,7 @@ export function stopConversationGenerations(
 			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
 		}
 		restoreStoppedSiblingSelection(db, removedSiblings);
+		if (durableOutput) for (const messageId of new Set(activeRows.filter((active) => active.checkpoint_content.trim() && db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, active.variant_id)).get()?.selected).map((active) => active.message_id))) queueMemorySource(db.$client, input.conversationId, messageId);
 		const snapshot = advanceConversationRevision(
 			db,
 			input.conversationId,

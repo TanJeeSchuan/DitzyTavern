@@ -202,6 +202,35 @@
 	background: color-mix(in srgb, var(--muted) 35%, transparent);
 }
 
+.memory-catchup,
+.memory-edit-form {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.memory-catchup {
+	padding: 0.9rem;
+	border: 1px solid var(--border);
+	border-radius: 1rem;
+	background: color-mix(in srgb, var(--muted) 35%, transparent);
+}
+
+.memory-catchup h3 {
+	margin: 0;
+	font-size: 0.9rem;
+}
+
+.memory-catchup p {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.5;
+}
+
+.memory-edit-form textarea {
+	min-height: 5rem;
+	resize: vertical;
+}
+
 .memory-allowance h3,
 .memory-source h3,
 .memory-claim h4 {

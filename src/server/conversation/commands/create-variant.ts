@@ -1,5 +1,6 @@
 import type { ConversationDatabase } from "../internal";
 import { appendSelectedVariant, requireMessage } from "../internal";
+import { queueMemorySource } from "../../memory/collections";
 
 export interface CreateVariantInput {
 	conversationId: number;
@@ -14,4 +15,5 @@ export function createVariant(db: ConversationDatabase, input: CreateVariantInpu
 		content: input.content,
 		timestamp: message.timestamp,
 	});
+	queueMemorySource(db.$client, input.conversationId, input.messageId);
 }

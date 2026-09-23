@@ -1,11 +1,13 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 import { withDatabase } from "../database/database";
-import { readConversationMemories, readMemoryAllowance, resetAndReextractMemorySource, setMemoryAllowance, StaleMemoryAllowanceError } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, resetAndReextractMemorySource, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryAllowanceInvalid,
 	memoryInvalid, memoryQueueApplied, memorySourceCommand,
+	memoryCorrectionCommand, memoryCorrectionApplied, memoryCorrectionConflict,
+	memoryCatchup, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead,
 } from "../../shared/contract/memory";
 
 export const createMemoryRoutes = (database: Database | undefined) => new Elysia()
@@ -26,4 +28,22 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 		} catch (error) {
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory work could not be queued." });
 		}
-	}, { params: memoryConversationIdParams, body: memorySourceCommand, response: { 200: memoryQueueApplied, 422: memoryInvalid } });
+	}, { params: memoryConversationIdParams, body: memorySourceCommand, response: { 200: memoryQueueApplied, 422: memoryInvalid } })
+	.post("/api/conversations/:id/memories/correct", ({ params, body }) => {
+		try {
+			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision, body.index, body.operation, body.operation === "edit" ? { claim: body.claim ?? "", attribution: body.attribution ?? "", people: body.people ?? [] } : undefined));
+			return { outcome: "applied" as const, collection };
+		} catch (error) {
+			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });
+			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory correction could not be saved." });
+		}
+	}, { params: memoryConversationIdParams, body: memoryCorrectionCommand, response: { 200: memoryCorrectionApplied, 409: memoryCorrectionConflict, 422: memoryInvalid } })
+	.get("/api/conversations/:id/memories/catchup", ({ params }) => withDatabase(database, (db) => readLatestMemoryCatchup(db, Number(params.id))), { params: memoryConversationIdParams, response: memoryCatchupRead })
+	.post("/api/conversations/:id/memories/catchup", ({ params }) => {
+		try { return withDatabase(database, (db) => startMemoryCatchup(db, Number(params.id))); }
+		catch (error) { return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "History catch-up could not be started." }); }
+	}, { params: memoryConversationIdParams, body: memoryCatchupCommand, response: { 200: memoryCatchup, 422: memoryInvalid } })
+	.delete("/api/conversations/:id/memories/catchup/:runId", ({ params }) => {
+		try { return withDatabase(database, (db) => cancelMemoryCatchup(db, Number(params.id), Number(params.runId))); }
+		catch (error) { return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "History catch-up could not be cancelled." }); }
+	}, { params: memoryCatchupParams, response: { 200: memoryCatchup, 422: memoryInvalid } });

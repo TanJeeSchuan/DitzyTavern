@@ -356,6 +356,16 @@ export const conversationMemorySettingsTable = sqliteTable("conversation_memory_
 	chat_epoch: int().notNull().default(0),
 });
 
+export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
+	id: int().primaryKey({ autoIncrement: true }),
+	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
+	state: text().notNull().default("running"),
+	created_at: text().notNull(),
+}, (table) => [
+	index("memory_catchup_run_conversation_state").on(table.conversation_id, table.state),
+	check("memory_catchup_run_state_check", sql`${table.state} IN ('running', 'complete', 'failed', 'cancelled')`),
+]);
+
 export const memoryCollectionTable = sqliteTable("memory_collection", {
 	variant_id: int().primaryKey().references(() => messageVariantTable.id, { onDelete: "cascade" }),
 	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
@@ -371,9 +381,12 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	source_snapshot_json: text().notNull(),
 	claims_json: text().notNull().default("[]"),
 	provenance_json: text().notNull().default("[]"),
+	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
+	source_changed: int({ mode: "boolean" }).notNull().default(false),
 	updated_at: text().notNull(),
 }, (table) => [
 	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
+	index("memory_collection_catchup_run").on(table.catchup_run_id),
 	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
 	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
 ]);

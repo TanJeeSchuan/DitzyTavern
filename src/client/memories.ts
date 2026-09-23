@@ -1,6 +1,6 @@
-import type { ConversationMemories, ConversationMemoryAllowance } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup } from "../shared/contract/memory";
 import { Value } from "@sinclair/typebox/value";
-import { memoryInvalid, conversationMemoryAllowanceConflict } from "../shared/contract/memory";
+import { memoryInvalid, conversationMemoryAllowanceConflict, memoryCorrectionConflict } from "../shared/contract/memory";
 import { api } from "./lib/eden";
 
 export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
@@ -17,6 +17,33 @@ export async function resetAndReextract(conversationId: number, messageId: numbe
 		? Value.Parse(memoryInvalid, value)
 		: { outcome: "invalid", reason: "Memory work could not be queued." };
 }
+
+export async function correctMemory(conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }) {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.correct.post({ messageId, variantId, expectedRevision, index, operation, ...replacement });
+	if (data !== undefined && data !== null) return data;
+	const value = error?.value;
+	if (value !== undefined && Value.Check(memoryCorrectionConflict, value)) return Value.Parse(memoryCorrectionConflict, value);
+	const invalid = value !== undefined && Value.Check(memoryInvalid, value) ? Value.Parse(memoryInvalid, value) : { reason: "Memory correction could not be saved." };
+	return { outcome: "invalid" as const, reason: invalid.reason };
+}
+
+export async function loadMemoryCatchup(conversationId: number): Promise<MemoryCatchup | null> {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.catchup.get();
+	if (error || data === undefined) throw new Error("History catch-up status could not be loaded.");
+	return data;
+}
+export async function startMemoryCatchup(conversationId: number): Promise<MemoryCatchup> {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.catchup.post({});
+	if (error || data === undefined) throw new Error(error?.value && "reason" in error.value ? String(error.value.reason) : "History catch-up could not be started.");
+	return data;
+}
+export async function cancelMemoryCatchup(conversationId: number, runId: number): Promise<MemoryCatchup> {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.catchup({ runId: String(runId) }).delete();
+	if (error || data === undefined) throw new Error("History catch-up could not be cancelled.");
+	return data;
+}
+
+export type { MemoryCatchup };
 
 export async function loadMemoryAllowance(conversationId: number): Promise<ConversationMemoryAllowance> {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) })["memory-allowance"].get();

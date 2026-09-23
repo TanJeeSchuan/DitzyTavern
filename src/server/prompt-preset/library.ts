@@ -28,7 +28,7 @@ import {
 	readPromptPresetRecipe,
 	type PromptPresetDatabase,
 } from "./recipe";
-import { invalidateMemoryWorkForPreset } from "../memory";
+import { invalidateMemoryWorkForPreset, queueMemoryTail } from "../memory";
 import {
 	convertSillyTavernPromptPreset,
 } from "./sillytavern";
@@ -260,6 +260,7 @@ export function executePromptPresetCommand(
 				.returning({ conversation_id: conversationPromptPresetTable.conversation_id })
 				.all();
 			db.delete(promptPresetTable).where(eq(promptPresetTable.id, preset.id)).run();
+			for (const { conversation_id: conversationId } of reassigned) queueMemoryTail(database, conversationId);
 			return {
 				kind: "deleted",
 				result: {

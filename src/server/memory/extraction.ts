@@ -24,6 +24,7 @@ export interface CapturedMemoryMessage {
 export interface MemoryEvidence { messageId: number; excerpt: string }
 export interface MemoryCandidate { claim: string; attribution: string; people: string[]; evidence: MemoryEvidence[] }
 export interface MemoryCandidateJudgment extends MemoryCandidate {
+	writerMaintained?: boolean;
 	judgment: {
 		support: "supported" | "contradicted" | "not_established";
 		usefulness: "retain" | "omit";

@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readConversationPromptPreset } from "../conversation/prompt-preset";
 import { readSelectedHistory } from "../conversation/selected-history";
-import { conversationMemorySettingsTable, memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import type { MemoryCandidateJudgment, CapturedMemoryMessage } from "./extraction";
 import { Value } from "@sinclair/typebox/value";
 import { memoryCandidates, memoryWorkSnapshot } from "../../shared/contract/memory";
@@ -12,11 +12,17 @@ import { memoryCandidates, memoryWorkSnapshot } from "../../shared/contract/memo
 export interface MemoryCollectionView {
 	messageId: number;
 	variantId: number;
+	selected: boolean;
 	status: "unprocessed" | "stale" | "pending" | "running" | "complete" | "failed";
 	error: string | null;
 	revision: number;
 	ownership: "automatic" | "writer";
+	sourceChanged: boolean;
 	claims: MemoryCandidateJudgment[];
+}
+
+export class StaleMemoryCollectionError extends Error {
+	constructor(readonly collection: MemoryCollectionView) { super("This Memory collection changed in another session."); this.name = "StaleMemoryCollectionError"; }
 }
 
 export class InvalidMemorySourceError extends Error {
@@ -40,6 +46,7 @@ const capture = (database: Database, conversationId: number, messageId: number) 
 	if (!selected?.target) throw new InvalidMemorySourceError("This source no longer belongs to the selected Chat.");
 	const variant = selected.target.variant;
 	if (!variant) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");
+	if (drizzle(database).select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, variant.id)).get()) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
 	if (variant.content.trim().length === 0) throw new InvalidMemorySourceError("Empty sources are not processed. Save nonempty story content first.");
 	const previous = selected.messages.filter((message) => message.variant).slice(-4);
 	const source: CapturedMemoryMessage = { messageId, variantId: variant.id, content: variant.content };
@@ -83,6 +90,8 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 			source_snapshot_json: sourceSnapshot,
 			claims_json: "[]",
 			provenance_json: "[]",
+			catchup_run_id: null,
+			source_changed: false,
 			updated_at: now,
 		}).onConflictDoUpdate({
 			target: memoryCollectionTable.variant_id,
@@ -90,34 +99,158 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 				conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash,
 				revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch,
 				status: "pending", error: null, source_snapshot_json: sourceSnapshot,
-				claims_json: "[]", provenance_json: "[]", updated_at: now,
+				claims_json: "[]", provenance_json: "[]", source_changed: false, updated_at: now,
+				catchup_run_id: null,
 			},
 		}).run();
 		return {
-			messageId, variantId: captured.source.variantId, status: "pending" as const, error: null,
-			revision, ownership: "automatic" as const, claims: [],
+			messageId, variantId: captured.source.variantId, selected: true, status: "pending" as const, error: null,
+			revision, ownership: "automatic" as const, sourceChanged: false, claims: [],
 		};
+	}).immediate();
+}
+
+// ==[HUMAN APPROVED]== Queue selected source work from an authoritative write transaction.
+export function queueMemorySource(database: Database, conversationId: number, messageId: number, catchupRunId: number | null = null): boolean {
+	if (!memoryEnabled(database, conversationId)) return false;
+	let captured: ReturnType<typeof capture>;
+	try { captured = capture(database, conversationId, messageId); } catch { return false; }
+	const db = drizzle(database);
+	const current = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, captured.source.variantId)).get();
+	if (current?.ownership === "writer") return false;
+	if (current && current.source_hash === captured.sourceHash && ["pending", "running"].includes(current.status)) {
+		if (catchupRunId === null && current.catchup_run_id !== null) db.update(memoryCollectionTable).set({ catchup_run_id: null, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, current.variant_id)).run();
+		return false;
+	}
+	if (current && current.source_hash === captured.sourceHash && current.status === "complete") return false;
+	const chat = ensureChatState(database, conversationId);
+	const now = new Date().toISOString();
+	const revision = (current?.revision ?? 0) + 1;
+	const workEpoch = (current?.work_epoch ?? 0) + 1;
+	const sourceEpoch = (current?.source_epoch ?? 0) + 1;
+	db.insert(memoryCollectionTable).values({ variant_id: captured.source.variantId, conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash, revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch, status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: captured.source, context: captured.context }), claims_json: "[]", provenance_json: "[]", catchup_run_id: catchupRunId, updated_at: now }).onConflictDoUpdate({
+		target: memoryCollectionTable.variant_id,
+				set: { conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash, revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch, status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: captured.source, context: captured.context }), claims_json: "[]", provenance_json: "[]", catchup_run_id: catchupRunId, source_changed: false, updated_at: now },
+	}).run();
+	return true;
+}
+
+export function queueMemoryTail(database: Database, conversationId: number): boolean {
+	const history = readSelectedHistory(database, conversationId);
+	const tail = history?.messages.at(-1);
+	return tail?.variant ? queueMemorySource(database, conversationId, tail.id) : false;
+}
+
+export interface MemoryCatchupView {
+	id: number;
+	state: "running" | "complete" | "failed" | "cancelled";
+	pending: number;
+	running: number;
+	complete: number;
+	failed: { messageId: number; error: string | null }[];
+}
+
+export function startMemoryCatchup(database: Database, conversationId: number): MemoryCatchupView {
+	return database.transaction(() => {
+		if (!memoryEnabled(database, conversationId)) throw new InvalidMemorySourceError("Enable Memory in the selected Prompt Preset before remembering history.");
+		const history = readSelectedHistory(database, conversationId);
+		if (!history) throw new InvalidMemorySourceError("This Chat no longer exists.");
+		const path = history.messages.flatMap((message) => message.variant ? [{ messageId: message.id, variantId: message.variant.id }] : []);
+		const created = drizzle(database).insert(memoryCatchupRunTable).values({ conversation_id: conversationId, state: "running", created_at: new Date().toISOString() }).returning({ id: memoryCatchupRunTable.id }).get();
+		if (!created) throw new InvalidMemorySourceError("History catch-up could not be saved.");
+		for (const { messageId, variantId } of path) {
+			const active = drizzle(database).select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, variantId)).get();
+			if (active) continue;
+			queueMemorySource(database, conversationId, messageId, created.id);
+		}
+		return readMemoryCatchup(database, created.id);
+	}).immediate();
+}
+
+export function readMemoryCatchup(database: Database, runId: number): MemoryCatchupView {
+	const db = drizzle(database);
+	const run = db.select().from(memoryCatchupRunTable).where(eq(memoryCatchupRunTable.id, runId)).get();
+	if (!run) throw new InvalidMemorySourceError("This history catch-up run no longer exists.");
+	const jobs = db.select({ status: memoryCollectionTable.status, messageId: memoryCollectionTable.message_id, error: memoryCollectionTable.error }).from(memoryCollectionTable).where(eq(memoryCollectionTable.catchup_run_id, runId)).all();
+	const pending = jobs.filter((job) => job.status === "pending").length;
+	const running = jobs.filter((job) => job.status === "running").length;
+	const failed = jobs.filter((job) => job.status === "failed").map((job) => ({ messageId: job.messageId, error: job.error }));
+	let state: MemoryCatchupView["state"];
+	switch (run.state) {
+		case "running": case "complete": case "failed": case "cancelled": state = run.state; break;
+		default: throw new InvalidMemorySourceError("This history catch-up run has an invalid state.");
+	}
+	if (state === "running" && pending + running === 0) {
+		state = failed.length ? "failed" : "complete";
+		db.update(memoryCatchupRunTable).set({ state }).where(eq(memoryCatchupRunTable.id, runId)).run();
+	}
+	return { id: runId, state, pending, running, complete: jobs.filter((job) => job.status === "complete").length, failed };
+}
+
+export function readLatestMemoryCatchup(database: Database, conversationId: number): MemoryCatchupView | null {
+	const run = drizzle(database).select({ id: memoryCatchupRunTable.id }).from(memoryCatchupRunTable).where(eq(memoryCatchupRunTable.conversation_id, conversationId)).orderBy(desc(memoryCatchupRunTable.id)).get();
+	return run ? readMemoryCatchup(database, run.id) : null;
+}
+
+export function cancelMemoryCatchup(database: Database, conversationId: number, runId: number): MemoryCatchupView {
+	return database.transaction(() => {
+		const db = drizzle(database);
+		const run = db.select().from(memoryCatchupRunTable).where(and(eq(memoryCatchupRunTable.id, runId), eq(memoryCatchupRunTable.conversation_id, conversationId))).get();
+		if (!run || run.state !== "running") throw new InvalidMemorySourceError("This history catch-up run is no longer active.");
+		db.delete(memoryCollectionTable).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "pending"))).run();
+		db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: "History catch-up was cancelled.", catchup_run_id: null, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "running"))).run();
+		db.update(memoryCatchupRunTable).set({ state: "cancelled" }).where(eq(memoryCatchupRunTable.id, runId)).run();
+		return readMemoryCatchup(database, runId);
 	}).immediate();
 }
 
 export function readConversationMemories(database: Database, conversationId: number): MemoryCollectionView[] {
 	const history = readSelectedHistory(database, conversationId);
 	if (!history) return [];
-	const selectedVariants = history.messages.flatMap((message) => message.variant ? [{ messageId: message.id, variantId: message.variant.id }] : []);
-	if (!selectedVariants.length) return [];
 	const db = drizzle(database);
+	const activeVariants = new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));
 	const rows = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).orderBy(asc(memoryCollectionTable.message_id)).all();
 	const byVariant = new Map(rows.map((row) => [row.variant_id, row]));
-	return selectedVariants.flatMap(({ messageId, variantId }) => {
+	const sources = new Map<number, { messageId: number; variantId: number; selected: boolean }>();
+	for (const message of history.messages) if (message.variant && !activeVariants.has(message.variant.id)) sources.set(message.variant.id, { messageId: message.id, variantId: message.variant.id, selected: true });
+	for (const row of rows) if (!sources.has(row.variant_id) && !activeVariants.has(row.variant_id)) sources.set(row.variant_id, { messageId: row.message_id, variantId: row.variant_id, selected: false });
+	return [...sources.values()].flatMap(({ messageId, variantId, selected }) => {
+		if (activeVariants.has(variantId)) return [];
 		const row = byVariant.get(variantId);
-		const currentSource = db.select({ content: messageVariantTable.content }).from(messageVariantTable).innerJoin(messageTable, eq(messageVariantTable.message_id, messageTable.id)).where(and(eq(messageVariantTable.id, variantId), eq(messageTable.conversation_id, conversationId), eq(messageVariantTable.selected, true))).get();
-		if (!currentSource || currentSource.content.trim().length === 0) return [];
-		if (!row) return [{ messageId, variantId, status: "unprocessed" as const, error: null, revision: 0, ownership: "automatic" as const, claims: [] }];
-		if (hash(currentSource.content) !== row.source_hash || (row.status === "failed" && row.error?.startsWith("This source changed"))) return [{ messageId, variantId, status: "stale" as const, error: row.error ?? "This source changed after its Memory collection was created.", revision: row.revision, ownership: collectionOwnership(row.ownership), claims: [] }];
+		const currentSource = db.select({ content: messageVariantTable.content }).from(messageVariantTable).innerJoin(messageTable, eq(messageVariantTable.message_id, messageTable.id)).where(and(eq(messageVariantTable.id, variantId), eq(messageTable.conversation_id, conversationId))).get();
+		if (!currentSource) return [];
+		if (!row && (selected && currentSource.content.trim().length === 0)) return [];
+		if (!row) return [{ messageId, variantId, selected, status: "unprocessed" as const, error: null, revision: 0, ownership: "automatic" as const, sourceChanged: false, claims: [] }];
+		const sourceChanged = row.source_changed || hash(currentSource.content) !== row.source_hash || (row.status === "failed" && Boolean(row.error?.startsWith("This source changed")));
 		let claims: MemoryCandidateJudgment[] = [];
 		try { claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json)); } catch { claims = []; }
-		return [{ messageId, variantId, status: collectionStatus(row.status), error: row.error, revision: row.revision, ownership: collectionOwnership(row.ownership), claims }];
+		const ownership = collectionOwnership(row.ownership);
+		const error = sourceChanged ? ownership === "writer" ? "This source changed. Automatic updates are paused for this writer-maintained collection." : row.error ?? "This source changed after its Memory collection was created." : row.error;
+		return [{ messageId, variantId, selected, status: sourceChanged ? "stale" as const : collectionStatus(row.status), error, revision: row.revision, ownership, sourceChanged, claims: sourceChanged && ownership === "automatic" ? [] : claims }];
 	});
+}
+
+export function correctMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }): MemoryCollectionView {
+	return database.transaction(() => {
+		const db = drizzle(database);
+		const selected = db.select({ variantId: messageVariantTable.id, content: messageVariantTable.content, isSelected: messageVariantTable.selected }).from(messageVariantTable).innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, messageId), eq(messageVariantTable.id, variantId))).get();
+		if (!selected) throw new InvalidMemorySourceError("This source no longer exists.");
+		const row = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
+		if (!row) throw new InvalidMemorySourceError("This source has no saved Memory collection to correct.");
+		let claims: MemoryCandidateJudgment[];
+		try { claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json)); } catch { throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid."); }
+		const view = (values: MemoryCandidateJudgment[], revision = row.revision): MemoryCollectionView => ({ messageId, variantId, selected: selected.isSelected, status: row.source_changed || hash(selected.content) !== row.source_hash ? "stale" : collectionStatus(row.status), error: row.error, revision, ownership: collectionOwnership(row.ownership), sourceChanged: row.source_changed || hash(selected.content) !== row.source_hash, claims: values });
+		if (row.revision !== expectedRevision) throw new StaleMemoryCollectionError(view(claims));
+		if (!Number.isSafeInteger(index) || index < 0 || index >= claims.length) throw new InvalidMemorySourceError("This Memory no longer exists in the source collection.");
+		if (operation === "edit") {
+			if (!replacement || !replacement.claim.trim() || !replacement.attribution.trim() || replacement.claim.length + replacement.attribution.length > 1024 || replacement.people.some((person) => !person.trim()) || new Set(replacement.people).size !== replacement.people.length) throw new InvalidMemorySourceError("Memory text, attribution, or person labels are invalid.");
+			claims[index] = { ...claims[index]!, ...replacement, writerMaintained: true };
+		} else claims.splice(index, 1);
+		const revision = row.revision + 1;
+		db.update(memoryCollectionTable).set({ revision, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(claims), work_epoch: row.work_epoch + 1, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, row.variant_id), eq(memoryCollectionTable.revision, row.revision))).run();
+		const corrected = view(claims, revision);
+		return { ...corrected, status: corrected.sourceChanged ? "stale" as const : "complete" as const, error: corrected.sourceChanged ? "This source changed. Automatic updates are paused for this writer-maintained collection." : null, ownership: "writer" as const };
+	}).immediate();
 }
 
 export class StaleMemoryAllowanceError extends Error {
@@ -129,13 +262,16 @@ export class StaleMemoryAllowanceError extends Error {
 
 // ==[HUMAN APPROVED]== Invalidate one source version whenever its text or selected status changes.
 export function invalidateMemoryWorkForVariant(database: Database, variantId: number) {
-	drizzle(database).update(memoryCollectionTable).set({
+	const db = drizzle(database);
+	db.update(memoryCollectionTable).set({
 		source_epoch: sql`${memoryCollectionTable.source_epoch} + 1`,
 		work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`,
+		source_changed: true,
 		status: "failed",
 		error: "This source changed after its Memory collection was created. Reset and re-extract it to create a collection for the current source version.",
 		updated_at: new Date().toISOString(),
-	}).where(eq(memoryCollectionTable.variant_id, variantId)).run();
+	}).where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.ownership, "automatic"))).run();
+	db.update(memoryCollectionTable).set({ source_epoch: sql`${memoryCollectionTable.source_epoch} + 1`, work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, source_changed: true, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.ownership, "writer"))).run();
 }
 
 export function readMemoryAllowance(database: Database, conversationId: number) {
@@ -167,13 +303,20 @@ export function startMemoryExtractionWorker(database: Database, options: MemoryE
 		while (!stopped) {
 			const job = database.transaction(() => {
 				const db = drizzle(database);
-				const pending = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.status, "pending")).orderBy(asc(memoryCollectionTable.updated_at)).get();
+				const pending = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.status, "pending")).orderBy(asc(memoryCollectionTable.catchup_run_id), asc(memoryCollectionTable.updated_at)).get();
 				if (!pending) return undefined;
 				db.update(memoryCollectionTable).set({ status: "running", updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, pending.variant_id), eq(memoryCollectionTable.status, "pending"))).run();
 				return { ...pending, status: "running" as const };
 			}).immediate();
 			if (!job) { await new Promise((resolve) => setTimeout(resolve, 300)); continue; }
 			try {
+				if (job.catchup_run_id !== null) {
+					const selected = database.query<{ selected: number }, [number]>("SELECT selected FROM message_variant WHERE id=?").get(job.variant_id);
+					if (!selected?.selected) {
+						drizzle(database).delete(memoryCollectionTable).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.catchup_run_id, job.catchup_run_id), eq(memoryCollectionTable.status, "running"))).run();
+						continue;
+					}
+				}
 				const source = database.query<{ content: string }, [number, number]>("SELECT v.content FROM message_variant v JOIN messages m ON m.id=v.message_id WHERE v.id=? AND m.conversation_id=?").get(job.variant_id, job.conversation_id);
 				const chat = drizzle(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, job.conversation_id)).get();
 				const current = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, job.variant_id)).get();
@@ -183,13 +326,15 @@ export function startMemoryExtractionWorker(database: Database, options: MemoryE
 				}
 				const snapshot = Value.Parse(memoryWorkSnapshot, JSON.parse(job.source_snapshot_json));
 				const claims = await options.process(snapshot.source, snapshot.context, controller.signal);
-				const finalSource = database.query<{ content: string }, [number, number]>("SELECT v.content FROM message_variant v JOIN messages m ON m.id=v.message_id WHERE v.id=? AND m.conversation_id=?").get(job.variant_id, job.conversation_id);
-				const finalChat = drizzle(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, job.conversation_id)).get();
-				const finalCollection = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, job.variant_id)).get();
-				const currentHash = finalSource ? hash(finalSource.content) : "";
-				if (finalSource && finalChat && finalCollection && finalCollection.status === "running" && finalCollection.source_hash === currentHash && finalCollection.source_hash === job.source_hash && finalCollection.revision === job.revision && finalCollection.work_epoch === job.work_epoch && finalCollection.source_epoch === job.source_epoch && finalCollection.chat_epoch === finalChat.chat_epoch && finalCollection.chat_epoch === job.chat_epoch && finalCollection.ownership === "automatic" && memoryEnabled(database, job.conversation_id)) {
-					drizzle(database).update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(claims), provenance_json: JSON.stringify(claims.map(({ claim, attribution, evidence, judgment }) => ({ claim, attribution, evidence, judgment }))), error: null, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, job.variant_id)).run();
-				}
+				database.transaction(() => {
+					const finalSource = database.query<{ content: string }, [number, number]>("SELECT v.content FROM message_variant v JOIN messages m ON m.id=v.message_id WHERE v.id=? AND m.conversation_id=?").get(job.variant_id, job.conversation_id);
+					const finalChat = drizzle(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, job.conversation_id)).get();
+					const finalCollection = drizzle(database).select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, job.variant_id)).get();
+					const currentHash = finalSource ? hash(finalSource.content) : "";
+					if (finalSource && finalChat && finalCollection && finalCollection.status === "running" && finalCollection.source_hash === currentHash && finalCollection.source_hash === job.source_hash && finalCollection.revision === job.revision && finalCollection.work_epoch === job.work_epoch && finalCollection.source_epoch === job.source_epoch && finalCollection.chat_epoch === finalChat.chat_epoch && finalCollection.chat_epoch === job.chat_epoch && finalCollection.ownership === "automatic" && memoryEnabled(database, job.conversation_id)) {
+						drizzle(database).update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(claims), provenance_json: JSON.stringify(claims.map(({ claim, attribution, evidence, judgment }) => ({ claim, attribution, evidence, judgment }))), error: null, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.revision, job.revision), eq(memoryCollectionTable.work_epoch, job.work_epoch), eq(memoryCollectionTable.source_epoch, job.source_epoch), eq(memoryCollectionTable.status, "running"), eq(memoryCollectionTable.ownership, "automatic"))).run();
+					}
+				}).immediate();
 			} catch (error) {
 				if (stopped) continue;
 				const message = error instanceof Error ? error.message.slice(0, 1024) : "Memory extraction failed.";
