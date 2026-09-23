@@ -147,6 +147,36 @@ _Avoid_: guidance record, instruction message
 The Participant responsible for producing a Message, independent of any fictional speakers or actions represented inside its content.
 _Avoid_: detected speaker, character attribution
 
+## Memory
+
+**Memory**:
+Information about story events, facts, relationships, and what characters know or believe, learned from a Conversation and retained to support continuity within that Conversation.
+_Avoid_: Lore Entry when referring to information learned from Conversation history
+
+**Memory Claim**:
+A statement retained in a Memory about a story event, fact, relationship, or fictional person's perspective. Its attribution distinguishes what the story establishes from what someone says, witnesses, or believes.
+_Avoid_: verified fact when the source only establishes an assertion or belief
+
+**Memory Evidence**:
+The Conversation passages supporting a Memory Claim, including who says or experiences what they describe.
+_Avoid_: model confidence
+
+**Character Belief**:
+What a fictional person believes, as established by the Conversation. Hearing a claim does not by itself establish belief in it; an unstated belief remains unknown.
+_Avoid_: story fact, model confidence
+
+**Memory Collection**:
+The Memories owned by one source Variant. A collection becomes writer-maintained when the writer edits or removes a Memory, and returns to automatic ownership only through an explicit reset.
+_Avoid_: Lorebook, conversation-wide memory when referring to one source's collection
+
+**Memory Block**:
+A prompt block containing story-wide Memories selected for a Generation, including their character-knowledge and belief attribution, separate from Conversation history.
+_Avoid_: history summary, Lore Block
+
+**Memory Allowance**:
+The maximum estimated token space allocated to a Memory Block, distinct from Conversation history; available prompt space can restrict it further.
+_Avoid_: context limit, history window
+
 ## Lorebooks
 
 **Lorebook**:
