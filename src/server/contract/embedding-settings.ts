@@ -7,6 +7,7 @@ import {
 	StaleEmbeddingSettingsError,
 	type EmbeddingSettingsModuleOptions,
 } from "../embedding-settings";
+import { queueAllMemoryIndexing } from "../memory/indexing";
 import {
 	embeddingSettingsApplied,
 	embeddingSettingsCommandBody,
@@ -26,11 +27,17 @@ export const createEmbeddingSettingsRoutes = (
 		try {
 			const settings = withDatabase(database, (connection) => {
 				const module = createEmbeddingSettingsModule(connection, options);
+				const previous = module.get();
+				let next = previous;
 				switch (body.type) {
-					case "apply": return module.apply(body);
-					case "set-credential": return module.setCredential(body);
-					case "reset-credential": return module.resetCredential(body);
+					case "apply": next = module.apply(body); break;
+					case "set-credential": next = module.setCredential(body); break;
+					case "reset-credential": next = module.resetCredential(body); break;
 				}
+				if (previous.endpoint !== next.endpoint || previous.model !== next.model || previous.deadlineMs !== next.deadlineMs) {
+					queueAllMemoryIndexing(connection, { endpoint: next.endpoint, model: next.model, deadlineMs: next.deadlineMs });
+				}
+				return next;
 			});
 			return { outcome: "applied" as const, settings };
 		} catch (error) {
@@ -47,4 +54,3 @@ export const createEmbeddingSettingsRoutes = (
 			return status(422, { outcome: "invalid" as const, reason: "Embedding Settings could not be saved." });
 		}
 	}, { body: embeddingSettingsCommandBody, response: { 200: embeddingSettingsApplied, 409: embeddingSettingsConflict, 422: embeddingSettingsInvalid } });
-

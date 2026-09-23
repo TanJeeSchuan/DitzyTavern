@@ -1,6 +1,6 @@
 import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup } from "../shared/contract/memory";
 import { Value } from "@sinclair/typebox/value";
-import { memoryInvalid, conversationMemoryAllowanceConflict, memoryCorrectionConflict } from "../shared/contract/memory";
+import { memoryInvalid, conversationMemoryAllowanceConflict, memoryCorrectionConflict, memoryIndexRetryConflict, memoryCatchup } from "../shared/contract/memory";
 import { api } from "./lib/eden";
 
 export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
@@ -27,10 +27,21 @@ export async function correctMemory(conversationId: number, messageId: number, v
 	return { outcome: "invalid" as const, reason: invalid.reason };
 }
 
+export async function retryMemoryIndex(conversationId: number, messageId: number, variantId: number, expectedRevision: number) {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.indexing.retry.post({ messageId, variantId, expectedRevision });
+	if (data !== undefined && data !== null) return data;
+	const value = error?.value;
+	if (value !== undefined && Value.Check(memoryIndexRetryConflict, value)) return Value.Parse(memoryIndexRetryConflict, value);
+	const invalid = value !== undefined && Value.Check(memoryInvalid, value) ? Value.Parse(memoryInvalid, value) : { reason: "Memory indexing could not be retried." };
+	return { outcome: "invalid" as const, reason: invalid.reason };
+}
+
 export async function loadMemoryCatchup(conversationId: number): Promise<MemoryCatchup | null> {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.catchup.get();
 	if (error || data === undefined) throw new Error("History catch-up status could not be loaded.");
-	return data;
+	if (data.run === null) return null;
+	if (!Value.Check(memoryCatchup, data.run)) throw new Error("History catch-up status has an invalid shape.");
+	return Value.Parse(memoryCatchup, data.run);
 }
 export async function startMemoryCatchup(conversationId: number): Promise<MemoryCatchup> {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.catchup.post({});

@@ -24,6 +24,8 @@ import type {
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
+import { memoryActivationRecord } from "./memory-recall";
+export type { MemoryActivationRecord } from "./memory-recall";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -56,6 +58,7 @@ const promptDefinitionBlockKind = Type.Union([
 	// a Participant.
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
+	Type.Literal("memory"),
 ]);
 
 const promptBlock = Type.Union([
@@ -313,6 +316,7 @@ export const activeGenerationDetails = Type.Object({
 	promptPlan,
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
+	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -351,7 +355,7 @@ export const variantDetails = Type.Object({
 	})]),
 	provenance: generationProvenance,
 	// Captured activation evidence is independent from compact Generation provenance
-	// and survives the transient inspection/replay lifecycle.
+	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
 });
 
@@ -715,6 +719,7 @@ export const generationPreview = Type.Object({
 	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
+	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
 	budget: generationPreviewBudget,
 });
 

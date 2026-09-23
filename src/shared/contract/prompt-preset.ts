@@ -112,6 +112,9 @@ export const promptPresetSlot = Type.Union([
 ]);
 export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
+export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
+	slots.some((slot) => slot.reference === "memory" && slot.enabled);
+
 // ==[HUMAN APPROVED]== A stored occurrence derives from the canonical slot and adds only local
 // database identity. Deliberate duplicates are separate occurrences, so
 // editor operations address one row by `id` instead of by reference.

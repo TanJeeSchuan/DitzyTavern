@@ -16,6 +16,7 @@ import {
 	participantTable,
 } from "../database/schema";
 import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, parseLoreActivationRecord } from "../../shared/contract/lore-activation";
+import { isMemoryActivationRecord } from "../../shared/contract/memory-recall";
 import {
 	connectConversationDatabase,
 	readActiveCast,
@@ -199,6 +200,11 @@ export function readActiveGenerationDetailsFromConnection(
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	const loreActivation = parseLoreActivationRecord(row.lore_activation_json);
+	const memoryActivationValue = inspectionRecord?.memoryActivation ?? null;
+	if (memoryActivationValue !== null && !isMemoryActivationRecord(memoryActivationValue)) {
+		throw new Error("Persisted Memory Activation evidence is invalid.");
+	}
+	const memoryActivation = memoryActivationValue === null ? null : memoryActivationValue;
 	return {
 		conversationId,
 		generationId: row.id,
@@ -214,6 +220,7 @@ export function readActiveGenerationDetailsFromConnection(
 		promptPlan: persistedPromptPlan(row.prompt_plan_json),
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		loreActivation,
+		memoryActivation,
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {

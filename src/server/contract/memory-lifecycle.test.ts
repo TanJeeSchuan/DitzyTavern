@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
-import { startMemoryExtractionWorker } from "../memory";
+import { startMemoryWorker } from "../memory";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
 import { Value } from "@sinclair/typebox/value";
-import { conversationMemories, memoryCatchup } from "../../shared/contract/memory";
+import { conversationMemories, memoryCatchup, memoryCatchupRead } from "../../shared/contract/memory";
 
 const waitFor = async (check: () => boolean | Promise<boolean>) => {
 	const deadline = Date.now() + 4000;
@@ -36,6 +36,13 @@ describe("Memory source lifecycle public operations", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
+	test("returns an explicit empty catch-up envelope before the first run", async () => {
+		const conversation = createChat(database);
+		const response = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories/catchup`));
+		expect(response.status).toBe(200);
+		expect(Value.Parse(memoryCatchupRead, await response.json())).toEqual({ run: null });
+	});
+
 	test("queues a selected Human source and selected Swipe while retaining the prior collection", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
@@ -48,7 +55,7 @@ describe("Memory source lifecycle public operations", () => {
 		expect(created.status).toBe(200);
 		const first = database.query<{ messageId: number; variantId: number; status: string }, [number]>("SELECT message_id AS messageId, variant_id AS variantId, status FROM memory_collection WHERE conversation_id = ?").get(conversation.id);
 		expect(first?.status).toBe("pending");
-		const stop = startMemoryExtractionWorker(database, { process: async () => [] });
+		const stop = startMemoryWorker(database, { process: async () => [] });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(first!.variantId)?.status === "complete")).toBe(true);
 			await stop();
@@ -76,7 +83,7 @@ describe("Memory source lifecycle public operations", () => {
 			const queued = await memories.handle(request(`/api/conversations/${conversation.id}/memories/reextract`, { method: "POST", body: JSON.stringify({ messageId }) }));
 			expect(queued.status).toBe(200);
 		}
-		const stop = startMemoryExtractionWorker(database, { concurrency: 1, process: async (source) => source.messageId === cleared.messageId ? supportedMemory(source.messageId, source.content) : [] });
+		const stop = startMemoryWorker(database, { concurrency: 1, process: async (source) => source.messageId === cleared.messageId ? supportedMemory(source.messageId, source.content) : [] });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(cleared.variantId)?.status === "complete" && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(current.variantId)?.status === "complete")).toBe(true);
 			const edited = await memories.handle(request(`/api/conversations/${conversation.id}/memories/correct`, { method: "POST", body: JSON.stringify({ messageId: cleared.messageId, variantId: cleared.variantId, expectedRevision: 1, index: 0, operation: "edit", claim: "Corrected event.", attribution: "Writer correction", people: [] }) }));
@@ -94,7 +101,7 @@ describe("Memory source lifecycle public operations", () => {
 			expect(run).toMatchObject({ pending: 1, state: "running" });
 			expect(database.query<{ variant_id: number }, [number]>("SELECT variant_id FROM memory_collection WHERE catchup_run_id = ?").all(run.id)).toEqual([{ variant_id: historical.variantId }]);
 			expect(database.query<{ count: number }, [number]>("SELECT count(*) AS count FROM memory_collection WHERE variant_id = ?").get(empty.variantId)).toMatchObject({ count: 0 });
-			expect(await waitFor(async () => { const value = await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json(); return Value.Check(memoryCatchup, value) && value.state === "complete"; })).toBe(true);
+			expect(await waitFor(async () => { const value = Value.Parse(memoryCatchupRead, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()); return value.run !== null && Value.Check(memoryCatchup, value.run) && value.run.state === "complete"; })).toBe(true);
 			const reset = await memories.handle(request(`/api/conversations/${conversation.id}/memories/reextract`, { method: "POST", body: JSON.stringify({ messageId: cleared.messageId }) }));
 			expect(reset.status).toBe(200);
 			expect(await reset.json()).toMatchObject({ collection: { ownership: "automatic", status: "pending", claims: [] } });
@@ -113,7 +120,7 @@ describe("Memory source lifecycle public operations", () => {
 		let running = () => {};
 		const gate = new Promise<void>((resolve) => { release = resolve; });
 		const began = new Promise<void>((resolve) => { running = resolve; });
-		const stop = startMemoryExtractionWorker(database, { concurrency: 1, process: async (item) => { if (item.messageId === source.messageId) { running(); await gate; return supportedMemory(item.messageId, item.content); } return []; } });
+		const stop = startMemoryWorker(database, { concurrency: 1, process: async (item) => { if (item.messageId === source.messageId) { running(); await gate; return supportedMemory(item.messageId, item.content); } return []; } });
 		try {
 			await began;
 			const routes = createConversationRoutes(database);
@@ -125,7 +132,7 @@ describe("Memory source lifecycle public operations", () => {
 			release();
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(live!.id)?.status === "complete")).toBe(true);
 			expect(database.query<{ status: string; claims_json: string }, [number]>("SELECT status, claims_json FROM memory_collection WHERE variant_id = ?").get(source.variantId)).toMatchObject({ status: "failed", claims_json: "[]" });
-			expect(await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()).toMatchObject({ id: run.id, state: "cancelled" });
+			expect(await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()).toMatchObject({ run: { id: run.id, state: "cancelled" } });
 		} finally { release(); await stop(); }
 	});
 });

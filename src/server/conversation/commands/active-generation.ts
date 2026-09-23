@@ -218,9 +218,7 @@ export const persistTerminalVariantData = (
 		loreActivationData?: readonly ConversationDataEntry[];
 	},
 ): void => {
-	const suppliedData = input.suppliedData.filter((entry) =>
-		entry.namespace !== LORE_ACTIVATION_NAMESPACE,
-	);
+	const suppliedData = input.suppliedData.filter((entry) => entry.namespace !== LORE_ACTIVATION_NAMESPACE);
 	const data = [
 		...(input.macroData ?? []),
 		...(input.loreActivationData ?? []),

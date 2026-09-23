@@ -4,12 +4,12 @@ import { contract } from "./contract";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
-import { extractAndJudgeMemorySource, startMemoryExtractionWorker } from "./memory";
+import { extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
 
 registerWireFormats();
 initializeConnectionSecretKey();
 const database = openInitializedDatabase();
-const stopMemoryWorker = startMemoryExtractionWorker(database, {
+const stopMemoryWorker = startMemoryWorker(database, {
 	process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, undefined, signal),
 });
 // ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;

@@ -383,12 +383,40 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	provenance_json: text().notNull().default("[]"),
 	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
 	source_changed: int({ mode: "boolean" }).notNull().default(false),
+	index_epoch: int().notNull().default(0),
 	updated_at: text().notNull(),
 }, (table) => [
 	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
 	index("memory_collection_catchup_run").on(table.catchup_run_id),
 	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
 	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
+]);
+
+export const memoryIndexWorkTable = sqliteTable("memory_index_work", {
+	variant_id: int().primaryKey().references(() => memoryCollectionTable.variant_id, { onDelete: "cascade" }),
+	collection_revision: int().notNull(),
+	epoch: int().notNull(),
+	endpoint: text().notNull(),
+	model: text().notNull(),
+	deadline_ms: int().notNull(),
+	status: text().notNull().default("pending"),
+	error: text(),
+	updated_at: text().notNull(),
+}, (table) => [
+	index("memory_index_work_status_updated").on(table.status, table.updated_at),
+	check("memory_index_work_status_check", sql`${table.status} IN ('pending', 'running', 'failed')`),
+]);
+
+export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
+	id: int().primaryKey({ autoIncrement: true }),
+	endpoint: text().notNull(),
+	model: text().notNull(),
+	text_hash: text().notNull(),
+	rendered_text: text().notNull(),
+	vector_json: text().notNull(),
+	updated_at: text().notNull(),
+}, (table) => [
+	uniqueIndex("memory_embedding_cache_identity").on(table.endpoint, table.model, table.text_hash),
 ]);
 
 // ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the

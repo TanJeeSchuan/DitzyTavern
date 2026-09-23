@@ -13,6 +13,7 @@ import {
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
+import type { MemoryActivationRecord } from "../shared/contract/memory-recall";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -114,6 +115,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 				</section>
 			)}
 			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
+			{details.memoryActivation != null && <MemoryActivationDetails record={details.memoryActivation} />}
 			<PromptPlan plan={details.promptPlan} />
 		</>
 	);
@@ -181,6 +183,63 @@ export function LoreActivationDetails({ record }: { record: LoreActivationRecord
 				<summary>Final Lore text</summary>
 				<p className="generation-detail-preformatted">{record.finalLoreText || "No Lore text was sent."}</p>
 			</details>
+		</section>
+	);
+}
+
+const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
+	disabled: "Memory block disabled",
+	"allowance-zero": "Memory Allowance is zero",
+	empty: "No ready Memories",
+	rebuilding: "Memory indexes are being built",
+	partial: "Some Memory indexes are unavailable",
+	ready: "Memory indexes ready",
+	"index-failed": "Memory indexing failed",
+	"source-failed": "Some Memory sources failed",
+	unconfigured: "Embedding settings needed",
+}[state]);
+
+const admissionLabel = (record: MemoryActivationRecord["candidates"][number], manuallyEdited: boolean): string => {
+	if (record.admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
+	if (record.admission === "not-retained") return "Omitted by Jev";
+	if (record.admission === "request-limit") return "Omitted from Jev request";
+	if (record.admission === "duplicate-rendering") return "Duplicate rendering";
+	if (record.admission === "memory-allowance") return "Over Memory Allowance";
+	if (record.admission === "oversized") return "Too large for Memory Allowance";
+	return "Does not fit the context limit";
+};
+
+export function MemoryActivationDetails({ record }: { record: MemoryActivationRecord }) {
+	return (
+		<section className="generation-detail-section">
+			<h3>Memory recall</h3>
+			<dl className="detail-list compact-detail-list">
+				<div><dt>Status</dt><dd>{memoryStateLabel(record.state)}</dd></div>
+				<div><dt>Ready claims</dt><dd>{record.readyRecordCount}</dd></div>
+				<div><dt>Shortlist</dt><dd>{record.semanticShortlistCount} semantic · {record.recentShortlistCount} recent</dd></div>
+				<div><dt>Pending indexes</dt><dd>{record.pendingIndexCount}{record.pendingSourceCount > 0 ? ` · ${record.pendingSourceCount} sources processing` : ""}</dd></div>
+				<div><dt>Failed</dt><dd>{record.failedIndexCount} indexes · {record.failedSourceCount} sources</dd></div>
+				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
+				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
+				<div><dt>Jev model</dt><dd>{record.jevModel}{record.jevConfigured ? " · credential configured" : " · credential missing"}</dd></div>
+				<div><dt>One-attempt edit</dt><dd>{record.manuallyEdited ? "Edited" : "Automatic"}</dd></div>
+			</dl>
+			<p className="panel-note">Editing the Memory block changes this inspected Generation only. Saved source Memories stay unchanged.</p>
+			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && <p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>}
+			{record.manuallyEdited && <details><summary>Automatic Memory selection</summary><pre className="generation-detail-preformatted">{record.automaticMemoryText || "No Memory text was selected automatically."}</pre></details>}
+			<details><summary>Final Memory block</summary><pre className="generation-detail-preformatted">{record.finalMemoryText || "The final Memory block was empty."}</pre></details>
+			<details>
+				<summary>Considered claims ({record.candidates.length})</summary>
+				{record.candidates.length === 0 ? <p className="panel-note">No ready claims were considered for this scene.</p> : <ol>
+					{record.candidates.map((candidate) => <li key={candidate.identity}>
+						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
+						<p>{candidate.claim} (Attribution: {candidate.attribution})</p>
+						<p className="panel-note">Message {candidate.messageId} · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · index {candidate.indexEpoch} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.judged ? `Jev: ${candidate.retained ? "retained" : "omitted"}, score ${candidate.relevance}` : "Not judged"}</p>
+						{candidate.evidence.length > 0 && <details><summary>Supporting excerpts</summary><ul>{candidate.evidence.map((evidence, index) => <li key={`${evidence.messageId}-${index}`}>Message {evidence.messageId}<blockquote>{evidence.excerpt}</blockquote></li>)}</ul></details>}
+					</li>)}
+				</ol>}
+			</details>
+			<details><summary>Captured recall scene</summary><p className="panel-note">Messages {record.scanMessageIds.length ? record.scanMessageIds.join(", ") : "none"}{record.scanTruncated ? " · scene text truncated to fit the scan limit" : ""}</p><pre className="generation-detail-preformatted">{record.scene || "No visible scene text was available."}</pre></details>
 		</section>
 	);
 }

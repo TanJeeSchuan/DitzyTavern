@@ -20,11 +20,13 @@ import {
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { promptPlan } from "../../shared/contract/conversation-schema";
 import { InvalidConversationCommandError } from "../conversation";
+import { estimateDynamicBlockTokens } from "../generation-plan";
 import type {
 	GenerationFormattingContext,
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
+import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }
@@ -246,7 +248,16 @@ const acceptedEditedPlan = (
 	const loreActivation = sourceLore === null
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
-	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation };
+	const sourceMemory = record.capture.capture.plan.memoryActivation;
+	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
+	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
+		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
+		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
+	}
+	const memoryActivation = sourceMemory === null
+		? null
+		: editedMemoryActivation(sourceMemory, editedPlan);
+	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
 };
 
 const editedLoreActivation = (
@@ -258,6 +269,18 @@ const editedLoreActivation = (
 		...source,
 		finalLoreText,
 		manuallyEdited: finalLoreText !== source.automaticLoreText,
+	};
+};
+
+const editedMemoryActivation = (
+	source: MemoryActivationRecord,
+	plan: PromptPlan,
+): MemoryActivationRecord => {
+	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
+	return {
+		...source,
+		finalMemoryText,
+		manuallyEdited: finalMemoryText !== source.automaticMemoryText,
 	};
 };
 
@@ -286,6 +309,7 @@ export const captureSendGenerationPreviewAsync = async (
 		connection,
 		formatting,
 		embeddingFetch: context.embeddingFetch,
+		skipMemoryRecall: true,
 		content,
 	});
 	return { ...current, plan: acceptedEditedPlan(context.preview.record, context.preview.editedPlan, current.preparation) };
@@ -304,6 +328,7 @@ export const captureContinuationGenerationPreviewAsync = async (
 		connection,
 		formatting,
 		embeddingFetch: context.embeddingFetch,
+		skipMemoryRecall: true,
 	});
 	const assistantPrefill = current.assistantPrefill === undefined
 		? undefined
@@ -337,6 +362,7 @@ export const captureSiblingGenerationPreviewAsync = async (
 		connection,
 		formatting,
 		embeddingFetch: context.embeddingFetch,
+		skipMemoryRecall: true,
 		messageId,
 	});
 	return { ...current, plan: acceptedEditedPlan(preview.record, preview.editedPlan, current.preparation) };

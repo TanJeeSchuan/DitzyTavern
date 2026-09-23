@@ -1,7 +1,7 @@
-import { Check, Pencil, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, Pencil, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, saveMemoryAllowance, startMemoryCatchup, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, saveMemoryAllowance, startMemoryCatchup, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
 import { PanelHeader } from "../PanelHeader";
 import { useAsyncEffect } from "../lib/use-async";
 
@@ -32,6 +32,12 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
 		else { await refresh(); setState((current) => ({ ...current, pendingMessageId: null })); }
 	};
+	const retryIndex = async (source: State["sources"][number]) => {
+		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
+		const result = await retryMemoryIndex(conversationId, source.messageId, source.variantId, source.revision);
+		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
+		else { await refresh(); setState((current) => ({ ...current, pendingMessageId: null, error: result.outcome === "conflict" ? "This collection changed elsewhere. Review the current Memory before retrying indexing." : null })); }
+	};
 	const saveCorrection = async (source: State["sources"][number], index: number) => {
 		if (!editing) return;
 		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
@@ -51,7 +57,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 	return <aside className="details-panel" data-open="true" aria-label="Memories">
 		<PanelHeader title="Memories" onClose={onClose} />
 		<div className="panel-body memory-panel-body">
-			<p className="panel-note">Memories are source-owned story claims with evidence. Unselected alternatives stay inspectable. They are not yet indexed for Generation recall.</p>
+			<p className="panel-note">Memories are source-owned story claims with evidence. Unselected alternatives stay inspectable and remain saved to their source.</p>
 			<MemoryAllowanceControl conversationId={conversationId} />
 			<section className="memory-catchup"><h3>Existing history</h3><p>Remember current selected history on request. Current results and writer-maintained collections are skipped.</p>{catchup?.state === "running" ? <><p role="status">{catchup.pending} pending · {catchup.running} running · {catchup.complete} complete · {catchup.failed.length} failed</p><Button type="button" size="sm" variant="outline" disabled={catchupPending} onClick={() => void stopCatchup()}>Cancel catch-up</Button></> : <><Button type="button" size="sm" disabled={catchupPending || !memoryEnabled} onClick={() => void beginCatchup()}>Remember existing history</Button>{catchup && <p role="status">Last run: {catchup.state} · {catchup.complete} complete · {catchup.failed.length} failed</p>}</>}{catchup?.failed.map((item) => <p className="import-problem" key={item.messageId}><button type="button" onClick={() => onNavigateSource(item.messageId)}>Message {item.messageId}</button>: {item.error ?? "Memory extraction failed."} <Button type="button" size="sm" variant="outline" onClick={() => void retry(item.messageId)}>Retry</Button></p>)}</section>
 			{state.status === "loading" && <p role="status">Loading selected-path Memories…</p>}
@@ -60,6 +66,9 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 			{state.error && state.status === "ready" && <p className="import-problem" role="alert">{state.error}</p>}
 			{selectedSources.map((source) => <section className="memory-source" key={source.variantId}>
 				<header className="memory-source-header"><div><h3>Message {source.messageId}</h3><span>{source.selected ? "Selected source" : "Unselected alternative"} · {source.status === "complete" ? `${source.claims.length} ${source.claims.length === 1 ? "Memory" : "Memories"}` : source.status === "unprocessed" ? "Not processed" : source.status === "stale" ? "Source changed" : source.status === "pending" ? "Pending" : source.status === "running" ? "Running" : "Failed"}</span></div><Button type="button" size="sm" variant="outline" disabled={!source.selected || state.pendingMessageId === source.messageId || source.status === "pending" || source.status === "running"} onClick={() => void retry(source.messageId)}><RotateCcw aria-hidden="true" /> {source.ownership === "writer" ? "Reset and re-extract" : "Retry extraction"}</Button></header>
+				<p className="panel-note">{source.indexing.status === "ready" ? "Index ready" : source.indexing.status === "pending" ? `${source.indexing.pendingCount} Memories pending indexing` : source.indexing.status === "running" ? `${source.indexing.pendingCount} Memories indexing` : source.indexing.status === "failed" ? `${source.indexing.failedCount} Memories failed indexing` : source.indexing.status === "unconfigured" ? "Embedding settings needed for indexing" : source.indexing.status === "not-applicable" ? source.status === "complete" ? "No saved Memories to index" : "No Memories ready to index" : "Indexing paused"}</p>
+				{source.indexing.error && <p className="import-problem" role="alert">{source.indexing.error}</p>}
+				{source.indexing.status === "failed" && <Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void retryIndex(source)}><RefreshCw aria-hidden="true" /> Retry indexing</Button>}
 				<p className="memory-reset-note">{source.ownership === "writer" ? "Reset and re-extract discards every saved correction and resumes automatic updates for this source." : "Retry extraction replaces this source’s automatic collection."}</p>
 				<button type="button" className="memory-source-link" onClick={() => onNavigateSource(source.messageId)}>Go to source Message</button>
 				{source.error && <p className="import-problem" role="alert">{source.error}</p>}

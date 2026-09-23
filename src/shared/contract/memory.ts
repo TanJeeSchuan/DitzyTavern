@@ -8,9 +8,15 @@ export const memoryCandidate = Type.Object({
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
 export const memoryCandidates = Type.Array(memoryCandidate);
+export const memoryIndexing = Type.Object({
+	status: Type.Union([Type.Literal("ready"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("failed"), Type.Literal("disabled"), Type.Literal("unconfigured"), Type.Literal("not-applicable")]),
+	pendingCount: Type.Integer(),
+	failedCount: Type.Integer(),
+	error: Type.Union([Type.String(), Type.Null()]),
+});
 export const memoryCollection = Type.Object({
 	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"), Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
-	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate),
+	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
 export const conversationMemories = Type.Object({ sources: Type.Array(memoryCollection) });
 export type ConversationMemories = Static<typeof conversationMemories>;
@@ -21,8 +27,11 @@ export const memoryInvalid = Type.Object({ outcome: Type.Literal("invalid"), rea
 export const memoryCorrectionCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer(), index: Type.Integer(), operation: Type.Union([Type.Literal("edit"), Type.Literal("remove")]), claim: Type.Optional(Type.String()), attribution: Type.Optional(Type.String()), people: Type.Optional(Type.Array(Type.String())) });
 export const memoryCorrectionApplied = Type.Object({ outcome: Type.Literal("applied"), collection: memoryCollection });
 export const memoryCorrectionConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
+export const memoryIndexRetryCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer() });
+export const memoryIndexRetryApplied = Type.Object({ outcome: Type.Literal("queued"), collection: memoryCollection });
+export const memoryIndexRetryConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
 export const memoryCatchup = Type.Object({ id: Type.Integer(), state: Type.Union([Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed"), Type.Literal("cancelled")]), pending: Type.Integer(), running: Type.Integer(), complete: Type.Integer(), failed: Type.Array(Type.Object({ messageId: Type.Integer(), error: Type.Union([Type.String(), Type.Null()]) })) });
-export const memoryCatchupRead = Type.Union([memoryCatchup, Type.Null()]);
+export const memoryCatchupRead = Type.Object({ run: Type.Union([memoryCatchup, Type.Null()]) });
 export const memoryCatchupCommand = Type.Object({});
 export const memoryCatchupParams = Type.Object({ id: numericWire, runId: numericWire });
 export type MemoryCatchup = Static<typeof memoryCatchup>;

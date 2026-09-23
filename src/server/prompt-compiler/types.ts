@@ -4,6 +4,7 @@ import type {
 	PromptHistoryRole,
 } from "../../shared/contract/conversation-schema";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
+import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 
 export type {
 	AttemptEnvironment,
@@ -73,6 +74,8 @@ export interface CompilePromptInput {
 	recipe: readonly PromptPresetSlot[];
 	/** Captured lore selected by the generation workflow; rendered literally. */
 	lore?: readonly PromptLoreEntry[];
+	/** Captured and judged Memory candidates, already in recall order. */
+	memory?: readonly MemoryRecallCandidateRecord[];
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
 	attempt?: AttemptEnvironment;

@@ -5,6 +5,7 @@ import { tokenxEstimator } from "../prompt-compiler";
 import type { PromptPlan } from "../prompt-compiler";
 import { createMemorySettingsModule } from "./settings";
 import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
+import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse, memoryJudgmentResponse } from "../../shared/contract/memory";
 import type { MemoryExtractionResponse, MemoryJudgmentAnswer, MemoryJudgmentResponse } from "../../shared/contract/memory";
@@ -121,6 +122,34 @@ const parseChoice = <const Labels extends readonly string[]>(answer: MemoryJudgm
 	return { label: selected, probabilities: normalized };
 };
 
+const assertExactAnswerKeys = (answers: Readonly<Record<string, MemoryJudgmentAnswer>>, expected: readonly string[]): void => {
+	const actual = Object.keys(answers);
+	if (actual.length !== expected.length || expected.some((key) => !Object.hasOwn(answers, key))) {
+		throw new Error("Typesafe Jev omitted or added required Memory judgments.");
+	}
+};
+
+const requestMemoryJudgment = async (
+	request: string,
+	questions: Readonly<Record<string, ReturnType<typeof choice>>>,
+	credential: string,
+	fetcher: ModelFetch,
+	signal?: AbortSignal,
+): Promise<MemoryJudgmentResponse["answers"]> => {
+	const response = await fetcher("https://api.typesafe.ai/v1/systemone", {
+		method: "POST",
+		signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
+		headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
+		body: request,
+	});
+	if (!response.ok) throw new Error(`Typesafe Jev request failed with HTTP ${response.status}.`);
+	const responseBytes = await readBoundedResponse(response, MAX_JEV_RESPONSE_BYTES);
+	let decoded: MemoryJudgmentResponse;
+	try { decoded = Value.Parse(memoryJudgmentResponse, JSON.parse(new TextDecoder().decode(responseBytes))); } catch { throw new Error("Typesafe Jev returned malformed or invalid JSON."); }
+	assertExactAnswerKeys(decoded.answers, Object.keys(questions));
+	return decoded.answers;
+};
+
 async function readBoundedResponse(response: Response, limit: number): Promise<Uint8Array> {
 	const declared = Number(response.headers.get("content-length"));
 	if (Number.isFinite(declared) && declared > limit) throw new Error("Typesafe Jev response exceeded 256 KiB.");
@@ -184,16 +213,7 @@ export async function judgeMemoryCandidates(
 	offset = 0;
 	for (const currentBatch of batches) {
 		const { questions, request } = buildRequest(currentBatch, offset);
-		const response = await fetcher("https://api.typesafe.ai/v1/systemone", {
-			method: "POST", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
-			headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" }, body: request,
-		});
-		if (!response.ok) throw new Error(`Typesafe Jev request failed with HTTP ${response.status}.`);
-		const responseBytes = await readBoundedResponse(response, MAX_JEV_RESPONSE_BYTES);
-		let decoded: MemoryJudgmentResponse;
-		try { decoded = Value.Parse(memoryJudgmentResponse, JSON.parse(new TextDecoder().decode(responseBytes))); } catch { throw new Error("Typesafe Jev returned malformed or invalid JSON."); }
-		const answers = decoded.answers;
-		if (Object.keys(answers).length !== Object.keys(questions).length) throw new Error("Typesafe Jev omitted required Memory judgments.");
+		const answers = await requestMemoryJudgment(request, questions, credential, fetcher, signal);
 		for (const [index, candidate] of currentBatch.entries()) {
 			const id = offset + index;
 			const support = parseChoice(answers[`candidate_${id}_support`], ["supported", "contradicted", "not_established"] as const);
@@ -203,6 +223,81 @@ export async function judgeMemoryCandidates(
 		offset += currentBatch.length;
 	}
 	return output;
+}
+
+const scoreLabels = ["irrelevant", "incidental", "useful", "central"] as const;
+const relevanceChoice = (instructions: string) => ({
+	type: "choice",
+	instructions,
+	criteria: {
+		irrelevant: "The Memory does not materially help with the captured scene.",
+		incidental: "The Memory has a weak or indirect connection to the captured scene.",
+		useful: "The Memory provides meaningful context for the captured scene.",
+		central: "The Memory is essential context for interpreting the captured scene.",
+	},
+});
+
+export async function judgeMemoryRecallCandidates(
+	candidates: readonly MemoryRecallCandidateRecord[],
+	scene: string,
+	credential: string,
+	model = "jev-1.13.0",
+	fetcher: ModelFetch = fetch,
+	signal?: AbortSignal,
+): Promise<MemoryRecallCandidateRecord[]> {
+	if (candidates.length === 0) return [];
+	if (!credential) throw new Error("Typesafe Jev credentials are not configured in Memory Settings.");
+	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
+		const state = { scene, candidates: values.map(({ identity, messageId, variantId, collectionRevision, indexEpoch, ownership, sourceChanged, claimIndex, claim, attribution, people, evidence }) => ({ identity, messageId, variantId, collectionRevision, indexEpoch, ownership, sourceChanged, claimIndex, claim, attribution, people, evidence })) };
+		const questions: Record<string, ReturnType<typeof choice>> = {};
+		for (const candidate of values) {
+			questions[`candidate_${candidate.identity}_retain`] = choice(
+				`For candidate identity ${candidate.identity}, ${candidate.claim} (${candidate.attribution}), judge whether it is useful durable context beyond this captured scene: ${scene}. This collection is ${candidate.ownership}-maintained${candidate.sourceChanged ? " and its source has changed since saving" : ""}. Use only the supplied candidate and cited evidence ${JSON.stringify(candidate.evidence)}.`,
+				["retain", "omit"],
+			);
+			questions[`candidate_${candidate.identity}_score`] = relevanceChoice(
+				`Score candidate identity ${candidate.identity}, ${candidate.claim} (${candidate.attribution}), for relevance to this captured scene: ${scene}. This collection is ${candidate.ownership}-maintained${candidate.sourceChanged ? " and its source has changed since saving" : ""}. Use only the supplied candidate and cited evidence ${JSON.stringify(candidate.evidence)}.`,
+			);
+		}
+		const request = JSON.stringify({ state, model, questions });
+		const stateTokens = tokenxEstimator(JSON.stringify(state));
+		const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
+		const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
+		return {
+			questions,
+			request,
+			fits: new TextEncoder().encode(request).byteLength <= MAX_JEV_REQUEST_BYTES && tokenxEstimator(request) <= 48_000 && stateTokens <= 16_000 && stateTokens + Math.max(0, ...questionTokens) <= 32_000 && stateTokens + totalQuestionTokens <= 64_000,
+		};
+	};
+	let packed = [...candidates];
+	let request = buildRequest(packed);
+	while (packed.length > 0 && !request.fits) {
+		packed.pop();
+		request = buildRequest(packed);
+	}
+	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
+	const answers = await requestMemoryJudgment(request.request, request.questions, credential, fetcher, signal);
+	const judged = new Map<string, MemoryRecallCandidateRecord>();
+	for (const candidate of packed) {
+		const retain = parseChoice(answers[`candidate_${candidate.identity}_retain`], ["retain", "omit"] as const);
+		const score = parseChoice(answers[`candidate_${candidate.identity}_score`], scoreLabels);
+		judged.set(candidate.identity, {
+			...candidate,
+			judged: true,
+			relevance: score.label,
+			retained: retain.label === "retain",
+			requestIncluded: true,
+			admission: retain.label === "retain" ? "admitted" : "not-retained",
+		});
+	}
+	return candidates.map((candidate) => judged.get(candidate.identity) ?? {
+		...candidate,
+		judged: false,
+		relevance: null,
+		retained: false,
+		requestIncluded: false,
+		admission: "request-limit",
+	});
 }
 
 export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal): Promise<MemoryCandidateJudgment[]> {

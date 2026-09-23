@@ -19,6 +19,7 @@ export interface EmbeddingClientOptions {
 	readonly credential: string | null;
 	readonly timeoutMs: number;
 	readonly fetch?: ModelFetch;
+	readonly signal?: AbortSignal;
 }
 
 export async function requestEmbeddings(
@@ -32,6 +33,7 @@ export async function requestEmbeddings(
 			headers: authenticatedHeaders({ "content-type": "application/json" }, options.credential, {}),
 			body: JSON.stringify({ model: options.model, input }),
 			redirect: "error",
+			signal: options.signal,
 		}, options.timeoutMs, async (response, signal) => {
 			if (response.status >= 300 && response.status < 400) throw new EmbeddingServiceError("endpoint", "The embedding endpoint redirected the credentialed request.");
 			if (response.status === 401 || response.status === 403) throw new EmbeddingServiceError("authentication", "The embedding endpoint rejected the credential.");

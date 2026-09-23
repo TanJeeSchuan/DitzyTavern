@@ -36,6 +36,8 @@ import type {
 	PromptWarning,
 	PromptLoreEntry,
 } from "./types";
+import { renderMemoryClaim } from "../../shared/memory-text";
+import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 
 // ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
 // content and outgoing role: the plan kind the recipe slot compiles into. The
@@ -166,6 +168,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	if (input.recipe.filter((slot) => slot.reference === "memory").length > 1) {
 		throw new Error("A Prompt Preset may contain at most one Memory block.");
 	}
+	const memory = input.memory ?? [];
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
 	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
@@ -208,7 +211,13 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			}
 			continue;
 		}
-		if (slot.reference === "memory") continue;
+		if (slot.reference === "memory") {
+			const content = memoryText(memory);
+			if (content.length > 0) {
+				blocks.push({ kind: "memory", role: planRoleFor[slot.role], content });
+			}
+			continue;
+		}
 		if (slot.reference === "instruction") {
 			// ==[HUMAN APPROVED]== Authored preset text resolves `{{self}}` to the current
 			// human-controlled Participant and `{{other}}` to the current
@@ -248,3 +257,8 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 
 	return { blocks, warnings };
 }
+
+const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>
+	entries.filter((entry) => entry.retained && entry.admission === "admitted")
+		.map(renderMemoryClaim)
+		.join("\n\n");

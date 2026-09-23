@@ -11,6 +11,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
@@ -68,6 +69,57 @@ const entry = (
 	content: string,
 	role: PromptContextEntry["role"],
 ): PromptContextEntry => ({ kind: "message", speakerName, content, role });
+
+const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): MemoryRecallCandidateRecord => ({
+	identity,
+	messageId: sourcePosition + 1,
+	variantId: sourcePosition + 1,
+	collectionRevision: 1,
+	indexEpoch: 1,
+	ownership: "automatic",
+	sourceChanged: false,
+	claimIndex: 0,
+	claim,
+	attribution: "Narrated event",
+	people: [],
+	evidence: [{ messageId: sourcePosition + 1, excerpt: claim }],
+	sourcePosition,
+	semanticSimilarity: 0.9,
+	semanticRank: 1,
+	recentRank: null,
+	judged: true,
+	relevance: "useful",
+	retained: true,
+	requestIncluded: true,
+	admission: "admitted",
+});
+
+const memoryActivation = (candidates: readonly MemoryRecallCandidateRecord[], allowance = 2_048): MemoryActivationRecord => ({
+	version: 1,
+	state: "ready",
+	allowance,
+	eligibleSourceCount: candidates.length,
+	readyRecordCount: candidates.length,
+	embeddingModel: "test-embedding",
+	embeddingDeadlineMs: 1_000,
+	jevModel: "jev-1.13.0",
+	jevConfigured: true,
+	pendingSourceCount: 0,
+	pendingIndexCount: 0,
+	failedIndexCount: 0,
+	failedSourceCount: 0,
+	sourceSnapshotFingerprint: "sources",
+	embeddingConfigurationFingerprint: "embedding",
+	scanMessageIds: [],
+	scanTruncated: false,
+	scene: "Current scene",
+	semanticShortlistCount: candidates.length,
+	recentShortlistCount: 0,
+	candidates: [...candidates],
+	automaticMemoryText: "",
+	finalMemoryText: "",
+	manuallyEdited: false,
+});
 
 // The transcript length is a monotone stand-in for a tokenizer: a longer
 // Prompt Plan estimates higher, so budget outcomes stay deterministic.
@@ -193,6 +245,72 @@ describe("Generation Plan Compiler", () => {
 			role: "system",
 			content: "a\n\nb",
 		}]);
+	});
+
+	test("admits whole Memory claims against their allowance and records each omission", () => {
+		const candidates = [
+			memoryCandidate("large", "oversized claim"),
+			memoryCandidate("small", "fits"),
+		];
+		const plan = compile({
+			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			context: [],
+			memory: candidates,
+			memoryAllowance: 6,
+			memoryActivation: memoryActivation(candidates, 6),
+			estimator: (transcript) => transcript.includes("oversized claim") ? 20 : transcript.includes("fits") ? 4 : 0,
+		});
+
+		expect(plan.promptPlan.blocks).toEqual([{
+			kind: "memory",
+			role: "system",
+			content: "fits (attribution: Narrated event)",
+		}]);
+		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
+			["large", "oversized"],
+			["small", "admitted"],
+		]);
+		expect(plan.memoryActivation?.automaticMemoryText).toBe("fits (attribution: Narrated event)");
+	});
+
+	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
+		const memory = memoryCandidate("memory", "memory fact");
+		const activation = memoryActivation([memory]);
+		const estimate = (transcript: string) =>
+			(transcript.includes("lore fact") ? 60 : 0) + (transcript.includes("memory fact") ? 60 : 0);
+		const loreFirst = compile({
+			recipe: [
+				{ reference: "lore", enabled: true, role: "system" },
+				{ reference: "memory", enabled: true, role: "system" },
+			],
+			context: [],
+			lore: [{ content: "lore fact" }],
+			loreAllowance: 100,
+			memory: [memory],
+			memoryAllowance: 100,
+			memoryActivation: activation,
+			settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
+			estimator: estimate,
+		});
+		const memoryFirst = compile({
+				recipe: [
+					{ reference: "memory", enabled: true, role: "system" },
+					{ reference: "lore", enabled: true, role: "system" },
+				],
+				context: [],
+				lore: [{ content: "lore fact" }],
+				loreAllowance: 100,
+				memory: [memory],
+				memoryAllowance: 100,
+				memoryActivation: activation,
+				settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
+				estimator: estimate,
+			});
+
+		expect(loreFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["lore"]);
+		expect(loreFirst.memoryActivation?.candidates[0]?.admission).toBe("context-limit");
+		expect(memoryFirst.promptPlan.blocks.map((block) => block.kind)).toEqual(["memory"]);
+		expect(memoryFirst.loreActivation).toBeNull();
 	});
 
 	test("budgets Lore against the protected history before trimming older history", () => {

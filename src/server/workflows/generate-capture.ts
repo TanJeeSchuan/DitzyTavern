@@ -20,6 +20,7 @@ import type { CastParticipantSnapshot } from "../conversation/types";
 import { readConversationSummaryFromConnection } from "../conversation/snapshot";
 import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
 import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
+import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallResult, type MemoryRecallSnapshot } from "../memory/recall";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
@@ -55,6 +56,7 @@ import {
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
+import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import {
 	createAttemptEnvironment,
 	type AttemptEnvironment,
@@ -177,6 +179,7 @@ export const compilePlanFrom = (
 		attempt: AttemptEnvironment;
 		connection: GenerationConnectionFacts | null;
 		lore: ScopedLoreEvaluation;
+		memory: MemoryRecallResult;
 	},
 	options: {
 		intent?: GenerationIntent | undefined;
@@ -191,6 +194,9 @@ export const compilePlanFrom = (
 		lore: configuration.lore.candidates,
 		loreAllowance: configuration.lore.allowance,
 		loreActivation: configuration.lore.activation,
+		memory: configuration.memory.candidates,
+		memoryAllowance: configuration.memory.activation.allowance,
+		memoryActivation: configuration.memory.activation,
 		attempt: configuration.attempt,
 		intent: options.intent,
 		settings: configuration.settings,
@@ -226,6 +232,7 @@ interface AttemptConfiguration {
 	attempt: AttemptEnvironment;
 	connection: ModelClientConnectionSnapshot | null;
 	lore: ScopedLoreEvaluation;
+	memory: MemoryRecallResult;
 }
 
 interface GenerationPreparationBase {
@@ -239,7 +246,10 @@ interface GenerationPreparationBase {
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly macroState: ReadonlyMap<string, MacroValue>;
 	readonly lore: ScopedLoreEvaluation;
+	readonly memory: MemoryRecallResult;
 }
+
+type GenerationPreparationSnapshot = GenerationPreparation & { readonly memorySnapshot: MemoryRecallSnapshot };
 
 const connectionIdentityOf = (
 	connection: ModelClientConnectionSnapshot | null,
@@ -316,6 +326,7 @@ interface PrepareGenerationInputsBase {
 	readonly formatting?: GenerationFormattingContext;
 	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
 	readonly embeddingFetch?: ModelFetch;
+	readonly skipMemoryRecall?: boolean;
 }
 
 export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
@@ -331,7 +342,7 @@ export type PrepareGenerationInputs = PrepareGenerationInputsBase & (
  */
 function prepareGenerationInputsSnapshot(
 	input: PrepareGenerationInputs,
-): GenerationPreparation {
+): GenerationPreparationSnapshot {
 	const { summary, recipe, settings, selected, connection } = runConversationReadTransaction(
 		input.database,
 		(db) => {
@@ -433,6 +444,27 @@ function prepareGenerationInputsSnapshot(
 			data: message.variant?.data ?? [],
 		})),
 	}));
+	const memoryEnabled = hasEnabledMemorySlot(recipe.slots);
+	const memorySnapshot = captureMemoryRecallSnapshot({
+		database: input.database,
+		conversationId: input.conversationId,
+		enabled: memoryEnabled,
+		messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{
+			messageId: message.id,
+			variantId: message.variant.id,
+			position: message.position,
+			speakerName: message.author?.capturedName ?? null,
+			role: roleForMessage(message, human.id, model.id),
+			content: message.variant.content,
+		}]),
+		pendingHumanText: input.kind === "send" ? input.content : undefined,
+		humanName: human.name,
+	});
+	const memory: MemoryRecallResult = {
+		activation: memorySnapshot.activation,
+		candidates: [],
+		fingerprintInputs: memorySnapshot.fingerprintInputs,
+	};
 	const preparation = {
 		conversationId: input.conversationId,
 		formatting,
@@ -444,6 +476,8 @@ function prepareGenerationInputsSnapshot(
 		connection,
 		macroState,
 		lore,
+		memory,
+		memorySnapshot,
 	};
 	if (input.kind === "send") return { ...preparation, kind: input.kind, content: input.content };
 	if (input.kind === "sibling") return { ...preparation, kind: input.kind, messageId: input.messageId };
@@ -462,18 +496,25 @@ export async function prepareGenerationInputsAsync(
 	// ==[HUMAN APPROVED]== The snapshot is captured before semantic work can suspend, so books,
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
-	const preparation = prepareGenerationInputsSnapshot(input);
-	if (!preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return preparation;
-	const needsSemantic = preparation.lore.activation.mode === "keyword-fallback";
-	if (!needsSemantic) return preparation;
-	const lore = await evaluateScopedLoreAsync({
-		database: input.database,
-		conversationId: preparation.conversationId,
-		messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-		pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
-		fetch: input.embeddingFetch,
-	}, preparation.lore.sources);
-	return { ...preparation, lore };
+	const { memorySnapshot, ...preparation } = prepareGenerationInputsSnapshot(input);
+	const needsSemantic = preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled) &&
+		preparation.lore.activation.mode === "keyword-fallback";
+	const lorePromise = needsSemantic
+		? evaluateScopedLoreAsync({
+			database: input.database,
+			conversationId: preparation.conversationId,
+			messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
+			pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
+			fetch: input.embeddingFetch,
+		}, preparation.lore.sources)
+		: Promise.resolve(preparation.lore);
+	const memoryPromise = input.skipMemoryRecall
+		? Promise.resolve(preparation.memory)
+		: evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.embeddingFetch }).catch((error) => {
+			throw new InvalidConversationCommandError(`Memory recall failed: ${error instanceof Error ? error.message : "Retry preparation or disable Memory."}`);
+		});
+	const [lore, memory] = await Promise.all([lorePromise, memoryPromise]);
+	return { ...preparation, lore, memory };
 }
 
 export const captureConfigurationFromPreparation = (
@@ -496,6 +537,7 @@ export const captureConfigurationFromPreparation = (
 		attempt,
 		connection: preparation.connection,
 		lore: preparation.lore,
+		memory: preparation.memory,
 	};
 };
 
@@ -576,7 +618,7 @@ export function capturedAcceptanceFields(
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
 		promptPlan: capture.plan.promptPlan,
-		promptInspection: promptInspectionJson(capture.plan.budget),
+		promptInspection: promptInspectionJson(capture.plan.budget, capture.plan.memoryActivation),
 		promptContext: promptContextJson(capture.context),
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
@@ -701,7 +743,7 @@ export const connectionJson = (
 // ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. It is
 // deliberately not copied into terminal Variant provenance.
-export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
+export const promptInspectionJson = (budget: PromptBudgetResult, memoryActivation: GenerationPlan["memoryActivation"]): ConversationJsonValue => ({
 	tokenEstimate: budget.tokenEstimate,
 	responseBudget: budget.responseBudget,
 	safetyAllowance: budget.safetyAllowance,
@@ -713,6 +755,7 @@ export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJs
 		content: entry.content,
 		role: entry.role,
 	})),
+	memoryActivation,
 });
 
 export interface SendGenerationCapture extends CapturedGeneration {
@@ -730,6 +773,7 @@ export interface GenerationCaptureInput {
 	tokenEstimator?: TokenEstimator | undefined;
 	formatting?: GenerationFormattingContext | undefined;
 	embeddingFetch?: ModelFetch | undefined;
+	skipMemoryRecall?: boolean | undefined;
 }
 
 export type SendGenerationCaptureInput = GenerationCaptureInput & { content: string };
@@ -760,6 +804,7 @@ export async function captureSendGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
+		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
@@ -782,6 +827,7 @@ export async function captureContinuationGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
+		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;
 	const latest = preparation.participation.messages.at(-1);
@@ -816,6 +862,7 @@ export async function captureSiblingGenerationAsync(
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
 		embeddingFetch: input.embeddingFetch,
+		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
