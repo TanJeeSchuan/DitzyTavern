@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { AppSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SillyTavernImportPreview } from "../../prompt-preset-library";
 import { outgoingRoleLabels, promptPresetSelectClass, slotTitle } from "../../prompt-preset-presentation";
@@ -34,17 +35,14 @@ export function PromptPresetImportReviewDialog({
 						{review.preview.requiresOrderSelection && (
 							<label className="flex flex-col gap-1 text-sm">
 								<span>Choose an order list</span>
-								<select
+								<AppSelect
 									className={promptPresetSelectClass}
 									value={review.orderListId ?? ""}
 									disabled={busy}
-									onChange={(event) => onOrderSelect(event.target.value)}
-								>
-									<option value="">Choose an order…</option>
-									{review.preview.orderLists.map((order) => (
-										<option key={order.id} value={order.id}>{order.label} ({order.entryCount} entries)</option>
-									))}
-								</select>
+									onValueChange={onOrderSelect}
+									emptyLabel="Choose an order…"
+									options={review.preview.orderLists.map((order) => ({ value: order.id, label: `${order.label} (${order.entryCount} entries)` }))}
+								/>
 							</label>
 						)}
 						<section aria-label="Converted blocks" className="flex flex-col gap-2">

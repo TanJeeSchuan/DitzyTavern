@@ -1,4 +1,5 @@
 import { SlidersHorizontal } from "lucide-react";
+import { AppSelect } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
 import type { ConversationSummary } from "../conversation";
 import { generationSettingsSummaryFromDrafts } from "../generation-settings-draft";
@@ -77,29 +78,24 @@ function GenerationSettings({
 						<h3 id="continuation-settings-title">Continuation</h3>
 						<p>How the next model Message continues after a length limit.</p>
 						<Field htmlFor="continuation-strategy" label="Strategy">
-							<select
+						<AppSelect
 								id="continuation-strategy"
 								className="field-input"
 								value={strategy}
-								onChange={(event) => setStrategy(event.target.value === "assistant-prefill" ? "assistant-prefill" : "instruction")}
-							>
-								<option value="instruction">Instruction</option>
-								<option value="assistant-prefill">Assistant prefill</option>
-							</select>
+								onValueChange={(value) => setStrategy(value === "assistant-prefill" ? "assistant-prefill" : "instruction")}
+								options={[{ value: "instruction", label: "Instruction" }, { value: "assistant-prefill", label: "Assistant prefill" }]}
+							/>
 						</Field>
 						{strategy === "assistant-prefill" && (
 							<Field htmlFor="continuation-prefill-suffix" label="Prefill suffix">
-								<select
+								<AppSelect
 									id="continuation-prefill-suffix"
 									className="field-input"
 									value={prefillSuffix}
-									onChange={(event) => setPrefillSuffix(event.target.value === " " || event.target.value === "\n" || event.target.value === "\n\n" ? event.target.value : "")}
-								>
-									<option value="">None</option>
-									<option value=" ">Space</option>
-									<option value="\n">Newline</option>
-									<option value="\n\n">Double newline</option>
-								</select>
+									onValueChange={(value) => setPrefillSuffix(value === " " || value === "\n" || value === "\n\n" ? value : "")}
+									emptyLabel="None"
+									options={[{ value: " ", label: "Space" }, { value: "\n", label: "Newline" }, { value: "\n\n", label: "Double newline" }]}
+								/>
 							</Field>
 						)}
 						<Field htmlFor="continuation-instruction" label="Continuation instruction" helper={strategy === "assistant-prefill" && "Ignored while the Assistant prefill strategy is active."}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import { controlChangeDescription } from "./cast";
 import {
 	applyConversationCommand,
@@ -91,26 +92,19 @@ export function ComposerControlSelectors({
 		<div className="composer-controls">
 			<div className="control-select">
 				<label htmlFor="composer-human">Writing as</label>
-				<select
+				<AppSelect
 					id="composer-human"
 					value={conversation.control.humanParticipantId ?? ""}
 					disabled={disabled || pending}
-					onChange={(event) => {
-						const participantId = Number(event.target.value);
+					emptyLabel={conversation.control.humanParticipantId === null ? "No one assigned" : undefined}
+					options={options.map((option) => ({ ...option, label: option.value === conversation.control.modelParticipantId ? `${option.label} · Swap seats` : option.label }))}
+					onValueChange={(value) => {
+						const participantId = Number(value);
 						if (Number.isInteger(participantId) && participantId > 0) {
 							void assign("human", participantId);
 						}
 					}}
-				>
-					{conversation.control.humanParticipantId === null && (
-						<option value="">No one assigned</option>
-					)}
-					{options.map((option) => (
-						<option key={option.value} value={option.value}>
-							{option.label}
-						</option>
-					))}
-				</select>
+				/>
 			</div>
 			<ModelSelector
 				conversation={conversation}
@@ -120,26 +114,19 @@ export function ComposerControlSelectors({
 			/>
 			<div className="control-select">
 				<label htmlFor="composer-model">Responding as</label>
-				<select
+				<AppSelect
 					id="composer-model"
 					value={conversation.control.modelParticipantId ?? ""}
 					disabled={disabled || pending}
-					onChange={(event) => {
-						const participantId = Number(event.target.value);
+					emptyLabel={conversation.control.modelParticipantId === null ? "No one assigned" : undefined}
+					options={options.map((option) => ({ ...option, label: option.value === conversation.control.humanParticipantId ? `${option.label} · Swap seats` : option.label }))}
+					onValueChange={(value) => {
+						const participantId = Number(value);
 						if (Number.isInteger(participantId) && participantId > 0) {
 							void assign("model", participantId);
 						}
 					}}
-				>
-					{conversation.control.modelParticipantId === null && (
-						<option value="">No one assigned</option>
-					)}
-					{options.map((option) => (
-						<option key={option.value} value={option.value}>
-							{option.label}
-						</option>
-					))}
-				</select>
+				/>
 			</div>
 			{(lastChange !== null || notice !== null) && (
 				<p

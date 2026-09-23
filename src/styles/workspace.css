@@ -243,7 +243,7 @@
 	font-weight: 640;
 }
 
-.macro-position-field select,
+.macro-position-field .app-select-trigger,
 .macro-variable-editor input,
 .macro-variable-editor textarea {
 	width: 100%;
@@ -255,7 +255,7 @@
 	font-weight: 450;
 }
 
-.macro-position-field select,
+.macro-position-field .app-select-trigger,
 .macro-variable-editor input {
 	height: 2.45rem;
 	padding: 0 0.7rem;
@@ -268,7 +268,6 @@
 	resize: vertical;
 }
 
-.macro-position-field select:focus-visible,
 .macro-variable-editor input:focus-visible,
 .macro-variable-editor textarea:focus-visible {
 	outline: 0;
@@ -673,6 +672,12 @@
 	gap: 1rem;
 }
 
+.macro-position-field .app-select-trigger:focus-visible:not([data-state="open"]) {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+	box-shadow: none;
+}
+
 .field {
 	display: grid;
 	gap: 6px;
@@ -723,6 +728,62 @@
 	border-color: var(--focus);
 	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
 }
+
+.app-select-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.55rem;
+	min-height: 2.25rem;
+	padding: 0.4rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.app-select-trigger:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+	border-color: var(--focus);
+	box-shadow: none;
+}
+
+.app-select-trigger[data-state="open"] {
+	border-bottom-color: transparent;
+	border-radius: 0.7rem 0.7rem 0 0;
+	outline: 0;
+	box-shadow: none;
+}
+
+.app-select-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+.app-select-content {
+	z-index: 60;
+	width: var(--radix-select-trigger-width);
+	min-width: var(--radix-select-trigger-width);
+	max-height: 20rem;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-top: 0;
+	border-radius: 0 0 0.7rem 0.7rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	box-shadow: none;
+}
+.app-select-content[data-side="top"] {
+	border-top: 1px solid var(--border);
+	border-bottom: 0;
+	border-radius: 0.7rem 0.7rem 0 0;
+}
+body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="open"] {
+	border-top-color: transparent;
+	border-bottom-color: var(--border);
+	border-radius: 0 0 0.7rem 0.7rem;
+}
+.app-select-content [data-position] { max-height: 18rem; overflow-y: auto; }
 
 .conflict-banner {
 	display: grid;

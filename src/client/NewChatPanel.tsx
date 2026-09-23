@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import { type CharacterSummary, listCharacters } from "./character-library";
 import {
 	createNativeConversation,
@@ -70,11 +71,12 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 			{seat.type === "character" ? (
 				<label className="seat-field">
 					<span>Character</span>
-					<select
+					<AppSelect
 						value={seat.characterId}
-						onChange={(event) => {
+						options={characters.map((character) => ({ value: character.id, label: `${character.pinned ? "★ " : ""}${character.name}` }))}
+						onValueChange={(value) => {
 							const selected = characters.find(
-								(character) => character.id === Number(event.target.value),
+								(character) => character.id === Number(value),
 							);
 							if (selected) {
 								onChange({
@@ -84,14 +86,7 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 								});
 							}
 						}}
-					>
-						{characters.map((character) => (
-							<option key={character.id} value={character.id}>
-								{character.pinned ? "★ " : ""}
-								{character.name}
-							</option>
-						))}
-					</select>
+					/>
 				</label>
 			) : (
 				<div className="seat-adhoc">

@@ -347,7 +347,7 @@ body > .details-panel > .panel-body {
 	letter-spacing: 0.01em;
 }
 
-.seat-field select {
+.seat-field .app-select-trigger {
 	width: 100%;
 	height: 2.5rem;
 	padding: 0 0.65rem;
@@ -485,6 +485,10 @@ body > .details-panel > .panel-body {
 	.seats-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+.seat-field .app-select-trigger[data-state="open"] {
+	border-radius: 0.75rem 0.75rem 0 0;
 }
 
 @media (max-width: 28rem) {

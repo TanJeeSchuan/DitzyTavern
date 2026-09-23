@@ -75,7 +75,7 @@ function SelectContent({
         <SelectPrimitive.Viewport
           data-position={position}
           className={cn(
-            "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
+            "data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
             position === "popper" && ""
           )}
         >
@@ -175,7 +175,31 @@ function SelectScrollDownButton({
   )
 }
 
+const EMPTY_VALUE = "__app_select_empty__"
+
+type AppSelectOption = { value: string | number; label: string; disabled?: boolean }
+
+function AppSelect({ value, onValueChange, options, emptyLabel, id, className, disabled, "aria-label": ariaLabel }: {
+  value: string | number
+  onValueChange: (value: string) => void
+  options: readonly AppSelectOption[]
+  emptyLabel?: string
+  id?: string
+  className?: string
+  disabled?: boolean
+  "aria-label"?: string
+}) {
+  return <Select value={value === "" ? EMPTY_VALUE : String(value)} onValueChange={(next) => onValueChange(next === EMPTY_VALUE ? "" : next)} disabled={disabled}>
+    <SelectTrigger id={id} className={cn("app-select-trigger focus-visible:ring-0", className)} aria-label={ariaLabel}><SelectValue /></SelectTrigger>
+    <SelectContent position="popper" align="start" sideOffset={-1} className="app-select-content shadow-none ring-0 data-[side=bottom]:translate-y-0 data-[side=top]:-translate-y-0">
+      {emptyLabel !== undefined && <SelectItem value={EMPTY_VALUE}>{emptyLabel}</SelectItem>}
+      {options.map((option) => <SelectItem key={String(option.value)} value={String(option.value)} disabled={option.disabled}>{option.label}</SelectItem>)}
+    </SelectContent>
+  </Select>
+}
+
 export {
+  AppSelect,
   Select,
   SelectContent,
   SelectGroup,

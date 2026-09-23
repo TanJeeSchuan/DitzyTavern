@@ -1,5 +1,6 @@
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import {
 	editMacroVariable,
 	loadMacroVariables,
@@ -231,9 +232,7 @@ export function MacroVariablesReadyView({
 			</p>
 			<label className="macro-position-field">
 				<span>History position</span>
-				<select value={position} onChange={(event) => onPositionChange(Number(event.target.value))} disabled={saving}>
-					{availablePositions.map((value) => <option key={value} value={value}>{value === 0 ? "Before first Message" : `After Message ${value}`}</option>)}
-				</select>
+				<AppSelect value={position} onValueChange={(value) => onPositionChange(Number(value))} disabled={saving} options={availablePositions.map((value) => ({ value, label: value === 0 ? "Before first Message" : `After Message ${value}` }))} />
 			</label>
 			<section className="macro-variable-list" aria-label="Effective Macro Variables">
 				{variables.variables.length === 0 && <p className="panel-note">No effective variables at this position.</p>}

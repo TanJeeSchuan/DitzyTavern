@@ -1,4 +1,5 @@
 import { JsonEditor } from "json-edit-react";
+import { AppSelect } from "@/components/ui/select";
 import type { ConnectionProfileDraft } from "../../connection-settings";
 import { parseHeaderEditorData, type ConnectionSettingsController } from "./useConnectionSettingsController";
 
@@ -32,10 +33,10 @@ export function ConnectionProfileAdvancedEditor({
 					<small>Saved header values are never shown. Keep leaves a value unchanged, Replace updates it, and Remove deletes it.</small>
 				</div>
 				<div className="connection-advanced-grid">
-					<label className="field"><span>API Format</span><select className="field-input" value={draft.apiFormat} onChange={() => updateDraft({ apiFormat: "chat-completions" })}><option value="chat-completions">Chat Completions</option></select></label>
-					<label className="field"><span>Model Backend</span><select className="field-input" value={draft.modelBackend} onChange={(event) => updateDraft({ modelBackend: event.target.value === "ai-sdk" ? "ai-sdk" : "automatic" })}><option value="automatic">Automatic</option><option value="ai-sdk">AI SDK</option></select></label>
-					<label className="field"><span>AI SDK Adapter</span><select className="field-input" value={draft.adapter} onChange={(event) => { const value = event.target.value; updateDraft({ adapter: value === "deepseek" || value === "openrouter" ? value : "openai-compatible" }); }}><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option><option value="openai-compatible">OpenAI Compatible</option></select></label>
-					<label className="field"><span>Output-token representation</span><select className="field-input" value={draft.outputTokenRepresentation} onChange={(event) => { const value = event.target.value; updateDraft({ outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" }); }}><option value="automatic">Automatic</option><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens</option><option value="omit">Omit remote limit</option></select></label>
+					<div className="field"><span>API Format</span><div className="field-input">Chat Completions</div></div>
+					<label className="field"><span>Model Backend</span><AppSelect className="field-input" value={draft.modelBackend} onValueChange={(value) => updateDraft({ modelBackend: value === "ai-sdk" ? "ai-sdk" : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "ai-sdk", label: "AI SDK" }]} /></label>
+					<label className="field"><span>AI SDK Adapter</span><AppSelect className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "deepseek" || value === "openrouter" ? value : "openai-compatible" })} options={[{ value: "deepseek", label: "DeepSeek" }, { value: "openrouter", label: "OpenRouter" }, { value: "openai-compatible", label: "OpenAI Compatible" }]} /></label>
+					<label className="field"><span>Output-token representation</span><AppSelect className="field-input" value={draft.outputTokenRepresentation} onValueChange={(value) => updateDraft({ outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "max_tokens", label: "max_tokens" }, { value: "max_completion_tokens", label: "max_completion_tokens" }, { value: "omit", label: "Omit remote limit" }]} /></label>
 					<label className="field"><span>Stream inactivity timeout</span><input className="field-input" type="number" min="0" step="1000" value={draft.timeoutMs ?? ""} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Number(event.target.value) })} placeholder="120000" /><small>Milliseconds. Use zero or blank to disable.</small></label>
 				</div>
 				{controller.advancedValidationError !== null && <small className="field-error connection-validation-error" role="alert">{controller.advancedValidationError}</small>}
