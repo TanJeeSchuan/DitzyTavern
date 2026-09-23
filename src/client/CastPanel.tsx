@@ -40,6 +40,7 @@ import {
 import { AddParticipant } from "./cast/AddParticipant";
 import { MemberRow } from "./cast/MemberRow";
 import { ParticipantEditor } from "./cast/ParticipantEditor";
+import { useSaveNavigation } from "./SaveGuard";
 
 export function CastPanel({
 	conversationId,
@@ -47,6 +48,7 @@ export function CastPanel({
 	onConversationChange,
 	onOpenLibraryCharacter,
 }: CastPanelProps) {
+	const navigate = useSaveNavigation();
 	const [characters, setCharacters] = useState<CharacterSummary[] | null>(null);
 	const [adding, setAdding] = useState<"library" | "adhoc" | null>(null);
 	const [editingParticipantId, setEditingParticipantId] = useState<number | null>(
@@ -115,6 +117,11 @@ export function CastPanel({
 		removeTarget !== null
 			? removalConfirmationCopy(removeTarget.duplicateLabel, removeTarget.removal)
 			: null;
+	const editingParticipant = conversation.cast.find((participant) => participant.id === editingParticipantId);
+	if (editingParticipant !== undefined) return <div className="editor-frame">
+		<button className="library-back" type="button" onClick={() => navigate(() => setEditingParticipantId(null))}>Back to Cast</button>
+		<ParticipantEditor conversationId={conversationId} conversation={conversation} participantId={editingParticipant.id} onConversationChange={onConversationChange} onNotice={setNotice} />
+	</div>;
 
 	return (
 		<div className="panel-body">
@@ -197,23 +204,12 @@ export function CastPanel({
 									seat={seat}
 									editing={editing}
 									pending={pending}
-									onToggleEdit={() =>
-										setEditingParticipantId(editing ? null : participant.id)
-									}
+									onToggleEdit={() => navigate(() => setEditingParticipantId(editing ? null : participant.id))}
 									onSaveAsCharacter={() =>
 										void applySaveParticipant(participant)
 									}
 									onRemove={() => setRemoveTargetId(participant.id)}
 								/>
-								{editing && (
-									<ParticipantEditor
-										conversationId={conversationId}
-										conversation={conversation}
-										participantId={participant.id}
-										onConversationChange={onConversationChange}
-										onNotice={setNotice}
-									/>
-								)}
 							</li>
 						);
 					})}

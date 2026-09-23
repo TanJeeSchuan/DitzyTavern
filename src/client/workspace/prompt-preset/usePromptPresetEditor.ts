@@ -31,12 +31,21 @@ export function usePromptPresetEditor({
 		applySelection: library.applySelection,
 		saveDrafts: recipe.saveDrafts,
 	});
+	const save = async () => {
+		const live = runtime.current();
+		if (live.view.status !== "ready" || !runtime.dirty) return false;
+		const selected = live.view.selected;
+		const result = await runtime.runOperation({ supersedesReads: false, ownsConversation: false, clearNotice: false, clearProblem: false }, (claim) => recipe.saveDrafts(selected, claim));
+		if (result?.status === "failed") runtime.dispatch({ type: "leave-failed", problem: result.problem });
+		return result?.status === "saved";
+	};
 
 	return {
 		view: runtime.state.view,
 		drafts: runtime.state.drafts,
 		busy: runtime.state.busy,
 		dirtyCount: runtime.dirtyCount,
+		save,
 		notice: runtime.state.notice,
 		problem: runtime.state.problem,
 		leaveRequest: runtime.state.leaveRequest,

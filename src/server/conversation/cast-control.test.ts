@@ -78,6 +78,17 @@ describe("Cast and Control management", () => {
 			action,
 		});
 
+	test("saves one Participant Definition atomically", () => {
+		const { module, snapshot, modelId } = setup();
+		const next = adHoc("Maren Vale", ["A new beginning."]);
+		next.prompt.identity = "A different identity.";
+		const saved = append(module, snapshot, { type: "update-participant-definition", participantId: modelId, definition: next });
+		expect(saved.revision).toBe(snapshot.revision + 1);
+		expect(saved.cast.find((participant) => participant.id === modelId)).toMatchObject(next);
+		expect(() => append(module, saved, { type: "update-participant-definition", participantId: modelId, definition: { ...next, name: "Invalid", openings: [""] } })).toThrow();
+		expect(module.getSnapshot(snapshot.id)).toEqual(saved);
+	});
+
 	test("appends ad-hoc Participants at the stable Cast tail without writing history", () => {
 		const { module, snapshot } = setup();
 		const updated = append(module, snapshot, {

@@ -19,9 +19,11 @@ import {
 import {
 	createConnectionSettingsControllerState,
 	reduceConnectionSettingsController,
-	type ConnectionSettingsConflict,
-	type HeaderEditorData,
-	type HeaderEditorValue,
+		type ConnectionSettingsConflict,
+		type HeaderEditorData,
+		type HeaderEditorValue,
+		copyDraft,
+		headerEditorDataFor,
 } from "../../connection-settings-state";
 import {
 	connectionAdvancedDraftValidationError,
@@ -90,6 +92,8 @@ export type ConnectionSettingsController = {
 	presetChoicesOpen: boolean;
 	editorOpen: boolean;
 	canSave: boolean;
+	dirty: boolean;
+	saving: boolean;
 	validationError: string | null;
 	basicValidationError: string | null;
 	advancedValidationError: string | null;
@@ -111,7 +115,8 @@ export type ConnectionSettingsController = {
 	setPendingDeletionProfileId: (value: number | null) => void;
 	testDraft: () => Promise<void>;
 	refreshModels: () => Promise<void>;
-	applyDraft: () => Promise<void>;
+	applyDraft: () => Promise<boolean>;
+	discardDraft: () => void;
 	updateCredential: () => Promise<void>;
 	requestProfileDeletion: (profile: ConnectionProfile) => void;
 	deletePendingProfile: () => Promise<void>;
@@ -151,7 +156,10 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const [loading, setLoading] = useState(true);
 	const [testPending, setTestPending] = useState(false);
 	const [discoveryPending, setDiscoveryPending] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const commandIdRef = useRef(0);
+	const editorVersionRef = useRef(editorVersion);
+	editorVersionRef.current = editorVersion;
 
 	const setDraft = (value: ConnectionProfileDraft) => dispatch({ type: "set-draft", draft: value });
 	const setCredentialDraft = (value: string) => dispatch({ type: "set-credential-draft", value });
@@ -198,6 +206,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const basicValidationError = connectionBasicDraftValidationError(draft);
 	const advancedValidationError = connectionAdvancedDraftValidationError(draft, headerEditorData);
 	const canSave = settings !== null && validationError === null;
+	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);
 
 	// ==[HUMAN APPROVED]== Runs one Connection Settings command and owns the failure wording
 	// repeated by every Profile command handler: a conflict preserves the
@@ -279,40 +288,46 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	};
 
 	const applyDraft = async () => {
-		if (settings === null) return;
+		if (settings === null) return false;
 		if (validationError !== null) {
 			dispatch({ type: "set-error", message: validationError });
-			return;
+			return false;
 		}
 		let headers: ConnectionHeaderOperation[];
 		try { headers = headerOperationsFor(headerEditorData); }
-		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return; }
+		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return false; }
 		dispatch({ type: "clear-feedback" });
 		const appliedProfileId = selectedProfileId;
 		const appliedDraftDisplayName = draft.displayName;
-		const credentialWasProvided = credentialDraft.length > 0;
 		const requestEditorVersion = editorVersion;
 		const commandId = ++commandIdRef.current;
+		setSaving(true);
 		dispatch({ type: "command-started", commandId });
 		const command: ConnectionSettingsCommand = selectedProfileId === null
 			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
 			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
+		if (credentialDraft.length > 0) command.credential = credentialDraft;
+		try {
 		const applied = await runConnectionCommand(
 			() => saveConnectionCommand(command),
 			APPLY_CONFLICT_ERROR,
 			commandId,
 		);
-		if (applied === null) return;
+		if (applied === null) return false;
 		dispatch({
 			type: "apply-succeeded",
 			settings: applied.settings,
 			selectedProfileId: appliedProfileId,
 			draftDisplayName: appliedDraftDisplayName,
-			credentialWasProvided,
+			credentialWasProvided: false,
 			editorVersion: requestEditorVersion,
 			commandId,
 		});
+		return editorVersionRef.current === requestEditorVersion;
+		} catch { dispatch({ type: "set-error", message: "Connection settings could not be saved." }); return false; }
+		finally { setSaving(false); }
 	};
+	const discardDraft = () => selectedProfile === undefined ? dispatch({ type: "discard-draft" }) : dispatch({ type: "choose-profile", profile: selectedProfile });
 
 	const updateCredential = async () => {
 		if (settings === null || selectedProfileId === null || credentialDraft.length === 0) return;
@@ -392,6 +407,8 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		presetChoicesOpen,
 		editorOpen,
 		canSave,
+		dirty,
+		saving,
 		validationError,
 		basicValidationError,
 		advancedValidationError,
@@ -414,6 +431,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testDraft,
 		refreshModels,
 		applyDraft,
+		discardDraft,
 		updateCredential,
 		requestProfileDeletion,
 		deletePendingProfile,

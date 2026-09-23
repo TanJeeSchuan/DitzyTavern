@@ -1,5 +1,5 @@
-import { KeyRound, RotateCcw, Save } from "lucide-react";
-import { useCallback, useState } from "react";
+import { KeyRound, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -30,9 +30,12 @@ const initialState: EditorState = {
 	error: null,
 };
 
-export function EmbeddingSettingsEditor() {
+export function EmbeddingSettingsEditor({ onSaveStateChange }: { onSaveStateChange: (state: { dirty: boolean; pending: boolean; error: string | null; save: () => Promise<boolean> }) => void }) {
 	const [state, setState] = useState<EditorState>(initialState);
 	const [confirmingCredentialReset, setConfirmingCredentialReset] = useState(false);
+	const saveRef = useRef<() => Promise<boolean>>(async () => false);
+	const draftRef = useRef(state.draft);
+	draftRef.current = state.draft;
 
 	const refresh = useCallback(async () => {
 		setState((current) => ({ ...current, loading: true, error: null }));
@@ -56,7 +59,8 @@ export function EmbeddingSettingsEditor() {
 
 	const updateDraft = (patch: Partial<EmbeddingSettingsDraft>) => setState((current) => current.draft === null ? current : { ...current, draft: { ...current.draft, ...patch }, notice: null, error: null });
 	const apply = async () => {
-		if (state.settings === null || state.draft === null) return;
+		if (state.settings === null || state.draft === null) return false;
+		const submitted = state.draft;
 		setState((current) => ({ ...current, pending: true, notice: null, error: null }));
 		const command: Parameters<typeof saveEmbeddingSettings>[0] = {
 			type: "apply" as const,
@@ -67,15 +71,22 @@ export function EmbeddingSettingsEditor() {
 			deadlineMs: state.draft.deadlineMs,
 		};
 		if (state.draft.credential.length > 0) command.credential = state.draft.credential;
-		const result = await saveEmbeddingSettings(command);
+		let result: Awaited<ReturnType<typeof saveEmbeddingSettings>>;
+		try { result = await saveEmbeddingSettings(command); }
+		catch { setState((current) => ({ ...current, pending: false, error: "Embedding Settings could not be saved." })); return false; }
 		if (result.outcome === "applied") {
-			setState({ settings: result.settings, draft: draftFromEmbeddingSettings(result.settings), loading: false, pending: false, notice: "Embedding Settings saved.", error: null });
+			setState((current) => ({ settings: result.settings, draft: current.draft === submitted ? draftFromEmbeddingSettings(result.settings) : current.draft, loading: false, pending: false, notice: "Embedding Settings saved.", error: null }));
+			return draftRef.current === submitted;
 		} else if (result.outcome === "conflict") {
 			setState((current) => ({ ...current, settings: result.currentSettings, pending: false, notice: "These settings changed elsewhere. Review your draft before saving again.", error: null }));
 		} else {
 			setState((current) => ({ ...current, pending: false, error: result.reason }));
 		}
+		return false;
 	};
+	const dirty = state.settings !== null && state.draft !== null && (state.draft.endpoint !== state.settings.endpoint || state.draft.model !== state.settings.model || state.draft.threshold !== state.settings.threshold || state.draft.deadlineMs !== state.settings.deadlineMs || state.draft.credential.length > 0);
+	saveRef.current = apply;
+	useEffect(() => { onSaveStateChange({ dirty, pending: state.pending, error: state.error, save: () => saveRef.current() }); }, [dirty, state.pending, state.error, onSaveStateChange]);
 
 	const resetCredential = async () => {
 		if (state.settings === null) return;
@@ -104,7 +115,7 @@ export function EmbeddingSettingsEditor() {
 			<Field htmlFor="embedding-deadline" label="Required-work deadline" helper="Milliseconds. Starts at 5,000."><input id="embedding-deadline" className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /></Field>
 			<Field htmlFor="embedding-credential" className="embedding-credential-field" label={<><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</>} helper="Write-only. The saved value is never read back or included in prompt data."><input id="embedding-credential" className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /></Field>
 		</div>
-		<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void apply()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => setConfirmingCredentialReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button>}</div>
+		{state.settings.credentialConfigured && <div className="embedding-settings-actions"><Button type="button" size="sm" variant="outline" onClick={() => setConfirmingCredentialReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button></div>}
 		{state.error !== null && <p className="settings-feedback-error" role="alert">{state.error}</p>}
 		{state.notice !== null && <p className="settings-feedback" role="status">{state.notice}</p>}
 	</section>

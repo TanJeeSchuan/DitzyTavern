@@ -139,6 +139,7 @@ export type ConnectionSettingsControllerAction =
 	| { type: "choose-preset"; preset: ConnectionPreset }
 	| { type: "choose-profile"; profile: ConnectionProfile }
 	| { type: "set-draft"; draft: ConnectionProfileDraft }
+	| { type: "discard-draft" }
 	| { type: "set-credential-draft"; value: string }
 	| { type: "set-header-editor-data"; value: HeaderEditorData }
 	| { type: "set-test-model-id"; value: string }
@@ -196,6 +197,8 @@ export function reduceConnectionSettingsController(
 			return editorChanged(state, profileEditorState(state, action.profile));
 		case "set-draft":
 			return editorChanged(state, { draft: action.draft });
+		case "discard-draft":
+			return editorChanged(state, { selectedProfileId: null, draft: emptyConnectionProfileDraft, credentialDraft: "", headerEditorData: {}, editorOpen: false, error: null, conflict: null });
 		case "set-credential-draft":
 			return editorChanged(state, { credentialDraft: action.value });
 		case "set-header-editor-data":
@@ -272,7 +275,7 @@ export function reduceConnectionSettingsController(
 						selectedProfileId: saved.id,
 						draft: copyDraft(saved),
 						headerEditorData: headerEditorDataFor(saved.headers),
-						credentialDraft: action.selectedProfileId === null ? "" : state.credentialDraft,
+						credentialDraft: "",
 					};
 		}
 		case "credential-succeeded":

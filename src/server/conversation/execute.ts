@@ -10,6 +10,7 @@ import { deleteMessage } from "./commands/delete-message";
 import { deleteVariant } from "./commands/delete-variant";
 import { editVariant } from "./commands/edit-variant";
 import {
+	updateParticipantDefinition,
 	renameParticipant,
 	replaceParticipantOpenings,
 	replaceParticipantPrompt,
@@ -99,6 +100,11 @@ export const conversationCommandPolicy = {
 	},
 	"rename-participant": {
 		handler: renameParticipant,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"update-participant-definition": {
+		handler: updateParticipantDefinition,
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},

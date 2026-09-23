@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { Button } from "@/components/ui/button";
@@ -15,12 +15,11 @@ import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
 	removePromptPresetBlock,
-	savePromptPresetBlockPatches,
 	setPromptPresetBlockEnabled,
 	type PromptPresetOperationOutcome,
 } from "../../prompt-preset-library";
 import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../prompt-preset-presentation";
-import { draftIsDirty, draftToPatch, type BlockDraft } from "../../prompt-preset-editor-state";
+import { draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetSelect } from "./PromptPresetSelect";
 
 const nameInputClass = "prompt-block-field h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal";
@@ -112,20 +111,6 @@ export interface RecipeOperationHandlers {
 	) => void;
 }
 
-// ==[HUMAN APPROVED]== A block's Save submits exactly the occurrence-addressed patch the one
-// slot-kind-safe draft-to-patch rule derives from the slot and its draft, so per-block Save and
-// the save-on-leave batch can never construct different patches for the same draft.
-const saveDraftPatch = (
-	presetId: number,
-	slot: ResolvedPromptPresetSlot,
-	draft: BlockDraft,
-	onOperation: RecipeOperationHandlers["onOperation"],
-): void => {
-	const patch = draftToPatch(slot, draft);
-	if (patch === null) return;
-	onOperation(() => savePromptPresetBlockPatches(presetId, [patch]), { blockId: slot.id, draft });
-};
-
 // ==[HUMAN APPROVED]== One recipe row: the ordered slot header, immediate ordering and toggle
 // controls, and a focused modal editor. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
@@ -174,10 +159,6 @@ export function PromptPresetRecipeRow({
 		onDraftCancel(slot.id);
 		setEditing(false);
 	};
-	const saveAndClose = (): void => {
-		if (draft !== undefined) saveDraftPatch(presetId, slot, draft, onOperation);
-		setEditing(false);
-	};
 	return <li
 		ref={ref}
 		className={`relative py-2.5 transition-[background-color,box-shadow] motion-reduce:transition-none${isDragging ? " z-10 bg-background shadow-lg ring-1 ring-border" : isDropTarget ? " bg-muted/60" : ""}`}
@@ -194,6 +175,7 @@ export function PromptPresetRecipeRow({
 					<GripVertical aria-hidden="true" className="size-4" />
 				</button>
 				<h3 className={`min-w-0 truncate font-medium leading-5${slot.enabled ? "" : " text-muted-foreground"}`}>{title}</h3>
+				{dirty && <span className="text-xs text-muted-foreground">Unsaved</span>}
 			</div>
 			<div className="flex items-center gap-1">
 				<Button
@@ -224,13 +206,13 @@ export function PromptPresetRecipeRow({
 				</button>
 			</div>
 		</div>
-		<Dialog open={editing} onOpenChange={(open) => { if (open || !dirty) setEditing(open); }}>
-			<DialogContent showCloseButton={!dirty} className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+		<Dialog open={editing} onOpenChange={setEditing}>
+			<DialogContent className="max-h-[90vh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
 				<DialogHeader>
 					{referenceCopy === null ? (
 						<>
 							<DialogTitle>Edit prompt block</DialogTitle>
-							<DialogDescription>Changes are applied only when you choose Save &amp; Close.</DialogDescription>
+							<DialogDescription>Choose Save in the panel footer to apply these edits.</DialogDescription>
 						</>
 					) : (
 						<>
@@ -287,7 +269,7 @@ export function PromptPresetRecipeRow({
 					</div>
 					<div className="ml-auto flex items-center gap-2">
 						<Button title="Cancel" variant="ghost" size="icon-sm" disabled={pending} aria-label="Cancel" onClick={closeAndDiscard}><X aria-hidden="true" /></Button>
-						<Button title="Save and close" size="icon-sm" disabled={pending} aria-label="Save and close" onClick={saveAndClose}><Save aria-hidden="true" /></Button>
+						<Button title="Done" size="sm" disabled={pending} onClick={() => setEditing(false)}>Done</Button>
 					</div>
 				</div>
 			</DialogContent>

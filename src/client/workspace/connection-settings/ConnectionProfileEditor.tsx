@@ -1,4 +1,4 @@
-import { Check, ChevronDown, KeyRound, RefreshCw, RotateCcw, Save, SlidersHorizontal, Zap } from "lucide-react";
+import { Check, ChevronDown, KeyRound, RefreshCw, RotateCcw, SlidersHorizontal, Zap } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { Field } from "@/components/ui/field";
 import type { ConnectionProfileDraft } from "../../connection-settings";
@@ -24,8 +24,6 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 		setTestModelId,
 		testDraft,
 		refreshModels,
-		applyDraft,
-		updateCredential,
 		resetCredential,
 	} = controller;
 	const updateDraft = (patch: Partial<ConnectionProfileDraft>) => setDraft({ ...draft, ...patch });
@@ -50,7 +48,6 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 					<div className="credential-field-row">
 						<div className="credential-input-row"><KeyRound aria-hidden="true" /><input id="connection-credential" className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Enter API key"} /></div>
 						{selectedProfile?.credentialConfigured && <button className="secondary-button" type="button" onClick={() => void resetCredential()}><RotateCcw aria-hidden="true" /> Reset</button>}
-						{selectedProfile && credentialDraft.length > 0 && <button className="secondary-button" type="button" onClick={() => void updateCredential()}><KeyRound aria-hidden="true" /> Update credential</button>}
 					</div>
 				</Field>
 				<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default and test model" helper="Used for connection tests and saved as the default model.">
@@ -76,7 +73,6 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 
 				<div className="connection-action-row">
 					<button className="secondary-button" type="button" disabled={testPending || !controller.canSave} onClick={() => void testDraft()}><Zap aria-hidden="true" /> {testPending ? "Testing..." : "Test connection"}</button>
-					<button className="primary-button" type="button" disabled={!controller.canSave} onClick={() => void applyDraft()}><Save aria-hidden="true" /> {selectedProfile ? "Save changes" : "Save connection"}</button>
 				</div>
 				{controller.basicValidationError !== null && <small className="field-error connection-validation-error" role="alert">{controller.basicValidationError}</small>}
 				<small className="connection-test-warning">Testing contacts the provider and may incur a charge. It does not save changes.</small>

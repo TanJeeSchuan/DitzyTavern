@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { Toast } from "radix-ui";
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { SaveGuardContext, SaveNavigationContext, UnsavedChangesDialog, type SaveGuard } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
@@ -74,13 +75,39 @@ export function ActiveWritingWorkspace({
 		createPanelCoordinationState,
 	);
 	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
-	const [theme, setTheme] = useState<ThemePreference>("system");
+	const [theme, setTheme] = useState<ThemePreference>(() => {
+		const saved = window.localStorage.getItem("ditzytavern-theme");
+		return saved === "daylight" || saved === "evening" ? saved : "system";
+	});
 	const [inspectPromptPlanBeforeGenerating, setInspectPromptPlanBeforeGenerating] = useState(
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
+	const saveGuardRef = useRef<SaveGuard | null>(null);
+	const [guardPending, setGuardPending] = useState(false);
+	const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
+	const [leaveSaving, setLeaveSaving] = useState(false);
+	const [leaveError, setLeaveError] = useState<string | null>(null);
+	const registerSaveGuard = useCallback((guard: SaveGuard | null) => { saveGuardRef.current = guard; setGuardPending(guard?.saving ?? false); }, []);
+	const requestNavigation = (action: () => void) => {
+		if (saveGuardRef.current?.dirty || saveGuardRef.current?.saving) { setLeaveError(null); setLeaveAction(() => action); }
+		else action();
+	};
+	const saveAndLeave = async () => {
+		const guard = saveGuardRef.current;
+		if (guard === null || leaveAction === null) return;
+		if (!guard.dirty) { const action = leaveAction; setLeaveAction(null); action(); return; }
+		setLeaveSaving(true);
+		setLeaveError(null);
+		try {
+			if (await guard.save()) { const action = leaveAction; setLeaveAction(null); action(); }
+			else setLeaveError("The changes could not be saved. Keep editing to review them.");
+		} catch {
+			setLeaveError("The changes could not be saved. Keep editing to review them.");
+		} finally { setLeaveSaving(false); }
+	};
 
 	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
@@ -215,19 +242,21 @@ export function ActiveWritingWorkspace({
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={togglePanel} />
+			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
 
+			<SaveGuardContext.Provider value={registerSaveGuard}>
+			<SaveNavigationContext.Provider value={requestNavigation}>
 			<PrimaryPanelView
 				panel={assemblyActive ? null : panelState.primaryPanel}
 				workspace={initialWorkspace}
 				activeChat={session.activeChat}
 				theme={theme}
-				onThemeChange={setTheme}
+				onThemeChange={(value) => { window.localStorage.setItem("ditzytavern-theme", value); setTheme(value); }}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
 				onSelectChat={selectChat}
 				onNewChat={onNewChat}
-				onClose={() => dispatchPanel({ type: "primary-closed" })}
+				onClose={() => requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
 				onImportLaunched={onImportLaunched}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
@@ -246,6 +275,8 @@ export function ActiveWritingWorkspace({
 				}}
 				mutationsDisabled={story.preview !== null}
 			/>
+			</SaveNavigationContext.Provider>
+			</SaveGuardContext.Provider>
 
 			<main className="story-stage" aria-label="Active Chat" data-preview-mode={story.preview !== null}>
 				<StoryHeader
@@ -431,6 +462,7 @@ export function ActiveWritingWorkspace({
 			</Toast.Root>
 		)}
 		<Toast.Viewport className="toast-viewport" />
+		<UnsavedChangesDialog open={leaveAction !== null} saving={leaveSaving || guardPending} error={leaveError} onKeepEditing={() => setLeaveAction(null)} onDiscard={() => { saveGuardRef.current?.discard(); const action = leaveAction; setLeaveAction(null); action?.(); }} onSave={() => void saveAndLeave()} />
 		</Toast.Provider>
 	);
 }

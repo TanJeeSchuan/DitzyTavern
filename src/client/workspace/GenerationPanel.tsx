@@ -5,6 +5,8 @@ import type { ConversationSummary } from "../conversation";
 import { generationSettingsSummaryFromDrafts } from "../generation-settings-draft";
 import { BudgetEditor } from "./GenerationSettingsEditors";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard } from "../SaveGuard";
 
 export function GenerationPanel({
 	conversation,
@@ -44,12 +46,15 @@ function GenerationSettings({
 		setPrefillSuffix,
 		updateInstruction,
 		canSave,
+		dirty,
 		save,
+		discard,
 		samplingDrafts,
 		budgetDrafts,
 		updateBudget,
 		overridesDrafts,
 	} = controller;
+	useSaveGuard({ dirty, saving: status === "saving", save, discard });
 
 	const summary = generationSettingsSummaryFromDrafts(
 		{ sampling: samplingDrafts, budget: budgetDrafts, overrides: overridesDrafts },
@@ -57,7 +62,7 @@ function GenerationSettings({
 	);
 
 	return (
-		<div className="panel-body settings-panel-body">
+		<><div className="panel-body settings-panel-body">
 			{settings !== null && problem !== null && (
 				<p className="import-problem" role="alert">{problem}</p>
 			)}
@@ -128,16 +133,8 @@ function GenerationSettings({
 						</button>
 					</section>
 
-					<button
-						className="primary-button"
-						type="button"
-						disabled={!canSave}
-						onClick={() => void save()}
-					>
-						{status === "saving" ? "Saving…" : "Save Generation settings"}
-					</button>
 				</div>
 			)}
-		</div>
+		</div><SaveFooter dirty={dirty} saving={status === "saving"} valid={canSave} error={problem} onSave={() => void save()} /></>
 	);
 }

@@ -562,6 +562,12 @@ const renameParticipantAction = Type.Object({
 	name: Type.String(),
 });
 
+const updateParticipantDefinitionAction = Type.Object({
+	type: Type.Literal("update-participant-definition"),
+	participantId: Type.Integer(),
+	definition: participantDefinition,
+});
+
 const replaceParticipantPromptAction = Type.Object({
 	type: Type.Literal("replace-participant-prompt"),
 	participantId: Type.Integer(),
@@ -611,6 +617,7 @@ const conversationCommandAction = Type.Union([
 	setGenerationModelAction,
 	addParticipantAction,
 	renameParticipantAction,
+	updateParticipantDefinitionAction,
 	replaceParticipantPromptAction,
 	replaceParticipantOpeningsAction,
 	assignControlAction,

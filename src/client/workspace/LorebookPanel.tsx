@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard } from "../SaveGuard";
 import {
 	applyLorebookCommand,
 	applyLorebookAttachmentCommand,
@@ -84,6 +86,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [testPending, setTestPending] = useState(false);
 	const [testError, setTestError] = useState<string | null>(null);
 	const [attachmentState, setAttachmentState] = useState<LoreAttachmentState | null>(null);
+	const [savedChatSettings, setSavedChatSettings] = useState<{ scanDepth: number; allowance: number } | null>(null);
 	const [attachmentPending, setAttachmentPending] = useState(false);
 	const [selectedPreset, setSelectedPreset] = useState<Awaited<ReturnType<typeof loadConversationPromptPreset>>>(null);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
@@ -94,6 +97,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const libraryRequestRef = useRef(0);
 	const matchRequestRef = useRef(0);
 	const attachmentRequestRef = useRef(0);
+	const chatSettingsVersionRef = useRef(0);
 	const presetRequestRef = useRef(0);
 	const impactRequestRef = useRef(0);
 	const exportRequestRef = useRef(0);
@@ -142,7 +146,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		const presetRequest = ++presetRequestRef.current;
 		setAttachmentPending(false);
 		void getLorebookAttachmentState(conversationId).then((state) => {
-			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setAttachmentState(state);
+			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) { setAttachmentState(state); setSavedChatSettings(state === null ? null : { scanDepth: state.scanDepth, allowance: state.allowance }); }
 		}).catch(() => { if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("Lorebook attachment settings could not be loaded."); });
 		void loadConversationPromptPreset(conversationId).then((preset) => {
 			if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setSelectedPreset(preset);
@@ -354,28 +358,37 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			if (request === matchRequestRef.current && token === viewTokenRef.current) setTestPending(false);
 		}
 	};
-	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]) => {
+	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]): Promise<boolean> => {
 		const request = ++attachmentRequestRef.current;
+		const draftVersion = chatSettingsVersionRef.current;
+		const hadChatDraft = attachmentState !== null && savedChatSettings !== null && (attachmentState.scanDepth !== savedChatSettings.scanDepth || attachmentState.allowance !== savedChatSettings.allowance);
 		const requestConversationId = conversationId;
 		setAttachmentPending(true);
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
-			if (request !== attachmentRequestRef.current || currentConversationIdRef.current !== requestConversationId) return;
+			if (request !== attachmentRequestRef.current || currentConversationIdRef.current !== requestConversationId) return false;
 			if (result.status !== "applied") {
-				if (result.status === "conflict" && "conversationId" in result.currentState) setAttachmentState(result.currentState);
+				if (result.status === "conflict" && "conversationId" in result.currentState) {
+					const currentState = result.currentState;
+					setSavedChatSettings({ scanDepth: currentState.scanDepth, allowance: currentState.allowance });
+					setAttachmentState((current) => current === null ? currentState : { ...currentState, scanDepth: current.scanDepth, allowance: current.allowance });
+				}
 				throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			}
 			const state = await getLorebookAttachmentState(requestConversationId);
-			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setAttachmentState(state);
-		} catch { if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setNotice("Lorebook attachment settings could not be saved."); }
+			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) {
+				setSavedChatSettings(state === null ? null : { scanDepth: state.scanDepth, allowance: state.allowance });
+				setAttachmentState((current) => state === null || current === null || (!hadChatDraft && chatSettingsVersionRef.current === draftVersion) || (command.type === "save-settings" && chatSettingsVersionRef.current === draftVersion) ? state : { ...state, scanDepth: current.scanDepth, allowance: current.allowance });
+			}
+			return chatSettingsVersionRef.current === draftVersion;
+		} catch { if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setNotice("Lorebook attachment settings could not be saved."); return false; }
 		finally {
 			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setAttachmentPending(false);
 		}
 	};
-	const saveChatSettings = (event: React.FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		if (attachmentState === null) return;
-		void updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
+	const saveChatSettings = () => {
+		if (attachmentState === null) return Promise.resolve(false);
+		return updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
 	};
 	const enableLoreSlot = async () => {
 		if (selectedPreset === null) return;
@@ -446,17 +459,18 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		<p>The selected Prompt Preset needs an enabled Lore block to use attached Lorebooks during Generation.</p>
 		<Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button>
 	</div>;
+	const chatSettingsDirty = attachmentState !== null && savedChatSettings !== null && (attachmentState.scanDepth !== savedChatSettings.scanDepth || attachmentState.allowance !== savedChatSettings.allowance);
+	useSaveGuard({ dirty: dirty || chatSettingsDirty, saving: pending || attachmentPending, save: async () => (!dirty || await saveDirty()) && (!chatSettingsDirty || await saveChatSettings()), discard: () => undefined });
 
 	return <>
-		<PanelHeader title="Lorebooks" onClose={() => requestLeave({ type: "close" })} />
+		<PanelHeader title="Lorebooks" onClose={onClose} />
 		<div className="panel-body flex flex-col gap-4" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 			{attachmentState === null ? <ChatLoreSettingsLoading /> : <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
 				<h2 className="text-sm font-medium">Chat Lore settings</h2>
-				<form className="flex flex-wrap items-end gap-2" onSubmit={saveChatSettings}>
-					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Scan Messages<Input className="w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) })} /></label>
-					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Lore allowance<Input className="w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) })} /></label>
-					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
-				</form>
+				<div className="flex flex-wrap items-end gap-2">
+					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Scan Messages<Input className="w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => { chatSettingsVersionRef.current += 1; setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) }); }} /></label>
+					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Lore allowance<Input className="w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => { chatSettingsVersionRef.current += 1; setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) }); }} /></label>
+				</div>
 				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision })}>Detach</Button></span></div>)}</div>
 				{attachmentState.attachments.some((attachment) => attachment.enabled) && loreBlockNotice}
 			</section>}
@@ -469,6 +483,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			<div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div>
 			{book === null && notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
+		{book === null && <SaveFooter dirty={chatSettingsDirty} saving={attachmentPending} error={notice?.includes("could not be saved") ? notice : null} onSave={() => void saveChatSettings()} />}
 		{book !== null && <Dialog open onOpenChange={(open) => { if (!open) requestLeave({ type: "library" }); }}>
 			<DialogContent showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-4 sm:max-w-3xl lg:max-w-5xl" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled} onOpenAutoFocus={(event) => event.preventDefault()}>
 				<DialogHeader className="gap-1">
@@ -498,7 +513,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					</div>
 					<div className="flex items-center gap-2">
 						<Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>Close</Button>
-						<Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
+						<span role="status" className="text-sm text-muted-foreground">{pending ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}</span><Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
 					</div>
 				</DialogFooter>
 			</DialogContent>

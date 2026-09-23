@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
 	applyConversationCommand,
 	type ConversationAction,
@@ -8,6 +8,8 @@ import { runConversationCommand } from "../conversation-command-runner";
 import { openingsFromText, openingsToText } from "./definition";
 import { emptyPromptChannels, promptChannelFields } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard } from "../SaveGuard";
 
 // ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -39,15 +41,15 @@ export function ParticipantEditor({
 		openingsText: participant ? openingsToText(participant.openings) : "",
 	}));
 	const [pending, setPending] = useState(false);
+	const draftsRef = useRef(drafts);
+	draftsRef.current = drafts;
 
-	if (participant === undefined) {
-		return <p className="panel-note">This Participant is no longer in the Cast.</p>;
-	}
-
-	const apply = async (
-		action: ConversationAction,
-		section: "name" | "prompt" | "openings",
-	) => {
+	const dirty = participant !== undefined && (drafts.name !== participant.name || JSON.stringify(drafts.prompt) !== JSON.stringify(participant.prompt) || drafts.openingsText !== openingsToText(participant.openings));
+	const apply = async () => {
+		if (participant === undefined || !dirty || pending || drafts.name.trim() === "") return false;
+		const submitted = drafts;
+		let appliedSuccessfully = false;
+		const action: ConversationAction = { type: "update-participant-definition", participantId: participant.id, definition: { name: drafts.name, prompt: drafts.prompt, openings: drafts.openingsText === openingsToText(participant.openings) ? participant.openings : openingsFromText(drafts.openingsText) } };
 		setPending(true);
 		try {
 			await runConversationCommand({
@@ -61,26 +63,11 @@ export function ParticipantEditor({
 				notices: EDITOR_NOTICES,
 				callbacks: {
 					onApplied: (applied) => {
-						// ==[HUMAN APPROVED]== Only the edited section re-syncs its draft from the
-						// authoritative snapshot; the other drafts stay as typed.
-						setDrafts((current) => ({
-							name:
-								section === "name"
-									? applied.cast.find((p) => p.id === participant.id)?.name ??
-										current.name
-									: current.name,
-							prompt:
-								section === "prompt"
-									? (applied.cast.find((p) => p.id === participant.id)?.prompt ??
-										current.prompt)
-									: current.prompt,
-							openingsText:
-								section === "openings"
-									? openingsToText(
-											applied.cast.find((p) => p.id === participant.id)?.openings ?? [],
-										)
-									: current.openingsText,
-						}));
+						appliedSuccessfully = true;
+						const saved = applied.cast.find((p) => p.id === participant.id);
+						if (saved) setDrafts((current) => JSON.stringify(current) === JSON.stringify(submitted)
+							? { name: saved.name, prompt: saved.prompt, openingsText: openingsToText(saved.openings) }
+							: current);
 						onNotice(null);
 					},
 					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
@@ -92,10 +79,13 @@ export function ParticipantEditor({
 		} finally {
 			setPending(false);
 		}
+		return appliedSuccessfully && draftsRef.current === submitted;
 	};
+	useSaveGuard({ dirty, saving: pending, save: apply, discard: () => undefined });
+	if (participant === undefined) return <p className="panel-note">This Participant is no longer in the Cast.</p>;
 
 	return (
-		<div className="participant-editor">
+		<div className="editor-frame"><div className="panel-body participant-editor">
 			<section className="editor-section">
 				<h3>Name</h3>
 				<div className="apply-row">
@@ -107,23 +97,6 @@ export function ParticipantEditor({
 						}
 						aria-label="Participant name"
 					/>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={pending || drafts.name.trim() === ""}
-						onClick={() =>
-							void apply(
-								{
-									type: "rename-participant",
-									participantId: participant.id,
-									name: drafts.name,
-								},
-								"name",
-							)
-						}
-					>
-						Apply Name
-					</button>
 				</div>
 			</section>
 
@@ -151,23 +124,6 @@ export function ParticipantEditor({
 							/>
 						</div>
 					))}
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pending}
-						onClick={() =>
-							void apply(
-								{
-									type: "replace-participant-prompt",
-									participantId: participant.id,
-									prompt: drafts.prompt,
-								},
-								"prompt",
-							)
-						}
-					>
-						Apply Prompt
-					</button>
 				</div>
 			</section>
 
@@ -189,27 +145,10 @@ export function ParticipantEditor({
 						/>
 						<small>One Opening per line. Editing never rewrites history.</small>
 					</div>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pending}
-						onClick={() =>
-							void apply(
-								{
-									type: "replace-participant-openings",
-									participantId: participant.id,
-									openings: openingsFromText(drafts.openingsText),
-								},
-								"openings",
-							)
-						}
-					>
-						Apply Openings
-					</button>
 				</div>
 			</section>
 
 			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
-		</div>
+		</div><SaveFooter dirty={dirty} saving={pending} valid={drafts.name.trim().length > 0} onSave={() => void apply()} /></div>
 	);
 }

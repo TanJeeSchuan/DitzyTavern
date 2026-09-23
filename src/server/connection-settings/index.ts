@@ -213,6 +213,8 @@ export function createConnectionSettingsModule(
 
 	const applyProfile = (input: ApplyConnectionProfileInput) => {
 		const profile = validateConnectionProfileDraft(input.profile);
+		if (input.credential !== undefined && input.credential.trim().length === 0) throw new InvalidConnectionProfileError("A Connection Credential is required.");
+		const credential = input.credential === undefined ? undefined : normalizeCredential(input.credential);
 		const headerOperations = validateHeaderOperations(input.headers ?? []);
 		return revisionedProfileWrite({
 			expectedRevision: input.expectedRevision,
@@ -233,7 +235,7 @@ export function createConnectionSettingsModule(
 						.run();
 				}
 				writeSecretState(db, input.profileId, {
-					credential: currentSecret?.credential ?? null,
+					credential: credential === undefined ? currentSecret?.credential ?? null : credential,
 					headers: applyHeaderOperations(currentSecret?.headers ?? {}, headerOperations),
 				}, getKey());
 				return { kind: "advanced" };

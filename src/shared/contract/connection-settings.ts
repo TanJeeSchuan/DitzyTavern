@@ -82,6 +82,7 @@ const commandBody = Type.Union([
 		expectedRevision: Type.Integer(),
 		profileId: Type.Integer(),
 		profile: profileDraft,
+		credential: Type.Optional(Type.String()),
 		headers: Type.Optional(Type.Array(headerOperation)),
 	}),
 	Type.Object({

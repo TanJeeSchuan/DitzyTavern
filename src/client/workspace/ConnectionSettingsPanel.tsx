@@ -5,6 +5,8 @@ import { ConnectionProfileDeletion } from "./connection-settings/ConnectionProfi
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { ConnectionSettingsInspectorBody } from "./ConnectionSettingsInspector";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -33,23 +35,25 @@ export function ConnectionSettingsPanel({
 	controller: ConnectionSettingsController;
 	onOpenInspector: () => void;
 }) {
+	const navigate = useSaveNavigation();
+	useSaveGuard({ dirty: controller.dirty, saving: controller.saving, save: controller.applyDraft, discard: controller.discardDraft });
 	if (controller.loading) return <div className="panel-body settings-panel-body">Loading Connection Settings...</div>;
 	if (!controller.settings) return <div className="panel-body settings-panel-body" role="alert">{controller.error}</div>;
 
 	const { settings } = controller;
 	return (
-		<div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={controller.testResult?.outcome}>
+		<><div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={controller.testResult?.outcome}>
 			<ConnectionProfileList
 				settings={settings}
 				presets={controller.presets}
 				selectedProfileId={controller.selectedProfileId}
 				presetChoicesOpen={controller.presetChoicesOpen}
 				openProfileMenuId={controller.openProfileMenuId}
-				onChooseProfile={controller.chooseProfile}
+				onChooseProfile={(profile) => navigate(() => controller.chooseProfile(profile))}
 				onRequestDeletion={controller.requestProfileDeletion}
 				onTogglePresets={() => controller.setPresetChoicesOpen(!controller.presetChoicesOpen)}
 				onToggleProfileMenu={controller.setOpenProfileMenuId}
-				onChoosePreset={controller.choosePreset}
+				onChoosePreset={(preset) => navigate(() => controller.choosePreset(preset))}
 			/>
 
 			{controller.pendingDeletionProfile && (
@@ -69,6 +73,6 @@ export function ConnectionSettingsPanel({
 				</p>
 			)}
 			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers are stored separately from Conversation data and are never shown after saving.</span></div>
-		</div>
+		</div>{controller.editorOpen && <SaveFooter dirty={controller.dirty} saving={controller.saving} valid={controller.canSave} error={controller.error} onSave={() => void controller.applyDraft()} />}</>
 	);
 }

@@ -11,9 +11,12 @@ import {
 } from "./DefinitionFields";
 import {
 	openingsFromText,
+	openingsToText,
 	type Drafts,
 } from "./definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
 
 export function CharacterEditor({
 	snapshot,
@@ -33,21 +36,26 @@ export function CharacterEditor({
 	pendingAction: string | null;
 	onDraftChange: (drafts: Drafts) => void;
 	onBack: () => void;
-	onCommand: (action: string, command: CharacterCommand) => Promise<void>;
+	onCommand: (action: string, command: CharacterCommand) => Promise<boolean>;
 	onResolveConflict: (mode: "keep-draft" | "load-current") => void;
 }) {
 	// Deletion requires an explicit confirmation step that states whether the
 	// ==[HUMAN APPROVED]== confirmed command will hard-delete or reduce the Character to a hidden
 	// tombstone, derived from the reference count presented on the snapshot.
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const dirty = drafts.name !== snapshot.name || JSON.stringify(drafts.prompt) !== JSON.stringify(snapshot.prompt) || drafts.openingsText !== openingsToText(snapshot.openings);
+	const navigate = useSaveNavigation();
+	const save = () => onCommand("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: { name: drafts.name, prompt: drafts.prompt, openings: drafts.openingsText === openingsToText(snapshot.openings) ? snapshot.openings : openingsFromText(drafts.openingsText) } });
+	useSaveGuard({ dirty, saving: pendingAction === "save", save, discard: () => undefined });
 	const deleteCopy = deletionConfirmationCopy(
 		snapshot.name,
 		snapshot.deletionImpact,
 	);
 
 	return (
+		<div className="editor-frame">
 		<div className="panel-body">
-			<button className="library-back" type="button" onClick={onBack}>
+			<button className="library-back" type="button" onClick={() => navigate(onBack)}>
 				<ArrowLeft aria-hidden="true" />
 				All Characters
 			</button>
@@ -88,21 +96,6 @@ export function CharacterEditor({
 						}
 						aria-label="Character name"
 					/>
-					<button
-						className="secondary-button"
-						type="button"
-						disabled={pendingAction !== null || drafts.name.trim() === ""}
-						onClick={() =>
-							void onCommand("rename", {
-								type: "rename",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								name: drafts.name,
-							})
-						}
-					>
-						Apply Name
-					</button>
 				</div>
 			</section>
 
@@ -140,21 +133,6 @@ export function CharacterEditor({
 						prompt={drafts.prompt}
 						onChange={(prompt) => onDraftChange({ ...drafts, prompt })}
 					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pendingAction !== null}
-						onClick={() =>
-							void onCommand("prompt", {
-								type: "replace-prompt",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								prompt: drafts.prompt,
-							})
-						}
-					>
-						Apply Prompt
-					</button>
 				</div>
 			</section>
 
@@ -167,21 +145,6 @@ export function CharacterEditor({
 							onDraftChange({ ...drafts, openingsText })
 						}
 					/>
-					<button
-						className="primary-button"
-						type="button"
-						disabled={pendingAction !== null}
-						onClick={() =>
-							void onCommand("openings", {
-								type: "replace-openings",
-								characterId: snapshot.id,
-								expectedRevision: snapshot.revision,
-								openings: openingsFromText(drafts.openingsText),
-							})
-						}
-					>
-						Apply Openings
-					</button>
 				</div>
 			</section>
 
@@ -233,6 +196,8 @@ export function CharacterEditor({
 					{notice}
 				</p>
 			)}
+		</div>
+		<SaveFooter dirty={dirty} saving={pendingAction === "save"} valid={drafts.name.trim().length > 0 && conflict === null} error={notice} onSave={() => void save()} />
 		</div>
 	);
 }

@@ -56,6 +56,16 @@ describe("Character Library", () => {
 		database.close();
 	});
 
+	test("saves a complete Character Definition in one revision", () => {
+		const created = library.execute({ type: "create", definition: definition() });
+		const next = definition({ name: "Maren Vale", prompt: { ...created.prompt, identity: "A different identity." }, openings: ["A new beginning."] });
+		const saved = library.execute({ type: "update-definition", characterId: created.id, expectedRevision: created.revision, definition: next });
+		expect(saved.revision).toBe(created.revision + 1);
+		expect(saved).toMatchObject(next);
+		expect(() => library.execute({ type: "update-definition", characterId: created.id, expectedRevision: saved.revision, definition: { ...next, name: "Invalid", openings: [""] } })).toThrow();
+		expect(library.get(created.id)).toEqual(saved);
+	});
+
 	test("creates a Character atomically from a complete Definition and persists every field exactly", () => {
 		const exact = definition({
 			prompt: {

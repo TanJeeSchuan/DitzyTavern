@@ -17,8 +17,8 @@ describe("openingsFromText", () => {
 		]);
 	});
 
-	test("keeps an empty textarea as one empty opening", () => {
-		expect(openingsFromText("")).toEqual([""]);
+	test("keeps an empty textarea as no openings", () => {
+		expect(openingsFromText("")).toEqual([]);
 	});
 });
 

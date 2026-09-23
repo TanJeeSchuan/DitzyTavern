@@ -1,5 +1,5 @@
 import { Pin, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	applyCommand,
 	getCharacter,
@@ -48,6 +48,8 @@ export function CharacterLibraryPanel({
 	const [selectedId, setSelectedId] = useState<number | null>(null);
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
 	const [drafts, setDrafts] = useState<Drafts>(emptyDrafts);
+	const draftsRef = useRef(drafts);
+	draftsRef.current = drafts;
 	const [conflict, setConflict] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -115,6 +117,7 @@ export function CharacterLibraryPanel({
 
 	const runCommand = useCallback(
 		async (action: string, command: CharacterCommand) => {
+			const submittedDrafts = draftsRef.current;
 			setPendingAction(action);
 			try {
 				const outcome = await applyCommand(command);
@@ -126,16 +129,16 @@ export function CharacterLibraryPanel({
 						// unsaved edits elsewhere stay client-local.
 						setDrafts((current) => ({
 							name:
-								command.type === "rename"
-									? applied.name
+								command.type === "rename" || command.type === "update-definition"
+									? command.type === "update-definition" && current.name !== command.definition.name ? current.name : applied.name
 									: current.name,
 							prompt:
-								command.type === "replace-prompt"
-									? applied.prompt
+								command.type === "replace-prompt" || command.type === "update-definition"
+									? command.type === "update-definition" && JSON.stringify(current.prompt) !== JSON.stringify(command.definition.prompt) ? current.prompt : applied.prompt
 									: current.prompt,
 							openingsText:
-								command.type === "replace-openings"
-									? openingsToText(applied.openings)
+								command.type === "replace-openings" || command.type === "update-definition"
+									? command.type === "update-definition" && JSON.stringify(openingsFromText(current.openingsText)) !== JSON.stringify(command.definition.openings) ? current.openingsText : openingsToText(applied.openings)
 									: current.openingsText,
 						}));
 						setConflict(null);
@@ -175,7 +178,8 @@ export function CharacterLibraryPanel({
 					default: {
 						setNotice(LIBRARY_UNREACHABLE_NOTICE);
 					}
-				}
+					}
+					return outcome.status === "applied" && draftsRef.current === submittedDrafts;
 			} finally {
 				setPendingAction(null);
 			}
@@ -241,7 +245,7 @@ export function CharacterLibraryPanel({
 				conflict={conflict}
 				notice={notice}
 				pendingAction={pendingAction}
-				onDraftChange={setDrafts}
+				onDraftChange={(value) => { draftsRef.current = value; setDrafts(value); }}
 				onBack={() => {
 					setSelectedId(null);
 					setSnapshot(null);
