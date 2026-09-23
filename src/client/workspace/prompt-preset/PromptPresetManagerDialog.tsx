@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Download, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Dialog,
 	DialogContent,
@@ -131,7 +132,7 @@ export function PromptPresetManagerDialog({
 							}}
 						/>
 						{creating === null ? (
-							<Button variant="outline" size="sm" type="button" disabled={pending} onClick={() => setCreating("")}>
+							<Button variant="outline" size="sm" className="pl-1.5" type="button" disabled={pending} onClick={() => setCreating("")}>
 								<Plus aria-hidden="true" />
 								New preset
 							</Button>
@@ -295,8 +296,7 @@ const InlineNameEdit = ({
 	const ready = value.trim() !== "";
 	return (
 		<div className="flex flex-wrap items-center gap-2">
-			<input
-				className="definition-input"
+			<Input
 				type="text"
 				value={value}
 				placeholder={placeholder}

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, Plus, Upload } from "lucide-react";
-import { Switch as SwitchPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
 	applyLorebookCommand,
@@ -55,7 +59,6 @@ const joinList = (value: string[]): string => value.join("\n");
 type EntryListKey = keyof Pick<LoreEntryFields, "keywords" | "semanticTriggers" | "requireAny" | "requireAll" | "excludeAny" | "excludeAll">;
 const entryMatchFields = [["keywords", "Keywords"], ["semanticTriggers", "Semantic triggers"]] as const satisfies readonly (readonly [EntryListKey, string])[];
 const entryConditionFields = [["requireAny", "Require any"], ["requireAll", "Require all"], ["excludeAny", "Exclude any"], ["excludeAll", "Exclude all"]] as const satisfies readonly (readonly [EntryListKey, string])[];
-const inlineField = "rounded-lg border border-border bg-muted/40 px-2 py-1";
 const parseOperator = (value: string): LoreEntryFields["matchOperator"] => value === "and" ? "and" : "or";
 const sameEntry = (left: LoreEntryFields, right: LoreEntryFields): boolean => JSON.stringify(left) === JSON.stringify(right);
 
@@ -450,8 +453,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			{attachmentState === null ? <ChatLoreSettingsLoading /> : <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
 				<h2 className="text-sm font-medium">Chat Lore settings</h2>
 				<form className="flex flex-wrap items-end gap-2" onSubmit={saveChatSettings}>
-					<label className="flex flex-col gap-1 text-xs">Scan Messages<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) })} /></label>
-					<label className="flex flex-col gap-1 text-xs">Lore allowance<input className="field-input w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) })} /></label>
+					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Scan Messages<Input className="w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) })} /></label>
+					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Lore allowance<Input className="w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) })} /></label>
 					<Button type="submit" size="sm" disabled={attachmentPending}>Save settings</Button>
 				</form>
 				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>Book {attachment.bookId} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision })}>Detach</Button></span></div>)}</div>
@@ -462,7 +465,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				<Button size="sm" variant="outline" type="button" disabled={pending} onClick={() => importInput.current?.click()}><Upload aria-hidden="true" /> Import</Button>
 				<Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button>
 			</div>
-			<input className="field-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" />
+			<Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" />
 			<div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div>
 			{book === null && notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
@@ -471,8 +474,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				<DialogHeader className="gap-1">
 					<DialogTitle className="sr-only">Edit Lorebook</DialogTitle>
 					<DialogDescription className="sr-only">Rename this Lorebook, edit its entries, and test matching against supplied writing.</DialogDescription>
-					<input className="lore-book-field lore-book-field-name" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" placeholder="Untitled Lorebook" />
-					<textarea rows={1} className="lore-book-field lore-book-field-description" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" placeholder="Add a description…" />
+					<Input className="h-9 text-base font-semibold" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" placeholder="Untitled Lorebook" />
+					<Textarea rows={1} className="min-h-9 resize-none text-sm" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" placeholder="Add a description…" />
 				</DialogHeader>
 				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
 					<div className="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
@@ -551,7 +554,7 @@ function UnsavedLorebookDialog({ open, pending, onKeepEditing, onDiscard, onSave
 function MatchTester({ writing, onWritingChange, result, error, pending, onTest }: { writing: string; onWritingChange: (value: string) => void; result: LoreMatchTest | null; error: string | null; pending: boolean; onTest: () => void }) {
 	return <section className="lore-match-tester flex flex-col gap-2" aria-labelledby="lore-match-tester-title">
 		<div><h3 id="lore-match-tester-title" className="text-sm font-medium">Match tester</h3><p className="panel-intro">Test this Lorebook's saved entries against the writing below. Chat attachments, history, and the Prompt Preset do not affect this test.</p></div>
-		<textarea className="field-input min-h-24" value={writing} onChange={(event) => onWritingChange(event.target.value)} placeholder="Paste the writing to test…" aria-label="Writing to test" />
+		<Textarea className="min-h-24" value={writing} onChange={(event) => onWritingChange(event.target.value)} placeholder="Paste the writing to test…" aria-label="Writing to test" />
 		<Button type="button" size="sm" className="self-start" disabled={pending} onClick={onTest}>Test matches</Button>
 		{error !== null && <p className="settings-feedback-error" role="alert">{error}</p>}
 		{result !== null && <MatchTesterResult result={result} />}
@@ -593,21 +596,18 @@ function secondarySummary(entry: LoreMatchTest["matches"][number]) {
 function StateToggle({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
 	const labelId = useId();
 	return <span className="flex items-center justify-between gap-2">
-		<span className="text-xs text-muted-foreground" id={labelId}>{label}</span>
-		<SwitchPrimitive.Root className="lore-toggle" checked={checked} onCheckedChange={onCheckedChange} aria-labelledby={labelId}>
-			<span className="lore-toggle-state">{checked ? "On" : "Off"}</span>
-			<SwitchPrimitive.Thumb className="lore-toggle-thumb" />
-		</SwitchPrimitive.Root>
+		<Label htmlFor={labelId} className="text-xs text-muted-foreground">{label}</Label>
+		<Switch id={labelId} checked={checked} onCheckedChange={onCheckedChange} className="data-checked:bg-emerald-600 dark:data-checked:bg-emerald-500" />
 	</span>;
 }
 
 function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: EntryListKey, value: string) => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1 text-xs text-muted-foreground" key={key}>{label}<textarea className="field-input min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
+	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1 text-xs text-muted-foreground" key={key}>{label}<Textarea className="min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
 	return <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-3">
 		<h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Title<input className="field-input" value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Content<textarea className="field-input min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal text inserted into the prompt" /></label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Title<Input value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
+		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Content<Textarea className="min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal text inserted into the prompt" /></label>
 		<div className="flex flex-col gap-2">
 			<p className="text-xs text-muted-foreground">One expression per line. Commas are literal.</p>
 			{entryMatchFields.map(listField)}
@@ -622,7 +622,13 @@ function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { ent
 			<StateToggle label="Case sensitive" checked={entry.caseSensitive} onCheckedChange={(value) => set("caseSensitive", value)} />
 			<StateToggle label="Whole word" checked={entry.wholeWord} onCheckedChange={(value) => set("wholeWord", value)} />
 		</div>
-		<div className="flex flex-wrap items-center gap-3 text-sm"><label>Mode <select value={entry.keywordMode} onChange={(event) => set("keywordMode", event.target.value === "regex" ? "regex" : "literal")}><option value="literal">Literal</option><option value="regex">Regex</option></select></label>{entry.keywordMode === "regex" && <label>Regex flags <input className={`${inlineField} w-20`} value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} aria-label="Regex flags" /></label>}<label>Operator <select value={entry.matchOperator} onChange={(event) => set("matchOperator", parseOperator(event.target.value))}><option value="or">OR</option><option value="and">AND</option></select></label><label>Priority <input className={`${inlineField} w-20`} type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label><label>Semantic threshold <input className={`${inlineField} w-24`} type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label></div>
+		<div className="flex flex-wrap items-end gap-3 text-sm">
+			<div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Mode</span><Select value={entry.keywordMode} onValueChange={(value) => set("keywordMode", value === "regex" ? "regex" : "literal")}><SelectTrigger aria-label="Mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="literal">Literal</SelectItem><SelectItem value="regex">Regex</SelectItem></SelectContent></Select></div>
+			{entry.keywordMode === "regex" && <label className="flex flex-col gap-1 text-xs text-muted-foreground">Regex flags<Input className="w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} /></label>}
+			<div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Operator</span><Select value={entry.matchOperator} onValueChange={(value) => set("matchOperator", parseOperator(value))}><SelectTrigger aria-label="Operator"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="or">OR</SelectItem><SelectItem value="and">AND</SelectItem></SelectContent></Select></div>
+			<label className="flex flex-col gap-1 text-xs text-muted-foreground">Priority<Input className="w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label>
+			<label className="flex flex-col gap-1 text-xs text-muted-foreground">Semantic threshold<Input className="w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label>
+		</div>
 		{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}
 	</section>;
 }

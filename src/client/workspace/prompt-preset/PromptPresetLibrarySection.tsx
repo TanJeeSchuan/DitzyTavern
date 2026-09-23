@@ -1,5 +1,6 @@
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type {
 	PresetCommandOutcome,
 	PromptPresetCommand,
@@ -33,21 +34,15 @@ export function PromptPresetLibrarySection({
 }) {
 	return (
 		<section aria-label="Prompt Preset selection" className="flex flex-col gap-3">
-			<label className="flex flex-col gap-1 text-xs text-muted-foreground">
-				<span>Preset for this Chat</span>
-				<select
-					className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm font-medium text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-					value={selectedId}
-					disabled={pending}
-					onChange={(event) => onSelect(Number(event.target.value))}
-				>
-					{presets.map((preset) => (
-						<option key={preset.id} value={preset.id}>
-							{preset.name}{preset.isDefault ? " (Default)" : ""}
-						</option>
-					))}
-				</select>
-			</label>
+			<div className="flex flex-col gap-1 text-xs text-muted-foreground">
+				<span id="chat-preset-label">Preset for this Chat</span>
+				<Select value={String(selectedId)} disabled={pending} onValueChange={(value) => onSelect(Number(value))}>
+					<SelectTrigger className="w-full font-medium" aria-labelledby="chat-preset-label"><SelectValue /></SelectTrigger>
+					<SelectContent>
+						{presets.map((preset) => <SelectItem key={preset.id} value={String(preset.id)}>{preset.name}{preset.isDefault ? " (Default)" : ""}</SelectItem>)}
+					</SelectContent>
+				</Select>
+			</div>
 			<PromptPresetManagerDialog
 				presets={presets}
 				selectedId={selectedId}
