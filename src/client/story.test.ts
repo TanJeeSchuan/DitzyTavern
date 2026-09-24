@@ -6,7 +6,6 @@ import {
 	classifyVariantSelection,
 	confirmPreviewSelection,
 	createStoryState,
-	deriveRevisionWindow,
 	displayedVariantId,
 	isPreviewDownstream,
 	previewNavigationNeedsConfirmation,
@@ -327,19 +326,20 @@ describe("story reading state", () => {
 		expect(switched.status).toBe("loading-first");
 	});
 
-	test("derives the Revision window from the latest two model Messages", () => {
+	test("a model Message with later Messages enters Preview", () => {
 		const messages = [
-			storyMessage(1, 1, 10),
-			storyMessage(2, 2, 20),
-			storyMessage(3, 3, 10),
-			storyMessage(4, 4, 20),
-			storyMessage(5, 5, 10),
-			storyMessage(6, 6, 20),
-			storyMessage(7, 7, 10),
+			storyMessage(120, 1, 20),
+			storyMessage(122, 2, 20),
+			storyMessage(123, 3, 10),
+			storyMessage(125, 4, 10),
 		];
+		const state = { ...createStoryState(), messages };
 
-		expect([...deriveRevisionWindow(messages, 20)]).toEqual([4, 5, 6]);
-		expect(deriveRevisionWindow(messages, null).size).toBe(0);
+		expect(classifyVariantSelection(state, 122, 1221)).toEqual({
+			kind: "preview",
+			messageId: 122,
+			variantId: 1221,
+		});
 	});
 
 	test("older Variant selection enters one local Preview with downstream read-only state", () => {
@@ -350,9 +350,9 @@ describe("story reading state", () => {
 			status: "ready",
 			messages: [storyMessage(1, 1, 10), storyMessage(2, 2, 20)],
 		};
-		const selection = classifyVariantSelection(state, 1, 11, new Set([2]));
+		const selection = classifyVariantSelection(state, 1, 11);
 		expect(selection).toEqual({ kind: "preview", messageId: 1, variantId: 11 });
-		expect(classifyVariantSelection(state, 2, 21, new Set([2]))).toEqual({
+		expect(classifyVariantSelection(state, 2, 21)).toEqual({
 			kind: "immediate",
 			messageId: 2,
 			variantId: 21,
@@ -375,7 +375,7 @@ describe("story reading state", () => {
 		// SAFETY: the same fixture creates the second Message before the reducer
 		// starts Preview mode, so this lookup is defined here.
 		expect(isPreviewDownstream(previewing.messages[1] as StoryMessage, previewing.preview)).toBe(true);
-		expect(classifyVariantSelection(previewing, 1, 10, new Set([2]))).toEqual({ kind: "blocked" });
+		expect(classifyVariantSelection(previewing, 1, 10)).toEqual({ kind: "blocked" });
 		const attemptedSelection = reduceStory(previewing, {
 			type: "swipe-selected",
 			messageId: 1,

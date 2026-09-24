@@ -456,55 +456,18 @@ export const EMPTY_VARIANT_PLACEHOLDER = "(empty alternative)";
 export const visibleVariantContent = (variant: StoryVariant): string =>
 	variant.empty ? EMPTY_VARIANT_PLACEHOLDER : variant.content;
 
-// ==[HUMAN APPROVED]== The Revision window is the latest two model-authored Messages plus the
-// human-authored Messages between them. It is derived from the story read
-// model and the current model Control assignment, never persisted locally.
-export const deriveRevisionWindow = (
-	messages: readonly StoryMessage[],
-	modelParticipantId: number | null,
-): ReadonlySet<number> => {
-	if (modelParticipantId === null) return new Set<number>();
-	const chronological = [...messages].sort((left, right) => left.position - right.position);
-	const modelMessages = chronological.filter(
-		(message) => message.authorParticipantId === modelParticipantId,
-	);
-	if (modelMessages.length === 0) return new Set<number>();
-	const latestModels = modelMessages.slice(-2);
-	const firstModelPosition = latestModels[0]?.position;
-	const lastModelPosition = latestModels[latestModels.length - 1]?.position;
-	if (firstModelPosition === undefined || lastModelPosition === undefined) {
-		return new Set<number>();
-	}
-
-	return new Set(
-		chronological
-			.filter((message) => {
-				const inWindow =
-					message.position >= firstModelPosition &&
-					message.position <= lastModelPosition;
-				const isLatestModel = message.authorParticipantId === modelParticipantId;
-				const isHumanAuthored =
-					message.authorParticipantId !== null && !isLatestModel;
-				return inWindow && (isLatestModel || isHumanAuthored);
-			})
-			.map((message) => message.id),
-	);
-};
-
 export type StoryVariantSelection =
 	| { kind: "noop" }
 	| { kind: "blocked" }
 	| { kind: "immediate"; messageId: number; variantId: number }
 	| { kind: "preview"; messageId: number; variantId: number };
 
-// ==[HUMAN APPROVED]== Classifies a requested Swipe before any server command is sent. The caller
-// supplies the derived Revision window so this pure seam can be shared by the
-// UI and transport tests without recreating Conversation rules.
+// ==[HUMAN APPROVED]== A Swipe previews when later Messages exist.
+// The final Message can switch immediately because there is nothing to dim.
 export const classifyVariantSelection = (
 	state: StoryState,
 	messageId: number,
 	variantId: number,
-	revisionWindow: ReadonlySet<number>,
 ): StoryVariantSelection => {
 	if (state.preview !== null) return { kind: "blocked" };
 	const message = state.messages.find((entry) => entry.id === messageId);
@@ -512,9 +475,9 @@ export const classifyVariantSelection = (
 	const target = message.swipes.find((variant) => variant.id === variantId);
 	if (target === undefined) return { kind: "blocked" };
 	if (message.swipes[message.activeSwipe]?.id === target.id) return { kind: "noop" };
-	return revisionWindow.has(message.id)
-		? { kind: "immediate", messageId, variantId }
-		: { kind: "preview", messageId, variantId };
+	return state.messages.some((later) => later.position > message.position)
+		? { kind: "preview", messageId, variantId }
+		: { kind: "immediate", messageId, variantId };
 };
 
 // ==[HUMAN APPROVED]== The visible Variant is local-only while Preview mode is active. The stored

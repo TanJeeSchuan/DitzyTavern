@@ -859,27 +859,27 @@
 	opacity: 0.38;
 }
 
-.story-stage[data-preview-mode="true"] { grid-template-rows: auto auto minmax(0, 1fr); }
-
 .story-message[data-previewing="true"] .message-meta { opacity: 1; transform: none; }
 .message-preview-marker { color: var(--accent-foreground); font-weight: 680; }
 
 .preview-dock {
-	position: relative;
-	z-index: 5;
+	position: absolute;
+	z-index: 10;
+	top: 5.25rem;
+	left: 50%;
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.6rem 1rem;
 	width: min(calc(100% - 2rem), 38rem);
-	margin: 0.75rem auto 0.5rem;
 	padding: 0.7rem;
 	border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
 	border-radius: 0.8rem;
 	background: var(--surface);
 	box-shadow: 0 0.7rem 2rem var(--shadow-soft);
 	font-size: 0.76rem;
+	transform: translateX(-50%);
 }
 
 .preview-dock-copy,

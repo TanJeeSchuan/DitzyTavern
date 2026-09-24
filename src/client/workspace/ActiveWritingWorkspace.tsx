@@ -282,7 +282,7 @@ export function ActiveWritingWorkspace({
 			</SaveNavigationContext.Provider>
 			</SaveGuardContext.Provider>
 
-			<main className="story-stage" aria-label="Active Chat" data-preview-mode={story.preview !== null}>
+			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={session.activeChat}
 					onOpenCast={() => togglePanel("cast")}
