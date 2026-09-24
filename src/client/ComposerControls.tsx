@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppSelect } from "@/components/ui/select";
 import { controlChangeDescription } from "./cast";
 import {
@@ -33,11 +33,12 @@ export function ComposerControlSelectors({
 
 	// ==[HUMAN APPROVED]== A transient swap/replacement description shown immediately after the
 	// change so the composer visibly describes the consequence.
-	const [lastChange, setLastChange] = useState<string | null>(null);
+	const [lastChange, setLastChange] = useState<{ text: string; id: number } | null>(null);
+	const changeId = useRef(0);
 
 	useEffect(() => {
 		if (lastChange === null) return;
-		const timer = window.setTimeout(() => setLastChange(null), 4000);
+		const timer = window.setTimeout(() => setLastChange(null), 3000);
 		return () => window.clearTimeout(timer);
 	}, [lastChange]);
 
@@ -78,7 +79,7 @@ export function ComposerControlSelectors({
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
 				callbacks: {
-					onApplied: () => setLastChange(description.notice),
+					onApplied: () => setLastChange({ text: description.notice, id: ++changeId.current }),
 					onNotPlayable: showUnreachable,
 					onNotRemovable: showUnreachable,
 				},
@@ -130,10 +131,11 @@ export function ComposerControlSelectors({
 			</div>
 			{(lastChange !== null || notice !== null) && (
 				<p
+					key={notice !== null ? "error" : lastChange?.id}
 					className={`composer-control-note${notice !== null ? " is-error" : ""}`}
 					role={notice !== null ? "alert" : "status"}
 				>
-					{notice ?? lastChange}
+					{notice ?? lastChange?.text}
 				</p>
 			)}
 		</div>
