@@ -37,6 +37,12 @@ import {
 	LORE_ACTIVATION_NAMESPACE,
 	parseLoreActivationRecord,
 } from "../../../shared/contract/lore-activation";
+import {
+	MEMORY_ACTIVATION_KEY,
+	MEMORY_ACTIVATION_NAMESPACE,
+	isMemoryActivationRecord,
+	MemoryActivationRecordParseError,
+} from "../../../shared/contract/memory-recall";
 import { queueMemorySource } from "../../memory/collections";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
@@ -200,6 +206,30 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 	}];
 };
 
+const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+	let inspection: unknown;
+	try {
+		inspection = JSON.parse(active.prompt_inspection_json);
+	} catch {
+		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
+	}
+	if (inspection === null || typeof inspection !== "object" || Array.isArray(inspection)) {
+		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
+	}
+	const activation = (inspection as Record<string, unknown>).memoryActivation;
+	if (activation === undefined || activation === null) return [];
+	if (!isMemoryActivationRecord(activation)) {
+		throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema.");
+	}
+	const value = JSON.stringify(activation);
+	if (value === undefined) throw new InvalidConversationCommandError("The Memory Activation Record could not be persisted as JSON.");
+	return [{
+		namespace: MEMORY_ACTIVATION_NAMESPACE,
+		key: MEMORY_ACTIVATION_KEY,
+		value,
+	}];
+};
+
 /**
  * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
@@ -216,12 +246,16 @@ export const persistTerminalVariantData = (
 		suppliedData: readonly ConversationDataEntry[];
 		macroData?: readonly ConversationDataEntry[];
 		loreActivationData?: readonly ConversationDataEntry[];
+		memoryActivationData?: readonly ConversationDataEntry[];
 	},
 ): void => {
-	const suppliedData = input.suppliedData.filter((entry) => entry.namespace !== LORE_ACTIVATION_NAMESPACE);
+	const suppliedData = input.suppliedData.filter((entry) =>
+		entry.namespace !== LORE_ACTIVATION_NAMESPACE && entry.namespace !== MEMORY_ACTIVATION_NAMESPACE,
+	);
 	const data = [
 		...(input.macroData ?? []),
 		...(input.loreActivationData ?? []),
+		...(input.memoryActivationData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
 			!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
@@ -280,6 +314,7 @@ function commitDurableTerminalGenerationInTransaction(
 		suppliedData: input.suppliedData,
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
+		memoryActivationData: terminalMemoryActivationData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)

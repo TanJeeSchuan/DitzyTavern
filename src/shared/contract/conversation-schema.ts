@@ -280,6 +280,12 @@ const provenanceSettingsWireSchemas = {
 
 export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
 
+const memorySourceAvailability = Type.Object({
+	messageId: Type.Integer(),
+	variantId: Type.Union([Type.Null(), Type.Integer()]),
+	exists: Type.Boolean(),
+});
+
 const generationProvenance = Type.Union([Type.Null(), Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
@@ -317,6 +323,7 @@ export const activeGenerationDetails = Type.Object({
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
+	memorySources: Type.Array(memorySourceAvailability),
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -357,6 +364,8 @@ export const variantDetails = Type.Object({
 	// Captured activation evidence is independent from compact Generation provenance
 	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
+	memoryActivation: Type.Union([memoryActivationRecord, Type.Null()]),
+	memorySources: Type.Array(memorySourceAvailability),
 });
 
 export type GenerationProvenance = SharedGenerationProvenance;
@@ -506,11 +515,7 @@ const deleteMessageAction = Type.Object({
 	messageId: Type.Integer(),
 });
 
-// Generic data namespaces exclude the import-owned namespaces
-// (shared/import-data): import provenance is written only by the import
-// projection at Conversation creation and can never be rewritten or deleted
-// through these commands (ADR-0028). The Conversation seam enforces the
-// same reservation for non-transport callers.
+// Generic data commands cannot address namespaces owned by server domains.
 const putDataAction = Type.Object({
 	type: Type.Literal("put-data"),
 	scope: dataScope,
@@ -720,6 +725,7 @@ export const generationPreview = Type.Object({
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
+	memorySources: Type.Array(memorySourceAvailability),
 	budget: generationPreviewBudget,
 });
 

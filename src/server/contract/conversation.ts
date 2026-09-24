@@ -69,6 +69,7 @@ import {
 	type GenerationPreviewAcceptanceFor,
 	type GenerationPreviewKind,
 } from "../workflows/generation-preview";
+import { readMemorySourceAvailability } from "../conversation/generation-details";
 import {
 	macroVariables,
 	macroVariablesAppliedResponse,
@@ -87,6 +88,7 @@ import {
 	notPlayableOutcome,
 } from "../../shared/contract/outcomes";
 import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
+import { MemoryActivationRecordParseError } from "../../shared/contract/memory-recall";
 
 const withConversationModule = <T>(
 	database: Database | undefined,
@@ -282,6 +284,9 @@ export const createConversationRoutes = (
 					const preview = await withDatabase(database, (connection) =>
 						createGenerationPreviewAsync(connection, input));
 					const capture = preview.capture.capture;
+					const memoryActivation = capture.plan.memoryActivation;
+					const memorySources = memoryActivation == null ? [] : withDatabase(database, (connection) =>
+						readMemorySourceAvailability(connection, params.id, memoryActivation));
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
@@ -295,7 +300,8 @@ export const createConversationRoutes = (
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
 						loreActivation: capture.plan.loreActivation,
-						memoryActivation: capture.plan.memoryActivation,
+						memoryActivation,
+						memorySources,
 						budget: {
 							tokenEstimate: capture.plan.budget.tokenEstimate,
 							responseBudget: capture.plan.budget.responseBudget,
@@ -336,7 +342,7 @@ export const createConversationRoutes = (
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
 					throw error;
 				}
 			},
@@ -357,7 +363,7 @@ export const createConversationRoutes = (
 						),
 					);
 				} catch (error) {
-					if (error instanceof LoreActivationRecordParseError) return invalidResponse(error.message);
+					if (error instanceof LoreActivationRecordParseError || error instanceof MemoryActivationRecordParseError) return invalidResponse(error.message);
 					throw error;
 				}
 			},

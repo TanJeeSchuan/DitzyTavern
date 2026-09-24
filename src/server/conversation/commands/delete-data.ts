@@ -16,8 +16,7 @@ export interface DeleteDataInput {
 }
 
 export function deleteData(db: ConversationDatabase, input: DeleteDataInput) {
-	// ==[HUMAN APPROVED]== Import provenance is server-owned (ADR-0028): the generic data seam
-	// cannot address the import-owned namespaces in any scope.
+	// Generic data cannot address server-owned provenance namespaces.
 	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":

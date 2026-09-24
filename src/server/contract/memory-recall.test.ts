@@ -224,6 +224,7 @@ describe("Memory recall in Generation preparation", () => {
 			previewId: string;
 			promptPlan: PromptPlan;
 			memoryActivation: MemoryActivationRecord;
+			memorySources: { messageId: number; variantId: number | null; exists: boolean }[];
 		};
 		const memoryText = "Maren now holds Writer's key. (attribution: Narrated event)";
 		expect(preview.promptPlan.blocks).toContainEqual({ kind: "memory", role: "system", content: memoryText });
@@ -235,6 +236,8 @@ describe("Memory recall in Generation preparation", () => {
 			candidates: [{ messageId: source.messageId, variantId: source.variantId, ownership: "writer", sourceChanged: true, requestIncluded: true, retained: true, relevance: "useful", admission: "admitted" }],
 		});
 		expect(preview.memoryActivation.candidates.map((candidate) => candidate.variantId)).toEqual([source.variantId]);
+		expect(preview.memorySources).toContainEqual({ messageId: source.messageId, variantId: source.variantId, exists: true });
+		expect(preview.memorySources).toContainEqual({ messageId: source.messageId, variantId: null, exists: true });
 		expect(embeddingCalls).toBe(1);
 		expect(jevCalls).toBe(1);
 
@@ -274,6 +277,17 @@ describe("Memory recall in Generation preparation", () => {
 		expect(jevCalls).toBe(1);
 		expect(writingMessages).toContainEqual({ role: "system", content: editedMemoryText });
 		expect(writingMessages).not.toContainEqual({ role: "system", content: memoryText });
+		const firstTarget = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
+		const firstVariant = firstTarget?.variants.at(-1);
+		if (!firstTarget || !firstVariant) throw new Error("The edited Memory Generation Variant was not retained.");
+		const permanentDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
+		expect(permanentDetails.status).toBe(200);
+		expect(await permanentDetails.json()).toMatchObject({ memoryActivation: {
+			manuallyEdited: true,
+			automaticMemoryText: memoryText,
+			finalMemoryText: editedMemoryText,
+			candidates: [{ messageId: source.messageId, variantId: source.variantId, evidence: [{ messageId: source.messageId, excerpt: "Maren returned Writer's key." }] }],
+		} });
 		const correctedDuringAttempt = readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId);
 		if (!correctedDuringAttempt) throw new Error("Corrected Memory collection missing after active Generation.");
 		const restoreMemory = await memoryRoutes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/correct`, {
@@ -284,6 +298,8 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		expect(restoreMemory.status).toBe(200);
 		await reindexSavedMemories(database, conversation.id, source.variantId);
+		const afterSourceCorrection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${firstTarget.id}/variants/${firstVariant.id}/details`));
+		expect(await afterSourceCorrection.json()).toMatchObject({ memoryActivation: { finalMemoryText: editedMemoryText, candidates: [{ claim: "Maren now holds Writer's key.", evidence: [{ excerpt: "Maren returned Writer's key." }] }] } });
 
 		const latest = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
 		const variant = latest?.variants.at(-1);
@@ -329,9 +345,11 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		if (acceptedSibling.status !== 200) throw new Error(JSON.stringify(await acceptedSibling.json()));
 		// SAFETY: the successful acceptance route response schema guarantees a generation ID.
-		const siblingGeneration = await acceptedSibling.json() as { generationId: number };
+		const siblingGeneration = await acceptedSibling.json() as { generationId: number; messageId: number; variantId: number };
 		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${siblingGeneration.generationId}/events`))).text();
 		expect(writingRequests.at(-1)).toContainEqual({ role: "system", content: memoryText });
+		const siblingDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${siblingGeneration.variantId}/details`));
+		expect(await siblingDetails.json()).toMatchObject({ memoryActivation: { manuallyEdited: false, finalMemoryText: memoryText, candidates: [{ messageId: source.messageId, variantId: source.variantId }] } });
 		expect(embeddingCalls).toBe(3);
 		expect(jevCalls).toBe(3);
 		const failedApp = createConversationRoutes(database, { masterKey: key, fetch: async () => new Response("provider unavailable", { status: 503 }) });

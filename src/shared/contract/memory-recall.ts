@@ -1,6 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { GenerationJsonValue } from "../generation-json";
 
 export const MEMORY_ACTIVATION_NAMESPACE = "generation-memory";
 export const MEMORY_ACTIVATION_KEY = "activation";
@@ -85,16 +84,32 @@ export const memoryActivationRecord = Type.Object({
 
 export type MemoryActivationRecord = Static<typeof memoryActivationRecord>;
 
+export const memoryActivationWithFinalText = (
+	source: MemoryActivationRecord,
+	finalMemoryText: string,
+): MemoryActivationRecord => ({
+	...source,
+	finalMemoryText,
+	manuallyEdited: finalMemoryText !== source.automaticMemoryText,
+});
+
+export class MemoryActivationRecordParseError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "MemoryActivationRecordParseError";
+	}
+}
+
 export type MemoryRelevanceScore = Static<typeof memoryRelevanceScore>;
 export type MemoryAdmissionReason = Static<typeof memoryAdmissionReason>;
 export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 
-export const isMemoryActivationRecord = (value: GenerationJsonValue): value is MemoryActivationRecord =>
+export const isMemoryActivationRecord = (value: unknown): value is MemoryActivationRecord =>
 	Value.Check(memoryActivationRecord, value);
 
-export const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord | null => {
+export const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord => {
 	let parsed: unknown;
-	try { parsed = JSON.parse(serialized); } catch { throw new Error("Persisted Memory Activation Record is not valid JSON."); }
-	if (!Value.Check(memoryActivationRecord, parsed)) throw new Error("Persisted Memory Activation Record does not match its schema.");
+	try { parsed = JSON.parse(serialized); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record is not valid JSON."); }
+	if (!Value.Check(memoryActivationRecord, parsed)) throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema.");
 	return Value.Parse(memoryActivationRecord, parsed);
 };

@@ -50,6 +50,8 @@ import type {
 } from "../types";
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
+import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
+import { generationJsonObject } from "../../../shared/generation-provenance";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -114,6 +116,10 @@ const persistActiveGeneration = (
 		throw new InvalidConversationCommandError(
 			"The Lore Activation Record does not match the canonical schema.",
 		);
+	}
+	const memoryActivation = generationJsonObject(input.promptInspection ?? null)?.memoryActivation;
+	if (memoryActivation !== undefined && memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
+		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
 	}
 	const active = db
 		.insert(activeGenerationTable)

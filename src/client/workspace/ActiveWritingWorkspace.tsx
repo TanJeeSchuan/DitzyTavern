@@ -363,6 +363,7 @@ export function ActiveWritingWorkspace({
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
+					onNavigateSource={session.navigateToSourceMessage}
 					onClose={generation.cancelPromptPlanPreview}
 				/>
 			)}
@@ -378,14 +379,13 @@ export function ActiveWritingWorkspace({
 				<MemoriesPanel
 					conversationId={session.conversation.id}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
-					onNavigateSource={(messageId) => {
-						document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-					}}
+					onNavigateSource={session.navigateToSourceMessage}
 				/>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
+					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => {
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "details-closed" });

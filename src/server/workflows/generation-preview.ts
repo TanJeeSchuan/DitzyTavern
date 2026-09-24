@@ -26,7 +26,7 @@ import type {
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
-import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }
@@ -277,11 +277,7 @@ const editedMemoryActivation = (
 	plan: PromptPlan,
 ): MemoryActivationRecord => {
 	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
-	return {
-		...source,
-		finalMemoryText,
-		manuallyEdited: finalMemoryText !== source.automaticMemoryText,
-	};
+	return memoryActivationWithFinalText(source, finalMemoryText);
 };
 
 interface PreviewAcceptanceContext {
