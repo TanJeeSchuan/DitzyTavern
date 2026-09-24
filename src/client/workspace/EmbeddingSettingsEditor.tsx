@@ -30,7 +30,15 @@ const initialState: EditorState = {
 	error: null,
 };
 
-export function EmbeddingSettingsEditor({ onSaveStateChange }: { onSaveStateChange: (state: { dirty: boolean; pending: boolean; error: string | null; save: () => Promise<boolean> }) => void }) {
+export type EmbeddingSettingsSaveState = {
+	dirty: boolean;
+	pending: boolean;
+	error: string | null;
+	save: () => Promise<boolean>;
+	discard: () => void;
+};
+
+export function EmbeddingSettingsEditor({ onSaveStateChange }: { onSaveStateChange: (state: EmbeddingSettingsSaveState) => void }) {
 	const [state, setState] = useState<EditorState>(initialState);
 	const [confirmingCredentialReset, setConfirmingCredentialReset] = useState(false);
 	const saveRef = useRef<() => Promise<boolean>>(async () => false);
@@ -86,7 +94,7 @@ export function EmbeddingSettingsEditor({ onSaveStateChange }: { onSaveStateChan
 	};
 	const dirty = state.settings !== null && state.draft !== null && (state.draft.endpoint !== state.settings.endpoint || state.draft.model !== state.settings.model || state.draft.threshold !== state.settings.threshold || state.draft.deadlineMs !== state.settings.deadlineMs || state.draft.credential.length > 0);
 	saveRef.current = apply;
-	useEffect(() => { onSaveStateChange({ dirty, pending: state.pending, error: state.error, save: () => saveRef.current() }); }, [dirty, state.pending, state.error, onSaveStateChange]);
+	useEffect(() => { onSaveStateChange({ dirty, pending: state.pending, error: state.error, save: () => saveRef.current(), discard: () => setState((current) => current.settings === null ? current : { ...current, draft: draftFromEmbeddingSettings(current.settings), notice: null, error: null }) }); }, [dirty, state.pending, state.error, onSaveStateChange]);
 
 	const resetCredential = async () => {
 		if (state.settings === null) return;

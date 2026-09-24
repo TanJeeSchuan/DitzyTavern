@@ -1,10 +1,11 @@
 import { ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { PanelHeader } from "../PanelHeader";
 import { ConnectionProfileDeletion } from "./connection-settings/ConnectionProfileDeletion";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { ConnectionSettingsInspectorBody } from "./ConnectionSettingsInspector";
+import { EmbeddingSettingsEditor, type EmbeddingSettingsSaveState } from "./EmbeddingSettingsEditor";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
 import {
@@ -36,13 +37,23 @@ export function ConnectionSettingsPanel({
 	onOpenInspector: () => void;
 }) {
 	const navigate = useSaveNavigation();
-	useSaveGuard({ dirty: controller.dirty, saving: controller.saving, save: controller.applyDraft, discard: controller.discardDraft });
-	if (controller.loading) return <div className="panel-body settings-panel-body">Loading Connection Settings...</div>;
-	if (!controller.settings) return <div className="panel-body settings-panel-body" role="alert">{controller.error}</div>;
-
+	const [embeddingStatus, setEmbeddingStatus] = useState<Pick<EmbeddingSettingsSaveState, "dirty" | "pending" | "error">>({ dirty: false, pending: false, error: null });
+	const embedding = useRef<EmbeddingSettingsSaveState | null>(null);
+	const onEmbeddingSaveStateChange = useCallback((state: EmbeddingSettingsSaveState) => {
+		embedding.current = state;
+		setEmbeddingStatus({ dirty: state.dirty, pending: state.pending, error: state.error });
+	}, []);
+	const dirty = controller.dirty || embeddingStatus.dirty;
+	const saving = controller.saving || embeddingStatus.pending;
+	const save = async () => {
+		if (controller.dirty && !(await controller.applyDraft())) return false;
+		return !embedding.current?.dirty || await embedding.current.save();
+	};
+	useSaveGuard({ dirty, saving, save, discard: () => { if (controller.dirty) controller.discardDraft(); if (embedding.current?.dirty) embedding.current.discard(); } });
 	const { settings } = controller;
 	return (
 		<><div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={controller.testResult?.outcome}>
+			{controller.loading ? <p>Loading Connection Settings...</p> : settings === null ? <p role="alert">{controller.error}</p> : <>
 			<ConnectionProfileList
 				settings={settings}
 				presets={controller.presets}
@@ -73,6 +84,8 @@ export function ConnectionSettingsPanel({
 				</p>
 			)}
 			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers are stored separately from Conversation data and are never shown after saving.</span></div>
-		</div>{controller.editorOpen && <SaveFooter dirty={controller.dirty} saving={controller.saving} valid={controller.canSave} error={controller.error} onSave={() => void controller.applyDraft()} />}</>
+			</>}
+			<EmbeddingSettingsEditor onSaveStateChange={onEmbeddingSaveStateChange} />
+		</div><SaveFooter dirty={dirty} saving={saving} valid={!controller.dirty || controller.canSave} error={controller.error ?? embeddingStatus.error} onSave={() => void save()} /></>
 	);
 }
