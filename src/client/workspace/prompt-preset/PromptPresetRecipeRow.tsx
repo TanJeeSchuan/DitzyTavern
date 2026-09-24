@@ -15,7 +15,6 @@ import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
 	removePromptPresetBlock,
-	setPromptPresetBlockEnabled,
 	type PromptPresetOperationOutcome,
 } from "../../prompt-preset-library";
 import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../prompt-preset-presentation";
@@ -104,14 +103,12 @@ const InstructionFieldEditor = ({
 // editor section and the row share the contract so they cannot drift.
 export interface RecipeOperationHandlers {
 	onDraftChange: (blockId: number, draft: BlockDraft) => void;
+	onEnabledChange: (blockId: number, enabled: boolean) => void;
 	onDraftCancel: (blockId: number) => void;
-	onOperation: (
-		run: () => Promise<PromptPresetOperationOutcome>,
-		submitted?: { blockId: number; draft: BlockDraft },
-	) => void;
+	onOperation: (run: () => Promise<PromptPresetOperationOutcome>) => void;
 }
 
-// ==[HUMAN APPROVED]== One recipe row: the ordered slot header, immediate ordering and toggle
+// ==[HUMAN APPROVED]== One recipe row: the ordered slot header, immediate ordering and drafted toggle
 // controls, and a focused modal editor. The draft it shows belongs
 // to the occurrence it addresses, so no operation here infers identity from a
 // reference.
@@ -125,6 +122,7 @@ export function PromptPresetRecipeRow({
 	autoOpenEditor,
 	onAutoOpenEditorHandled,
 	onDraftChange,
+	onEnabledChange,
 	onDraftCancel,
 	onOperation,
 }: {
@@ -155,6 +153,7 @@ export function PromptPresetRecipeRow({
 	const referenceCopy = slot.reference === "instruction" ? null : referenceBlockCopy(slot, title);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
+	const enabled = draft?.enabled ?? slot.enabled;
 	const closeAndDiscard = (): void => {
 		onDraftCancel(slot.id);
 		setEditing(false);
@@ -174,7 +173,7 @@ export function PromptPresetRecipeRow({
 				>
 					<GripVertical aria-hidden="true" className="size-4" />
 				</button>
-				<h3 className={`min-w-0 truncate font-medium leading-5${slot.enabled ? "" : " text-muted-foreground"}`}>{title}</h3>
+				<h3 className={`min-w-0 truncate font-medium leading-5${enabled ? "" : " text-muted-foreground"}`}>{title}</h3>
 				{dirty && <span className="text-xs text-muted-foreground">Unsaved</span>}
 			</div>
 			<div className="flex items-center gap-1">
@@ -196,13 +195,13 @@ export function PromptPresetRecipeRow({
 				<button
 					type="button"
 					role="switch"
-					aria-checked={slot.enabled}
-					aria-label={`${slot.enabled ? "Disable" : "Enable"} ${title}`}
+					aria-checked={enabled}
+					aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
 					disabled={pending}
-					className={`relative h-4 w-7 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${slot.enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
-					onClick={() => onOperation(() => setPromptPresetBlockEnabled(presetId, slot.id, !slot.enabled))}
+					className={`relative h-4 w-7 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
+					onClick={() => onEnabledChange(slot.id, !enabled)}
 				>
-					<span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${slot.enabled ? "translate-x-3" : "translate-x-0"}`} />
+					<span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${enabled ? "translate-x-3" : "translate-x-0"}`} />
 				</button>
 			</div>
 		</div>

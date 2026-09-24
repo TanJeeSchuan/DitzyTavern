@@ -60,6 +60,7 @@ export function usePromptPresetEditor({
 		cancelSillyTavernReview: library.cancelSillyTavernReview,
 		runRecipeOperation: recipe.runRecipeOperation,
 		setDraft: recipe.setDraft,
+		setEnabled: recipe.setEnabled,
 		clearDraft: recipe.clearDraft,
 		saveAndLeave: leave.saveAndLeave,
 		keepEditing: leave.keepEditing,

@@ -78,6 +78,7 @@ export function PromptPresetRecipeEditor({
 	pending,
 	problem,
 	onDraftChange,
+	onEnabledChange,
 	onDraftCancel,
 	onOperation,
 }: {
@@ -168,6 +169,7 @@ export function PromptPresetRecipeEditor({
 					autoOpenEditor={newInstructionEditorId === slot.id}
 					onAutoOpenEditorHandled={() => setNewInstructionEditorId(null)}
 					onDraftChange={onDraftChange}
+					onEnabledChange={onEnabledChange}
 					onDraftCancel={onDraftCancel}
 					onOperation={onOperation}
 				/>

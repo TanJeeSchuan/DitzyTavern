@@ -67,15 +67,24 @@ const applyBlockPatch = (
 	db: Pick<RecipeDatabase, "update">,
 	patch: PromptPresetBlockPatch,
 ): void => {
+	if (patch.type === "enabled") {
+		db.update(promptPresetBlockTable)
+			.set({ enabled: patch.enabled })
+			.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
+			.run();
+		return;
+	}
 	if (patch.type === "role") {
 		db.update(promptPresetBlockTable)
-			.set({ role: patch.role })
+			.set(patch.enabled === undefined ? { role: patch.role } : { role: patch.role, enabled: patch.enabled })
 			.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
 			.run();
 		return;
 	}
 	db.update(promptPresetBlockTable)
-		.set({ name: patch.name, content: patch.content, role: patch.role })
+		.set(patch.enabled === undefined
+			? { name: patch.name, content: patch.content, role: patch.role }
+			: { name: patch.name, content: patch.content, role: patch.role, enabled: patch.enabled })
 		.where(eq(promptPresetBlockTable.id, patch.occurrenceId))
 		.run();
 };

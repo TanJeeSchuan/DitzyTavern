@@ -10,9 +10,8 @@ import { usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
 // ==[HUMAN APPROVED]== Prompt Presets are first-order Chat configuration and live in the
 // primary side panel. The library manages shared presets and the per-Chat selection;
-// ordering and enablement persist immediately through their authoritative operations.
-// Referenced source text remains read-only here, while authored instruction blocks own
-// per-block drafts that the panel footer saves together. Focused import review and unsaved-edit choices
+// ordering persists through its authoritative operation. Enablement and authored fields
+// stay as block drafts until the panel footer saves them. Focused import review and unsaved-edit choices
 // remain dialogs above the panel.
 export function PromptPresetPanel({
 	conversation,
@@ -85,9 +84,10 @@ export function PromptPresetPanel({
 							pending={editor.busy}
 							problem={editor.problem}
 							onDraftChange={editor.setDraft}
+							onEnabledChange={editor.setEnabled}
 							onDraftCancel={editor.clearDraft}
-							onOperation={(run, submitted) =>
-								void editor.runRecipeOperation(run, submitted)
+							onOperation={(run) =>
+								void editor.runRecipeOperation(run)
 							}
 						/>
 					</>

@@ -25,9 +25,8 @@ export function UnsavedBlockEditDialog({
 					<DialogTitle>Unsaved block edit{count === 1 ? "" : "s"}</DialogTitle>
 					<DialogDescription>
 						{count === 1
-							? "One block has unsaved text, name or role changes."
-							: `${count} blocks have unsaved text, name or role changes.`}
-						{" "}Ordering and enablement are already saved.
+							? "One block has unsaved changes."
+							: `${count} blocks have unsaved changes.`}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
