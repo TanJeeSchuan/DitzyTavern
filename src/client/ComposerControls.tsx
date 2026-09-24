@@ -97,7 +97,7 @@ export function ComposerControlSelectors({
 					value={conversation.control.humanParticipantId ?? ""}
 					disabled={disabled || pending}
 					emptyLabel={conversation.control.humanParticipantId === null ? "No one assigned" : undefined}
-					options={options.map((option) => ({ ...option, label: option.value === conversation.control.modelParticipantId ? `${option.label} · Swap seats` : option.label }))}
+					options={options.map((option) => ({ ...option, label: option.value === conversation.control.modelParticipantId ? `${option.label} ⇄` : option.label }))}
 					onValueChange={(value) => {
 						const participantId = Number(value);
 						if (Number.isInteger(participantId) && participantId > 0) {
@@ -119,7 +119,7 @@ export function ComposerControlSelectors({
 					value={conversation.control.modelParticipantId ?? ""}
 					disabled={disabled || pending}
 					emptyLabel={conversation.control.modelParticipantId === null ? "No one assigned" : undefined}
-					options={options.map((option) => ({ ...option, label: option.value === conversation.control.humanParticipantId ? `${option.label} · Swap seats` : option.label }))}
+					options={options.map((option) => ({ ...option, label: option.value === conversation.control.humanParticipantId ? `${option.label} ⇄` : option.label }))}
 					onValueChange={(value) => {
 						const participantId = Number(value);
 						if (Number.isInteger(participantId) && participantId > 0) {
