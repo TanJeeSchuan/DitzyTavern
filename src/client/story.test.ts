@@ -368,7 +368,6 @@ describe("story reading state", () => {
 			targetPosition: 1,
 			variantId: 11,
 			priorVariantId: 10,
-			noticeOpen: true,
 		});
 		// SAFETY: the fixture creates two Messages with ids 1 and 2 before the
 		// reducer starts Preview mode, so the first lookup is defined here.
@@ -419,7 +418,6 @@ describe("story reading state", () => {
 			targetPosition: 1,
 			variantId: 12,
 			priorVariantId: 10,
-			noticeOpen: true,
 		});
 		// SAFETY: the fixture creates Message 1 before the retarget, so this
 			// lookup is defined here.
@@ -463,11 +461,10 @@ describe("story reading state", () => {
 			targetPosition: 1,
 			variantId: 11,
 			priorVariantId: 10,
-			noticeOpen: true,
 		}, 7, 8)).toBe(true);
 	});
 
-	test("closing and cancelling Preview restores the authoritative path without a command", () => {
+	test("cancelling Preview restores the authoritative path without a command", () => {
 		const state: StoryStateForPreview = {
 			...createStoryState(),
 			conversationId: 7,
@@ -479,9 +476,7 @@ describe("story reading state", () => {
 			messageId: 1,
 			variantId: 11,
 		});
-		const closed = reduceStory(previewing, { type: "preview-notice-closed" });
-		expect(closed.preview?.noticeOpen).toBe(false);
-		const cancelled = reduceStory(closed, { type: "preview-cancelled" });
+		const cancelled = reduceStory(previewing, { type: "preview-cancelled" });
 		expect(cancelled.preview).toBeNull();
 		expect(cancelled.messages[0]?.activeSwipe).toBe(0);
 	});
@@ -531,7 +526,6 @@ describe("story reading state", () => {
 			targetPosition: 1,
 			variantId: 11,
 			priorVariantId: 10,
-			noticeOpen: true,
 		};
 		const requests: number[] = [];
 		const request = {

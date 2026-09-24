@@ -152,7 +152,7 @@
 	transition: opacity 140ms ease, transform 140ms ease;
 }
 
-.rail-button:hover .rail-label,
+.rail-button:hover:not([data-tooltip-suppressed="true"]) .rail-label,
 .rail-button:focus-visible .rail-label {
 	opacity: 1;
 	transform: translate(0, -50%);
@@ -692,6 +692,18 @@
 .save-footer [role="alert"] { color: var(--destructive); }
 .save-footer span { min-width: 0; }
 .save-footer button { flex-shrink: 0; }
+
+.panel-action-footer {
+	flex: none;
+	padding: 0.75rem 1rem;
+	border-top: 1px solid var(--border);
+	background: var(--surface);
+}
+
+.new-chat-footer .primary-button,
+.character-create-footer .primary-button { width: 100%; }
+.new-chat-footer .panel-note,
+.character-create-footer .panel-note { margin: 0.5rem 0 0; }
 
 .editor-frame {
 	display: flex;

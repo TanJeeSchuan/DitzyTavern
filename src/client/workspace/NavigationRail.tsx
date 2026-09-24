@@ -8,7 +8,7 @@ import {
 	SlidersHorizontal,
 	Users,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PrimaryPanel } from "./types";
 
 export function NavigationRail({
@@ -98,14 +98,17 @@ function RailButton({
 	onClick?: () => void;
 	children: ReactNode;
 }) {
+	const [tooltipSuppressed, setTooltipSuppressed] = useState(false);
 	return (
 		<button
 			type="button"
 			className="rail-button"
 			aria-label={label}
 			aria-pressed={active}
+			data-tooltip-suppressed={tooltipSuppressed}
 			disabled={disabled}
-			onClick={onClick}
+			onClick={() => { setTooltipSuppressed(true); onClick?.(); }}
+			onPointerLeave={() => setTooltipSuppressed(false)}
 		>
 			{children}
 			<span className="rail-label">{disabled ? `${label} unavailable` : label}</span>

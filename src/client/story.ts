@@ -56,7 +56,6 @@ export interface StoryPreviewState {
 	targetPosition: number;
 	variantId: number;
 	priorVariantId: number | null;
-	noticeOpen: boolean;
 }
 
 export interface PreviewSelectionRequest {
@@ -146,8 +145,6 @@ export type StoryAction =
 	// ==[HUMAN APPROVED]== Swiping the already-previewed Message moves the local Preview to another
 	// Variant of the same Message without any server command.
 	| { type: "preview-retargeted"; messageId: number; variantId: number }
-	| { type: "preview-notice-opened" }
-	| { type: "preview-notice-closed" }
 	| { type: "preview-cancelled" }
 	| { type: "preview-confirmed" };
 
@@ -404,7 +401,6 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					targetPosition: message.position,
 					variantId: previewVariant.id,
 					priorVariantId: message.swipes[message.activeSwipe]?.id ?? null,
-					noticeOpen: true,
 				},
 			};
 		}
@@ -428,14 +424,6 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 				preview: { ...state.preview, variantId: variant.id },
 			};
 		}
-		case "preview-notice-opened":
-			return state.preview === null
-				? state
-				: { ...state, preview: { ...state.preview, noticeOpen: true } };
-		case "preview-notice-closed":
-			return state.preview === null
-				? state
-				: { ...state, preview: { ...state.preview, noticeOpen: false } };
 		case "preview-cancelled":
 			return state.preview === null ? state : { ...state, preview: null };
 		case "preview-confirmed": {

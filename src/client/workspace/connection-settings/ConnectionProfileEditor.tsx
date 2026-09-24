@@ -53,7 +53,7 @@ export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) 
 				<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default and test model" helper="Used for connection tests and saved as the default model.">
 					<div className="connection-model-field-row">
 						<div className="connection-model-picker">
-							<input id={`connection-model-${selectedProfileId ?? "new"}`} className="field-input connection-model-input" value={testModelId} onChange={(event) => updateTestModel(event.target.value)} placeholder="deepseek-flash" />
+							<input id={`connection-model-${selectedProfileId ?? "new"}`} className="field-input connection-model-input" value={testModelId} onChange={(event) => updateTestModel(event.target.value)} placeholder="Enter model ID" />
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger asChild><button className="connection-model-menu-button" type="button" aria-label="Show available models" disabled={modelOptions.length === 0}><ChevronDown aria-hidden="true" /></button></DropdownMenu.Trigger>
 								<DropdownMenu.Portal>

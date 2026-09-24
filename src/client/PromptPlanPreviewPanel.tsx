@@ -75,14 +75,14 @@ export function PromptPlanPreviewPanel({
 						</label>
 					))}
 				</section>}
-				{assembly.error !== null && <p className="import-problem" role="alert">{assembly.error}</p>}
-				{preview !== null && !preview.budget.budgetFits && <p className="import-problem" role="alert">This plan exceeds the context limit. Shorten it or refresh.</p>}
-				<div className="prompt-plan-preview-actions">
+			{assembly.error !== null && <p className="import-problem" role="alert">{assembly.error}</p>}
+			{preview !== null && !preview.budget.budgetFits && <p className="import-problem" role="alert">This plan exceeds the context limit. Shorten it or refresh.</p>}
+			</div>
+			<footer className="panel-action-footer prompt-plan-preview-actions">
 					<button className="secondary-button" type="button" onClick={onClose} disabled={assembly.phase === "accepting"}><X aria-hidden="true" /> Cancel</button>
 					<button className="secondary-button" type="button" onClick={onRefresh} disabled={pending}><RefreshCw aria-hidden="true" /> {preview === null ? "Retry" : "Refresh"}</button>
 					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
-				</div>
-			</div>
+			</footer>
 		</aside>
 	);
 }

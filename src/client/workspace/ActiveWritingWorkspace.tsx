@@ -19,7 +19,6 @@ import {
 	reduceStory,
 } from "../story";
 import { Composer } from "../story/Composer";
-import { PreviewIndicator, PreviewNotice } from "../story/PreviewNotice";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
 import {
@@ -297,12 +296,6 @@ export function ActiveWritingWorkspace({
 				/>
 
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
-					{story.preview !== null && !story.preview.noticeOpen && (
-						<PreviewIndicator
-							targetPosition={story.preview.targetPosition}
-							onOpen={() => dispatchStory({ type: "preview-notice-opened" })}
-						/>
-					)}
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
 							<div className="history-load-more">
@@ -329,6 +322,10 @@ export function ActiveWritingWorkspace({
 								mutationsDisabled={story.preview !== null}
 								previewDownstream={isPreviewDownstream(message, story.preview)}
 								previewTarget={story.preview?.messageId === message.id}
+								previewPending={preview.previewPending}
+								previewError={preview.previewError}
+								onConfirmPreview={() => void preview.confirmPreview()}
+								onCancelPreview={preview.cancelPreview}
 								canContinue={
 									generation.assemblyAvailable &&
 									latestStoryMessage?.id === message.id &&
@@ -435,16 +432,6 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
-			{story.preview?.noticeOpen && (
-				<PreviewNotice
-					targetPosition={story.preview.targetPosition}
-					pending={preview.previewPending}
-					error={preview.previewError}
-					onConfirm={() => void preview.confirmPreview()}
-					onCancel={preview.cancelPreview}
-					onClose={() => dispatchStory({ type: "preview-notice-closed" })}
-				/>
-			)}
 		</div>
 		{generation.generationError !== null && (
 			<Toast.Root

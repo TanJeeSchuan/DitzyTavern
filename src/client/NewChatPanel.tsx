@@ -245,6 +245,7 @@ export function NewChatPanel({
 	};
 
 	return (
+		<>
 		<div className="panel-body new-chat-panel">
 			<p className="panel-intro">
 				Set up who you play and who responds. Both seats are required before the
@@ -275,12 +276,9 @@ export function NewChatPanel({
 				/>
 			</div>
 
-			{problem && (
-				<p className="new-chat-problem" role="alert">
-					{problem}
-				</p>
-			)}
-
+		</div>
+		<footer className="panel-action-footer new-chat-footer">
+			{problem && <p className="new-chat-problem" role="alert">{problem}</p>}
 			<button
 				className="primary-button"
 				type="button"
@@ -294,6 +292,7 @@ export function NewChatPanel({
 					? "Both Control assignments are ready."
 					: "A Chat needs a name and two distinct Participants before it can begin."}
 			</p>
-		</div>
+		</footer>
+		</>
 	);
 }

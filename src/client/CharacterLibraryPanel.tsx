@@ -259,6 +259,7 @@ export function CharacterLibraryPanel({
 	}
 
 	return (
+		<>
 		<div className="panel-body">
 			<p className="panel-intro">
 				Reusable identities shared across every Chat. Pinned Characters are
@@ -278,6 +279,7 @@ export function CharacterLibraryPanel({
 			</button>
 			{creating && (
 				<form
+					id="character-create-form"
 					className="definition-form"
 					onSubmit={(event) => {
 						event.preventDefault();
@@ -303,9 +305,6 @@ export function CharacterLibraryPanel({
 							setCreateDraft((current) => ({ ...current, openingsText }))
 						}
 					/>
-					<button className="primary-button" type="submit" disabled={pendingAction === "create"}>
-						Create Character
-					</button>
 				</form>
 			)}
 			{notice !== null && !creating && (
@@ -342,5 +341,10 @@ export function CharacterLibraryPanel({
 				</ul>
 			)}
 		</div>
+		{creating && <footer className="panel-action-footer character-create-footer">
+			<button className="primary-button" type="submit" form="character-create-form" disabled={pendingAction === "create"}>Create Character</button>
+			{notice !== null && <p className="panel-note" role="alert">{notice}</p>}
+		</footer>}
+		</>
 	);
 }

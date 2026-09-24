@@ -326,7 +326,7 @@
 .connection-model-menu-content {
 	z-index: 60;
 	display: grid;
-	min-width: min(22rem, calc(100vw - 2rem));
+	width: min(15rem, calc(100vw - 2rem));
 	max-height: min(18rem, var(--radix-dropdown-menu-content-available-height));
 	overflow-y: auto;
 	padding: 0.3rem;
