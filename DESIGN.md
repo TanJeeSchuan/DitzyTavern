@@ -236,7 +236,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 ### Floating composer
 
-- Use two editable, Cast-only Control selectors at the start of the composer: **Writing as** (the human seat) and **Responding as** (the model seat), each reflecting the current assignment.
+- Use two editable, Cast-only Control selectors as quiet pills in the composer toolbar beside Send: the human seat (person glyph, accessibly labelled **Writing as**) and the model seat (sparkle glyph, reading "<name> replies", accessibly labelled **Responding as**), each reflecting the current assignment. The placeholder names the human seat (`What does <name> do next?`).
 - Selecting the opposite seat's occupant is visibly described as a swap and performs one atomic exchange of the two assignments, so a two-Participant Cast can never become locked.
 - Selecting an unseated Participant replaces only the chosen seat; the displaced Participant stays in the Cast and becomes removable.
 - Neither seat can be cleared; the selectors offer only Cast Participants, named with computed duplicate labels.

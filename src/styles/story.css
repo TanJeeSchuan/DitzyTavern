@@ -550,8 +550,8 @@
 }
 
 .composer > textarea {
-	grid-column: 1 / 3;
-	grid-row: 2;
+	grid-column: 1 / -1;
+	grid-row: 1;
 	width: 100%;
 	min-height: 3rem;
 	max-height: 10rem;
@@ -569,16 +569,17 @@
 .composer > .send-button {
 	grid-column: 3;
 	grid-row: 2;
+	justify-self: end;
 }
 
 .composer-more-button {
 	display: inline-grid;
-	grid-column: 3;
-	grid-row: 1;
+	grid-column: 2;
+	grid-row: 2;
 	width: 2.15rem;
 	height: 2.15rem;
 	place-items: center;
-	align-self: start;
+	align-self: center;
 	border: 0;
 	border-radius: 0.65rem;
 	background: transparent;

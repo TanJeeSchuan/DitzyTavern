@@ -96,7 +96,7 @@ export function Composer({
 				ref={textareaRef}
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
-				placeholder="Write the next part of the story…"
+				placeholder={writerName !== undefined ? `What does ${writerName} do next?` : "Write the next part of the story…"}
 				disabled={!canWrite}
 				rows={1}
 			/>
