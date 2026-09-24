@@ -52,6 +52,6 @@ describe("Typesafe Memory judgments", () => {
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 } },
 		} });
-		await expect(judgeMemoryCandidates([candidate], "secret", "jev-1.13.0", fakeFetch)).rejects.toThrow("omitted required Memory judgments");
+		await expect(judgeMemoryCandidates([candidate], "secret", "jev-1.13.0", fakeFetch)).rejects.toThrow("omitted or added required Memory judgments");
 	});
 });

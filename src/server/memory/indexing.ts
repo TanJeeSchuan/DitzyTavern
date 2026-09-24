@@ -41,6 +41,10 @@ export interface MemoryIndexJob {
 	readonly claims: readonly MemoryCandidateJudgment[];
 }
 
+export class StaleMemoryIndexRevisionError extends Error {
+	constructor() { super("This Memory collection changed in another session."); }
+}
+
 const activeIndexControllers = new WeakMap<Database, Map<number, Set<AbortController>>>();
 
 export const registerMemoryIndexController = (database: Database, variantId: number, controller: AbortController): (() => void) => {
@@ -227,7 +231,7 @@ export const retryMemoryIndexing = (database: Database, conversationId: number, 
 		eq(memoryCollectionTable.conversation_id, conversationId),
 	)).get();
 	if (!collection) throw new Error("This source has no saved Memory collection to index.");
-	if (collection.revision !== expectedRevision) throw new Error("This Memory collection changed in another session.");
+	if (collection.revision !== expectedRevision) throw new StaleMemoryIndexRevisionError();
 	if (collection.status !== "complete") throw new Error("Indexing requires a completed saved Memory collection.");
 	if (!isMemoryEnabledForConversation(database, conversationId)) throw new Error("Enable Memory in the selected Prompt Preset before indexing saved Memories.");
 	queueMemoryIndexForVariant(database, variantId, true);

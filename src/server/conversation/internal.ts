@@ -298,8 +298,6 @@ export const hasRetainedParticipantReference = (
 		.limit(1)
 		.get() !== undefined;
 
-// Generic data commands write only generic namespaces; import and generation provenance stays
-// with its owning server domain in every scope.
 export const requireGenericDataNamespace = (namespace: string): void => {
 	if (isServerOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(

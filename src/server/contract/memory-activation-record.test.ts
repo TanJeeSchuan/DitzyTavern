@@ -4,6 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { generationJsonObject } from "../../shared/generation-provenance";
 
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -116,9 +117,9 @@ describe("permanent Memory Activation Records", () => {
 		const app = createConversationRoutes(database);
 		const inspected = await app.handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspected.status).toBe(200);
-		const inspectedDetails = await inspected.json() as { memoryActivation: MemoryActivationRecord; memorySources: unknown[] };
-		expect(inspectedDetails.memoryActivation).toEqual(memory);
-		expect(inspectedDetails.memorySources).toEqual(expect.arrayContaining([
+		const inspectedDetails = generationJsonObject(await inspected.json());
+		expect(inspectedDetails?.memoryActivation).toEqual(memory);
+		expect(inspectedDetails?.memorySources).toEqual(expect.arrayContaining([
 			{ messageId: source.id, variantId: sourceVariant.id, exists: true },
 			{ messageId: source.id, variantId: null, exists: true },
 		]));

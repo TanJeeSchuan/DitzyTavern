@@ -16,7 +16,6 @@ export interface PutDataInput {
 }
 
 export function putData(db: ConversationDatabase, input: PutDataInput) {
-	// Generic data cannot address server-owned provenance namespaces.
 	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":

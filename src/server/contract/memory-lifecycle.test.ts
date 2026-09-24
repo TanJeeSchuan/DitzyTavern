@@ -43,6 +43,36 @@ describe("Memory source lifecycle public operations", () => {
 		expect(Value.Parse(memoryCatchupRead, await response.json())).toEqual({ run: null });
 	});
 
+	test("queues retained content when one Generation is stopped", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const module = createConversationModule(database);
+		const snapshot = module.getSnapshot(conversation.id);
+		if (!snapshot || snapshot.control.humanParticipantId === null || snapshot.control.modelParticipantId === null) throw new Error("Memory fixture has no active Chat controls.");
+		const accepted = module.acceptTailGeneration({
+			conversationId: conversation.id,
+			expectedRevision: snapshot.revision,
+			timestamp: "2026-09-23T00:01:00.000Z",
+			humanContent: "Where is the key?",
+			humanParticipantId: snapshot.control.humanParticipantId,
+			modelParticipantId: snapshot.control.modelParticipantId,
+			capturedHumanName: "Writer",
+			capturedModelName: "Maren",
+			promptPlan: { blocks: [], warnings: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: null,
+		});
+		module.checkpointGeneration({ conversationId: conversation.id, generationId: accepted.generationId, content: "Maren hides the key." });
+		module.stopGeneration({ conversationId: conversation.id, generationId: accepted.generationId });
+		const generated = module.getSnapshot(conversation.id)?.messages.at(-1);
+		const selectedVariant = generated?.variants.find((variant) => variant.selected);
+		if (!selectedVariant) throw new Error("Stopped Generation did not retain a selected Variant.");
+		const response = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories`));
+		const { sources } = Value.Parse(conversationMemories, await response.json());
+		expect(sources.find((source) => source.variantId === selectedVariant.id)).toMatchObject({ status: "pending", selected: true });
+	});
+
 	test("queues a selected Human source and selected Swipe while retaining the prior collection", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);

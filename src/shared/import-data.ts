@@ -34,7 +34,6 @@ export const isImportOwnedDataNamespace = (namespace: string): boolean =>
 export const isServerOwnedDataNamespace = (namespace: string): boolean =>
 	serverOwnedDataNamespaces.some((ownedNamespace) => ownedNamespace === namespace);
 
-// The server-owned namespace reservation for generic data commands.
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

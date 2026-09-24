@@ -5,7 +5,7 @@ import { readSelectedHistory } from "../conversation/selected-history";
 import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
 import type { MemoryCandidateJudgment, CapturedMemoryMessage } from "./extraction";
 import type { MemoryIndexJob } from "./indexing";
-import { cancelMemoryIndexWork, claimMemoryIndexWork, embedMemoryJob, failMemoryIndexWork, isMemoryEnabledForConversation, publishMemoryIndexVectors, queueAllMemoryIndexing, queueMemoryIndexForVariant, readMemoryIndexReadiness, registerMemoryIndexController, retryMemoryIndexing, requeueInterruptedMemoryIndexWork, type MemoryIndexReadiness } from "./indexing";
+import { cancelMemoryIndexWork, claimMemoryIndexWork, embedMemoryJob, failMemoryIndexWork, isMemoryEnabledForConversation, publishMemoryIndexVectors, queueAllMemoryIndexing, queueMemoryIndexForVariant, readMemoryIndexReadiness, registerMemoryIndexController, retryMemoryIndexing, requeueInterruptedMemoryIndexWork, StaleMemoryIndexRevisionError, type MemoryIndexReadiness } from "./indexing";
 import { Value } from "@sinclair/typebox/value";
 import { memoryCandidates, memoryWorkSnapshot } from "../../shared/contract/memory";
 import { sha256 } from "./hash";
@@ -270,7 +270,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 	if (current.revision !== expectedRevision) throw new StaleMemoryCollectionError(current);
 	try { retryMemoryIndexing(database, conversationId, variantId, expectedRevision); }
 	catch (error) {
-		if (error instanceof Error && error.message === "This Memory collection changed in another session.") throw new StaleMemoryCollectionError(current);
+		if (error instanceof StaleMemoryIndexRevisionError) throw new StaleMemoryCollectionError(current);
 		throw error;
 	}
 	return readConversationMemories(database, conversationId).find((item) => item.variantId === variantId && item.messageId === messageId) ?? current;

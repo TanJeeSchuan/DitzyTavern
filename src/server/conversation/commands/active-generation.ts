@@ -207,16 +207,16 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 };
 
 const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
-	let inspection: unknown;
+	let inspection: ReturnType<typeof generationJsonObject>;
 	try {
-		inspection = JSON.parse(active.prompt_inspection_json);
+		inspection = generationJsonObject(JSON.parse(active.prompt_inspection_json));
 	} catch {
 		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
 	}
-	if (inspection === null || typeof inspection !== "object" || Array.isArray(inspection)) {
+	if (inspection === null) {
 		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
 	}
-	const activation = (inspection as Record<string, unknown>).memoryActivation;
+	const activation = inspection.memoryActivation;
 	if (activation === undefined || activation === null) return [];
 	if (!isMemoryActivationRecord(activation)) {
 		throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema.");
@@ -603,6 +603,9 @@ export function stopConversationGeneration(
 		);
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
+		}
+		if (transition.durableOutput && active.checkpoint_content.trim() && db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, active.variant_id)).get()?.selected) {
+			queueMemorySource(db.$client, input.conversationId, active.message_id);
 		}
 		return advanceConversationRevision(
 			db,
