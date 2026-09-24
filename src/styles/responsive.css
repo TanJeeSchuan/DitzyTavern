@@ -32,34 +32,12 @@ body > .details-panel > .panel-body {
 
 @media (max-width: 90rem) and (min-width: 78.01rem) {
 	.workspace {
+		--panel-gap: 0.55rem;
 		grid-template-columns:
 			4.25rem
 			minmax(15rem, 1fr)
 			minmax(35rem, 45rem)
 			minmax(16rem, 1fr);
-		gap: 0.55rem;
-		padding: 0.75rem 0.75rem 0.75rem 0;
-	}
-
-	/* Panels nested in the workspace grid return to grid flow here so the
-	   1fr tracks expand them into the utility bays. The 1.25rem column gap
-	   stays visible as the thin ambient sliver between each panel edge and
-	   the story surface. Heights stay definite (never auto) so panels cap at
-	   the viewport and their bodies scroll internally instead of growing
-	   the workspace grid row past the fold. Details panels rendered outside
-	   the workspace (e.g. New Chat on the no-chat surface) keep their fixed
-	   placement. */
-	.workspace > .primary-panel,
-	.workspace > .details-panel {
-		position: static;
-		top: auto;
-		bottom: auto;
-		border-radius: 1.35rem;
-	}
-
-	.workspace > .primary-panel,
-	.workspace > .details-panel {
-		width: auto;
 	}
 }
 

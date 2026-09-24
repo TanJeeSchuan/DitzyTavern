@@ -5,6 +5,7 @@
 	min-width: 0;
 	overflow: hidden;
 	height: calc(100dvh - 1.5rem);
+	align-self: center;
 	border-radius: 1.35rem;
 	box-shadow: 0 1.4rem 4.2rem var(--shadow);
 }
