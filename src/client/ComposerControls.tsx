@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { AppSelect } from "@/components/ui/select";
 import { controlChangeDescription } from "./cast";
 import {
@@ -20,6 +20,7 @@ interface ComposerControlSelectorsProps {
 	disabled?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onModelSelectionChange: (connectionProfileId: number, modelId: string) => void;
+	onControlChange: (notice: string) => void;
 }
 
 export function ComposerControlSelectors({
@@ -27,20 +28,10 @@ export function ComposerControlSelectors({
 	disabled = false,
 	onConversationChange,
 	onModelSelectionChange,
+	onControlChange,
 }: ComposerControlSelectorsProps) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-
-	// ==[HUMAN APPROVED]== A transient swap/replacement description shown immediately after the
-	// change so the composer visibly describes the consequence.
-	const [lastChange, setLastChange] = useState<{ text: string; id: number } | null>(null);
-	const changeId = useRef(0);
-
-	useEffect(() => {
-		if (lastChange === null) return;
-		const timer = window.setTimeout(() => setLastChange(null), 3000);
-		return () => window.clearTimeout(timer);
-	}, [lastChange]);
 
 	if (conversation.cast.length === 0) {
 		return null;
@@ -79,7 +70,7 @@ export function ComposerControlSelectors({
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
 				callbacks: {
-					onApplied: () => setLastChange({ text: description.notice, id: ++changeId.current }),
+					onApplied: () => onControlChange(description.notice),
 					onNotPlayable: showUnreachable,
 					onNotRemovable: showUnreachable,
 				},
@@ -129,15 +120,7 @@ export function ComposerControlSelectors({
 					}}
 				/>
 			</div>
-			{(lastChange !== null || notice !== null) && (
-				<p
-					key={notice !== null ? "error" : lastChange?.id}
-					className={`composer-control-note${notice !== null ? " is-error" : ""}`}
-					role={notice !== null ? "alert" : "status"}
-				>
-					{notice ?? lastChange?.text}
-				</p>
-			)}
+			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
 		</div>
 	);
 }

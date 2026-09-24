@@ -367,19 +367,6 @@
 	color: var(--accent);
 }
 
-.composer-control-note:not(.is-error) {
-	animation: composer-note-fade 3s linear forwards;
-}
-
-@keyframes composer-note-fade {
-	0%, 65% { opacity: 1; }
-	100% { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.composer-control-note { animation: none; }
-}
-
 @media (max-width: 720px) {
 	.control-select:first-child label {
 		display: none;

@@ -1236,42 +1236,63 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 	position: fixed;
 	z-index: 100;
 	right: 1rem;
-	bottom: 1rem;
+	top: 1rem;
 	display: grid;
+	gap: 0.5rem;
 	width: min(24rem, calc(100vw - 2rem));
 	margin: 0;
 	padding: 0;
 	list-style: none;
 }
 
-.generation-error-toast {
+.workspace-toast {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: start;
 	gap: 0.8rem;
 	padding: 0.85rem 0.8rem 0.85rem 1rem;
-	border: 1px solid color-mix(in oklch, var(--destructive) 42%, var(--border));
+	border: 1px solid var(--border);
 	border-radius: 0.85rem;
-	background: color-mix(in oklch, var(--destructive) 8%, var(--surface-raised));
-	box-shadow: 0 1rem 3rem var(--shadow-soft);
+	background: var(--surface-raised);
 	color: var(--foreground);
+	box-shadow: 0 0.5rem 1.5rem var(--shadow-soft);
 }
 
-.generation-error-toast > div {
+.workspace-toast-body {
 	display: grid;
-	gap: 0.2rem;
+	gap: 0.35rem;
+	min-width: 0;
 }
 
-.generation-error-toast-title {
+.workspace-toast-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
 	font-size: 0.8rem;
 	font-weight: 680;
 }
 
-.generation-error-toast-description {
+.workspace-toast-heading svg {
+	width: 1rem;
+	height: 1rem;
+	flex: none;
+	color: var(--accent);
+}
+
+.workspace-toast-description {
 	color: var(--text-muted);
 	font-size: 0.76rem;
 	line-height: 1.45;
 }
+
+@media (max-width: 720px) {
+	.toast-viewport { top: 4.75rem; }
+}
+
+.control-change-toast[data-state="open"] { animation: generation-toast-in 160ms ease-out; }
+.control-change-toast[data-state="closed"] { animation: generation-toast-out 160ms ease-in; }
+
+.generation-error-toast .workspace-toast-heading svg { color: var(--destructive); }
 
 .generation-error-toast[data-state="open"] {
 	animation: generation-toast-in 160ms ease-out;
@@ -1290,7 +1311,8 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.generation-error-toast {
+	.generation-error-toast,
+	.control-change-toast {
 		animation: none !important;
 	}
 }

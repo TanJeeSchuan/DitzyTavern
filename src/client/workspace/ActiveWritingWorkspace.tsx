@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ArrowLeftRight, CircleAlert, X } from "lucide-react";
 import { Toast } from "radix-ui";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { SaveGuardContext, SaveNavigationContext, UnsavedChangesDialog, type SaveGuard } from "../SaveGuard";
@@ -85,6 +85,8 @@ export function ActiveWritingWorkspace({
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
+	const [controlChangeToast, setControlChangeToast] = useState<{ text: string; id: number } | null>(null);
+	const controlToastId = useRef(0);
 	const saveGuardRef = useRef<SaveGuard | null>(null);
 	const [guardPending, setGuardPending] = useState(false);
 	const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
@@ -376,6 +378,7 @@ export function ActiveWritingWorkspace({
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
 							onConversationChange={session.setConversation}
+							onControlChange={(text) => setControlChangeToast({ text, id: ++controlToastId.current })}
 							onModelSelectionChange={generationSettings.adoptModelSelection}
 						/>
 					) : null}
@@ -444,7 +447,7 @@ export function ActiveWritingWorkspace({
 		</div>
 		{generation.generationError !== null && (
 			<Toast.Root
-				className="generation-error-toast"
+				className="workspace-toast generation-error-toast"
 				type="foreground"
 				open={generationToastOpen}
 				onOpenChange={(open) => {
@@ -452,13 +455,30 @@ export function ActiveWritingWorkspace({
 					if (!open) generation.acknowledgeGenerationError();
 				}}
 			>
-				<div>
-					<Toast.Title className="generation-error-toast-title">Generation failed</Toast.Title>
-					<Toast.Description className="generation-error-toast-description">{generation.generationError}</Toast.Description>
+				<div className="workspace-toast-body">
+					<div className="workspace-toast-heading"><CircleAlert aria-hidden="true" /><Toast.Title>Generation failed</Toast.Title></div>
+					<Toast.Description className="workspace-toast-description">{generation.generationError}</Toast.Description>
 				</div>
 				<Toast.Close className="icon-button" aria-label="Dismiss generation error">
 					<X aria-hidden="true" />
 				</Toast.Close>
+			</Toast.Root>
+		)}
+		{controlChangeToast !== null && (
+			<Toast.Root
+				key={controlChangeToast.id}
+				className="workspace-toast control-change-toast"
+				defaultOpen
+				duration={3_000}
+				onOpenChange={(open) => {
+					if (!open) window.setTimeout(() => setControlChangeToast((current) => current?.id === controlChangeToast.id ? null : current), 180);
+				}}
+			>
+				<div className="workspace-toast-body">
+					<div className="workspace-toast-heading"><ArrowLeftRight aria-hidden="true" /><Toast.Title>Control changed</Toast.Title></div>
+					<Toast.Description className="workspace-toast-description">{controlChangeToast.text}</Toast.Description>
+				</div>
+				<Toast.Close className="icon-button" aria-label="Dismiss control change"><X aria-hidden="true" /></Toast.Close>
 			</Toast.Root>
 		)}
 		<Toast.Viewport className="toast-viewport" />
