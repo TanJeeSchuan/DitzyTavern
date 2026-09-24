@@ -239,6 +239,9 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
+	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
+	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
+
 	return (
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
@@ -295,6 +298,19 @@ export function ActiveWritingWorkspace({
 					}}
 				/>
 
+				{story.preview !== null && previewedMessage !== undefined && (
+				<div className="preview-dock" role="status" aria-label="Swipe preview">
+					<div className="preview-dock-copy">
+						<strong>Previewing Swipe {previewSwipeIndex + 1} of {previewedMessage.swipes.length}</strong>
+						<span>Message {story.preview.targetPosition} · Later Messages dimmed</span>
+					</div>
+					<div className="preview-dock-actions">
+						<button className="primary-button" type="button" disabled={preview.previewPending} onClick={() => void preview.confirmPreview()}>Confirm</button>
+						<button className="secondary-button" type="button" disabled={preview.previewPending} onClick={preview.cancelPreview}>Cancel</button>
+					</div>
+					{preview.previewError !== null && <p className="preview-error" role="alert">{preview.previewError}</p>}
+				</div>
+			)}
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
@@ -322,10 +338,6 @@ export function ActiveWritingWorkspace({
 								mutationsDisabled={story.preview !== null}
 								previewDownstream={isPreviewDownstream(message, story.preview)}
 								previewTarget={story.preview?.messageId === message.id}
-								previewPending={preview.previewPending}
-								previewError={preview.previewError}
-								onConfirmPreview={() => void preview.confirmPreview()}
-								onCancelPreview={preview.cancelPreview}
 								canContinue={
 									generation.assemblyAvailable &&
 									latestStoryMessage?.id === message.id &&

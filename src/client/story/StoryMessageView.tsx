@@ -29,10 +29,6 @@ export function StoryMessageView({
 	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
-	previewPending = false,
-	previewError = null,
-	onConfirmPreview,
-	onCancelPreview,
 	onMoveSwipe,
 	onEdit,
 	canContinue = false,
@@ -55,10 +51,6 @@ export function StoryMessageView({
 	// Variants can be compared freely without server commands, while every
 	// other mutation remains locked.
 	previewTarget?: boolean;
-	previewPending?: boolean;
-	previewError?: string | null;
-	onConfirmPreview?: () => void;
-	onCancelPreview?: () => void;
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onEdit: (messageId: number, content: string) => void;
 	canContinue?: boolean;
@@ -144,6 +136,7 @@ export function StoryMessageView({
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
+						{previewTarget && <span className="message-preview-marker">Previewed Swipe</span>}
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
@@ -168,20 +161,6 @@ export function StoryMessageView({
 					)}
 				</div>
 			</header>
-			{previewTarget && (
-				<div className="message-preview-bar" role="status">
-					<div className="message-preview-copy">
-						<strong>Previewing Swipe {activeIndex + 1} of {message.swipes.length}</strong>
-						<span>Later Messages are dimmed until you confirm or cancel.</span>
-					</div>
-					<div className="message-preview-actions">
-						<button className="primary-button" type="button" disabled={previewPending} onClick={onConfirmPreview}>Confirm</button>
-						<button className="secondary-button" type="button" disabled={previewPending} onClick={onCancelPreview}>Cancel</button>
-					</div>
-					{previewError !== null && <p className="preview-error" role="alert">{previewError}</p>}
-				</div>
-			)}
-
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<label htmlFor={`edit-${message.id}`}>Edit Message</label>

@@ -859,25 +859,34 @@
 	opacity: 0.38;
 }
 
-.message-preview-bar {
+.story-stage[data-preview-mode="true"] { grid-template-rows: auto auto minmax(0, 1fr); }
+
+.story-message[data-previewing="true"] .message-meta { opacity: 1; transform: none; }
+.message-preview-marker { color: var(--accent-foreground); font-weight: 680; }
+
+.preview-dock {
+	position: relative;
+	z-index: 5;
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.6rem 1rem;
-	margin: 0.6rem 0 1rem;
+	width: min(calc(100% - 2rem), 38rem);
+	margin: 0.75rem auto 0.5rem;
 	padding: 0.7rem;
 	border: 1px solid color-mix(in oklch, var(--accent) 38%, var(--border));
 	border-radius: 0.8rem;
-	background: var(--accent-softer);
+	background: var(--surface);
+	box-shadow: 0 0.7rem 2rem var(--shadow-soft);
 	font-size: 0.76rem;
 }
 
-.message-preview-copy,
-.message-preview-actions { display: flex; gap: 0.45rem; }
-.message-preview-copy { flex-direction: column; }
-.message-preview-copy span { color: var(--text-muted); }
-.message-preview-actions button { padding: 0.45rem 0.7rem; }
+.preview-dock-copy,
+.preview-dock-actions { display: flex; gap: 0.45rem; }
+.preview-dock-copy { flex-direction: column; }
+.preview-dock-copy span { color: var(--text-muted); }
+.preview-dock-actions button { padding: 0.45rem 0.7rem; }
 
 .preview-error {
 	width: 100%;
