@@ -1,16 +1,3 @@
-@media (min-width: 78.01rem) {
-	.composer[data-receded="true"] {
-		opacity: 0.24;
-		transform: translateY(72%);
-	}
-
-	.composer[data-receded="true"]:hover,
-	.composer[data-receded="true"]:focus-within {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
 /* New Chat and Import Chat opened from the no-chat surface render outside
    the workspace; cover the viewport instead of docking. */
 body > .details-panel {

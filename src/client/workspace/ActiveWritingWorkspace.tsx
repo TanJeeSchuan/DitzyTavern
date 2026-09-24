@@ -373,6 +373,7 @@ export function ActiveWritingWorkspace({
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending}
+					writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							conversation={session.conversation}

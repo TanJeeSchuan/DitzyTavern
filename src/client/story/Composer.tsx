@@ -1,4 +1,4 @@
-import { MoreHorizontal, Send, Square } from "lucide-react";
+import { MoreHorizontal, PenLine, Send, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 export function Composer({
@@ -12,6 +12,7 @@ export function Composer({
 	onSubmit,
 	onCancel,
 	stopPending = false,
+	writerName,
 }: {
 	draft: string;
 	isGenerating: boolean;
@@ -23,9 +24,11 @@ export function Composer({
 	onSubmit: (event: FormEvent) => void;
 	onCancel?: () => void;
 	stopPending?: boolean;
+	writerName?: string;
 }) {
 	const [controlsOpen, setControlsOpen] = useState(false);
 	const composerRef = useRef<HTMLFormElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	useEffect(() => {
 		if (!controlsOpen) return;
@@ -41,6 +44,22 @@ export function Composer({
 	}, [controlsOpen]);
 
 	return (
+		<>
+		<button
+			className="composer-pill"
+			type="button"
+			data-visible={isReceded}
+			tabIndex={isReceded ? 0 : -1}
+			aria-hidden={!isReceded}
+			onClick={() => {
+				onFocusChange(true);
+				requestAnimationFrame(() => textareaRef.current?.focus());
+			}}
+		>
+			<PenLine aria-hidden="true" />
+			Write
+			{writerName !== undefined && <small>as {writerName}</small>}
+		</button>
 		<form
 			ref={composerRef}
 			className="composer"
@@ -74,6 +93,7 @@ export function Composer({
 			</label>
 			<textarea
 				id="writer-message"
+				ref={textareaRef}
 				value={draft}
 				onChange={(event) => onDraftChange(event.target.value)}
 				placeholder="Write the next part of the story…"
@@ -90,5 +110,6 @@ export function Composer({
 				</button>
 			)}
 		</form>
+		</>
 	);
 }
