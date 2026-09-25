@@ -63,17 +63,22 @@ export function PromptPlanPreviewPanel({
 				{preview !== null && <section className="generation-detail-section prompt-plan-edit-list">
 					<h3>Expanded blocks</h3>
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}
-					{preview.promptPlan.blocks.map((block, index) => (
-						<label key={index}>
-							<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
-							<textarea
-								value={block.content}
-								disabled={!editable}
-								onChange={(event) => onPlanChange(updateBlock(preview.promptPlan, index, event.target.value))}
-								rows={Math.min(12, Math.max(2, block.content.split("\n").length))}
-							/>
-						</label>
-					))}
+					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
+						const fields = run.map(({ block, index }) => (
+							<label key={index}>
+								<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<textarea
+									value={block.content}
+									disabled={!editable}
+									onChange={(event) => onPlanChange(updateBlock(preview.promptPlan, index, event.target.value))}
+									rows={Math.min(12, Math.max(2, block.content.split("\n").length))}
+								/>
+							</label>
+						));
+						return run[0].block.kind === "history"
+							? <details key={run[0].index} className="prompt-plan-history"><summary>History · {run.length} {run.length === 1 ? "message" : "messages"}</summary>{fields}</details>
+							: fields[0];
+					})}
 				</section>}
 			{assembly.error !== null && <p className="import-problem" role="alert">{assembly.error}</p>}
 			{preview !== null && !preview.budget.budgetFits && <p className="import-problem" role="alert">This plan exceeds the context limit. Shorten it or refresh.</p>}
@@ -85,6 +90,17 @@ export function PromptPlanPreviewPanel({
 			</footer>
 		</aside>
 	);
+}
+
+// Consecutive history blocks share one run; every other block is its own run.
+function groupHistoryRuns(blocks: PromptPlan["blocks"]) {
+	const runs: { block: PromptPlan["blocks"][number]; index: number }[][] = [];
+	blocks.forEach((block, index) => {
+		const last = runs.at(-1);
+		if (block.kind === "history" && last?.[0].block.kind === "history") last.push({ block, index });
+		else runs.push([{ block, index }]);
+	});
+	return runs;
 }
 
 function updateBlock(plan: PromptPlan, index: number, content: string): PromptPlan {
