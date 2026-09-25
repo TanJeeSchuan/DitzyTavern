@@ -61,6 +61,7 @@
 	--accent-soft: oklch(0.92 0.035 31);
 	--accent-softer: oklch(0.96 0.018 31);
 	--focus: oklch(0.6 0.14 30);
+	--ring: var(--focus);
 	--destructive: oklch(0.56 0.18 25);
 	--shadow: oklch(0.36 0.035 35 / 14%);
 	--shadow-soft: oklch(0.36 0.035 35 / 8%);
@@ -151,9 +152,10 @@
 	color-scheme: light;
 }
 
-* {
-	box-sizing: border-box;
-	border-color: var(--border);
+@layer base {
+	* {
+		border-color: var(--border);
+	}
 }
 
 html,
@@ -170,12 +172,6 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
-button,
-textarea,
-input {
-	font: inherit;
-}
-
 button {
 	color: inherit;
 }
@@ -189,11 +185,13 @@ button:disabled {
 	opacity: 0.46;
 }
 
-button:focus-visible,
-textarea:focus-visible,
-input:focus-visible {
-	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
-	outline-offset: 2px;
+@layer base {
+	button:focus-visible,
+	textarea:focus-visible,
+	input:focus-visible {
+		outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
+		outline-offset: 2px;
+	}
 }
 
 ::selection {

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Download, Plus, Upload } from "lucide-react";
+import { Check, Download, Plus, Search, Settings2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard } from "../SaveGuard";
 import {
 	applyLorebookCommand,
@@ -70,7 +70,9 @@ type LeaveIntent =
 	| { type: "book"; id: number }
 	| { type: "entry"; id: number | null };
 
-export function LorebookPanel({ conversationId, onClose, mutationsDisabled = false }: { conversationId: number; onClose: () => void; mutationsDisabled?: boolean }) {
+type LoreAttachment = LoreAttachmentState["attachments"][number];
+
+export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled = false }: { conversationId: number; cast: readonly { id: number; duplicateLabel: string }[]; onClose: () => void; mutationsDisabled?: boolean }) {
 	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
 	const [booksLoading, setBooksLoading] = useState(true);
 	const [book, setBook] = useState<Lorebook | null>(null);
@@ -86,18 +88,18 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	const [testPending, setTestPending] = useState(false);
 	const [testError, setTestError] = useState<string | null>(null);
 	const [attachmentState, setAttachmentState] = useState<LoreAttachmentState | null>(null);
-	const [savedChatSettings, setSavedChatSettings] = useState<{ scanDepth: number; allowance: number } | null>(null);
 	const [attachmentPending, setAttachmentPending] = useState(false);
 	const [selectedPreset, setSelectedPreset] = useState<Awaited<ReturnType<typeof loadConversationPromptPreset>>>(null);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
 	const [bookDeleteConfirmation, setBookDeleteConfirmation] = useState<{ name: string; detail: string } | null>(null);
 	const [entryDeleteConfirmation, setEntryDeleteConfirmation] = useState(false);
 	const importInput = useRef<HTMLInputElement>(null);
+	const nameInput = useRef<HTMLInputElement>(null);
+	const selectNameOnOpen = useRef(false);
 	const viewTokenRef = useRef(0);
 	const libraryRequestRef = useRef(0);
 	const matchRequestRef = useRef(0);
 	const attachmentRequestRef = useRef(0);
-	const chatSettingsVersionRef = useRef(0);
 	const presetRequestRef = useRef(0);
 	const impactRequestRef = useRef(0);
 	const exportRequestRef = useRef(0);
@@ -146,7 +148,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		const presetRequest = ++presetRequestRef.current;
 		setAttachmentPending(false);
 		void getLorebookAttachmentState(conversationId).then((state) => {
-			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) { setAttachmentState(state); setSavedChatSettings(state === null ? null : { scanDepth: state.scanDepth, allowance: state.allowance }); }
+			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setAttachmentState(state);
 		}).catch(() => { if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("Lorebook attachment settings could not be loaded."); });
 		void loadConversationPromptPreset(conversationId).then((preset) => {
 			if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setSelectedPreset(preset);
@@ -215,6 +217,11 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		if (intent !== null) performLeave(intent);
 	};
 
+	const upsertBookSummary = (saved: Lorebook) => setBooks((items) => {
+		const summary = { id: saved.id, name: saved.name, description: saved.description, revision: saved.revision, entryCount: saved.entries.length };
+		return items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? summary : item) : [...items, summary];
+	});
+
 	const saveDirty = async (): Promise<boolean> => {
 		if (book === null) return true;
 		const hadChanges = bookDirty || entryDirty;
@@ -233,6 +240,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				}
 				return false;
 			}
+			upsertBookSummary(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			current = result.book;
 			setBook(current);
@@ -250,6 +258,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 				if (result.status === "conflict") setBook(result.currentBook);
 				return false;
 			}
+			upsertBookSummary(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			setBook(result.book);
 			if (entryId === null && entryDraftVersionRef.current === initialEntryDraftVersion) {
@@ -287,14 +296,8 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
-			if (result.status === "applied") {
-				setBooks((items) => {
-					const summary = { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length };
-					return items.some((item) => item.id === result.book.id)
-						? items.map((item) => item.id === result.book.id ? summary : item)
-						: [...items, summary];
-				});
-			} else if (result.status === "deleted") {
+			if (result.status === "applied") upsertBookSummary(result.book);
+			else if (result.status === "deleted") {
 				setBooks((items) => items.filter((item) => item.id !== result.bookId));
 			}
 			if (!isCurrentView(token, commandBookId)) return;
@@ -316,7 +319,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		} finally { if (token === viewTokenRef.current) setPending(false); }
 	};
 
-	const create = () => void executeLorebookCommand({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created.");
+	const create = () => { selectNameOnOpen.current = true; void executeLorebookCommand({ type: "create", name: "New Lorebook", description: "" }, "Lorebook created."); };
 	const filteredBooks = useMemo(() => books.filter((item) => item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [books, search]);
 
 	const saveAll = async () => {
@@ -360,35 +363,18 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	};
 	const updateAttachment = async (command: Parameters<typeof applyLorebookAttachmentCommand>[0]): Promise<boolean> => {
 		const request = ++attachmentRequestRef.current;
-		const draftVersion = chatSettingsVersionRef.current;
-		const hadChatDraft = attachmentState !== null && savedChatSettings !== null && (attachmentState.scanDepth !== savedChatSettings.scanDepth || attachmentState.allowance !== savedChatSettings.allowance);
 		const requestConversationId = conversationId;
+		const isCurrentRequest = () => request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId;
 		setAttachmentPending(true);
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
-			if (request !== attachmentRequestRef.current || currentConversationIdRef.current !== requestConversationId) return false;
-			if (result.status !== "applied") {
-				if (result.status === "conflict" && "conversationId" in result.currentState) {
-					const currentState = result.currentState;
-					setSavedChatSettings({ scanDepth: currentState.scanDepth, allowance: currentState.allowance });
-					setAttachmentState((current) => current === null ? currentState : { ...currentState, scanDepth: current.scanDepth, allowance: current.allowance });
-				}
-				throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
-			}
+			if (result.status === "conflict" && "conversationId" in result.currentState && isCurrentRequest()) setAttachmentState(result.currentState);
+			if (result.status !== "applied") throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			const state = await getLorebookAttachmentState(requestConversationId);
-			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) {
-				setSavedChatSettings(state === null ? null : { scanDepth: state.scanDepth, allowance: state.allowance });
-				setAttachmentState((current) => state === null || current === null || (!hadChatDraft && chatSettingsVersionRef.current === draftVersion) || (command.type === "save-settings" && chatSettingsVersionRef.current === draftVersion) ? state : { ...state, scanDepth: current.scanDepth, allowance: current.allowance });
-			}
-			return chatSettingsVersionRef.current === draftVersion;
-		} catch { if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setNotice("Lorebook attachment settings could not be saved."); return false; }
-		finally {
-			if (request === attachmentRequestRef.current && currentConversationIdRef.current === requestConversationId) setAttachmentPending(false);
-		}
-	};
-	const saveChatSettings = () => {
-		if (attachmentState === null) return Promise.resolve(false);
-		return updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, scanDepth: attachmentState.scanDepth, allowance: attachmentState.allowance });
+			if (isCurrentRequest()) setAttachmentState(state);
+			return true;
+		} catch (error) { if (isCurrentRequest()) setNotice(error instanceof Error ? error.message : "Lorebook attachment settings could not be saved."); return false; }
+		finally { if (isCurrentRequest()) setAttachmentPending(false); }
 	};
 	const enableLoreSlot = async () => {
 		if (selectedPreset === null) return;
@@ -445,7 +431,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
-			if (result.status === "applied") setBooks((items) => [...items, { id: result.book.id, name: result.book.name, description: result.book.description, revision: result.book.revision, entryCount: result.book.entries.length }]);
+			if (result.status === "applied") upsertBookSummary(result.book);
 			if (request !== libraryRequestRef.current || token !== viewTokenRef.current) return;
 			if (result.status === "applied") {
 				invalidateView();
@@ -455,47 +441,75 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 
-	const loreBlockNotice = selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled) && <div className="rounded-md border border-border p-2 text-sm">
-		<p>The selected Prompt Preset needs an enabled Lore block to use attached Lorebooks during Generation.</p>
-		<Button type="button" size="sm" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable Lore block" : "Add Lore block"}</Button>
-	</div>;
-	const chatSettingsDirty = attachmentState !== null && savedChatSettings !== null && (attachmentState.scanDepth !== savedChatSettings.scanDepth || attachmentState.allowance !== savedChatSettings.allowance);
-	useSaveGuard({ dirty: dirty || chatSettingsDirty, saving: pending || attachmentPending, save: async () => (!dirty || await saveDirty()) && (!chatSettingsDirty || await saveChatSettings()), discard: () => undefined });
+	const loreBlockMissing = selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled);
+	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });
+	const bookName = (bookId: number) => books.find((item) => item.id === bookId)?.name ?? "Unavailable Lorebook";
+	const participantName = (participantId: number) => cast.find((participant) => participant.id === participantId)?.duplicateLabel ?? "Removed Participant";
+	const attachedBookIds = new Set(attachmentState?.attachments.map((attachment) => attachment.bookId));
+	const setAttachmentEnabled = (state: LoreAttachmentState, attachment: LoreAttachment, enabled: boolean) => void updateAttachment(attachment.scope === "chat"
+		? { type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: state.revision, enabled }
+		: { type: "attach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled });
+	const detach = (state: LoreAttachmentState, attachment: LoreAttachment) => void updateAttachment(attachment.scope === "chat"
+		? { type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: state.revision }
+		: { type: "detach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope });
 
 	return <>
 		<PanelHeader title="Lorebooks" onClose={onClose} />
-		<div className="panel-body flex flex-col gap-4" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-			{attachmentState === null ? <ChatLoreSettingsLoading /> : <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings">
-				<h2 className="text-sm font-medium">Chat Lore settings</h2>
-				<div className="flex flex-wrap items-end gap-2">
-					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Scan Messages<Input className="w-28" type="number" min="0" step="1" value={attachmentState.scanDepth} disabled={attachmentPending} onChange={(event) => { chatSettingsVersionRef.current += 1; setAttachmentState({ ...attachmentState, scanDepth: Math.max(0, Number(event.target.value)) }); }} /></label>
-					<label className="flex flex-col gap-1 text-xs text-muted-foreground">Lore allowance<Input className="w-28" type="number" min="0" step="1" value={attachmentState.allowance} disabled={attachmentPending} onChange={(event) => { chatSettingsVersionRef.current += 1; setAttachmentState({ ...attachmentState, allowance: Math.max(0, Number(event.target.value)) }); }} /></label>
+		<div className="panel-body flex flex-col gap-7" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+			{attachmentState === null ? <ChatLoreLoading /> : <section className="flex flex-col gap-3" aria-labelledby="chat-lore-title">
+				<div className="flex items-center justify-between gap-2">
+					<h2 id="chat-lore-title" className="text-sm font-semibold whitespace-nowrap">In this chat</h2>
+					<ChatLoreSettings scanDepth={attachmentState.scanDepth} allowance={attachmentState.allowance} pending={attachmentPending} onSave={(settings) => updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, ...settings })} />
 				</div>
-				<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong>{attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").length === 0 ? <p className="panel-intro">No Lorebooks are attached to this Chat.</p> : attachmentState.attachments.filter((attachment) => attachment.owner === "conversation").map((attachment) => <div className="flex items-center justify-between gap-2" key={attachment.id}><span>{books.find((item) => item.id === attachment.bookId)?.name ?? "Unavailable Lorebook"} <small>{attachment.eligible ? "Eligible" : attachment.reason}</small></span><span className="flex gap-1"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision, enabled: !attachment.enabled })}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} onClick={() => void updateAttachment({ type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: attachmentState.revision })}>Detach</Button></span></div>)}</div>
-				{attachmentState.attachments.some((attachment) => attachment.enabled) && loreBlockNotice}
+				{attachmentState.attachments.length === 0
+					? <p className="text-sm text-muted-foreground">No Lorebooks are attached to this Chat. Attach one from the library below.</p>
+					: <ul className="-mx-3 flex flex-col gap-1">{attachmentState.attachments.map((attachment) => <li className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-muted/40" key={attachment.id}>
+						<button type="button" className="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50" onClick={() => requestLeave({ type: "book", id: attachment.bookId })}>
+							<span className={`block truncate text-[0.9rem] font-semibold tracking-[-0.01em] ${attachment.enabled ? "" : "text-muted-foreground"}`}>{bookName(attachment.bookId)}</span>
+							<span className="mt-0.5 block truncate text-xs text-muted-foreground">{attachmentSource(attachment, participantName)}</span>
+						</button>
+						<Switch className="data-checked:bg-emerald-600 dark:data-checked:bg-emerald-500" checked={attachment.enabled} disabled={attachmentPending} aria-label={`Use ${bookName(attachment.bookId)} in this Chat`} onCheckedChange={(enabled) => setAttachmentEnabled(attachmentState, attachment, enabled)} />
+						<Button type="button" size="icon-xs" variant="ghost" title="Detach" aria-label={`Detach ${bookName(attachment.bookId)}`} disabled={attachmentPending} onClick={() => detach(attachmentState, attachment)}><X aria-hidden="true" /></Button>
+					</li>)}</ul>}
+				{loreBlockMissing && attachmentState.attachments.some((attachment) => attachment.enabled) && <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+					<p className="flex-1">The selected Prompt Preset has no enabled Lore block, so attached lore is not sent to the model.</p>
+					<Button type="button" size="xs" variant="outline" disabled={attachmentPending} onClick={() => void enableLoreSlot()}>{selectedPreset.slots.some((slot) => slot.reference === "lore") ? "Enable" : "Add block"}</Button>
+				</div>}
 			</section>}
-			<div className="flex items-center gap-2">
-				<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
-				<Button size="sm" variant="outline" type="button" disabled={pending} onClick={() => importInput.current?.click()}><Upload aria-hidden="true" /> Import</Button>
-				<Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button>
-			</div>
-			<Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" />
-			<div className="flex flex-col gap-2" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <p className="panel-intro">No Lorebooks yet. Create one or import a JSON book.</p> : filteredBooks.map((item) => <Button type="button" variant="outline" key={item.id} className="h-auto justify-start p-3 text-left" onClick={() => void openBook(item.id)}><span><strong>{item.name}</strong><span className="block text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}</span></span></Button>)}</div>
+			<section className="flex flex-col gap-3 border-t border-border pt-6" aria-labelledby="lore-library-title">
+				<div className="flex items-center justify-between gap-2">
+					<h2 id="lore-library-title" className="text-sm font-semibold">Library</h2>
+					<span className="flex gap-1">
+						<input ref={importInput} type="file" accept="application/json,.json" className="sr-only" aria-label="Import Lorebook JSON" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void importFile(file); }} />
+						<Button size="sm" variant="ghost" type="button" disabled={pending} onClick={() => importInput.current?.click()}><Upload aria-hidden="true" /> Import</Button>
+						<Button type="button" size="sm" onClick={create} disabled={pending}><Plus aria-hidden="true" /> New</Button>
+					</span>
+				</div>
+				<label className="search-field"><Search aria-hidden="true" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Lorebooks" aria-label="Search Lorebooks" /></label>
+				<ul className="-mx-3 mt-1 flex flex-col gap-1" aria-label="Lorebook library" aria-busy={booksLoading}>{booksLoading ? <LorebookLibraryLoading /> : filteredBooks.length === 0 ? <li className="px-3 py-3 text-sm text-muted-foreground">{books.length === 0 ? "No Lorebooks yet. Create one or import a JSON book." : "No Lorebooks match this search."}</li> : filteredBooks.map((item) => <li className="group relative flex items-center gap-2 rounded-xl px-3 py-3 hover:bg-muted/40 focus-within:bg-muted/40" key={item.id}>
+					<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => void openBook(item.id)}>
+						<span className="block truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{item.name}</span>
+						<span className="mt-0.5 block truncate text-xs text-muted-foreground">{item.entryCount} {item.entryCount === 1 ? "entry" : "entries"}{item.description === "" ? "" : ` · ${item.description}`}</span>
+					</button>
+					{attachedBookIds.has(item.id)
+						? <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Check className="size-3.5" aria-hidden="true" /> In chat</span>
+						: attachmentState !== null && <span className="relative z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"><Button type="button" size="xs" variant="ghost" disabled={attachmentPending} aria-label={`Attach ${item.name} to this Chat`} onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: item.id, expectedRevision: attachmentState.revision })}><Plus aria-hidden="true" /> Attach</Button></span>}
+				</li>)}</ul>
+			</section>
 			{book === null && notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 		</div>
-		{book === null && <SaveFooter dirty={chatSettingsDirty} saving={attachmentPending} error={notice?.includes("could not be saved") ? notice : null} onSave={() => void saveChatSettings()} />}
 		{book !== null && <Dialog open onOpenChange={(open) => { if (!open) requestLeave({ type: "library" }); }}>
-			<DialogContent showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-4 sm:max-w-3xl lg:max-w-5xl" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled} onOpenAutoFocus={(event) => event.preventDefault()}>
-				<DialogHeader className="gap-1">
+			<DialogContent showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-5 p-6 sm:max-w-3xl lg:max-w-5xl" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled} onOpenAutoFocus={(event) => { event.preventDefault(); if (selectNameOnOpen.current) { selectNameOnOpen.current = false; nameInput.current?.select(); } }}>
+				<DialogHeader className="gap-2">
 					<DialogTitle className="sr-only">Edit Lorebook</DialogTitle>
 					<DialogDescription className="sr-only">Rename this Lorebook, edit its entries, and test matching against supplied writing.</DialogDescription>
-					<Input className="h-9 text-base font-semibold" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" placeholder="Untitled Lorebook" />
+					<Input ref={nameInput} className="h-9 text-base font-semibold" value={name} onChange={(event) => { bookDraftVersionRef.current += 1; setName(event.target.value); }} aria-label="Lorebook name" placeholder="Untitled Lorebook" />
 					<Textarea rows={1} className="min-h-9 resize-none text-sm" value={description} onChange={(event) => { bookDraftVersionRef.current += 1; setDescription(event.target.value); }} aria-label="Lorebook description" placeholder="Add a description…" />
 				</DialogHeader>
-				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
-					<div className="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
-						<div className="flex min-w-0 flex-col gap-4">
-						<section className="flex min-w-0 flex-col gap-2"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">Entries</h3><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-lg border p-2 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong className="truncate">{entry.title || "Untitled entry"}</strong><span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
+				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1">
+					<div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
+						<div className="flex min-w-0 flex-col gap-6">
+						<section className="flex min-w-0 flex-col gap-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">Entries</h3><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong className="truncate">{entry.title || "Untitled entry"}</strong><span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
 						{dirty && <p className="panel-intro">Save your entry edits before testing matches.</p>}
 						<MatchTester writing={testWriting} onWritingChange={(value) => { matchRequestRef.current += 1; setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending || pending || dirty} onTest={() => void runMatchTest()} />
 						</div>
@@ -503,7 +517,7 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 					</div>
 					{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
 				</div>
-				<DialogFooter className="flex-wrap sm:justify-between">
+				<DialogFooter className="-mx-6 -mb-6 flex-wrap px-6 sm:justify-between">
 					<div className="flex flex-wrap items-center gap-2">
 						<Button type="button" size="sm" variant="destructive" disabled={pending} onClick={() => void confirmDeleteBook()}>Delete Lorebook</Button>
 						<span className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
@@ -534,19 +548,44 @@ export function LorebookPanel({ conversationId, onClose, mutationsDisabled = fal
 	</>;
 }
 
-function ChatLoreSettingsLoading() {
-	return <section className="flex flex-col gap-2 rounded-lg border border-border p-3" aria-label="Chat Lore settings" aria-busy="true">
-		<h2 className="text-sm font-medium">Chat Lore settings</h2>
+function attachmentSource(attachment: LoreAttachment, participantName: (id: number) => string): string {
+	if (attachment.scope === "chat") return "This Chat";
+	const name = participantName(attachment.ownerId);
+	if (attachment.reason === "not-controlled") return `${name}, inactive until ${name} holds a Control seat`;
+	if (attachment.reason === "not-in-cast") return `${name}, inactive while outside the Cast`;
+	return attachment.scope === "cast" ? `${name}, while in the Cast` : `${name}, while holding a Control seat`;
+}
+
+const numberInputClass = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+
+function ChatLoreSettings({ scanDepth, allowance, pending, onSave }: { scanDepth: number; allowance: number; pending: boolean; onSave: (settings: { scanDepth: number; allowance: number }) => Promise<boolean> }) {
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState({ scanDepth, allowance });
+	const unchanged = draft.scanDepth === scanDepth && draft.allowance === allowance;
+	return <Popover open={open} onOpenChange={(next) => { if (next) setDraft({ scanDepth, allowance }); setOpen(next); }}>
+		<PopoverTrigger asChild><Button type="button" size="xs" variant="ghost" className="text-muted-foreground" aria-label="Chat Lore settings">{scanDepth} {scanDepth === 1 ? "message" : "messages"} · {allowance.toLocaleString()} tokens max <Settings2 aria-hidden="true" /></Button></PopoverTrigger>
+		<PopoverContent align="end" className="w-64" onOpenAutoFocus={(event) => { event.preventDefault(); if (event.currentTarget instanceof HTMLElement) event.currentTarget.focus(); }}>
+			<form className="flex flex-col gap-3" onSubmit={(event) => { event.preventDefault(); void onSave(draft).then((saved) => { if (saved) setOpen(false); }); }}>
+				<label className="flex flex-col gap-1 text-xs font-medium">Scan depth<span className="font-normal text-muted-foreground">Recent Messages checked for Keywords.</span><Input className={numberInputClass} type="number" min="0" step="1" value={draft.scanDepth} onChange={(event) => setDraft({ ...draft, scanDepth: Math.max(0, Math.trunc(Number(event.target.value))) })} /></label>
+				<label className="flex flex-col gap-1 text-xs font-medium">Lore allowance<span className="font-normal text-muted-foreground">Estimated tokens lore may use per Generation.</span><Input className={numberInputClass} type="number" min="0" step="1" value={draft.allowance} onChange={(event) => setDraft({ ...draft, allowance: Math.max(0, Math.trunc(Number(event.target.value))) })} /></label>
+				<Button type="submit" size="sm" className="self-end" disabled={pending || unchanged}>{pending ? "Saving…" : "Save"}</Button>
+			</form>
+		</PopoverContent>
+	</Popover>;
+}
+
+function ChatLoreLoading() {
+	return <section className="flex flex-col gap-2" aria-label="In this chat" aria-busy="true">
 		<p className="sr-only" role="status">Loading Chat Lore settings…</p>
-		<div className="flex flex-wrap items-end gap-2"><div className="h-14 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-14 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-28 animate-pulse rounded-md bg-muted/50" /></div>
-		<div className="flex flex-col gap-1 text-sm"><strong>Attached Chat books</strong><div className="h-5 w-3/4 animate-pulse rounded bg-muted/50" /><div className="h-5 w-2/3 animate-pulse rounded bg-muted/50" /></div>
+		<div className="flex items-center justify-between"><h2 className="text-sm font-semibold">In this chat</h2><div className="h-5 w-40 animate-pulse rounded bg-muted/50" /></div>
+		{["first", "second"].map((key) => <div className="flex flex-col gap-1 py-1.5" key={key}><div className="h-4 w-2/5 animate-pulse rounded bg-muted/50" /><div className="h-3 w-1/4 animate-pulse rounded bg-muted/50" /></div>)}
 	</section>;
 }
 
 function LorebookLibraryLoading() {
 	return <>
-		<p className="sr-only" role="status">Loading Lorebooks…</p>
-		{["first", "second", "third"].map((key) => <div className="h-14 animate-pulse rounded-lg border border-border bg-muted/50" key={key} />)}
+		<li className="sr-only" role="status">Loading Lorebooks…</li>
+		{["first", "second", "third"].map((key) => <li className="flex flex-col gap-1.5 px-3 py-3" aria-hidden="true" key={key}><div className="h-4 w-1/3 animate-pulse rounded bg-muted/50" /><div className="h-3 w-1/2 animate-pulse rounded bg-muted/50" /></li>)}
 	</>;
 }
 
@@ -618,31 +657,32 @@ function StateToggle({ label, checked, onCheckedChange }: { label: string; check
 
 function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: EntryListKey, value: string) => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1 text-xs text-muted-foreground" key={key}>{label}<Textarea className="min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
-	return <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-border p-3">
+	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1.5 text-xs text-muted-foreground" key={key}>{label}<Textarea className="min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
+	const expressionGroup = (fields: readonly (readonly [EntryListKey, string])[]) => <fieldset className="flex min-w-0 flex-col gap-3 rounded-xl border border-border px-4 pt-2 pb-4">
+		<legend className="px-1.5 text-xs text-muted-foreground">One expression per line. Commas are literal.</legend>
+		{fields.map(listField)}
+	</fieldset>;
+	return <section className="flex min-w-0 flex-col gap-4 rounded-xl border border-border p-5">
 		<h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Title<Input value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
-		<label className="flex flex-col gap-1 text-xs text-muted-foreground">Content<Textarea className="min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal text inserted into the prompt" /></label>
-		<div className="flex flex-col gap-2">
-			<p className="text-xs text-muted-foreground">One expression per line. Commas are literal.</p>
-			{entryMatchFields.map(listField)}
-		</div>
-		<details className="rounded-lg border border-border">
-			<summary className="cursor-pointer px-3 py-2 text-xs font-medium">Secondary conditions</summary>
-			<div className="flex flex-col gap-2 px-3 pb-3">{entryConditionFields.map(listField)}</div>
+		<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Title<Input value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
+		<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Content<Textarea className="min-h-24" value={entry.content} onChange={(event) => set("content", event.target.value)} placeholder="Literal text inserted into the prompt" /></label>
+		{expressionGroup(entryMatchFields)}
+		<details>
+			<summary className="cursor-pointer py-1 text-xs font-medium">Secondary conditions</summary>
+			<div className="pt-2">{expressionGroup(entryConditionFields)}</div>
 		</details>
-		<div className="grid gap-2 sm:grid-cols-2">
+		<div className="grid gap-x-8 gap-y-3 py-1 sm:grid-cols-2">
 			<StateToggle label="Always" checked={entry.always} onCheckedChange={(value) => set("always", value)} />
 			<StateToggle label="Enabled" checked={entry.enabled} onCheckedChange={(value) => set("enabled", value)} />
 			<StateToggle label="Case sensitive" checked={entry.caseSensitive} onCheckedChange={(value) => set("caseSensitive", value)} />
 			<StateToggle label="Whole word" checked={entry.wholeWord} onCheckedChange={(value) => set("wholeWord", value)} />
 		</div>
-		<div className="flex flex-wrap items-end gap-3 text-sm">
-			<div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Mode</span><Select value={entry.keywordMode} onValueChange={(value) => set("keywordMode", value === "regex" ? "regex" : "literal")}><SelectTrigger aria-label="Mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="literal">Literal</SelectItem><SelectItem value="regex">Regex</SelectItem></SelectContent></Select></div>
-			{entry.keywordMode === "regex" && <label className="flex flex-col gap-1 text-xs text-muted-foreground">Regex flags<Input className="w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} /></label>}
-			<div className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Operator</span><Select value={entry.matchOperator} onValueChange={(value) => set("matchOperator", parseOperator(value))}><SelectTrigger aria-label="Operator"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="or">OR</SelectItem><SelectItem value="and">AND</SelectItem></SelectContent></Select></div>
-			<label className="flex flex-col gap-1 text-xs text-muted-foreground">Priority<Input className="w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label>
-			<label className="flex flex-col gap-1 text-xs text-muted-foreground">Semantic threshold<Input className="w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label>
+		<div className="flex flex-wrap items-end gap-4 text-sm">
+			<div className="flex flex-col gap-1.5"><span className="text-xs text-muted-foreground">Mode</span><Select value={entry.keywordMode} onValueChange={(value) => set("keywordMode", value === "regex" ? "regex" : "literal")}><SelectTrigger aria-label="Mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="literal">Literal</SelectItem><SelectItem value="regex">Regex</SelectItem></SelectContent></Select></div>
+			{entry.keywordMode === "regex" && <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Regex flags<Input className="w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} /></label>}
+			<div className="flex flex-col gap-1.5"><span className="text-xs text-muted-foreground">Operator</span><Select value={entry.matchOperator} onValueChange={(value) => set("matchOperator", parseOperator(value))}><SelectTrigger aria-label="Operator"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="or">OR</SelectItem><SelectItem value="and">AND</SelectItem></SelectContent></Select></div>
+			<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Priority<Input className="w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label>
+			<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Semantic threshold<Input className="w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label>
 		</div>
 		{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}
 	</section>;
