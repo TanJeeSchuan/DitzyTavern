@@ -265,6 +265,7 @@ const crawl = async (session: Session) => {
 		for (const step of surface.explore) {
 			if (surfaces.length >= MAX_STATES) break;
 			const path = [...surface.path, step];
+			console.log(`  Exploring ${i + 1}/${surfaces.length}: ${describe(path)}`);
 			try {
 				if (at !== surface) await session.open(surface.path);
 				at = undefined;
