@@ -1,5 +1,4 @@
 import {
-	BookOpen,
 	BookMarked,
 	Cable,
 	ListOrdered,
@@ -32,18 +31,11 @@ export function NavigationRail({
 					<MessageSquare aria-hidden="true" />
 				</RailButton>
 				<RailButton
-					label="Cast"
-					active={activePanel === "cast"}
-					onClick={() => onOpenPanel("cast")}
+					label="Characters"
+					active={activePanel === "characters"}
+					onClick={() => onOpenPanel("characters")}
 				>
 					<Users aria-hidden="true" />
-				</RailButton>
-				<RailButton
-					label="Library"
-					active={activePanel === "library"}
-					onClick={() => onOpenPanel("library")}
-				>
-					<BookOpen aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Lorebooks"

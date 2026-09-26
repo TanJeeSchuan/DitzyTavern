@@ -149,11 +149,6 @@ body > .details-panel > .panel-body {
 		margin: 0 auto;
 		padding: 1.25rem;
 	}
-
-	.chat-list-item:disabled,
-	.cast-member button:disabled {
-		opacity: 0.68;
-	}
 }
 
 @media (max-width: 40rem) {
@@ -253,14 +248,6 @@ body > .details-panel > .panel-body {
 }
 
 /* ---- New Chat setup ---- */
-
-.chats-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.5rem;
-	justify-content: flex-end;
-	margin-bottom: 0.85rem;
-}
 
 .new-chat-panel {
 	display: grid;

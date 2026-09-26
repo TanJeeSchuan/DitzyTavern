@@ -13,7 +13,8 @@ import {
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import type { CharacterSnapshot } from "../character-library";
-import { emptyAdHocDraft, openingsFromText, type AdHocDraft } from "./definition";
+import { controlChangeDescription } from "../cast";
+import { emptyPromptChannels } from "../../shared/definition";
 
 // ==[HUMAN APPROVED]== The minimal reference the drawer needs to offer navigation into the new
 // Character Library entry. Internal identifiers are not displayed anywhere.
@@ -38,8 +39,6 @@ type SaveParticipantOperation = {
 	character: CharacterSnapshot;
 };
 
-// ==[HUMAN APPROVED]== Caller-owned wording for the add-ad-hoc command. The runner owns when each
-// notice is shown; the drawer owns what it says.
 const ADD_ADHOC_NOTICES = {
 	conflict: "The Conversation changed elsewhere; the Cast was reloaded.",
 	notFound: CONVERSATION_UNREACHABLE_NOTICE,
@@ -60,15 +59,12 @@ interface CastActionsOptions {
 	// ==[HUMAN APPROVED]== The removal confirmation dialog is drawer state; the remove action only
 	// closes it before dispatching.
 	setRemoveTargetId: (participantId: number | null) => void;
-	// ==[HUMAN APPROVED]== The ad-hoc draft is drawer state: the ad-hoc action reads the typed
-	// definition and resets it after the Participant was applied.
-	adHocDraft: AdHocDraft;
-	setAdHocDraft: (draft: AdHocDraft) => void;
 }
 
 /**
- * ==[HUMAN APPROVED]== Owns the Cast drawer's four command handlers: remove, add from the
- * Library, add ad hoc, and save-as-Character. Every handler sends through
+ * ==[HUMAN APPROVED]== Owns the Characters panel's Cast command handlers: remove, add from the
+ * Library, add a blank chat-only Participant, assign a seat, and
+ * save-as-Character. Every handler sends through
  * the Conversation command runner, so revision acquisition, exception
  * normalization, snapshot adoption, and the standard notices live in one
  * place; the drawer's typed callbacks keep the precise non-removable and
@@ -80,8 +76,6 @@ export function useCastActions({
 	conversation,
 	onConversationChange,
 	setRemoveTargetId,
-	adHocDraft,
-	setAdHocDraft,
 }: CastActionsOptions) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -206,8 +200,9 @@ export function useCastActions({
 		}
 	};
 
-	const applyAddAdHoc = async () => {
-		if (conversation === null) return;
+	const applyAddBlank = async (name: string): Promise<number | null> => {
+		if (conversation === null) return null;
+		let added: number | null = null;
 		setPending(true);
 		try {
 			await runConversationCommand({
@@ -215,11 +210,7 @@ export function useCastActions({
 				send: (expectedRevision) =>
 					applyConversationCommand(conversationId, expectedRevision, {
 						type: "add-participant",
-						definition: {
-							name: adHocDraft.name,
-							prompt: adHocDraft.prompt,
-							openings: openingsFromText(adHocDraft.openingsText),
-						},
+						definition: { name, prompt: emptyPromptChannels(), openings: [] },
 					}),
 				reconciliation: {
 					adoptSnapshot: onConversationChange,
@@ -227,14 +218,37 @@ export function useCastActions({
 				},
 				notices: ADD_ADHOC_NOTICES,
 				callbacks: {
-					onApplied: () => {
-						setAdHocDraft(emptyAdHocDraft);
+					onApplied: (applied) => {
+						added = applied.cast.at(-1)?.id ?? null;
 						setNotice(null);
 					},
-					// ==[HUMAN APPROVED]== This command family cannot produce these outcomes; the
-					// drawer still words them instead of flattening them.
 					onNotPlayable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
 					onNotRemovable: () => setNotice(CONVERSATION_UNREACHABLE_NOTICE),
+				},
+			});
+		} finally {
+			setPending(false);
+		}
+		return added;
+	};
+
+	const applyAssignSeat = async (seat: "human" | "model", participantId: number) => {
+		if (conversation === null || controlChangeDescription(conversation, seat, participantId).kind === "no-change") return;
+		setPending(true);
+		try {
+			await runConversationCommand({
+				revision: () => conversation.revision,
+				send: (expectedRevision) =>
+					applyConversationCommand(conversationId, expectedRevision, { type: "assign-control", seat, participantId }),
+				reconciliation: {
+					adoptSnapshot: onConversationChange,
+					showNotice: setNotice,
+				},
+				notices: ADD_ADHOC_NOTICES,
+				callbacks: {
+					onApplied: () => setNotice(null),
+					onNotPlayable: (reason) => setNotice(reason),
+					onNotRemovable: (reason) => setNotice(reason),
 				},
 			});
 		} finally {
@@ -312,9 +326,11 @@ export function useCastActions({
 		notice,
 		setNotice,
 		saveConfirmation,
+		setSaveConfirmation,
 		applyRemove,
 		applyAddCharacter,
-		applyAddAdHoc,
+		applyAddBlank,
+		applyAssignSeat,
 		applySaveParticipant,
 	};
 }

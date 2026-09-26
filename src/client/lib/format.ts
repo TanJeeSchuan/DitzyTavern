@@ -23,3 +23,20 @@ export const formatSize = (byteLength: number | null, nullLabel: string): string
 	if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
 	return `${(kilobytes / 1024).toFixed(1)} MB`;
 };
+
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+const daysAgo = (date: Date, now: Date) => Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+
+export const formatListTime = (value: string, now = new Date()): string => {
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) return value;
+	const days = daysAgo(date, now);
+	if (days === 0) return new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(date);
+	if (days < 7) return new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date);
+	return new Intl.DateTimeFormat(undefined, date.getFullYear() === now.getFullYear() ? { month: "short", day: "numeric" } : { dateStyle: "medium" }).format(date);
+};
+
+export const recencyGroup = (value: string, now = new Date()): "Today" | "This week" | "Earlier" => {
+	const days = daysAgo(new Date(value), now);
+	return days === 0 ? "Today" : days < 7 ? "This week" : "Earlier";
+};

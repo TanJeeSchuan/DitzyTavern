@@ -13,6 +13,7 @@ import {
 	ParticipantNotFoundError,
 	ParticipantNotRemovableError,
 	createConversationModule,
+	deleteConversation,
 	StaleConversationRevisionError,
 	type ConversationAction,
 	type ConversationModule,
@@ -42,6 +43,7 @@ import {
 	conversationCommandConflict,
 	conversationConflict,
 	conversationGenerationSettings,
+	conversationDeleted,
 	conversationIdParams,
 	conversationSummary,
 	continuationBody,
@@ -202,6 +204,27 @@ export const createConversationRoutes = (
 	const generationCoordinator = createGenerationCoordinator(database, options);
 
 	return new Elysia()
+		.delete(
+			"/api/conversations/:id",
+			({ params }) => {
+				try {
+					withDatabase(database, (connection) => deleteConversation(connection, params.id));
+					return { outcome: "deleted" as const };
+				} catch (error) {
+					if (error instanceof ConversationNotFoundError) return notFoundResponse();
+					if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
+					throw error;
+				}
+			},
+			{
+				params: conversationIdParams,
+				response: {
+					200: conversationDeleted,
+					404: notFoundOutcome,
+					422: invalidOutcome,
+				},
+			},
+		)
 		.post(
 			"/api/conversations/:id/generations/:generationId/stop",
 			async ({ params }) => {

@@ -10,6 +10,8 @@ export const chatSummary = Type.Object({
 	name: Type.String(),
 	creationTime: Type.String(),
 	lastMessageTime: Type.String(),
+	castNames: Type.Array(Type.String()),
+	excerpt: Type.String(),
 });
 
 export const characterSummary = Type.Object({

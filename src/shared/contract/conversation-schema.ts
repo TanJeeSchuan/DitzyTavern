@@ -580,6 +580,11 @@ const replaceParticipantOpeningsAction = Type.Object({
 	openings: Type.Array(Type.String()),
 });
 
+const renameConversationAction = Type.Object({
+	type: Type.Literal("rename-conversation"),
+	name: Type.String(),
+});
+
 const assignControlAction = Type.Object({
 	type: Type.Literal("assign-control"),
 	seat: Type.Union([Type.Literal("human"), Type.Literal("model")]),
@@ -623,6 +628,7 @@ const conversationCommandAction = Type.Union([
 	assignControlAction,
 	removeParticipantAction,
 	selectPromptPresetAction,
+	renameConversationAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
@@ -775,6 +781,8 @@ export type GenerationsStopped = Static<typeof generationsStopped>;
 // named contracts instead of re-declaring shapes at the boundary.
 
 export const conversationIdParams = Type.Object({ id: numericWire });
+
+export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
 
 export const generationIdParams = Type.Object({
 	id: numericWire,

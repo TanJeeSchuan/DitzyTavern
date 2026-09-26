@@ -58,6 +58,7 @@ export function ActiveWritingWorkspace({
 	onNewChatClose,
 	onNewChatCreated,
 	onImportLaunched,
+	onReload,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
 	onNewChat: () => void;
@@ -65,6 +66,7 @@ export function ActiveWritingWorkspace({
 	onNewChatClose: () => void;
 	onNewChatCreated: () => void;
 	onImportLaunched: (conversationId: number) => void;
+	onReload: () => void;
 }) {
 	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 	const [panelState, dispatchPanel] = useReducer(
@@ -81,7 +83,6 @@ export function ActiveWritingWorkspace({
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
-	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
 	const [controlChangeToast, setControlChangeToast] = useState<{ text: string; id: number } | null>(null);
 	const controlToastId = useRef(0);
@@ -261,16 +262,9 @@ export function ActiveWritingWorkspace({
 				onNewChat={onNewChat}
 				onClose={() => requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
 				onImportLaunched={onImportLaunched}
+				onActiveChatDeleted={onReload}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
-				libraryFocusCharacterId={libraryFocusCharacterId}
-				onLibraryFocusConsumed={() => setLibraryFocusCharacterId(null)}
-				onOpenLibraryCharacter={(characterId) => {
-					if (assemblyActive) return;
-					setLibraryFocusCharacterId(characterId);
-					setGenerationDetailsTarget(null);
-					dispatchPanel({ type: "primary-opened", panel: "library" });
-				}}
 				connectionSettings={connectionSettings}
 				generationSettings={generationSettings}
 				onOpenInspector={(inspector: SplitInspector) => {
@@ -284,7 +278,7 @@ export function ActiveWritingWorkspace({
 			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={session.activeChat}
-					onOpenCast={() => togglePanel("cast")}
+					onOpenCast={() => togglePanel("characters")}
 					onOpenInfo={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);

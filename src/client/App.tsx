@@ -144,6 +144,7 @@ function WritingWorkspace({
 				onNewChatClose={() => setNewChatOpen(false)}
 				onNewChatCreated={() => void handleCreated()}
 				onImportLaunched={onImportLaunched}
+				onReload={() => void onReload()}
 			/>
 		</>
 	);

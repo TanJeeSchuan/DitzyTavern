@@ -1,5 +1,4 @@
-import { CastPanel } from "../CastPanel";
-import { CharacterLibraryPanel } from "../CharacterLibraryPanel";
+import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
 import { PromptPresetPanel } from "./PromptPresetPanel";
@@ -23,8 +22,7 @@ import type { PrimaryPanel } from "./types";
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.
 const sharedHeaderTitles = {
-	cast: "Cast",
-	library: "Character Library",
+	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
 	settings: "Settings",
@@ -42,11 +40,9 @@ export function PrimaryPanelView({
 	onNewChat,
 	onClose,
 	onImportLaunched,
+	onActiveChatDeleted,
 	conversation,
 	onConversationChange,
-	libraryFocusCharacterId,
-	onLibraryFocusConsumed,
-	onOpenLibraryCharacter,
 	connectionSettings,
 	generationSettings,
 	onOpenInspector,
@@ -63,11 +59,9 @@ export function PrimaryPanelView({
 	onNewChat: () => void;
 	onClose: () => void;
 	onImportLaunched: (conversationId: number) => void;
+	onActiveChatDeleted: () => void;
 	conversation: ConversationSummary | null;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
-	libraryFocusCharacterId: number | null;
-	onLibraryFocusConsumed: () => void;
-	onOpenLibraryCharacter: (characterId: number) => void;
 	connectionSettings: ConnectionSettingsController;
 	generationSettings: GenerationSettingsDraftController;
 	onOpenInspector: (inspector: SplitInspector) => void;
@@ -95,27 +89,20 @@ export function PrimaryPanelView({
 				onNewChat={onNewChat}
 				onClose={onClose}
 				onImportLaunched={onImportLaunched}
+				onConversationChange={onConversationChange}
+				onActiveChatDeleted={onActiveChatDeleted}
 			/>
 			{panel !== null && panel !== "chats" && (
 				<>
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
-					{panel === "cast" && (
+					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-							<CastPanel
-								conversationId={Number(activeChat.id)}
+							<CharactersPanel
+								key={activeChat.id}
 								conversation={conversation}
 								onConversationChange={onConversationChange}
-								onOpenLibraryCharacter={onOpenLibraryCharacter}
-							/>
-						</div>
-					)}
-					{panel === "library" && (
-						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-							<CharacterLibraryPanel
-								focusCharacterId={libraryFocusCharacterId}
-								onFocusConsumed={onLibraryFocusConsumed}
 							/>
 						</div>
 					)}

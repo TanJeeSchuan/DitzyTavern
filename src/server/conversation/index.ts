@@ -12,6 +12,7 @@ import {
 	resolveConversationGeneration,
 } from "./commands/active-generation";
 import { createConversation } from "./create";
+export { deleteConversation } from "./delete";
 import { executeConversationCommand } from "./execute";
 import { readChatHistory } from "./history";
 import {
