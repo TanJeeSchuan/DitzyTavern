@@ -34,7 +34,6 @@ import type {
 import { NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
 import { PrimaryPanelView } from "./PrimaryPanelView";
-import { ConnectionSettingsInspector } from "./ConnectionSettingsInspector";
 import { useConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import { GenerationSettingsInspector } from "./GenerationSettingsInspector";
 import {
@@ -434,12 +433,6 @@ export function ActiveWritingWorkspace({
 				<GenerationSettingsInspector
 					conversation={session.conversation}
 					controller={generationSettings}
-					onClose={() => dispatchPanel({ type: "inspector-closed" })}
-				/>
-			)}
-			{!assemblyActive && panelState.inspector === "models" && (
-				<ConnectionSettingsInspector
-					controller={connectionSettings}
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}

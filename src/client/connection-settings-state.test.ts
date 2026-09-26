@@ -5,7 +5,6 @@ import {
 	copyDraft,
 	createConnectionSettingsControllerState,
 	emptyConnectionProfileDraft,
-	headerEditorDataFor,
 	reduceConnectionSettingsController,
 } from "./connection-settings-state";
 
@@ -57,8 +56,6 @@ const controllerState = (): ConnectionSettingsControllerState => ({
 	testModelId: "local-model",
 	testResult: { outcome: "success", message: "Connected." },
 	pendingDeletionProfileId: 1,
-	openProfileMenuId: 1,
-	presetChoicesOpen: true,
 	notice: "old notice",
 	error: "old error",
 });
@@ -96,7 +93,7 @@ describe("copyDraft", () => {
 });
 
 describe("reduceConnectionSettingsController", () => {
-	test("loads settings and initializes the first profile editor atomically", () => {
+	test("loads settings onto the connection list without opening an editor", () => {
 		const next = reduceConnectionSettingsController(
 			createConnectionSettingsControllerState(),
 			{ type: "load-succeeded", settings: controllerSettings, presets: [preset] },
@@ -104,12 +101,8 @@ describe("reduceConnectionSettingsController", () => {
 
 		expect(next.settings).toBe(controllerSettings);
 		expect(next.presets).toEqual([preset]);
-		expect(next.selectedProfileId).toBe(1);
-		expect(next.draft).toEqual(copyDraft(controllerSettings.profiles[0]!));
-		expect(next.testModelId).toBe("model");
-		expect(next.headerEditorData).toEqual(
-			headerEditorDataFor(controllerSettings.profiles[0]!.headers),
-		);
+		expect(next.selectedProfileId).toBeNull();
+		expect(next.editorOpen).toBe(false);
 	});
 
 	test("choosing a preset creates a clean new-profile draft", () => {
@@ -124,9 +117,6 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.testModelId).toBe("preset-model");
 		expect(next.headerEditorData).toEqual({});
 		expect(next.pendingDeletionProfileId).toBeNull();
-		expect(next.openProfileMenuId).toBeNull();
-		expect(next.presetChoicesOpen).toBe(false);
-		expect(next.notice).toContain("Preset defaults copied");
 		expect(next.error).toBeNull();
 	});
 
@@ -163,24 +153,17 @@ describe("reduceConnectionSettingsController", () => {
 		expect(next.error).toBe("Connection Settings changed elsewhere.");
 	});
 
-	test("deleting a profile selects the replacement and resets dependent editor state", () => {
+	test("deleting a profile adopts the new settings and clears the pending deletion", () => {
+		const settings = { revision: 3, profiles: [profile(2, "Second")] };
 		const next = reduceConnectionSettingsController(controllerState(), {
 			type: "delete-succeeded",
-			settings: {
-				revision: 3,
-				profiles: [profile(2, "Second", ["replacement-model"])],
-			},
+			settings,
 			deletedDisplayName: "First",
 			editorVersion: 0,
 			commandId: 0,
 		});
 
-		expect(next.selectedProfileId).toBe(2);
-		expect(next.draft).toEqual(copyDraft(next.settings!.profiles[0]!));
-		expect(next.testModelId).toBe("replacement-model");
-		expect(next.headerEditorData).toEqual(
-			headerEditorDataFor(next.settings!.profiles[0]!.headers),
-		);
+		expect(next.settings).toBe(settings);
 		expect(next.pendingDeletionProfileId).toBeNull();
 		expect(next.notice).toBe("First deleted.");
 	});

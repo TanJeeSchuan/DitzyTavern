@@ -25,7 +25,7 @@ import type { PrimaryPanel } from "./types";
 const sharedHeaderTitles = {
 	cast: "Cast",
 	library: "Character Library",
-	models: "Model Settings",
+	connections: "Connections",
 	generation: "Generation Settings",
 	settings: "Settings",
 } satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | null>, string>;
@@ -132,9 +132,9 @@ export function PrimaryPanelView({
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>
 					)}
-					{panel === "models" && (
+					{panel === "connections" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
-							<ConnectionSettingsPanel controller={connectionSettings} onOpenInspector={() => onOpenInspector("models")} />
+							<ConnectionSettingsPanel controller={connectionSettings} activeProfileId={generationSettings.settings?.connectionProfileId ?? null} />
 						</div>
 					)}
 					{panel === "prompts" && (

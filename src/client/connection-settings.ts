@@ -22,6 +22,12 @@ export type ConnectionProfile = ConnectionProfilePayload;
 export type ConnectionSettings = ConnectionSettingsPayload;
 export type ConnectionPreset = ConnectionPresetPayload;
 
+export const CONNECTION_ADAPTER_LABELS = {
+	deepseek: "DeepSeek",
+	openrouter: "OpenRouter",
+	"openai-compatible": "OpenAI Compatible",
+} satisfies Record<ConnectionAdapter, string>;
+
 export type ConnectionSettingsResult = ConnectionSettingsCommandResultPayload;
 
 export type DiscoveryResult =

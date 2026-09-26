@@ -9,6 +9,6 @@ export function SaveFooter({ dirty, saving = false, valid = true, error = null, 
 }) {
 	return <div className="save-footer">
 		<span role={error ? "alert" : "status"}>{error ?? (saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved")}</span>
-		<Button type="button" size="sm" disabled={!dirty || !valid || saving} onClick={onSave}>{saving ? "Saving…" : "Save"}</Button>
+		<Button type="button" size="sm" variant={dirty ? "default" : "outline"} disabled={!dirty || !valid || saving} onClick={onSave}>{saving ? "Saving…" : "Save"}</Button>
 	</div>;
 }

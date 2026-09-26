@@ -1,114 +1,145 @@
-import { Check, ChevronDown, KeyRound, RefreshCw, RotateCcw, SlidersHorizontal, Zap } from "lucide-react";
-import { DropdownMenu } from "radix-ui";
+import { ChevronDown, ChevronLeft, CircleCheck, CircleX, Zap } from "lucide-react";
+import { AppSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
-import type { ConnectionProfileDraft } from "../../connection-settings";
+import { CONNECTION_ADAPTER_LABELS, type ConnectionProfileDraft, type TestConnectionResult } from "../../connection-settings";
+import { SaveFooter } from "../../SaveFooter";
+import { useSaveGuard, useSaveNavigation } from "../../SaveGuard";
+import { CredentialField } from "./CredentialField";
+import { HeaderEditor } from "./HeaderEditor";
+import { ModelCombobox } from "./ModelCombobox";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
-type Props = {
-	controller: ConnectionSettingsController;
-	onOpenInspector: () => void;
-};
-
-export function ConnectionProfileEditor({ controller, onOpenInspector }: Props) {
+export function ConnectionProfileEditor({ controller }: { controller: ConnectionSettingsController }) {
+	const navigate = useSaveNavigation();
 	const {
 		draft,
 		selectedProfile,
 		selectedProfileId,
 		credentialDraft,
+		headerEditorData,
 		testModelId,
+		testResult,
 		testPending,
 		discoveryPending,
 		refreshModelsDisabledReason,
+		resolvedRequestUrl,
 		setDraft,
 		setCredentialDraft,
+		setHeaderEditorData,
 		setTestModelId,
-		testDraft,
-		refreshModels,
-		resetCredential,
 	} = controller;
+	useSaveGuard({ dirty: controller.dirty, saving: controller.saving, save: controller.applyDraft, discard: controller.discardDraft });
 	const updateDraft = (patch: Partial<ConnectionProfileDraft>) => setDraft({ ...draft, ...patch });
 	const modelOptions = Array.from(new Set([...(selectedProfile?.discoveryCatalog ?? []), ...draft.pinnedModels]));
-	const updateTestModel = (value: string) => {
+	const updateModel = (value: string) => {
 		setTestModelId(value);
 		updateDraft({ pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] });
 	};
+	const customEndpoint = draft.adapter === "openai-compatible";
+	const endpointFields = <>
+		<Field htmlFor="connection-request-url" label="Request URL" helper={resolvedRequestUrl === "" ? "The provider’s API base URL." : `Sends to ${resolvedRequestUrl}`}>
+			<input id="connection-request-url" className="field-input" value={draft.requestUrl} onChange={(event) => updateDraft({ requestUrl: event.target.value })} placeholder="https://example.com/v1/" autoComplete="url" />
+		</Field>
+		<Field htmlFor="connection-models-url" label="Models URL" helper="Optional exact endpoint that lists model IDs for the picker.">
+			<input id="connection-models-url" className="field-input" value={draft.modelsUrl} onChange={(event) => updateDraft({ modelsUrl: event.target.value })} placeholder="https://example.com/v1/models" autoComplete="url" />
+		</Field>
+	</>;
+	const provider = CONNECTION_ADAPTER_LABELS[draft.adapter];
+	const title = draft.displayName.trim() || "New connection";
+	const headerCount = Object.values(headerEditorData).filter((header) => header.operation !== "remove").length;
 
 	return (
-		<section className="connection-editor-section">
-			<div className="connection-editor-heading">
-				<div>
-					<h3>{selectedProfile ? `Edit ${selectedProfile.displayName}` : "New connection"}</h3>
-					<span>{selectedProfile ? "Available to every Chat" : "Not saved yet"}</span>
+		<>
+			<div className="panel-body settings-panel-body">
+				<Button type="button" size="sm" variant="ghost" className="-ml-2 mb-3 text-muted-foreground" onClick={() => navigate(controller.closeEditor)}><ChevronLeft aria-hidden="true" /> Connections</Button>
+				<div className="mb-6 grid gap-0.5">
+					<h3 className="truncate text-base! font-semibold">{title}</h3>
+					<p className="text-xs text-muted-foreground">{[title !== provider && provider, selectedProfile === undefined && "Not saved yet"].filter(Boolean).join(" · ")}</p>
 				</div>
-			</div>
-			<div className="definition-form">
-				<Field htmlFor="connection-display-name" label="Display name"><input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} /></Field>
-				<Field label="Provider"><div className="field-input connection-provider-value">{draft.adapter === "deepseek" ? "DeepSeek" : draft.adapter === "openrouter" ? "OpenRouter" : "OpenAI Compatible"}</div></Field>
-				<Field htmlFor="connection-credential" label="Credential" helper={credentialDraft.length > 0 && selectedProfile ? "Update this credential before testing it." : credentialDraft.length > 0 ? "The credential will be saved when this connection is created." : "Saved credentials cannot be viewed. Enter a new one to replace it."}>
-					<div className="credential-field-row">
-						<div className="credential-input-row"><KeyRound aria-hidden="true" /><input id="connection-credential" className="field-input" type="password" autoComplete="new-password" value={credentialDraft} onChange={(event) => setCredentialDraft(event.target.value)} placeholder={selectedProfile?.credentialConfigured ? "Configured; enter to replace" : "Enter API key"} /></div>
-						{selectedProfile?.credentialConfigured && <button className="secondary-button" type="button" onClick={() => void resetCredential()}><RotateCcw aria-hidden="true" /> Reset</button>}
+
+				<div className="grid gap-4">
+					<Field htmlFor="connection-display-name" label="Name">
+						<input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} autoComplete="off" />
+					</Field>
+					{customEndpoint && endpointFields}
+					<CredentialField
+						id="connection-credential"
+						label="API key"
+						value={credentialDraft}
+						onChange={setCredentialDraft}
+						configured={selectedProfile?.credentialConfigured ?? false}
+						pending={controller.saving}
+						onRemove={() => void controller.resetCredential()}
+						placeholder="Enter API key"
+					/>
+					<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default model" helper="Saved as the default model and used for connection tests.">
+						<ModelCombobox
+							id={`connection-model-${selectedProfileId ?? "new"}`}
+							value={testModelId}
+							options={modelOptions}
+							onChange={updateModel}
+							refreshDisabledReason={refreshModelsDisabledReason}
+							refreshing={discoveryPending}
+							onRefresh={() => void controller.refreshModels()}
+						/>
+					</Field>
+					<div className="grid justify-items-start gap-2">
+						<Button type="button" size="sm" variant="outline" disabled={testPending || !controller.canSave} onClick={() => void controller.testDraft()}>
+							<Zap aria-hidden="true" /> {testPending ? "Testing…" : "Test connection"}
+						</Button>
+						{testResult !== null && <TestOutcome result={testResult} />}
+						<small className="text-xs text-muted-foreground">Sends one real request, which the provider may bill. Doesn’t save.</small>
 					</div>
-				</Field>
-				<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default and test model" helper="Used for connection tests and saved as the default model.">
-					<div className="connection-model-field-row">
-						<div className="connection-model-picker">
-							<input id={`connection-model-${selectedProfileId ?? "new"}`} className="field-input connection-model-input" value={testModelId} onChange={(event) => updateTestModel(event.target.value)} placeholder="Enter model ID" />
-							<DropdownMenu.Root>
-								<DropdownMenu.Trigger asChild><button className="connection-model-menu-button" type="button" aria-label="Show available models" disabled={modelOptions.length === 0}><ChevronDown aria-hidden="true" /></button></DropdownMenu.Trigger>
-								<DropdownMenu.Portal>
-									<DropdownMenu.Content className="connection-model-menu-content" align="end" sideOffset={6}>
-										{modelOptions.map((modelId) => <DropdownMenu.Item className="connection-model-menu-item" key={modelId} onSelect={() => updateTestModel(modelId)}><span>{modelId}</span>{modelId === testModelId && <Check aria-hidden="true" />}</DropdownMenu.Item>)}
-									</DropdownMenu.Content>
-								</DropdownMenu.Portal>
-							</DropdownMenu.Root>
-						</div>
-						<span title={refreshModelsDisabledReason ?? (discoveryPending ? "Refreshing models" : "Refresh models")}>
-							<button className="secondary-button connection-refresh-models-button" type="button" aria-label={discoveryPending ? "Refreshing models" : "Refresh models"} aria-busy={discoveryPending} disabled={refreshModelsDisabledReason !== undefined} onClick={() => void refreshModels()}><RefreshCw aria-hidden="true" /></button>
+				</div>
+
+				<details className="group mt-8 border-t border-border pt-4">
+					<summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+						<span className="grid gap-0.5">
+							<span className="text-[0.86rem] font-semibold">Advanced</span>
+							<span className="text-xs text-muted-foreground">{customEndpoint ? "" : "Endpoints · "}Headers ({headerCount}) · Backend · Output limit · Timeout</span>
 						</span>
+						<ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+					</summary>
+					<div className="mt-4 grid gap-4">
+						{!customEndpoint && endpointFields}
+						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
+							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
+						</Field>
+						<Field htmlFor="connection-model-backend" label="Model backend">
+							<AppSelect id="connection-model-backend" className="field-input" value={draft.modelBackend} onValueChange={(value) => updateDraft({ modelBackend: value === "ai-sdk" ? "ai-sdk" : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "ai-sdk", label: "AI SDK" }]} />
+						</Field>
+						<Field htmlFor="connection-adapter" label="AI SDK adapter">
+							<AppSelect id="connection-adapter" className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "deepseek" || value === "openrouter" ? value : "openai-compatible" })} options={Object.entries(CONNECTION_ADAPTER_LABELS).map(([value, label]) => ({ value, label }))} />
+						</Field>
+						<Field htmlFor="connection-output-token" label="Output limit field">
+							<AppSelect id="connection-output-token" className="field-input" value={draft.outputTokenRepresentation} onValueChange={(value) => updateDraft({ outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "max_tokens", label: "max_tokens" }, { value: "max_completion_tokens", label: "max_completion_tokens" }, { value: "omit", label: "Don’t send a limit" }]} />
+						</Field>
+						<div className="grid gap-1.5">
+							<div className="flex items-center justify-between gap-3">
+								<label htmlFor="connection-timeout" className="text-[13px] font-medium text-muted-foreground">Stream inactivity timeout</label>
+								<span className="flex items-center gap-2 text-xs text-muted-foreground">
+									<span className="w-20"><input id="connection-timeout" className="field-input text-right tabular-nums" type="number" min="0" step="1" value={draft.timeoutMs === null ? "" : draft.timeoutMs / 1000} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Math.round(Number(event.target.value) * 1000) })} placeholder="Off" /></span>
+									seconds
+								</span>
+							</div>
+							<small className="text-xs text-muted-foreground">Aborts a stream that stays quiet this long. Blank or zero disables it.</small>
+						</div>
 					</div>
-				</Field>
-
-				<ConnectionAdvancedSummary controller={controller} onOpenInspector={onOpenInspector} />
-
-				<div className="connection-action-row">
-					<button className="secondary-button" type="button" disabled={testPending || !controller.canSave} onClick={() => void testDraft()}><Zap aria-hidden="true" /> {testPending ? "Testing..." : "Test connection"}</button>
-				</div>
-				{controller.basicValidationError !== null && <small className="field-error connection-validation-error" role="alert">{controller.basicValidationError}</small>}
-				<small className="connection-test-warning">Testing contacts the provider and may incur a charge. It does not save changes.</small>
+				</details>
 			</div>
-		</section>
+			<SaveFooter dirty={controller.dirty} saving={controller.saving} valid={controller.canSave} error={controller.error ?? controller.validationError} onSave={() => void controller.applyDraft()} />
+		</>
 	);
 }
 
-function ConnectionAdvancedSummary({
-	controller,
-	onOpenInspector,
-}: {
-	controller: ConnectionSettingsController;
-	onOpenInspector: () => void;
-}) {
-	const { draft, headerEditorData, resolvedRequestUrl } = controller;
-	const configuredHeaderCount = Object.values(headerEditorData).filter((header) => header.configured && header.operation !== "remove").length;
-	const pendingHeaderCount = Object.values(headerEditorData).filter((header) => !header.configured || header.operation !== "keep").length;
+function TestOutcome({ result }: { result: TestConnectionResult }) {
+	const passed = result.outcome === "success";
+	const Icon = passed ? CircleCheck : CircleX;
 	return (
-		<section className="connection-advanced-summary" aria-labelledby="connection-advanced-summary-title">
-			<div className="settings-summary-heading">
-				<div>
-					<h3 id="connection-advanced-summary-title">Advanced settings</h3>
-					<p>Endpoints, headers, and transport details are ready in the inspector.</p>
-				</div>
-				<SlidersHorizontal aria-hidden="true" />
-			</div>
-			<dl className="settings-summary-list">
-				<div><dt>Request URL</dt><dd>{resolvedRequestUrl}</dd></div>
-				<div><dt>Models URL</dt><dd>{draft.modelsUrl.trim().length > 0 ? draft.modelsUrl : "Not configured"}</dd></div>
-				<div><dt>Custom headers</dt><dd>{configuredHeaderCount === 0 ? "No configured headers" : `${configuredHeaderCount} configured`}{pendingHeaderCount > 0 ? ` · ${pendingHeaderCount} unsaved` : ""}</dd></div>
-				<div><dt>Transport</dt><dd>{draft.apiFormat === "chat-completions" ? "Chat Completions" : draft.apiFormat} · {draft.modelBackend === "automatic" ? "Automatic backend" : "AI SDK"}</dd></div>
-			</dl>
-			<button className="secondary-button settings-inspector-entry" type="button" onClick={onOpenInspector}>
-				<SlidersHorizontal aria-hidden="true" /> Edit in inspector
-			</button>
-		</section>
+		<p role="status" className={`flex items-start gap-1.5 text-xs ${passed ? "text-foreground" : "text-destructive"}`}>
+			<Icon className={`mt-px size-3.5 shrink-0 ${passed ? "text-primary" : ""}`} aria-hidden="true" />
+			{result.outcome === "invalid" ? result.reason : result.message}
+		</p>
 	);
 }

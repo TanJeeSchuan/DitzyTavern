@@ -1,7 +1,7 @@
 import {
 	BookOpen,
 	BookMarked,
-	Cpu,
+	Cable,
 	ListOrdered,
 	MessageSquare,
 	Settings,
@@ -60,11 +60,11 @@ export function NavigationRail({
 					<ListOrdered aria-hidden="true" />
 				</RailButton>
 				<RailButton
-					label="Models"
-					active={activePanel === "models"}
-					onClick={() => onOpenPanel("models")}
+					label="Connections"
+					active={activePanel === "connections"}
+					onClick={() => onOpenPanel("connections")}
 				>
-					<Cpu aria-hidden="true" />
+					<Cable aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Generation"

@@ -45,7 +45,7 @@ const presets: readonly ConnectionPreset[] = [
 	},
 	{
 		id: "generic-openai-compatible",
-		label: "Generic OpenAI Compatible",
+		label: "OpenAI Compatible",
 		description: "A blank Chat Completions profile for local or proxied endpoints.",
 		profile: connectionProfileDraftOf(blankConnectionProfileDraft),
 	},

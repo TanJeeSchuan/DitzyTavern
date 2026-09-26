@@ -172,20 +172,20 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
-button {
-	color: inherit;
-}
-
-button:not(:disabled) {
-	cursor: pointer;
-}
-
-button:disabled {
-	cursor: not-allowed;
-	opacity: 0.46;
-}
-
 @layer base {
+	button {
+		color: inherit;
+	}
+
+	button:not(:disabled) {
+		cursor: pointer;
+	}
+
+	button:disabled {
+		cursor: not-allowed;
+		opacity: 0.46;
+	}
+
 	button:focus-visible,
 	textarea:focus-visible,
 	input:focus-visible {

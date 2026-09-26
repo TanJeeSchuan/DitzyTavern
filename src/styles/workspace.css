@@ -499,8 +499,8 @@
 	align-items: center;
 	justify-content: center;
 	gap: 0.45rem;
-	min-height: 2.55rem;
-	padding: 0 0.95rem;
+	min-height: 2rem;
+	padding: 0 0.85rem;
 	border-radius: 0.75rem;
 	font-size: 0.82rem;
 	font-weight: 650;
@@ -536,8 +536,8 @@
 	align-items: center;
 	justify-content: center;
 	gap: 0.45rem;
-	min-height: 2.55rem;
-	padding: 0 0.95rem;
+	min-height: 2rem;
+	padding: 0 0.85rem;
 	border: 1px solid var(--destructive);
 	border-radius: 0.75rem;
 	background: var(--destructive);
@@ -762,6 +762,11 @@
 	resize: vertical;
 }
 
+.field-input {
+	min-height: 2rem;
+	padding-block: 0.3rem;
+}
+
 .field-input:focus-visible,
 .field textarea:focus-visible {
 	outline: 0;
@@ -774,8 +779,8 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.55rem;
-	min-height: 2.25rem;
-	padding: 0.4rem 0.7rem;
+	min-height: 2rem;
+	padding: 0.3rem 0.7rem;
 	border: 1px solid var(--border);
 	border-radius: 0.7rem;
 	background: var(--surface-muted);
@@ -784,6 +789,8 @@
 	text-align: left;
 	cursor: pointer;
 }
+
+.app-select-trigger.field-input { font-size: 0.84rem; }
 
 .app-select-trigger:focus-visible {
 	outline: 2px solid var(--focus);
@@ -913,77 +920,6 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 
 .settings-panel-body section > .field + .field { margin-top: 16px; }
 
-.generation-settings-summary,
-.connection-advanced-summary {
-	display: grid;
-	gap: 0.75rem;
-	margin-top: 0.35rem;
-	padding: 0.85rem;
-	border: 1px solid var(--border);
-	border-radius: 0.9rem;
-	background: var(--surface-muted);
-}
-
-.settings-summary-heading {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 0.75rem;
-}
-
-.settings-summary-heading h3 {
-	margin: 0;
-}
-
-.settings-summary-heading p {
-	margin: 0.3rem 0 0;
-	color: var(--text-muted);
-	font-size: 0.72rem;
-	line-height: 1.45;
-}
-
-.settings-summary-heading > svg {
-	width: 1rem;
-	height: 1rem;
-	flex: 0 0 auto;
-	color: var(--accent);
-}
-
-.settings-summary-list {
-	display: grid;
-	gap: 0.45rem;
-	margin: 0;
-}
-
-.settings-summary-list > div {
-	display: grid;
-	grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-	gap: 0.75rem;
-	align-items: baseline;
-}
-
-.settings-summary-list dt {
-	color: var(--text-muted);
-	font-size: 0.72rem;
-}
-
-.settings-summary-list dd {
-	margin: 0;
-	font-size: 0.75rem;
-	font-weight: 620;
-	text-align: right;
-	overflow-wrap: anywhere;
-}
-
-.settings-inspector-entry {
-	width: 100%;
-}
-
-.connection-validation-error {
-	display: block;
-	margin-top: -0.25rem;
-}
-
 .theme-options {
 	display: grid;
 	gap: 0.45rem;
@@ -1025,52 +961,6 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 	margin-top: 1.4rem;
 	padding-top: 1.25rem;
 	border-top: 1px solid var(--border);
-}
-
-.embedding-settings-editor {
-	display: grid;
-	gap: 0.85rem;
-}
-
-.embedding-settings-editor > div:first-child > p {
-	margin: 0.35rem 0 0;
-	color: var(--text-muted);
-	font-size: 12px;
-	line-height: 1.5;
-}
-
-.embedding-settings-grid {
-	display: grid;
-	gap: 16px;
-}
-
-.embedding-settings-grid .field > label {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35rem;
-}
-
-.embedding-settings-grid .field > label em {
-	color: var(--text-muted);
-	font-size: 0.68rem;
-	font-style: normal;
-	font-weight: 500;
-}
-
-.embedding-settings-grid .field small {
-	line-height: 1.4;
-}
-
-.embedding-credential-field svg {
-	width: 0.85rem;
-	height: 0.85rem;
-	color: var(--accent);
-}
-
-.embedding-settings-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.5rem;
 }
 
 .settings-feedback,

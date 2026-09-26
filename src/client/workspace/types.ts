@@ -4,7 +4,7 @@ export type PrimaryPanel =
 	| "library"
 	| "lorebooks"
 	| "prompts"
-	| "models"
+	| "connections"
 	| "generation"
 	| "settings"
 	| null;

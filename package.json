@@ -38,6 +38,7 @@
 		"ai": "^7.0.79",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
+		"cmdk": "^1.1.1",
 		"drizzle-orm": "^0.45.2",
 		"elysia": "^1.4.29",
 		"json-edit-react": "^1.0.0",
