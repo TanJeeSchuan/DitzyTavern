@@ -29,6 +29,7 @@ export type TestConnectionResult =
 			outcome: "failure";
 			kind: TestConnectionFailureKind;
 			message: string;
+			responseBody?: string;
 		};
 
 export interface TestConnectionInput {
@@ -144,15 +145,15 @@ function normalizeTestConnectionError(
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
 	if (status === 401 || status === 403) {
-		return failure("authentication", providerFailureMessage(error));
+		return failure("authentication", providerFailureMessage(error), error.responseBody);
 	}
 	if (isMalformedResponseError(error)) {
-		return failure("malformed-response", providerFailureMessage(error));
+		return failure("malformed-response", providerFailureMessage(error), error.responseBody);
 	}
 	if (isRedirectError(error)) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
-	return failure("endpoint", providerFailureMessage(error));
+	return failure("endpoint", providerFailureMessage(error), error.responseBody);
 }
 
 function providerFailureMessage(error: ProviderErrorLike): string {
@@ -180,6 +181,8 @@ function hasReasoning(result: { reasoningText?: string | undefined; reasoning: A
 	return result.reasoning.some((part) => part.type === "reasoning" && (part.text ?? "").trim().length > 0);
 }
 
-function failure(kind: TestConnectionFailureKind, message: string): TestConnectionResult {
-	return { outcome: "failure", kind, message };
+function failure(kind: TestConnectionFailureKind, message: string, responseBody?: string): TestConnectionResult {
+	const result: TestConnectionResult = { outcome: "failure", kind, message };
+	if (responseBody !== undefined) result.responseBody = responseBody;
+	return result;
 }

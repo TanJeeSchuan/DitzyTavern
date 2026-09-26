@@ -26,7 +26,6 @@ import {
 } from "./errors";
 import {
 	formatProviderError,
-	snapshotProviderResponse,
 } from "./provider-errors";
 import { monitorSseActivity } from "./sse-activity";
 
@@ -280,10 +279,16 @@ async function rejectProviderResponse(
 	response: Response,
 ): Promise<void> {
 	if (response.ok) return;
-	const snapshot = await snapshotProviderResponse(response);
+	const responseBody = await response.text();
+	const snapshot = {
+		status: response.status,
+		contentType: response.headers.get("content-type") ?? undefined,
+		bodyBytes: new TextEncoder().encode(responseBody).byteLength,
+	};
 	throw new ModelClientTransportError(
 		formatProviderError(snapshot),
 		"provider",
+		{ responseBody },
 	);
 }
 

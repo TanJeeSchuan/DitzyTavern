@@ -38,7 +38,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 	};
 	const customEndpoint = draft.adapter === "openai-compatible";
 	const endpointFields = <>
-		<Field htmlFor="connection-request-url" label="Request URL" helper={resolvedRequestUrl === "" ? "The provider’s API base URL." : `Sends to ${resolvedRequestUrl}`}>
+		<Field htmlFor="connection-request-url" label="Request URL" helper={resolvedRequestUrl === "" ? "Add a trailing slash to a base URL. Without it, the URL is treated as the exact endpoint." : `Sends to ${resolvedRequestUrl}. Add a trailing slash to a base URL.`}>
 			<input id="connection-request-url" className="field-input" value={draft.requestUrl} onChange={(event) => updateDraft({ requestUrl: event.target.value })} placeholder="https://example.com/v1/" autoComplete="url" />
 		</Field>
 		<Field htmlFor="connection-models-url" label="Models URL" helper="Optional exact endpoint that lists model IDs for the picker.">

@@ -168,6 +168,9 @@ async function consumeGenerationStream(
 			// ==[HUMAN APPROVED]== position cannot join the ordered stream the session machine tracks.
 			if (frameId === undefined || frameId <= lastEventId) return;
 			lastEventId = frameId;
+			if (event.type === "failed" && event.responseBody !== undefined) {
+				console.error("Provider response body:", event.responseBody);
+			}
 			input.onDelta(event, lastEventId);
 			return;
 		}

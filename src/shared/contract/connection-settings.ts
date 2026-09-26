@@ -133,6 +133,7 @@ const testConnectionResult = Type.Union([
 			Type.Literal("adapter-unavailable"),
 		]),
 		message: Type.String(),
+		responseBody: Type.Optional(Type.String()),
 	}),
 ]);
 

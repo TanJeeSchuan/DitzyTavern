@@ -87,7 +87,7 @@ interface MutableRuntimeState {
 
 type PendingProviderTerminal =
 	| { readonly status: "complete" }
-	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind };
+	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind; readonly responseBody?: string };
 
 /**
  * ==[HUMAN APPROVED]== Process-local fan-out for one database. Event history is deliberately
@@ -300,17 +300,19 @@ export class GenerationRuntime {
 		this.onTerminal?.();
 	}
 
-	fail(reason: string, kind: ModelClientFailureKind = "transport"): void {
+	fail(reason: string, kind: ModelClientFailureKind = "transport", responseBody?: string): void {
 		if (this.stateValue.status !== "active") return;
 		if (this.stopRequested) {
-			this.pendingProviderTerminal ??= { status: "failed", reason, kind };
+			this.pendingProviderTerminal ??= { status: "failed", reason, kind, responseBody };
 			return;
 		}
 		// ==[HUMAN APPROVED]== A failure event is part of the same ordered stream. If the provider
 		// already emitted one, retain that single authoritative frame rather than
 		// duplicating it when the workflow reports its rejected Promise.
 		if (this.events.at(-1)?.event.type !== "failed") {
-			this.publish({ type: "failed", kind, message: reason });
+			const event: Extract<ModelClientEvent, { type: "failed" }> = { type: "failed", kind, message: reason };
+			if (responseBody !== undefined) event.responseBody = responseBody;
+			this.publish(event);
 		}
 		this.flushCheckpoint();
 		this.stateValue.status = "failed";
@@ -371,7 +373,7 @@ export class GenerationRuntime {
 		const pending = this.pendingProviderTerminal;
 		this.pendingProviderTerminal = null;
 		if (pending?.status === "complete") this.complete();
-		if (pending?.status === "failed") this.fail(pending.reason, pending.kind);
+		if (pending?.status === "failed") this.fail(pending.reason, pending.kind, pending.responseBody);
 	}
 
 	/** ==[HUMAN APPROVED]== Mark the runtime terminal after the durable Conversation transition. */
