@@ -6,7 +6,7 @@ import { PanelHeader } from "../PanelHeader";
 import { useAsyncEffect } from "../lib/use-async";
 
 type State = { status: "loading" | "ready" | "failed"; sources: Awaited<ReturnType<typeof loadConversationMemories>>["sources"]; error: string | null; pendingMessageId: number | null };
-type Editing = { messageId: number; index: number; claim: string; attribution: string; people: string };
+type Editing = { messageId: number; revision: number; index: number; claim: string; attribution: string; people: string };
 
 export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { conversationId: number; onClose: () => void; onNavigateSource: (messageId: number) => void }) {
 	const [state, setState] = useState<State>({ status: "loading", sources: [], error: null, pendingMessageId: null });
@@ -41,7 +41,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 	const saveCorrection = async (source: State["sources"][number], index: number) => {
 		if (!editing) return;
 		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
-		const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "edit", { claim: editing.claim, attribution: editing.attribution, people: editing.people.split(",").map((person) => person.trim()).filter(Boolean) });
+		const result = await correctMemory(conversationId, source.messageId, source.variantId, editing.revision, index, "edit", { claim: editing.claim, attribution: editing.attribution, people: editing.people.split(",").map((person) => person.trim()).filter(Boolean) });
 		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
 		else { setState((current) => ({ ...current, pendingMessageId: null, error: result.outcome === "conflict" ? "This collection changed elsewhere. Review the current collection before editing again." : null, sources: current.sources.map((item) => item.variantId === result.collection.variantId ? result.collection : item) })); setEditing(null); }
 	};
@@ -79,7 +79,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 						<label className="field"><span>Attribution</span><input className="field-input" value={editing.attribution} onChange={(event) => setEditing({ ...editing, attribution: event.target.value })} /></label>
 						<label className="field"><span>People, separated by commas</span><input className="field-input" value={editing.people} onChange={(event) => setEditing({ ...editing, people: event.target.value })} /></label>
 						<Button type="button" size="sm" disabled={state.pendingMessageId === source.messageId} onClick={() => void saveCorrection(source, index)}><Check aria-hidden="true" /> Save</Button><Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}><X aria-hidden="true" /> Cancel</Button>
-					</div> : <><h4>{claim.claim}</h4><p>{claim.attribution}{claim.people.length ? ` · ${claim.people.join(", ")}` : ""}{claim.writerMaintained && " · Writer-maintained"}</p><Button ref={editButtonRef} type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={(event) => { editButtonRef.current = event.currentTarget; setEditing({ messageId: source.messageId, index, claim: claim.claim, attribution: claim.attribution, people: claim.people.join(", ") }); }}><Pencil aria-hidden="true" /> Edit</Button><Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void removeCorrection(source, index)}><Trash2 aria-hidden="true" /> Remove</Button></>}
+					</div> : <><h4>{claim.claim}</h4><p>{claim.attribution}{claim.people.length ? ` · ${claim.people.join(", ")}` : ""}{claim.writerMaintained && " · Writer-maintained"}</p><Button ref={editButtonRef} type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={(event) => { editButtonRef.current = event.currentTarget; setEditing({ messageId: source.messageId, revision: source.revision, index, claim: claim.claim, attribution: claim.attribution, people: claim.people.join(", ") }); }}><Pencil aria-hidden="true" /> Edit</Button><Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void removeCorrection(source, index)}><Trash2 aria-hidden="true" /> Remove</Button></>}
 					<details><summary>Evidence and judgment</summary>{claim.writerMaintained && <p className="panel-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}<ul>{claim.evidence.map((evidence, evidenceIndex) => <li key={`${evidence.messageId}-${evidenceIndex}`}><button type="button" onClick={() => onNavigateSource(evidence.messageId)}>Message {evidence.messageId}</button><blockquote>{evidence.excerpt}</blockquote></li>)}</ul><p>Jev outputs: support {claim.judgment.support}; usefulness {claim.judgment.usefulness}. Probabilities are model outputs, not proof of truth.</p></details>
 				</article>)}
 			</section>)}

@@ -68,17 +68,18 @@ const promptPlanOf = (system: string): PromptPlan => ({
 
 const generatedContent = async (database: Database, memory: MemorySettingsPayload, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal) => {
 	if (tokenxEstimator(source.content) > 12_000) throw new Error("This complete source exceeds the 12,000-token Memory extraction limit. It was not truncated.");
-	const retainedContext = [...context];
-	while (retainedContext.length > 0 && tokenxEstimator(JSON.stringify(retainedContext)) > 2_048) retainedContext.shift();
 	if (memory.extractionProfileId === null || memory.extractionModel.length === 0) throw new Error("Choose an extraction Connection Profile and model in Memory Settings.");
 	const connectionSettings = createConnectionSettingsModule(database);
 	const settings = connectionSettings.get();
 	const profile = settings.profiles.find((item) => item.id === memory.extractionProfileId);
 	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
-	const content = JSON.stringify({ source, precedingSelectedMessages: retainedContext });
 	const instructions = `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${source.messageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
-	const prompt = `${instructions}\n\nCaptured source and reference context:\n${content}`;
-	if (tokenxEstimator(prompt) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
+	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
+	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
+	const retainedContext = [...context];
+	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) retainedContext.shift();
+	const prompt = promptOf(retainedContext);
+	if (exceedsContext(retainedContext)) throw new Error("The complete source and extraction instructions exceed the configured Memory extraction context. Raise the extraction context limit or shorten the source.");
 	const client = createModelClient({ profile, secrets: connectionSettings.getProfileSecrets(profile.id), fetch: fetcher });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
@@ -96,7 +97,7 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	if (result.finishReason !== "stop") throw new Error(result.finishReason === "length" ? "Memory extraction output was truncated. Retry after reducing the source or increasing its output reserve." : "Memory extraction did not finish successfully. Retry this source.");
 	let parsed: MemoryExtractionResponse;
 	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch { throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source."); }
-	return validateMemoryCandidates(parsed, [source, ...context], source.messageId);
+	return validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
 };
 
 const choice = (instructions: string, labels: readonly string[]) => ({

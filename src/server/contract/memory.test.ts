@@ -292,6 +292,38 @@ describe("Memory source public contract", () => {
 		} finally { await stop(); }
 	});
 
+	test("drops oldest prior context until the complete source fits the extraction context", async () => {
+		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+		const conversation = createChat(database);
+		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
+		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
+		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
+		createMemorySettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, jevModel: "jev-1.13.0" });
+		insertVariant(database, insertMessage(database, conversation.id, 1), "Oldest context. ".repeat(250), true);
+		insertVariant(database, insertMessage(database, conversation.id, 2), "Recent context.", true);
+		const messageId = insertMessage(database, conversation.id, 3);
+		const variantId = insertVariant(database, messageId, "Owning source.", true);
+		await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+		}));
+		let requestBody = "";
+		const fakeFetch: ModelFetch = async (_input, init) => {
+			requestBody = String(init?.body);
+			const stream = [
+				{ choices: [{ index: 0, delta: { content: JSON.stringify({ candidates: [] }) }, finish_reason: null }] },
+				{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+			].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
+			return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+		};
+		const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
+		try {
+			await waitFor(() => ["complete", "failed"].includes(readConversationMemories(database, conversation.id).at(-1)?.status ?? ""));
+			expect(readConversationMemories(database, conversation.id).at(-1)).toMatchObject({ variantId, status: "complete", error: null });
+			expect(requestBody).toContain("Recent context.");
+			expect(requestBody).not.toContain("Oldest context.");
+		} finally { await stop(); }
+	});
+
 	test("recovers an interrupted running job after worker restart", async () => {
 		const conversation = createChat(database);
 		const messageId = insertMessage(database, conversation.id, 1);

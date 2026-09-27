@@ -123,7 +123,7 @@ export function queueMemorySource(database: Database, conversationId: number, me
 	const current = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, captured.source.variantId)).get();
 	if (current?.ownership === "writer") return false;
 	if (current && current.source_hash === captured.sourceHash && ["pending", "running"].includes(current.status)) {
-		if (catchupRunId === null && current.catchup_run_id !== null) db.update(memoryCollectionTable).set({ catchup_run_id: null, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, current.variant_id)).run();
+		if (current.catchup_run_id !== null && current.catchup_run_id !== catchupRunId) db.update(memoryCollectionTable).set({ catchup_run_id: catchupRunId, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, current.variant_id)).run();
 		return false;
 	}
 	if (current && current.source_hash === captured.sourceHash && current.status === "complete") return false;

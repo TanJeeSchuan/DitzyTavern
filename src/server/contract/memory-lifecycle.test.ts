@@ -165,4 +165,20 @@ describe("Memory source lifecycle public operations", () => {
 			expect(await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()).toMatchObject({ run: { id: run.id, state: "cancelled" } });
 		} finally { release(); await stop(); }
 	});
+
+	test("cancelling an older catch-up keeps sources a newer catch-up also requested", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const source = insertMessage(database, conversation.id, 1, "Shared catch-up source.");
+		const memories = createMemoryRoutes(database);
+		const start = async () => Value.Parse(memoryCatchup, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json());
+		const older = await start();
+		const newer = await start();
+		expect((await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup/${older.id}`, { method: "DELETE" }))).status).toBe(200);
+		const stop = startMemoryWorker(database, { process: async (item) => supportedMemory(item.messageId, item.content) });
+		try {
+			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(source.variantId)?.status === "complete")).toBe(true);
+			expect(await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()).toMatchObject({ run: { id: newer.id, state: "complete", complete: 1 } });
+		} finally { await stop(); }
+	});
 });
