@@ -88,9 +88,9 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 		modelId: memory.extractionModel,
 		generationSettings: { temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null, contextLimit: memory.contextLimit, responseBudget: memory.outputReserve, requestOverrides: {} },
 		connection: connectionSnapshotOf(settings, profile),
-		signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
+		signal,
 	}, { onEvent: (event) => {
-		if (event.type !== "content" && event.type !== "reasoning") return;
+		if (event.type !== "content") return;
 		collectedOutputBytes += encoder.encode(event.text).byteLength;
 		if (collectedOutputBytes > MAX_OUTPUT_BYTES) throw new Error("Memory extraction output exceeded 64 KiB.");
 	} });
