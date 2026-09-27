@@ -4,7 +4,7 @@ import { createTypesafeSettingsModule, JEV_STATE_TOKEN_LIMIT, jevRequest, reques
 import { tokenxEstimator } from "../prompt-compiler";
 import type { LoreScanMessage, LoreSemanticEvaluation } from "./matching";
 import type { Lorebook } from "../../shared/contract/lorebook";
-import type { JevAnswer, TypesafeSettingsPayload } from "../../shared/contract/typesafe";
+import type { TypesafeSettingsPayload } from "../../shared/contract/typesafe";
 
 export interface SemanticSettingsSnapshot {
 	readonly mode: TypesafeSettingsPayload["loreTriggerMode"];
@@ -24,12 +24,23 @@ export const captureSemanticSettings = (database: Database, options?: TypesafeSe
 	};
 };
 
-const boundedScene = (messages: readonly LoreScanMessage[]): string[] => {
-	const scene = messages.map((message) => message.content);
-	const fits = () => tokenxEstimator(JSON.stringify({ scene })) <= JEV_STATE_TOKEN_LIMIT;
-	while (scene.length > 1 && !fits()) scene.shift();
-	while (scene.length === 1 && !fits()) scene[0] = scene[0]!.slice(Math.ceil(scene[0]!.length / 10));
-	return scene;
+const sceneFits = (scene: readonly string[]) => tokenxEstimator(JSON.stringify({ scene })) <= JEV_STATE_TOKEN_LIMIT;
+
+const sceneChunks = (messages: readonly LoreScanMessage[]): string[][] => {
+	const chunks: string[][] = [[]];
+	for (const message of messages) {
+		let rest = message.content;
+		while (rest.length > 0) {
+			let size = rest.length;
+			while (!sceneFits([rest.slice(0, size)])) size = Math.floor(size * 0.9);
+			const piece = rest.slice(0, size);
+			rest = rest.slice(size);
+			const current = chunks.at(-1)!;
+			if (sceneFits([...current, piece])) current.push(piece);
+			else chunks.push([piece]);
+		}
+	}
+	return chunks;
 };
 
 const triggerQuestion = (trigger: string) => ({
@@ -48,23 +59,25 @@ export async function evaluateSemanticLore(input: {
 	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
 	if (settings.mode === "off") return { available: false, threshold: settings.threshold, fallbackReason: "Semantic Triggers are turned off in Model Settings." };
 	if (settings.credential === null) return { available: false, threshold: settings.threshold, fallbackReason: "Configure the Typesafe credential in Model Settings to match Semantic Triggers." };
-	const state = { scene: boundedScene(input.messages) };
-	const requestFor = (indexes: readonly number[]) => jevRequest(settings.jevModel, state, Object.fromEntries(indexes.map((index) => [`trigger_${index}`, triggerQuestion(triggers[index]!)])));
-	const batches: number[][] = [[]];
-	for (const index of triggers.keys()) {
-		const current = batches.at(-1)!;
-		if (current.length > 0 && !requestFor([...current, index]).fits) batches.push([index]);
-		else current.push(index);
-	}
+	const requestsFor = (scene: readonly string[]) => {
+		const requestFor = (indexes: readonly number[]) => jevRequest(settings.jevModel, { scene }, Object.fromEntries(indexes.map((index) => [`trigger_${index}`, triggerQuestion(triggers[index]!)])));
+		const batches: number[][] = [[]];
+		for (const index of triggers.keys()) {
+			const current = batches.at(-1)!;
+			if (current.length > 0 && !requestFor([...current, index]).fits) batches.push([index]);
+			else current.push(index);
+		}
+		return batches.map(requestFor);
+	};
 	const credential = settings.credential;
 	try {
-		const answers = (await Promise.all(batches.map((batch) => requestJev({ ...requestFor(batch), credential, fetch: input.fetch }))))
-			.reduce<Readonly<Record<string, JevAnswer>>>((all, part) => ({ ...all, ...part }), {});
-		const matches = triggers.map((trigger, index) => {
-			const answer = answers[`trigger_${index}`]!;
+		const answers = await Promise.all(sceneChunks(input.messages).flatMap(requestsFor).map((request) => requestJev({ ...request, credential, fetch: input.fetch })));
+		const scores = new Map<string, number>();
+		for (const [id, answer] of answers.flatMap((part) => Object.entries(part))) {
 			if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
-			return { trigger, score: answer.noul };
-		});
+			scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
+		}
+		const matches = triggers.map((trigger, index) => ({ trigger, score: scores.get(`trigger_${index}`)! }));
 		return { available: true, threshold: settings.threshold, matches };
 	} catch (error) {
 		return { available: false, threshold: settings.threshold, fallbackReason: error instanceof Error ? error.message : "Semantic matching was unavailable." };

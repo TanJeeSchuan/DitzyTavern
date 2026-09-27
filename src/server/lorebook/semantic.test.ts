@@ -33,26 +33,27 @@ describe("semantic Lore evaluation", () => {
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
 	});
 
-	test("keeps each request within Jev limits by trimming the oldest scene text and splitting triggers", async () => {
+	test("covers the whole scan window within Jev limits by splitting the scene and triggers", async () => {
 		const bodies: { state: { scene: string[] }; questions: Record<string, { type: string }> }[] = [];
 		const triggers = Array.from({ length: 120 }, (_, index) => `situation ${index} ${"detail ".repeat(300)}`);
 		const result = await evaluateSemanticLore({
 			entries: [{ enabled: true, semanticTriggers: triggers }],
-			messages: [{ content: "oldest ".repeat(40_000) }, { content: `${"filler ".repeat(40_000)}newest line` }],
+			messages: [{ content: `only in the oldest message ${"oldest ".repeat(40_000)}` }, { content: `${"filler ".repeat(40_000)}newest line` }],
 			settings,
 			fetch: async (_input, init) => {
 				// SAFETY: the fake captures the request emitted by evaluateSemanticLore, whose shape is asserted below.
 				const body = JSON.parse(String(init?.body)) as { state: { scene: string[] }; questions: Record<string, { type: string }> };
 				bodies.push(body);
-				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: 0.9 }])) });
+				const seesOldest = body.state.scene.some((text) => text.startsWith("only in the oldest message"));
+				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
 			},
 		});
-		expect(bodies.length).toBeGreaterThan(1);
 		expect(bodies.every((body) => tokenxEstimator(JSON.stringify(body.state)) <= 16_000)).toBe(true);
-		expect(bodies[0]?.state.scene).toHaveLength(1);
-		expect(bodies[0]?.state.scene[0]).toEndWith("newest line");
-		expect(result.available).toBe(true);
+		const scanned = bodies.flatMap((body) => body.state.scene).join("");
+		expect(scanned).toContain("only in the oldest message");
+		expect(scanned).toContain("newest line");
 		expect(result.matches).toHaveLength(triggers.length);
+		expect(result.matches?.[0]).toEqual({ trigger: triggers[0], score: 0.9 });
 	});
 
 	test("uses one unavailable result when Jev fails", async () => {
