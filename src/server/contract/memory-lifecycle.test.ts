@@ -29,7 +29,7 @@ const enableMemory = async (database: Database, conversationId: number) => {
 	if (!block.enabled) await readOperation(toggleBlock(database, preset.id, block.id, true));
 };
 const request = (path: string, init?: RequestInit) => new Request(`http://localhost${path}`, { headers: { "content-type": "application/json", ...init?.headers }, ...init });
-const supportedMemory = (messageId: number, content: string) => [{ claim: "The event occurred.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: content }], judgment: { support: "supported" as const, usefulness: "retain" as const, probabilities: { "support:supported": 1, "usefulness:retain": 1 } } }];
+const supportedMemory = (messageId: number, content: string) => [{ claim: "The event occurred.", attribution: "Narrated event", people: [], evidence: [{ messageId, excerpt: content }], judgment: { support: "supported" as const, usefulness: "retain" as const, probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, usefulness: 1 } } }];
 
 describe("Memory source lifecycle public operations", () => {
 	let database: Database;

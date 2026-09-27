@@ -1321,3 +1321,61 @@
 		animation: none !important;
 	}
 }
+
+.memory-trace {
+	font-size: 0.74rem;
+}
+
+.memory-trace summary {
+	cursor: pointer;
+	color: var(--muted-foreground);
+}
+
+.memory-trace ol {
+	display: grid;
+	gap: 0.4rem;
+	margin: 0.5rem 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.memory-trace li > details {
+	padding: 0.5rem 0.65rem;
+	border: 1px solid var(--border);
+	border-radius: 0.65rem;
+}
+
+.memory-trace li summary {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.6rem;
+	color: var(--foreground);
+}
+
+.memory-trace li summary span:last-child {
+	color: var(--muted-foreground);
+	font-variant-numeric: tabular-nums;
+}
+
+.memory-trace-field {
+	display: grid;
+	gap: 0.2rem;
+	margin-top: 0.5rem;
+}
+
+.memory-trace-field > span {
+	color: var(--muted-foreground);
+}
+
+.memory-trace pre {
+	max-height: 18rem;
+	margin: 0;
+	padding: 0.5rem;
+	overflow: auto;
+	border-radius: 0.5rem;
+	background: var(--surface-muted);
+	font-size: 0.7rem;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

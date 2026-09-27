@@ -38,6 +38,7 @@ export const createMemorySettingsModule = (database: Database, options: MemorySe
 			outputReserve: value.output_reserve,
 			safetyAllowance: value.safety_allowance,
 			jevModel: value.jev_model,
+			usefulnessConfidenceGate: value.usefulness_confidence_gate,
 			credentialConfigured: db.select({ id: memorySecretTable.id }).from(memorySecretTable).where(eq(memorySecretTable.id, SETTINGS_ID)).get() !== undefined,
 		};
 	};
@@ -79,8 +80,9 @@ export const createMemorySettingsModule = (database: Database, options: MemorySe
 		if (![command.contextLimit, command.outputReserve].every((limit) => Number.isSafeInteger(limit) && limit > 0 && limit <= 1_000_000)) throw new InvalidMemorySettingsError("Extraction context and output limits must be positive whole numbers no greater than 1,000,000.");
 		if (!Number.isSafeInteger(command.safetyAllowance) || command.safetyAllowance < 0 || command.safetyAllowance > 1_000_000) throw new InvalidMemorySettingsError("The safety allowance must be a non-negative whole number no greater than 1,000,000.");
 		if (!jevModel) throw new InvalidMemorySettingsError("Choose a Typesafe Jev model.");
+		if (!(command.usefulnessConfidenceGate >= 0 && command.usefulnessConfidenceGate <= 1)) throw new InvalidMemorySettingsError("The usefulness confidence gate must be between 0 and 1.");
 		return commit(command.expectedRevision, (connection) => {
-			connection.update(memorySettingsTable).set({ extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, jev_model: jevModel }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
+			connection.update(memorySettingsTable).set({ extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, jev_model: jevModel, usefulness_confidence_gate: command.usefulnessConfidenceGate }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
 			if (command.credential !== undefined) writeSecret(connection, command.credential);
 		});
 	};

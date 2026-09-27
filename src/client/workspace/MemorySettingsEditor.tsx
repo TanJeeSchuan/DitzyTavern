@@ -7,15 +7,15 @@ import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../
 import type { MemorySettingsCommand } from "../../shared/contract/memory-settings";
 import { useAsyncEffect } from "../lib/use-async";
 
-type State = { settings: MemorySettings | null; profiles: ConnectionProfile[]; draft: { extractionProfileId: number | null; extractionModel: string; contextLimit: number; outputReserve: number; safetyAllowance: number; jevModel: string; credential: string }; loading: boolean; pending: boolean; error: string | null; notice: string | null };
-const emptyDraft = { extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0", credential: "" };
+type State = { settings: MemorySettings | null; profiles: ConnectionProfile[]; draft: { extractionProfileId: number | null; extractionModel: string; contextLimit: number; outputReserve: number; safetyAllowance: number; jevModel: string; usefulnessConfidenceGate: number; credential: string }; loading: boolean; pending: boolean; error: string | null; notice: string | null };
+const emptyDraft = { extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0", usefulnessConfidenceGate: 0.3, credential: "" };
 const initial: State = { settings: null, profiles: [], draft: emptyDraft, loading: true, pending: false, error: null, notice: null };
 
 export function MemorySettingsEditor() {
 	const [state, setState] = useState<State>(initial);
 	const [confirmReset, setConfirmReset] = useState(false);
 	const applyLoaded = useCallback((settings: MemorySettings, profiles: ConnectionProfile[]) => setState({
-		settings, profiles, draft: { extractionProfileId: settings.extractionProfileId, extractionModel: settings.extractionModel, contextLimit: settings.contextLimit, outputReserve: settings.outputReserve, safetyAllowance: settings.safetyAllowance, jevModel: settings.jevModel, credential: "" }, loading: false, pending: false, error: null, notice: null,
+		settings, profiles, draft: { extractionProfileId: settings.extractionProfileId, extractionModel: settings.extractionModel, contextLimit: settings.contextLimit, outputReserve: settings.outputReserve, safetyAllowance: settings.safetyAllowance, jevModel: settings.jevModel, usefulnessConfidenceGate: settings.usefulnessConfidenceGate, credential: "" }, loading: false, pending: false, error: null, notice: null,
 	}), []);
 	const refresh = useCallback(async () => {
 		setState((current) => ({ ...current, loading: true, error: null }));
@@ -29,7 +29,7 @@ export function MemorySettingsEditor() {
 	const submit = async () => {
 		if (!state.settings) return;
 		setState((current) => ({ ...current, pending: true, error: null, notice: null }));
-		const command: Extract<MemorySettingsCommand, { type: "apply" }> = { type: "apply", expectedRevision: state.settings.revision, extractionProfileId: state.draft.extractionProfileId, extractionModel: state.draft.extractionModel, contextLimit: state.draft.contextLimit, outputReserve: state.draft.outputReserve, safetyAllowance: state.draft.safetyAllowance, jevModel: state.draft.jevModel };
+		const command: Extract<MemorySettingsCommand, { type: "apply" }> = { type: "apply", expectedRevision: state.settings.revision, extractionProfileId: state.draft.extractionProfileId, extractionModel: state.draft.extractionModel, contextLimit: state.draft.contextLimit, outputReserve: state.draft.outputReserve, safetyAllowance: state.draft.safetyAllowance, jevModel: state.draft.jevModel, usefulnessConfidenceGate: state.draft.usefulnessConfidenceGate };
 		if (state.draft.credential.length > 0) command.credential = state.draft.credential;
 		const result = await saveMemorySettings(command);
 		if (result.outcome === "applied") applyLoaded(result.settings, state.profiles);
@@ -62,6 +62,7 @@ export function MemorySettingsEditor() {
 				<label className="field"><span>Extraction output reserve</span><input className="field-input" type="number" min="1" step="1" value={state.draft.outputReserve} onChange={(event) => update({ outputReserve: Number(event.target.value) })} /><small>Estimated tokens; starts at 2,048.</small></label>
 				<label className="field"><span>Safety allowance</span><input className="field-input" type="number" min="0" step="1" value={state.draft.safetyAllowance} onChange={(event) => update({ safetyAllowance: Number(event.target.value) })} /><small>Estimated tokens; starts at 500.</small></label>
 				<label className="field"><span>Typesafe Jev model</span><input className="field-input" value={state.draft.jevModel} onChange={(event) => update({ jevModel: event.target.value })} /></label>
+				<label className="field"><span>Usefulness confidence gate</span><input className="field-input" type="number" min="0" max="1" step="0.05" value={state.draft.usefulnessConfidenceGate} onChange={(event) => update({ usefulnessConfidenceGate: Number(event.target.value) })} /><small>From 0 to 1; starts at 0.3. Keeps a Memory only when Jev chooses retain with at least this confidence.</small></label>
 				<label className="field embedding-credential-field"><span><KeyRound aria-hidden="true" /> Typesafe credential {state.settings?.credentialConfigured ? <em>(configured)</em> : <em>(not configured)</em>}</span><input className="field-input" type="password" value={state.draft.credential} onChange={(event) => update({ credential: event.target.value })} placeholder={state.settings?.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /><small>Write-only. It is encrypted on the server and never returned to this form.</small></label>
 			</div>
 			<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void submit()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings?.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => setConfirmReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove Typesafe credential</Button>}</div>

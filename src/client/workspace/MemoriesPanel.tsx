@@ -1,9 +1,10 @@
 import { Check, Pencil, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, saveMemoryAllowance, startMemoryCatchup, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryTrace, resetAndReextract, retryMemoryIndex, saveMemoryAllowance, startMemoryCatchup, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
 import { PanelHeader } from "../PanelHeader";
 import { useAsyncEffect } from "../lib/use-async";
+import type { MemoryTraceStep } from "../../shared/contract/memory";
 
 type State = { status: "loading" | "ready" | "failed"; sources: Awaited<ReturnType<typeof loadConversationMemories>>["sources"]; error: string | null; pendingMessageId: number | null };
 type Editing = { messageId: number; revision: number; index: number; claim: string; attribution: string; people: string };
@@ -72,6 +73,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 				<p className="memory-reset-note">{source.ownership === "writer" ? "Reset and re-extract discards every saved correction and resumes automatic updates for this source." : "Retry extraction replaces this source’s automatic collection."}</p>
 				<button type="button" className="memory-source-link" onClick={() => onNavigateSource(source.messageId)}>Go to source Message</button>
 				{source.error && <p className="import-problem" role="alert">{source.error}</p>}
+				{source.status !== "unprocessed" && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={source.status === "pending" || source.status === "running"} />}
 				{source.status === "complete" && source.claims.length === 0 && <p className="panel-note">{source.ownership === "writer" ? "All Memories were removed. Automatic updates are paused for this source." : "No Memories were found for this source."}</p>}
 				{source.claims.map((claim, index) => <article className="memory-claim" key={`${source.variantId}-${index}`}>
 					{editing?.messageId === source.messageId && editing.index === index ? <div className="memory-edit-form">
@@ -80,7 +82,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { c
 						<label className="field"><span>People, separated by commas</span><input className="field-input" value={editing.people} onChange={(event) => setEditing({ ...editing, people: event.target.value })} /></label>
 						<Button type="button" size="sm" disabled={state.pendingMessageId === source.messageId} onClick={() => void saveCorrection(source, index)}><Check aria-hidden="true" /> Save</Button><Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}><X aria-hidden="true" /> Cancel</Button>
 					</div> : <><h4>{claim.claim}</h4><p>{claim.attribution}{claim.people.length ? ` · ${claim.people.join(", ")}` : ""}{claim.writerMaintained && " · Writer-maintained"}</p><Button ref={editButtonRef} type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={(event) => { editButtonRef.current = event.currentTarget; setEditing({ messageId: source.messageId, revision: source.revision, index, claim: claim.claim, attribution: claim.attribution, people: claim.people.join(", ") }); }}><Pencil aria-hidden="true" /> Edit</Button><Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void removeCorrection(source, index)}><Trash2 aria-hidden="true" /> Remove</Button></>}
-					<details><summary>Evidence and judgment</summary>{claim.writerMaintained && <p className="panel-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}<ul>{claim.evidence.map((evidence, evidenceIndex) => <li key={`${evidence.messageId}-${evidenceIndex}`}><button type="button" onClick={() => onNavigateSource(evidence.messageId)}>Message {evidence.messageId}</button><blockquote>{evidence.excerpt}</blockquote></li>)}</ul><p>Jev outputs: support {claim.judgment.support}; usefulness {claim.judgment.usefulness}. Probabilities are model outputs, not proof of truth.</p></details>
+					<details><summary>Evidence and judgment</summary>{claim.writerMaintained && <p className="panel-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}<ul>{claim.evidence.map((evidence, evidenceIndex) => <li key={`${evidence.messageId}-${evidenceIndex}`}><button type="button" onClick={() => onNavigateSource(evidence.messageId)}>Message {evidence.messageId}</button><blockquote>{evidence.excerpt}</blockquote></li>)}</ul><p>Jev outputs: support {claim.judgment.support} (confidence {claim.judgment.confidence.support.toFixed(2)}); usefulness {claim.judgment.usefulness} (confidence {claim.judgment.confidence.usefulness.toFixed(2)}). Probabilities are model outputs, not proof of truth.</p></details>
 				</article>)}
 			</section>)}
 		</div>
@@ -104,4 +106,27 @@ function MemoryAllowanceControl({ conversationId }: { conversationId: number }) 
 		setPending(false);
 	};
 	return <section className="memory-allowance"><h3>Memory Allowance</h3><p>A ceiling for recalled Memory text in a Generation. Zero keeps remembering enabled and retains saved collections.</p><label className="field"><span>Estimated tokens</span><input className="field-input" type="number" min="0" step="1" value={value} onChange={(event) => setValue(event.target.value)} /></label><Button type="button" size="sm" onClick={() => void save()} disabled={pending || !settings}>Save allowance</Button>{error && <p className="import-problem" role="alert">{error}</p>}{notice && <p className="panel-note" role="status">{notice}</p>}</section>;
+}
+
+function MemoryTraceView({ conversationId, variantId, live }: { conversationId: number; variantId: number; live: boolean }) {
+	const [open, setOpen] = useState(false);
+	const [steps, setSteps] = useState<MemoryTraceStep[] | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	useEffect(() => {
+		if (!open) return;
+		const load = () => { void loadMemoryTrace(conversationId, variantId).then((loaded) => { setSteps(loaded); setError(null); }).catch(() => setError("Pipeline trace could not be loaded.")); };
+		load();
+		if (!live) return;
+		const interval = window.setInterval(load, 2000);
+		return () => window.clearInterval(interval);
+	}, [open, live, conversationId, variantId]);
+	return <details className="memory-trace" onToggle={(event) => setOpen(event.currentTarget.open)}>
+		<summary>Pipeline trace{steps ? ` · ${steps.length} ${steps.length === 1 ? "step" : "steps"}` : ""}{live ? " · live" : ""}</summary>
+		{error && <p className="import-problem" role="alert">{error}</p>}
+		{steps?.length === 0 && <p className="panel-note">No trace recorded yet. Retry extraction to capture one.</p>}
+		<ol>{steps?.map((step, index) => <li key={index}><details open={step.label === "Failed"}>
+			<summary><span>{step.label}</span><span>{new Date(step.at).toLocaleTimeString()}{step.fields.elapsed ? ` · ${step.fields.elapsed}` : ""}</span></summary>
+			{Object.entries(step.fields).map(([key, value]) => <div className="memory-trace-field" key={key}><span>{key}</span><pre>{value}</pre></div>)}
+		</details></li>)}</ol>
+	</details>;
 }

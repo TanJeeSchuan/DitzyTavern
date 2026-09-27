@@ -1,4 +1,4 @@
-import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryTraceStep } from "../shared/contract/memory";
 import { Value } from "@sinclair/typebox/value";
 import { memoryInvalid, conversationMemoryAllowanceConflict, memoryCorrectionConflict, memoryIndexRetryConflict, memoryCatchup } from "../shared/contract/memory";
 import { api } from "./lib/eden";
@@ -7,6 +7,12 @@ export async function loadConversationMemories(conversationId: number): Promise<
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.get();
 	if (error || data === undefined) throw new Error("Memories could not be loaded.");
 	return data;
+}
+
+export async function loadMemoryTrace(conversationId: number, variantId: number): Promise<MemoryTraceStep[]> {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories({ variantId: String(variantId) }).trace.get();
+	if (error || data === undefined) throw new Error("Memory trace could not be loaded.");
+	return data.steps;
 }
 
 export async function resetAndReextract(conversationId: number, messageId: number): Promise<{ outcome: "queued" } | { outcome: "invalid"; reason: string }> {

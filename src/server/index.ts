@@ -10,7 +10,7 @@ registerWireFormats();
 initializeConnectionSecretKey();
 const database = openInitializedDatabase();
 const stopMemoryWorker = startMemoryWorker(database, {
-	process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, undefined, signal),
+	process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, undefined, signal, trace),
 });
 // ==[HUMAN APPROVED]== One process-start sweep resolves only abandoned local Active Generations;
 // it never resumes or retries a provider request.

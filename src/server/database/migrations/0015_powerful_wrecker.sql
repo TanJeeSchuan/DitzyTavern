@@ -1,0 +1,1 @@
+ALTER TABLE `memory_collection` ADD `trace_json` text;

@@ -239,6 +239,7 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	output_reserve: int().notNull().default(2048),
 	safety_allowance: int().notNull().default(500),
 	jev_model: text().notNull().default("jev-1.13.0"),
+	usefulness_confidence_gate: real().notNull().default(0.3),
 });
 
 export const memorySecretTable = sqliteTable("memory_secret", {
@@ -381,6 +382,7 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	source_snapshot_json: text().notNull(),
 	claims_json: text().notNull().default("[]"),
 	provenance_json: text().notNull().default("[]"),
+	trace_json: text(),
 	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
 	source_changed: int({ mode: "boolean" }).notNull().default(false),
 	index_epoch: int().notNull().default(0),

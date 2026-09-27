@@ -57,7 +57,7 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 	attribution,
 	people: ["Maren", "Writer"],
 	evidence: [{ messageId, excerpt }],
-	judgment: { support: "supported", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 } },
+	judgment: { support: "supported", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, usefulness: 1 } },
 });
 
 const queueAndIndex = async (database: Database, conversationId: number, messageId: number, variantId: number, claim: MemoryCandidateJudgment) => {
@@ -185,8 +185,8 @@ describe("Memory recall in Generation preparation", () => {
 				const request = JSON.parse(String(init?.body)) as { questions: object };
 				const answers = Object.fromEntries(Object.keys(request.questions).map((name) => [name,
 					name.endsWith("_retain")
-						? { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 } }
-						: { type: "choice", choice: "useful", probabilities: { irrelevant: 0, incidental: 0, useful: 1, central: 0 } },
+						? { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 }, confidence: 1 }
+						: { type: "choice", choice: "useful", probabilities: { irrelevant: 0, incidental: 0, useful: 1, central: 0 }, confidence: 1 },
 				]));
 				return Response.json({ answers });
 			}

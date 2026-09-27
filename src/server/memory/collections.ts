@@ -3,11 +3,11 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readSelectedHistory } from "../conversation/selected-history";
 import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
-import type { MemoryCandidateJudgment, CapturedMemoryMessage } from "./extraction";
+import type { MemoryCandidateJudgment, CapturedMemoryMessage, MemoryTrace } from "./extraction";
 import type { MemoryIndexJob } from "./indexing";
 import { cancelMemoryIndexWork, claimMemoryIndexWork, embedMemoryJob, failMemoryIndexWork, isMemoryEnabledForConversation, publishMemoryIndexVectors, queueAllMemoryIndexing, queueMemoryIndexForVariant, readMemoryIndexReadiness, registerMemoryIndexController, retryMemoryIndexing, requeueInterruptedMemoryIndexWork, StaleMemoryIndexRevisionError, type MemoryIndexReadiness } from "./indexing";
 import { Value } from "@sinclair/typebox/value";
-import { memoryCandidates, memoryWorkSnapshot } from "../../shared/contract/memory";
+import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type MemoryTraceStep } from "../../shared/contract/memory";
 import { sha256 } from "./hash";
 
 export interface MemoryCollectionView {
@@ -100,7 +100,7 @@ export function resetAndReextractMemorySource(database: Database, conversationId
 				revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch,
 				index_epoch: indexEpoch,
 				status: "pending", error: null, source_snapshot_json: sourceSnapshot,
-				claims_json: "[]", provenance_json: "[]", source_changed: false, updated_at: now,
+				claims_json: "[]", provenance_json: "[]", trace_json: null, source_changed: false, updated_at: now,
 				catchup_run_id: null,
 			},
 		}).run();
@@ -135,7 +135,7 @@ export function queueMemorySource(database: Database, conversationId: number, me
 	const indexEpoch = (current?.index_epoch ?? 0) + 1;
 	db.insert(memoryCollectionTable).values({ variant_id: captured.source.variantId, conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash, revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch, index_epoch: indexEpoch, status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: captured.source, context: captured.context }), claims_json: "[]", provenance_json: "[]", catchup_run_id: catchupRunId, updated_at: now }).onConflictDoUpdate({
 		target: memoryCollectionTable.variant_id,
-				set: { conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash, revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch, index_epoch: indexEpoch, status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: captured.source, context: captured.context }), claims_json: "[]", provenance_json: "[]", catchup_run_id: catchupRunId, source_changed: false, updated_at: now },
+				set: { conversation_id: conversationId, message_id: messageId, source_hash: captured.sourceHash, revision, ownership: "automatic", work_epoch: workEpoch, source_epoch: sourceEpoch, chat_epoch: chat.chat_epoch, index_epoch: indexEpoch, status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: captured.source, context: captured.context }), claims_json: "[]", provenance_json: "[]", trace_json: null, catchup_run_id: catchupRunId, source_changed: false, updated_at: now },
 	}).run();
 	db.delete(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, captured.source.variantId)).run();
 	cancelMemoryIndexWork(database, captured.source.variantId);
@@ -320,7 +320,7 @@ export function setMemoryAllowance(database: Database, conversationId: number, e
 }
 
 export interface MemoryWorkerOptions {
-	process: (source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], signal: AbortSignal) => Promise<MemoryCandidateJudgment[]>;
+	process: (source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], signal: AbortSignal, trace: MemoryTrace) => Promise<MemoryCandidateJudgment[]>;
 	index?: (job: MemoryIndexJob, signal: AbortSignal) => Promise<readonly { renderedText: string; vector: readonly number[] }[]>;
 	concurrency?: number;
 }
@@ -345,6 +345,12 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 			}).immediate();
 			const indexJob = next?.kind === "extraction" ? undefined : claimMemoryIndexWork(database);
 			const job = next?.kind === "extraction" ? next.job : undefined;
+			const steps: MemoryTraceStep[] = [];
+			const trace: MemoryTrace = (label, fields) => {
+				if (!job) return;
+				steps.push({ label, at: new Date().toISOString(), fields });
+				drizzle(database).update(memoryCollectionTable).set({ trace_json: JSON.stringify(steps) }).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.work_epoch, job.work_epoch))).run();
+			};
 			if (!job && !indexJob) { await new Promise((resolve) => setTimeout(resolve, 300)); continue; }
 			try {
 				if (indexJob) {
@@ -373,7 +379,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 					continue;
 				}
 				const snapshot = Value.Parse(memoryWorkSnapshot, JSON.parse(job.source_snapshot_json));
-				const claims = await options.process(snapshot.source, snapshot.context, controller.signal);
+				const claims = await options.process(snapshot.source, snapshot.context, controller.signal, trace);
 				database.transaction(() => {
 					const finalSource = database.query<{ content: string }, [number, number]>("SELECT v.content FROM message_variant v JOIN messages m ON m.id=v.message_id WHERE v.id=? AND m.conversation_id=?").get(job.variant_id, job.conversation_id);
 					const finalChat = drizzle(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, job.conversation_id)).get();
@@ -389,6 +395,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 				if (indexJob) { failMemoryIndexWork(database, indexJob, error instanceof Error ? error : new Error("Memory indexing failed.")); continue; }
 				if (!job) continue;
 				const message = error instanceof Error ? error.message.slice(0, 1024) : "Memory extraction failed.";
+				trace("Failed", { error: message });
 				drizzle(database).update(memoryCollectionTable).set({ status: "failed", error: message, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.revision, job.revision), eq(memoryCollectionTable.work_epoch, job.work_epoch), eq(memoryCollectionTable.status, "running"))).run();
 			}
 		}
@@ -398,4 +405,9 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 	queueAllMemoryIndexing(database);
 	const workers = Array.from({ length: concurrency }, runOne);
 	return async () => { stopped = true; controller.abort(); await Promise.all(workers); };
+}
+
+export function readMemoryTrace(database: Database, conversationId: number, variantId: number): MemoryTraceStep[] {
+	const row = drizzle(database).select({ trace: memoryCollectionTable.trace_json }).from(memoryCollectionTable).where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.conversation_id, conversationId))).get();
+	return row?.trace ? Value.Parse(memoryTraceSteps, JSON.parse(row.trace)) : [];
 }

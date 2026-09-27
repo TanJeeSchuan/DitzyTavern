@@ -44,6 +44,7 @@ const candidate = (messageId: number, excerpt: string, claim = "Maren carries Wr
 		support: "supported",
 		usefulness: "retain",
 		probabilities: { "support:supported": 1, "usefulness:retain": 1 },
+		confidence: { support: 1, usefulness: 1 },
 	},
 });
 

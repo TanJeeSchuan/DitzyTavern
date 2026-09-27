@@ -22,7 +22,7 @@ describe("Memory Settings public contract", () => {
 
 	test("uses independent extraction defaults and never returns its Typesafe secret", async () => {
 		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0", credentialConfigured: false });
+		expect(await initial.json()).toEqual({ revision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0", usefulnessConfidenceGate: 0.3, credentialConfigured: false });
 		const saved = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "set-credential", expectedRevision: 0, credential: "private-typesafe-token" }) }));
 		expect(saved.status).toBe(200);
 		expect(await saved.text()).not.toContain("private-typesafe-token");
@@ -35,18 +35,18 @@ describe("Memory Settings public contract", () => {
 		const stale = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "set-credential", expectedRevision: 8, credential: "secret" }) }));
 		expect(stale.status).toBe(409);
 		expect(await stale.json()).toMatchObject({ outcome: "conflict", actualRevision: 0, currentSettings: { credentialConfigured: false } });
-		const invalid = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 0, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0" }) }));
+		const invalid = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 0, outputReserve: 2048, safetyAllowance: 500, jevModel: "jev-1.13.0", usefulnessConfidenceGate: 0.3 }) }));
 		expect(invalid.status).toBe(422);
 		expect(await invalid.text()).toContain("positive whole numbers");
 
 		const profile = database.query<{ id: number }, []>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter) VALUES ('Rememberer', 'chat-completions', 'https://example.test/v1/chat/completions', 'automatic', 'openai-compatible') RETURNING id").get();
 		if (!profile) throw new Error("Memory profile fixture failed.");
-		const configured = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100, jevModel: "jev-1.13.0" }) }));
+		const configured = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100, jevModel: "jev-1.13.0", usefulnessConfidenceGate: 0.3 }) }));
 		expect(configured.status).toBe(200);
 		database.query("DELETE FROM connection_profile WHERE id = ?").run(profile.id);
 		const read = await app.handle(request("/api/memory-settings"));
 		expect(await read.json()).toMatchObject({ extractionProfileId: profile.id });
-		const missing = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 1, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100, jevModel: "jev-1.13.0" }) }));
+		const missing = await app.handle(request("/api/memory-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 1, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100, jevModel: "jev-1.13.0", usefulnessConfidenceGate: 0.3 }) }));
 		expect(missing.status).toBe(422);
 		expect(await missing.text()).toContain("no longer exists");
 	});

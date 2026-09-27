@@ -17,6 +17,11 @@ const MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_JEV_REQUEST_BYTES = 128 * 1024;
 const MAX_JEV_RESPONSE_BYTES = 256 * 1024;
 
+export type MemoryTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
+const noTrace: MemoryTrace = () => {};
+const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
+const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+
 export interface CapturedMemoryMessage {
 	messageId: number;
 	variantId: number;
@@ -30,6 +35,7 @@ export interface MemoryCandidateJudgment extends MemoryCandidate {
 		support: "supported" | "contradicted" | "not_established";
 		usefulness: "retain" | "omit";
 		probabilities: Record<string, number>;
+		confidence: { support: number; usefulness: number };
 	};
 }
 
@@ -66,7 +72,7 @@ const promptPlanOf = (system: string): PromptPlan => ({
 	warnings: [],
 });
 
-const generatedContent = async (database: Database, memory: MemorySettingsPayload, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal) => {
+const generatedContent = async (database: Database, memory: MemorySettingsPayload, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace) => {
 	if (tokenxEstimator(source.content) > 12_000) throw new Error("This complete source exceeds the 12,000-token Memory extraction limit. It was not truncated.");
 	if (memory.extractionProfileId === null || memory.extractionModel.length === 0) throw new Error("Choose an extraction Connection Profile and model in Memory Settings.");
 	const connectionSettings = createConnectionSettingsModule(database);
@@ -83,6 +89,8 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	const client = createModelClient({ profile, secrets: connectionSettings.getProfileSecrets(profile.id), fetch: fetcher });
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
+	trace("Extraction request", { profile: profile.displayName, model: memory.extractionModel, limits: `context ${memory.contextLimit} · output reserve ${memory.outputReserve}`, contextMessageIds: retainedContext.map((message) => message.messageId).join(", "), prompt });
+	const startedAt = Date.now();
 	const result = await collectModelClientGeneration(client, {
 		promptPlan: promptPlanOf(prompt),
 		modelId: memory.extractionModel,
@@ -94,10 +102,13 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 		collectedOutputBytes += encoder.encode(event.text).byteLength;
 		if (collectedOutputBytes > MAX_OUTPUT_BYTES) throw new Error("Memory extraction output exceeded 64 KiB.");
 	} });
+	trace("Extraction response", { elapsed: seconds(startedAt), finishReason: result.finishReason, usage: JSON.stringify(result.usage), reasoning: result.reasoning, content: prettyJson(result.content) });
 	if (result.finishReason !== "stop") throw new Error(result.finishReason === "length" ? "Memory extraction output was truncated. Retry after reducing the source or increasing its output reserve." : "Memory extraction did not finish successfully. Retry this source.");
 	let parsed: MemoryExtractionResponse;
 	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch { throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source."); }
-	return validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
+	const candidates = validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
+	trace("Validated candidates", { count: String(candidates.length), candidates: JSON.stringify(candidates, null, 2) });
+	return { candidates, context: retainedContext };
 };
 
 const choice = (instructions: string, labels: readonly string[]) => ({
@@ -120,7 +131,8 @@ const parseChoice = <const Labels extends readonly string[]>(answer: MemoryJudgm
 		normalized[label] = probability;
 	}
 	if (Math.abs(Object.values(normalized).reduce((sum, probability) => sum + probability, 0) - 1) > 0.001) throw new Error("Typesafe returned invalid Memory judgment probabilities.");
-	return { label: selected, probabilities: normalized };
+	if (!(answer.confidence >= 0 && answer.confidence <= 1)) throw new Error("Typesafe returned an invalid Memory judgment confidence.");
+	return { label: selected, probabilities: normalized, confidence: answer.confidence };
 };
 
 const assertExactAnswerKeys = (answers: Readonly<Record<string, MemoryJudgmentAnswer>>, expected: readonly string[]): void => {
@@ -132,22 +144,26 @@ const assertExactAnswerKeys = (answers: Readonly<Record<string, MemoryJudgmentAn
 
 const requestMemoryJudgment = async (
 	request: string,
-	questions: Readonly<Record<string, ReturnType<typeof choice>>>,
+	questionIds: readonly string[],
 	credential: string,
 	fetcher: ModelFetch,
 	signal?: AbortSignal,
+	trace: MemoryTrace = noTrace,
 ): Promise<MemoryJudgmentResponse["answers"]> => {
+	trace("Jev request", { body: prettyJson(request) });
+	const startedAt = Date.now();
 	const response = await fetcher("https://api.typesafe.ai/v1/systemone", {
 		method: "POST",
 		signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
 		headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
 		body: request,
 	});
+	const text = new TextDecoder().decode(await readBoundedResponse(response, MAX_JEV_RESPONSE_BYTES));
+	trace("Jev response", { elapsed: seconds(startedAt), status: String(response.status), body: prettyJson(text) });
 	if (!response.ok) throw new Error(`Typesafe Jev request failed with HTTP ${response.status}.`);
-	const responseBytes = await readBoundedResponse(response, MAX_JEV_RESPONSE_BYTES);
 	let decoded: MemoryJudgmentResponse;
-	try { decoded = Value.Parse(memoryJudgmentResponse, JSON.parse(new TextDecoder().decode(responseBytes))); } catch { throw new Error("Typesafe Jev returned malformed or invalid JSON."); }
-	assertExactAnswerKeys(decoded.answers, Object.keys(questions));
+	try { decoded = Value.Parse(memoryJudgmentResponse, JSON.parse(text)); } catch { throw new Error("Typesafe Jev returned malformed or invalid JSON."); }
+	assertExactAnswerKeys(decoded.answers, questionIds);
 	return decoded.answers;
 };
 
@@ -171,12 +187,28 @@ async function readBoundedResponse(response: Response, limit: number): Promise<U
 	return bytes;
 }
 
+const supportCriteria = {
+	supported: "`source` states the claim, as attributed, or directly implies it",
+	contradicted: "`source` states the opposite, or later negates or revises it",
+	not_established: "`source` only suggests it, or frames it as a dream, rumor, quote, or uncertainty",
+};
+const usefulnessCriteria = {
+	retain: { what: "A lasting fact, relationship, promise, decision, change of state, or belief", not_for: "Description of the current moment" },
+	omit: { what: "Sensory detail, scene description, momentary action, or mood", not_for: "Anything later scenes could need to stay consistent" },
+};
+const candidateQuestions = (candidate: MemoryCandidate) => ({
+	support: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution, evidence: candidate.evidence.map((item) => item.excerpt) }, question: "How does `source` relate to `memory.claim` as attributed to `memory.attribution`?" }, criteria: supportCriteria },
+	usefulness: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "Will `memory.claim` still matter to the story after the scene in `source` ends?" }, criteria: usefulnessCriteria },
+});
+
 export async function judgeMemoryCandidates(
+	captured: { source: CapturedMemoryMessage; context: readonly CapturedMemoryMessage[] },
 	candidates: readonly MemoryCandidate[],
 	credential: string,
 	model = "jev-1.13.0",
 	fetcher: ModelFetch = fetch,
 	signal?: AbortSignal,
+	trace: MemoryTrace = noTrace,
 ): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
 	if (!credential) throw new Error("Typesafe Jev credentials are not configured in Memory Settings.");
@@ -185,13 +217,12 @@ export async function judgeMemoryCandidates(
 	let batch: MemoryCandidate[] = [];
 	let offset = 0;
 	const buildRequest = (values: readonly MemoryCandidate[], start: number) => {
-		const state = { candidates: values.map((candidate, index) => ({ id: start + index, ...candidate })) };
-		const questions: Record<string, ReturnType<typeof choice>> = {};
+		const state = { source: captured.source.content, context: captured.context.map((message) => message.content) };
+		const questions: Record<string, ReturnType<typeof candidateQuestions>[keyof ReturnType<typeof candidateQuestions>]> = {};
 		for (const [index, candidate] of values.entries()) {
-			const id = start + index;
-			const evidence = JSON.stringify(candidate.evidence);
-			questions[`candidate_${id}_support`] = choice(`Judge candidate identity ${id}, attributed as ${candidate.attribution}: ${candidate.claim}. Using only its cited evidence with source message identities (${evidence}), classify support.`, ["supported", "contradicted", "not_established"]);
-			questions[`candidate_${id}_usefulness`] = choice(`Judge whether candidate ${id}, attributed as ${candidate.attribution}: ${candidate.claim}, is useful durable context beyond the captured source scene. Its cited evidence with source message identities is ${evidence}.`, ["retain", "omit"]);
+			const { support, usefulness } = candidateQuestions(candidate);
+			questions[`candidate_${start + index}_support`] = support;
+			questions[`candidate_${start + index}_usefulness`] = usefulness;
 		}
 		const request = JSON.stringify({ state, model, questions });
 		const bytes = new TextEncoder().encode(request).byteLength;
@@ -214,12 +245,12 @@ export async function judgeMemoryCandidates(
 	offset = 0;
 	for (const currentBatch of batches) {
 		const { questions, request } = buildRequest(currentBatch, offset);
-		const answers = await requestMemoryJudgment(request, questions, credential, fetcher, signal);
+		const answers = await requestMemoryJudgment(request, Object.keys(questions), credential, fetcher, signal, trace);
 		for (const [index, candidate] of currentBatch.entries()) {
 			const id = offset + index;
 			const support = parseChoice(answers[`candidate_${id}_support`], ["supported", "contradicted", "not_established"] as const);
 			const usefulness = parseChoice(answers[`candidate_${id}_usefulness`], ["retain", "omit"] as const);
-			output.push({ ...candidate, judgment: { support: support.label, usefulness: usefulness.label, probabilities: { ...Object.fromEntries(Object.entries(support.probabilities).map(([key, value]) => [`support:${key}`, value])), ...Object.fromEntries(Object.entries(usefulness.probabilities).map(([key, value]) => [`usefulness:${key}`, value])) } } });
+			output.push({ ...candidate, judgment: { support: support.label, usefulness: usefulness.label, confidence: { support: support.confidence, usefulness: usefulness.confidence }, probabilities: { ...Object.fromEntries(Object.entries(support.probabilities).map(([key, value]) => [`support:${key}`, value])), ...Object.fromEntries(Object.entries(usefulness.probabilities).map(([key, value]) => [`usefulness:${key}`, value])) } } });
 		}
 		offset += currentBatch.length;
 	}
@@ -277,7 +308,7 @@ export async function judgeMemoryRecallCandidates(
 		request = buildRequest(packed);
 	}
 	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
-	const answers = await requestMemoryJudgment(request.request, request.questions, credential, fetcher, signal);
+	const answers = await requestMemoryJudgment(request.request, Object.keys(request.questions), credential, fetcher, signal);
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of packed) {
 		const retain = parseChoice(answers[`candidate_${candidate.identity}_retain`], ["retain", "omit"] as const);
@@ -301,10 +332,12 @@ export async function judgeMemoryRecallCandidates(
 	});
 }
 
-export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal): Promise<MemoryCandidateJudgment[]> {
+export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace): Promise<MemoryCandidateJudgment[]> {
 	const settings = createMemorySettingsModule(database).get();
-	const candidates = await generatedContent(database, settings, source, context, fetcher, signal);
+	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
 	const credentials = createMemorySettingsModule(database).getCredential();
-	const judgments = await judgeMemoryCandidates(candidates, credentials ?? "", settings.jevModel, fetcher, signal);
-	return judgments.filter((candidate) => candidate.judgment.support === "supported" && candidate.judgment.usefulness === "retain");
+	const judgments = await judgeMemoryCandidates({ source, context: extracted.context }, extracted.candidates, credentials ?? "", settings.jevModel, fetcher, signal, trace);
+	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.usefulness === "retain" && judgment.confidence.usefulness >= settings.usefulnessConfidenceGate);
+	trace("Kept memories", { rule: `supported, and retain with confidence >= ${settings.usefulnessConfidenceGate}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
+	return kept;
 }
