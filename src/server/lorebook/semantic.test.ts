@@ -33,9 +33,11 @@ describe("semantic Lore evaluation", () => {
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
 	});
 
-	test("covers the whole scan window within Jev limits by splitting the scene and triggers", async () => {
+	test("covers the whole scan window within Jev limits, one request at a time", async () => {
 		const bodies: { state: { scene: string[] }; questions: Record<string, { type: string }> }[] = [];
 		const triggers = Array.from({ length: 120 }, (_, index) => `situation ${index} ${"detail ".repeat(300)}`);
+		let inFlight = 0;
+		let peakInFlight = 0;
 		const result = await evaluateSemanticLore({
 			entries: [{ enabled: true, semanticTriggers: triggers }],
 			messages: [{ content: `only in the oldest message ${"oldest ".repeat(40_000)}` }, { content: `${"filler ".repeat(40_000)}newest line` }],
@@ -44,11 +46,15 @@ describe("semantic Lore evaluation", () => {
 				// SAFETY: the fake captures the request emitted by evaluateSemanticLore, whose shape is asserted below.
 				const body = JSON.parse(String(init?.body)) as { state: { scene: string[] }; questions: Record<string, { type: string }> };
 				bodies.push(body);
+				peakInFlight = Math.max(peakInFlight, ++inFlight);
+				await Bun.sleep(1);
+				inFlight -= 1;
 				const seesOldest = body.state.scene.some((text) => text.startsWith("only in the oldest message"));
 				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
 			},
 		});
 		expect(bodies.every((body) => tokenxEstimator(JSON.stringify(body.state)) <= 16_000)).toBe(true);
+		expect(peakInFlight).toBe(1);
 		const scanned = bodies.flatMap((body) => body.state.scene).join("");
 		expect(scanned).toContain("only in the oldest message");
 		expect(scanned).toContain("newest line");

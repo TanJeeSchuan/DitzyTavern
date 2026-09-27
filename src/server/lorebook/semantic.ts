@@ -71,9 +71,8 @@ export async function evaluateSemanticLore(input: {
 	};
 	const credential = settings.credential;
 	try {
-		const answers = await Promise.all(sceneChunks(input.messages).flatMap(requestsFor).map((request) => requestJev({ ...request, credential, fetch: input.fetch })));
 		const scores = new Map<string, number>();
-		for (const [id, answer] of answers.flatMap((part) => Object.entries(part))) {
+		for (const request of sceneChunks(input.messages).flatMap(requestsFor)) for (const [id, answer] of Object.entries(await requestJev({ ...request, credential, fetch: input.fetch }))) {
 			if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
 			scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
 		}
