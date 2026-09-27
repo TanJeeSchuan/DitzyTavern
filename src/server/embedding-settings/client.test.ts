@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cosineSimilarity, requestEmbeddings } from "./embedding-client";
+import { cosineSimilarity, requestEmbeddings } from "./client";
 
 describe("embedding client", () => {
 	test("requests OpenAI-compatible vectors and validates dimensions", async () => {

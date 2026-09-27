@@ -246,7 +246,7 @@ export async function sendThroughProvisionalTailGeneration(
 					content: current.content,
 					connection: current.connection,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
+					preparationFetch: current.preparationFetch,
 				});
 			}
 			return captureSendGenerationAsync({
@@ -257,7 +257,7 @@ export async function sendThroughProvisionalTailGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
-				embeddingFetch: current.embeddingFetch,
+				preparationFetch: current.preparationFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
@@ -302,7 +302,7 @@ export async function continueGeneration(
 					preview: current.preview,
 					connection: current.connection,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
+					preparationFetch: current.preparationFetch,
 				});
 			}
 			return captureContinuationGenerationAsync({
@@ -312,7 +312,7 @@ export async function continueGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
-				embeddingFetch: current.embeddingFetch,
+				preparationFetch: current.preparationFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
@@ -371,7 +371,7 @@ export interface GenerateSiblingVariantInput {
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
 	formatting?: GenerationFormattingContext;
-	embeddingFetch?: import("../model-client/types").ModelFetch;
+	preparationFetch?: import("../model-client/types").ModelFetch;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -398,7 +398,7 @@ export async function generateSiblingVariant(
 					messageId: current.messageId,
 					connection: current.connection,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
+					preparationFetch: current.preparationFetch,
 				});
 			}
 			return captureSiblingGenerationAsync({

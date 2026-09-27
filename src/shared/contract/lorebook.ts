@@ -88,7 +88,6 @@ export const loreEntryFields = Type.Object({
 	wholeWord: Type.Boolean(),
 	keywordMode: loreKeywordMode,
 	regexFlags: Type.String(),
-	semanticThreshold: Type.Union([Type.Number(), Type.Null()]),
 	priority: Type.Integer(),
 	enabled: Type.Boolean(),
 });
@@ -203,7 +202,7 @@ const loreMatchTestSemantic = Type.Object({
 	available: Type.Boolean(),
 	matched: Type.Boolean(),
 	threshold: Type.Union([Type.Number(), Type.Null()]),
-	matches: Type.Array(Type.Object({ trigger: Type.String(), score: Type.Number(), sentence: Type.String() })),
+	matches: Type.Array(Type.Object({ trigger: Type.String(), score: Type.Number() })),
 	fallbackReason: Type.Optional(Type.String()),
 });
 const loreMatchTestEntry = Type.Object({

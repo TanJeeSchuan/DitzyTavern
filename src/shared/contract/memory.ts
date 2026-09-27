@@ -4,7 +4,7 @@ import { numericWire } from "./wire";
 export const memoryCandidate = Type.Object({
 	claim: Type.String(), attribution: Type.String(), people: Type.Array(Type.String()),
 	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String() })),
-	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Number(), usefulness: Type.Number() }) }),
+	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Number(), attribution: Type.Number(), usefulness: Type.Number() }) }),
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
 export const memoryCandidates = Type.Array(memoryCandidate);
@@ -49,13 +49,7 @@ export const memoryExtractionResponse = Type.Object({
 		evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String() }, { additionalProperties: false })),
 	}, { additionalProperties: false }), { maxItems: 16 }),
 }, { additionalProperties: false });
-export const memoryJudgmentAnswer = Type.Object({
-	type: Type.Literal("choice"), choice: Type.String(), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Number(),
-}, { additionalProperties: false });
-export const memoryJudgmentResponse = Type.Object({ answers: Type.Record(Type.String(), memoryJudgmentAnswer) }, { additionalProperties: false });
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
-export type MemoryJudgmentAnswer = Static<typeof memoryJudgmentAnswer>;
-export type MemoryJudgmentResponse = Static<typeof memoryJudgmentResponse>;
 export const memoryCapturedMessage = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), content: Type.String() });
 export const memoryWorkSnapshot = Type.Object({ source: memoryCapturedMessage, context: Type.Array(memoryCapturedMessage) });
 export type MemoryWorkSnapshot = Static<typeof memoryWorkSnapshot>;

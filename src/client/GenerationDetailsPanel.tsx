@@ -204,7 +204,7 @@ const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
 
 const admissionLabel = (record: MemoryActivationRecord["candidates"][number], manuallyEdited: boolean): string => {
 	if (record.admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
-	if (record.admission === "not-retained") return "Omitted by Jev";
+	if (record.admission === "not-retained") return "Below relevance minimum";
 	if (record.admission === "request-limit") return "Omitted from Jev request";
 	if (record.admission === "duplicate-rendering") return "Duplicate rendering";
 	if (record.admission === "memory-allowance") return "Over Memory Allowance";
@@ -230,6 +230,7 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
 				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
 				<div><dt>Jev model</dt><dd>{record.jevModel}{record.jevConfigured ? " · credential configured" : " · credential missing"}</dd></div>
+				<div><dt>Relevance minimum</dt><dd>{record.relevanceMinimum}</dd></div>
 				<div><dt>Prompt edit</dt><dd>{record.manuallyEdited ? "Manual" : "Automatic"}</dd></div>
 			</dl>
 			<p className="panel-note">{record.manuallyEdited ? "This Memory block was edited for this Generation. Saved source Memories are unchanged." : "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}</p>
@@ -242,7 +243,7 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 					{record.candidates.map((candidate) => <li key={candidate.identity}>
 						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
 						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
-						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · index {candidate.indexEpoch} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.judged ? `Jev: ${candidate.retained ? "retained" : "omitted"}, relevance ${candidate.relevance}` : "Not judged"}</p>
+						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · index {candidate.indexEpoch} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.judged ? `Jev: ${candidate.retained ? "retained" : "omitted"}, relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})` : "Not judged"}</p>
 						{candidate.evidence.length > 0 && <details><summary>Supporting excerpts</summary><ul>{candidate.evidence.map((evidence, index) => <li key={`${evidence.messageId}-${index}`}><MemorySourceLink messageId={evidence.messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /><blockquote>{evidence.excerpt}</blockquote></li>)}</ul></details>}
 					</li>)}
 				</ol>}

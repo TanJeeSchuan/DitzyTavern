@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LoreEntryFields } from "../../shared/contract/lorebook";
 import { InvalidLorebookExpressionError } from "./errors";
-import { matchLoreEntry, splitLoreSentences } from "./matching";
+import { matchLoreEntry } from "./matching";
 
 const entry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => ({
 	title: "Entry",
@@ -18,7 +18,7 @@ const entry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => ({
 	wholeWord: true,
 	keywordMode: "literal",
 	regexFlags: "",
-	semanticThreshold: null,
+	
 	priority: 0,
 	enabled: true,
 	...overrides,
@@ -73,35 +73,30 @@ describe("lore entry matching", () => {
 	});
 
 	test("uses keyword fallback for AND entries and skips semantic-only entries", () => {
-		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7, fallbackReason: "Embedding service unavailable." });
+		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
 		expect(fallback.active).toBe(true);
 		expect(fallback.fallback).toBe(true);
-		expect(fallback.semantic.fallbackReason).toBe("Embedding service unavailable.");
+		expect(fallback.semantic.fallbackReason).toBe("Typesafe Jev request failed with HTTP 503.");
 		expect(matchLoreEntry(entry({ keywords: [], semanticTriggers: ["a fortified place"] }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 }).active).toBe(false);
 	});
 
 	test("uses semantic evidence only after a complete semantic pass", () => {
 		const result = matchLoreEntry(entry({ keywords: [], semanticTriggers: ["fortified place"] }), [{ content: "A stronghold overlooks the valley." }], {
 			available: true,
-			threshold: 0.7,
-			matches: [{ trigger: "fortified place", score: 0.81, sentence: "A stronghold overlooks the valley." }],
+			threshold: 0.5,
+			matches: [{ trigger: "fortified place", score: 0.81 }],
 		});
 		expect(result.active).toBe(true);
-		expect(result.semantic.matches[0]?.sentence).toContain("stronghold");
+		expect(result.semantic.matches).toEqual([{ trigger: "fortified place", score: 0.81 }]);
 	});
 
 	test("retains the strongest semantic evidence below the activation threshold", () => {
 		const result = matchLoreEntry(entry({ keywords: [], semanticTriggers: ["fortified place"] }), [{ content: "A distant valley." }], {
 			available: true,
-			threshold: 0.7,
-			matches: [{ trigger: "fortified place", score: 0.42, sentence: "A distant valley." }],
+			threshold: 0.5,
+			matches: [{ trigger: "fortified place", score: 0.42 }],
 		});
 		expect(result.active).toBe(false);
-		expect(result.semantic.matches).toEqual([{ trigger: "fortified place", score: 0.42, sentence: "A distant valley." }]);
-	});
-
-	test("splits sentences for semantic adapters without changing lexical boundaries", () => {
-		expect(splitLoreSentences("One. Two!\nThree?")).toEqual(["One.", "Two!", "Three?"]);
-		expect(splitLoreSentences("Mr. Smith arrived. The value is 3.14. Next.")).toEqual(["Mr. Smith arrived.", "The value is 3.14.", "Next."]);
+		expect(result.semantic.matches).toEqual([{ trigger: "fortified place", score: 0.42 }]);
 	});
 });

@@ -10,6 +10,7 @@ import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { createLorebookRoutes } from "./lorebook-routes";
 import { createEmbeddingSettingsRoutes } from "./embedding-settings";
 import { createMemorySettingsRoutes } from "./memory-settings";
+import { createTypesafeSettingsRoutes } from "./typesafe-settings";
 import { createMemoryRoutes } from "./memory";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 
@@ -23,6 +24,7 @@ export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 export { createEmbeddingSettingsRoutes } from "./embedding-settings";
 export { createMemorySettingsRoutes } from "./memory-settings";
+export { createTypesafeSettingsRoutes } from "./typesafe-settings";
 export { createMemoryRoutes } from "./memory";
 
 export const contract = new Elysia()
@@ -35,6 +37,7 @@ export const contract = new Elysia()
 	.use(createLorebookRoutes(undefined))
 	.use(createEmbeddingSettingsRoutes(undefined))
 	.use(createMemorySettingsRoutes(undefined))
+	.use(createTypesafeSettingsRoutes(undefined))
 	.use(createMemoryRoutes(undefined))
 	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()))
 	.use(createConnectionSettingsRoutes(undefined));

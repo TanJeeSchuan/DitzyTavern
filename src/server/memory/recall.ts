@@ -8,7 +8,8 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createEmbeddingSettingsModule } from "../embedding-settings";
 import { createMemorySettingsModule } from "./settings";
-import { cosineSimilarity, requestEmbeddings } from "../lorebook/embedding-client";
+import { createTypesafeSettingsModule } from "../typesafe";
+import { cosineSimilarity, requestEmbeddings } from "../embedding-settings/client";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
 import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadiness } from "./indexing";
@@ -27,7 +28,7 @@ export interface MemoryRecallSceneMessage {
 }
 
 interface IndexedMemoryCandidate {
-	readonly record: Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "judged" | "relevance" | "retained" | "requestIncluded" | "admission">;
+	readonly record: Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "judged" | "relevance" | "relevanceScore" | "retained" | "requestIncluded" | "admission">;
 	readonly renderedText: string;
 	readonly vector: readonly number[];
 }
@@ -39,6 +40,7 @@ export interface MemoryRecallSnapshot {
 	readonly fingerprintInputs: Readonly<MemoryRecallFingerprintInputs>;
 	readonly embedding: { readonly endpoint: string; readonly model: string; readonly deadlineMs: number };
 	readonly jevModel: string;
+	readonly relevanceMinimum: number;
 	readonly indexed: readonly IndexedMemoryCandidate[];
 	readonly recent: readonly IndexedMemoryCandidate[];
 }
@@ -59,6 +61,7 @@ export interface MemoryRecallFingerprintInputs {
 	readonly scanTruncated: boolean;
 	readonly jevModel: string;
 	readonly jevConfigured: boolean;
+	readonly relevanceMinimum: number;
 	readonly embeddingModel: string;
 	readonly embeddingDeadlineMs: number;
 }
@@ -70,6 +73,7 @@ const blankCandidateStatus = (candidate: IndexedMemoryCandidate["record"], seman
 	recentRank,
 	judged: false,
 	relevance: null,
+	relevanceScore: null,
 	retained: false,
 	requestIncluded: false,
 	admission: "request-limit",
@@ -119,6 +123,7 @@ const initialActivation = (input: {
 	embeddingDeadlineMs: number;
 	jevModel: string;
 	jevConfigured: boolean;
+	relevanceMinimum: number;
 	pendingSourceCount: number;
 	pendingIndexCount: number;
 	failedIndexCount: number;
@@ -151,6 +156,7 @@ const initialActivation = (input: {
 		embeddingDeadlineMs: input.embeddingDeadlineMs,
 		jevModel: input.jevModel,
 		jevConfigured: input.jevConfigured,
+		relevanceMinimum: input.relevanceMinimum,
 		pendingSourceCount: input.pendingSourceCount,
 		pendingIndexCount: input.pendingIndexCount,
 		failedIndexCount: input.failedIndexCount,
@@ -180,6 +186,7 @@ export const captureMemoryRecallSnapshot = (input: {
 	const db = drizzle(input.database);
 	const settings = readMemoryAllowance(input.database, input.conversationId);
 	const processing = createMemorySettingsModule(input.database).get();
+	const typesafe = createTypesafeSettingsModule(input.database).get();
 	const embedding = readMemoryEmbeddingConfiguration(input.database);
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName);
 	const path = input.messages.map((message) => ({
@@ -267,8 +274,9 @@ export const captureMemoryRecallSnapshot = (input: {
 		scene: scene.text,
 		scanMessageIds: scene.messageIds,
 		scanTruncated: scene.truncated,
-		jevModel: processing.jevModel,
-		jevConfigured: processing.credentialConfigured,
+		jevModel: typesafe.jevModel,
+		jevConfigured: typesafe.credentialConfigured,
+		relevanceMinimum: processing.recallRelevanceMinimum,
 		embeddingModel: embedding.model,
 		embeddingDeadlineMs: embedding.deadlineMs,
 	};
@@ -279,8 +287,9 @@ export const captureMemoryRecallSnapshot = (input: {
 		readyRecordCount: indexed.length,
 		embeddingModel: embedding.model,
 		embeddingDeadlineMs: embedding.deadlineMs,
-		jevModel: processing.jevModel,
-		jevConfigured: processing.credentialConfigured,
+		jevModel: typesafe.jevModel,
+		jevConfigured: typesafe.credentialConfigured,
+		relevanceMinimum: processing.recallRelevanceMinimum,
 		pendingSourceCount,
 		pendingIndexCount,
 		failedIndexCount,
@@ -293,7 +302,7 @@ export const captureMemoryRecallSnapshot = (input: {
 		scene: scene.text,
 	});
 	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
-	return { enabled: input.enabled, allowance: settings.allowance, activation, fingerprintInputs, embedding, jevModel: processing.jevModel, indexed, recent };
+	return { enabled: input.enabled, allowance: settings.allowance, activation, fingerprintInputs, embedding, jevModel: typesafe.jevModel, relevanceMinimum: processing.recallRelevanceMinimum, indexed, recent };
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
@@ -330,17 +339,17 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 			: blankCandidateStatus(candidate.record, null, null, index + 1));
 	}
 	const shortlist = [...selected.values()];
-	const memorySettings = createMemorySettingsModule(input.database);
 	const judged = await judgeMemoryRecallCandidates(
 		shortlist,
 		snapshot.activation.scene,
-		memorySettings.getCredential() ?? "",
+		snapshot.relevanceMinimum,
+		createTypesafeSettingsModule(input.database).getCredential() ?? "",
 		snapshot.jevModel,
 		input.fetch,
 		input.signal,
 	);
 	const ranked = [...judged].filter((candidate) => candidate.judged && candidate.retained)
-		.sort((left, right) => scoreValue(right.relevance) - scoreValue(left.relevance) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity));
+		.sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity));
 	const activation: MemoryActivationRecord = {
 		...snapshot.activation,
 		semanticShortlistCount: semantic.length,
@@ -348,14 +357,4 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		candidates: judged,
 	};
 	return { activation, candidates: ranked, fingerprintInputs: snapshot.fingerprintInputs };
-};
-
-const scoreValue = (score: MemoryRecallCandidateRecord["relevance"]): number => {
-	switch (score) {
-		case "central": return 3;
-		case "useful": return 2;
-		case "incidental": return 1;
-		case "irrelevant": return 0;
-		case null: return -1;
-	}
 };

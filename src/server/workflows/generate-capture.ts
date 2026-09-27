@@ -325,7 +325,7 @@ interface PrepareGenerationInputsBase {
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly formatting?: GenerationFormattingContext;
 	/** ==[HUMAN APPROVED]== Test/control seam for the application-wide OpenAI-compatible embedding service. */
-	readonly embeddingFetch?: ModelFetch;
+	readonly preparationFetch?: ModelFetch;
 	readonly skipMemoryRecall?: boolean;
 }
 
@@ -412,7 +412,7 @@ function prepareGenerationInputsSnapshot(
 			conversationId: input.conversationId,
 			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: input.kind === "send" && reuseHumanMessageId === undefined ? input.content : undefined,
-			embeddingSettings: input.connectionSettings,
+			typesafeSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
 	if (input.kind === "continuation") {
@@ -505,12 +505,12 @@ export async function prepareGenerationInputsAsync(
 			conversationId: preparation.conversationId,
 			messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
-			fetch: input.embeddingFetch,
+			fetch: input.preparationFetch,
 		}, preparation.lore.sources)
 		: Promise.resolve(preparation.lore);
 	const memoryPromise = input.skipMemoryRecall
 		? Promise.resolve(preparation.memory)
-		: evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.embeddingFetch }).catch((error) => {
+		: evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch }).catch((error) => {
 			throw new InvalidConversationCommandError(`Memory recall failed: ${error instanceof Error ? error.message : "Retry preparation or disable Memory."}`);
 		});
 	const [lore, memory] = await Promise.all([lorePromise, memoryPromise]);
@@ -772,7 +772,7 @@ export interface GenerationCaptureInput {
 	connectionSettings?: ConnectionSettingsModuleOptions | undefined;
 	tokenEstimator?: TokenEstimator | undefined;
 	formatting?: GenerationFormattingContext | undefined;
-	embeddingFetch?: ModelFetch | undefined;
+	preparationFetch?: ModelFetch | undefined;
 	skipMemoryRecall?: boolean | undefined;
 }
 
@@ -803,7 +803,7 @@ export async function captureSendGenerationAsync(
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
-		embeddingFetch: input.embeddingFetch,
+		preparationFetch: input.preparationFetch,
 		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;
@@ -826,7 +826,7 @@ export async function captureContinuationGenerationAsync(
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
-		embeddingFetch: input.embeddingFetch,
+		preparationFetch: input.preparationFetch,
 		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;
@@ -861,7 +861,7 @@ export async function captureSiblingGenerationAsync(
 		connection: input.connection,
 		connectionSettings: input.connectionSettings,
 		formatting: input.formatting,
-		embeddingFetch: input.embeddingFetch,
+		preparationFetch: input.preparationFetch,
 		skipMemoryRecall: input.skipMemoryRecall,
 	});
 	const { derivation } = preparation;

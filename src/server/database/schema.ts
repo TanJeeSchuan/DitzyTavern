@@ -149,7 +149,6 @@ export const lorebookEntryTable = sqliteTable(
 		whole_word: int({ mode: "boolean" }).notNull().default(true),
 		keyword_mode: text().notNull().default("literal"),
 		regex_flags: text().notNull().default(""),
-		semantic_threshold: real(),
 		priority: int().notNull().default(0),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 	},
@@ -208,15 +207,11 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
-// ==[HUMAN APPROVED]== Semantic matching is application-wide and independent of the writing
-// model. Credentials remain in the dedicated encrypted table; this row contains only the safe
-// endpoint identity and matching policy.
 export const embeddingSettingsTable = sqliteTable("embedding_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
 	endpoint: text().notNull().default(""),
 	model: text().notNull().default(""),
-	threshold: real().notNull().default(0.7),
 	deadline_ms: int().notNull().default(5000),
 });
 
@@ -238,11 +233,21 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	context_limit: int().notNull().default(16384),
 	output_reserve: int().notNull().default(2048),
 	safety_allowance: int().notNull().default(500),
-	jev_model: text().notNull().default("jev-1.13.0"),
 	usefulness_confidence_gate: real().notNull().default(0.3),
+	recall_relevance_minimum: real().notNull().default(1.5),
 });
 
-export const memorySecretTable = sqliteTable("memory_secret", {
+export const typesafeSettingsTable = sqliteTable("typesafe_settings", {
+	id: int().primaryKey(),
+	revision: int().notNull().default(0),
+	jev_model: text().notNull().default("jev-1.13.0"),
+	lore_trigger_mode: text().notNull().default("jev"),
+	lore_trigger_threshold: real().notNull().default(0.5),
+}, (table) => [
+	check("typesafe_settings_lore_trigger_mode_check", sql`${table.lore_trigger_mode} IN ('jev', 'off')`),
+]);
+
+export const typesafeSecretTable = sqliteTable("typesafe_secret", {
 	id: int().primaryKey(),
 	format_version: int().notNull(),
 	key_id: text().notNull(),
@@ -250,21 +255,6 @@ export const memorySecretTable = sqliteTable("memory_secret", {
 	ciphertext: text().notNull(),
 	tag: text().notNull(),
 });
-
-// ==[HUMAN APPROVED]== Derived vectors are reusable only when endpoint, model and source kind
-// are identical. Authored content and trigger text remain the cache key, never provider data.
-export const embeddingCacheTable = sqliteTable(
-	"embedding_cache",
-	{
-		id: int().primaryKey({ autoIncrement: true }),
-		endpoint: text().notNull(),
-		model: text().notNull(),
-		source_kind: text().notNull(),
-		source_text: text().notNull(),
-		vector_json: text().notNull(),
-	},
-	(table) => [uniqueIndex("embedding_cache_source_unique").on(table.endpoint, table.model, table.source_kind, table.source_text)],
-);
 
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),

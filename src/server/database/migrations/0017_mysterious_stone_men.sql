@@ -1,0 +1,1 @@
+ALTER TABLE `memory_settings` ADD `recall_relevance_minimum` real DEFAULT 1.5 NOT NULL;

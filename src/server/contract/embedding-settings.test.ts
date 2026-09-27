@@ -17,23 +17,23 @@ describe("embedding settings transport", () => {
 	});
 	afterEach(() => database.close());
 
-	test("keeps the credential out of reads while applying matching policy", async () => {
+	test("keeps the credential out of reads", async () => {
 		const initial = await app.handle(request("/api/embedding-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, endpoint: "", model: "", threshold: 0.7, deadlineMs: 5000, credentialConfigured: false });
+		expect(await initial.json()).toEqual({ revision: 0, endpoint: "", model: "", deadlineMs: 5000, credentialConfigured: false });
 		const applied = await app.handle(request("/api/embedding-settings/commands", {
 			method: "POST",
-			body: JSON.stringify({ type: "apply", expectedRevision: 0, endpoint: "http://localhost/v1/embeddings", model: "local", threshold: 0.8, deadlineMs: 2500, credential: "secret" }),
+			body: JSON.stringify({ type: "apply", expectedRevision: 0, endpoint: "http://localhost/v1/embeddings", model: "local", deadlineMs: 2500, credential: "secret" }),
 		}));
 		expect(applied.status).toBe(200);
 		expect(JSON.stringify(await applied.json())).not.toContain("secret");
 		const read = await app.handle(request("/api/embedding-settings"));
-		expect(await read.json()).toMatchObject({ revision: 1, credentialConfigured: true, threshold: 0.8 });
+		expect(await read.json()).toMatchObject({ revision: 1, credentialConfigured: true });
 	});
 
 	test("rejects stale revisions and invalid endpoint policy", async () => {
-		const stale = await app.handle(request("/api/embedding-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 2, endpoint: "http://localhost", model: "m", threshold: 0.7, deadlineMs: 5000 }) }));
+		const stale = await app.handle(request("/api/embedding-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 2, endpoint: "http://localhost", model: "m", deadlineMs: 5000 }) }));
 		expect(stale.status).toBe(409);
-		const invalid = await app.handle(request("/api/embedding-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, endpoint: "file:///tmp/embeddings", model: "m", threshold: 0.7, deadlineMs: 5000 }) }));
+		const invalid = await app.handle(request("/api/embedding-settings/commands", { method: "POST", body: JSON.stringify({ type: "apply", expectedRevision: 0, endpoint: "file:///tmp/embeddings", model: "m", deadlineMs: 5000 }) }));
 		expect(invalid.status).toBe(422);
 	});
 });

@@ -69,7 +69,7 @@ export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> 
 	readonly formatting?: GenerationFormattingContext;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	readonly embeddingFetch?: ModelFetch;
+	readonly preparationFetch?: ModelFetch;
 	readonly tokenEstimator?: TokenEstimator;
 };
 
@@ -84,7 +84,7 @@ const buildPreviewCaptureAsync = async (
 		connectionSettings: request.connectionSettings,
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
-		embeddingFetch: request.embeddingFetch,
+		preparationFetch: request.preparationFetch,
 	};
 	switch (request.kind) {
 		case "send":
@@ -285,7 +285,7 @@ interface PreviewAcceptanceContext {
 	readonly conversationId: number;
 	readonly connection: ModelClientConnectionSnapshot | null | undefined;
 	readonly formatting: GenerationFormattingContext | undefined;
-	readonly embeddingFetch: ModelFetch | undefined;
+	readonly preparationFetch: ModelFetch | undefined;
 }
 
 export const captureSendGenerationPreviewAsync = async (
@@ -304,7 +304,7 @@ export const captureSendGenerationPreviewAsync = async (
 		conversationId,
 		connection,
 		formatting,
-		embeddingFetch: context.embeddingFetch,
+		preparationFetch: context.preparationFetch,
 		skipMemoryRecall: true,
 		content,
 	});
@@ -323,7 +323,7 @@ export const captureContinuationGenerationPreviewAsync = async (
 		conversationId,
 		connection,
 		formatting,
-		embeddingFetch: context.embeddingFetch,
+		preparationFetch: context.preparationFetch,
 		skipMemoryRecall: true,
 	});
 	const assistantPrefill = current.assistantPrefill === undefined
@@ -357,7 +357,7 @@ export const captureSiblingGenerationPreviewAsync = async (
 		conversationId,
 		connection,
 		formatting,
-		embeddingFetch: context.embeddingFetch,
+		preparationFetch: context.preparationFetch,
 		skipMemoryRecall: true,
 		messageId,
 	});

@@ -5,6 +5,7 @@ import { ConnectionProfileDeletion } from "./connection-settings/ConnectionProfi
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
 import { ConnectionSettingsInspectorBody } from "./ConnectionSettingsInspector";
+import { TypesafeSettingsEditor } from "./TypesafeSettingsEditor";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -69,6 +70,7 @@ export function ConnectionSettingsPanel({
 				</p>
 			)}
 			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers are stored separately from Conversation data and are never shown after saving.</span></div>
+			<TypesafeSettingsEditor />
 		</div>
 	);
 }

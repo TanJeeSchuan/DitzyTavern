@@ -27,7 +27,7 @@ describe("Memory extraction validation", () => {
 });
 
 describe("Typesafe Memory judgments", () => {
-	test("sends the source once in state and each candidate in its own structured questions", async () => {
+	test("sends the source once in state and each candidate in its own support, attribution, and usefulness questions", async () => {
 		let requestBody = "";
 		let authorization = "";
 		const fakeFetch: ModelFetch = async (_input, init) => {
@@ -35,23 +35,25 @@ describe("Typesafe Memory judgments", () => {
 			authorization = new Headers(init?.headers).get("authorization") ?? "";
 			return Response.json({ answers: {
 				candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 0.8, contradicted: 0.1, not_established: 0.1 }, confidence: 0.7 },
+				candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 0.95, misattributed: 0.03, unclear: 0.02 }, confidence: 0.9 },
 				candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 0.9, omit: 0.1 }, confidence: 0.8 },
 			} });
 		};
 		const [judgment] = await judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch);
 		// ==[HUMAN APPROVED]== SAFETY: The fake captures the request emitted by judgeMemoryCandidates, whose request shape is asserted below.
-		const sent = JSON.parse(requestBody) as { state: { source: string; context: string[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution: string; evidence?: string[] } } }> };
+		const sent = JSON.parse(requestBody) as { state: { source: string; context: string[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution?: string; evidence?: string[] } } }> };
 		expect(authorization).toBe("Bearer secret");
 		expect(sent.state).toEqual({ source: source.content, context: [context[0].content] });
-		expect(sent.questions.candidate_0_support.instructions.memory).toEqual({ claim: candidate.claim, attribution: candidate.attribution, evidence: [candidate.evidence[0].excerpt] });
+		expect(sent.questions.candidate_0_support.instructions.memory).toEqual({ claim: candidate.claim, evidence: [candidate.evidence[0].excerpt] });
+		expect(sent.questions.candidate_0_attribution.instructions.memory).toEqual({ claim: candidate.claim, attribution: candidate.attribution });
 		expect(sent.questions.candidate_0_usefulness.instructions.memory).toEqual({ claim: candidate.claim, attribution: candidate.attribution });
-		expect(judgment?.judgment).toMatchObject({ support: "supported", usefulness: "retain", probabilities: { "support:supported": 0.8, "usefulness:retain": 0.9 }, confidence: { support: 0.7, usefulness: 0.8 } });
+		expect(judgment?.judgment).toMatchObject({ support: "supported", usefulness: "retain", probabilities: { "support:supported": 0.8, "usefulness:retain": 0.9 }, attribution: "correct", confidence: { support: 0.7, attribution: 0.9, usefulness: 0.8 } });
 	});
 
 	test("rejects incomplete judgment responses without producing a partial result", async () => {
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 }, confidence: 1 },
 		} });
-		await expect(judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch)).rejects.toThrow("omitted or added required Memory judgments");
+		await expect(judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch)).rejects.toThrow("omitted or added required answers");
 	});
 });

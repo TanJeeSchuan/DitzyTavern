@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createEmbeddingSettingsModule } from "../embedding-settings";
-import { createMemorySettingsModule } from "../memory/settings";
 import { readConversationMemories, startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../memory/extraction";
 import { initializeConnectionSecretKey } from "../connection-secrets";
@@ -15,6 +14,7 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { PromptPlan } from "../../shared/contract/conversation-schema";
+import { createTypesafeSettingsModule } from "../typesafe";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;
@@ -57,7 +57,7 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 	attribution,
 	people: ["Maren", "Writer"],
 	evidence: [{ messageId, excerpt }],
-	judgment: { support: "supported", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, usefulness: 1 } },
+	judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 1, "usefulness:retain": 1 }, confidence: { support: 1, attribution: 1, usefulness: 1 } },
 });
 
 const queueAndIndex = async (database: Database, conversationId: number, messageId: number, variantId: number, claim: MemoryCandidateJudgment) => {
@@ -106,14 +106,12 @@ describe("Memory recall in Generation preparation", () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		const alternativeVariantId = insertAlternativeVariant(database, source.messageId);
-		const memorySettings = createMemorySettingsModule(database, { masterKey: key });
-		memorySettings.setCredential({ type: "set-credential", expectedRevision: 0, credential: "typesafe-secret" });
+		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
 		createEmbeddingSettingsModule(database, { masterKey: key }).apply({
 			type: "apply",
 			expectedRevision: 0,
 			endpoint: "http://embedding.test/v1/embeddings",
 			model: "test-embedding",
-			threshold: 0.7,
 			deadlineMs: 1_000,
 		});
 		const memoryRoutes = createMemoryRoutes(database);
@@ -184,9 +182,7 @@ describe("Memory recall in Generation preparation", () => {
 				// SAFETY: the application builds a JSON object in `questions`; the fake only uses its own question names to form the response.
 				const request = JSON.parse(String(init?.body)) as { questions: object };
 				const answers = Object.fromEntries(Object.keys(request.questions).map((name) => [name,
-					name.endsWith("_retain")
-						? { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 }, confidence: 1 }
-						: { type: "choice", choice: "useful", probabilities: { irrelevant: 0, incidental: 0, useful: 1, central: 0 }, confidence: 1 },
+					{ type: "score", score: 2, legend: { 0: "Irrelevant", 1: "Incidental", 2: "Useful", 3: "Central" }, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 }, confidence: 1 },
 				]));
 				return Response.json({ answers });
 			}
@@ -382,9 +378,9 @@ describe("Memory recall in Generation preparation", () => {
 	test("empty, queued, and disabled recall skip embedding and Jev calls", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
-		createMemorySettingsModule(database, { masterKey: key }).setCredential({ type: "set-credential", expectedRevision: 0, credential: "typesafe-secret" });
+		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
 		createEmbeddingSettingsModule(database, { masterKey: key }).apply({
-			type: "apply", expectedRevision: 0, endpoint: "http://embedding.test/v1/embeddings", model: "test-embedding", threshold: 0.7, deadlineMs: 1_000,
+			type: "apply", expectedRevision: 0, endpoint: "http://embedding.test/v1/embeddings", model: "test-embedding", deadlineMs: 1_000,
 		});
 		withProfile(database);
 		let providerCalls = 0;

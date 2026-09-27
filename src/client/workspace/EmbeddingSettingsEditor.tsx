@@ -62,7 +62,6 @@ export function EmbeddingSettingsEditor() {
 			expectedRevision: state.settings.revision,
 			endpoint: state.draft.endpoint,
 			model: state.draft.model,
-			threshold: state.draft.threshold,
 			deadlineMs: state.draft.deadlineMs,
 		};
 		if (state.draft.credential.length > 0) command.credential = state.draft.credential;
@@ -88,18 +87,17 @@ export function EmbeddingSettingsEditor() {
 	};
 
 	if (state.loading) return <EmbeddingSettingsLoading />;
-	if (state.draft === null || state.settings === null) return <section className="settings-section"><h3>Semantic Lore</h3><p className="settings-feedback-error" role="alert">{state.error ?? "Embedding Settings could not be loaded."}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></section>;
+	if (state.draft === null || state.settings === null) return <section className="settings-section"><h3>Memory recall embeddings</h3><p className="settings-feedback-error" role="alert">{state.error ?? "Embedding Settings could not be loaded."}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></section>;
 
 	return <>
 	<section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-title">
 		<div>
-			<h3 id="embedding-settings-title">Semantic Lore</h3>
-			<p>Use a separate OpenAI-compatible embedding service to match authored Semantic Triggers.</p>
+			<h3 id="embedding-settings-title">Memory recall embeddings</h3>
+			<p>Use an OpenAI-compatible embedding service to shortlist saved Memories for recall.</p>
 		</div>
 		<div className="embedding-settings-grid">
 			<label className="field"><span>Embedding endpoint</span><input className="field-input" type="url" value={state.draft.endpoint} onChange={(event) => updateDraft({ endpoint: event.target.value })} placeholder="https://localhost:11434/v1/embeddings" autoComplete="url" /><small>HTTP or HTTPS. Leave empty to use keyword matching only.</small></label>
 			<label className="field"><span>Model</span><input className="field-input" value={state.draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder="text-embedding-3-small" autoComplete="off" /></label>
-			<label className="field"><span>Default cosine threshold</span><input className="field-input" type="number" min="0" max="1" step="0.01" value={state.draft.threshold} onChange={(event) => updateDraft({ threshold: Number(event.target.value) })} /><small>Starts at 0.70. This is an uncalibrated starting point for the selected model.</small></label>
 			<label className="field"><span>Required-work deadline</span><input className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /><small>Milliseconds. Starts at 5,000.</small></label>
 			<label className="field embedding-credential-field"><span><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</span><input className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /><small>Write-only. The saved value is never read back or included in prompt data.</small></label>
 		</div>
@@ -125,12 +123,12 @@ export function EmbeddingSettingsEditor() {
 function EmbeddingSettingsLoading() {
 	return <section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-loading-title" aria-busy="true">
 		<div>
-			<h3 id="embedding-settings-loading-title">Semantic Lore</h3>
+			<h3 id="embedding-settings-loading-title">Memory recall embeddings</h3>
 			<div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" />
 			<p className="sr-only" role="status">Loading embedding settings…</p>
 		</div>
 		<div className="embedding-settings-grid">
-			{["Embedding endpoint", "Model", "Default cosine threshold", "Required-work deadline", "Credential"].map((label) => <div className="field" key={label}><span>{label}</span><div className="h-9 animate-pulse rounded-md bg-muted/50" /><div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" /></div>)}
+			{["Embedding endpoint", "Model", "Required-work deadline", "Credential"].map((label) => <div className="field" key={label}><span>{label}</span><div className="h-9 animate-pulse rounded-md bg-muted/50" /><div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" /></div>)}
 		</div>
 		<div className="embedding-settings-actions"><div className="h-9 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-36 animate-pulse rounded-md bg-muted/50" /></div>
 	</section>;

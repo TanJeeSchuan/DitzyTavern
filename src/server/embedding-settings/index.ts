@@ -62,7 +62,7 @@ const normalizeEndpoint = (value: string): string => {
 	return endpoint;
 };
 
-const normalize = (input: { endpoint: string; model: string; threshold: number; deadlineMs: number }) => {
+const normalize = (input: { endpoint: string; model: string; deadlineMs: number }) => {
 	const endpoint = normalizeEndpoint(input.endpoint);
 	const model = input.model.trim();
 	if (endpoint.length === 0) {
@@ -70,13 +70,10 @@ const normalize = (input: { endpoint: string; model: string; threshold: number; 
 	} else if (model.length === 0) {
 		throw new InvalidEmbeddingSettingsError("An embedding model is required when an endpoint is configured.");
 	}
-	if (!Number.isFinite(input.threshold) || input.threshold < 0 || input.threshold > 1) {
-		throw new InvalidEmbeddingSettingsError("The embedding threshold must be between 0 and 1.");
-	}
 	if (!Number.isInteger(input.deadlineMs) || input.deadlineMs < 1) {
 		throw new InvalidEmbeddingSettingsError("The embedding deadline must be a positive whole number of milliseconds.");
 	}
-	return { endpoint, model, threshold: input.threshold, deadlineMs: input.deadlineMs };
+	return { endpoint, model, deadlineMs: input.deadlineMs };
 };
 
 export function createEmbeddingSettingsModule(
@@ -97,7 +94,6 @@ export function createEmbeddingSettingsModule(
 			revision: row.revision,
 			endpoint: row.endpoint,
 			model: row.model,
-			threshold: row.threshold,
 			deadlineMs: row.deadline_ms,
 			credentialConfigured: db.select({ id: embeddingSecretTable.settings_id }).from(embeddingSecretTable).where(eq(embeddingSecretTable.settings_id, SETTINGS_ID)).get() !== undefined,
 		};
@@ -156,7 +152,7 @@ export function createEmbeddingSettingsModule(
 		apply: (command) => {
 			const values = normalize(command);
 			return write(command.expectedRevision, (db) => {
-				db.update(embeddingSettingsTable).set({ endpoint: values.endpoint, model: values.model, threshold: values.threshold, deadline_ms: values.deadlineMs }).where(eq(embeddingSettingsTable.id, SETTINGS_ID)).run();
+				db.update(embeddingSettingsTable).set({ endpoint: values.endpoint, model: values.model, deadline_ms: values.deadlineMs }).where(eq(embeddingSettingsTable.id, SETTINGS_ID)).run();
 				if (command.credential !== undefined) writeSecret(db, command.credential);
 			});
 		},

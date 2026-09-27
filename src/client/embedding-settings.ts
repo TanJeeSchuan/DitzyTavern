@@ -42,14 +42,13 @@ export async function saveEmbeddingSettings(command: EmbeddingSettingsCommand): 
 	}
 }
 
-export type EmbeddingSettingsDraft = Pick<EmbeddingSettings, "endpoint" | "model" | "threshold" | "deadlineMs"> & {
+export type EmbeddingSettingsDraft = Pick<EmbeddingSettings, "endpoint" | "model" | "deadlineMs"> & {
 		credential: string;
 };
 
 export const draftFromEmbeddingSettings = (settings: EmbeddingSettings): EmbeddingSettingsDraft => ({
 	endpoint: settings.endpoint,
 	model: settings.model,
-	threshold: settings.threshold,
 	deadlineMs: settings.deadlineMs,
 	credential: "",
 });

@@ -42,16 +42,17 @@ const candidate = (messageId: number, excerpt: string, claim = "Maren carries Wr
 	evidence: [{ messageId, excerpt }],
 	judgment: {
 		support: "supported",
+		attribution: "correct",
 		usefulness: "retain",
 		probabilities: { "support:supported": 1, "usefulness:retain": 1 },
-		confidence: { support: 1, usefulness: 1 },
+		confidence: { support: 1, attribution: 1, usefulness: 1 },
 	},
 });
 
 const configureEmbeddings = async (app: ReturnType<typeof createEmbeddingSettingsRoutes>, endpoint: string, model: string, expectedRevision = 0) => {
 	const response = await app.handle(request("/api/embedding-settings/commands", {
 		method: "POST",
-		body: JSON.stringify({ type: "apply", expectedRevision, endpoint, model, threshold: 0.7, deadlineMs: 1_000, credential: "embedding-secret" }),
+		body: JSON.stringify({ type: "apply", expectedRevision, endpoint, model, deadlineMs: 1_000, credential: "embedding-secret" }),
 	}));
 	if (response.status !== 200) throw new Error(`Embedding Settings fixture failed: ${await response.text()}`);
 	return Value.Parse(embeddingSettingsApplied, await response.json()).settings;
@@ -81,7 +82,7 @@ const readSources = async (app: ReturnType<typeof createMemoryRoutes>, conversat
 
 type EmbeddingRequest = { url: string; model: string; input: string[]; authorization: string | null };
 
-const embeddingFetch = (requests: EmbeddingRequest[], wait?: (url: string, signal: AbortSignal | null) => Promise<void>): ModelFetch => async (input, init) => {
+const preparationFetch = (requests: EmbeddingRequest[], wait?: (url: string, signal: AbortSignal | null) => Promise<void>): ModelFetch => async (input, init) => {
 	// SAFETY: the application generated this request from its embedding settings and text batch; this fake reads those typed fields.
 	const body = JSON.parse(String(init?.body)) as { model: string; input: string[] };
 	const url = String(input);
@@ -143,7 +144,7 @@ describe("Memory indexing public lifecycle", () => {
 		const stop = startMemoryWorker(database, {
 			concurrency: 1,
 			process: async (source) => { extractions += 1; return [candidate(source.messageId, source.content)]; },
-			index: embeddingIndex(database, embeddingFetch(requests)),
+			index: embeddingIndex(database, preparationFetch(requests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).every((source) => source.status === "complete" && source.indexing.status === "ready"))).toBe(true);
@@ -185,7 +186,7 @@ describe("Memory indexing public lifecycle", () => {
 		const retryRequests: EmbeddingRequest[] = [];
 		const retried = startMemoryWorker(database, {
 			process: async () => { correctionExtractions += 1; throw new Error("Retry must use saved writer text."); },
-			index: embeddingIndex(database, embeddingFetch(retryRequests)),
+			index: embeddingIndex(database, preparationFetch(retryRequests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).find((source) => source.variantId === first.variantId)?.indexing.status === "ready")).toBe(true);
@@ -208,7 +209,7 @@ describe("Memory indexing public lifecycle", () => {
 				extractionPass += 1;
 				return [candidate(item.messageId, item.content)];
 			},
-			index: embeddingIndex(database, embeddingFetch(requests)),
+			index: embeddingIndex(database, preparationFetch(requests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true);
@@ -221,7 +222,7 @@ describe("Memory indexing public lifecycle", () => {
 				extractionPass += 1;
 				return [candidate(item.messageId, item.content), candidate(item.messageId, item.content, "The second Memory is pending.", "Writer correction")];
 			},
-			index: async (job, signal) => { gate.started(); await gate.gate; return embedMemoryJob(database, job, embeddingFetch(requests), signal); },
+			index: async (job, signal) => { gate.started(); await gate.gate; return embedMemoryJob(database, job, preparationFetch(requests), signal); },
 		});
 		try {
 			await gate.reached;
@@ -259,7 +260,7 @@ describe("Memory indexing public lifecycle", () => {
 		const oldRequest = waitAt();
 		const currentRequest = waitAt();
 		const requests: EmbeddingRequest[] = [];
-		const transport = embeddingFetch(requests, async (url) => {
+		const transport = preparationFetch(requests, async (url) => {
 			if (url.includes("embedding-b")) { oldRequest.started(); await oldRequest.gate; }
 			if (url.includes("embedding-c")) { currentRequest.started(); await currentRequest.gate; }
 		});
@@ -304,7 +305,7 @@ describe("Memory indexing public lifecycle", () => {
 		const indexRequests = waitAt();
 		let requestCount = 0;
 		const requests: EmbeddingRequest[] = [];
-		const transport = embeddingFetch(requests, async (url) => {
+		const transport = preparationFetch(requests, async (url) => {
 			if (!url.includes("embedding-b")) return;
 			requestCount += 1;
 			if (requestCount === 2) indexRequests.started();
@@ -357,7 +358,7 @@ describe("Memory indexing public lifecycle", () => {
 		const pending = waitAt();
 		let indexCalls = 0;
 		const requests: EmbeddingRequest[] = [];
-		const transport = embeddingFetch(requests, async () => {
+		const transport = preparationFetch(requests, async () => {
 			indexCalls += 1;
 			if (indexCalls === 1) { pending.started(); await pending.gate; }
 		});

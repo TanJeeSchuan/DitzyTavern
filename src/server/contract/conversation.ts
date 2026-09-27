@@ -274,7 +274,7 @@ export const createConversationRoutes = (
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
-						embeddingFetch: options.fetch,
+						preparationFetch: options.fetch,
 					};
 					const input = body.kind === "send"
 						? { ...common, kind: body.kind, content: body.content }

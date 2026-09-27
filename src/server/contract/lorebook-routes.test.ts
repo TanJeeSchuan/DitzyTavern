@@ -49,7 +49,7 @@ describe("Lorebook library transport", () => {
 			wholeWord: true,
 			keywordMode: "literal" as const,
 			regexFlags: "",
-			semanticThreshold: 0.8,
+			
 			priority: 4,
 			enabled: true,
 		};
@@ -102,7 +102,7 @@ describe("Lorebook library transport", () => {
 			entries: [{
 				title: "Entry", content: "Literal {{macro}}", keywords: ["key"], semanticTriggers: ["meaning"],
 				matchOperator: "or" as const, always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i", semanticThreshold: null,
+				caseSensitive: true, wholeWord: false, keywordMode: "regex" as const, regexFlags: "i", 
 				priority: 0, enabled: false,
 			}],
 		};
@@ -207,7 +207,7 @@ describe("Lorebook library transport", () => {
 	test("invalid native imports do not partially create a book", async () => {
 		const response = await app.handle(request("/api/lorebooks/import", {
 			method: "POST",
-			body: JSON.stringify({ name: "Broken", description: "", entries: [{ title: "x", content: "x", keywords: [], semanticTriggers: [], matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true, keywordMode: "regex", regexFlags: "invalid flag", semanticThreshold: null, priority: 0, enabled: true }] }),
+			body: JSON.stringify({ name: "Broken", description: "", entries: [{ title: "x", content: "x", keywords: [], semanticTriggers: [], matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true, keywordMode: "regex", regexFlags: "invalid flag", priority: 0, enabled: true }] }),
 		}));
 		expect(response.status).toBe(422);
 		expect(await (await app.handle(request("/api/lorebooks"))).json()).toEqual({ books: [] });
@@ -241,7 +241,7 @@ describe("Lorebook library transport", () => {
 			entry: {
 				title: "Harbor", content: "The harbor is old.", keywords: [], semanticTriggers: ["ships arrive"],
 				matchOperator: "or", always: false, requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "", semanticThreshold: null,
+				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "", 
 				priority: 0, enabled: true,
 			},
 		});

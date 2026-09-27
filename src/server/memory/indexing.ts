@@ -6,7 +6,7 @@ import { Value } from "@sinclair/typebox/value";
 import { readConversationPromptPreset } from "../conversation/prompt-preset";
 import { activeGenerationTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
 import { createEmbeddingSettingsModule } from "../embedding-settings";
-import { requestEmbeddings } from "../lorebook/embedding-client";
+import { requestEmbeddings } from "../embedding-settings/client";
 import type { ModelFetch } from "../model-client/types";
 import { memoryCandidates } from "../../shared/contract/memory";
 import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";

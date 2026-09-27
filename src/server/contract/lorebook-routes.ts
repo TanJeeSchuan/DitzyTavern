@@ -53,10 +53,10 @@ import { readSelectedHistory } from "../conversation/selected-history";
 import { readConversationPromptPresetRecipe } from "../prompt-preset";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
-import type { EmbeddingSettingsModuleOptions } from "../embedding-settings";
+import type { TypesafeSettingsModuleOptions } from "../typesafe";
 import type { ModelFetch } from "../model-client/types";
 
-export interface LorebookRouteOptions extends EmbeddingSettingsModuleOptions {
+export interface LorebookRouteOptions extends TypesafeSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
 
@@ -126,7 +126,7 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 				conversationId: body.conversationId,
 				messages: history.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 				pendingHumanText: body.writing,
-				embeddingSettings: options,
+				typesafeSettings: options,
 				fetch: options.fetch,
 			});
 		});

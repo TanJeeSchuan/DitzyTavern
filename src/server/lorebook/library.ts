@@ -53,7 +53,6 @@ const fieldsFromRow = (row: typeof lorebookEntryTable.$inferSelect): LoreEntryFi
 	wholeWord: row.whole_word,
 	keywordMode: row.keyword_mode === "regex" ? "regex" : "literal",
 	regexFlags: row.regex_flags,
-	semanticThreshold: row.semantic_threshold,
 	priority: row.priority,
 	enabled: row.enabled,
 });
@@ -95,9 +94,6 @@ const validateEntry = (entry: LoreEntryFields): LoreEntryFields => {
 	if (!Number.isInteger(entry.priority)) {
 		throw new InvalidLorebookCommandError("Lorebook entry priority must be an integer.");
 	}
-	if (entry.semanticThreshold !== null && (entry.semanticThreshold < 0 || entry.semanticThreshold > 1)) {
-		throw new InvalidLorebookCommandError("Semantic threshold must be between 0 and 1.");
-	}
 	try {
 		// ==[HUMAN APPROVED]== Validate flags even when the entry currently has no expressions. A
 		// later edit must not inherit a malformed configuration that was
@@ -124,7 +120,6 @@ const entryValues = (entry: LoreEntryFields) => ({
 	whole_word: entry.wholeWord,
 	keyword_mode: entry.keywordMode,
 	regex_flags: entry.regexFlags,
-	semantic_threshold: entry.semanticThreshold,
 	priority: entry.priority,
 	enabled: entry.enabled,
 });
@@ -273,7 +268,6 @@ export const importSillyTavernLorebook = (database: Database, source: SillyTaver
 			wholeWord: sourceBoolean(item.matchWholeWords ?? item.wholeWords, true),
 			keywordMode: hasExplicitRegex ? "regex" : "literal",
 			regexFlags: "",
-			semanticThreshold: null,
 			priority: order !== undefined && Number.isInteger(order) ? order : 0,
 			enabled,
 		});

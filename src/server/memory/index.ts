@@ -1,5 +1,4 @@
 export { createMemorySettingsModule, InvalidMemorySettingsError, StaleMemorySettingsError } from "./settings";
-export type { MemorySettingsModuleOptions } from "./settings";
 export { cancelMemoryCatchup, correctMemorySource, invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryWorker, startMemoryCatchup, StaleMemoryCollectionError } from "./collections";
 export type { MemoryCatchupView, MemoryCollectionView, MemoryWorkerOptions } from "./collections";
 export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";

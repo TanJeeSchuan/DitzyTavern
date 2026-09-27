@@ -4,7 +4,6 @@ export const embeddingSettings = Type.Object({
 	revision: Type.Integer(),
 	endpoint: Type.String(),
 	model: Type.String(),
-	threshold: Type.Number({ minimum: 0, maximum: 1 }),
 	deadlineMs: Type.Integer({ minimum: 1 }),
 	credentialConfigured: Type.Boolean(),
 });
@@ -34,7 +33,6 @@ export const embeddingSettingsCommandBody = Type.Union([
 		expectedRevision: Type.Integer(),
 		endpoint: Type.String(),
 		model: Type.String(),
-		threshold: Type.Number(),
 		deadlineMs: Type.Integer(),
 		credential: Type.Optional(Type.Union([Type.Null(), Type.String()])),
 	}),

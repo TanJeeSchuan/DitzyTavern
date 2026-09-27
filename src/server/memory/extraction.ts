@@ -7,17 +7,18 @@ import { createMemorySettingsModule } from "./settings";
 import type { MemorySettingsPayload } from "../../shared/contract/memory-settings";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { Value } from "@sinclair/typebox/value";
-import { memoryExtractionResponse, memoryJudgmentResponse } from "../../shared/contract/memory";
-import type { MemoryExtractionResponse, MemoryJudgmentAnswer, MemoryJudgmentResponse } from "../../shared/contract/memory";
+import { memoryExtractionResponse } from "../../shared/contract/memory";
+import type { MemoryExtractionResponse } from "../../shared/contract/memory";
+import type { JevAnswer } from "../../shared/contract/typesafe";
+import { createTypesafeSettingsModule, requestJev, type JevTrace } from "../typesafe";
 
 const MAX_CLAIM = 1024;
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const MAX_JEV_REQUEST_BYTES = 128 * 1024;
-const MAX_JEV_RESPONSE_BYTES = 256 * 1024;
 
-export type MemoryTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
+export type MemoryTrace = JevTrace;
 const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
 const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
@@ -33,9 +34,10 @@ export interface MemoryCandidateJudgment extends MemoryCandidate {
 	writerMaintained?: boolean;
 	judgment: {
 		support: "supported" | "contradicted" | "not_established";
+		attribution: "correct" | "misattributed" | "unclear";
 		usefulness: "retain" | "omit";
 		probabilities: Record<string, number>;
-		confidence: { support: number; usefulness: number };
+		confidence: { support: number; attribution: number; usefulness: number };
 	};
 }
 
@@ -111,16 +113,11 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	return { candidates, context: retainedContext };
 };
 
-const choice = (instructions: string, labels: readonly string[]) => ({
-	type: "choice",
-	instructions,
-	criteria: Object.fromEntries(labels.map((label) => [label, (label === "not_established" || label === "omit") ? null : label === "supported" ? "The owning source evidence supports the attributed claim." : label === "contradicted" ? "The owning source evidence conflicts with the attributed claim." : "The claim is useful durable context beyond this scene."])),
-});
-
 const isChoiceLabel = <const Labels extends readonly string[]>(labels: Labels, value: string): value is Labels[number] =>
 	labels.some((label) => label === value);
 
-const parseChoice = <const Labels extends readonly string[]>(answer: MemoryJudgmentAnswer, labels: Labels) => {
+const parseChoice = <const Labels extends readonly string[]>(answer: JevAnswer, labels: Labels) => {
+	if (answer.type !== "choice") throw new Error("Typesafe returned a missing or malformed Memory judgment.");
 	const selected = answer.choice;
 	const probabilities = answer.probabilities;
 	if (!isChoiceLabel(labels, selected) || Object.keys(probabilities).length !== labels.length) throw new Error("Typesafe returned a missing or malformed Memory judgment.");
@@ -135,69 +132,23 @@ const parseChoice = <const Labels extends readonly string[]>(answer: MemoryJudgm
 	return { label: selected, probabilities: normalized, confidence: answer.confidence };
 };
 
-const assertExactAnswerKeys = (answers: Readonly<Record<string, MemoryJudgmentAnswer>>, expected: readonly string[]): void => {
-	const actual = Object.keys(answers);
-	if (actual.length !== expected.length || expected.some((key) => !Object.hasOwn(answers, key))) {
-		throw new Error("Typesafe Jev omitted or added required Memory judgments.");
-	}
-};
-
-const requestMemoryJudgment = async (
-	request: string,
-	questionIds: readonly string[],
-	credential: string,
-	fetcher: ModelFetch,
-	signal?: AbortSignal,
-	trace: MemoryTrace = noTrace,
-): Promise<MemoryJudgmentResponse["answers"]> => {
-	trace("Jev request", { body: prettyJson(request) });
-	const startedAt = Date.now();
-	const response = await fetcher("https://api.typesafe.ai/v1/systemone", {
-		method: "POST",
-		signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
-		headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
-		body: request,
-	});
-	const text = new TextDecoder().decode(await readBoundedResponse(response, MAX_JEV_RESPONSE_BYTES));
-	trace("Jev response", { elapsed: seconds(startedAt), status: String(response.status), body: prettyJson(text) });
-	if (!response.ok) throw new Error(`Typesafe Jev request failed with HTTP ${response.status}.`);
-	let decoded: MemoryJudgmentResponse;
-	try { decoded = Value.Parse(memoryJudgmentResponse, JSON.parse(text)); } catch { throw new Error("Typesafe Jev returned malformed or invalid JSON."); }
-	assertExactAnswerKeys(decoded.answers, questionIds);
-	return decoded.answers;
-};
-
-async function readBoundedResponse(response: Response, limit: number): Promise<Uint8Array> {
-	const declared = Number(response.headers.get("content-length"));
-	if (Number.isFinite(declared) && declared > limit) throw new Error("Typesafe Jev response exceeded 256 KiB.");
-	if (!response.body) return new Uint8Array();
-	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > limit) { await reader.cancel(); throw new Error("Typesafe Jev response exceeded 256 KiB."); }
-		chunks.push(value);
-	}
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-	return bytes;
-}
-
 const supportCriteria = {
-	supported: "`source` states the claim, as attributed, or directly implies it",
+	supported: "`source` states the claim or directly implies it",
 	contradicted: "`source` states the opposite, or later negates or revises it",
 	not_established: "`source` only suggests it, or frames it as a dream, rumor, quote, or uncertainty",
+};
+const attributionCriteria = {
+	correct: "`source` shows `memory.attribution` holds the claim in the way described",
+	misattributed: "The claim belongs to someone else in `source`, or it is said, heard, witnessed, or believed rather than as described",
+	unclear: "`source` does not make clear who holds the claim",
 };
 const usefulnessCriteria = {
 	retain: { what: "A lasting fact, relationship, promise, decision, change of state, or belief", not_for: "Description of the current moment" },
 	omit: { what: "Sensory detail, scene description, momentary action, or mood", not_for: "Anything later scenes could need to stay consistent" },
 };
 const candidateQuestions = (candidate: MemoryCandidate) => ({
-	support: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution, evidence: candidate.evidence.map((item) => item.excerpt) }, question: "How does `source` relate to `memory.claim` as attributed to `memory.attribution`?" }, criteria: supportCriteria },
+	support: { type: "choice", instructions: { memory: { claim: candidate.claim, evidence: candidate.evidence.map((item) => item.excerpt) }, question: "How does `source` relate to `memory.claim`?" }, criteria: supportCriteria },
+	attribution: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "In `source`, is `memory.attribution` the one who narrates, says, witnesses, hears, or believes `memory.claim`?" }, criteria: attributionCriteria },
 	usefulness: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "Will `memory.claim` still matter to the story after the scene in `source` ends?" }, criteria: usefulnessCriteria },
 });
 
@@ -211,7 +162,7 @@ export async function judgeMemoryCandidates(
 	trace: MemoryTrace = noTrace,
 ): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Typesafe Jev credentials are not configured in Memory Settings.");
+	if (!credential) throw new Error("Configure the Typesafe credential in Model Settings.");
 	const output: MemoryCandidateJudgment[] = [];
 	const batches: MemoryCandidate[][] = [];
 	let batch: MemoryCandidate[] = [];
@@ -220,8 +171,9 @@ export async function judgeMemoryCandidates(
 		const state = { source: captured.source.content, context: captured.context.map((message) => message.content) };
 		const questions: Record<string, ReturnType<typeof candidateQuestions>[keyof ReturnType<typeof candidateQuestions>]> = {};
 		for (const [index, candidate] of values.entries()) {
-			const { support, usefulness } = candidateQuestions(candidate);
+			const { support, attribution, usefulness } = candidateQuestions(candidate);
 			questions[`candidate_${start + index}_support`] = support;
+			questions[`candidate_${start + index}_attribution`] = attribution;
 			questions[`candidate_${start + index}_usefulness`] = usefulness;
 		}
 		const request = JSON.stringify({ state, model, questions });
@@ -245,12 +197,14 @@ export async function judgeMemoryCandidates(
 	offset = 0;
 	for (const currentBatch of batches) {
 		const { questions, request } = buildRequest(currentBatch, offset);
-		const answers = await requestMemoryJudgment(request, Object.keys(questions), credential, fetcher, signal, trace);
+		const answers = await requestJev({ request, questionIds: Object.keys(questions), credential, fetch: fetcher, signal, trace });
 		for (const [index, candidate] of currentBatch.entries()) {
 			const id = offset + index;
-			const support = parseChoice(answers[`candidate_${id}_support`], ["supported", "contradicted", "not_established"] as const);
-			const usefulness = parseChoice(answers[`candidate_${id}_usefulness`], ["retain", "omit"] as const);
-			output.push({ ...candidate, judgment: { support: support.label, usefulness: usefulness.label, confidence: { support: support.confidence, usefulness: usefulness.confidence }, probabilities: { ...Object.fromEntries(Object.entries(support.probabilities).map(([key, value]) => [`support:${key}`, value])), ...Object.fromEntries(Object.entries(usefulness.probabilities).map(([key, value]) => [`usefulness:${key}`, value])) } } });
+			const support = parseChoice(answers[`candidate_${id}_support`]!, ["supported", "contradicted", "not_established"] as const);
+			const attribution = parseChoice(answers[`candidate_${id}_attribution`]!, ["correct", "misattributed", "unclear"] as const);
+			const usefulness = parseChoice(answers[`candidate_${id}_usefulness`]!, ["retain", "omit"] as const);
+			const prefixed = (name: string, probabilities: Record<string, number>) => Object.fromEntries(Object.entries(probabilities).map(([key, value]) => [`${name}:${key}`, value]));
+			output.push({ ...candidate, judgment: { support: support.label, attribution: attribution.label, usefulness: usefulness.label, confidence: { support: support.confidence, attribution: attribution.confidence, usefulness: usefulness.confidence }, probabilities: { ...prefixed("support", support.probabilities), ...prefixed("attribution", attribution.probabilities), ...prefixed("usefulness", usefulness.probabilities) } } });
 		}
 		offset += currentBatch.length;
 	}
@@ -258,39 +212,38 @@ export async function judgeMemoryCandidates(
 }
 
 const scoreLabels = ["irrelevant", "incidental", "useful", "central"] as const;
-const relevanceChoice = (instructions: string) => ({
-	type: "choice",
-	instructions,
-	criteria: {
-		irrelevant: "The Memory does not materially help with the captured scene.",
-		incidental: "The Memory has a weak or indirect connection to the captured scene.",
-		useful: "The Memory provides meaningful context for the captured scene.",
-		central: "The Memory is essential context for interpreting the captured scene.",
-	},
+const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
+	type: "score",
+	instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "How much does `memory` help write the next reply to `scene`?" },
+	criteria: [
+		"Irrelevant: the next reply would be the same without it",
+		"Incidental: loosely connected, such as background detail about someone present",
+		"Useful: a fact, relationship, or earlier event the next reply should stay consistent with",
+		"Central: the next reply depends on it, such as a promise, secret, or event being discussed",
+	],
 });
+
+const parseScore = (answer: JevAnswer) => {
+	if (answer.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
+	const levels = scoreLabels.map((_, index) => answer.probabilities[String(index)]);
+	if (levels.some((probability) => !(probability >= 0 && probability <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
+	return { score: answer.score, label: scoreLabels[levels.indexOf(Math.max(...levels))]! };
+};
 
 export async function judgeMemoryRecallCandidates(
 	candidates: readonly MemoryRecallCandidateRecord[],
 	scene: string,
+	relevanceMinimum: number,
 	credential: string,
 	model = "jev-1.13.0",
 	fetcher: ModelFetch = fetch,
 	signal?: AbortSignal,
 ): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Typesafe Jev credentials are not configured in Memory Settings.");
+	if (!credential) throw new Error("Configure the Typesafe credential in Model Settings.");
 	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
-		const state = { scene, candidates: values.map(({ identity, messageId, variantId, collectionRevision, indexEpoch, ownership, sourceChanged, claimIndex, claim, attribution, people, evidence }) => ({ identity, messageId, variantId, collectionRevision, indexEpoch, ownership, sourceChanged, claimIndex, claim, attribution, people, evidence })) };
-		const questions: Record<string, ReturnType<typeof choice>> = {};
-		for (const candidate of values) {
-			questions[`candidate_${candidate.identity}_retain`] = choice(
-				`For candidate identity ${candidate.identity}, ${candidate.claim} (${candidate.attribution}), judge whether it is useful durable context beyond this captured scene: ${scene}. This collection is ${candidate.ownership}-maintained${candidate.sourceChanged ? " and its source has changed since saving" : ""}. Use only the supplied candidate and cited evidence ${JSON.stringify(candidate.evidence)}.`,
-				["retain", "omit"],
-			);
-			questions[`candidate_${candidate.identity}_score`] = relevanceChoice(
-				`Score candidate identity ${candidate.identity}, ${candidate.claim} (${candidate.attribution}), for relevance to this captured scene: ${scene}. This collection is ${candidate.ownership}-maintained${candidate.sourceChanged ? " and its source has changed since saving" : ""}. Use only the supplied candidate and cited evidence ${JSON.stringify(candidate.evidence)}.`,
-			);
-		}
+		const state = { scene };
+		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
 		const request = JSON.stringify({ state, model, questions });
 		const stateTokens = tokenxEstimator(JSON.stringify(state));
 		const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
@@ -308,24 +261,26 @@ export async function judgeMemoryRecallCandidates(
 		request = buildRequest(packed);
 	}
 	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
-	const answers = await requestMemoryJudgment(request.request, Object.keys(request.questions), credential, fetcher, signal);
+	const answers = await requestJev({ request: request.request, questionIds: Object.keys(request.questions), credential, fetch: fetcher, signal });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of packed) {
-		const retain = parseChoice(answers[`candidate_${candidate.identity}_retain`], ["retain", "omit"] as const);
-		const score = parseChoice(answers[`candidate_${candidate.identity}_score`], scoreLabels);
+		const relevance = parseScore(answers[`candidate_${candidate.identity}_relevance`]!);
+		const retained = relevance.score >= relevanceMinimum;
 		judged.set(candidate.identity, {
 			...candidate,
 			judged: true,
-			relevance: score.label,
-			retained: retain.label === "retain",
+			relevance: relevance.label,
+			relevanceScore: relevance.score,
+			retained,
 			requestIncluded: true,
-			admission: retain.label === "retain" ? "admitted" : "not-retained",
+			admission: retained ? "admitted" : "not-retained",
 		});
 	}
 	return candidates.map((candidate) => judged.get(candidate.identity) ?? {
 		...candidate,
 		judged: false,
 		relevance: null,
+		relevanceScore: null,
 		retained: false,
 		requestIncluded: false,
 		admission: "request-limit",
@@ -335,9 +290,9 @@ export async function judgeMemoryRecallCandidates(
 export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace): Promise<MemoryCandidateJudgment[]> {
 	const settings = createMemorySettingsModule(database).get();
 	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
-	const credentials = createMemorySettingsModule(database).getCredential();
-	const judgments = await judgeMemoryCandidates({ source, context: extracted.context }, extracted.candidates, credentials ?? "", settings.jevModel, fetcher, signal, trace);
-	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.usefulness === "retain" && judgment.confidence.usefulness >= settings.usefulnessConfidenceGate);
-	trace("Kept memories", { rule: `supported, and retain with confidence >= ${settings.usefulnessConfidenceGate}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
+	const typesafe = createTypesafeSettingsModule(database);
+	const judgments = await judgeMemoryCandidates({ source, context: extracted.context }, extracted.candidates, typesafe.getCredential() ?? "", typesafe.get().jevModel, fetcher, signal, trace);
+	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.confidence.usefulness >= settings.usefulnessConfidenceGate);
+	trace("Kept memories", { rule: `supported, correctly attributed, and retain with confidence >= ${settings.usefulnessConfidenceGate}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
 	return kept;
 }

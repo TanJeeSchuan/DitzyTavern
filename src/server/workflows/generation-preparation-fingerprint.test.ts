@@ -3,6 +3,7 @@ import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation/genera
 import { effectiveGenerationSettingsFor } from "../generation-plan";
 import type { GenerationPreparation } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
+import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 
 const emptyPrompt = {
 	systemInstruction: "",
@@ -29,13 +30,7 @@ const participant = (id: number, name: string) => ({
 	},
 });
 
-const preparationWithEmbeddingSettings = (semanticSettings: {
-	endpoint: string;
-	model: string;
-	threshold: number;
-	deadlineMs: number;
-	credential: string | null;
-}): GenerationPreparation => {
+const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): GenerationPreparation => {
 	const settings = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	return {
 		kind: "send",
@@ -87,6 +82,7 @@ const preparationWithEmbeddingSettings = (semanticSettings: {
 				embeddingDeadlineMs: 1_000,
 				jevModel: "jev-1.13.0",
 				jevConfigured: false,
+				relevanceMinimum: 1.5,
 				pendingSourceCount: 0,
 				pendingIndexCount: 0,
 				failedIndexCount: 0,
@@ -114,6 +110,7 @@ const preparationWithEmbeddingSettings = (semanticSettings: {
 				scanTruncated: false,
 				jevModel: "jev-1.13.0",
 				jevConfigured: false,
+				relevanceMinimum: 1.5,
 				embeddingModel: "",
 				embeddingDeadlineMs: 1_000,
 			},
@@ -122,52 +119,33 @@ const preparationWithEmbeddingSettings = (semanticSettings: {
 	};
 };
 
-const settings = {
-	endpoint: "https://embedding.example/v1/embeddings",
-	model: "embedding-model-v1",
-	threshold: 0.7,
-	deadlineMs: 5000,
+const settings: SemanticSettingsSnapshot = {
+	mode: "jev",
+	threshold: 0.5,
+	jevModel: "jev-1.13.0",
 	credential: "secret",
 };
 
 interface Fingerprint {
 	lore: {
-		embedding: {
-			endpoint: string;
-			model: string;
-			threshold: number;
-			deadlineMs: number;
-		};
+		semantic: Omit<SemanticSettingsSnapshot, "credential">;
 	};
 }
 
 describe("generation preparation fingerprint", () => {
-	test("captures embedding configuration without its credential", () => {
+	test("captures Semantic Trigger configuration without its credential", () => {
 		// ==[HUMAN APPROVED]== SAFETY: The fingerprint is produced by the function under test and
 		// this type describes the fields asserted from its JSON projection.
-		const fingerprint = JSON.parse(generationPreparationFingerprint(preparationWithEmbeddingSettings(settings))) as Fingerprint;
+		const fingerprint = JSON.parse(generationPreparationFingerprint(preparationWithSemanticSettings(settings))) as Fingerprint;
 
-		expect(fingerprint.lore.embedding).toEqual({
-			endpoint: settings.endpoint,
-			model: settings.model,
-			threshold: settings.threshold,
-			deadlineMs: settings.deadlineMs,
-		});
+		expect(fingerprint.lore.semantic).toEqual({ mode: settings.mode, threshold: settings.threshold, jevModel: settings.jevModel });
 		expect(JSON.stringify(fingerprint)).not.toContain(settings.credential);
 	});
 
-	test("changes when any embedding configuration field changes", () => {
-		const baseline = generationPreparationFingerprint(preparationWithEmbeddingSettings(settings));
-		for (const field of ["endpoint", "model", "threshold", "deadlineMs"] as const) {
-			const changed = {
-				...settings,
-				[field]: field === "threshold"
-					? 0.8
-					: field === "deadlineMs"
-						? 6000
-						: `${settings[field]}-changed`,
-			};
-			expect(generationPreparationFingerprint(preparationWithEmbeddingSettings(changed))).not.toBe(baseline);
+	test("changes when any Semantic Trigger configuration field changes", () => {
+		const baseline = generationPreparationFingerprint(preparationWithSemanticSettings(settings));
+		for (const changed of [{ ...settings, mode: "off" as const }, { ...settings, threshold: 0.8 }, { ...settings, jevModel: "jev-next" }]) {
+			expect(generationPreparationFingerprint(preparationWithSemanticSettings(changed))).not.toBe(baseline);
 		}
 	});
 });

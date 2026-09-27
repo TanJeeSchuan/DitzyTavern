@@ -752,7 +752,7 @@ describe("Generation runtime behavior", () => {
 				wholeWord: true,
 				keywordMode: "literal",
 				regexFlags: "",
-				semanticThreshold: null,
+				
 				priority: 1,
 				enabled: true,
 			}],
