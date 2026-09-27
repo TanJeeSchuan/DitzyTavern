@@ -73,9 +73,6 @@ export async function saveConnectionCommand(
 
 export async function testConnectionDraft(input: TestConnectionDraftInput): Promise<TestConnectionResult> {
 	const { data } = await api.api["connection-settings"]["test-connection"].post(input);
-	if (data?.outcome === "failure" && data.responseBody !== undefined) {
-		console.error("Provider response body:", data.responseBody);
-	}
 	if (data !== undefined && data !== null) return data;
 	return { outcome: "invalid", reason: "Test Connection request failed." };
 }

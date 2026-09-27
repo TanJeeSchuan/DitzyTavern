@@ -53,7 +53,7 @@ describe("Chat list summaries", () => {
 	test("excerpts the last Message's selected Variant with whitespace collapsed and a 160-character cap", () => {
 		const chat = createChat("Excerpt", ["Writer", "Maren"]);
 		const first = compose(chat, "2026-09-26T10:00:00Z", ["An earlier Message."]);
-		const long = `Chosen\n\n  swipe ${"word ".repeat(60)}`;
+		const long = `${" \n\t".repeat(200)}Chosen${" \n".repeat(300)}swipe ${"word ".repeat(60)}`;
 		compose(first, "2026-09-26T10:01:00Z", ["Unselected swipe.", long], 1);
 
 		const summary = listChatSummaries(database).find((candidate) => candidate.id === chat.id);

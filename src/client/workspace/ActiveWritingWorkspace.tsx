@@ -278,7 +278,7 @@ export function ActiveWritingWorkspace({
 			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={session.activeChat}
-					onOpenCast={() => togglePanel("characters")}
+						onOpenCast={() => requestNavigation(() => togglePanel("characters"))}
 					onOpenInfo={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);

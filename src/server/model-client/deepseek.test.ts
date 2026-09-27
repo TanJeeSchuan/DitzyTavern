@@ -175,12 +175,12 @@ describe("DeepSeek production Model Client", () => {
 		]);
 	});
 
-	test("keeps the visible provider error short and retains the full response body for diagnostics", async () => {
+	test("keeps diagnostics useful without exposing credentials or custom headers", async () => {
 		const credential = "credential-never-returned";
 		const customHeaderValue = "custom-header-never-returned";
 		const errorBody = JSON.stringify({
 			error: {
-				message: `diagnostic ${credential} ${customHeaderValue}`,
+				message: `diagnostic prefix${credential}suffix ${customHeaderValue}`,
 			},
 		});
 		const client = createDeepSeekModelClient({
@@ -213,7 +213,7 @@ describe("DeepSeek production Model Client", () => {
 			expect(error.message).not.toContain("diagnostic");
 			expect(error.message).not.toContain(credential);
 			expect(error.message).not.toContain(customHeaderValue);
-			expect(error.responseBody).toBe(errorBody);
+			expect(error.responseBody).toBe('{"error":{"message":"diagnostic prefix[REDACTED]suffix [REDACTED]"}}');
 		}
 	});
 });

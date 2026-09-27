@@ -13,14 +13,13 @@
  * - A surface is identified by its dialogs, menus, landmarks, form-control
  *   labels and toggle states, never by text or button labels (which carry
  *   data): one character editor is one surface, whichever character is open.
- * - Every non-GET API request is aborted, so the crawl never writes to the
- *   database; clicks that attempt a write are skipped.
+ * - Each click path gets a fresh seeded SQLite database and server process.
+ *   Writes are allowed; model and embedding providers return fixed fixtures.
  * - Each new surface is captured in all requested color schemes in place.
  *   Use --replay to recapture saved click paths without crawling again.
  *
  * Usage:
- *   node scripts/capture-screenshots.ts                        # reuses a server on :3000, else builds + starts one
- *   node scripts/capture-screenshots.ts --base=http://127.0.0.1:5173   # crawl the Vite dev server
+ *   node scripts/capture-screenshots.ts                        # builds + starts an isolated fixture server
  *   node scripts/capture-screenshots.ts --depth=3 --max-states=80 --schemes=dark --viewport=1280x800 --scale=2
  *   node scripts/capture-screenshots.ts --replay               # recapture the output manifest's paths without discovery
  *
@@ -28,9 +27,12 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { createInterface } from "node:readline";
+import { once } from "node:events";
 import { chromium, type Browser, type Page, type Request } from "playwright";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,13 +40,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (name: string, fallback: string) =>
 	process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? fallback;
 
-const BASE = arg("base", "http://127.0.0.1:3000");
+let BASE = "";
+let captureFailed = false;
 const OUT_DIR = join(ROOT, arg("out", ".scratch/screenshots/states"));
 const [WIDTH, HEIGHT] = arg("viewport", "1440x900").split("x").map(Number);
 const SCALE = Number(arg("scale", "1"));
 const MAX_DEPTH = Number(arg("depth", "4"));
 const MAX_STATES = Number(arg("max-states", "150"));
 const SCHEMES = (["light", "dark"] as const).filter((s) => arg("schemes", "light,dark").split(",").includes(s));
+if (SCHEMES.length === 0) throw new Error("Choose at least one color scheme: light or dark.");
 const REPLAY = process.argv.includes("--replay");
 
 // ── Surface model ──────────────────────────────────────────────────────
@@ -63,8 +67,6 @@ const CONTEXT_ROLES = [
 // Their names are message text, so only presence distinguishes a surface.
 const NAMELESS_ROLES = ["alert", "status"];
 const SIGNATURE_FLAGS = /\[(?:pressed|selected|expanded)\]/g;
-// POSTs that compute without persisting.
-const READ_ONLY_POSTS = [/\/generations\/preview$/, /\/lorebooks\/match-test$/];
 
 // ariaSnapshot lines look like `- button "Name" [pressed]`, but YAML-quote the
 // whole key when the name contains YAML syntax.
@@ -159,16 +161,7 @@ const openSession = async (browser: Browser) => {
 		document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style), { once: true });
 	}, DETERMINISM_CSS);
 
-	let blockedWrite = false;
 	let problems: string[] = [];
-	await context.route(`${BASE}/api/**`, (route) => {
-		const request = route.request();
-		if (request.method() === "GET" || READ_ONLY_POSTS.some((p) => p.test(new URL(request.url()).pathname))) {
-			return route.continue();
-		}
-		blockedWrite = true;
-		return route.abort("blockedbyclient");
-	});
 
 	const page = await context.newPage();
 	const inflight = new Set<Request>();
@@ -204,36 +197,28 @@ const openSession = async (browser: Browser) => {
 		page,
 		click,
 		open: async (path: Step[]) => {
-			blockedWrite = false;
+			await page.goto("about:blank");
+			await page.emulateMedia({ colorScheme: "light" });
+			BASE = await resetServer();
 			problems = [];
 			inflight.clear();
 			await page.goto(BASE);
 			await page.evaluate(() => document.fonts.ready);
 			await settle();
 			for (const step of path) await click(step);
-			blockedWrite = false;
 		},
 		capture: async (file: string, path: Step[]) => {
-			try {
-				for (const scheme of SCHEMES) {
-					try {
-						await page.emulateMedia({ colorScheme: scheme });
-						await settle();
-						await page.screenshot({ path: join(OUT_DIR, scheme, file), animations: "disabled" });
-					} catch (error) {
-						problems.push(`screenshot ${scheme}: ${error instanceof Error ? error.message.split("\n")[0] : error}`);
-						console.log(`✘ ${scheme} ${describe(path)}: ${problems.at(-1)}`);
-					}
+			for (const scheme of SCHEMES) {
+				try {
+					await page.emulateMedia({ colorScheme: scheme });
+					await settle();
+					await page.screenshot({ path: join(OUT_DIR, scheme, file), animations: "disabled" });
+				} catch (error) {
+					captureFailed = true;
+					problems.push(`screenshot ${scheme}: ${error instanceof Error ? error.message.split("\n")[0] : error}`);
+					console.log(`✘ ${scheme} ${describe(path)}: ${problems.at(-1)}`);
 				}
-			} finally {
-				await page.emulateMedia({ colorScheme: "light" });
-				await settle();
 			}
-		},
-		takeBlockedWrite: () => {
-			const blocked = blockedWrite;
-			blockedWrite = false;
-			return blocked;
 		},
 		takeProblems: () => {
 			const taken = problems;
@@ -255,7 +240,6 @@ const crawl = async (session: Session) => {
 		{ path: [], signature: root.signature, actions: new Set(root.actions.map(stepKey)), explore: root.actions, problems: session.takeProblems() },
 	];
 	const known = new Set([root.signature]);
-	let at: Surface | undefined = surfaces[0];
 	await session.capture(fileOf(0, surfaces[0]), []);
 	surfaces[0].problems.push(...session.takeProblems());
 
@@ -267,32 +251,34 @@ const crawl = async (session: Session) => {
 			const path = [...surface.path, step];
 			console.log(`  Exploring ${i + 1}/${surfaces.length}: ${describe(path)}`);
 			try {
-				if (at !== surface) await session.open(surface.path);
-				at = undefined;
+				await session.open(surface.path);
 				await session.click(step);
-			} catch {
-				console.log(`  · skipped ${describe(path)} (not clickable)`);
+				if (!session.page.url().startsWith(BASE)) continue;
+				const next = await readSurface(session.page);
+				const problems = session.takeProblems();
+				if (known.has(next.signature)) {
+					surface.problems.push(...problems);
+					continue;
+				}
+				known.add(next.signature);
+				const discovered: Surface = {
+					path,
+					signature: next.signature,
+					actions: new Set(next.actions.map(stepKey)),
+					explore: next.actions.filter((a) => !surface.actions.has(stepKey(a))),
+					problems,
+				};
+				await session.capture(fileOf(surfaces.length, discovered), path);
+				discovered.problems.push(...session.takeProblems());
+				surfaces.push(discovered);
+				console.log(`✔ ${String(surfaces.length - 1).padStart(3)} ${describe(path)}`);
+			} catch (error) {
+				captureFailed = true;
+				surface.problems.push(...session.takeProblems());
+				surface.problems.push(`Could not explore ${describe(path)}: ${error instanceof Error ? error.message.split("\n")[0] : error}`);
+				console.log(`✘ ${surface.problems.at(-1)}`);
 				continue;
 			}
-			if (session.takeBlockedWrite()) {
-				console.log(`  · skipped ${describe(path)} (writes)`);
-				continue;
-			}
-			if (!session.page.url().startsWith(BASE)) continue;
-			const next = await readSurface(session.page);
-			if (known.has(next.signature)) continue;
-			known.add(next.signature);
-			const discovered: Surface = {
-				path,
-				signature: next.signature,
-				actions: new Set(next.actions.map(stepKey)),
-				explore: next.actions.filter((a) => !surface.actions.has(stepKey(a))),
-				problems: session.takeProblems(),
-			};
-			await session.capture(fileOf(surfaces.length, discovered), path);
-			discovered.problems.push(...session.takeProblems());
-			surfaces.push(discovered);
-			console.log(`✔ ${String(surfaces.length - 1).padStart(3)} ${describe(path)}`);
 		}
 	}
 	return surfaces;
@@ -300,27 +286,41 @@ const crawl = async (session: Session) => {
 
 // ── Server ─────────────────────────────────────────────────────────────
 
-const healthy = () => fetch(`${BASE}/api/health`).then((r) => r.ok, () => false);
+const fixtureDirectory = mkdtempSync(join(tmpdir(), "ditzy-screenshots-"));
+let server: ChildProcess | undefined;
+process.once("exit", () => {
+	server?.kill("SIGKILL");
+	rmSync(fixtureDirectory, { recursive: true, force: true });
+});
+process.once("SIGINT", () => process.exit(130));
+process.once("SIGTERM", () => process.exit(143));
 
-const run = (command: string, args: string[]) =>
-	new Promise<void>((resolve, reject) =>
-		spawn(command, args, { cwd: ROOT, stdio: "inherit" }).on("exit", (code) =>
-			code === 0 ? resolve() : reject(new Error(`${command} ${args.join(" ")} exited ${code}`)),
-		),
-	);
+const stopServer = async () => {
+	if (server && server.exitCode === null && server.signalCode === null) {
+		const exited = once(server, "exit");
+		server.kill("SIGKILL");
+		await exited;
+	}
+};
 
-const ensureServer = async () => {
-	if (await healthy()) {
-		console.log(`Reusing running server at ${BASE}`);
-		return;
-	}
-	await run("bun", ["run", "build"]);
-	const server: ChildProcess = spawn("bun", ["start"], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
-	process.on("exit", () => server.kill());
-	for (const deadline = Date.now() + 60_000; !(await healthy()); ) {
-		if (Date.now() > deadline || server.exitCode !== null) throw new Error(`Server did not become healthy at ${BASE}`);
-		await new Promise((r) => setTimeout(r, 500));
-	}
+const resetServer = async (): Promise<string> => {
+	await stopServer();
+	rmSync(fixtureDirectory, { recursive: true, force: true });
+	mkdirSync(fixtureDirectory);
+	server = spawn("bun", ["scripts/screenshot-server.ts", fixtureDirectory], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"] });
+	const child = server;
+	return new Promise((resolve, reject) => {
+		const lines = createInterface({ input: child.stdout! });
+		const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Screenshot server did not start within 30 seconds.")); }, 30_000);
+		child.once("error", (error) => { clearTimeout(timer); reject(error); });
+		child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`Screenshot server exited ${code}`)); });
+		lines.on("line", (line) => {
+			if (!line.startsWith("CRAWLER_READY ")) return;
+			clearTimeout(timer);
+			lines.close();
+			resolve(line.slice("CRAWLER_READY ".length).replace(/\/$/, ""));
+		});
+	});
 };
 
 // ── Main ───────────────────────────────────────────────────────────────
@@ -335,7 +335,11 @@ for (const scheme of SCHEMES) {
 	mkdirSync(join(OUT_DIR, scheme), { recursive: true });
 }
 
-await ensureServer();
+await new Promise<void>((resolve, reject) => {
+	spawn("bun", ["run", "build"], { cwd: ROOT, stdio: "inherit" })
+		.on("error", reject)
+		.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`Build exited ${code}`)));
+});
 const browser = await chromium.launch({
 	args: ["--force-color-profile=srgb", "--disable-lcd-text", "--font-render-hinting=none"],
 });
@@ -351,7 +355,8 @@ if (saved) {
 				await session.capture(capture.file, capture.steps);
 				capture.problems = session.takeProblems();
 			} catch (error) {
-				capture.problems = [error instanceof Error ? error.message : String(error)];
+				captureFailed = true;
+				capture.problems = [...session.takeProblems(), error instanceof Error ? error.message : String(error)];
 				console.log(`✘ ${capture.path}: ${capture.problems[0]}`);
 			}
 		}
@@ -394,7 +399,8 @@ ${captures
 );
 
 await browser.close();
+await stopServer();
 const withProblems = captures.filter((s) => s.problems.length > 0);
 for (const s of withProblems) console.log(`⚠ ${s.path}\n    ${s.problems.join("\n    ")}`);
-console.log(`\nDone. ${captures.length} surfaces × ${SCHEMES.length} schemes → ${join(OUT_DIR, "index.html")}`);
-process.exit(0);
+console.log(`\n${captureFailed ? "Incomplete" : "Done"}. ${captures.length} surfaces × ${SCHEMES.length} schemes → ${join(OUT_DIR, "index.html")}`);
+process.exit(captureFailed ? 1 : 0);

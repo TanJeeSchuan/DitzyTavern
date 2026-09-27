@@ -1,3 +1,5 @@
+import type { Database } from "bun:sqlite";
+import type { ConversationRouteOptions } from "./conversation";
 import { Elysia } from "elysia";
 import { defaultArtifactDirectory } from "../artifact";
 import { getWorkspace } from "../database/workspace";
@@ -21,16 +23,18 @@ export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 export { createEmbeddingSettingsRoutes } from "./embedding-settings";
 
-export const contract = new Elysia()
+export const createContract = (database?: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory()) => new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
-	.get("/api/workspace", () => getWorkspace(), { response: workspaceResponse })
-	.use(createCharacterLibraryRoutes(undefined))
-	.use(createNativeConversationRoutes(undefined))
-	.use(createConversationRoutes(undefined))
-	.use(createPromptPresetRoutes(undefined))
-	.use(createLorebookRoutes(undefined))
-	.use(createEmbeddingSettingsRoutes(undefined))
-	.use(createChatImportRoutes(undefined, defaultArtifactDirectory()))
-	.use(createConnectionSettingsRoutes(undefined));
+	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
+	.use(createCharacterLibraryRoutes(database))
+	.use(createNativeConversationRoutes(database))
+	.use(createConversationRoutes(database, options))
+	.use(createPromptPresetRoutes(database))
+	.use(createLorebookRoutes(database, options))
+	.use(createEmbeddingSettingsRoutes(database, options))
+	.use(createChatImportRoutes(database, artifactDirectory))
+	.use(createConnectionSettingsRoutes(database, options));
+
+export const contract = createContract();
 
 export type Contract = typeof contract;

@@ -28,6 +28,8 @@ import {
 	formatProviderError,
 } from "./provider-errors";
 import { monitorSseActivity } from "./sse-activity";
+import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
+import { snapshotProviderResponse } from "./provider-errors";
 
 export interface ChatCompletionsModelClientOptions {
 	readonly profile: ConnectionProfile;
@@ -169,7 +171,7 @@ async function* generateOpenAICompatibleStream(options: {
 		const body = overriddenBody(init);
 		if (body !== undefined) request.body = body;
 		const response = await options.actualFetch(options.requestUrl, request);
-		await rejectProviderResponse(response);
+		await rejectProviderResponse(response, [options.credential, ...Object.values(options.customHeaders)]);
 		return monitorSseActivity(response, {
 			onActivity: resetInactivity,
 			signal: controller.signal,
@@ -235,7 +237,7 @@ async function* generateOpenAICompatibleStream(options: {
 				case "error":
 					if (part.error instanceof ModelClientTransportError) throw part.error;
 					throw new ModelClientTransportError(
-						getErrorMessage(part.error),
+						redactProviderDiagnostic(getErrorMessage(part.error), [options.credential, ...Object.values(options.customHeaders)]),
 						"provider",
 					);
 				default:
@@ -277,14 +279,11 @@ async function* generateOpenAICompatibleStream(options: {
 
 async function rejectProviderResponse(
 	response: Response,
+	secrets: readonly string[],
 ): Promise<void> {
 	if (response.ok) return;
-	const responseBody = await response.text();
-	const snapshot = {
-		status: response.status,
-		contentType: response.headers.get("content-type") ?? undefined,
-		bodyBytes: new TextEncoder().encode(responseBody).byteLength,
-	};
+	const snapshot = await snapshotProviderResponse(response);
+	const responseBody = await readProviderDiagnostic(response, secrets);
 	throw new ModelClientTransportError(
 		formatProviderError(snapshot),
 		"provider",
@@ -462,4 +461,3 @@ export function normalizeUsage(value: {
 function addUsage(target: Record<string, number>, key: string, value: number | undefined): void {
 	if (value !== undefined && Number.isFinite(value) && value >= 0) target[key] = value;
 }
-

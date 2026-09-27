@@ -136,7 +136,7 @@ describe("Model Test Connection", () => {
 		expect(body.messages).toEqual([{ role: "user", content: TEST_CONNECTION_PROMPT }]);
 	});
 
-	test("does not retry authentication failures and includes the full provider response for diagnostics", async () => {
+	test("does not retry authentication failures and redacts credentials from diagnostics", async () => {
 		let calls = 0;
 		const result = await testConnection({
 			profile,
@@ -156,7 +156,7 @@ describe("Model Test Connection", () => {
 		expect(result).toMatchObject({ outcome: "failure", kind: "authentication" });
 		if (result.outcome !== "failure") return;
 		expect(result.message).not.toContain("secret-never-display");
-		expect(result.responseBody).toBe('{"error":{"message":"bad secret-never-display"}}');
+		expect(result.responseBody).toBe('{"error":{"message":"bad [REDACTED]"}}');
 	});
 
 	test("normalizes redirects and unavailable adapters without making a fallback request", async () => {
@@ -199,7 +199,7 @@ describe("Model Test Connection", () => {
 		expect(result).toMatchObject({ outcome: "failure", kind: "malformed-response" });
 	});
 
-	test("keeps failure messages short and retains the full upstream body", async () => {
+	test("bounds provider diagnostics and keeps failure messages short", async () => {
 		const longBody = "x".repeat(20_000);
 		const textual = await testConnection({
 			profile,
@@ -212,9 +212,9 @@ describe("Model Test Connection", () => {
 			}),
 		});
 		expect(textual).toMatchObject({ outcome: "failure", kind: "endpoint" });
-		expect(failureMessage(textual)).toContain("20000-byte response body");
+		expect(failureMessage(textual)).toContain("HTTP 500");
 		expect(failureMessage(textual)).not.toContain("xxx");
-		if (textual.outcome === "failure") expect(textual.responseBody).toBe(longBody);
+		if (textual.outcome === "failure") expect(textual.responseBody).toBe("[Provider response omitted: exceeds 16 KiB]");
 
 		const binary = await testConnection({
 			profile,
