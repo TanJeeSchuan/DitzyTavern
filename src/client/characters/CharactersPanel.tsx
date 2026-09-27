@@ -7,7 +7,7 @@ import { removalConfirmationCopy } from "../cast-remove";
 import { applyCommand, listCharacters, type CharacterSummary } from "../character-library";
 import type { ConversationSummary } from "../conversation";
 import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
-import { emptyPromptChannels } from "../../shared/definition";
+import { emptyPromptChannels, promptPreview } from "../../shared/definition";
 import { Portrait } from "../story/Portrait";
 import { AddParticipantMenu } from "./AddParticipantMenu";
 import { CharacterEditor } from "./CharacterEditor";
@@ -150,12 +150,13 @@ export function CharactersPanel({
 					? <p className="text-sm text-muted-foreground">No one is in this Chat yet. Add a Character from the Library below.</p>
 					: <ul className="-mx-3 flex flex-col gap-0.5">{cast.map((participant) => {
 						const seat = seatOf(participant.id);
+						const preview = promptPreview(participant.prompt.identity);
 						return (
 							<li key={participant.id} className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40">
 								<Portrait name={participant.name} size="medium" />
 								<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "participant", id: participant.id, fresh: false })}>
 									<span className="block truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{participant.duplicateLabel}</span>
-									<span className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">{seat !== null && <><SeatLabel seat={seat} /> · </>}{provenance(participant)}</span>
+									{(seat !== null || preview !== "") && <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">{seat !== null && <span className="shrink-0"><SeatLabel seat={seat} /></span>}{seat !== null && preview !== "" && " · "}{preview !== "" && <span className="truncate">{preview}</span>}</span>}
 								</button>
 								{menuFor(participant, "relative z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-100")}
 							</li>
@@ -178,7 +179,7 @@ export function CharactersPanel({
 							<Portrait name={entry.label} size="medium" />
 							<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "character", id: entry.character.id, fresh: false })}>
 								<span className="flex items-center gap-1.5 truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{entry.label}{entry.character.pinned && <Pin aria-label="Pinned" className="size-3 shrink-0 fill-current text-muted-foreground" />}</span>
-								<span className="mt-0.5 block truncate text-xs text-muted-foreground">{entry.preview}</span>
+								{entry.preview !== "" && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{entry.preview}</span>}
 							</button>
 							{entry.usedCount > 0
 								? <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Check className="size-3.5" aria-hidden="true" /> In chat</span>

@@ -58,15 +58,8 @@ export const emptyPromptChannels = (): PromptChannels => ({
 	postHistoryInstruction: "",
 });
 
-// ==[HUMAN APPROVED]== First non-empty Prompt field in the agreed presentation order.
-export const firstPromptText = (prompt: PromptChannels): string =>
-	promptChannelOrder
-		.map((channel) => prompt[channel])
-		.find((field) => field.trim() !== "") ?? "";
-
 export const promptPreview = (value: string, maxLength = 140): string => {
 	const trimmed = value.trim();
-	if (trimmed === "") return "No prompt text yet.";
 	if (trimmed.length <= maxLength) return trimmed;
 	return `${trimmed.slice(0, maxLength).trimEnd()}…`;
 };

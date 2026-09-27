@@ -49,11 +49,10 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 	</>;
 	const provider = CONNECTION_ADAPTER_LABELS[draft.adapter];
 	const title = draft.displayName.trim() || "New connection";
-	const headerCount = Object.values(headerEditorData).filter((header) => header.operation !== "remove").length;
 
 	return (
 		<>
-			<div className="panel-body settings-panel-body" onBlur={() => setValidationVisible(true)}>
+			<div className="panel-body settings-panel-body" onBlur={(event) => { if (event.target.matches("input, textarea, [role='combobox']")) setValidationVisible(true); }}>
 				<Button type="button" size="sm" variant="ghost" className="-ml-2 mb-3 text-muted-foreground" onClick={() => navigate(controller.closeEditor)}><ChevronLeft aria-hidden="true" /> Connections</Button>
 				<div className="mb-6 grid gap-0.5">
 					<h3 className="truncate text-base! font-semibold">{title}</h3>
@@ -62,7 +61,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 
 				<div className="grid gap-4">
 					<Field htmlFor="connection-display-name" label="Name">
-						<input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} autoComplete="off" />
+						<input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} placeholder="e.g. Local model" autoComplete="off" />
 					</Field>
 					{customEndpoint && endpointFields}
 					<CredentialField
@@ -97,10 +96,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 
 				<details className="group mt-8 border-t border-border pt-4">
 					<summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-						<span className="grid gap-0.5">
-							<span className="text-[0.86rem] font-semibold">Advanced</span>
-							<span className="text-xs text-muted-foreground">{customEndpoint ? "" : "Endpoints · "}Headers ({headerCount}) · Backend · Output limit · Timeout</span>
-						</span>
+						<span className="text-[0.86rem] font-semibold">Advanced</span>
 						<ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
 					</summary>
 					<div className="mt-4 grid gap-4">

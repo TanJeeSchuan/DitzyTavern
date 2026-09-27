@@ -177,7 +177,7 @@ export function NewChatPanel({
 	const [humanSeat, setHumanSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [modelSeat, setModelSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [pending, setPending] = useState(false);
-	const [submitted, setSubmitted] = useState(false);
+	const [validationRevealed, setValidationRevealed] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 
 	useAsyncEffect(async (isCancelled) => {
@@ -202,7 +202,7 @@ export function NewChatPanel({
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
 	const submit = async () => {
-		setSubmitted(true);
+		setValidationRevealed(true);
 		if (!ready) return;
 		setPending(true);
 		setProblem(null);
@@ -237,7 +237,7 @@ export function NewChatPanel({
 
 	return (
 		<>
-		<div className="panel-body new-chat-panel">
+		<div className="panel-body new-chat-panel" onBlur={(event) => { if (event.target.matches("input, textarea, [role='combobox']")) setValidationRevealed(true); }}>
 			<p className="panel-intro">
 				Set up who you play and who responds. Both seats are required before the
 				Chat is created.
@@ -278,7 +278,7 @@ export function NewChatPanel({
 			>
 				<Plus aria-hidden="true" /> Create Chat
 			</button>
-			{submitted && !ready && !pending && <p className="new-chat-problem" role="alert">Add a Chat name and a name for each Participant.</p>}
+			{validationRevealed && !ready && !pending && <p className="new-chat-problem" role="alert">Add a Chat name and a name for each Participant.</p>}
 		</footer>
 		</>
 	);

@@ -295,9 +295,9 @@ describe("Lorebook library transport", () => {
 		const impact = await app.handle(request("/api/lorebooks/1/attachments"));
 		expect(impact.status).toBe(200);
 		expect(await impact.json()).toMatchObject({ bookId: 1, attachments: [
-			{ owner: "character", ownerId: character.id, scope: "cast" },
-			{ owner: "participant", ownerId: participantId, scope: "controlled-participant" },
-			{ owner: "conversation", ownerId: conversation.id, scope: "chat" },
+			{ owner: "character", ownerId: character.id, ownerName: "Archivist", scope: "cast" },
+			{ owner: "participant", ownerId: participantId, ownerName: "Writer", scope: "controlled-participant" },
+			{ owner: "conversation", ownerId: conversation.id, ownerName: "Story", scope: "chat" },
 		] });
 		const deleted = await postCommand(app, { type: "delete", bookId: 1, expectedRevision: 0 });
 		expect(deleted.status).toBe(200);

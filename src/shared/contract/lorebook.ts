@@ -67,6 +67,7 @@ export const lorebookAttachmentImpact = Type.Object({
 		id: Type.Integer(),
 		owner: Type.Union([Type.Literal("character"), Type.Literal("participant"), Type.Literal("conversation")]),
 		ownerId: Type.Integer(),
+		ownerName: Type.String(),
 		scope: loreAttachmentScope,
 		enabled: Type.Boolean(),
 	})),

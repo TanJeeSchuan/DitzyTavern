@@ -27,7 +27,7 @@ export function CredentialField({ id, label, value, onChange, configured, pendin
 			<Dialog open={confirming} onOpenChange={(open) => { if (!pending) setConfirming(open); }}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
 					<DialogHeader>
-						<DialogTitle>Remove saved {label.toLowerCase()}?</DialogTitle>
+						<DialogTitle>Remove saved {label}?</DialogTitle>
 						<DialogDescription>The saved value is deleted now. You can enter a new one later.</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

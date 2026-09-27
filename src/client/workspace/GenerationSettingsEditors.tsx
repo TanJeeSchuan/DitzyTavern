@@ -62,15 +62,19 @@ export function SamplingEditor({
 								/>
 								{parsed.status !== "empty" && <Button type="button" size="icon-xs" variant="ghost" className="text-muted-foreground" title="Use provider default" aria-label={`Use provider default for ${label}`} onClick={() => onChange(field, "")}><X aria-hidden="true" /></Button>}
 							</span>
-							<Slider
-								className={`col-span-2 py-1.5 @sm:col-span-1 [&_[data-slot=slider-track]]:bg-foreground/15 ${set ? "" : "[&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:opacity-0 group-hover/sampling:[&_[data-slot=slider-thumb]]:opacity-60 [&_[data-slot=slider-thumb]:focus-visible]:opacity-100"}`}
-								min={slider.min}
-								max={slider.max}
-								step={0.01}
-								value={[set ? Math.min(slider.max, Math.max(slider.min, parsed.value)) : slider.neutral]}
-								onValueChange={([value]) => { if (value !== undefined) onChange(field, String(Math.round(value * 100) / 100)); }}
-								aria-label={label}
-							/>
+							{parsed.status === "empty" ? (
+								<Button type="button" size="sm" variant="outline" className="col-span-2 justify-self-start @sm:col-span-1" aria-label={`Set ${label}`} onClick={() => onChange(field, String(slider.neutral))}>Set</Button>
+							) : (
+								<Slider
+									className="col-span-2 py-1.5 @sm:col-span-1 [&_[data-slot=slider-track]]:bg-foreground/15"
+									min={slider.min}
+									max={slider.max}
+									step={0.01}
+									value={[set ? Math.min(slider.max, Math.max(slider.min, parsed.value)) : slider.neutral]}
+									onValueChange={([value]) => { if (value !== undefined) onChange(field, String(Math.round(value * 100) / 100)); }}
+									aria-label={label}
+								/>
+							)}
 							{parsed.status === "invalid" && <small className="field-error col-span-full text-xs" role="alert">{SAMPLING_DRAFT_ERROR}</small>}
 						</div>
 					);

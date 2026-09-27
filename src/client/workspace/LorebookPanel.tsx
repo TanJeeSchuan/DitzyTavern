@@ -336,7 +336,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			const impact = await getLorebookAttachmentImpact(bookId);
 			if (request !== impactRequestRef.current || !isCurrentView(token, bookId)) return;
 			const attachments = impact?.attachments.map((attachment) =>
-				`${attachment.owner} ${attachment.ownerId} (${attachment.scope})`).join("\n") ?? "";
+				attachment.ownerName).join("\n") ?? "";
 			const detail = attachments.length === 0
 				? "It has no attachments."
 				: `Deleting it also removes these attachments:\n${attachments}`;
@@ -509,7 +509,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				<div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1">
 					<div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
 						<div className="flex min-w-0 flex-col gap-6">
-						<section className="flex min-w-0 flex-col gap-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">Entries</h3><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong className="truncate">{entry.title || "Untitled entry"}</strong><span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
+						<section className="flex min-w-0 flex-col gap-2.5"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">Entries</h3><Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => requestLeave({ type: "entry", id: null })}>New entry</Button></div>{book.entries.length === 0 && <p className="text-sm text-muted-foreground">No entries yet. Fill in the new entry and save to add it.</p>}{book.entries.map((entry, index) => <div className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${entry.id === entryId ? "border-primary bg-muted/40" : "border-border"}`} key={entry.id}><Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start text-left" onClick={() => requestLeave({ type: "entry", id: entry.id })}><strong className="truncate">{entry.title || "Untitled entry"}</strong><span className="shrink-0 text-xs text-muted-foreground">{entry.enabled ? "Enabled" : "Disabled"}</span></Button><Button type="button" size="xs" variant="ghost" title="Move entry up" aria-label="Move entry up" disabled={pending || index === 0} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index })}>↑</Button><Button type="button" size="xs" variant="ghost" title="Move entry down" aria-label="Move entry down" disabled={pending || index === book.entries.length - 1} onClick={() => void executeLorebookCommand({ type: "reorder-entry", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, toPosition: index + 2 })}>↓</Button><Button type="button" size="xs" variant="ghost" disabled={pending} onClick={() => void executeLorebookCommand({ type: "set-entry-enabled", bookId: book.id, entryId: entry.id, expectedRevision: book.revision, enabled: !entry.enabled })}>{entry.enabled ? "Disable" : "Enable"}</Button></div>)}</section>
 						{dirty && <p className="panel-intro">Save your entry edits before testing matches.</p>}
 						<MatchTester writing={testWriting} onWritingChange={(value) => { matchRequestRef.current += 1; setTestWriting(value); setTestResult(null); setTestError(null); }} result={testResult} error={testError} pending={testPending || pending || dirty} onTest={() => void runMatchTest()} />
 						</div>
@@ -526,8 +526,9 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 						<Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void executeLorebookCommand({ type: "duplicate", bookId: book.id, expectedRevision: book.revision }, "Lorebook duplicated.")}>Duplicate</Button>
 					</div>
 					<div className="flex items-center gap-2">
+						<span role="status" className="mr-2 text-sm text-muted-foreground">{pending ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}</span>
 						<Button type="button" size="sm" variant="ghost" onClick={() => requestLeave({ type: "library" })}>Close</Button>
-						<span role="status" className="text-sm text-muted-foreground">{pending ? "Saving…" : dirty ? "Unsaved changes" : "Saved"}</span><Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
+						<Button type="button" size="sm" disabled={pending || !dirty} onClick={() => void saveAll()}>Save</Button>
 					</div>
 				</DialogFooter>
 			</DialogContent>
@@ -657,11 +658,11 @@ function StateToggle({ label, checked, onCheckedChange }: { label: string; check
 
 function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { entry: LoreEntryFields; onChange: (entry: LoreEntryFields) => void; onListChange: (key: EntryListKey, value: string) => void; onDelete?: () => void; pending: boolean }) {
 	const set = <K extends keyof LoreEntryFields>(key: K, value: LoreEntryFields[K]) => onChange({ ...entry, [key]: value });
-	const listField = ([key, label]: readonly [EntryListKey, string]) => <label className="flex flex-col gap-1.5 text-xs text-muted-foreground" key={key}>{label}<Textarea className="min-h-16" value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /></label>;
-	const expressionGroup = (fields: readonly (readonly [EntryListKey, string])[]) => <fieldset className="flex min-w-0 flex-col gap-3 rounded-xl border border-border px-4 pt-2 pb-4">
-		<legend className="px-1.5 text-xs text-muted-foreground">One expression per line. Commas are literal.</legend>
+	const hintId = useId();
+	const listField = ([key, label]: readonly [EntryListKey, string]) => <div className="flex flex-col gap-1.5 text-xs text-muted-foreground" key={key}><label htmlFor={`${hintId}-${key}`}>{label}</label><Textarea id={`${hintId}-${key}`} className="min-h-16" aria-describedby={`${hintId}-${key}-hint`} value={joinList(entry[key])} onChange={(event) => onListChange(key, event.target.value)} /><p id={`${hintId}-${key}-hint`}>One expression per line. Commas are literal.</p></div>;
+	const expressionGroup = (fields: readonly (readonly [EntryListKey, string])[]) => <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-4">
 		{fields.map(listField)}
-	</fieldset>;
+	</div>;
 	return <section className="flex min-w-0 flex-col gap-4 rounded-xl border border-border p-5">
 		<h3 className="text-sm font-medium">{onDelete ? "Edit entry" : "New entry"}</h3>
 		<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Title<Input value={entry.title} onChange={(event) => set("title", event.target.value)} placeholder="Editor-only" /></label>
