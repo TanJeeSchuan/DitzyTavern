@@ -1,3 +1,4 @@
+import { Switch } from "@/components/ui/switch";
 import { ChevronDown, ChevronUp, Copy, GripVertical, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/react/sortable";
@@ -21,8 +22,8 @@ import { outgoingRoleLabels, isPromptOutgoingRole, slotTitle } from "../../promp
 import { draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
 import { PromptPresetSelect } from "./PromptPresetSelect";
 
-const nameInputClass = "prompt-block-field h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-normal";
-const textInputClass = "prompt-block-field min-h-56 max-h-[55vh] w-full resize-y overflow-y-auto rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed [field-sizing:content]";
+const nameInputClass = "field-input font-normal";
+const textInputClass = "field-input min-h-56 max-h-[55vh] resize-y overflow-y-auto leading-relaxed [field-sizing:content]";
 
 const unknownMacrosOf = (text: string, label: string): string[] => {
 	const { warnings } = validateMacroText(text, label);
@@ -192,17 +193,7 @@ export function PromptPresetRecipeRow({
 				>
 					<Pencil aria-hidden="true" />
 				</Button>
-				<button
-					type="button"
-					role="switch"
-					aria-checked={enabled}
-					aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
-					disabled={pending}
-					className={`relative h-4 w-7 shrink-0 rounded-full outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 ${enabled ? "bg-emerald-600 dark:bg-emerald-500" : "bg-muted-foreground/30"}`}
-					onClick={() => onEnabledChange(slot.id, !enabled)}
-				>
-					<span className={`absolute top-0.5 left-0.5 size-3 rounded-full bg-white shadow-sm transition-transform ${enabled ? "translate-x-3" : "translate-x-0"}`} />
-				</button>
+				<Switch checked={enabled} aria-label={`${enabled ? "Disable" : "Enable"} ${title}`} disabled={pending} onCheckedChange={(next) => onEnabledChange(slot.id, next)} />
 			</div>
 		</div>
 		<Dialog open={editing} onOpenChange={setEditing}>

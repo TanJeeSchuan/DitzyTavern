@@ -468,7 +468,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 							<span className={`block truncate text-[0.9rem] font-semibold tracking-[-0.01em] ${attachment.enabled ? "" : "text-muted-foreground"}`}>{bookName(attachment.bookId)}</span>
 							<span className="mt-0.5 block truncate text-xs text-muted-foreground">{attachmentSource(attachment, participantName)}</span>
 						</button>
-						<Switch className="data-checked:bg-emerald-600 dark:data-checked:bg-emerald-500" checked={attachment.enabled} disabled={attachmentPending} aria-label={`Use ${bookName(attachment.bookId)} in this Chat`} onCheckedChange={(enabled) => setAttachmentEnabled(attachmentState, attachment, enabled)} />
+						<Switch checked={attachment.enabled} disabled={attachmentPending} aria-label={`Use ${bookName(attachment.bookId)} in this Chat`} onCheckedChange={(enabled) => setAttachmentEnabled(attachmentState, attachment, enabled)} />
 						<Button type="button" size="icon-xs" variant="ghost" title="Detach" aria-label={`Detach ${bookName(attachment.bookId)}`} disabled={attachmentPending} onClick={() => detach(attachmentState, attachment)}><X aria-hidden="true" /></Button>
 					</li>)}</ul>}
 				{loreBlockMissing && attachmentState.attachments.some((attachment) => attachment.enabled) && <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
@@ -598,7 +598,7 @@ function UnsavedLorebookDialog({ open, pending, onKeepEditing, onDiscard, onSave
 			</DialogHeader>
 			<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
 				<Button variant="ghost" disabled={pending} onClick={onKeepEditing}>Keep editing</Button>
-				<Button variant="outline" disabled={pending} onClick={onDiscard}>Discard</Button>
+				<Button variant="destructive" disabled={pending} onClick={onDiscard}>Discard</Button>
 				<Button disabled={pending} onClick={onSave}>Save and leave</Button>
 			</div>
 		</DialogContent>
@@ -651,7 +651,7 @@ function StateToggle({ label, checked, onCheckedChange }: { label: string; check
 	const labelId = useId();
 	return <span className="flex items-center justify-between gap-2">
 		<Label htmlFor={labelId} className="text-xs text-muted-foreground">{label}</Label>
-		<Switch id={labelId} checked={checked} onCheckedChange={onCheckedChange} className="data-checked:bg-emerald-600 dark:data-checked:bg-emerald-500" />
+		<Switch id={labelId} checked={checked} onCheckedChange={onCheckedChange} />
 	</span>;
 }
 

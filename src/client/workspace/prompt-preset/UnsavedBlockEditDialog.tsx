@@ -31,7 +31,7 @@ export function UnsavedBlockEditDialog({
 				</DialogHeader>
 				<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
 					<Button variant="ghost" disabled={saving} onClick={onKeepEditing}>Keep editing</Button>
-					<Button variant="outline" disabled={saving} onClick={onDiscard}>Discard</Button>
+					<Button variant="destructive" disabled={saving} onClick={onDiscard}>Discard</Button>
 					<Button
 						disabled={saving}
 						onClick={() => {

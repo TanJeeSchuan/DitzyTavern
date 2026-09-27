@@ -11,6 +11,32 @@
 	background: var(--background);
 }
 
+.segmented-control {
+	display: flex;
+	gap: 0.2rem;
+	padding: 0.2rem;
+	border-radius: 0.75rem;
+	background: var(--surface-muted);
+}
+.segmented-control-item {
+	display: inline-flex;
+	flex: 1;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	min-width: 0;
+	min-height: 2rem;
+	padding: 0.3rem 0.5rem;
+	border: 0;
+	border-radius: 0.55rem;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 0.76rem;
+	font-weight: 550;
+}
+.segmented-control-item[data-state="checked"] { background: var(--accent-soft); color: var(--accent-foreground); }
+.segmented-control-item svg { width: 0.9rem; height: 0.9rem; }
+
 .ambient-field {
 	position: fixed;
 	inset: -18%;
@@ -211,7 +237,7 @@
 .icon-button {
 	width: 2.25rem;
 	height: 2.25rem;
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	color: var(--text-muted);
 	transition: color 150ms ease, background-color 150ms ease, transform 150ms ease;
 }
@@ -252,7 +278,7 @@
 .macro-variable-editor textarea {
 	width: 100%;
 	border: 1px solid var(--border);
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	background: var(--surface-muted);
 	color: var(--foreground);
 	font: inherit;
@@ -466,35 +492,6 @@
 	background: var(--surface-muted);
 }
 
-/* Destructive actions (Character deletion) share the button shape of
-   primary/secondary actions but use the destructive color instead. */
-.danger-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 0.45rem;
-	min-height: 2rem;
-	padding: 0 0.85rem;
-	border: 1px solid var(--destructive);
-	border-radius: 0.75rem;
-	background: var(--destructive);
-	color: white;
-	font-size: 0.82rem;
-	font-weight: 650;
-	white-space: nowrap;
-	transition: transform 150ms ease, background-color 150ms ease,
-		border-color 150ms ease;
-}
-
-.danger-button:hover:not(:disabled) {
-	border-color: color-mix(in oklch, var(--destructive) 70%, #000);
-	background: color-mix(in oklch, var(--destructive) 70%, #000);
-}
-
-.danger-button:disabled {
-	opacity: 0.55;
-}
-
 .editor-section {
 	margin-top: 1.4rem;
 }
@@ -585,18 +582,21 @@
 	margin: 0;
 	padding: 0.55rem 0.7rem;
 	border: 1px solid var(--border);
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	background: var(--surface-muted);
 	color: var(--foreground);
 	font-size: 0.84rem;
 }
 
 .field-input,
-.field textarea {
+.field textarea,
+.seat-field input,
+.seat-field textarea,
+[data-slot="select-trigger"]:not(.control-select-trigger) {
 	width: 100%;
 	padding: 0.55rem 0.7rem;
 	border: 1px solid var(--border);
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	background: var(--surface-muted);
 	color: var(--foreground);
 	font-size: 0.84rem;
@@ -604,13 +604,17 @@
 	resize: vertical;
 }
 
-.field-input {
-	min-height: 2rem;
+.field-input:not(textarea) {
+	min-height: 2.25rem;
 	padding-block: 0.3rem;
 }
 
+textarea.field-input { min-height: 4rem; }
+
 .field-input:focus-visible,
-.field textarea:focus-visible {
+.field textarea:focus-visible,
+.seat-field input:focus-visible,
+.seat-field textarea:focus-visible {
 	outline: 0;
 	border-color: var(--focus);
 	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
@@ -624,7 +628,7 @@
 	min-height: 2rem;
 	padding: 0.3rem 0.7rem;
 	border: 1px solid var(--border);
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	background: var(--surface-muted);
 	color: var(--foreground);
 	font: inherit;
@@ -762,43 +766,6 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 
 .settings-panel-body section > .field + .field { margin-top: 16px; }
 
-.theme-options {
-	display: grid;
-	gap: 0.45rem;
-}
-
-.theme-options button {
-	display: grid;
-	grid-template-columns: auto 1fr auto;
-	align-items: center;
-	gap: 0.7rem;
-	min-height: 2.8rem;
-	padding: 0 0.75rem;
-	border: 1px solid transparent;
-	border-radius: 0.8rem;
-	background: transparent;
-	text-align: left;
-}
-
-.theme-options button:hover,
-.theme-options button[data-active="true"] {
-	background: var(--surface-muted);
-}
-
-.theme-options button[data-active="true"] {
-	border-color: color-mix(in oklch, var(--accent) 38%, var(--border));
-}
-
-.theme-options svg {
-	width: 1rem;
-	height: 1rem;
-	stroke-width: 1.8;
-}
-
-.theme-options button > svg:last-child {
-	color: var(--accent);
-}
-
 .settings-section {
 	margin-top: 1.4rem;
 	padding-top: 1.25rem;
@@ -864,7 +831,7 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 
 .lore-match-entry {
 	border: 1px solid var(--border);
-	border-radius: 0.7rem;
+	border-radius: 0.75rem;
 	background: var(--surface);
 }
 
@@ -942,38 +909,6 @@ body:has(.app-select-content[data-side="top"]) .app-select-trigger[data-state="o
 	color: var(--text-muted);
 	font-size: 0.72rem;
 	line-height: 1.45;
-}
-
-.settings-switch {
-	position: relative;
-	flex: 0 0 auto;
-	width: 2.4rem;
-	height: 1.4rem;
-	padding: 0.15rem;
-	border: 1px solid var(--border-strong);
-	border-radius: 999px;
-	background: var(--surface-deep);
-	transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.settings-switch[data-state="checked"] {
-	border-color: var(--primary);
-	background: var(--primary);
-}
-
-.settings-switch-thumb {
-	display: block;
-	width: 1rem;
-	height: 1rem;
-	border-radius: 50%;
-	background: var(--surface-raised);
-	box-shadow: 0 0.1rem 0.3rem var(--shadow);
-	transform: translateX(0);
-	transition: transform 150ms ease;
-}
-
-.settings-switch[data-state="checked"] .settings-switch-thumb {
-	transform: translateX(1rem);
 }
 
 .toast-viewport {

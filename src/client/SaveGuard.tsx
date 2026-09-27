@@ -35,7 +35,7 @@ export function UnsavedChangesDialog({ open, saving, error, onSave, onDiscard, o
 			{error !== null && <p role="alert" className="text-sm text-destructive">{error}</p>}
 			<DialogFooter>
 				<Button type="button" variant="ghost" disabled={saving} onClick={onKeepEditing}>Keep editing</Button>
-				<Button type="button" variant="outline" disabled={saving} onClick={onDiscard}>Discard</Button>
+				<Button type="button" variant="destructive" disabled={saving} onClick={onDiscard}>Discard</Button>
 				<Button type="button" disabled={saving} onClick={onSave}>{saving ? "Saving…" : "Save and leave"}</Button>
 			</DialogFooter>
 		</DialogContent>

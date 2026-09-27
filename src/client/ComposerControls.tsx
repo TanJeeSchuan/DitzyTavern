@@ -19,6 +19,7 @@ import { ModelSelector } from "./ModelSelector";
 interface ComposerControlSelectorsProps {
 	conversation: ConversationSummary;
 	disabled?: boolean;
+	disabledReason?: string;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onModelSelectionChange: (connectionProfileId: number, modelId: string) => void;
 	onControlChange: (notice: string) => void;
@@ -27,6 +28,7 @@ interface ComposerControlSelectorsProps {
 export function ComposerControlSelectors({
 	conversation,
 	disabled = false,
+	disabledReason,
 	onConversationChange,
 	onModelSelectionChange,
 	onControlChange,
@@ -117,6 +119,7 @@ export function ComposerControlSelectors({
 			<ModelSelector
 				conversation={conversation}
 				disabled={disabled}
+				disabledReason={disabledReason}
 				onConversationChange={onConversationChange}
 				onSelectionChange={onModelSelectionChange}
 			/>

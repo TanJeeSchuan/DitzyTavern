@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ChevronDown, ChevronLeft, CircleCheck, CircleX, Zap } from "lucide-react";
 import { AppSelect } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import type { ConnectionSettingsController } from "./useConnectionSettingsContro
 
 export function ConnectionProfileEditor({ controller }: { controller: ConnectionSettingsController }) {
 	const navigate = useSaveNavigation();
+	const [validationVisible, setValidationVisible] = useState(false);
 	const {
 		draft,
 		selectedProfile,
@@ -51,7 +53,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 
 	return (
 		<>
-			<div className="panel-body settings-panel-body">
+			<div className="panel-body settings-panel-body" onBlur={() => setValidationVisible(true)}>
 				<Button type="button" size="sm" variant="ghost" className="-ml-2 mb-3 text-muted-foreground" onClick={() => navigate(controller.closeEditor)}><ChevronLeft aria-hidden="true" /> Connections</Button>
 				<div className="mb-6 grid gap-0.5">
 					<h3 className="truncate text-base! font-semibold">{title}</h3>
@@ -128,7 +130,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 					</div>
 				</details>
 			</div>
-			<SaveFooter dirty={controller.dirty} saving={controller.saving} valid={controller.canSave} error={controller.error ?? controller.validationError} onSave={() => void controller.applyDraft()} />
+			<SaveFooter dirty={controller.dirty} saving={controller.saving} error={controller.error ?? (validationVisible ? controller.validationError : null)} onSave={() => { setValidationVisible(true); if (controller.canSave) void controller.applyDraft(); }} />
 		</>
 	);
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { AppSelect } from "@/components/ui/select";
 import { Field } from "@/components/ui/field";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ConversationSummary } from "../conversation";
 import { getLorebookAttachmentState } from "../lorebook-library";
 import { OVERRIDES_NAMESPACE_LABELS, requestOverridesSummary } from "../generation-settings-draft";
@@ -92,10 +92,7 @@ function GenerationSettings({
 					<section aria-labelledby="continuation-settings-title">
 						<h3 id="continuation-settings-title">Continuation</h3>
 						<p>How the next model Message continues after a length limit.</p>
-						<ToggleGroup type="single" variant="outline" size="sm" className="mb-4 w-full" value={strategy} onValueChange={(value) => { if (value === "instruction" || value === "assistant-prefill") setStrategy(value); }} aria-label="Continuation strategy">
-							<ToggleGroupItem value="instruction" className="flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:font-semibold">Instruction</ToggleGroupItem>
-							<ToggleGroupItem value="assistant-prefill" className="flex-1 data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:font-semibold">Assistant prefill</ToggleGroupItem>
-						</ToggleGroup>
+						<SegmentedControl value={strategy} onValueChange={setStrategy} label="Continuation strategy" options={[{ value: "instruction", label: "Instruction" }, { value: "assistant-prefill", label: "Assistant prefill" }]} />
 						{strategy === "assistant-prefill" ? (
 							<Field htmlFor="continuation-prefill-suffix" label="Prefill suffix">
 								<AppSelect

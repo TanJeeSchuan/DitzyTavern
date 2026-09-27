@@ -24,6 +24,7 @@ import { Portrait } from "./Portrait";
 // and its stored text is never modified.
 export function StoryMessageView({
 	message,
+	isLatest = false,
 	displayedVariantId,
 	mutationsDisabled = false,
 	generationActive = false,
@@ -38,6 +39,7 @@ export function StoryMessageView({
 	onInspect,
 }: {
 	message: StoryMessage;
+	isLatest?: boolean;
 	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
@@ -99,6 +101,7 @@ export function StoryMessageView({
 	return (
 		<article
 			className="story-message"
+			data-latest={isLatest}
 			tabIndex={0}
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}

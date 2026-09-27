@@ -122,7 +122,7 @@
 	width: min(100%, 44rem);
 	min-height: 100%;
 	margin: 0 auto;
-	padding: 3rem clamp(1.6rem, 5vw, 3.4rem) 14rem;
+	padding: 3rem clamp(1.6rem, 5vw, 3.4rem) 10rem;
 }
 
 .empty-chat {
@@ -175,8 +175,6 @@
 
 .writer-message time,
 .message-meta {
-	color: var(--text-muted);
-	font-size: 0.7rem;
 	font-variant-numeric: tabular-nums;
 }
 
@@ -198,6 +196,8 @@
 	outline: 2px solid var(--focus);
 	outline-offset: 0.45rem;
 }
+
+.story-message[data-latest="true"] { margin-bottom: 0; }
 
 .message-header {
 	display: grid;
@@ -243,6 +243,8 @@
 }
 
 .message-meta {
+	color: var(--text-muted);
+	font-size: 0.7rem;
 	display: flex;
 	gap: 0.6rem;
 	opacity: 0;
@@ -387,12 +389,20 @@
 }
 
 .message-actions {
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 150ms ease, visibility 150ms ease;
 	display: grid;
 	grid-template-columns: 1fr auto 1fr;
 	align-items: center;
 	gap: 0.7rem;
 	min-height: 2.3rem;
 	margin-top: 1.1rem;
+}
+
+.story-message:is(:hover, :focus-within, [data-selected="true"], [data-latest="true"], [data-previewing="true"]) .message-actions {
+	opacity: 1;
+	visibility: visible;
 }
 
 .edit-action {
@@ -474,7 +484,7 @@
 	bottom: 1.35rem;
 	z-index: 10;
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
+	grid-template-columns: minmax(0, 1fr) auto;
 	grid-template-rows: auto auto;
 	align-items: end;
 	gap: 0.65rem;
@@ -567,34 +577,9 @@
 }
 
 .composer > .send-button {
-	grid-column: 3;
-	grid-row: 2;
-	justify-self: end;
-}
-
-.composer-more-button {
-	display: inline-grid;
 	grid-column: 2;
 	grid-row: 2;
-	width: 2.15rem;
-	height: 2.15rem;
-	place-items: center;
-	align-self: center;
-	border: 0;
-	border-radius: 0.65rem;
-	background: transparent;
-	color: var(--text-muted);
-}
-
-.composer-more-button:hover,
-.composer-more-button[aria-expanded="true"] {
-	background: var(--surface-muted);
-	color: var(--foreground);
-}
-
-.composer-more-button svg {
-	width: 1.15rem;
-	height: 1.15rem;
+	justify-self: end;
 }
 
 .composer > textarea::placeholder {
@@ -1101,11 +1086,6 @@
 	color: var(--text-muted);
 	font-size: 0.9rem;
 	line-height: 1.6;
-}
-
-.prompt-block-field:focus-visible {
-	outline: none;
-	border-color: color-mix(in oklch, var(--text-muted) 60%, var(--border));
 }
 
 @media (prefers-reduced-motion: no-preference) {

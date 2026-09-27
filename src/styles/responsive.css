@@ -255,24 +255,6 @@ body > .details-panel > .panel-body {
 	gap: 1.1rem;
 }
 
-.conversation-name-field input,
-.seat-field input,
-.seat-field textarea {
-	width: 100%;
-	border: 1px solid var(--border);
-	border-radius: 0.75rem;
-	background: var(--surface-muted);
-	color: var(--foreground);
-	font-size: 0.86rem;
-	line-height: 1.5;
-}
-
-.conversation-name-field input,
-.seat-field input {
-	height: 2.5rem;
-	padding: 0 0.75rem;
-}
-
 .seat-field textarea {
 	min-height: 3.4rem;
 	padding: 0.6rem 0.75rem;
@@ -345,37 +327,6 @@ body > .details-panel > .panel-body {
 	font-size: 0.88rem;
 	font-weight: 670;
 	letter-spacing: -0.015em;
-}
-
-.seat-mode {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 0.35rem;
-	padding: 0.25rem;
-	border-radius: 0.8rem;
-	background: var(--surface-muted);
-}
-
-.seat-mode button {
-	height: 2rem;
-	border: 0;
-	border-radius: 0.6rem;
-	background: transparent;
-	color: var(--text-muted);
-	font-size: 0.76rem;
-	font-weight: 620;
-	cursor: pointer;
-}
-
-.seat-mode button[data-active="true"] {
-	background: var(--surface-raised);
-	box-shadow: 0 1px 2px var(--shadow-soft);
-	color: var(--foreground);
-}
-
-.seat-mode button:disabled {
-	cursor: not-allowed;
-	opacity: 0.55;
 }
 
 .seat-adhoc {

@@ -323,6 +323,7 @@ export function ActiveWritingWorkspace({
 							<StoryMessageView
 								key={message.id}
 								message={message}
+								isLatest={latestStoryMessage?.id === message.id}
 								generationActive={generation.activeGenerationTargets.some((target) =>
 									target.messageId === message.id &&
 									target.variantId === displayedVariantId(message, story.preview)
@@ -380,6 +381,7 @@ export function ActiveWritingWorkspace({
 						<ComposerControlSelectors
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
+							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
 							onControlChange={(text) => setControlChangeToast({ text, id: ++controlToastId.current })}
 							onModelSelectionChange={generationSettings.adoptModelSelection}
