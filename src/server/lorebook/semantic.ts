@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite";
 import type { ModelFetch } from "../model-client";
-import { createTypesafeSettingsModule, requestJev, type TypesafeSettingsModuleOptions } from "../typesafe";
+import { createTypesafeSettingsModule, JEV_STATE_TOKEN_LIMIT, jevRequest, requestJev, type TypesafeSettingsModuleOptions } from "../typesafe";
+import { tokenxEstimator } from "../prompt-compiler";
 import type { LoreScanMessage, LoreSemanticEvaluation } from "./matching";
 import type { Lorebook } from "../../shared/contract/lorebook";
-import type { TypesafeSettingsPayload } from "../../shared/contract/typesafe";
+import type { JevAnswer, TypesafeSettingsPayload } from "../../shared/contract/typesafe";
 
 export interface SemanticSettingsSnapshot {
 	readonly mode: TypesafeSettingsPayload["loreTriggerMode"];
@@ -23,6 +24,19 @@ export const captureSemanticSettings = (database: Database, options?: TypesafeSe
 	};
 };
 
+const boundedScene = (messages: readonly LoreScanMessage[]): string[] => {
+	const scene = messages.map((message) => message.content);
+	const fits = () => tokenxEstimator(JSON.stringify({ scene })) <= JEV_STATE_TOKEN_LIMIT;
+	while (scene.length > 1 && !fits()) scene.shift();
+	while (scene.length === 1 && !fits()) scene[0] = scene[0]!.slice(Math.ceil(scene[0]!.length / 10));
+	return scene;
+};
+
+const triggerQuestion = (trigger: string) => ({
+	type: "noul",
+	instructions: { situation: trigger, question: "Does `situation` happen or get discussed in `scene`?" },
+});
+
 export async function evaluateSemanticLore(input: {
 	readonly entries: readonly Pick<Lorebook["entries"][number], "enabled" | "semanticTriggers">[];
 	readonly messages: readonly LoreScanMessage[];
@@ -34,17 +48,18 @@ export async function evaluateSemanticLore(input: {
 	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
 	if (settings.mode === "off") return { available: false, threshold: settings.threshold, fallbackReason: "Semantic Triggers are turned off in Model Settings." };
 	if (settings.credential === null) return { available: false, threshold: settings.threshold, fallbackReason: "Configure the Typesafe credential in Model Settings to match Semantic Triggers." };
-	const questions = Object.fromEntries(triggers.map((trigger, index) => [`trigger_${index}`, {
-		type: "noul",
-		instructions: { situation: trigger, question: "Does `situation` happen or get discussed in `scene`?" },
-	}]));
+	const state = { scene: boundedScene(input.messages) };
+	const requestFor = (indexes: readonly number[]) => jevRequest(settings.jevModel, state, Object.fromEntries(indexes.map((index) => [`trigger_${index}`, triggerQuestion(triggers[index]!)])));
+	const batches: number[][] = [[]];
+	for (const index of triggers.keys()) {
+		const current = batches.at(-1)!;
+		if (current.length > 0 && !requestFor([...current, index]).fits) batches.push([index]);
+		else current.push(index);
+	}
+	const credential = settings.credential;
 	try {
-		const answers = await requestJev({
-			request: JSON.stringify({ model: settings.jevModel, state: { scene: input.messages.map((message) => message.content) }, questions }),
-			questionIds: Object.keys(questions),
-			credential: settings.credential,
-			fetch: input.fetch,
-		});
+		const answers = (await Promise.all(batches.map((batch) => requestJev({ ...requestFor(batch), credential, fetch: input.fetch }))))
+			.reduce<Readonly<Record<string, JevAnswer>>>((all, part) => ({ ...all, ...part }), {});
 		const matches = triggers.map((trigger, index) => {
 			const answer = answers[`trigger_${index}`]!;
 			if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");

@@ -10,13 +10,13 @@ import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
 import type { MemoryExtractionResponse } from "../../shared/contract/memory";
 import type { JevAnswer } from "../../shared/contract/typesafe";
-import { createTypesafeSettingsModule, requestJev, type JevTrace } from "../typesafe";
+import { createTypesafeSettingsModule, jevRequest, requestJev, type JevTrace } from "../typesafe";
 
 const MAX_CLAIM = 1024;
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
-const MAX_JEV_REQUEST_BYTES = 128 * 1024;
+const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 
 export type MemoryTrace = JevTrace;
 const noTrace: MemoryTrace = () => {};
@@ -93,17 +93,20 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	let collectedOutputBytes = 0;
 	trace("Extraction request", { profile: profile.displayName, model: memory.extractionModel, limits: `context ${memory.contextLimit} · output reserve ${memory.outputReserve}`, contextMessageIds: retainedContext.map((message) => message.messageId).join(", "), prompt });
 	const startedAt = Date.now();
+	const deadline = AbortSignal.timeout(EXTRACTION_DEADLINE_MS);
 	const result = await collectModelClientGeneration(client, {
 		promptPlan: promptPlanOf(prompt),
 		modelId: memory.extractionModel,
 		generationSettings: { temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null, contextLimit: memory.contextLimit, responseBudget: memory.outputReserve, requestOverrides: {} },
 		connection: connectionSnapshotOf(settings, profile),
-		signal,
+		signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
 	}, { onEvent: (event) => {
 		if (event.type !== "content") return;
 		collectedOutputBytes += encoder.encode(event.text).byteLength;
 		if (collectedOutputBytes > MAX_OUTPUT_BYTES) throw new Error("Memory extraction output exceeded 64 KiB.");
-	} });
+	} }).catch((error: Error) => {
+		throw deadline.aborted ? new Error("Memory extraction exceeded its 10-minute limit. Retry this source.") : error;
+	});
 	trace("Extraction response", { elapsed: seconds(startedAt), finishReason: result.finishReason, usage: JSON.stringify(result.usage), reasoning: result.reasoning, content: prettyJson(result.content) });
 	if (result.finishReason !== "stop") throw new Error(result.finishReason === "length" ? "Memory extraction output was truncated. Retry after reducing the source or increasing its output reserve." : "Memory extraction did not finish successfully. Retry this source.");
 	let parsed: MemoryExtractionResponse;
@@ -176,12 +179,8 @@ export async function judgeMemoryCandidates(
 			questions[`candidate_${start + index}_attribution`] = attribution;
 			questions[`candidate_${start + index}_usefulness`] = usefulness;
 		}
-		const request = JSON.stringify({ state, model, questions });
-		const bytes = new TextEncoder().encode(request).byteLength;
-		const stateTokens = tokenxEstimator(JSON.stringify(state));
-		const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
-		const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
-		return { state, questions, request, fits: values.length <= 16 && bytes <= MAX_JEV_REQUEST_BYTES && tokenxEstimator(request) <= 48_000 && stateTokens <= 16_000 && stateTokens + Math.max(0, ...questionTokens) <= 32_000 && stateTokens + totalQuestionTokens <= 64_000 };
+		const built = jevRequest(model, state, questions);
+		return { ...built, fits: values.length <= 16 && built.fits };
 	};
 	for (const candidate of candidates) {
 		if (batch.length === 16 || !buildRequest([...batch, candidate], offset).fits) {
@@ -196,8 +195,8 @@ export async function judgeMemoryCandidates(
 	if (batch.length) batches.push(batch);
 	offset = 0;
 	for (const currentBatch of batches) {
-		const { questions, request } = buildRequest(currentBatch, offset);
-		const answers = await requestJev({ request, questionIds: Object.keys(questions), credential, fetch: fetcher, signal, trace });
+		const { request, questionIds } = buildRequest(currentBatch, offset);
+		const answers = await requestJev({ request, questionIds, credential, fetch: fetcher, signal, trace });
 		for (const [index, candidate] of currentBatch.entries()) {
 			const id = offset + index;
 			const support = parseChoice(answers[`candidate_${id}_support`]!, ["supported", "contradicted", "not_established"] as const);
@@ -225,9 +224,8 @@ const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
 
 const parseScore = (answer: JevAnswer) => {
 	if (answer.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
-	const levels = scoreLabels.map((_, index) => answer.probabilities[String(index)]);
-	if (levels.some((probability) => !(probability >= 0 && probability <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
-	return { score: answer.score, label: scoreLabels[levels.indexOf(Math.max(...levels))]! };
+	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
+	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
 };
 
 export async function judgeMemoryRecallCandidates(
@@ -242,17 +240,8 @@ export async function judgeMemoryRecallCandidates(
 	if (candidates.length === 0) return [];
 	if (!credential) throw new Error("Configure the Typesafe credential in Model Settings.");
 	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
-		const state = { scene };
 		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
-		const request = JSON.stringify({ state, model, questions });
-		const stateTokens = tokenxEstimator(JSON.stringify(state));
-		const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
-		const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
-		return {
-			questions,
-			request,
-			fits: new TextEncoder().encode(request).byteLength <= MAX_JEV_REQUEST_BYTES && tokenxEstimator(request) <= 48_000 && stateTokens <= 16_000 && stateTokens + Math.max(0, ...questionTokens) <= 32_000 && stateTokens + totalQuestionTokens <= 64_000,
-		};
+		return jevRequest(model, { scene }, questions);
 	};
 	let packed = [...candidates];
 	let request = buildRequest(packed);
@@ -261,7 +250,7 @@ export async function judgeMemoryRecallCandidates(
 		request = buildRequest(packed);
 	}
 	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
-	const answers = await requestJev({ request: request.request, questionIds: Object.keys(request.questions), credential, fetch: fetcher, signal });
+	const answers = await requestJev({ request: request.request, questionIds: request.questionIds, credential, fetch: fetcher, signal });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of packed) {
 		const relevance = parseScore(answers[`candidate_${candidate.identity}_relevance`]!);

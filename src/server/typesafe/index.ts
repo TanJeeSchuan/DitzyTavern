@@ -5,10 +5,13 @@ import { Value } from "@sinclair/typebox/value";
 import { typesafeSecretTable, typesafeSettingsTable } from "../database/schema";
 import { decryptConnectionSecretSync, encryptConnectionSecretSync, getConnectionSecretKey } from "../connection-secrets";
 import type { ModelFetch } from "../model-client";
+import { tokenxEstimator } from "../prompt-compiler";
 import { jevResponse, type JevAnswer, type TypesafeSettingsCommand, type TypesafeSettingsPayload } from "../../shared/contract/typesafe";
 
 const SETTINGS_ID = 1;
 const MAX_RESPONSE_BYTES = 256 * 1024;
+const MAX_REQUEST_BYTES = 128 * 1024;
+export const JEV_STATE_TOKEN_LIMIT = 16_000;
 type Db = ReturnType<typeof drizzle>;
 
 export class InvalidTypesafeSettingsError extends Error {
@@ -113,6 +116,15 @@ async function readBoundedResponse(response: Response): Promise<string> {
 }
 
 const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+
+export const jevRequest = <State extends object, Question extends object>(model: string, state: State, questions: Readonly<Record<string, Question>>) => {
+	const request = JSON.stringify({ model, state, questions });
+	const stateTokens = tokenxEstimator(JSON.stringify(state));
+	const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
+	const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
+	const fits = new TextEncoder().encode(request).byteLength <= MAX_REQUEST_BYTES && tokenxEstimator(request) <= 48_000 && stateTokens <= JEV_STATE_TOKEN_LIMIT && stateTokens + Math.max(0, ...questionTokens) <= 32_000 && stateTokens + totalQuestionTokens <= 64_000;
+	return { request, questionIds: Object.keys(questions), fits };
+};
 
 export type JevTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
 
