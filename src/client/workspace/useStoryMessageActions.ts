@@ -7,7 +7,6 @@ import {
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
-	deriveRevisionWindow,
 	type StoryAction,
 	type StoryState,
 } from "../story";
@@ -82,16 +81,7 @@ export function useStoryMessageActions({
 		if (!canEnterPreview) return;
 		if (conversation === null) return;
 
-		const revisionWindow = deriveRevisionWindow(
-			story.messages,
-			conversation.control.modelParticipantId,
-		);
-		const selection = classifyVariantSelection(
-			story,
-			messageId,
-			target.id,
-			revisionWindow,
-		);
+		const selection = classifyVariantSelection(story, messageId, target.id);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
 		if (selection.kind === "preview") {
 			onEnterPreview();

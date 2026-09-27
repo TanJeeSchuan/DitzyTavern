@@ -1,5 +1,7 @@
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
 import { ChevronDown, Star } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { loadConversationGenerationSettings, type ConversationSummary } from "./conversation";
 import { commitConversationModel, MODEL_SELECTION_UNAVAILABLE_NOTICE } from "./model-selection-command";
 import { loadConnectionSettings, saveConnectionCommand, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
@@ -11,9 +13,10 @@ interface SelectedModel {
 	modelId: string;
 }
 
-export function ModelSelector({ conversation, disabled = false, onConversationChange, onSelectionChange }: {
+export function ModelSelector({ conversation, disabled = false, disabledReason, onConversationChange, onSelectionChange }: {
 	conversation: ConversationSummary;
 	disabled?: boolean;
+	disabledReason?: string;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onSelectionChange: (connectionProfileId: number, modelId: string) => void;
 }) {
@@ -24,7 +27,7 @@ export function ModelSelector({ conversation, disabled = false, onConversationCh
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const rootRef = useRef<HTMLDivElement>(null);
+	const reasonId = useId();
 
 	useAsyncEffect((isCancelled) => {
 		void Promise.all([loadConversationGenerationSettings(conversation.id), loadConnectionSettings()])
@@ -41,16 +44,6 @@ export function ModelSelector({ conversation, disabled = false, onConversationCh
 	useEffect(() => {
 		if (disabled) setOpen(false);
 	}, [disabled]);
-
-	useEffect(() => {
-		if (!open) return;
-		const close = (event: MouseEvent) => {
-			if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
-			setOpen(false);
-		};
-		document.addEventListener("mousedown", close);
-		return () => document.removeEventListener("mousedown", close);
-	}, [open]);
 
 	const groups = useMemo(() => (settings?.profiles ?? []).map((profile) => ({
 		profile,
@@ -122,41 +115,51 @@ export function ModelSelector({ conversation, disabled = false, onConversationCh
 		}
 	};
 
-	if (selected === null) return null;
-
 	return (
-		<div className="model-selector" ref={rootRef}>
-			<label htmlFor={`model-selector-${conversation.id}`}>Model connection</label>
-			<button id={`model-selector-${conversation.id}`} className="model-selector-trigger" type="button" aria-haspopup="listbox" aria-expanded={open} disabled={disabled || pending} onClick={() => {
-				setOpen((current) => !current);
-				setQuery("");
-				void loadConnectionSettings().then(setSettings).catch(() => setError("Connection Settings could not be loaded."));
+		<div className="model-selector">
+			<Popover open={open} onOpenChange={(next) => {
+				setOpen(next);
+				if (next) {
+					setQuery("");
+					void loadConnectionSettings().then(setSettings).catch(() => setError("Connection Settings could not be loaded."));
+				}
 			}}>
-				<span><small>{selectedProfile?.displayName ?? "Choose a connection"}</small><strong>{selectedProfile === undefined ? "Choose a model" : selected.modelId}</strong></span>
-				<ChevronDown aria-hidden="true" />
-			</button>
-			{open && <div className="model-selector-menu">
-				<input className="field-input" aria-label="Search models" value={query} disabled={disabled} autoFocus placeholder="Search or enter any model ID" onChange={(event) => setQuery(event.target.value)} />
-				<div className="model-selector-options" role="listbox" aria-label="Model choices">
-					{groups.map(({ profile, models }) => <section className="model-selector-group" key={profile.id} aria-label={profile.displayName}>
-						<h4>{profile.displayName}</h4>
-						{models.map((modelId) => {
-							const isSelected = profile.id === selected.connectionProfileId && modelId === selected.modelId;
-							const isPinned = profile.pinnedModels.includes(modelId);
-							return <div className="model-selector-option" key={modelId} role="option" aria-selected={isSelected}>
-								<button type="button" disabled={disabled || pending} onClick={() => void updateSelection(profile, modelId)}>{modelId}</button>
-								<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={disabled || pending} onClick={(event) => {
-									event.stopPropagation();
-									void togglePin(profile, modelId);
-								}}><Star aria-hidden="true" fill={isPinned ? "currentColor" : "none"} /></button>
-							</div>;
-						})}
-					</section>)}
-					{settings?.profiles.length === 0 && <p className="model-selector-empty">Add a connection before choosing a model.</p>}
-					{settings !== null && settings.profiles.length > 0 && groups.length === 0 && <p className="model-selector-empty">No pinned models yet. Search or enter a model ID to choose it for a connection.</p>}
-				</div>
-			</div>}
-			{(notice !== null || error !== null) && <small className={error === null ? "model-selector-note" : "model-selector-note is-error"} role={error === null ? "status" : "alert"}>{error ?? notice}</small>}
+				<PopoverTrigger asChild>
+					<button className="model-selector-trigger" type="button" disabled={disabled || pending || selected === null}
+						aria-label={`Model: ${selected?.modelId || "Choose a model"}`}
+						aria-describedby={disabledReason ? reasonId : undefined}
+						title={disabledReason ?? (selectedProfile ? `${selectedProfile.displayName} / ${selected?.modelId}` : "Choose a model")}>
+						<span>{selected === null ? "Loading model…" : selectedProfile === undefined ? "Choose a model" : selected.modelId || "Choose a model"}</span>
+						<ChevronDown aria-hidden="true" />
+					</button>
+				</PopoverTrigger>
+				<PopoverContent side="top" align="start" className="w-[min(24rem,calc(100vw-2rem))] p-0" onOpenAutoFocus={(event) => event.preventDefault()}>
+					<Command shouldFilter={false}>
+						<CommandInput aria-label="Search models" value={query} disabled={pending} autoFocus placeholder="Search or enter a model ID" onValueChange={setQuery} />
+						<CommandList aria-label="Model choices">
+							{groups.map(({ profile, models }) => <CommandGroup heading={profile.displayName} key={profile.id}>
+								{models.map((modelId) => {
+									const isPinned = profile.pinnedModels.includes(modelId);
+									return <div className="model-selector-option" key={modelId}>
+										<CommandItem value={`${profile.id}/${modelId}`} disabled={pending} onSelect={() => void updateSelection(profile, modelId)}>
+											<span className="truncate" title={modelId}>{modelId}</span>
+											{profile.id === selected?.connectionProfileId && modelId === selected.modelId && <span className="sr-only">Current model</span>}
+										</CommandItem>
+										<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={pending} onClick={() => void togglePin(profile, modelId)}>
+											<Star aria-hidden="true" fill={isPinned ? "currentColor" : "none"} />
+										</button>
+									</div>;
+								})}
+							</CommandGroup>)}
+							{settings?.profiles.length === 0 && <p className="model-selector-empty">Add a connection in Connections to choose a model.</p>}
+							{settings !== null && settings.profiles.length > 0 && groups.length === 0 && <p className="model-selector-empty">Search or enter a model ID to choose it for a connection.</p>}
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
+			{disabledReason && <small id={reasonId} className="model-selector-note">{disabledReason}</small>}
+			{error !== null && <small className="model-selector-note is-error" role="alert">{error}</small>}
+			{notice !== null && <span className="sr-only" role="status">{notice}</span>}
 		</div>
 	);
 }

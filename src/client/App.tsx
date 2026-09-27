@@ -95,13 +95,13 @@ function WritingWorkspace({
 				/>
 				{connectionSettingsOpen && (
 					<div className="empty-settings-layer">
-						<section className="empty-settings-panel" aria-label="Connection Settings">
+						<section className="empty-settings-panel" aria-label="Connections">
 							<header>
-								<h2>Connection Settings</h2>
+								<h2>Connections</h2>
 								<button
 									className="icon-button"
 									type="button"
-									aria-label="Close Connection Settings"
+									aria-label="Close Connections"
 									onClick={() => setConnectionSettingsOpen(false)}
 								>
 									×
@@ -144,6 +144,7 @@ function WritingWorkspace({
 				onNewChatClose={() => setNewChatOpen(false)}
 				onNewChatCreated={() => void handleCreated()}
 				onImportLaunched={onImportLaunched}
+				onReload={() => void onReload()}
 			/>
 		</>
 	);

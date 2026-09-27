@@ -1,5 +1,6 @@
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import {
 	editMacroVariable,
 	loadMacroVariables,
@@ -142,6 +143,7 @@ export function MacroVariablesReadyView({
 	onNotice: (notice: string | null) => void;
 }) {
 	const [draftName, setDraftName] = useState("");
+	const [nameError, setNameError] = useState(false);
 	const [draftValue, setDraftValue] = useState("");
 	const [editing, setEditing] = useState<MacroVariable | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -149,6 +151,7 @@ export function MacroVariablesReadyView({
 	const beginAdd = () => {
 		setEditing(null);
 		setDraftName("");
+		setNameError(false);
 		setDraftValue("");
 		onNotice(null);
 	};
@@ -156,6 +159,7 @@ export function MacroVariablesReadyView({
 	useEffect(() => {
 		setEditing(null);
 		setDraftName("");
+		setNameError(false);
 		setDraftValue("");
 		onNotice(null);
 	}, [position, variables.promptPresetId]);
@@ -163,6 +167,7 @@ export function MacroVariablesReadyView({
 	const beginEdit = (variable: MacroVariable) => {
 		setEditing(variable);
 		setDraftName(variable.name);
+		setNameError(false);
 		setDraftValue(displayValue(variable.value));
 		onNotice(null);
 	};
@@ -179,7 +184,7 @@ export function MacroVariablesReadyView({
 	const save = async () => {
 		const name = draftName.trim();
 		if (name === "") {
-			onNotice("Enter a Macro Variable name.");
+			setNameError(true);
 			return;
 		}
 		setSaving(true);
@@ -231,9 +236,7 @@ export function MacroVariablesReadyView({
 			</p>
 			<label className="macro-position-field">
 				<span>History position</span>
-				<select value={position} onChange={(event) => onPositionChange(Number(event.target.value))} disabled={saving}>
-					{availablePositions.map((value) => <option key={value} value={value}>{value === 0 ? "Before first Message" : `After Message ${value}`}</option>)}
-				</select>
+				<AppSelect value={position} onValueChange={(value) => onPositionChange(Number(value))} disabled={saving} options={availablePositions.map((value) => ({ value, label: value === 0 ? "Before first Message" : `After Message ${value}` }))} />
 			</label>
 			<section className="macro-variable-list" aria-label="Effective Macro Variables">
 				{variables.variables.length === 0 && <p className="panel-note">No effective variables at this position.</p>}
@@ -256,7 +259,7 @@ export function MacroVariablesReadyView({
 					<h3>{editing === null ? "Add Variable" : `Edit ${editing.name}`}</h3>
 					{editing !== null && <button className="edit-action" type="button" onClick={beginAdd} disabled={saving}>Cancel</button>}
 				</div>
-				<label><span>Name</span><input value={draftName} onChange={(event) => setDraftName(event.target.value)} disabled={saving} readOnly={editing !== null} placeholder="variableName" /></label>
+				<label><span>Name</span><input value={draftName} onChange={(event) => { setDraftName(event.target.value); setNameError(false); }} aria-invalid={nameError} aria-describedby={nameError ? "macro-name-error" : undefined} disabled={saving} readOnly={editing !== null} placeholder="variableName" />{nameError && <small id="macro-name-error" className="field-error" role="alert">Enter a Macro Variable name.</small>}</label>
 				<label><span>Value</span><textarea value={draftValue} onChange={(event) => setDraftValue(event.target.value)} disabled={saving} rows={5} placeholder="A long multiline value is supported." /></label>
 				<button className="primary-button" type="submit" disabled={saving}><Plus aria-hidden="true" /> {saving ? "Saving…" : editing === null ? "Add Variable" : "Save Variable"}</button>
 			</form>

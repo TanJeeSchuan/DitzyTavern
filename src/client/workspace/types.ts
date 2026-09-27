@@ -1,10 +1,9 @@
 export type PrimaryPanel =
 	| "chats"
-	| "cast"
-	| "library"
+	| "characters"
 	| "lorebooks"
 	| "prompts"
-	| "models"
+	| "connections"
 	| "generation"
 	| "settings"
 	| null;

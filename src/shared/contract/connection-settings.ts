@@ -82,6 +82,7 @@ const commandBody = Type.Union([
 		expectedRevision: Type.Integer(),
 		profileId: Type.Integer(),
 		profile: profileDraft,
+		credential: Type.Optional(Type.String()),
 		headers: Type.Optional(Type.Array(headerOperation)),
 	}),
 	Type.Object({
@@ -132,6 +133,7 @@ const testConnectionResult = Type.Union([
 			Type.Literal("adapter-unavailable"),
 		]),
 		message: Type.String(),
+		responseBody: Type.Optional(Type.String()),
 	}),
 ]);
 
@@ -183,7 +185,7 @@ export const connectionTestResponse = testConnectionResult;
 export const connectionCommandBody = commandBody;
 
 // The unconfigured Connection Profile is shared by the client editor and the
-// Generic OpenAI Compatible preset. Keeping this literal beside the schema
+// OpenAI Compatible preset. Keeping this literal beside the schema
 // makes the blank state a contract-owned default rather than a layer-specific
 // copy.
 export const blankConnectionProfileDraft = {

@@ -1,5 +1,6 @@
-import { Plus, Search, Upload } from "lucide-react";
 import { useReducer, useState } from "react";
+import { ChatsPanel } from "./ChatsPanel";
+import type { ConversationSummary } from "./conversation";
 import { ImportChatPanel } from "./ImportChatPanel";
 import { discardStagedImport } from "./import-chat";
 import {
@@ -12,64 +13,6 @@ import type { ChatSummary } from "./workspace";
 // ==[HUMAN APPROVED]== Keep this host mounted while the panel is closed so an open import retains
 // its staged preview and choices. The flow's Back and Cancel handlers decide
 // when staging is discarded.
-
-interface ChatsPanelProps {
-	chats: ChatSummary[];
-	activeId: string;
-	mutationsDisabled?: boolean;
-	onSelect: (chatId: string) => void;
-	onNewChat: () => void;
-	onImportChat: () => void;
-}
-export function ChatsPanel({
-	chats,
-	activeId,
-	mutationsDisabled = false,
-	onSelect,
-	onNewChat,
-	onImportChat,
-}: ChatsPanelProps) {
-	const [query, setQuery] = useState("");
-	const filteredChats = chats.filter((chat) =>
-		chat.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-	);
-
-	return (
-		<div className="panel-body">
-			<div className="chats-actions">
-				<button className="secondary-button" type="button" disabled={mutationsDisabled} onClick={onImportChat}>
-					<Upload aria-hidden="true" /> Import Chat
-				</button>
-				<button className="secondary-button" type="button" disabled={mutationsDisabled} onClick={onNewChat}>
-					<Plus aria-hidden="true" /> New Chat
-				</button>
-			</div>
-			<label className="search-field">
-				<Search aria-hidden="true" />
-				<span className="sr-only">Search Chats</span>
-				<input
-					value={query}
-					onChange={(event) => setQuery(event.target.value)}
-					placeholder="Search Chats"
-				/>
-			</label>
-			<div className="chat-list">
-				{filteredChats.map((chat) => (
-					<button
-						className="chat-list-item"
-						data-active={chat.id === activeId}
-						type="button"
-						key={chat.id}
-						onClick={() => onSelect(chat.id)}
-					>
-						<span>{chat.title}</span>
-						<small>{chat.id === activeId ? "Open now" : chat.updatedAt}</small>
-					</button>
-				))}
-			</div>
-		</div>
-	);
-}
 
 interface ImportChatHostProps {
 	// ==[HUMAN APPROVED]== The Chats panel is currently open; the host keeps its state mounted
@@ -85,6 +28,8 @@ interface ImportChatHostProps {
 	onClose: () => void;
 	// ==[HUMAN APPROVED]== A committed import opens its Chat: reloads the workspace and selects it.
 	onImportLaunched: (conversationId: number) => void;
+	onConversationChange: (conversation: ConversationSummary) => void;
+	onActiveChatDeleted: () => void;
 }
 
 export function ImportChatHost({
@@ -97,6 +42,8 @@ export function ImportChatHost({
 	onNewChat,
 	onClose,
 	onImportLaunched,
+	onConversationChange,
+	onActiveChatDeleted,
 }: ImportChatHostProps) {
 	const [chatsNested, setChatsNested] = useState<"list" | "import">("list");
 	const [importFlow, dispatchImportFlow] = useReducer(
@@ -146,6 +93,8 @@ export function ImportChatHost({
 				onSelect={onSelect}
 				onNewChat={onNewChat}
 				onImportChat={openImport}
+				onConversationChange={onConversationChange}
+				onActiveChatDeleted={onActiveChatDeleted}
 			/>
 		</>
 	);

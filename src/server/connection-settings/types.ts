@@ -47,6 +47,7 @@ export interface ApplyConnectionProfileInput {
 	readonly expectedRevision: number;
 	readonly profileId: number;
 	readonly profile: ConnectionProfileDraft;
+	readonly credential?: string;
 	readonly headers?: readonly ConnectionHeaderOperation[];
 }
 

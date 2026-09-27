@@ -61,12 +61,17 @@
 	--accent-soft: oklch(0.92 0.035 31);
 	--accent-softer: oklch(0.96 0.018 31);
 	--focus: oklch(0.6 0.14 30);
+	--ring: var(--focus);
 	--destructive: oklch(0.56 0.18 25);
 	--shadow: oklch(0.36 0.035 35 / 14%);
 	--shadow-soft: oklch(0.36 0.035 35 / 8%);
 	--ambient-one: oklch(0.79 0.08 29 / 52%);
 	--ambient-two: oklch(0.83 0.055 86 / 48%);
 	--ambient-three: oklch(0.79 0.045 158 / 35%);
+	--toggle-on: oklch(0.62 0.072 153);
+	--toggle-on-border: oklch(0.72 0.055 153);
+	--toggle-on-text: oklch(0.42 0.06 153);
+	--toggle-track: oklch(0.955 0.018 153);
 	font-family: var(--font-control);
 	font-synthesis: none;
 }
@@ -101,6 +106,10 @@
 		--ambient-one: oklch(0.41 0.09 28 / 44%);
 		--ambient-two: oklch(0.35 0.055 78 / 36%);
 		--ambient-three: oklch(0.33 0.05 158 / 26%);
+		--toggle-on: oklch(0.63 0.062 153);
+		--toggle-on-border: oklch(0.43 0.05 152);
+		--toggle-on-text: oklch(0.92 0.028 155);
+		--toggle-track: oklch(0.225 0.022 152);
 	}
 }
 
@@ -133,15 +142,20 @@
 	--ambient-one: oklch(0.41 0.09 28 / 44%);
 	--ambient-two: oklch(0.35 0.055 78 / 36%);
 	--ambient-three: oklch(0.33 0.05 158 / 26%);
+	--toggle-on: oklch(0.63 0.062 153);
+	--toggle-on-border: oklch(0.43 0.05 152);
+	--toggle-on-text: oklch(0.92 0.028 155);
+	--toggle-track: oklch(0.225 0.022 152);
 }
 
 :root[data-theme="daylight"] {
 	color-scheme: light;
 }
 
-* {
-	box-sizing: border-box;
-	border-color: var(--border);
+@layer base {
+	* {
+		border-color: var(--border);
+	}
 }
 
 html,
@@ -158,30 +172,26 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
-button,
-textarea,
-input {
-	font: inherit;
-}
+@layer base {
+	button {
+		color: inherit;
+	}
 
-button {
-	color: inherit;
-}
+	button:not(:disabled) {
+		cursor: pointer;
+	}
 
-button:not(:disabled) {
-	cursor: pointer;
-}
+	button:disabled {
+		cursor: not-allowed;
+		opacity: 0.46;
+	}
 
-button:disabled {
-	cursor: not-allowed;
-	opacity: 0.46;
-}
-
-button:focus-visible,
-textarea:focus-visible,
-input:focus-visible {
-	outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
-	outline-offset: 2px;
+	button:focus-visible,
+	textarea:focus-visible,
+	input:focus-visible {
+		outline: 3px solid color-mix(in oklch, var(--focus) 55%, transparent);
+		outline-offset: 2px;
+	}
 }
 
 ::selection {

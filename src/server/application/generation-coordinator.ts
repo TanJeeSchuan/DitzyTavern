@@ -21,6 +21,7 @@ import {
 } from "../connection-settings";
 import {
 	createModelClient,
+	ModelClientGenerationError,
 	type ModelClient,
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
@@ -475,7 +476,11 @@ export class GenerationCoordinator {
 				})
 				.catch((error) => {
 					try {
-						activeRuntime.fail(error instanceof Error ? error.message : "Generation failed.");
+						activeRuntime.fail(
+							error instanceof Error ? error.message : "Generation failed.",
+							error instanceof ModelClientGenerationError ? error.kind : "transport",
+							error instanceof ModelClientGenerationError ? error.responseBody : undefined,
+						);
 					} catch {
 						// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
 					}

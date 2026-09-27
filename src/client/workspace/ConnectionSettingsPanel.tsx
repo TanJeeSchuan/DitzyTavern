@@ -1,76 +1,36 @@
-import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { PanelHeader } from "../PanelHeader";
-import { ConnectionProfileDeletion } from "./connection-settings/ConnectionProfileDeletion";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
-import { ConnectionSettingsInspectorBody } from "./ConnectionSettingsInspector";
-import { TypesafeSettingsEditor } from "./TypesafeSettingsEditor";
+import { EmbeddingSettingsEditor, useEmbeddingSettings } from "./EmbeddingSettingsEditor";
+import { TypesafeSettingsEditor, useTypesafeSettings } from "./TypesafeSettingsEditor";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
 } from "./connection-settings/useConnectionSettingsController";
 
 export function ConnectionSettingsPanelHost() {
-	const controller = useConnectionSettingsController();
-	const [inspectorOpen, setInspectorOpen] = useState(false);
-	return (
-		<div className="connection-settings-host">
-			<ConnectionSettingsPanel controller={controller} onOpenInspector={() => setInspectorOpen(true)} />
-			{inspectorOpen && (
-				<section className="connection-standalone-inspector" aria-label="Connection Settings inspector">
-					<PanelHeader title="Connection Settings inspector" backLabel="Back to Connection Settings" onClose={() => setInspectorOpen(false)} />
-					<ConnectionSettingsInspectorBody controller={controller} />
-				</section>
-			)}
-		</div>
-	);
+	return <ConnectionSettingsPanel controller={useConnectionSettingsController()} activeProfileId={null} />;
 }
 
 export function ConnectionSettingsPanel({
 	controller,
-	onOpenInspector,
+	activeProfileId,
 }: {
 	controller: ConnectionSettingsController;
-	onOpenInspector: () => void;
+	activeProfileId: number | null;
 }) {
-	if (controller.loading) return <div className="panel-body settings-panel-body">Loading Connection Settings...</div>;
-	if (!controller.settings) return <div className="panel-body settings-panel-body" role="alert">{controller.error}</div>;
-
-	const { settings } = controller;
+	const embedding = useEmbeddingSettings();
+	const [embeddingOpen, setEmbeddingOpen] = useState(false);
+	const typesafe = useTypesafeSettings();
+	const [typesafeOpen, setTypesafeOpen] = useState(false);
+	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
+	if (embeddingOpen) return <EmbeddingSettingsEditor embedding={embedding} onBack={() => setEmbeddingOpen(false)} />;
+	if (typesafeOpen) return <TypesafeSettingsEditor typesafe={typesafe} onBack={() => setTypesafeOpen(false)} />;
 	return (
-		<div className="panel-body settings-panel-body connection-settings-panel" data-test-connection-outcome={controller.testResult?.outcome}>
-			<ConnectionProfileList
-				settings={settings}
-				presets={controller.presets}
-				selectedProfileId={controller.selectedProfileId}
-				presetChoicesOpen={controller.presetChoicesOpen}
-				openProfileMenuId={controller.openProfileMenuId}
-				onChooseProfile={controller.chooseProfile}
-				onRequestDeletion={controller.requestProfileDeletion}
-				onTogglePresets={() => controller.setPresetChoicesOpen(!controller.presetChoicesOpen)}
-				onToggleProfileMenu={controller.setOpenProfileMenuId}
-				onChoosePreset={controller.choosePreset}
-			/>
-
-			{controller.pendingDeletionProfile && (
-				<ConnectionProfileDeletion
-					profile={controller.pendingDeletionProfile}
-					onCancel={() => controller.setPendingDeletionProfileId(null)}
-					onDelete={() => void controller.deletePendingProfile()}
-				/>
-			)}
-
-			{controller.editorOpen && <ConnectionProfileEditor controller={controller} onOpenInspector={onOpenInspector} />}
-
-			{(controller.notice || controller.error || controller.conflict) && (
-				<p className={controller.error ? "connection-feedback connection-feedback-error" : "connection-feedback"} role={controller.error ? "alert" : "status"}>
-					{controller.error ?? controller.notice}
-					{controller.conflict && <small> The settings changed elsewhere. Your draft is still here. Review it before saving again.</small>}
-				</p>
-			)}
-			<div className="connection-security-note"><ShieldCheck aria-hidden="true" /><span>Credentials and custom headers are stored separately from Conversation data and are never shown after saving.</span></div>
-			<TypesafeSettingsEditor />
+		<div className="panel-body settings-panel-body">
+			{controller.loading ? <p className="panel-note" role="status">Loading Connections…</p>
+				: controller.settings === null ? <p className="import-problem" role="alert">{controller.error}</p>
+				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} embedding={embedding} onOpenEmbedding={() => setEmbeddingOpen(true)} typesafe={typesafe} onOpenTypesafe={() => setTypesafeOpen(true)} />}
 		</div>
 	);
 }

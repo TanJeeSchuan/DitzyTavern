@@ -62,8 +62,6 @@ export type ConnectionSettingsControllerState = {
 	testModelId: string;
 	testResult: TestConnectionResult | null;
 	pendingDeletionProfileId: number | null;
-	openProfileMenuId: number | null;
-	presetChoicesOpen: boolean;
 	editorOpen: boolean;
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
@@ -82,8 +80,6 @@ export const createConnectionSettingsControllerState = (): ConnectionSettingsCon
 	testModelId: "",
 	testResult: null,
 	pendingDeletionProfileId: null,
-	openProfileMenuId: null,
-	presetChoicesOpen: false,
 	editorOpen: false,
 	conflict: null,
 	notice: null,
@@ -125,8 +121,6 @@ const profileEditorState = (
 		testModelId: profile.pinnedModels[0] ?? "",
 		testResult: null,
 		pendingDeletionProfileId: null,
-		openProfileMenuId: null,
-		presetChoicesOpen: false,
 		editorOpen: true,
 		conflict: null,
 		notice: null,
@@ -139,11 +133,10 @@ export type ConnectionSettingsControllerAction =
 	| { type: "choose-preset"; preset: ConnectionPreset }
 	| { type: "choose-profile"; profile: ConnectionProfile }
 	| { type: "set-draft"; draft: ConnectionProfileDraft }
+	| { type: "discard-draft" }
 	| { type: "set-credential-draft"; value: string }
 	| { type: "set-header-editor-data"; value: HeaderEditorData }
 	| { type: "set-test-model-id"; value: string }
-	| { type: "set-preset-choices-open"; value: boolean }
-	| { type: "set-open-profile-menu"; value: number | null }
 	| { type: "set-pending-deletion"; value: number | null }
 	| { type: "request-deletion"; profileId: number }
 	| { type: "clear-feedback" }
@@ -157,7 +150,6 @@ export type ConnectionSettingsControllerAction =
 	| { type: "refresh-failed"; message: string }
 	| { type: "command-conflict"; conflict: ConnectionSettingsConflict; message: string; commandId?: number }
 	| { type: "apply-succeeded"; settings: ConnectionSettings; selectedProfileId: number | null; draftDisplayName: string; credentialWasProvided: boolean; editorVersion: number; commandId: number }
-	| { type: "credential-succeeded"; settings: ConnectionSettings; profileId: number; editorVersion: number; commandId: number }
 	| { type: "delete-succeeded"; settings: ConnectionSettings; deletedDisplayName: string; editorVersion: number; commandId: number }
 	| { type: "reset-credential-succeeded"; settings: ConnectionSettings };
 
@@ -167,12 +159,7 @@ export function reduceConnectionSettingsController(
 ): ConnectionSettingsControllerState {
 	switch (action.type) {
 		case "load-succeeded": {
-			const next = { ...state, settings: newerSettings(state.settings, action.settings), presets: action.presets };
-			if (state.editorVersion > 0 || state.settings !== null) return next;
-			const first = action.settings.profiles[0];
-			return first === undefined
-				? next
-				: profileEditorState(next, first);
+			return { ...state, settings: newerSettings(state.settings, action.settings), presets: action.presets };
 		}
 		case "load-failed":
 			return { ...state, error: action.message };
@@ -185,34 +172,29 @@ export function reduceConnectionSettingsController(
 				testModelId: action.preset.profile.pinnedModels[0] ?? "",
 				testResult: null,
 				pendingDeletionProfileId: null,
-				openProfileMenuId: null,
-				presetChoicesOpen: false,
 				editorOpen: true,
 				conflict: null,
-				notice: `${action.preset.label} defaults copied into a new editable Profile draft.`,
+				notice: null,
 				error: null,
 			});
 		case "choose-profile":
 			return editorChanged(state, profileEditorState(state, action.profile));
 		case "set-draft":
 			return editorChanged(state, { draft: action.draft });
+		case "discard-draft":
+			return editorChanged(state, { selectedProfileId: null, draft: emptyConnectionProfileDraft, credentialDraft: "", headerEditorData: {}, editorOpen: false, notice: null, error: null, conflict: null });
 		case "set-credential-draft":
 			return editorChanged(state, { credentialDraft: action.value });
 		case "set-header-editor-data":
 			return editorChanged(state, { headerEditorData: action.value });
 		case "set-test-model-id":
 			return { ...state, testModelId: action.value };
-		case "set-preset-choices-open":
-			return { ...state, presetChoicesOpen: action.value };
-		case "set-open-profile-menu":
-			return { ...state, openProfileMenuId: action.value };
 		case "set-pending-deletion":
 			return { ...state, pendingDeletionProfileId: action.value };
 		case "request-deletion":
 			return {
 				...state,
 				pendingDeletionProfileId: action.profileId,
-				openProfileMenuId: null,
 				notice: null,
 				error: null,
 			};
@@ -227,9 +209,7 @@ export function reduceConnectionSettingsController(
 		case "test-started":
 			return { ...state, testResult: null, notice: null, error: null };
 		case "test-succeeded":
-			return action.result.outcome === "success"
-				? { ...state, testResult: action.result, notice: action.result.message, error: null }
-				: { ...state, testResult: action.result, notice: null, error: action.result.outcome === "failure" ? action.result.message : action.result.reason };
+			return { ...state, testResult: action.result };
 		case "test-failed":
 			return { ...state, error: action.message };
 		case "refresh-started":
@@ -272,16 +252,9 @@ export function reduceConnectionSettingsController(
 						selectedProfileId: saved.id,
 						draft: copyDraft(saved),
 						headerEditorData: headerEditorDataFor(saved.headers),
-						credentialDraft: action.selectedProfileId === null ? "" : state.credentialDraft,
+						credentialDraft: "",
 					};
 		}
-		case "credential-succeeded":
-			return !ownsEditorResult(state, action) || action.profileId !== state.selectedProfileId
-				? {
-					...state,
-					settings: newerSettings(state.settings, action.settings),
-				}
-				: { ...state, settings: newerSettings(state.settings, action.settings), credentialDraft: "", conflict: null, notice: "Credential updated.", error: null };
 		case "delete-succeeded": {
 			if (!ownsEditorResult(state, action)) {
 				return {
@@ -289,28 +262,14 @@ export function reduceConnectionSettingsController(
 					settings: newerSettings(state.settings, action.settings),
 				};
 			}
-			const authoritativeSettings = newerSettings(state.settings, action.settings);
-			const nextProfile = authoritativeSettings.profiles[0];
-			const next = {
+			return {
 				...state,
-				settings: authoritativeSettings,
+				settings: newerSettings(state.settings, action.settings),
 				conflict: null,
 				pendingDeletionProfileId: null,
-				credentialDraft: "",
 				notice: `${action.deletedDisplayName} deleted.`,
 				error: null,
 			};
-			return nextProfile === undefined
-				? {
-						...next,
-						selectedProfileId: null,
-						draft: connectionProfileDraftOf(blankConnectionProfileDraft),
-						editorOpen: false,
-						headerEditorData: {},
-						testModelId: "",
-						testResult: null,
-					}
-				: { ...profileEditorState(next, nextProfile), notice: next.notice };
 		}
 		case "reset-credential-succeeded":
 			return { ...state, settings: newerSettings(state.settings, action.settings), conflict: null, notice: "Credential reset.", error: null };

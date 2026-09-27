@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AppSelect } from "@/components/ui/select";
 import {
 	applyLorebookAttachmentCommand,
 	getCharacterLorebookAttachments,
@@ -77,14 +78,8 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 		<h3>Lorebooks</h3>
 		<p className="panel-note">Attach shared books to this {ownerLabel(owner)}. Scope controls when the book can activate.</p>
 		<div className="apply-row">
-			<select className="field-input" value={selectedBookId} disabled={disabled || pending || books.length === 0} onChange={(event) => setSelectedBookId(event.target.value)} aria-label="Lorebook to attach">
-				<option value="">Select a Lorebook</option>
-				{books.map((book) => <option key={book.id} value={book.id}>{book.name}</option>)}
-			</select>
-			<select className="field-input" value={selectedScope} disabled={disabled || pending} onChange={(event) => setSelectedScope(event.target.value === "controlled-participant" ? "controlled-participant" : "cast")} aria-label="Lorebook attachment scope">
-				<option value="cast">Cast</option>
-				<option value="controlled-participant">Controlled Participant</option>
-			</select>
+			<AppSelect className="field-input" value={selectedBookId} disabled={disabled || pending || books.length === 0} onValueChange={setSelectedBookId} aria-label="Lorebook to attach" emptyLabel="Select a Lorebook" options={books.map((book) => ({ value: book.id, label: book.name }))} />
+			<AppSelect className="field-input" value={selectedScope} disabled={disabled || pending} onValueChange={(value) => setSelectedScope(value === "controlled-participant" ? "controlled-participant" : "cast")} aria-label="Lorebook attachment scope" options={[{ value: "cast", label: "Cast" }, { value: "controlled-participant", label: "Controlled Participant" }]} />
 			<Button variant="outline" size="sm" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</Button>
 		</div>
 		{state.attachments.length === 0 ? <p className="panel-note">No Lorebooks attached.</p> : <ul className="lore-attachment-list">{state.attachments.map((attachment) => <li className="apply-row" key={attachment.id}><span>{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}</span><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>{attachment.enabled ? "Disable" : "Enable"}</Button><Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment)}>Detach</Button></li>)}</ul>}

@@ -16,29 +16,36 @@ import type {
 // thin wiring over these pure transitions.
 
 export type BlockDraft =
-	| { kind: "role"; role: PromptOutgoingRole }
-	| { kind: "content"; name: string; content: string; role: PromptOutgoingRole };
+	| { kind: "enabled"; enabled: boolean }
+	| { kind: "role"; role: PromptOutgoingRole; enabled?: boolean }
+	| { kind: "content"; name: string; content: string; role: PromptOutgoingRole; enabled?: boolean };
 
-// ==[HUMAN APPROVED]== One slot-kind-safe draft-to-patch rule. A referenced Definition slot
-// accepts only role drafts, an authored instruction accepts only name/text/role drafts, and
-// history accepts none. The rule returns the exact occurrence-addressed patch a dirty draft
-// submits, or null when the draft is clean, the wrong kind for its slot, or the slot accepts
-// no drafts — so dirtiness, per-block Save, batch building and submitted-version retirement
-// all flow from one source and the silent-clean and wrong-field Save paths cannot exist.
+// ==[HUMAN APPROVED]== One slot-kind-safe draft-to-patch rule. Every block accepts
+// enablement; referenced Definition blocks also accept role drafts, and authored
+// instructions accept name, text and role drafts. The same rule drives dirtiness,
+// batch building and submitted-version retirement.
 export function draftToPatch(
 	slot: ResolvedPromptPresetSlot,
 	draft: BlockDraft,
 ): PromptPresetBlockPatch | null {
+	if (draft.kind === "enabled") return draft.enabled === slot.enabled
+		? null
+		: { occurrenceId: slot.id, type: "enabled", enabled: draft.enabled };
+	const enabledChanged = draft.enabled !== undefined && draft.enabled !== slot.enabled;
 	if (slot.reference === "history") return null;
 	if (slot.reference === "instruction") {
 		if (draft.kind !== "content") return null;
 		const { name, content, role } = draft;
-		if (name === slot.name && content === slot.content && role === slot.role) return null;
-		return { occurrenceId: slot.id, type: "content", name, content, role };
+		if (name === slot.name && content === slot.content && role === slot.role && !enabledChanged) return null;
+		const patch: PromptPresetBlockPatch = { occurrenceId: slot.id, type: "content", name, content, role };
+		if (enabledChanged) patch.enabled = draft.enabled;
+		return patch;
 	}
 	if (draft.kind !== "role") return null;
-	if (draft.role === slot.role) return null;
-	return { occurrenceId: slot.id, type: "role", role: draft.role };
+	if (draft.role === slot.role && !enabledChanged) return null;
+	const patch: PromptPresetBlockPatch = { occurrenceId: slot.id, type: "role", role: draft.role };
+	if (enabledChanged) patch.enabled = draft.enabled;
+	return patch;
 }
 
 export const draftIsDirty = (slot: ResolvedPromptPresetSlot, draft: BlockDraft): boolean =>
@@ -67,8 +74,9 @@ export function dirtyDraftSummary(
 // save the editor retires an occurrence's draft only when it still equals
 // what was submitted, so a newer local edit made while saving survives.
 const blockDraftEquals = (a: BlockDraft, b: BlockDraft): boolean => {
-	if (a.kind === "role") return b.kind === "role" && a.role === b.role;
-	return b.kind === "content" && a.name === b.name && a.content === b.content && a.role === b.role;
+	if (a.kind === "enabled") return b.kind === "enabled" && a.enabled === b.enabled;
+	if (a.kind === "role") return b.kind === "role" && a.role === b.role && a.enabled === b.enabled;
+	return b.kind === "content" && a.name === b.name && a.content === b.content && a.role === b.role && a.enabled === b.enabled;
 };
 
 export interface DirtyBlockPatches {
@@ -178,6 +186,7 @@ export type PromptPresetEditorEvent =
 	| { type: "notice-changed"; notice: string | null }
 	| { type: "problem-changed"; problem: string | null }
 	| { type: "draft-changed"; blockId: number; draft: BlockDraft }
+	| { type: "enabled-changed"; blockId: number; enabled: boolean }
 	| { type: "draft-cleared"; blockId: number }
 	| { type: "recipe-adopted"; claim: ReadClaim; selected: ConversationPromptPreset; presets?: PromptPresetSummary[] }
 	| { type: "recipe-unavailable" }
@@ -289,11 +298,11 @@ export const conversationOperationApplies = (
 	operationApplies(state, claim) &&
 	claim.conversationOperationId === state.session.latestConversationOperation;
 
-// ==[HUMAN APPROVED]== Whether a fresh recipe slot reflects what a submitted draft saved. A role
-// draft is reflected by the matching referenced slot role; a content draft by the matching
-// authored instruction name, text and role. A read that predates a save never reflects the
-// submitted version, so it cannot retire it against an older recipe.
+// ==[HUMAN APPROVED]== A fresh recipe retires a submitted draft only after it reflects
+// the saved enablement and any role or authored fields. An older read cannot retire it.
 function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockDraft): boolean {
+	if (submitted.kind === "enabled") return slot.enabled === submitted.enabled;
+	if (submitted.enabled !== undefined && slot.enabled !== submitted.enabled) return false;
 	if (submitted.kind === "role") {
 		return slot.reference !== "history" && slot.reference !== "instruction" && slot.role === submitted.role;
 	}
@@ -400,8 +409,17 @@ export function reducePromptPresetEditorState(
 			return { ...state, notice: event.notice };
 		case "problem-changed":
 			return { ...state, problem: event.problem };
-		case "draft-changed":
-			return { ...state, drafts: { ...state.drafts, [event.blockId]: event.draft } };
+		case "draft-changed": {
+			const enabled = state.drafts[event.blockId]?.enabled;
+			const draft = enabled === undefined ? event.draft : { ...event.draft, enabled };
+			return { ...state, drafts: { ...state.drafts, [event.blockId]: draft } };
+		}
+		case "enabled-changed": {
+			const draft = state.drafts[event.blockId];
+			return { ...state, drafts: { ...state.drafts, [event.blockId]: draft === undefined
+				? { kind: "enabled", enabled: event.enabled }
+				: { ...draft, enabled: event.enabled } } };
+		}
 		case "draft-cleared":
 			return {
 				...state,

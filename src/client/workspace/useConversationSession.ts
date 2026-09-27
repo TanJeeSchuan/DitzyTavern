@@ -35,9 +35,12 @@ export function useConversationSession({
 		});
 	}, []);
 
-	const activeChat =
+	const listedChat =
 		initialWorkspace.chats.find((chat) => chat.id === activeChatId) ??
 		initialWorkspace.activeChat;
+	const activeChat = conversation !== null && String(conversation.id) === listedChat.id
+		? { ...listedChat, title: conversation.name }
+		: listedChat;
 
 	useAsyncEffect((isCancelled) => {
 		setConversationState(null);

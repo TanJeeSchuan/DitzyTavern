@@ -63,6 +63,17 @@ export function executeCharacterCommand(
 		}
 
 		switch (command.type) {
+			case "update-definition": {
+				const name = requireCommandName(command.definition.name);
+				const openings = requireCommandOpenings(command.definition.openings);
+				db.update(characterTable).set({ name }).where(eq(characterTable.id, character.id)).run();
+				const promptRow = toPromptChannelRow(command.definition.prompt);
+				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
+					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
+				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
+				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
+				break;
+			}
 			case "rename": {
 				const name = requireCommandName(command.name);
 				db.update(characterTable)

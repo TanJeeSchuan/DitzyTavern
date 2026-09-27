@@ -108,6 +108,20 @@ describe("the draft-to-patch rule", () => {
 			.toBeNull();
 	});
 
+	test("enablement drafts save alone or with authored fields and count once per block", () => {
+		const preset = recipe(7, [historySlot(9), instructionSlot(5, "Voice", "Write plainly.")]);
+		const drafts = {
+			9: { kind: "enabled", enabled: false },
+			5: { kind: "content", name: "Voice", content: "Write warmly.", role: "system", enabled: false },
+		} satisfies Record<number, BlockDraft>;
+		expect(dirtyBlockPatches(preset, drafts).patches).toEqual([
+			{ occurrenceId: 9, type: "enabled", enabled: false },
+			{ occurrenceId: 5, type: "content", name: "Voice", content: "Write warmly.", role: "system", enabled: false },
+		]);
+		expect(dirtyDraftSummary(preset, drafts)).toEqual({ dirty: true, count: 2 });
+		expect(draftToPatch(historySlot(9), { kind: "enabled", enabled: true })).toBeNull();
+	});
+
 	test("a wrong-kind or history draft produces no patch and is never dirty", () => {
 		expect(draftToPatch(identitySlot(6, "assistant"), contentDraft("Write warmly."))).toBeNull();
 		expect(draftToPatch(instructionSlot(5, "Voice", "Write plainly."), roleDraft("user"))).toBeNull();
@@ -230,6 +244,29 @@ describe("response ownership", () => {
 });
 
 describe("draft reconciliation", () => {
+	test("a toggle preserves an existing text draft and retires after the saved recipe reloads", () => {
+		let state = adopt(openState(), recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));
+		state = reducePromptPresetEditorState(state, { type: "draft-changed", blockId: 5, draft: contentDraft("Write warmly.") });
+		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 5, enabled: false });
+		const submitted = state.drafts[5];
+		expect(dirtyBlockPatches(recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]), state.drafts).patches)
+			.toEqual([{ occurrenceId: 5, type: "content", name: "Voice", content: "Write warmly.", role: "system", enabled: false }]);
+		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 5: submitted } });
+		state = adopt(state, recipe(7, [{ ...instructionSlot(5, "Voice", "Write warmly."), enabled: false }]));
+		expect(state.drafts[5]).toBeUndefined();
+	});
+
+	test("a newer toggle survives retirement of an older submitted version", () => {
+		let state = adopt(openState(), recipe(7, [historySlot(9)]));
+		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 9, enabled: false });
+		state = reducePromptPresetEditorState(state, { type: "drafts-submitted", submitted: { 9: state.drafts[9] } });
+		state = reducePromptPresetEditorState(state, { type: "enabled-changed", blockId: 9, enabled: true });
+		state = adopt(state, recipe(7, [{ ...historySlot(9), enabled: false }]));
+		expect(state.drafts[9]).toEqual({ kind: "enabled", enabled: true });
+		if (state.view.status !== "ready") throw new Error("The preset was not reloaded.");
+		expect(dirtyDraftSummary(state.view.selected, state.drafts).dirty).toBe(true);
+	});
+
 	test("a submitted draft retires only when the fresh recipe reflects it and it still matches", () => {
 		let state = openState();
 		state = adopt(state, recipe(7, [instructionSlot(5, "Voice", "Write plainly.")]));

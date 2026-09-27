@@ -10,12 +10,14 @@ import { deleteMessage } from "./commands/delete-message";
 import { deleteVariant } from "./commands/delete-variant";
 import { editVariant } from "./commands/edit-variant";
 import {
+	updateParticipantDefinition,
 	renameParticipant,
 	replaceParticipantOpenings,
 	replaceParticipantPrompt,
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
+import { renameConversation } from "./commands/rename-conversation";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
@@ -102,6 +104,11 @@ export const conversationCommandPolicy = {
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
+	"update-participant-definition": {
+		handler: updateParticipantDefinition,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
 	"replace-participant-prompt": {
 		handler: replaceParticipantPrompt,
 		requiresPlayable: false,
@@ -149,6 +156,11 @@ export const conversationCommandPolicy = {
 		// ==[HUMAN APPROVED]== Selection needs neither seat occupied nor a quiet attempt:
 		// an Active Generation keeps the Prompt Plan it captured, so switching
 		// or reassigning its selection never disturbs the running request.
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"rename-conversation": {
+		handler: renameConversation,
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},

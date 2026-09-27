@@ -65,6 +65,13 @@ const renameCommand = Type.Object({
 	name: Type.String(),
 });
 
+const updateDefinitionCommand = Type.Object({
+	type: Type.Literal("update-definition"),
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	definition: createCommand.properties.definition,
+});
+
 const replacePromptCommand = Type.Object({
 	type: Type.Literal("replace-prompt"),
 	characterId: Type.Integer(),
@@ -97,6 +104,7 @@ const deleteCommand = Type.Object({
 
 export const commandBodySchema = Type.Union([
 	createCommand,
+	updateDefinitionCommand,
 	renameCommand,
 	replacePromptCommand,
 	replaceOpeningsCommand,

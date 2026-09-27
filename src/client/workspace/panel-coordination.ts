@@ -1,6 +1,6 @@
 import type { PrimaryPanel } from "./types";
 
-export type SplitInspector = "generation" | "models";
+export type SplitInspector = "generation";
 export type DetailsSurface = "chat-info" | "generation-details" | "macro-variables" | "memories";
 
 export interface PanelCoordinationState {

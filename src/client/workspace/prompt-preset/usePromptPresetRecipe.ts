@@ -14,11 +14,9 @@ import type { ConversationSummary } from "../../conversation";
 import type { PromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
 
 interface PromptPresetRecipeUnit {
-	runRecipeOperation: (
-		run: () => Promise<PromptPresetOperationOutcome>,
-		submitted?: { blockId: number; draft: BlockDraft },
-	) => Promise<void>;
+	runRecipeOperation: (run: () => Promise<PromptPresetOperationOutcome>) => Promise<void>;
 	setDraft: (blockId: number, draft: BlockDraft) => void;
+	setEnabled: (blockId: number, enabled: boolean) => void;
 	clearDraft: (blockId: number) => void;
 	saveDrafts: (
 		preset: ConversationPromptPreset,
@@ -55,8 +53,8 @@ export type SaveDraftsResult =
 	| { status: "failed"; problem: string }
 	| { status: "aborted" };
 
-// ==[HUMAN APPROVED]== The recipe unit: immediate ordering and enablement, per-block authored saves
-// and the atomic save-on-leave batch. It shares the runtime's settlement owner and refresh
+// ==[HUMAN APPROVED]== The recipe unit: immediate ordering and an atomic draft save batch.
+// It shares the runtime's settlement owner and refresh
 // ownership, so its flows cannot diverge from the library unit's response rules.
 export function usePromptPresetRecipe({
 	runtime,
@@ -68,14 +66,10 @@ export function usePromptPresetRecipe({
 	const { current, dispatch, loadRecipe, runOperation, ownsOperation } = runtime;
 
 	// ==[HUMAN APPROVED]== One recipe operation execution: pending and problem state live here, and
-	// the applied response reloads only the selected Conversation-resolved recipe. When the
-	// operation submitted one occurrence's draft, that exact version is retired on acceptance so
-	// saved content never resurfaces as an unsaved edit. An authoritative null recipe stays silent
+	// the applied response reloads only the selected Conversation-resolved recipe. An
+	// authoritative null recipe stays silent
 	// here (the view is already unavailable); network failure reports the recipe reload problem.
-	const runRecipeOperation = async (
-		run: () => Promise<PromptPresetOperationOutcome>,
-		submitted?: { blockId: number; draft: BlockDraft },
-	): Promise<void> => {
+	const runRecipeOperation = async (run: () => Promise<PromptPresetOperationOutcome>): Promise<void> => {
 		if (conversation === null) return;
 		await runOperation(RECIPE_OPERATION_EFFECTS, async (claim) => {
 			const outcome = await run();
@@ -86,9 +80,6 @@ export function usePromptPresetRecipe({
 					problem: promptPresetOperationProblem(outcome, "The Prompt Preset change could not be reached."),
 				});
 				return;
-			}
-			if (submitted !== undefined) {
-				dispatch({ type: "drafts-submitted", submitted: { [submitted.blockId]: submitted.draft } });
 			}
 			const refresh = await loadRecipe();
 			if (!ownsOperation(claim)) return;
@@ -103,6 +94,8 @@ export function usePromptPresetRecipe({
 
 	const setDraft = (blockId: number, draft: BlockDraft): void =>
 		dispatch({ type: "draft-changed", blockId, draft });
+	const setEnabled = (blockId: number, enabled: boolean): void =>
+		dispatch({ type: "enabled-changed", blockId, enabled });
 
 	const clearDraft = (blockId: number): void => dispatch({ type: "draft-cleared", blockId });
 
@@ -147,5 +140,5 @@ export function usePromptPresetRecipe({
 		return { status: "saved" };
 	};
 
-	return { runRecipeOperation, setDraft, clearDraft, saveDrafts };
+	return { runRecipeOperation, setDraft, setEnabled, clearDraft, saveDrafts };
 }
