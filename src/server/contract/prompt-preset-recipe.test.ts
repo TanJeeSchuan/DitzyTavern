@@ -491,6 +491,22 @@ describe("Prompt Preset block patch batch", () => {
 		expect(saved.slots.map((slot) => slot.id)).toEqual(stored.slots.map((slot) => slot.id));
 	});
 
+	test("saves enablement with role and text edits in one batch", async () => {
+		const { instruction, identity } = seedSlots();
+		const history = readPromptPresetRecipe(database, 1)?.slots.find((slot) => slot.reference === "history");
+		if (history === undefined) throw new Error("The Default recipe is missing history.");
+		const response = await saveBlockPatches(database, 1, [
+			{ occurrenceId: identity.id, type: "role", role: "assistant", enabled: false },
+			{ occurrenceId: instruction.id, type: "content", name: "Tone", content: "Be concise.", role: "user", enabled: false },
+			{ occurrenceId: history.id, type: "enabled", enabled: false },
+		]);
+		expect(response.status).toBe(200);
+		const saved = readPromptPresetRecipe(database, 1);
+		expect(saved?.slots.find((slot) => slot.id === identity.id)).toMatchObject({ role: "assistant", enabled: false });
+		expect(saved?.slots.find((slot) => slot.id === instruction.id)).toMatchObject({ name: "Tone", content: "Be concise.", role: "user", enabled: false });
+		expect(saved?.slots.find((slot) => slot.id === history.id)?.enabled).toBe(false);
+	});
+
 	test("treats an empty batch as a successful no-op", async () => {
 		const { stored } = seedSlots();
 

@@ -24,6 +24,7 @@ import { Portrait } from "./Portrait";
 // and its stored text is never modified.
 export function StoryMessageView({
 	message,
+	isLatest = false,
 	displayedVariantId,
 	mutationsDisabled = false,
 	generationActive = false,
@@ -38,6 +39,7 @@ export function StoryMessageView({
 	onInspect,
 }: {
 	message: StoryMessage;
+	isLatest?: boolean;
 	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
 	displayedVariantId?: number | null;
@@ -99,6 +101,7 @@ export function StoryMessageView({
 	return (
 		<article
 			className="story-message"
+			data-latest={isLatest}
 			tabIndex={0}
 			data-message-id={message.id}
 			data-author-in-cast={message.inCast}
@@ -136,6 +139,7 @@ export function StoryMessageView({
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
+						{previewTarget && <span className="message-preview-marker">Previewed Swipe</span>}
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
@@ -160,7 +164,6 @@ export function StoryMessageView({
 					)}
 				</div>
 			</header>
-
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<label htmlFor={`edit-${message.id}`}>Edit Message</label>

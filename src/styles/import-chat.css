@@ -437,7 +437,7 @@
 	font-weight: 650;
 }
 
-.import-fork-picker select {
+.import-fork-picker .app-select-trigger {
 	width: 100%;
 }
 
@@ -558,8 +558,8 @@
 	color: var(--text-muted);
 }
 
-.import-split-bar select,
-.import-merge-bar select {
+.import-split-bar .app-select-trigger,
+.import-merge-bar .app-select-trigger {
 	flex: 1;
 	min-width: 8rem;
 }

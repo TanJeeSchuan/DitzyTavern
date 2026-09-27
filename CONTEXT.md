@@ -127,12 +127,8 @@ _Avoid_: error bound, token variance
 A deterministic single-text representation of an ordered Prompt Plan used only to obtain its Token estimate. It is never sent to the model.
 _Avoid_: serialized prompt, provider request
 
-**Revision window**:
-The two latest model-authored Messages and the Human-authored Messages between them. Variant selections inside this window may change the Selected narrative path without entering Preview mode.
-_Avoid_: mutable tail, recent history
-
 **Preview mode**:
-A temporary view of one Variant outside the Revision window. It does not change the Selected narrative path unless the user confirms it.
+A temporary view of a different Variant on a Message that has later Messages. It does not change the Selected narrative path unless the user confirms it. Switching the final Message's Variant applies immediately.
 _Avoid_: pending selection, draft branch
 
 **Confirm Change**:

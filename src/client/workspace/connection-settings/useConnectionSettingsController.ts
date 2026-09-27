@@ -1,5 +1,4 @@
 import { useMemo, useReducer, useRef, useState } from "react";
-import { JsonData } from "json-edit-react";
 import {
 	loadConnectionPresets,
 	loadConnectionSettings,
@@ -19,43 +18,14 @@ import {
 import {
 	createConnectionSettingsControllerState,
 	reduceConnectionSettingsController,
-	type ConnectionSettingsConflict,
+		type ConnectionSettingsConflict,
 	type HeaderEditorData,
-	type HeaderEditorValue,
+	copyDraft,
+	headerEditorDataFor,
 } from "../../connection-settings-state";
-import {
-	connectionAdvancedDraftValidationError,
-	connectionBasicDraftValidationError,
-	connectionDraftValidationError,
-} from "../../connection-settings-draft";
+import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { useAsyncEffect } from "../../lib/use-async";
 import { resolveChatCompletionsRequestUrl } from "../../../shared/connection-url";
-
-interface HeaderEditorInput {
-	configured?: unknown;
-	operation?: unknown;
-	replacement?: unknown;
-}
-
-export function parseHeaderEditorData(value: JsonData): HeaderEditorData {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return {};
-	// ==[HUMAN APPROVED]== SAFETY: the object-tag check above establishes an object accepted by Object.entries.
-	const entries = Object.entries(value as object).flatMap(([name, candidate]) => {
-		if (Object.prototype.toString.call(candidate) !== "[object Object]") return [];
-		// ==[HUMAN APPROVED]== SAFETY: the object-tag check above establishes the JSON editor node shape.
-		const record = candidate as HeaderEditorInput;
-		const operation = record.operation;
-		const replacement = record.replacement;
-		return [[name, {
-			configured: record.configured === true,
-			operation: operation === "replace" || operation === "remove" ? operation : "keep",
-			replacement: Object.prototype.toString.call(replacement) === "[object String]"
-				? String(replacement)
-				: "",
-		} satisfies HeaderEditorValue] as const];
-	});
-	return Object.fromEntries(entries);
-}
 
 export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
 	return Object.entries(data).map(([name, value]) => {
@@ -68,7 +38,6 @@ export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOpe
 // ==[HUMAN APPROVED]== The command-failure wording shared by every Profile command handler; the
 // conflict variant is passed per command because it names what was preserved.
 const APPLY_CONFLICT_ERROR = "These settings changed elsewhere. Your unsaved draft is preserved.";
-const CREDENTIAL_CONFLICT_ERROR = "These settings changed elsewhere. Your credential draft is preserved.";
 const PROFILE_NOT_FOUND_ERROR = "The selected Profile no longer exists.";
 
 type AppliedConnectionSettings = Extract<ConnectionSettingsResult, { outcome: "applied" }>;
@@ -86,13 +55,11 @@ export type ConnectionSettingsController = {
 	testPending: boolean;
 	discoveryPending: boolean;
 	pendingDeletionProfileId: number | null;
-	openProfileMenuId: number | null;
-	presetChoicesOpen: boolean;
 	editorOpen: boolean;
 	canSave: boolean;
+	dirty: boolean;
+	saving: boolean;
 	validationError: string | null;
-	basicValidationError: string | null;
-	advancedValidationError: string | null;
 	conflict: ConnectionSettingsConflict | null;
 	notice: string | null;
 	error: string | null;
@@ -102,17 +69,17 @@ export type ConnectionSettingsController = {
 	resolvedRequestUrl: string;
 	choosePreset: (preset: ConnectionPreset) => void;
 	chooseProfile: (profile: ConnectionProfile) => void;
+	duplicateProfile: (profile: ConnectionProfile) => void;
+	closeEditor: () => void;
 	setDraft: (draft: ConnectionProfileDraft) => void;
 	setCredentialDraft: (value: string) => void;
 	setHeaderEditorData: (value: HeaderEditorData) => void;
 	setTestModelId: (value: string) => void;
-	setPresetChoicesOpen: (value: boolean) => void;
-	setOpenProfileMenuId: (value: number | null) => void;
 	setPendingDeletionProfileId: (value: number | null) => void;
 	testDraft: () => Promise<void>;
 	refreshModels: () => Promise<void>;
-	applyDraft: () => Promise<void>;
-	updateCredential: () => Promise<void>;
+	applyDraft: () => Promise<boolean>;
+	discardDraft: () => void;
 	requestProfileDeletion: (profile: ConnectionProfile) => void;
 	deletePendingProfile: () => Promise<void>;
 	resetCredential: () => Promise<void>;
@@ -140,8 +107,6 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testModelId,
 		testResult,
 		pendingDeletionProfileId,
-		openProfileMenuId,
-		presetChoicesOpen,
 		editorOpen,
 		conflict,
 		notice,
@@ -151,14 +116,15 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const [loading, setLoading] = useState(true);
 	const [testPending, setTestPending] = useState(false);
 	const [discoveryPending, setDiscoveryPending] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const commandIdRef = useRef(0);
+	const editorVersionRef = useRef(editorVersion);
+	editorVersionRef.current = editorVersion;
 
 	const setDraft = (value: ConnectionProfileDraft) => dispatch({ type: "set-draft", draft: value });
 	const setCredentialDraft = (value: string) => dispatch({ type: "set-credential-draft", value });
 	const setHeaderEditorData = (value: HeaderEditorData) => dispatch({ type: "set-header-editor-data", value });
 	const setTestModelId = (value: string) => dispatch({ type: "set-test-model-id", value });
-	const setPresetChoicesOpen = (value: boolean) => dispatch({ type: "set-preset-choices-open", value });
-	const setOpenProfileMenuId = (value: number | null) => dispatch({ type: "set-open-profile-menu", value });
 	const setPendingDeletionProfileId = (value: number | null) => dispatch({ type: "set-pending-deletion", value });
 
 	useAsyncEffect((isCancelled) => {
@@ -187,7 +153,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 					? "A model refresh is already in progress."
 					: undefined;
 	const resolvedRequestUrl = useMemo(() => {
-		if (draft.requestUrl.trim().length === 0) return "Not configured";
+		if (draft.requestUrl.trim().length === 0) return "";
 		try {
 			return resolveChatCompletionsRequestUrl(draft.requestUrl);
 		} catch (error) {
@@ -195,9 +161,8 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		}
 	}, [draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
-	const basicValidationError = connectionBasicDraftValidationError(draft);
-	const advancedValidationError = connectionAdvancedDraftValidationError(draft, headerEditorData);
 	const canSave = settings !== null && validationError === null;
+	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);
 
 	// ==[HUMAN APPROVED]== Runs one Connection Settings command and owns the failure wording
 	// repeated by every Profile command handler: a conflict preserves the
@@ -230,6 +195,13 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const chooseProfile = (profile: ConnectionProfile) => {
 		dispatch({ type: "choose-profile", profile });
 	};
+
+	const duplicateProfile = (profile: ConnectionProfile) => dispatch({
+		type: "choose-preset",
+		preset: { id: `profile-${profile.id}`, label: profile.displayName, description: "", profile: { ...copyDraft(profile), displayName: `${profile.displayName} copy` } },
+	});
+
+	const closeEditor = () => dispatch({ type: "discard-draft" });
 
 	const testDraft = async () => {
 		if (validationError !== null) {
@@ -279,56 +251,46 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	};
 
 	const applyDraft = async () => {
-		if (settings === null) return;
+		if (settings === null) return false;
 		if (validationError !== null) {
 			dispatch({ type: "set-error", message: validationError });
-			return;
+			return false;
 		}
 		let headers: ConnectionHeaderOperation[];
 		try { headers = headerOperationsFor(headerEditorData); }
-		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return; }
+		catch { dispatch({ type: "set-error", message: "Custom header drafts are invalid." }); return false; }
 		dispatch({ type: "clear-feedback" });
 		const appliedProfileId = selectedProfileId;
 		const appliedDraftDisplayName = draft.displayName;
-		const credentialWasProvided = credentialDraft.length > 0;
 		const requestEditorVersion = editorVersion;
 		const commandId = ++commandIdRef.current;
+		setSaving(true);
 		dispatch({ type: "command-started", commandId });
 		const command: ConnectionSettingsCommand = selectedProfileId === null
 			? { type: "create-profile", expectedRevision: settings.revision, profile: draft, credential: credentialDraft.length > 0 ? credentialDraft : null, headers }
 			: { type: "apply-profile", expectedRevision: settings.revision, profileId: selectedProfileId, profile: draft, headers };
+		if (credentialDraft.length > 0) command.credential = credentialDraft;
+		try {
 		const applied = await runConnectionCommand(
 			() => saveConnectionCommand(command),
 			APPLY_CONFLICT_ERROR,
 			commandId,
 		);
-		if (applied === null) return;
+		if (applied === null) return false;
 		dispatch({
 			type: "apply-succeeded",
 			settings: applied.settings,
 			selectedProfileId: appliedProfileId,
 			draftDisplayName: appliedDraftDisplayName,
-			credentialWasProvided,
+			credentialWasProvided: false,
 			editorVersion: requestEditorVersion,
 			commandId,
 		});
+		return editorVersionRef.current === requestEditorVersion;
+		} catch { dispatch({ type: "set-error", message: "Connection settings could not be saved." }); return false; }
+		finally { setSaving(false); }
 	};
-
-	const updateCredential = async () => {
-		if (settings === null || selectedProfileId === null || credentialDraft.length === 0) return;
-		dispatch({ type: "clear-feedback" });
-		const profileId = selectedProfileId;
-		const requestEditorVersion = editorVersion;
-		const commandId = ++commandIdRef.current;
-		dispatch({ type: "command-started", commandId });
-		const applied = await runConnectionCommand(
-			() => saveConnectionCommand({ type: "set-credential", expectedRevision: settings.revision, profileId, credential: credentialDraft }),
-			CREDENTIAL_CONFLICT_ERROR,
-			commandId,
-		);
-		if (applied === null) return;
-		dispatch({ type: "credential-succeeded", settings: applied.settings, profileId, editorVersion: requestEditorVersion, commandId });
-	};
+	const discardDraft = () => selectedProfile === undefined ? dispatch({ type: "discard-draft" }) : dispatch({ type: "choose-profile", profile: selectedProfile });
 
 	const requestProfileDeletion = (profile: ConnectionProfile) => {
 		dispatch({
@@ -360,7 +322,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	};
 
 	const resetCredential = async () => {
-		if (settings === null || selectedProfileId === null || !window.confirm("Reset this credential? This cannot be undone.")) return;
+		if (settings === null || selectedProfileId === null) return;
 		dispatch({ type: "clear-feedback" });
 		let result: ConnectionSettingsResult;
 		try {
@@ -388,13 +350,11 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		testPending,
 		discoveryPending,
 		pendingDeletionProfileId,
-		openProfileMenuId,
-		presetChoicesOpen,
 		editorOpen,
 		canSave,
+		dirty,
+		saving,
 		validationError,
-		basicValidationError,
-		advancedValidationError,
 		conflict,
 		notice,
 		error,
@@ -404,17 +364,17 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		resolvedRequestUrl,
 		choosePreset,
 		chooseProfile,
+		duplicateProfile,
+		closeEditor,
 		setDraft,
 		setCredentialDraft,
 		setHeaderEditorData,
 		setTestModelId,
-		setPresetChoicesOpen,
-		setOpenProfileMenuId,
 		setPendingDeletionProfileId,
 		testDraft,
 		refreshModels,
 		applyDraft,
-		updateCredential,
+		discardDraft,
 		requestProfileDeletion,
 		deletePendingProfile,
 		resetCredential,

@@ -41,7 +41,7 @@ const summary = (revision: number): ConversationSummary => ({
 	activeGenerations: [],
 });
 
-const firstPage = (authorParticipantId: number): ChatHistoryPage => ({
+const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 	conversationId: 1,
 	name: "Seaside Letters",
 	revision: 5,
@@ -52,7 +52,7 @@ const firstPage = (authorParticipantId: number): ChatHistoryPage => ({
 	page: {
 		index: 1,
 		pageSize: 10,
-		totalMessages: 1,
+		totalMessages: withLaterMessage ? 2 : 1,
 		totalPages: 1,
 		hasOlder: false,
 		hasNewer: false,
@@ -64,13 +64,22 @@ const firstPage = (authorParticipantId: number): ChatHistoryPage => ({
 		modelParticipantIdAtCreation: null,
 		continuable: true,
 		swipe: { eligible: true, reason: null },
-		author: { participantId: authorParticipantId, capturedName: "Author", inCast: true },
+		author: { participantId: 20, capturedName: "Author", inCast: true },
 		variants: [
 			{ id: 100, position: 1, content: "First", timestamp: "2026-01-01T00:00:00.000Z", selected: true },
 			{ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false },
 			{ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false },
 		],
-	}],
+	}, ...(withLaterMessage ? [{
+		id: 11,
+		position: 2,
+		timestamp: "2026-01-01T00:00:03.000Z",
+		modelParticipantIdAtCreation: null,
+		continuable: true,
+		swipe: { eligible: true as const, reason: null },
+		author: { participantId: 10, capturedName: "Writer", inCast: true },
+		variants: [{ id: 110, position: 1, content: "Later", timestamp: "2026-01-01T00:00:03.000Z", selected: true }],
+	}] : [])],
 });
 
 // The concrete wire failure payloads the command route serves for a
@@ -94,7 +103,7 @@ type RecordedCommand = {
 	action: { type: string; messageId?: number; variantId?: number };
 };
 
-function createHarness(mode: CommandMode, authorParticipantId = 20) {
+function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const events: string[] = [];
 	const commands: RecordedCommand[] = [];
 	const fetches: { method: string; url: string }[] = [];
@@ -137,7 +146,7 @@ function createHarness(mode: CommandMode, authorParticipantId = 20) {
 
 	let story: StoryState = reduceStory(
 		reduceStory(createStoryState(), { type: "chat-opened", conversationId: 1 }),
-		{ type: "first-page", page: firstPage(authorParticipantId) },
+		{ type: "first-page", page: firstPage(withLaterMessage) },
 	);
 	let conversation: ConversationSummary | null = summary(5);
 
@@ -279,10 +288,8 @@ describe("optimistic Swipe reconciliation", () => {
 		expect(harness.activeVariantId()).toBe(102);
 	});
 
-	test("a Swipe outside the Revision window previews locally without a command", async () => {
-		// A human-authored Message sits outside the Revision window (no model
-		// Messages bound it), so its Swipe enters Preview mode locally.
-		const harness = createHarness({ kind: "applied" }, 10);
+	test("a Swipe with later Messages previews locally without a command", async () => {
+		const harness = createHarness({ kind: "applied" }, true);
 
 		await harness.swipe(10, 1);
 

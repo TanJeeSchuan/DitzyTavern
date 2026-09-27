@@ -1,6 +1,7 @@
-import { X } from "lucide-react";
+import { ArrowLeftRight, CircleAlert, X } from "lucide-react";
 import { Toast } from "radix-ui";
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { SaveGuardContext, SaveNavigationContext, UnsavedChangesDialog, type SaveGuard } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
@@ -18,7 +19,6 @@ import {
 	reduceStory,
 } from "../story";
 import { Composer } from "../story/Composer";
-import { PreviewIndicator, PreviewNotice } from "../story/PreviewNotice";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
 import {
@@ -34,7 +34,6 @@ import type {
 import { NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
 import { PrimaryPanelView } from "./PrimaryPanelView";
-import { ConnectionSettingsInspector } from "./ConnectionSettingsInspector";
 import { useConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import { GenerationSettingsInspector } from "./GenerationSettingsInspector";
 import {
@@ -59,6 +58,7 @@ export function ActiveWritingWorkspace({
 	onNewChatClose,
 	onNewChatCreated,
 	onImportLaunched,
+	onReload,
 }: {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
 	onNewChat: () => void;
@@ -66,6 +66,7 @@ export function ActiveWritingWorkspace({
 	onNewChatClose: () => void;
 	onNewChatCreated: () => void;
 	onImportLaunched: (conversationId: number) => void;
+	onReload: () => void;
 }) {
 	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 	const [panelState, dispatchPanel] = useReducer(
@@ -74,13 +75,40 @@ export function ActiveWritingWorkspace({
 		createPanelCoordinationState,
 	);
 	const [generationDetailsTarget, setGenerationDetailsTarget] = useState<GenerationDetailsTarget | null>(null);
-	const [theme, setTheme] = useState<ThemePreference>("system");
+	const [theme, setTheme] = useState<ThemePreference>(() => {
+		const saved = window.localStorage.getItem("ditzytavern-theme");
+		return saved === "daylight" || saved === "evening" ? saved : "system";
+	});
 	const [inspectPromptPlanBeforeGenerating, setInspectPromptPlanBeforeGenerating] = useState(
 		() => window.localStorage.getItem(PROMPT_PLAN_INSPECTION_KEY) !== "false",
 	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
-	const [libraryFocusCharacterId, setLibraryFocusCharacterId] = useState<number | null>(null);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
+	const [controlChangeToast, setControlChangeToast] = useState<{ text: string; id: number } | null>(null);
+	const controlToastId = useRef(0);
+	const saveGuardRef = useRef<SaveGuard | null>(null);
+	const [guardPending, setGuardPending] = useState(false);
+	const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
+	const [leaveSaving, setLeaveSaving] = useState(false);
+	const [leaveError, setLeaveError] = useState<string | null>(null);
+	const registerSaveGuard = useCallback((guard: SaveGuard | null) => { saveGuardRef.current = guard; setGuardPending(guard?.saving ?? false); }, []);
+	const requestNavigation = (action: () => void) => {
+		if (saveGuardRef.current?.dirty || saveGuardRef.current?.saving) { setLeaveError(null); setLeaveAction(() => action); }
+		else action();
+	};
+	const saveAndLeave = async () => {
+		const guard = saveGuardRef.current;
+		if (guard === null || leaveAction === null) return;
+		if (!guard.dirty) { const action = leaveAction; setLeaveAction(null); action(); return; }
+		setLeaveSaving(true);
+		setLeaveError(null);
+		try {
+			if (await guard.save()) { const action = leaveAction; setLeaveAction(null); action(); }
+			else setLeaveError("The changes could not be saved. Keep editing to review them.");
+		} catch {
+			setLeaveError("The changes could not be saved. Keep editing to review them.");
+		} finally { setLeaveSaving(false); }
+	};
 
 	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
@@ -211,34 +239,32 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
+	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
+	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
+
 	return (
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={togglePanel} />
+			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
 
+			<SaveGuardContext.Provider value={registerSaveGuard}>
+			<SaveNavigationContext.Provider value={requestNavigation}>
 			<PrimaryPanelView
 				panel={assemblyActive ? null : panelState.primaryPanel}
 				workspace={initialWorkspace}
 				activeChat={session.activeChat}
 				theme={theme}
-				onThemeChange={setTheme}
+				onThemeChange={(value) => { window.localStorage.setItem("ditzytavern-theme", value); setTheme(value); }}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
 				onSelectChat={selectChat}
 				onNewChat={onNewChat}
-				onClose={() => dispatchPanel({ type: "primary-closed" })}
+				onClose={() => requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
 				onImportLaunched={onImportLaunched}
+				onActiveChatDeleted={onReload}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
-				libraryFocusCharacterId={libraryFocusCharacterId}
-				onLibraryFocusConsumed={() => setLibraryFocusCharacterId(null)}
-				onOpenLibraryCharacter={(characterId) => {
-					if (assemblyActive) return;
-					setLibraryFocusCharacterId(characterId);
-					setGenerationDetailsTarget(null);
-					dispatchPanel({ type: "primary-opened", panel: "library" });
-				}}
 				connectionSettings={connectionSettings}
 				generationSettings={generationSettings}
 				onOpenInspector={(inspector: SplitInspector) => {
@@ -246,11 +272,13 @@ export function ActiveWritingWorkspace({
 				}}
 				mutationsDisabled={story.preview !== null}
 			/>
+			</SaveNavigationContext.Provider>
+			</SaveGuardContext.Provider>
 
-			<main className="story-stage" aria-label="Active Chat" data-preview-mode={story.preview !== null}>
+			<main className="story-stage" aria-label="Active Chat">
 				<StoryHeader
 					chat={session.activeChat}
-					onOpenCast={() => togglePanel("cast")}
+						onOpenCast={() => requestNavigation(() => togglePanel("characters"))}
 					onOpenInfo={() => {
 						if (assemblyActive) return;
 						setGenerationDetailsTarget(null);
@@ -263,13 +291,20 @@ export function ActiveWritingWorkspace({
 					}}
 				/>
 
+				{story.preview !== null && previewedMessage !== undefined && (
+				<div className="preview-dock" role="status" aria-label="Swipe preview">
+					<div className="preview-dock-copy">
+						<strong>Previewing Swipe {previewSwipeIndex + 1} of {previewedMessage.swipes.length}</strong>
+						<span>Message {story.preview.targetPosition} · Later Messages dimmed</span>
+					</div>
+					<div className="preview-dock-actions">
+						<button className="primary-button" type="button" disabled={preview.previewPending} onClick={() => void preview.confirmPreview()}>Confirm</button>
+						<button className="secondary-button" type="button" disabled={preview.previewPending} onClick={preview.cancelPreview}>Cancel</button>
+					</div>
+					{preview.previewError !== null && <p className="preview-error" role="alert">{preview.previewError}</p>}
+				</div>
+			)}
 				<div className="story-scroll" ref={viewport.storyScrollRef}>
-					{story.preview !== null && !story.preview.noticeOpen && (
-						<PreviewIndicator
-							targetPosition={story.preview.targetPosition}
-							onOpen={() => dispatchStory({ type: "preview-notice-opened" })}
-						/>
-					)}
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
 							<div className="history-load-more">
@@ -288,6 +323,7 @@ export function ActiveWritingWorkspace({
 							<StoryMessageView
 								key={message.id}
 								message={message}
+								isLatest={latestStoryMessage?.id === message.id}
 								generationActive={generation.activeGenerationTargets.some((target) =>
 									target.messageId === message.id &&
 									target.variantId === displayedVariantId(message, story.preview)
@@ -340,11 +376,14 @@ export function ActiveWritingWorkspace({
 					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending}
+					writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
+							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
+							onControlChange={(text) => setControlChangeToast({ text, id: ++controlToastId.current })}
 							onModelSelectionChange={generationSettings.adoptModelSelection}
 						/>
 					) : null}
@@ -393,27 +432,11 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "inspector-closed" })}
 				/>
 			)}
-			{!assemblyActive && panelState.inspector === "models" && (
-				<ConnectionSettingsInspector
-					controller={connectionSettings}
-					onClose={() => dispatchPanel({ type: "inspector-closed" })}
-				/>
-			)}
 			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
-			{story.preview?.noticeOpen && (
-				<PreviewNotice
-					targetPosition={story.preview.targetPosition}
-					pending={preview.previewPending}
-					error={preview.previewError}
-					onConfirm={() => void preview.confirmPreview()}
-					onCancel={preview.cancelPreview}
-					onClose={() => dispatchStory({ type: "preview-notice-closed" })}
-				/>
-			)}
 		</div>
 		{generation.generationError !== null && (
 			<Toast.Root
-				className="generation-error-toast"
+				className="workspace-toast generation-error-toast"
 				type="foreground"
 				open={generationToastOpen}
 				onOpenChange={(open) => {
@@ -421,16 +444,34 @@ export function ActiveWritingWorkspace({
 					if (!open) generation.acknowledgeGenerationError();
 				}}
 			>
-				<div>
-					<Toast.Title className="generation-error-toast-title">Generation failed</Toast.Title>
-					<Toast.Description className="generation-error-toast-description">{generation.generationError}</Toast.Description>
+				<div className="workspace-toast-body">
+					<div className="workspace-toast-heading"><CircleAlert aria-hidden="true" /><Toast.Title>Generation failed</Toast.Title></div>
+					<Toast.Description className="workspace-toast-description">{generation.generationError}</Toast.Description>
 				</div>
 				<Toast.Close className="icon-button" aria-label="Dismiss generation error">
 					<X aria-hidden="true" />
 				</Toast.Close>
 			</Toast.Root>
 		)}
+		{controlChangeToast !== null && (
+			<Toast.Root
+				key={controlChangeToast.id}
+				className="workspace-toast control-change-toast"
+				defaultOpen
+				duration={3_000}
+				onOpenChange={(open) => {
+					if (!open) window.setTimeout(() => setControlChangeToast((current) => current?.id === controlChangeToast.id ? null : current), 180);
+				}}
+			>
+				<div className="workspace-toast-body">
+					<div className="workspace-toast-heading"><ArrowLeftRight aria-hidden="true" /><Toast.Title>Control changed</Toast.Title></div>
+					<Toast.Description className="workspace-toast-description">{controlChangeToast.text}</Toast.Description>
+				</div>
+				<Toast.Close className="icon-button" aria-label="Dismiss control change"><X aria-hidden="true" /></Toast.Close>
+			</Toast.Root>
+		)}
 		<Toast.Viewport className="toast-viewport" />
+		<UnsavedChangesDialog open={leaveAction !== null} saving={leaveSaving || guardPending} error={leaveError} onKeepEditing={() => setLeaveAction(null)} onDiscard={() => { saveGuardRef.current?.discard(); const action = leaveAction; setLeaveAction(null); action?.(); }} onSave={() => void saveAndLeave()} />
 		</Toast.Provider>
 	);
 }

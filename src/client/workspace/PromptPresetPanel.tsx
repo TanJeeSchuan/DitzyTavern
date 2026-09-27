@@ -1,5 +1,7 @@
 import type { ConversationSummary } from "../conversation";
 import { PanelHeader } from "../PanelHeader";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard } from "../SaveGuard";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
 import { PromptPresetRecipeEditor } from "./prompt-preset/PromptPresetRecipeEditor";
 import { PromptPresetImportReviewDialog } from "./prompt-preset/PromptPresetImportReviewDialog";
@@ -8,9 +10,8 @@ import { usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
 // ==[HUMAN APPROVED]== Prompt Presets are first-order Chat configuration and live in the
 // primary side panel. The library manages shared presets and the per-Chat selection;
-// ordering and enablement persist immediately through their authoritative operations.
-// Referenced source text remains read-only here, while authored instruction blocks own
-// per-block drafts with Save and Cancel. Focused import review and unsaved-edit choices
+// ordering persists through its authoritative operation. Enablement and authored fields
+// stay as block drafts until the panel footer saves them. Focused import review and unsaved-edit choices
 // remain dialogs above the panel.
 export function PromptPresetPanel({
 	conversation,
@@ -29,6 +30,7 @@ export function PromptPresetPanel({
 		onClose,
 	});
 	const ready = editor.view.status === "ready" ? editor.view : null;
+	useSaveGuard({ dirty: editor.dirtyCount > 0, saving: editor.busy, save: editor.save, discard: () => undefined });
 
 	return (
 		<>
@@ -41,10 +43,6 @@ export function PromptPresetPanel({
 				inert={mutationsDisabled || undefined}
 				aria-disabled={mutationsDisabled}
 			>
-				<p className="panel-intro mb-0">
-					Shared recipes live in one library and each Chat selects one. Ordering
-					and enablement save immediately. Authored instruction text saves per block.
-				</p>
 				{editor.view.status === "loading" && (
 					<div role="status">
 						<span className="sr-only">Loading the Prompt Preset library…</span>
@@ -69,6 +67,8 @@ export function PromptPresetPanel({
 							presets={ready.presets}
 							selectedId={ready.selected.id}
 							pending={editor.busy}
+							problem={editor.problem}
+							notice={editor.notice}
 							onSelect={editor.selectPreset}
 							onCommand={(command, successNotice) =>
 								void editor.runPresetCommand(command, successNotice)
@@ -84,9 +84,10 @@ export function PromptPresetPanel({
 							pending={editor.busy}
 							problem={editor.problem}
 							onDraftChange={editor.setDraft}
+							onEnabledChange={editor.setEnabled}
 							onDraftCancel={editor.clearDraft}
-							onOperation={(run, submitted) =>
-								void editor.runRecipeOperation(run, submitted)
+							onOperation={(run) =>
+								void editor.runRecipeOperation(run)
 							}
 						/>
 					</>
@@ -97,6 +98,7 @@ export function PromptPresetPanel({
 					</p>
 				)}
 			</div>
+			{ready !== null && <SaveFooter dirty={editor.dirtyCount > 0} saving={editor.busy} error={editor.problem} onSave={() => void editor.save()} />}
 			{ready !== null && editor.leaveRequest !== null && (
 				<UnsavedBlockEditDialog
 					open

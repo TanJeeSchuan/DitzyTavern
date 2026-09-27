@@ -1,137 +1,136 @@
-import { KeyRound, RotateCcw, Save } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
+import { Slider } from "@/components/ui/slider";
 import {
 	draftFromEmbeddingSettings,
 	loadEmbeddingSettings,
 	saveEmbeddingSettings,
 	type EmbeddingSettings,
 	type EmbeddingSettingsDraft,
+	type EmbeddingSettingsResult,
 } from "../embedding-settings";
 import { useAsyncEffect } from "../lib/use-async";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
+import { CredentialField } from "./connection-settings/CredentialField";
 
-type EditorState = {
+type EmbeddingState = {
 	settings: EmbeddingSettings | null;
 	draft: EmbeddingSettingsDraft | null;
 	loading: boolean;
 	pending: boolean;
-	notice: string | null;
 	error: string | null;
 };
 
-const initialState: EditorState = {
-	settings: null,
-	draft: null,
-	loading: true,
-	pending: false,
-	notice: null,
-	error: null,
-};
+const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
 
-export function EmbeddingSettingsEditor() {
-	const [state, setState] = useState<EditorState>(initialState);
-	const [confirmingCredentialReset, setConfirmingCredentialReset] = useState(false);
+export type EmbeddingSettingsController = ReturnType<typeof useEmbeddingSettings>;
 
-	const refresh = useCallback(async () => {
-		setState((current) => ({ ...current, loading: true, error: null }));
-		try {
-			const settings = await loadEmbeddingSettings();
-			setState({ settings, draft: draftFromEmbeddingSettings(settings), loading: false, pending: false, notice: null, error: null });
-		} catch {
-			setState((current) => ({ ...current, loading: false, error: "Embedding Settings could not be loaded." }));
-		}
-	}, []);
+export function useEmbeddingSettings() {
+	const [state, setState] = useState<EmbeddingState>({ settings: null, draft: null, loading: true, pending: false, error: null });
+	const loaded = (settings: EmbeddingSettings): EmbeddingState => ({ settings, draft: draftFromEmbeddingSettings(settings), loading: false, pending: false, error: null });
 
-	useAsyncEffect((isCancelled) => {
-		void loadEmbeddingSettings().then((settings) => {
-			if (isCancelled()) return;
-			setState({ settings, draft: draftFromEmbeddingSettings(settings), loading: false, pending: false, notice: null, error: null });
-		}).catch(() => {
-			if (isCancelled()) return;
-			setState((current) => ({ ...current, loading: false, error: "Embedding Settings could not be loaded." }));
-		});
-	}, []);
+	const load = useCallback((isCancelled: () => boolean = () => false) => loadEmbeddingSettings()
+		.then((settings) => { if (!isCancelled()) setState(loaded(settings)); })
+		.catch(() => { if (!isCancelled()) setState((current) => ({ ...current, loading: false, error: "Embedding Settings could not be loaded." })); }), []);
+	useAsyncEffect((isCancelled) => { void load(isCancelled); }, [load]);
 
-	const updateDraft = (patch: Partial<EmbeddingSettingsDraft>) => setState((current) => current.draft === null ? current : { ...current, draft: { ...current.draft, ...patch }, notice: null, error: null });
-	const apply = async () => {
-		if (state.settings === null || state.draft === null) return;
-		setState((current) => ({ ...current, pending: true, notice: null, error: null }));
-		const command: Parameters<typeof saveEmbeddingSettings>[0] = {
-			type: "apply" as const,
-			expectedRevision: state.settings.revision,
-			endpoint: state.draft.endpoint,
-			model: state.draft.model,
-			threshold: state.draft.threshold,
-			deadlineMs: state.draft.deadlineMs,
-		};
-		if (state.draft.credential.length > 0) command.credential = state.draft.credential;
+	const settle = (result: EmbeddingSettingsResult, keepDraft: (draft: EmbeddingSettingsDraft | null) => boolean) => {
+		if (result.outcome === "applied") setState((current) => ({ ...loaded(result.settings), draft: keepDraft(current.draft) ? current.draft : draftFromEmbeddingSettings(result.settings) }));
+		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, error: CONFLICT_ERROR }));
+		else setState((current) => ({ ...current, pending: false, error: result.reason }));
+		return result.outcome === "applied";
+	};
+
+	const { settings, draft } = state;
+	const dirty = settings !== null && draft !== null && (draft.endpoint !== settings.endpoint || draft.model !== settings.model || draft.threshold !== settings.threshold || draft.deadlineMs !== settings.deadlineMs || draft.credential.length > 0);
+
+	const save = async () => {
+		if (settings === null || draft === null) return false;
+		setState((current) => ({ ...current, pending: true, error: null }));
+		const { credential, ...fields } = draft;
+		const command: Parameters<typeof saveEmbeddingSettings>[0] = { type: "apply", expectedRevision: settings.revision, ...fields };
+		if (credential.length > 0) command.credential = credential;
 		const result = await saveEmbeddingSettings(command);
-		if (result.outcome === "applied") {
-			setState({ settings: result.settings, draft: draftFromEmbeddingSettings(result.settings), loading: false, pending: false, notice: "Embedding Settings saved.", error: null });
-		} else if (result.outcome === "conflict") {
-			setState((current) => ({ ...current, settings: result.currentSettings, pending: false, notice: "These settings changed elsewhere. Review your draft before saving again.", error: null }));
-		} else {
-			setState((current) => ({ ...current, pending: false, error: result.reason }));
-		}
+		return settle(result, (current) => current !== draft);
 	};
 
-	const resetCredential = async () => {
-		if (state.settings === null) return;
-		setState((current) => ({ ...current, pending: true, notice: null, error: null }));
-		const result = await saveEmbeddingSettings({ type: "reset-credential", expectedRevision: state.settings.revision, confirmed: true });
-		if (result.outcome === "applied") {
-			setState({ settings: result.settings, draft: draftFromEmbeddingSettings(result.settings), loading: false, pending: false, notice: "Embedding credential removed.", error: null });
-		} else if (result.outcome === "conflict") {
-			setState((current) => ({ ...current, settings: result.currentSettings, pending: false, notice: "These settings changed elsewhere. Review your draft before saving again.", error: null }));
-		} else setState((current) => ({ ...current, pending: false, error: result.reason }));
+	const removeCredential = async () => {
+		if (settings === null) return;
+		setState((current) => ({ ...current, pending: true, error: null }));
+		settle(await saveEmbeddingSettings({ type: "reset-credential", expectedRevision: settings.revision, confirmed: true }), () => true);
 	};
 
-	if (state.loading) return <EmbeddingSettingsLoading />;
-	if (state.draft === null || state.settings === null) return <section className="settings-section"><h3>Semantic Lore</h3><p className="settings-feedback-error" role="alert">{state.error ?? "Embedding Settings could not be loaded."}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></section>;
-
-	return <>
-	<section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-title">
-		<div>
-			<h3 id="embedding-settings-title">Semantic Lore</h3>
-			<p>Use a separate OpenAI-compatible embedding service to match authored Semantic Triggers.</p>
-		</div>
-		<div className="embedding-settings-grid">
-			<label className="field"><span>Embedding endpoint</span><input className="field-input" type="url" value={state.draft.endpoint} onChange={(event) => updateDraft({ endpoint: event.target.value })} placeholder="https://localhost:11434/v1/embeddings" autoComplete="url" /><small>HTTP or HTTPS. Leave empty to use keyword matching only.</small></label>
-			<label className="field"><span>Model</span><input className="field-input" value={state.draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder="text-embedding-3-small" autoComplete="off" /></label>
-			<label className="field"><span>Default cosine threshold</span><input className="field-input" type="number" min="0" max="1" step="0.01" value={state.draft.threshold} onChange={(event) => updateDraft({ threshold: Number(event.target.value) })} /><small>Starts at 0.70. This is an uncalibrated starting point for the selected model.</small></label>
-			<label className="field"><span>Required-work deadline</span><input className="field-input" type="number" min="1" step="100" value={state.draft.deadlineMs} onChange={(event) => updateDraft({ deadlineMs: Number(event.target.value) })} /><small>Milliseconds. Starts at 5,000.</small></label>
-			<label className="field embedding-credential-field"><span><KeyRound aria-hidden="true" /> Credential {state.settings.credentialConfigured ? <em>(configured)</em> : <em>(optional)</em>}</span><input className="field-input" type="password" value={state.draft.credential} onChange={(event) => updateDraft({ credential: event.target.value })} placeholder={state.settings.credentialConfigured ? "Leave unchanged" : "Enter a credential"} autoComplete="new-password" /><small>Write-only. The saved value is never read back or included in prompt data.</small></label>
-		</div>
-		<div className="embedding-settings-actions"><Button type="button" size="sm" onClick={() => void apply()} disabled={state.pending}><Save aria-hidden="true" /> Save settings</Button>{state.settings.credentialConfigured && <Button type="button" size="sm" variant="outline" onClick={() => setConfirmingCredentialReset(true)} disabled={state.pending}><RotateCcw aria-hidden="true" /> Remove credential</Button>}</div>
-		{state.error !== null && <p className="settings-feedback-error" role="alert">{state.error}</p>}
-		{state.notice !== null && <p className="settings-feedback" role="status">{state.notice}</p>}
-	</section>
-	<Dialog open={confirmingCredentialReset} onOpenChange={(open) => { if (!state.pending) setConfirmingCredentialReset(open); }}>
-		<DialogContent showCloseButton={false} className="sm:max-w-sm">
-			<DialogHeader>
-				<DialogTitle>Remove saved credential?</DialogTitle>
-				<DialogDescription>This removes the saved embedding credential. You can enter a new one later.</DialogDescription>
-			</DialogHeader>
-			<div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-				<Button type="button" variant="ghost" disabled={state.pending} onClick={() => setConfirmingCredentialReset(false)}>Keep credential</Button>
-				<Button type="button" variant="destructive" disabled={state.pending} onClick={() => { setConfirmingCredentialReset(false); void resetCredential(); }}>Remove credential</Button>
-			</div>
-		</DialogContent>
-	</Dialog>
-	</>;
+	return {
+		...state,
+		dirty,
+		reload: () => { setState((current) => ({ ...current, loading: true, error: null })); void load(); },
+		update: (patch: Partial<EmbeddingSettingsDraft>) => setState((current) => current.draft === null ? current : { ...current, draft: { ...current.draft, ...patch }, error: null }),
+		discard: () => setState((current) => current.settings === null ? current : { ...current, draft: draftFromEmbeddingSettings(current.settings), error: null }),
+		save,
+		removeCredential,
+	};
 }
 
-function EmbeddingSettingsLoading() {
-	return <section className="settings-section embedding-settings-editor" aria-labelledby="embedding-settings-loading-title" aria-busy="true">
-		<div>
-			<h3 id="embedding-settings-loading-title">Semantic Lore</h3>
-			<div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" />
-			<p className="sr-only" role="status">Loading embedding settings…</p>
-		</div>
-		<div className="embedding-settings-grid">
-			{["Embedding endpoint", "Model", "Default cosine threshold", "Required-work deadline", "Credential"].map((label) => <div className="field" key={label}><span>{label}</span><div className="h-9 animate-pulse rounded-md bg-muted/50" /><div className="h-4 w-3/4 animate-pulse rounded bg-muted/50" /></div>)}
-		</div>
-		<div className="embedding-settings-actions"><div className="h-9 w-28 animate-pulse rounded-md bg-muted/50" /><div className="h-9 w-36 animate-pulse rounded-md bg-muted/50" /></div>
-	</section>;
+export function EmbeddingSettingsEditor({ embedding, onBack }: { embedding: EmbeddingSettingsController; onBack: () => void }) {
+	const navigate = useSaveNavigation();
+	useSaveGuard({ dirty: embedding.dirty, saving: embedding.pending, save: embedding.save, discard: embedding.discard });
+	const { settings, draft } = embedding;
+	return (
+		<>
+			<div className="panel-body settings-panel-body">
+				<Button type="button" size="sm" variant="ghost" className="-ml-2 mb-3 text-muted-foreground" onClick={() => navigate(onBack)}><ChevronLeft aria-hidden="true" /> Connections</Button>
+				<section aria-labelledby="embedding-settings-title">
+					<h3 id="embedding-settings-title" className="text-base! font-semibold">Semantic Lore</h3>
+					<p>A separate OpenAI-compatible embedding service matches Lore Entries by their Semantic Triggers.</p>
+					{settings === null || draft === null ? (
+						<div className="grid justify-items-start gap-2">
+							<p className="text-xs text-destructive" role="alert">{embedding.error ?? "Embedding Settings could not be loaded."}</p>
+							<Button type="button" size="sm" variant="outline" onClick={embedding.reload}>Try again</Button>
+						</div>
+					) : (
+						<div className="grid gap-4">
+							<Field htmlFor="embedding-endpoint" label="Endpoint" helper="Leave empty to match Keywords only.">
+								<input id="embedding-endpoint" className="field-input" type="url" value={draft.endpoint} onChange={(event) => embedding.update({ endpoint: event.target.value })} placeholder="http://localhost:11434/v1/embeddings" autoComplete="url" />
+							</Field>
+							<Field htmlFor="embedding-model" label="Model">
+								<input id="embedding-model" className="field-input font-mono text-[0.78rem]!" value={draft.model} onChange={(event) => embedding.update({ model: event.target.value })} placeholder="text-embedding-3-small" autoComplete="off" />
+							</Field>
+							<CredentialField
+								id="embedding-credential"
+								label="API key"
+								value={draft.credential}
+								onChange={(credential) => embedding.update({ credential })}
+								configured={settings.credentialConfigured}
+								pending={embedding.pending}
+								onRemove={() => void embedding.removeCredential()}
+								placeholder="Optional"
+							/>
+							<div className="grid gap-1.5">
+								<div className="flex items-center justify-between gap-3">
+									<label htmlFor="embedding-threshold" className="text-[13px] font-medium text-muted-foreground">Default match threshold</label>
+									<span className="text-[13px] tabular-nums">{draft.threshold.toFixed(2)}</span>
+								</div>
+								<Slider id="embedding-threshold" className="py-1.5 [&_[data-slot=slider-track]]:bg-foreground/15" min={0} max={1} step={0.01} value={[draft.threshold]} onValueChange={([threshold]) => { if (threshold !== undefined) embedding.update({ threshold }); }} aria-label="Default match threshold" />
+								<small className="text-xs text-muted-foreground">Cosine similarity an entry needs to match. 0.70 is an uncalibrated starting point; tune it per model.</small>
+							</div>
+							<div className="grid gap-1.5">
+								<div className="flex items-center justify-between gap-3">
+									<label htmlFor="embedding-deadline" className="text-[13px] font-medium text-muted-foreground">Deadline</label>
+									<span className="flex items-center gap-2 text-xs text-muted-foreground">
+										<span className="w-20"><input id="embedding-deadline" className="field-input text-right tabular-nums" type="number" min="0.1" step="0.5" value={draft.deadlineMs / 1000} onChange={(event) => embedding.update({ deadlineMs: Math.round(Number(event.target.value) * 1000) })} /></span>
+										seconds
+									</span>
+								</div>
+								<small className="text-xs text-muted-foreground">How long a Generation waits for embeddings before falling back to Keywords only.</small>
+							</div>
+						</div>
+					)}
+				</section>
+			</div>
+			<SaveFooter dirty={embedding.dirty} saving={embedding.pending} error={embedding.error} onSave={() => void embedding.save()} />
+		</>
+	);
 }

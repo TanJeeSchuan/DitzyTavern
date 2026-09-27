@@ -46,6 +46,16 @@ describe("Connection Settings", () => {
 		database.close();
 	});
 
+	test("saves Profile edits and a replacement credential in one revision", () => {
+		const settings = createConnectionSettingsModule(database, { masterKey: key });
+		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft(), credential: "first-secret" });
+		const profileId = created.profiles[0]?.id ?? 0;
+		const saved = settings.applyProfile({ expectedRevision: created.revision, profileId, profile: { ...deepSeekDraft(), displayName: "Revised" }, credential: "replacement-secret" });
+		expect(saved.revision).toBe(created.revision + 1);
+		expect(saved.profiles[0]?.displayName).toBe("Revised");
+		expect(settings.getProfileSecrets(profileId)?.credential).toBe("replacement-secret");
+	});
+
 	test("starts with no Profiles", () => {
 		const settings = createConnectionSettingsModule(database, { masterKey: key });
 		expect(settings.get()).toEqual({

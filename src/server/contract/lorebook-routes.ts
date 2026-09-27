@@ -48,9 +48,9 @@ import {
 	readCharacterLorebookAttachments,
 	readParticipantLorebookAttachments,
 } from "../lorebook/attachments";
-import { evaluateScopedLoreAsync } from "../lorebook/evaluation";
-import { readSelectedHistory } from "../conversation/selected-history";
-import { readConversationPromptPresetRecipe } from "../prompt-preset";
+import { matchLoreEntry } from "../lorebook/matching";
+import { evaluateSemanticLore } from "../lorebook/semantic";
+import { createEmbeddingSettingsModule } from "../embedding-settings";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
 import type { EmbeddingSettingsModuleOptions } from "../embedding-settings";
@@ -116,32 +116,27 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
 	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
 		const result = await withDatabase(database, async (connection) => {
-			const recipe = readConversationPromptPresetRecipe(connection, body.conversationId);
-			if (recipe === undefined) return undefined;
-			if (!recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)) return { skipReason: "no-enabled-lore-block" as const };
-			const history = readSelectedHistory(connection, body.conversationId);
-			if (history === undefined) return undefined;
-			return evaluateScopedLoreAsync({
+			const book = readLorebook(connection, body.bookId);
+			if (book === undefined) return undefined;
+			const scan = [{ id: null, content: body.writing }];
+			const semantic = await evaluateSemanticLore({
 				database: connection,
-				conversationId: body.conversationId,
-				messages: history.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
-				pendingHumanText: body.writing,
-				embeddingSettings: options,
+				entries: book.entries,
+				messages: scan,
+				settings: createEmbeddingSettingsModule(connection, options),
 				fetch: options.fetch,
 			});
+			return {
+				mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
+				fallbackReason: semantic.fallbackReason,
+				scan,
+				matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
+			};
 		});
 		if (result === undefined) return respond(404, { outcome: "not-found" as const });
-		if ("skipReason" in result) return respond(200, {
-			mode: "none" as const,
-			skipReason: result.skipReason,
-			scan: [],
-			matches: [],
-		});
 		return respond(200, {
-			mode: result.activation.mode,
-			fallbackReason: result.activation.mode === "keyword-fallback"
-				? result.matches.find((item) => item.match.semantic.fallbackReason !== undefined)?.match.semantic.fallbackReason
-				: undefined,
+			mode: result.mode,
+			fallbackReason: result.fallbackReason,
 			scan: result.scan.map((message) => ({ id: message.id ?? null, content: message.content })),
 			matches: result.matches.map(({ bookId, bookName, entryId, title, match }) => ({
 				bookId, bookName, entryId, title,

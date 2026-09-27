@@ -284,10 +284,9 @@ export function removePromptPresetBlock(
 	);
 }
 
-// ==[HUMAN APPROVED]== The one authored-field save contract: an individual block Save submits
-// exactly one occurrence-addressed patch, and save-on-leave submits the dirty
-// set, both through the recipe route, which is never revision-guarded.
-// Authored-field saves never travel the library command executor, which accepts
+// ==[HUMAN APPROVED]== The footer and save-on-leave submit occurrence-addressed block
+// drafts through the recipe route, which is never revision-guarded.
+// Block saves never travel the library command executor, which accepts
 // only revision-guarded commands.
 export function savePromptPresetBlockPatches(
 	presetId: number,

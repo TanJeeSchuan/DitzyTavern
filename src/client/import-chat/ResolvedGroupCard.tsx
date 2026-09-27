@@ -6,6 +6,7 @@ import {
 	TriangleAlert,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import type {
 	ChatImportFlowAction,
 	ImportGroupDraft,
@@ -227,20 +228,14 @@ export function ResolvedGroupCard({
 						{selected.length === 1 ? "" : "s"} ({selectedVariantCount} Variant
 						{selectedVariantCount === 1 ? "" : "s"}):
 					</span>
-					<select
+					<AppSelect
 						value={splitTarget}
-						onChange={(event) => setSplitTarget(event.target.value)}
+						onValueChange={setSplitTarget}
 						aria-label="Split target"
-					>
-						<option value="new">into a new Participant</option>
-						{groups
+						options={[{ value: "new", label: "into a new Participant" }, ...groups
 							.filter((candidate) => candidate.id !== group.id)
-							.map((candidate) => (
-								<option key={candidate.id} value={candidate.id}>
-									into {candidate.participantName.trim() || candidate.key}
-								</option>
-							))}
-					</select>
+							.map((candidate) => ({ value: candidate.id, label: `into ${candidate.participantName.trim() || candidate.key}` }))]}
+					/>
 					<button
 						className="secondary-button"
 						type="button"
@@ -273,10 +268,9 @@ export function ResolvedGroupCard({
 					<span>
 						Merge {mergeTargets.length} selected groups into one Participant:
 					</span>
-					<select
+					<AppSelect
 						value={group.id}
-						onChange={(event) => {
-							const targetId = event.target.value;
+						onValueChange={(targetId) => {
 							onDispatch({
 								type: "merge-into",
 								targetId,
@@ -287,13 +281,8 @@ export function ResolvedGroupCard({
 							onMerged();
 						}}
 						aria-label="Merge target"
-					>
-						{mergeTargets.map((candidate) => (
-							<option key={candidate.id} value={candidate.id}>
-								{candidate.participantName.trim() || candidate.key}
-							</option>
-						))}
-					</select>
+						options={mergeTargets.map((candidate) => ({ value: candidate.id, label: candidate.participantName.trim() || candidate.key }))}
+					/>
 				</div>
 			)}
 
@@ -388,10 +377,10 @@ function ForkPicker({
 	return (
 		<label className="import-fork-picker">
 			<span>Character</span>
-			<select
+			<AppSelect
 				value={currentId ?? ""}
-				onChange={(event) => {
-					const characterId = Number(event.target.value);
+				onValueChange={(value) => {
+					const characterId = Number(value);
 					onDispatch({
 						type: "outcome-changed",
 						id: group.id,
@@ -400,15 +389,10 @@ function ForkPicker({
 					// Picking a Character explicitly is the confirmation. ==[HUMAN APPROVED]==
 					onDispatch({ type: "suggestion-approved", id: group.id });
 				}}
-			>
-				{options.length === 0 && <option value="">No Characters yet</option>}
-				{options.map((character) => (
-					<option key={character.id} value={character.id}>
-						{character.name}
-						{character.id === suggestionId ? " — Suggested" : ""}
-					</option>
-				))}
-			</select>
+				emptyLabel={options.length === 0 ? "No Characters yet" : "Choose a Character"}
+				disabled={options.length === 0}
+				options={options.map((character) => ({ value: character.id, label: `${character.name}${character.id === suggestionId ? " — Suggested" : ""}` }))}
+			/>
 		</label>
 	);
 }

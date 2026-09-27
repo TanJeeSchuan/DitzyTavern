@@ -1,7 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import {
 	emptyPromptChannels,
-	firstPromptText,
 	promptPreview,
 } from "../../shared/definition";
 import {
@@ -118,11 +117,7 @@ export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
 			revision: characterTable.revision,
 			pinned: characterTable.pinned,
 			deletedAt: characterTable.deleted_at,
-			systemInstruction: characterPromptTable.system_instruction,
 			identity: characterPromptTable.identity,
-			scenario: characterPromptTable.scenario,
-			exampleDialogue: characterPromptTable.example_dialogue,
-			postHistoryInstruction: characterPromptTable.post_history_instruction,
 		})
 		.from(characterTable)
 		.leftJoin(
@@ -139,15 +134,7 @@ export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
 			name: row.name,
 			revision: row.revision,
 			pinned: row.pinned,
-			preview: promptPreview(
-				firstPromptText({
-					systemInstruction: row.systemInstruction ?? "",
-					identity: row.identity ?? "",
-					scenario: row.scenario ?? "",
-					exampleDialogue: row.exampleDialogue ?? "",
-					postHistoryInstruction: row.postHistoryInstruction ?? "",
-				}),
-			),
+			preview: promptPreview(row.identity ?? ""),
 			provenanceReferenceCount: references.get(row.id) ?? 0,
 		}))
 		.sort(compareByLibraryOrder);

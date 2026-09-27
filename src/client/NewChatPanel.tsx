@@ -1,5 +1,7 @@
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Plus } from "lucide-react";
 import { useState } from "react";
+import { AppSelect } from "@/components/ui/select";
 import { type CharacterSummary, listCharacters } from "./character-library";
 import {
 	createNativeConversation,
@@ -49,32 +51,20 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 				<strong>{seatLabel}</strong>
 			</header>
 
-			<div className="seat-mode" role="tablist" aria-label={`${seatLabel} seat source`}>
-				<button
-					type="button"
-					data-active={mode === "character"}
-					onClick={() => switchMode("character")}
-					disabled={characters.length === 0}
-				>
-					Fork a Character
-				</button>
-				<button
-					type="button"
-					data-active={mode === "adhoc"}
-					onClick={() => switchMode("adhoc")}
-				>
-					Ad-hoc Definition
-				</button>
-			</div>
+			<SegmentedControl value={mode} onValueChange={switchMode} label={`${seatLabel} seat source`} options={[
+				{ value: "character", label: "Character", disabled: characters.length === 0 },
+				{ value: "adhoc", label: "Chat only" },
+			]} />
 
 			{seat.type === "character" ? (
 				<label className="seat-field">
 					<span>Character</span>
-					<select
+					<AppSelect
 						value={seat.characterId}
-						onChange={(event) => {
+						options={characters.map((character) => ({ value: character.id, label: `${character.pinned ? "★ " : ""}${character.name}` }))}
+						onValueChange={(value) => {
 							const selected = characters.find(
-								(character) => character.id === Number(event.target.value),
+								(character) => character.id === Number(value),
 							);
 							if (selected) {
 								onChange({
@@ -84,14 +74,7 @@ function SeatEditor({ role, seat, onChange, characters }: SeatEditorProps) {
 								});
 							}
 						}}
-					>
-						{characters.map((character) => (
-							<option key={character.id} value={character.id}>
-								{character.pinned ? "★ " : ""}
-								{character.name}
-							</option>
-						))}
-					</select>
+					/>
 				</label>
 			) : (
 				<div className="seat-adhoc">
@@ -194,6 +177,7 @@ export function NewChatPanel({
 	const [humanSeat, setHumanSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [modelSeat, setModelSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [pending, setPending] = useState(false);
+	const [validationRevealed, setValidationRevealed] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 
 	useAsyncEffect(async (isCancelled) => {
@@ -218,6 +202,8 @@ export function NewChatPanel({
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
 	const submit = async () => {
+		setValidationRevealed(true);
+		if (!ready) return;
 		setPending(true);
 		setProblem(null);
 		try {
@@ -250,7 +236,8 @@ export function NewChatPanel({
 	};
 
 	return (
-		<div className="panel-body new-chat-panel">
+		<>
+		<div className="panel-body new-chat-panel" onBlur={(event) => { if (event.target.matches("input, textarea, [role='combobox']")) setValidationRevealed(true); }}>
 			<p className="panel-intro">
 				Set up who you play and who responds. Both seats are required before the
 				Chat is created.
@@ -280,25 +267,19 @@ export function NewChatPanel({
 				/>
 			</div>
 
-			{problem && (
-				<p className="new-chat-problem" role="alert">
-					{problem}
-				</p>
-			)}
-
+		</div>
+		<footer className="panel-action-footer new-chat-footer">
+			{problem && <p className="new-chat-problem" role="alert">{problem}</p>}
 			<button
 				className="primary-button"
 				type="button"
-				disabled={!ready}
+				disabled={pending}
 				onClick={() => void submit()}
 			>
 				<Plus aria-hidden="true" /> Create Chat
 			</button>
-			<p className="panel-note">
-				{ready
-					? "Both Control assignments are ready."
-					: "A Chat needs a name and two distinct Participants before it can begin."}
-			</p>
-		</div>
+			{validationRevealed && !ready && !pending && <p className="new-chat-problem" role="alert">Add a Chat name and a name for each Participant.</p>}
+		</footer>
+		</>
 	);
 }

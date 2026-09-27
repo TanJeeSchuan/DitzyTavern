@@ -1,4 +1,5 @@
 import { promptPresetSelectClass } from "../../prompt-preset-presentation";
+import { AppSelect } from "@/components/ui/select";
 
 // ==[HUMAN APPROVED]== One typed preset select: the canonical guard decides which vocabulary entries
 // are offered and which change values are accepted, so no caller hand-rolls its own
@@ -23,23 +24,19 @@ export function PromptPresetSelect<T extends string>({
 	onChange: (value: T | "") => void;
 }) {
 	return (
-		<select
+		<AppSelect
 			id={id}
 			aria-label={label}
 			className={promptPresetSelectClass}
 			value={value}
 			disabled={disabled}
-			onChange={(event) => {
-				const next = event.target.value;
+			onValueChange={(next) => {
 				onChange(next !== "" && isOption(next) ? next : "");
 			}}
-		>
-			{emptyLabel !== undefined && <option value="">{emptyLabel}</option>}
-			{Object.entries(labels)
+			emptyLabel={emptyLabel}
+			options={Object.entries(labels)
 				.filter(([option]) => isOption(option))
-				.map(([option, optionLabel]) => (
-					<option key={option} value={option}>{optionLabel}</option>
-				))}
-		</select>
+				.map(([option, optionLabel]) => ({ value: option, label: optionLabel }))}
+		/>
 	);
 }

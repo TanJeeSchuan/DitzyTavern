@@ -1,14 +1,13 @@
 import {
-	BookOpen,
 	BookMarked,
-	Cpu,
+	Cable,
 	ListOrdered,
 	MessageSquare,
 	Settings,
 	SlidersHorizontal,
 	Users,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PrimaryPanel } from "./types";
 
 export function NavigationRail({
@@ -32,18 +31,11 @@ export function NavigationRail({
 					<MessageSquare aria-hidden="true" />
 				</RailButton>
 				<RailButton
-					label="Cast"
-					active={activePanel === "cast"}
-					onClick={() => onOpenPanel("cast")}
+					label="Characters"
+					active={activePanel === "characters"}
+					onClick={() => onOpenPanel("characters")}
 				>
 					<Users aria-hidden="true" />
-				</RailButton>
-				<RailButton
-					label="Library"
-					active={activePanel === "library"}
-					onClick={() => onOpenPanel("library")}
-				>
-					<BookOpen aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Lorebooks"
@@ -60,11 +52,11 @@ export function NavigationRail({
 					<ListOrdered aria-hidden="true" />
 				</RailButton>
 				<RailButton
-					label="Models"
-					active={activePanel === "models"}
-					onClick={() => onOpenPanel("models")}
+					label="Connections"
+					active={activePanel === "connections"}
+					onClick={() => onOpenPanel("connections")}
 				>
-					<Cpu aria-hidden="true" />
+					<Cable aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					label="Generation"
@@ -98,14 +90,17 @@ function RailButton({
 	onClick?: () => void;
 	children: ReactNode;
 }) {
+	const [tooltipSuppressed, setTooltipSuppressed] = useState(false);
 	return (
 		<button
 			type="button"
 			className="rail-button"
 			aria-label={label}
 			aria-pressed={active}
+			data-tooltip-suppressed={tooltipSuppressed}
 			disabled={disabled}
-			onClick={onClick}
+			onClick={() => { setTooltipSuppressed(true); onClick?.(); }}
+			onPointerLeave={() => setTooltipSuppressed(false)}
 		>
 			{children}
 			<span className="rail-label">{disabled ? `${label} unavailable` : label}</span>

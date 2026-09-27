@@ -17,16 +17,21 @@ export class ModelClientProtocolError extends Error {
 export class ModelClientGenerationError extends Error {
 	readonly kind: ModelClientFailureKind;
 	readonly partial: Partial<CollectedModelClientGeneration>;
+	readonly responseBody?: string;
 
 	constructor(
 		kind: ModelClientFailureKind,
 		message: string,
 		partial: Partial<CollectedModelClientGeneration> = {},
+		responseBody?: string,
 	) {
 		super(sanitizeGenerationMessage(message));
 		this.name = "ModelClientGenerationError";
 		this.kind = kind;
 		this.partial = partial;
+		if (responseBody !== undefined) {
+			Object.defineProperty(this, "responseBody", { value: responseBody });
+		}
 	}
 }
 
@@ -104,10 +109,10 @@ export async function collectModelClientGeneration(
 			partial.finishReason = finished.finishReason;
 		}
 		if (error instanceof ModelClientGenerationError) {
-			throw new ModelClientGenerationError(error.kind, error.message, partial);
+			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody);
 		}
 		if (error instanceof Error && isModelClientFailure(error)) {
-			throw new ModelClientGenerationError(error.kind, error.message, partial);
+			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody);
 		}
 		throw error;
 	}
@@ -128,7 +133,7 @@ export async function collectModelClientGeneration(
 
 function isModelClientFailure(
 	error: Error,
-): error is Error & { kind: ModelClientFailureKind } {
+): error is Error & { kind: ModelClientFailureKind; responseBody?: string } {
 	// ==[HUMAN APPROVED]== SAFETY: Model Client transport errors extend Error and carry one of the
 	// closed failure kinds before this predicate is called.
 	const candidate = error as Error & { kind?: ModelClientFailureKind };

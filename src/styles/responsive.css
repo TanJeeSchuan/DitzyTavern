@@ -1,32 +1,3 @@
-@media (min-width: 78.01rem) {
-/* Keep the Chats panel attached to the rail and viewport bottom. The right
-	   panel remains inset so its secondary-surface hierarchy stays intact. */
-	.details-panel {
-		height: calc(100dvh - 1.1rem);
-	}
-
-	.workspace > .primary-panel {
-		height: 100dvh;
-		margin-left: -0.75rem;
-		margin-right: 1.25rem;
-	}
-
-	.workspace > .details-panel {
-		margin-left: 1.25rem;
-	}
-
-	.composer[data-receded="true"] {
-		opacity: 0.24;
-		transform: translateY(72%);
-	}
-
-	.composer[data-receded="true"]:hover,
-	.composer[data-receded="true"]:focus-within {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
 /* New Chat and Import Chat opened from the no-chat surface render outside
    the workspace; cover the viewport instead of docking. */
 body > .details-panel {
@@ -48,46 +19,12 @@ body > .details-panel > .panel-body {
 
 @media (max-width: 90rem) and (min-width: 78.01rem) {
 	.workspace {
+		--panel-gap: 0.55rem;
 		grid-template-columns:
 			4.25rem
 			minmax(15rem, 1fr)
 			minmax(35rem, 45rem)
 			minmax(16rem, 1fr);
-		gap: 0.55rem;
-		padding: 0;
-	}
-
-	.details-panel {
-		height: calc(100dvh - 1.1rem);
-	}
-
-	.story-stage {
-		height: 100dvh;
-	}
-
-	/* Panels nested in the workspace grid return to grid flow here so the
-	   1fr tracks expand them into the utility bays. The 1.25rem column gap
-	   stays visible as the thin ambient sliver between each panel edge and
-	   the story surface. Heights stay definite (never auto) so panels cap at
-	   the viewport and their bodies scroll internally instead of growing
-	   the workspace grid row past the fold. Details panels rendered outside
-	   the workspace (e.g. New Chat on the no-chat surface) keep their fixed
-	   placement. */
-	.workspace > .primary-panel,
-	.workspace > .details-panel {
-		position: static;
-		top: auto;
-		bottom: auto;
-		border-radius: 1.35rem;
-	}
-
-	.workspace > .primary-panel {
-		width: auto;
-		margin-left: -0.55rem;
-	}
-
-	.workspace > .details-panel {
-		width: auto;
 	}
 }
 
@@ -212,11 +149,6 @@ body > .details-panel > .panel-body {
 		margin: 0 auto;
 		padding: 1.25rem;
 	}
-
-	.chat-list-item:disabled,
-	.cast-member button:disabled {
-		opacity: 0.68;
-	}
 }
 
 @media (max-width: 40rem) {
@@ -317,36 +249,10 @@ body > .details-panel > .panel-body {
 
 /* ---- New Chat setup ---- */
 
-.chats-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.5rem;
-	justify-content: flex-end;
-	margin-bottom: 0.85rem;
-}
-
 .new-chat-panel {
 	display: grid;
 	align-content: start;
 	gap: 1.1rem;
-}
-
-.conversation-name-field input,
-.seat-field input,
-.seat-field textarea {
-	width: 100%;
-	border: 1px solid var(--border);
-	border-radius: 0.75rem;
-	background: var(--surface-muted);
-	color: var(--foreground);
-	font-size: 0.86rem;
-	line-height: 1.5;
-}
-
-.conversation-name-field input,
-.seat-field input {
-	height: 2.5rem;
-	padding: 0 0.75rem;
 }
 
 .seat-field textarea {
@@ -375,7 +281,7 @@ body > .details-panel > .panel-body {
 	letter-spacing: 0.01em;
 }
 
-.seat-field select {
+.seat-field .app-select-trigger {
 	width: 100%;
 	height: 2.5rem;
 	padding: 0 0.65rem;
@@ -421,37 +327,6 @@ body > .details-panel > .panel-body {
 	font-size: 0.88rem;
 	font-weight: 670;
 	letter-spacing: -0.015em;
-}
-
-.seat-mode {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 0.35rem;
-	padding: 0.25rem;
-	border-radius: 0.8rem;
-	background: var(--surface-muted);
-}
-
-.seat-mode button {
-	height: 2rem;
-	border: 0;
-	border-radius: 0.6rem;
-	background: transparent;
-	color: var(--text-muted);
-	font-size: 0.76rem;
-	font-weight: 620;
-	cursor: pointer;
-}
-
-.seat-mode button[data-active="true"] {
-	background: var(--surface-raised);
-	box-shadow: 0 1px 2px var(--shadow-soft);
-	color: var(--foreground);
-}
-
-.seat-mode button:disabled {
-	cursor: not-allowed;
-	opacity: 0.55;
 }
 
 .seat-adhoc {
@@ -513,6 +388,10 @@ body > .details-panel > .panel-body {
 	.seats-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+.seat-field .app-select-trigger[data-state="open"] {
+	border-radius: 0.75rem 0.75rem 0 0;
 }
 
 @media (max-width: 28rem) {

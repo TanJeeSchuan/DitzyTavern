@@ -2,15 +2,19 @@ import type { ModelClientFailureKind } from "./types";
 
 export class ModelClientTransportError extends Error {
 	readonly kind: ModelClientFailureKind;
+	readonly responseBody?: string;
 
 	constructor(
 		message: string,
 		kind: ModelClientFailureKind = "transport",
-		options?: ErrorOptions,
+		options?: ErrorOptions & { responseBody?: string },
 	) {
 		super(message, options);
 		this.name = "ModelClientTransportError";
 		this.kind = kind;
+		if (options?.responseBody !== undefined) {
+			Object.defineProperty(this, "responseBody", { value: options.responseBody });
+		}
 	}
 }
 

@@ -562,6 +562,12 @@ const renameParticipantAction = Type.Object({
 	name: Type.String(),
 });
 
+const updateParticipantDefinitionAction = Type.Object({
+	type: Type.Literal("update-participant-definition"),
+	participantId: Type.Integer(),
+	definition: participantDefinition,
+});
+
 const replaceParticipantPromptAction = Type.Object({
 	type: Type.Literal("replace-participant-prompt"),
 	participantId: Type.Integer(),
@@ -572,6 +578,11 @@ const replaceParticipantOpeningsAction = Type.Object({
 	type: Type.Literal("replace-participant-openings"),
 	participantId: Type.Integer(),
 	openings: Type.Array(Type.String()),
+});
+
+const renameConversationAction = Type.Object({
+	type: Type.Literal("rename-conversation"),
+	name: Type.String(),
 });
 
 const assignControlAction = Type.Object({
@@ -611,11 +622,13 @@ const conversationCommandAction = Type.Union([
 	setGenerationModelAction,
 	addParticipantAction,
 	renameParticipantAction,
+	updateParticipantDefinitionAction,
 	replaceParticipantPromptAction,
 	replaceParticipantOpeningsAction,
 	assignControlAction,
 	removeParticipantAction,
 	selectPromptPresetAction,
+	renameConversationAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;
@@ -768,6 +781,8 @@ export type GenerationsStopped = Static<typeof generationsStopped>;
 // named contracts instead of re-declaring shapes at the boundary.
 
 export const conversationIdParams = Type.Object({ id: numericWire });
+
+export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
 
 export const generationIdParams = Type.Object({
 	id: numericWire,

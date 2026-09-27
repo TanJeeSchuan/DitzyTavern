@@ -54,6 +54,7 @@ export const generationEvent = Type.Union([
 		type: Type.Literal("failed"),
 		kind: generationFailureKind,
 		message: Type.String(),
+		responseBody: Type.Optional(Type.String()),
 	}),
 ]);
 

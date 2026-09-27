@@ -1,8 +1,15 @@
-import { SlidersHorizontal } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import { AppSelect } from "@/components/ui/select";
+import { Field } from "@/components/ui/field";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ConversationSummary } from "../conversation";
-import { generationSettingsSummaryFromDrafts } from "../generation-settings-draft";
-import { BudgetEditor } from "./GenerationSettingsEditors";
+import { getLorebookAttachmentState } from "../lorebook-library";
+import { OVERRIDES_NAMESPACE_LABELS, requestOverridesSummary } from "../generation-settings-draft";
+import { BudgetEditor, SamplingEditor, SiblingGenerationEditor } from "./GenerationSettingsEditors";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
+import { SaveFooter } from "../SaveFooter";
+import { useSaveGuard } from "../SaveGuard";
 
 export function GenerationPanel({
 	conversation,
@@ -20,13 +27,15 @@ export function GenerationPanel({
 			</div>
 		);
 	}
-	return <GenerationSettings controller={controller} onOpenInspector={onOpenInspector} />;
+	return <GenerationSettings conversationId={conversation.id} controller={controller} onOpenInspector={onOpenInspector} />;
 }
 
 function GenerationSettings({
+	conversationId,
 	controller,
 	onOpenInspector,
 }: {
+	conversationId: number;
 	controller: GenerationSettingsDraftController;
 	onOpenInspector: () => void;
 }) {
@@ -42,20 +51,27 @@ function GenerationSettings({
 		setPrefillSuffix,
 		updateInstruction,
 		canSave,
+		dirty,
 		save,
+		discard,
 		samplingDrafts,
+		updateSampling,
 		budgetDrafts,
 		updateBudget,
 		overridesDrafts,
 	} = controller;
+	useSaveGuard({ dirty, saving: status === "saving", save, discard });
+	const [loreAllowance, setLoreAllowance] = useState<number | null>(null);
+	useEffect(() => {
+		let cancelled = false;
+		void getLorebookAttachmentState(conversationId).then((state) => { if (!cancelled) setLoreAllowance(state?.allowance ?? null); }).catch(() => undefined);
+		return () => { cancelled = true; };
+	}, [conversationId]);
 
-	const summary = generationSettingsSummaryFromDrafts(
-		{ sampling: samplingDrafts, budget: budgetDrafts, overrides: overridesDrafts },
-		transmittingNamespace.status === "known" ? transmittingNamespace.namespace : null,
-	);
+	const namespace = transmittingNamespace.status === "known" ? transmittingNamespace.namespace : null;
 
 	return (
-		<div className="panel-body settings-panel-body">
+		<><div className="panel-body settings-panel-body">
 			{settings !== null && problem !== null && (
 				<p className="import-problem" role="alert">{problem}</p>
 			)}
@@ -63,90 +79,54 @@ function GenerationSettings({
 				<p className="import-problem" role="alert">Generation Settings could not be loaded.</p>
 			)}
 			{settings !== null && status !== "load-error" && (
-				<div className="definition-form">
-					<section aria-labelledby="generation-model-title">
-						<h3 id="generation-model-title">Model</h3>
-						<div className="field">
-							<span className="generation-model-value">{settings.modelId}</span>
-							<small>The model ID is chosen beside the composer.</small>
-						</div>
-					</section>
+				<div className="grid gap-8">
+					<p className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+						<span className="text-sm font-semibold text-foreground">{settings.modelId}{namespace !== null && <span className="font-normal text-muted-foreground"> · {OVERRIDES_NAMESPACE_LABELS[namespace]}</span>}</span>
+						Change the model from the composer.
+					</p>
+
+					<SamplingEditor drafts={samplingDrafts} onChange={updateSampling} />
+
+					<BudgetEditor drafts={budgetDrafts} onChange={updateBudget} loreAllowance={loreAllowance} />
 
 					<section aria-labelledby="continuation-settings-title">
 						<h3 id="continuation-settings-title">Continuation</h3>
 						<p>How the next model Message continues after a length limit.</p>
-						<div className="field">
-							<label htmlFor="continuation-strategy">Strategy</label>
-							<select
-								id="continuation-strategy"
-								className="field-input"
-								value={strategy}
-								onChange={(event) => setStrategy(event.target.value === "assistant-prefill" ? "assistant-prefill" : "instruction")}
-							>
-								<option value="instruction">Instruction</option>
-								<option value="assistant-prefill">Assistant prefill</option>
-							</select>
-						</div>
-						{strategy === "assistant-prefill" && (
-							<div className="field">
-								<label htmlFor="continuation-prefill-suffix">Prefill suffix</label>
-								<select
+						<SegmentedControl value={strategy} onValueChange={setStrategy} label="Continuation strategy" options={[{ value: "instruction", label: "Instruction" }, { value: "assistant-prefill", label: "Assistant prefill" }]} />
+						{strategy === "assistant-prefill" ? (
+							<Field htmlFor="continuation-prefill-suffix" label="Prefill suffix">
+								<AppSelect
 									id="continuation-prefill-suffix"
 									className="field-input"
 									value={prefillSuffix}
-									onChange={(event) => setPrefillSuffix(event.target.value === " " || event.target.value === "\n" || event.target.value === "\n\n" ? event.target.value : "")}
-								>
-									<option value="">None</option>
-									<option value=" ">Space</option>
-									<option value="\n">Newline</option>
-									<option value="\n\n">Double newline</option>
-								</select>
-							</div>
+									onValueChange={(value) => setPrefillSuffix(value === " " || value === "\n" || value === "\n\n" ? value : "")}
+									emptyLabel="None"
+									options={[{ value: " ", label: "Space" }, { value: "\n", label: "Newline" }, { value: "\n\n", label: "Double newline" }]}
+								/>
+							</Field>
+						) : (
+							<Field htmlFor="continuation-instruction" label="Continuation instruction">
+								<textarea
+									id="continuation-instruction"
+									value={instruction}
+									rows={3}
+									onChange={(event) => updateInstruction(event.target.value)}
+								/>
+							</Field>
 						)}
-						<div className="field">
-							<label htmlFor="continuation-instruction">Continuation instruction</label>
-							<textarea
-								id="continuation-instruction"
-								value={instruction}
-								rows={3}
-								onChange={(event) => updateInstruction(event.target.value)}
-							/>
-							{strategy === "assistant-prefill" && (
-								<small>Ignored while the Assistant prefill strategy is active.</small>
-							)}
-						</div>
 					</section>
 
-					<BudgetEditor drafts={budgetDrafts} onChange={updateBudget} />
+					<SiblingGenerationEditor draft={budgetDrafts.siblingGenerationLimit} onChange={(value) => updateBudget("siblingGenerationLimit", value)} />
 
-					<section className="generation-settings-summary" aria-labelledby="generation-summary-title">
-						<div className="settings-summary-heading">
-							<div>
-								<h3 id="generation-summary-title">Advanced settings</h3>
-								<p>Sampling and Request Overrides are ready in the inspector.</p>
-							</div>
-							<SlidersHorizontal aria-hidden="true" />
-						</div>
-						<dl className="settings-summary-list">
-							<div><dt>Sampling</dt><dd>{summary.sampling}</dd></div>
-							<div><dt>Request Overrides</dt><dd>{summary.overrides}</dd></div>
-							<div><dt>Transmitted namespace</dt><dd>{summary.transmittingNamespace}</dd></div>
-						</dl>
-						<button className="secondary-button settings-inspector-entry" type="button" onClick={onOpenInspector}>
-							<SlidersHorizontal aria-hidden="true" /> Edit in inspector
-						</button>
-					</section>
-
-					<button
-						className="primary-button"
-						type="button"
-						disabled={!canSave}
-						onClick={() => void save()}
-					>
-						{status === "saving" ? "Saving…" : "Save Generation settings"}
+					<button type="button" className="flex items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted/50" onClick={onOpenInspector}>
+						<span className="grid gap-0.5">
+							<span className="text-[0.86rem] font-semibold">Request Overrides</span>
+							<span className="text-xs text-muted-foreground">{requestOverridesSummary(overridesDrafts, namespace)}</span>
+						</span>
+						<ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
 					</button>
 				</div>
 			)}
-		</div>
+		</div><SaveFooter dirty={dirty} saving={status === "saving"} valid={canSave} error={problem} onSave={() => void save()} /></>
 	);
 }

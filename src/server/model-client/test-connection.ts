@@ -4,6 +4,7 @@ import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
 import { authenticatedHeaders } from "./authenticated-headers";
 import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
+import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
 import {
 	formatProviderError,
 	providerErrorStatus,
@@ -29,6 +30,7 @@ export type TestConnectionResult =
 			outcome: "failure";
 			kind: TestConnectionFailureKind;
 			message: string;
+			responseBody?: string;
 		};
 
 export interface TestConnectionInput {
@@ -87,12 +89,19 @@ export async function testConnection(
 		controller.abort();
 	}, timeoutMs);
 	const actualFetch = options.fetch ?? fetch;
-	const fetchAtResolvedDestination: ModelFetch = async (_input, init) =>
-		actualFetch(requestUrl, {
+	const secretValues = [credential ?? "", ...Object.values(headers)];
+	const fetchAtResolvedDestination: ModelFetch = async (_input, init) => {
+		const response = await actualFetch(requestUrl, {
 			...init,
 			headers: authenticatedHeaders(init?.headers, credential, headers),
 			redirect: "error",
 		});
+		if (response.ok) return response;
+		return new Response(await readProviderDiagnostic(response, secretValues), {
+			status: response.status,
+			headers: { "content-type": response.headers.get("content-type") ?? "text/plain" },
+		});
+	};
 
 	try {
 		const provider = createModelAdapter({
@@ -122,6 +131,7 @@ export async function testConnection(
 		// response fields; the parser below reads only those known fields. ==[HUMAN APPROVED]==
 		return normalizeTestConnectionError(error as ProviderErrorLike, {
 			timedOut,
+			secretValues,
 		});
 	} finally {
 		clearTimeout(timeout);
@@ -130,6 +140,7 @@ export async function testConnection(
 
 interface ErrorContext {
 	timedOut: boolean;
+	secretValues: readonly string[];
 }
 
 function normalizeTestConnectionError(
@@ -140,19 +151,20 @@ function normalizeTestConnectionError(
 		return failure("timeout", "The provider did not respond within the short Test Connection timeout.");
 	}
 	const status = providerErrorStatus(error);
+	const responseBody = error.responseBody === undefined ? undefined : redactProviderDiagnostic(error.responseBody, context.secretValues);
 	if (status !== undefined && status >= 300 && status < 400) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
 	if (status === 401 || status === 403) {
-		return failure("authentication", providerFailureMessage(error));
+		return failure("authentication", providerFailureMessage(error), responseBody);
 	}
 	if (isMalformedResponseError(error)) {
-		return failure("malformed-response", providerFailureMessage(error));
+		return failure("malformed-response", providerFailureMessage(error), responseBody);
 	}
 	if (isRedirectError(error)) {
 		return failure("redirect", "The provider redirected the credentialed request, so it was not followed.");
 	}
-	return failure("endpoint", providerFailureMessage(error));
+	return failure("endpoint", providerFailureMessage(error), responseBody);
 }
 
 function providerFailureMessage(error: ProviderErrorLike): string {
@@ -180,6 +192,8 @@ function hasReasoning(result: { reasoningText?: string | undefined; reasoning: A
 	return result.reasoning.some((part) => part.type === "reasoning" && (part.text ?? "").trim().length > 0);
 }
 
-function failure(kind: TestConnectionFailureKind, message: string): TestConnectionResult {
-	return { outcome: "failure", kind, message };
+function failure(kind: TestConnectionFailureKind, message: string, responseBody?: string): TestConnectionResult {
+	const result: TestConnectionResult = { outcome: "failure", kind, message };
+	if (responseBody !== undefined) result.responseBody = responseBody;
+	return result;
 }

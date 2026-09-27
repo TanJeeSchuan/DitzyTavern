@@ -215,6 +215,12 @@ export function useGenerationSettingsDraft({
 		budgetValues !== null &&
 		overridesValues !== null &&
 		instruction.trim() !== "";
+	const dirty = settings !== null && (
+		instruction !== settings.continuationInstruction || strategy !== settings.continuationStrategy || prefillSuffix !== settings.continuationPrefillSuffix ||
+		JSON.stringify(samplingDrafts) !== JSON.stringify(samplingDraftsFromSettings(settings)) ||
+		JSON.stringify(budgetDrafts) !== JSON.stringify(budgetDraftsFromSettings(settings)) ||
+		JSON.stringify(overridesDrafts) !== JSON.stringify(overridesDraftsFromSettings(settings))
+	);
 
 	const updateSampling = (field: SamplingField, raw: string) => {
 		draftVersionRef.current += 1;
@@ -259,10 +265,11 @@ export function useGenerationSettingsDraft({
 			samplingValues === null ||
 			budgetValues === null ||
 			overridesValues === null
-		) return;
+		) return false;
 		const conversationId = conversation.id;
 		const draftVersion = draftVersionRef.current;
 		const saveVersion = ++saveVersionRef.current;
+		let applied = false;
 		setStatus("saving");
 		const ownsSave = () => saveVersionRef.current === saveVersion && conversationIdRef.current === conversationId;
 		const showUnreachable = () => {
@@ -288,10 +295,13 @@ export function useGenerationSettingsDraft({
 					},
 				},
 				onApplied: (next) => {
-					if (!ownsSave() || draftVersionRef.current !== draftVersion) return;
+					if (!ownsSave()) return;
+					applied = true;
 					setSettings(next);
-					setStrategy(next.continuationStrategy);
-					setPrefillSuffix(next.continuationPrefillSuffix);
+					if (draftVersionRef.current === draftVersion) {
+						setStrategy(next.continuationStrategy);
+						setPrefillSuffix(next.continuationPrefillSuffix);
+					}
 					setProblem(null);
 				},
 				onConflict: (current) => {
@@ -314,6 +324,18 @@ export function useGenerationSettingsDraft({
 		} finally {
 			if (ownsSave()) setStatus("ready");
 		}
+		return applied && draftVersionRef.current === draftVersion;
+	};
+	const discard = () => {
+		if (settings === null) return;
+		draftVersionRef.current += 1;
+		setInstruction(settings.continuationInstruction);
+		setStrategy(settings.continuationStrategy);
+		setPrefillSuffix(settings.continuationPrefillSuffix);
+		setSamplingDrafts(samplingDraftsFromSettings(settings));
+		setBudgetDrafts(budgetDraftsFromSettings(settings));
+		setOverridesDrafts(overridesDraftsFromSettings(settings));
+		setProblem(null);
 	};
 
 	return {
@@ -335,7 +357,9 @@ export function useGenerationSettingsDraft({
 		updateOverrides,
 		updateInstruction,
 		canSave,
+		dirty,
 		save,
+		discard,
 	};
 }
 

@@ -67,7 +67,7 @@ Warmth must not become cute, rustic, faux-medieval, or whimsical.
 ## Visual principles
 
 1. **The story is the primary artifact.** Prose receives the clearest reading surface and the least decorative chrome.
-2. **Human guidance is visible causality.** Human-authored guidance Messages remain readable in the timeline and are visually distinct from generated prose.
+2. **Human guidance is visible causality.** Human-authored guidance Messages remain readable in the timeline with their captured author identity.
 3. **Power follows a hierarchy.** Common actions remain visible. Advanced controls appear through hover, keyboard focus, touch selection, or an explicit details action.
 4. **Identity is contextual.** Character artwork and authorship become prominent where they help the user understand who is involved or what produced a Message.
 5. **Atmosphere surrounds the work.** Ambient color belongs to the outer application shell, never beneath prose or controls.
@@ -211,7 +211,7 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 ### Human guidance Messages
 
-- Remain fully visible as compact, softly tinted instruction blocks.
+- Use the same open Message treatment as the rest of the timeline, without a separate tint or human-only mark.
 - Use the captured Participant name and the rounded reading face.
 - Stay visually subordinate to generated prose without becoming low-contrast.
 - Current scope uses readable inline blocks.
@@ -229,14 +229,16 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 ### Message actions
 
 - Every generated Message owns its own actions, not only the latest Message.
-- Swipe controls and Edit remain visible at rest.
+- Edit and Swipe controls appear on hover, keyboard focus, or touch selection. The latest Message keeps its actions visible.
 - Swipe state uses plain positional text such as `2 of 4`.
 - Previous and next controls, keyboard arrows, and touchscreen swipe provide equivalent variant navigation.
 - Regenerate, inspect Prompt, copy, branch, remove, and other advanced actions appear through hover, keyboard focus, touch selection, or a compact overflow action.
 
 ### Floating composer
 
-- Use two editable, Cast-only Control selectors at the start of the composer: **Writing as** (the human seat) and **Responding as** (the model seat), each reflecting the current assignment.
+- Show the model chip directly in the toolbar. It opens one searchable picker, without an intermediate connection popover. Explain preview locks beside the chip.
+
+- Use two editable, Cast-only Control selectors as quiet pills in the composer toolbar beside Send: the human seat (person glyph, accessibly labelled **Writing as**) and the model seat (sparkle glyph, reading "<name> replies", accessibly labelled **Responding as**), each reflecting the current assignment. The placeholder names the human seat (`What does <name> do next?`).
 - Selecting the opposite seat's occupant is visibly described as a swap and performs one atomic exchange of the two assignments, so a two-Participant Cast can never become locked.
 - Selecting an unseated Participant replaces only the chosen seat; the displaced Participant stays in the Cast and becomes removable.
 - Neither seat can be cleared; the selectors offer only Cast Participants, named with computed duplicate labels.
@@ -255,6 +257,9 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Avoid blinking cursors, fake keystroke timing, or other theatrical effects.
 
 ### Panels and details
+
+- Use the shared coral Switch, segmented control, input shape, and destructive Button across panels.
+- Show validation errors after blur or a submit attempt, never on an untouched form.
 
 - Left panels contain primary story context such as Cast and other first-order Chat controls.
 - Right panels contain secondary detail, inspection, and comparison surfaces.

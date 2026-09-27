@@ -287,15 +287,14 @@ export const promptPresetDeleteCommand = Type.Object({
 	expectedConversationCount: Type.Integer(),
 });
 
-// ==[HUMAN APPROVED]== The one authored-field save contract: individual block Save and
-// save-on-leave address only the fields the editor owns. Occurrence identity
-// is mandatory so a save can never accidentally target a duplicate occurrence
-// or rewrite ordering and enablement.
+// ==[HUMAN APPROVED]== One occurrence-addressed patch saves block fields and enablement
+// without rewriting ordering or another occurrence.
 export const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
 		type: Type.Literal("role"),
 		role: promptOutgoingRole,
+		enabled: Type.Optional(Type.Boolean()),
 	}),
 	Type.Object({
 		occurrenceId: Type.Integer(),
@@ -303,13 +302,17 @@ export const promptPresetBlockPatch = Type.Union([
 		name: Type.String(),
 		content: Type.String(),
 		role: promptOutgoingRole,
+		enabled: Type.Optional(Type.Boolean()),
+	}),
+	Type.Object({
+		occurrenceId: Type.Integer(),
+		type: Type.Literal("enabled"),
+		enabled: Type.Boolean(),
 	}),
 ]);
 export type PromptPresetBlockPatch = Static<typeof promptPresetBlockPatch>;
 
-// ==[HUMAN APPROVED]== The recipe route's patch batch: an individual Save submits one
-// occurrence-addressed patch and save-on-leave submits the dirty set, applied
-// atomically or refused entirely.
+// ==[HUMAN APPROVED]== The footer and save-on-leave submit the dirty set atomically.
 export const promptPresetBlockPatchesBody = Type.Object({
 	patches: Type.Array(promptPresetBlockPatch),
 });
@@ -384,8 +387,8 @@ export const promptPresetCommandConflict = Type.Union([
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each operation
 // persists the smallest change it names: adding one reference, moving one
 // occurrence, toggling one occurrence, duplicating one occurrence, or removing
-// one occurrence — never a whole-recipe rewrite that could stomp separately
-// saved changes. Authored-field saves travel the patch batch below instead.
+// one occurrence. The Prompt Preset editor sends toggles and authored fields through
+// the patch batch; the single-toggle route also serves Lorebooks.
 export const addPromptPresetBlockBody = Type.Object({ reference: promptBlockReference });
 export const movePromptPresetBlockBody = Type.Object({
 	toPosition: Type.Integer({ minimum: 1 }),

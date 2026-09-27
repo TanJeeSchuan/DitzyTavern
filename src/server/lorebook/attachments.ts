@@ -196,14 +196,14 @@ export const readLorebookAttachmentImpact = (
 	return {
 		bookId,
 		attachments: [
-			...db.select({ id: characterLorebookAttachmentTable.id, ownerId: characterLorebookAttachmentTable.character_id, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
-				.from(characterLorebookAttachmentTable).where(eq(characterLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db.select({ id: characterLorebookAttachmentTable.id, ownerId: characterLorebookAttachmentTable.character_id, ownerName: characterTable.name, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
+				.from(characterLorebookAttachmentTable).innerJoin(characterTable, eq(characterTable.id, characterLorebookAttachmentTable.character_id)).where(eq(characterLorebookAttachmentTable.lorebook_id, bookId)).all()
 				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "character" as const })),
-			...db.select({ id: participantLorebookAttachmentTable.id, ownerId: participantLorebookAttachmentTable.participant_id, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
-				.from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db.select({ id: participantLorebookAttachmentTable.id, ownerId: participantLorebookAttachmentTable.participant_id, ownerName: participantTable.name, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
+				.from(participantLorebookAttachmentTable).innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id)).where(eq(participantLorebookAttachmentTable.lorebook_id, bookId)).all()
 				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "participant" as const })),
-			...db.select({ id: conversationLorebookAttachmentTable.id, ownerId: conversationLorebookAttachmentTable.conversation_id, enabled: conversationLorebookAttachmentTable.enabled })
-				.from(conversationLorebookAttachmentTable).where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db.select({ id: conversationLorebookAttachmentTable.id, ownerId: conversationLorebookAttachmentTable.conversation_id, ownerName: conversationTable.name, enabled: conversationLorebookAttachmentTable.enabled })
+				.from(conversationLorebookAttachmentTable).innerJoin(conversationTable, eq(conversationTable.id, conversationLorebookAttachmentTable.conversation_id)).where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId)).all()
 				.map((row) => ({ ...row, scope: "chat" as const, owner: "conversation" as const })),
 		],
 	};

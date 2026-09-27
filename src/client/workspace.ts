@@ -1,5 +1,5 @@
+import { applyConversationCommand, loadConversation, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
-import { formatTimestamp } from "./lib/format";
 
 export type ThemePreference = "system" | "daylight" | "evening";
 
@@ -7,6 +7,8 @@ export type ChatSummary = {
 	id: string;
 	title: string;
 	updatedAt: string;
+	castNames: string[];
+	excerpt: string;
 };
 
 export type Workspace = {
@@ -32,18 +34,46 @@ export function resolveWorkspaceActiveChat(
 	return chats.find((chat) => chat.id === authoritativeActiveChatId) ?? null;
 }
 
-export const workspaceClient: WorkspaceClient = {
-	async loadActiveWorkspace(preferredChatId?: string) {
-		const { data, error } = await api.api.workspace.get();
-		if (error || !data) {
-			throw new Error("Unable to load workspace");
-		}
-
-		const chats = data.chats.map((chat) => ({
+const fetchWorkspace = async () => {
+	const { data, error } = await api.api.workspace.get();
+	if (error || !data) {
+		throw new Error("Unable to load workspace");
+	}
+	return {
+		...data,
+		chats: data.chats.map((chat): ChatSummary => ({
 			id: String(chat.id),
 			title: chat.name,
-			updatedAt: formatTimestamp(chat.lastMessageTime),
-		}));
+			updatedAt: chat.lastMessageTime,
+			castNames: chat.castNames,
+			excerpt: chat.excerpt,
+		})),
+	};
+};
+
+export const listChats = async () => (await fetchWorkspace()).chats;
+
+export async function deleteChat(chatId: string): Promise<string | null> {
+	const { error } = await api.api.conversations({ id: Number(chatId) }).delete();
+	if (!error) return null;
+	return error.status === 422 && "reason" in error.value ? error.value.reason : "The Chat could not be deleted.";
+}
+
+// ==[HUMAN APPROVED]== Renames any Chat, not only the open one, so the current revision is read
+// first; a revision that moved in between is retried once.
+export async function renameChat(chatId: string, name: string): Promise<{ status: "renamed"; conversation: ConversationSummary } | { status: "failed"; reason: string }> {
+	const current = await loadConversation(Number(chatId)).catch(() => null);
+	if (current === null) return { status: "failed", reason: "The Chat could not be reached." };
+	let outcome = await applyConversationCommand(current.id, current.revision, { type: "rename-conversation", name });
+	if (outcome.status === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
+	if (outcome.status === "applied") return { status: "renamed", conversation: outcome.conversation };
+	return { status: "failed", reason: outcome.status === "invalid" ? outcome.reason : "The Chat could not be renamed." };
+}
+
+export const workspaceClient: WorkspaceClient = {
+	async loadActiveWorkspace(preferredChatId?: string) {
+		const data = await fetchWorkspace();
+		const chats = data.chats;
 
 		return {
 			activeChat: resolveWorkspaceActiveChat(

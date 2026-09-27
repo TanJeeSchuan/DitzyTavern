@@ -1,8 +1,8 @@
-import { Check, Monitor, Moon, Sun } from "lucide-react";
-import { Switch } from "radix-ui";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../workspace";
-import { EmbeddingSettingsEditor } from "./EmbeddingSettingsEditor";
 
 export function SettingsPanel({
 	theme,
@@ -30,20 +30,7 @@ export function SettingsPanel({
 			<section>
 				<h3>Appearance</h3>
 				<p>Choose how the writing room responds to your display.</p>
-				<div className="theme-options">
-					{choices.map((choice) => (
-						<button
-							type="button"
-							key={choice.value}
-							data-active={theme === choice.value}
-							onClick={() => onThemeChange(choice.value)}
-						>
-							{choice.icon}
-							<span>{choice.label}</span>
-							{theme === choice.value && <Check aria-hidden="true" />}
-						</button>
-					))}
-				</div>
+				<SegmentedControl value={theme} onValueChange={onThemeChange} label="Appearance" options={choices.map((choice) => ({ value: choice.value, label: <>{choice.icon}{choice.label}</> }))} />
 			</section>
 			<section className="settings-section">
 				<h3>Generation workflow</h3>
@@ -53,12 +40,10 @@ export function SettingsPanel({
 						<strong id="prompt-plan-inspection-label">Inspect Prompt Plan before generating</strong>
 						<span id="prompt-plan-inspection-description">Review and edit the exact plan before sending it to the model.</span>
 					</div>
-					<Switch.Root className="settings-switch" checked={inspectPromptPlanBeforeGenerating} onCheckedChange={onInspectPromptPlanBeforeGeneratingChange} aria-labelledby="prompt-plan-inspection-label" aria-describedby="prompt-plan-inspection-description">
-						<Switch.Thumb className="settings-switch-thumb" />
-					</Switch.Root>
+					<Switch checked={inspectPromptPlanBeforeGenerating} onCheckedChange={onInspectPromptPlanBeforeGeneratingChange} aria-labelledby="prompt-plan-inspection-label" aria-describedby="prompt-plan-inspection-description" />
 				</div>
 			</section>
-			<EmbeddingSettingsEditor />
+			<p className="text-xs text-muted-foreground" role="status">Saved</p>
 		</div>
 	);
 }

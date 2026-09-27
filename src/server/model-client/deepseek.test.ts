@@ -175,12 +175,12 @@ describe("DeepSeek production Model Client", () => {
 		]);
 	});
 
-	test("reports allow-listed provider diagnostics without leaking response content or Profile secrets", async () => {
+	test("keeps diagnostics useful without exposing credentials or custom headers", async () => {
 		const credential = "credential-never-returned";
 		const customHeaderValue = "custom-header-never-returned";
 		const errorBody = JSON.stringify({
 			error: {
-				message: `${"diagnostic ".repeat(2_000)} ${credential} ${customHeaderValue}`,
+				message: `diagnostic prefix${credential}suffix ${customHeaderValue}`,
 			},
 		});
 		const client = createDeepSeekModelClient({
@@ -209,10 +209,11 @@ describe("DeepSeek production Model Client", () => {
 			if (!(error instanceof ModelClientTransportError)) return;
 			expect(error.kind).toBe("provider");
 			expect(error.message).toContain("HTTP 401");
-			expect(error.message).toContain("22079-byte response body");
+			expect(error.message).toContain(`${new TextEncoder().encode(errorBody).byteLength}-byte response body`);
 			expect(error.message).not.toContain("diagnostic");
 			expect(error.message).not.toContain(credential);
 			expect(error.message).not.toContain(customHeaderValue);
+			expect(error.responseBody).toBe('{"error":{"message":"diagnostic prefix[REDACTED]suffix [REDACTED]"}}');
 		}
 	});
 });

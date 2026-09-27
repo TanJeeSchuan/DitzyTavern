@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { Sparkles, UserRound } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { controlChangeDescription } from "./cast";
 import {
 	applyConversationCommand,
@@ -17,28 +19,22 @@ import { ModelSelector } from "./ModelSelector";
 interface ComposerControlSelectorsProps {
 	conversation: ConversationSummary;
 	disabled?: boolean;
+	disabledReason?: string;
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onModelSelectionChange: (connectionProfileId: number, modelId: string) => void;
+	onControlChange: (notice: string) => void;
 }
 
 export function ComposerControlSelectors({
 	conversation,
 	disabled = false,
+	disabledReason,
 	onConversationChange,
 	onModelSelectionChange,
+	onControlChange,
 }: ComposerControlSelectorsProps) {
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
-
-	// ==[HUMAN APPROVED]== A transient swap/replacement description shown immediately after the
-	// change so the composer visibly describes the consequence.
-	const [lastChange, setLastChange] = useState<string | null>(null);
-
-	useEffect(() => {
-		if (lastChange === null) return;
-		const timer = window.setTimeout(() => setLastChange(null), 4000);
-		return () => window.clearTimeout(timer);
-	}, [lastChange]);
 
 	if (conversation.cast.length === 0) {
 		return null;
@@ -77,7 +73,7 @@ export function ComposerControlSelectors({
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
 				callbacks: {
-					onApplied: () => setLastChange(description.notice),
+					onApplied: () => onControlChange(description.notice),
 					onNotPlayable: showUnreachable,
 					onNotRemovable: showUnreachable,
 				},
@@ -87,68 +83,48 @@ export function ComposerControlSelectors({
 		}
 	};
 
+	const seatSelect = (seat: "human" | "model", label: string, icon: ReactNode, suffix?: string) => {
+		const id = `composer-${seat}`;
+		const seated = seat === "human" ? conversation.control.humanParticipantId : conversation.control.modelParticipantId;
+		const opposite = seat === "human" ? conversation.control.modelParticipantId : conversation.control.humanParticipantId;
+		return (
+			<>
+				<label htmlFor={id} className="sr-only">{label}</label>
+				<Select
+					value={seated === null ? undefined : String(seated)}
+					disabled={disabled || pending}
+					onValueChange={(value) => void assign(seat, Number(value))}
+				>
+					<SelectTrigger id={id} className="control-select-trigger focus-visible:ring-0">
+						{icon}
+						<SelectValue placeholder="No one assigned" />
+						{suffix !== undefined && <span className="control-select-suffix" aria-hidden="true">{suffix}</span>}
+					</SelectTrigger>
+					<SelectContent position="popper" side="top" align="start" sideOffset={-1} className="control-select-menu shadow-none ring-0 data-[side=top]:translate-y-0">
+						{options.map((option) => (
+							<SelectItem key={option.value} value={String(option.value)}>
+								{option.label}
+								{option.value === opposite && <span className="control-select-swap" title="Swap seats"><span aria-hidden="true">⇄</span><span className="sr-only">swap seats</span></span>}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</>
+		);
+	};
+
 	return (
 		<div className="composer-controls">
-			<div className="control-select">
-				<label htmlFor="composer-human">Writing as</label>
-				<select
-					id="composer-human"
-					value={conversation.control.humanParticipantId ?? ""}
-					disabled={disabled || pending}
-					onChange={(event) => {
-						const participantId = Number(event.target.value);
-						if (Number.isInteger(participantId) && participantId > 0) {
-							void assign("human", participantId);
-						}
-					}}
-				>
-					{conversation.control.humanParticipantId === null && (
-						<option value="">No one assigned</option>
-					)}
-					{options.map((option) => (
-						<option key={option.value} value={option.value}>
-							{option.label}
-						</option>
-					))}
-				</select>
-			</div>
+			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}
 				disabled={disabled}
-				 onConversationChange={onConversationChange}
+				disabledReason={disabledReason}
+				onConversationChange={onConversationChange}
 				onSelectionChange={onModelSelectionChange}
 			/>
-			<div className="control-select">
-				<label htmlFor="composer-model">Responding as</label>
-				<select
-					id="composer-model"
-					value={conversation.control.modelParticipantId ?? ""}
-					disabled={disabled || pending}
-					onChange={(event) => {
-						const participantId = Number(event.target.value);
-						if (Number.isInteger(participantId) && participantId > 0) {
-							void assign("model", participantId);
-						}
-					}}
-				>
-					{conversation.control.modelParticipantId === null && (
-						<option value="">No one assigned</option>
-					)}
-					{options.map((option) => (
-						<option key={option.value} value={option.value}>
-							{option.label}
-						</option>
-					))}
-				</select>
-			</div>
-			{(lastChange !== null || notice !== null) && (
-				<p
-					className={`composer-control-note${notice !== null ? " is-error" : ""}`}
-					role={notice !== null ? "alert" : "status"}
-				>
-					{notice ?? lastChange}
-				</p>
-			)}
+			{seatSelect("model", "Responding as", <Sparkles aria-hidden="true" />, "replies")}
+			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}
 		</div>
 	);
 }

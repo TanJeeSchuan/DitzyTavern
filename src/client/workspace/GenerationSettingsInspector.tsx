@@ -1,6 +1,6 @@
 import type { ConversationSummary } from "../conversation";
 import { PanelHeader } from "../PanelHeader";
-import { GenerationSecondaryEditors } from "./GenerationSettingsEditors";
+import { RequestOverridesEditor } from "./GenerationSettingsEditors";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
 
 export function GenerationSettingsInspector({
@@ -13,9 +13,9 @@ export function GenerationSettingsInspector({
 	onClose: () => void;
 }) {
 	return (
-		<aside className="details-panel split-inspector" data-open="true" aria-label="Generation Settings inspector">
+		<aside className="details-panel split-inspector" data-open="true" aria-label="Request Overrides">
 			<PanelHeader
-				title="Generation Settings inspector"
+				title="Request Overrides"
 				backLabel="Back to Generation Settings"
 				onClose={onClose}
 			/>
@@ -26,7 +26,7 @@ export function GenerationSettingsInspector({
 				)}
 				{controller.settings !== null && controller.status !== "load-error" && (
 					<div className="definition-form">
-						<GenerationSecondaryEditors controller={controller} />
+						<RequestOverridesEditor drafts={controller.overridesDrafts} onChange={controller.updateOverrides} transmittingNamespace={controller.transmittingNamespace} />
 					</div>
 				)}
 			</div>

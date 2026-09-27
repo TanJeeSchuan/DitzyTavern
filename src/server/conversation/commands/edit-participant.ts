@@ -90,3 +90,19 @@ export function replaceParticipantOpenings(
 			.run();
 	}
 }
+
+export function updateParticipantDefinition(db: ConversationDatabase, input: {
+	conversationId: number;
+	participantId: number;
+	definition: { name: string; prompt: PromptChannels; openings: string[] };
+}) {
+	const name = requireParticipantName(input.definition.name);
+	const openings = requireParticipantOpenings(input.definition.openings);
+	const participant = requireParticipant(db, input.conversationId, input.participantId);
+	db.update(participantTable).set({ name }).where(eq(participantTable.id, participant.id)).run();
+	const promptRow = toPromptChannelRow(input.definition.prompt);
+	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
+		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
+	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
+	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
+}

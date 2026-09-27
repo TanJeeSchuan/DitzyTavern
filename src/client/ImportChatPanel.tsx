@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldAlert, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import {
@@ -272,13 +273,12 @@ export function ImportChatPanel({
 							>
 								Keep editing
 							</button>
-							<button
-								className="danger-button"
+							<Button variant="destructive"
 								type="button"
 								onClick={handleConfirmCancel}
 							>
 								Discard import
-							</button>
+							</Button>
 						</div>
 					</section>
 				)}
