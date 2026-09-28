@@ -1,6 +1,7 @@
-import { authenticatedHeaders } from "../model-client/authenticated-headers";
-import { fetchWithTimeout, ModelFetchTimeoutError, readBoundedResponse } from "../model-client/model-fetch";
-import type { ModelFetch } from "../model-client/types";
+import type { ConnectionProfileSecretSnapshot } from "../connection-settings/types";
+import { authenticatedHeaders } from "./authenticated-headers";
+import { fetchWithTimeout, ModelFetchTimeoutError, readBoundedResponse } from "./model-fetch";
+import type { ModelFetch } from "./types";
 
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
@@ -16,7 +17,7 @@ export class EmbeddingServiceError extends Error {
 export interface EmbeddingClientOptions {
 	readonly endpoint: string;
 	readonly model: string;
-	readonly credential: string | null;
+	readonly secrets: ConnectionProfileSecretSnapshot | null;
 	readonly timeoutMs: number;
 	readonly fetch?: ModelFetch;
 	readonly signal?: AbortSignal;
@@ -30,7 +31,7 @@ export async function requestEmbeddings(
 	try {
 		return await fetchWithTimeout(options.fetch ?? fetch, options.endpoint, {
 			method: "POST",
-			headers: authenticatedHeaders({ "content-type": "application/json" }, options.credential, {}),
+			headers: authenticatedHeaders({ "content-type": "application/json" }, options.secrets?.credential ?? null, options.secrets?.headers ?? {}),
 			body: JSON.stringify({ model: options.model, input }),
 			redirect: "error",
 			signal: options.signal,

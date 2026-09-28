@@ -9,7 +9,7 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 });
 const apply = (fields: Record<string, boolean | number | string | null>) => request("/api/memory-settings/commands", {
 	method: "POST",
-	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, ...fields }),
+	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
 });
 
 describe("Memory Settings public contract", () => {
@@ -23,7 +23,7 @@ describe("Memory Settings public contract", () => {
 
 	test("uses independent extraction defaults", async () => {
 		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 	});
 
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {
@@ -44,5 +44,19 @@ describe("Memory Settings public contract", () => {
 		const missing = await app.handle(apply({ expectedRevision: 1, extractionProfileId: profile.id, extractionModel: "writer-mini", contextLimit: 12000, outputReserve: 1200, safetyAllowance: 100 }));
 		expect(missing.status).toBe(422);
 		expect(await missing.text()).toContain("no longer exists");
+	});
+
+	test("keeps chat models for extraction and Embeddings connections for recall", async () => {
+		const insert = (name: string, format: string) => database.query<{ id: number }, [string, string]>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES (?, ?, 'https://example.test/v1/', 'automatic', 'openai-compatible', 5000) RETURNING id").get(name, format)?.id;
+		const chat = insert("Writer", "chat-completions");
+		const embeddings = insert("Vectors", "embeddings");
+		const wrongExtraction = await app.handle(apply({ extractionProfileId: embeddings ?? null, extractionModel: "text-embedding-3-small" }));
+		expect(wrongExtraction.status).toBe(422);
+		expect(await wrongExtraction.text()).toContain("chat connection");
+		const wrongEmbedding = await app.handle(apply({ embeddingProfileId: chat ?? null, embeddingModel: "writer-mini" }));
+		expect(wrongEmbedding.status).toBe(422);
+		expect(await wrongEmbedding.text()).toContain("Embeddings connection");
+		const configured = await app.handle(apply({ extractionProfileId: chat ?? null, extractionModel: "writer-mini", embeddingProfileId: embeddings ?? null, embeddingModel: "text-embedding-3-small" }));
+		expect(configured.status).toBe(200);
 	});
 });

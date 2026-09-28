@@ -155,7 +155,7 @@ Use the shared Token estimator. Drop bounded prior context as needed before reje
 
 ### Index readiness
 
-- Reuse the application's embedding endpoint/model, credentials, and configured deadline. Index compact claim text together with attribution under the distinct Memory namespace. Memory semantic shortlisting does not inherit Lore's trigger semantics or matching threshold.
+- Use the embedding model chosen in Memory settings: an Embeddings Connection Profile supplies the endpoint, credentials, custom headers, and deadline. Index compact claim text together with attribution under the distinct Memory namespace. Memory semantic shortlisting does not inherit Lore's trigger semantics or matching threshold.
 - Readiness requires the exact current rendered text and current embedding endpoint/model. An endpoint/model change immediately excludes incompatible vectors from fresh recall and queues index-only rebuilds for saved Memories in enabled Chats. Re-enabling a Chat resumes any required indexing.
 - Expose pending and failed indexing counts during initial indexing, rebuilds, partial rebuilds, and recovery. Current compatible ready records remain usable. If none are ready, produce an empty block with explicit pending/rebuilding status; do not label that as a successful no-match judgment.
 - Never compare incompatible vectors or use stale embeddings as substitute recall. Index-only work cannot rewrite claims, reverse manual ownership, or republish deleted/changed records. Publication validates its captured record text/configuration and applicable cancellation state.
@@ -198,7 +198,7 @@ Use the shared Token estimator. Drop bounded prior context as needed before reje
 
 ### Settings and public actions
 
-- Application Memory settings explicitly select the extraction Connection Profile and model, extraction context/output settings, and the usefulness and recall gates. The Typesafe credential and Jev model, initially pinned to jev-1.13.0, live in Model Settings and are shared with Lore Semantic Triggers. Embedding settings remain application-owned and shared with the existing embedding service.
+- Application Memory settings explicitly select the extraction Connection Profile and model, extraction context/output settings, and the usefulness and recall gates. Memory settings also select the embedding Connection Profile and model; that profile must use the Embeddings API Format, while the extraction profile must be a chat profile. The Typesafe credential and Jev model, initially pinned to jev-1.13.0, live under Connections and are shared with Lore Semantic Triggers.
 - Use standard extraction model defaults with grounded compact-claim instructions. Do not inherit Chat sampling settings, Prompt Presets, tools, arbitrary Request Overrides, or the selected writing model into extraction.
 - Missing/deleted extraction profiles and unconfigured required services produce explicit configuration failures. Never select a replacement profile or provider automatically. Settings changes affect jobs that have not begun and explicit retries; running work retains its captured nonsecret configuration and completed Memory is not automatically regenerated.
 - Keep credentials in existing encrypted secret handling, with write-only client operations and configuration-presence indicators. Resolve them server-side for outbound calls. Exclude plaintext secrets from collections, jobs, evidence, fingerprints, model-visible source content, error payloads, and settings reads. Research/probe credentials are not application configuration.

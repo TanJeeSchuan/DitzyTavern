@@ -9,7 +9,7 @@
 // SSE seam publishes and every client decodes, so the Model Client, the
 // server, and the client can never drift into parallel shape declarations.
 import type { PromptPlan } from "../prompt-compiler";
-import type { ConnectionApiFormat } from "../connection-settings/types";
+import type { ChatApiFormat } from "../connection-settings/types";
 import type {
 	GenerationEvent,
 	GenerationFailureKind,
@@ -67,7 +67,7 @@ export interface ModelClientConnectionSnapshot {
 	settingsRevision: number;
 	backend: string;
 	adapter: string;
-	apiFormat: ConnectionApiFormat;
+	apiFormat: ChatApiFormat;
 }
 
 export interface ModelClient {

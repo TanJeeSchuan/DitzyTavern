@@ -28,7 +28,7 @@ describe("semantic Lore evaluation", () => {
 
 	test("reports why the whole pass is unavailable without calling Jev when off or unconfigured", async () => {
 		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, mode: "off" }, fetch: unreachable }))
-			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Model Settings." });
+			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Typesafe Jev under Connections." });
 		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, credential: null }, fetch: unreachable }))
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
 	});

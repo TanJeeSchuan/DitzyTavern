@@ -207,23 +207,6 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
-export const embeddingSettingsTable = sqliteTable("embedding_settings", {
-	id: int().primaryKey(),
-	revision: int().notNull().default(0),
-	endpoint: text().notNull().default(""),
-	model: text().notNull().default(""),
-	deadline_ms: int().notNull().default(5000),
-});
-
-export const embeddingSecretTable = sqliteTable("embedding_secret", {
-	settings_id: int().primaryKey().references(() => embeddingSettingsTable.id, { onDelete: "cascade" }),
-	format_version: int().notNull(),
-	key_id: text().notNull(),
-	nonce: text().notNull(),
-	ciphertext: text().notNull(),
-	tag: text().notNull(),
-});
-
 export const memorySettingsTable = sqliteTable("memory_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
@@ -236,6 +219,8 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	safety_allowance: int().notNull().default(500),
 	usefulness_confidence_gate: real().notNull().default(0.3),
 	recall_relevance_minimum: real().notNull().default(1.5),
+	embedding_profile_id: int(),
+	embedding_model: text().notNull().default(""),
 });
 
 export const typesafeSettingsTable = sqliteTable("typesafe_settings", {

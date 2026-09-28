@@ -122,7 +122,7 @@ export function PrimaryPanelView({
 						/>
 					)}
 					{panel === "memory" && (
-						<div className="panel-body settings-panel-body">
+						<div className="panel-fill">
 							<MemorySettingsEditor />
 						</div>
 					)}

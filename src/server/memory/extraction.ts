@@ -164,7 +164,7 @@ export async function judgeMemoryCandidates(
 	trace: MemoryTrace = noTrace,
 ): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Configure the Typesafe credential in Model Settings.");
+	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
 	const output: MemoryCandidateJudgment[] = [];
 	const batches: MemoryCandidate[][] = [];
 	let batch: MemoryCandidate[] = [];
@@ -237,7 +237,7 @@ export async function judgeMemoryRecallCandidates(
 	signal?: AbortSignal,
 ): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Configure the Typesafe credential in Model Settings.");
+	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
 	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
 		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
 		return jevRequest(model, { scene }, questions);

@@ -6,13 +6,12 @@ import { memoryCandidates } from "../../shared/contract/memory";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
 import { createMemorySettingsModule } from "./settings";
 import { createTypesafeSettingsModule } from "../typesafe";
-import { cosineSimilarity, requestEmbeddings } from "../embedding-settings/client";
+import { cosineSimilarity, requestEmbeddings } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
-import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadiness } from "./indexing";
+import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryEmbeddingSecrets, readMemoryIndexReadiness } from "./indexing";
 import { judgeMemoryRecallCandidates } from "./extraction";
 import { memoryOwnership, readMemoryAllowance } from "./collections";
 import { sha256 } from "./hash";
@@ -317,10 +316,10 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	}
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (snapshot.activation.scene.trim().length > 0) {
-		const settings = createEmbeddingSettingsModule(input.database);
 		const queryVector = (await requestEmbeddings([snapshot.activation.scene], {
-			...snapshot.embedding,
-			credential: settings.getCredential(),
+			endpoint: snapshot.embedding.endpoint,
+			model: snapshot.embedding.model,
+			secrets: readMemoryEmbeddingSecrets(input.database),
 			timeoutMs: snapshot.embedding.deadlineMs,
 			fetch: input.fetch,
 		}))[0];

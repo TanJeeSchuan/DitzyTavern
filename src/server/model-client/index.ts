@@ -41,6 +41,7 @@ export {
 	TEST_CONNECTION_PROMPT,
 	TEST_CONNECTION_TIMEOUT_MS,
 } from "./test-connection";
+export { cosineSimilarity, EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 export {
 	discoverModels,
 	normalizeDiscoveryCatalog,

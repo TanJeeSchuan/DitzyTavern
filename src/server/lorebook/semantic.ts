@@ -57,8 +57,8 @@ export async function evaluateSemanticLore(input: {
 	const { settings } = input;
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
 	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
-	if (settings.mode === "off") return { available: false, threshold: settings.threshold, fallbackReason: "Semantic Triggers are turned off in Model Settings." };
-	if (settings.credential === null) return { available: false, threshold: settings.threshold, fallbackReason: "Configure the Typesafe credential in Model Settings to match Semantic Triggers." };
+	if (settings.mode === "off") return { available: false, threshold: settings.threshold, fallbackReason: "Semantic Triggers are turned off in Typesafe Jev under Connections." };
+	if (settings.credential === null) return { available: false, threshold: settings.threshold, fallbackReason: "Configure the Typesafe credential in Connections to match Semantic Triggers." };
 	const requestsFor = (scene: readonly string[]) => {
 		const requestFor = (indexes: readonly number[]) => jevRequest(settings.jevModel, { scene }, Object.fromEntries(indexes.map((index) => [`trigger_${index}`, triggerQuestion(triggers[index]!)])));
 		const batches: number[][] = [[]];

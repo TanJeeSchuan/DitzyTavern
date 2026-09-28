@@ -10,7 +10,6 @@ import { createConversationRoutes } from "./conversation";
 import { createNativeConversationRoutes } from "./native-conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { createLorebookRoutes } from "./lorebook-routes";
-import { createEmbeddingSettingsRoutes } from "./embedding-settings";
 import { createMemorySettingsRoutes } from "./memory-settings";
 import { createTypesafeSettingsRoutes } from "./typesafe-settings";
 import { createMemoryRoutes } from "./memory";
@@ -24,7 +23,6 @@ export { createNativeConversationRoutes } from "./native-conversation";
 export { createPromptPresetRoutes } from "./prompt-preset-routes";
 export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
-export { createEmbeddingSettingsRoutes } from "./embedding-settings";
 export { createMemorySettingsRoutes } from "./memory-settings";
 export { createTypesafeSettingsRoutes } from "./typesafe-settings";
 export { createMemoryRoutes } from "./memory";
@@ -37,7 +35,6 @@ export const createContract = (database?: Database, options: ConversationRouteOp
 	.use(createConversationRoutes(database, options))
 	.use(createPromptPresetRoutes(database))
 	.use(createLorebookRoutes(database, options))
-	.use(createEmbeddingSettingsRoutes(database, options))
 	.use(createMemorySettingsRoutes(database))
 	.use(createTypesafeSettingsRoutes(database, options))
 	.use(createMemoryRoutes(database))

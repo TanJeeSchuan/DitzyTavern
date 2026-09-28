@@ -5,9 +5,11 @@ import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { readConversationPromptPreset } from "../conversation/prompt-preset";
 import { createMemorySettingsModule } from "./settings";
-import { activeGenerationTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
-import { requestEmbeddings } from "../embedding-settings/client";
+import { activeGenerationTable, connectionProfileTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
+import { createConnectionSettingsModule } from "../connection-settings";
+import type { ConnectionProfileSecretSnapshot } from "../connection-settings/types";
+import { requestEmbeddings } from "../model-client/embeddings";
+import { resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
 import type { ModelFetch } from "../model-client/types";
 import { memoryCandidates } from "../../shared/contract/memory";
 import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
@@ -68,11 +70,21 @@ export const cancelMemoryIndexWork = (database: Database, variantId: number): vo
 };
 
 const currentConfiguration = (database: Database): MemoryEmbeddingConfiguration => {
-	const settings = createEmbeddingSettingsModule(database).get();
-	return { endpoint: settings.endpoint, model: settings.model, deadlineMs: settings.deadlineMs };
+	const { embeddingProfileId, embeddingModel } = createMemorySettingsModule(database).get();
+	const profile = embeddingProfileId === null ? undefined : drizzle(database).select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
+	if (profile === undefined || profile.timeout_ms === null) return { endpoint: "", model: "", deadlineMs: 0 };
+	return { endpoint: resolveEmbeddingsRequestUrl(profile.request_url), model: embeddingModel, deadlineMs: profile.timeout_ms };
 };
 
 export const readMemoryEmbeddingConfiguration = currentConfiguration;
+
+export const sameEmbeddingConfiguration = (left: MemoryEmbeddingConfiguration, right: MemoryEmbeddingConfiguration): boolean =>
+	left.endpoint === right.endpoint && left.model === right.model && left.deadlineMs === right.deadlineMs;
+
+export const readMemoryEmbeddingSecrets = (database: Database): ConnectionProfileSecretSnapshot | null => {
+	const { embeddingProfileId } = createMemorySettingsModule(database).get();
+	return embeddingProfileId === null ? null : createConnectionSettingsModule(database).getProfileSecrets(embeddingProfileId);
+};
 
 export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean =>
 	createMemorySettingsModule(database).get().enabled && hasEnabledMemorySlot(readConversationPromptPreset(database, conversationId)?.slots ?? []);
@@ -124,7 +136,7 @@ export const readMemoryIndexReadiness = (
 	try { claims = parsedClaims(collection.claims_json); } catch { return { status: "failed", pendingCount: 0, failedCount: 1, error: "Saved Memory text is invalid and cannot be indexed." }; }
 	if (claims.length === 0) return { status: "not-applicable", pendingCount: 0, failedCount: 0, error: null };
 	if (configuration.endpoint.length === 0 || configuration.model.length === 0) {
-		return { status: "unconfigured", pendingCount: claims.length, failedCount: 0, error: "Configure the embedding endpoint and model to index saved Memories." };
+		return { status: "unconfigured", pendingCount: claims.length, failedCount: 0, error: "Choose an embedding model in Memory to index saved Memories." };
 	}
 	const texts = claims.map(renderMemoryClaim);
 	const ready = cachedTexts(database, configuration, texts).size;
@@ -272,13 +284,12 @@ export const claimMemoryIndexWork = (database: Database): MemoryIndexJob | undef
 }).immediate();
 
 export const embedMemoryJob = async (database: Database, job: MemoryIndexJob, fetch?: ModelFetch, signal?: AbortSignal) => {
-	if (job.endpoint.length === 0 || job.model.length === 0) throw new Error("Configure the embedding endpoint and model to index saved Memories.");
+	if (job.endpoint.length === 0 || job.model.length === 0) throw new Error("Choose an embedding model in Memory to index saved Memories.");
 	const config = currentConfiguration(database);
-	if (config.endpoint !== job.endpoint || config.model !== job.model || config.deadlineMs !== job.deadlineMs) throw new Error("Embedding settings changed before indexing began. Retry indexing under the current configuration.");
+	if (config.endpoint !== job.endpoint || config.model !== job.model || config.deadlineMs !== job.deadlineMs) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
 	const missing = cacheMissingTexts(database, config, job.claims);
 	if (missing.length === 0) return [] as const;
-	const settings = createEmbeddingSettingsModule(database);
-	const vectors = await requestEmbeddings(missing, { ...config, credential: settings.getCredential(), timeoutMs: job.deadlineMs, fetch, signal });
+	const vectors = await requestEmbeddings(missing, { endpoint: config.endpoint, model: config.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: job.deadlineMs, fetch, signal });
 	return missing.map((renderedText, index) => ({ renderedText, vector: vectors[index]! }));
 };
 

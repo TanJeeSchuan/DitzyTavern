@@ -15,6 +15,7 @@ import {
 } from "../connection-settings";
 import { discoverModels, testConnection, type TestConnectionResult } from "../model-client";
 import { withDatabase } from "../database/database";
+import { queueAllMemoryIndexing, readMemoryEmbeddingConfiguration, sameEmbeddingConfiguration } from "../memory/indexing";
 import {
 	connectionCommandBody,
 	connectionProfileDraftOf,
@@ -182,7 +183,9 @@ export const createConnectionSettingsRoutes = (
 			"/api/connection-settings/commands",
 			({ body, status }) => {
 				try {
-					const result = withSettings((domain) => {
+					const result = withDatabase(database, (connection) => {
+						const embedding = readMemoryEmbeddingConfiguration(connection);
+						const next = withConnectionSettings(connection, (domain) => {
 						switch (body.type) {
 							case "create-profile":
 								return domain.createProfile(body);
@@ -197,6 +200,9 @@ export const createConnectionSettingsRoutes = (
 							case "set-pinned-models":
 								return domain.setPinnedModels(body);
 						}
+						}, options);
+						if (!sameEmbeddingConfiguration(embedding, readMemoryEmbeddingConfiguration(connection))) queueAllMemoryIndexing(connection);
+						return next;
 					});
 					return { outcome: "applied" as const, settings: toSettingsPayload(result) };
 				} catch (error) {

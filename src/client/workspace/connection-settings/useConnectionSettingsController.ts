@@ -25,7 +25,7 @@ import {
 } from "../../connection-settings-state";
 import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { useAsyncEffect } from "../../lib/use-async";
-import { resolveChatCompletionsRequestUrl } from "../../../shared/connection-url";
+import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../../shared/connection-url";
 
 export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
 	return Object.entries(data).map(([name, value]) => {
@@ -155,11 +155,11 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const resolvedRequestUrl = useMemo(() => {
 		if (draft.requestUrl.trim().length === 0) return "";
 		try {
-			return resolveChatCompletionsRequestUrl(draft.requestUrl);
+			return (draft.apiFormat === "embeddings" ? resolveEmbeddingsRequestUrl : resolveChatCompletionsRequestUrl)(draft.requestUrl);
 		} catch (error) {
 			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
 		}
-	}, [draft.requestUrl]);
+	}, [draft.apiFormat, draft.requestUrl]);
 	const validationError = connectionDraftValidationError(draft, headerEditorData);
 	const canSave = settings !== null && validationError === null;
 	const dirty = editorOpen && (selectedProfile === undefined || JSON.stringify(draft) !== JSON.stringify(copyDraft(selectedProfile)) || JSON.stringify(headerEditorData) !== JSON.stringify(headerEditorDataFor(selectedProfile.headers)) || credentialDraft.length > 0);

@@ -148,6 +148,7 @@
 	line-height: 1.4;
 }
 
+.model-selector-empty.is-error,
 .model-selector-note.is-error {
 	color: var(--destructive);
 }

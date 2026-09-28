@@ -4,7 +4,7 @@
 // implementation. These types describe the one complete plan every
 // Generation workflow consumes.
 
-import type { ConnectionApiFormat } from "../connection-settings/types";
+import type { ChatApiFormat } from "../connection-settings/types";
 import type {
 	CanonicalGenerationSettings,
 	EffectiveGenerationSettings,
@@ -56,7 +56,7 @@ export interface GenerationPlan {
  * compiler or the plan.
  */
 export interface GenerationConnectionFacts {
-	readonly apiFormat: ConnectionApiFormat;
+	readonly apiFormat: ChatApiFormat;
 }
 
 /** The captured inputs one compilation consumes. */

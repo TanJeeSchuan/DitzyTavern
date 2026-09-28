@@ -10,6 +10,8 @@ export const memorySettings = Type.Object({
 	safetyAllowance: Type.Integer(),
 	usefulnessConfidenceGate: Type.Number(),
 	recallRelevanceMinimum: Type.Number(),
+	embeddingProfileId: Type.Union([Type.Integer(), Type.Null()]),
+	embeddingModel: Type.String(),
 });
 export type MemorySettingsPayload = Static<typeof memorySettings>;
 
@@ -19,5 +21,5 @@ export const memorySettingsConflict = Type.Object({
 	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettings,
 });
 export const memorySettingsInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
-export const memorySettingsCommandBody = Type.Object({ expectedRevision: Type.Integer(), enabled: Type.Boolean(), extractionProfileId: Type.Union([Type.Integer(), Type.Null()]), extractionModel: Type.String(), contextLimit: Type.Integer(), outputReserve: Type.Integer(), safetyAllowance: Type.Integer(), usefulnessConfidenceGate: Type.Number(), recallRelevanceMinimum: Type.Number() });
+export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), Type.Omit(memorySettings, ["revision"])]);
 export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;

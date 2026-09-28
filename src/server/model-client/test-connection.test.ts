@@ -39,6 +39,23 @@ const failureMessage = (result: TestConnectionResult): string =>
 	result.outcome === "failure" ? result.message : "";
 
 describe("Model Test Connection", () => {
+	test("tests an Embeddings connection against its base URL with its saved headers", async () => {
+		const seen: { url: string; authorization: string | null; tenant: string | null }[] = [];
+		const result = await testConnection({
+			profile: { ...profile, apiFormat: "embeddings", requestUrl: "https://vectors.test/v1/", timeoutMs: 5_000 },
+			modelId: "text-embedding-3-small",
+			secrets: { credential: "vector-secret", headers: { "X-Tenant": "writer" } },
+		}, {
+			fetch: async (input, init) => {
+				const headers = new Headers(init?.headers);
+				seen.push({ url: String(input), authorization: headers.get("authorization"), tenant: headers.get("x-tenant") });
+				return Response.json({ data: [{ embedding: [0.5, 0.5, 0] }] });
+			},
+		});
+		expect(result).toEqual({ outcome: "success", message: "Connection succeeded. The endpoint returned 3-dimension vectors." });
+		expect(seen).toEqual([{ url: "https://vectors.test/v1/embeddings", authorization: "Bearer vector-secret", tenant: "writer" }]);
+	});
+
 	test("tests a generic exact endpoint with custom authentication without persisting or exposing secrets", async () => {
 		let request: { url: string; headers: Headers; body: { model: string; max_tokens: number } } | undefined;
 		const result = await testConnection({

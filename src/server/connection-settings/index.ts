@@ -86,6 +86,7 @@ export function connectionSnapshotOf(
 	settings: ConnectionSettingsSnapshot,
 	profile: ConnectionProfile,
 ): ModelClientConnectionSnapshot {
+	if (profile.apiFormat === "embeddings") throw new Error(`${profile.displayName} is an Embeddings connection. Choose a chat model instead.`);
 	return {
 		profileId: profile.id,
 		settingsRevision: settings.revision,
@@ -197,7 +198,7 @@ export function createConnectionSettingsModule(
 				}
 
 				writePinnedModels(db, inserted.id, profile.pinnedModels);
-				db.update(conversationGenerationSettingsTable)
+				if (profile.apiFormat !== "embeddings") db.update(conversationGenerationSettingsTable)
 					.set({ connection_profile_id: inserted.id })
 					.where(isNull(conversationGenerationSettingsTable.connection_profile_id))
 					.run();
@@ -381,6 +382,7 @@ export {
 export type {
 	ApplyConnectionProfileInput,
 	ConnectionAdapter,
+	ChatApiFormat,
 	ConnectionApiFormat,
 	ConnectionPreset,
 	ConnectionProfile,

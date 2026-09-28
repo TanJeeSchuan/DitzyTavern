@@ -74,6 +74,7 @@ describe("Connection Settings transport adapter", () => {
 			"deepseek",
 			"openrouter",
 			"generic-openai-compatible",
+			"openai-compatible-embeddings",
 		]);
 	});
 

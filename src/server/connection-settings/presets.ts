@@ -49,6 +49,12 @@ const presets: readonly ConnectionPreset[] = [
 		description: "A blank Chat Completions profile for local or proxied endpoints.",
 		profile: connectionProfileDraftOf(blankConnectionProfileDraft),
 	},
+	{
+		id: "openai-compatible-embeddings",
+		label: "Embeddings",
+		description: "An OpenAI-compatible embeddings endpoint for Memory recall.",
+		profile: { ...connectionProfileDraftOf(blankConnectionProfileDraft), apiFormat: "embeddings", timeoutMs: 5000 },
+	},
 ];
 
 export function listConnectionPresets(): readonly ConnectionPreset[] {

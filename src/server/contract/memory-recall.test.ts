@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
 import { readConversationMemories, startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../memory/extraction";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
-import { createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
+import { configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
 import { clearGenerationPreviewRegistry } from "../workflows/generation-preview";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
@@ -108,13 +107,7 @@ describe("Memory recall in Generation preparation", () => {
 		const source = insertSelectedSource(database, conversation.id);
 		const alternativeVariantId = insertAlternativeVariant(database, source.messageId);
 		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
-		createEmbeddingSettingsModule(database, { masterKey: key }).apply({
-			type: "apply",
-			expectedRevision: 0,
-			endpoint: "http://embedding.test/v1/embeddings",
-			model: "test-embedding",
-			deadlineMs: 1_000,
-		});
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		const memoryRoutes = createMemoryRoutes(database);
 		await selectVariant(database, conversation.id, source.messageId, alternativeVariantId);
 		await queueAndIndex(database, conversation.id, source.messageId, alternativeVariantId, memoryClaim(source.messageId, "Maren kept a brass key.", "Maren kept a brass key.", "Alternate telling"));
@@ -380,9 +373,7 @@ describe("Memory recall in Generation preparation", () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
-		createEmbeddingSettingsModule(database, { masterKey: key }).apply({
-			type: "apply", expectedRevision: 0, endpoint: "http://embedding.test/v1/embeddings", model: "test-embedding", deadlineMs: 1_000,
-		});
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
 		let providerCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: async () => { providerCalls += 1; throw new Error("Unexpected Memory provider call."); } });
@@ -437,7 +428,7 @@ describe("Memory recall in Generation preparation", () => {
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "running")).toBe(true);
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			release();
 			await worker();
 		} finally { release(); await worker(); }

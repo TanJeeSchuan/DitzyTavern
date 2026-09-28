@@ -25,7 +25,7 @@ export function validateConnectionProfileDraft(
 	const pinnedModels = normalizePinnedModels(input.pinnedModels);
 	return {
 		displayName,
-		apiFormat: "chat-completions",
+		apiFormat: input.apiFormat,
 		requestUrl,
 		modelsUrl,
 		modelBackend: input.modelBackend,

@@ -11,6 +11,8 @@ import type {
 // representations can no longer drift apart.
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
+export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings">;
+
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
 
 export type ConnectionAdapter = ConnectionProfileDraftPayload["adapter"];
