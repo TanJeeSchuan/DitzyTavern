@@ -4,9 +4,9 @@
 	grid-template-rows: auto 1fr;
 	min-width: 0;
 	overflow: hidden;
-	height: calc(100dvh - 1.5rem);
-	align-self: center;
-	border-radius: 1.35rem;
+	height: 100dvh;
+	border-block: 0;
+	border-radius: 0;
 	box-shadow: 0 1.4rem 4.2rem var(--shadow);
 }
 

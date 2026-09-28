@@ -1,4 +1,5 @@
-import { Check, Ellipsis, Pencil, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Ellipsis, Pencil, Trash2, X } from "lucide-react";
+import { Collapsible } from "radix-ui";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -29,9 +30,9 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 	const [traceOpen, setTraceOpen] = useState(false);
 	const working = source.status === "pending" || source.status === "running";
 	const notes = [!source.selected && "Alternative", source.ownership === "writer" && "Writer-maintained", source.sourceChanged && "Source changed", working && (source.status === "pending" ? "Queued" : "Remembering")].filter(Boolean).join(" · ");
-	return <section className="memory-source" data-selected={source.selected}>
+	return <Collapsible.Root defaultOpen asChild><section className="memory-source" data-selected={source.selected}>
 		<header className="memory-source-header">
-			<button type="button" className="memory-source-label" onClick={() => actions.navigate(source.messageId)}>{actions.label(source.messageId)}</button>
+			<Collapsible.Trigger className="memory-source-label group flex items-center gap-1.5 py-1"><ChevronDown className="size-3.5 shrink-0 group-data-[state=closed]:-rotate-90" aria-hidden="true" />{actions.label(source.messageId)}</Collapsible.Trigger>
 			{notes && <span className="memory-source-notes" data-working={working}>{notes}</span>}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${actions.label(source.messageId)}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
@@ -44,6 +45,7 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</header>
+		<Collapsible.Content forceMount className="grid gap-[0.1rem] data-[state=closed]:hidden">
 		{traceOpen && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={working} onClose={() => setTraceOpen(false)} />}
 		{working && claims.length === 0 && <div className="memory-claim-skeleton" aria-hidden="true"><span /><span /></div>}
 		{source.status === "complete" && source.ownership === "writer" && source.claims.length === 0 && <p className="memory-source-empty">All Memories were removed. Automatic updates are paused for this source.</p>}
@@ -58,7 +60,8 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 			onSave={(draft) => actions.save(source, index, draft)}
 			onRemove={() => actions.remove(source, index)}
 		/>)}
-	</section>;
+		</Collapsible.Content>
+	</section></Collapsible.Root>;
 }
 
 const judgmentWord = (value: string) => value.replace("_", " ").replace(/^./, (letter) => letter.toUpperCase());
