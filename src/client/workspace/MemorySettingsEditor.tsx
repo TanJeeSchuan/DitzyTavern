@@ -38,12 +38,12 @@ export function MemorySettingsEditor() {
 		const { revision, ...saved } = state.settings;
 		return save({ ...saved, expectedRevision: revision, enabled }, (settings) => setState((current) => ({ ...current, settings, pending: false })));
 	};
-	if (state.loading) return <section className="settings-section" aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section>;
+	if (state.loading) return <section aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section>;
 	const selectedProfile = state.profiles.find((profile) => profile.id === state.draft.extractionProfileId);
 	const deletedProfile = state.settings !== null && state.settings.extractionProfileId !== null && !state.profiles.some((profile) => profile.id === state.settings?.extractionProfileId);
 	const incomplete = !selectedProfile || !state.draft.extractionModel.trim() || !selectedProfile.credentialConfigured;
 	return (
-		<section className="settings-section" aria-labelledby="memory-settings-title">
+		<section aria-labelledby="memory-settings-title">
 			<div className="flex items-center justify-between gap-3">
 				<h3 id="memory-settings-title">Conversation Memory</h3>
 				{state.settings && <Switch checked={state.settings.enabled} disabled={state.pending} aria-label={state.settings.enabled ? "Turn off Memory" : "Turn on Memory"} onCheckedChange={(enabled) => void toggle(enabled)} />}

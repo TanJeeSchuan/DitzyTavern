@@ -3,7 +3,6 @@ import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { ReactNode } from "react";
 import type { ThemePreference } from "../workspace";
-import { MemorySettingsEditor } from "./MemorySettingsEditor";
 
 export function SettingsPanel({
 	theme,
@@ -45,7 +44,6 @@ export function SettingsPanel({
 				</div>
 			</section>
 			<p className="text-xs text-muted-foreground" role="status">Saved</p>
-			<MemorySettingsEditor />
 		</div>
 	);
 }

@@ -1,5 +1,6 @@
 import {
 	BookMarked,
+	Brain,
 	Cable,
 	ListOrdered,
 	MessageSquare,
@@ -64,6 +65,13 @@ export function NavigationRail({
 					onClick={() => onOpenPanel("generation")}
 				>
 					<SlidersHorizontal aria-hidden="true" />
+				</RailButton>
+				<RailButton
+					label="Memory"
+					active={activePanel === "memory"}
+					onClick={() => onOpenPanel("memory")}
+				>
+					<Brain aria-hidden="true" />
 				</RailButton>
 			</div>
 			<RailButton

@@ -12,6 +12,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
 import { GenerationPanel } from "./GenerationPanel";
 import { LorebookPanel } from "./LorebookPanel";
+import { MemorySettingsEditor } from "./MemorySettingsEditor";
 import type { ConnectionSettingsController } from "./connection-settings/useConnectionSettingsController";
 import type { GenerationSettingsDraftController } from "./useGenerationSettingsDraft";
 import type { SplitInspector } from "./panel-coordination";
@@ -25,6 +26,7 @@ const sharedHeaderTitles = {
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
+	memory: "Memory",
 	settings: "Settings",
 } satisfies Record<Exclude<PrimaryPanel, "chats" | "prompts" | "lorebooks" | null>, string>;
 
@@ -118,6 +120,11 @@ export function PrimaryPanelView({
 							inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 							onInspectPromptPlanBeforeGeneratingChange={onInspectPromptPlanBeforeGeneratingChange}
 						/>
+					)}
+					{panel === "memory" && (
+						<div className="panel-body settings-panel-body">
+							<MemorySettingsEditor />
+						</div>
 					)}
 					{panel === "connections" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>

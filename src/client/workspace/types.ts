@@ -5,5 +5,6 @@ export type PrimaryPanel =
 	| "prompts"
 	| "connections"
 	| "generation"
+	| "memory"
 	| "settings"
 	| null;
