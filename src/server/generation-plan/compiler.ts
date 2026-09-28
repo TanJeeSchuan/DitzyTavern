@@ -135,7 +135,7 @@ export const compileGenerationPlan = (
 	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
 	const memorySlotEnabled = input.recipe.some((slot) => slot.reference === "memory" && slot.enabled);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
-	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])] : [];
+	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity)) : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;
 	const memoryAllowance = input.memoryActivation?.allowance ?? 2_048;
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {

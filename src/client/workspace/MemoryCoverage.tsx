@@ -34,7 +34,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, o
 	const memoryCount = marks.reduce((total, { source }) => total + (source?.claims.length ?? 0), 0);
 	const rememberedCount = marks.filter(({ mark }) => mark.kind === "remembered").length;
 	const unprocessedCount = marks.filter(({ mark }) => mark.kind === "unprocessed").length;
-	const failedCount = catchup?.state === "failed" ? catchup.failed.length : 0;
+	const failedCount = marks.filter(({ mark }) => mark.kind === "failed").length;
 	const indexingCount = marks.reduce((total, { source }) => total + (source && (source.indexing.status === "pending" || source.indexing.status === "running") ? source.indexing.pendingCount : 0), 0);
 	const running = catchup?.state === "running" ? catchup : null;
 	const focusMark = (index: number) => { setCursor(index); strip.current?.querySelectorAll<HTMLButtonElement>(".memory-mark")[index]?.focus(); };

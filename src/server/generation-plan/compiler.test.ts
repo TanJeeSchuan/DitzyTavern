@@ -273,6 +273,24 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.memoryActivation?.automaticMemoryText).toBe("fits (attribution: Narrated event)");
 	});
 
+	test("admits more relevant Memory claims before shortlist order", () => {
+		const candidates = [
+			{ ...memoryCandidate("lower", "lower relevance"), relevanceScore: 1.7 },
+			{ ...memoryCandidate("higher", "higher relevance"), relevanceScore: 2.9 },
+		];
+		const plan = compile({
+			recipe: [{ reference: "memory", enabled: true, role: "system" }],
+			context: [],
+			memoryActivation: memoryActivation(candidates, 4),
+			estimator: (transcript) => (transcript.includes("lower relevance") ? 4 : 0) + (transcript.includes("higher relevance") ? 4 : 0),
+		});
+
+		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
+			["lower", "memory-allowance"],
+			["higher", "admitted"],
+		]);
+	});
+
 	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
 		const memory = memoryCandidate("memory", "memory fact");
 		const activation = memoryActivation([memory]);
