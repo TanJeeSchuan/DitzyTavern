@@ -1,0 +1,1 @@
+ALTER TABLE `memory_settings` ADD `enabled` integer DEFAULT true NOT NULL;

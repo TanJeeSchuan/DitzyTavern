@@ -64,7 +64,7 @@ const ensureChatState = (database: Database, conversationId: number) => {
 export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number): MemoryCollectionView {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Enable Memory in the selected Prompt Preset before remembering a source.");
+		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering a source.");
 		const captured = capture(database, conversationId, messageId);
 		const chat = ensureChatState(database, conversationId);
 		const current = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, captured.source.variantId)).get();
@@ -159,7 +159,7 @@ export interface MemoryCatchupView {
 
 export function startMemoryCatchup(database: Database, conversationId: number): MemoryCatchupView {
 	return database.transaction(() => {
-		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Enable Memory in the selected Prompt Preset before remembering history.");
+		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering history.");
 		const history = readSelectedHistory(database, conversationId);
 		if (!history) throw new InvalidMemorySourceError("This Chat no longer exists.");
 		const path = history.messages.flatMap((message) => message.variant ? [{ messageId: message.id, variantId: message.variant.id }] : []);

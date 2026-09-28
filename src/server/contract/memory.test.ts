@@ -179,7 +179,7 @@ describe("Memory source public contract", () => {
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
-		settings.apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
 		const firstMessageId = insertMessage(database, conversation.id, 1);
 		const firstVariantId = insertVariant(database, firstMessageId, "First source.", true);
 		const secondMessageId = insertMessage(database, conversation.id, 2);
@@ -213,7 +213,7 @@ describe("Memory source public contract", () => {
 			await waitFor(() => models.length === 1 || database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(firstVariantId)?.status === "failed");
 			expect(database.query<{ status: string; error: string | null }, [number]>("SELECT status, error FROM memory_collection WHERE variant_id = ?").get(firstVariantId)).toMatchObject({ status: "running", error: null });
 			await firstRequest;
-			settings.apply({ expectedRevision: 1, extractionProfileId: profileId, extractionModel: "newer-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+			settings.apply({ expectedRevision: 1, enabled: true, extractionProfileId: profileId, extractionModel: "newer-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
 			releaseFirst();
 			expect(await waitFor(() => models.length === 2)).toBe(true);
 			expect(models).toEqual(["older-model", "newer-model"]);
@@ -233,7 +233,7 @@ describe("Memory source public contract", () => {
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
 		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
-		settings.apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: gate, recallRelevanceMinimum: 1.5 });
+		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: gate, recallRelevanceMinimum: 1.5 });
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "Maren returned Writer's brass key.", true);
 		const queue = createMemoryRoutes(database);
@@ -274,7 +274,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "A valid but incomplete response.", true);
 		const queue = createMemoryRoutes(database);
@@ -304,7 +304,7 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
 		insertVariant(database, insertMessage(database, conversation.id, 1), "Oldest context. ".repeat(250), true);
 		insertVariant(database, insertMessage(database, conversation.id, 2), "Recent context.", true);
 		const messageId = insertMessage(database, conversation.id, 3);

@@ -1,7 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { connectionProfileTable, memorySettingsTable } from "../database/schema";
+import { connectionProfileTable, conversationPromptPresetTable, memorySettingsTable } from "../database/schema";
+import { invalidateMemoryWorkForConversation } from "./cancellation";
+import { queueMemoryTail } from "./collections";
 import type { MemorySettingsCommand, MemorySettingsPayload } from "../../shared/contract/memory-settings";
 
 const SETTINGS_ID = 1;
@@ -28,6 +30,7 @@ export const createMemorySettingsModule = (database: Database) => {
 		const value = row();
 		return {
 			revision: value.revision,
+			enabled: value.enabled,
 			extractionProfileId: value.extraction_profile_id,
 			extractionModel: value.extraction_model,
 			contextLimit: value.context_limit,
@@ -55,9 +58,15 @@ export const createMemorySettingsModule = (database: Database) => {
 		if (!Number.isSafeInteger(command.safetyAllowance) || command.safetyAllowance < 0 || command.safetyAllowance > 1_000_000) throw new InvalidMemorySettingsError("The safety allowance must be a non-negative whole number no greater than 1,000,000.");
 		if (!(command.usefulnessConfidenceGate >= 0 && command.usefulnessConfidenceGate <= 1)) throw new InvalidMemorySettingsError("The usefulness confidence gate must be between 0 and 1.");
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidMemorySettingsError("The recall relevance minimum must be between 0 and 3.");
-		return commit(command.expectedRevision, (connection) => {
-			connection.update(memorySettingsTable).set({ extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, usefulness_confidence_gate: command.usefulnessConfidenceGate, recall_relevance_minimum: command.recallRelevanceMinimum }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
+		const toggled = get().enabled !== command.enabled;
+		const settings = commit(command.expectedRevision, (connection) => {
+			connection.update(memorySettingsTable).set({ enabled: command.enabled, extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, usefulness_confidence_gate: command.usefulnessConfidenceGate, recall_relevance_minimum: command.recallRelevanceMinimum }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
 		});
+		if (toggled) for (const { id } of db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all()) {
+			invalidateMemoryWorkForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
+			queueMemoryTail(database, id);
+		}
+		return settings;
 	};
 	return { get, apply };
 };

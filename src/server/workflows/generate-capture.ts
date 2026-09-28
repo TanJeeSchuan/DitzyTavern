@@ -21,6 +21,7 @@ import { readConversationSummaryFromConnection } from "../conversation/snapshot"
 import { readConversationGenerationSettingsFromConnection } from "../conversation/generation-settings";
 import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallResult, type MemoryRecallSnapshot } from "../memory/recall";
+import { createMemorySettingsModule } from "../memory/settings";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
@@ -442,7 +443,7 @@ function prepareGenerationInputsSnapshot(
 			data: message.variant?.data ?? [],
 		})),
 	}));
-	const memoryEnabled = hasEnabledMemorySlot(recipe.slots);
+	const memoryEnabled = createMemorySettingsModule(input.database).get().enabled && hasEnabledMemorySlot(recipe.slots);
 	const memorySnapshot = captureMemoryRecallSnapshot({
 		database: input.database,
 		conversationId: input.conversationId,

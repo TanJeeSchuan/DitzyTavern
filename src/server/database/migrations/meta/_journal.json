@@ -141,6 +141,13 @@
       "when": 1790512937993,
       "tag": "0019_cool_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790596648966,
+      "tag": "0020_open_arachne",
+      "breakpoints": true
     }
   ]
 }

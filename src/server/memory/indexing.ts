@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { readConversationPromptPreset } from "../conversation/prompt-preset";
+import { createMemorySettingsModule } from "./settings";
 import { activeGenerationTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
 import { createEmbeddingSettingsModule } from "../embedding-settings";
 import { requestEmbeddings } from "../embedding-settings/client";
@@ -74,7 +75,7 @@ const currentConfiguration = (database: Database): MemoryEmbeddingConfiguration 
 export const readMemoryEmbeddingConfiguration = currentConfiguration;
 
 export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean =>
-	hasEnabledMemorySlot(readConversationPromptPreset(database, conversationId)?.slots ?? []);
+	createMemorySettingsModule(database).get().enabled && hasEnabledMemorySlot(readConversationPromptPreset(database, conversationId)?.slots ?? []);
 
 const parseVector = (serialized: string): readonly number[] | null => {
 	try {
@@ -233,7 +234,7 @@ export const retryMemoryIndexing = (database: Database, conversationId: number, 
 	if (!collection) throw new Error("This source has no saved Memory collection to index.");
 	if (collection.revision !== expectedRevision) throw new StaleMemoryIndexRevisionError();
 	if (collection.status !== "complete") throw new Error("Indexing requires a completed saved Memory collection.");
-	if (!isMemoryEnabledForConversation(database, conversationId)) throw new Error("Enable Memory in the selected Prompt Preset before indexing saved Memories.");
+	if (!isMemoryEnabledForConversation(database, conversationId)) throw new Error("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
 	queueMemoryIndexForVariant(database, variantId, true);
 	const current = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
 	if (!current) throw new Error("This source has no saved Memory collection to index.");

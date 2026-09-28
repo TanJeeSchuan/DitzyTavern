@@ -7,9 +7,9 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 	headers: { "content-type": "application/json", ...init?.headers },
 	...init,
 });
-const apply = (fields: Record<string, number | string | null>) => request("/api/memory-settings/commands", {
+const apply = (fields: Record<string, boolean | number | string | null>) => request("/api/memory-settings/commands", {
 	method: "POST",
-	body: JSON.stringify({ expectedRevision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, ...fields }),
+	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, ...fields }),
 });
 
 describe("Memory Settings public contract", () => {
@@ -23,7 +23,7 @@ describe("Memory Settings public contract", () => {
 
 	test("uses independent extraction defaults", async () => {
 		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
 	});
 
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {

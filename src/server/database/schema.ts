@@ -227,6 +227,7 @@ export const embeddingSecretTable = sqliteTable("embedding_secret", {
 export const memorySettingsTable = sqliteTable("memory_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
+	enabled: int({ mode: "boolean" }).notNull().default(true),
 	// ==[HUMAN APPROVED]== Preserve deleted Profile identity so settings reads can report the broken choice.
 	extraction_profile_id: int(),
 	extraction_model: text().notNull().default(""),

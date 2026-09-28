@@ -1,6 +1,7 @@
 import { Save } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { loadConnectionSettings, type ConnectionProfile } from "../connection-settings";
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
 import type { MemorySettingsCommand } from "../../shared/contract/memory-settings";
@@ -24,14 +25,18 @@ export function MemorySettingsEditor() {
 		void Promise.all([loadMemorySettings(), loadConnectionSettings()]).then(([settings, connections]) => { if (!cancelled()) applyLoaded(settings, connections.profiles); }).catch(() => { if (!cancelled()) setState((current) => ({ ...current, loading: false, error: "Memory Settings could not be loaded." })); });
 	}, [applyLoaded]);
 	const update = (patch: Partial<State["draft"]>) => setState((current) => ({ ...current, draft: { ...current.draft, ...patch }, error: null, notice: null }));
-	const submit = async () => {
-		if (!state.settings) return;
+	const save = async (command: MemorySettingsCommand, applied: (settings: MemorySettings) => void) => {
 		setState((current) => ({ ...current, pending: true, error: null, notice: null }));
-		const command: MemorySettingsCommand = { expectedRevision: state.settings.revision, ...state.draft };
 		const result = await saveMemorySettings(command);
-		if (result.outcome === "applied") applyLoaded(result.settings, state.profiles);
+		if (result.outcome === "applied") applied(result.settings);
 		else if (result.outcome === "conflict") setState((current) => ({ ...current, settings: result.currentSettings, pending: false, notice: "Memory Settings changed elsewhere. Review the current values before saving again." }));
 		else setState((current) => ({ ...current, pending: false, error: result.reason }));
+	};
+	const submit = () => state.settings && save({ expectedRevision: state.settings.revision, enabled: state.settings.enabled, ...state.draft }, (settings) => applyLoaded(settings, state.profiles));
+	const toggle = (enabled: boolean) => {
+		if (!state.settings) return;
+		const { revision, ...saved } = state.settings;
+		return save({ ...saved, expectedRevision: revision, enabled }, (settings) => setState((current) => ({ ...current, settings, pending: false })));
 	};
 	if (state.loading) return <section className="settings-section" aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section>;
 	const selectedProfile = state.profiles.find((profile) => profile.id === state.draft.extractionProfileId);
@@ -39,7 +44,11 @@ export function MemorySettingsEditor() {
 	const incomplete = !selectedProfile || !state.draft.extractionModel.trim() || !selectedProfile.credentialConfigured;
 	return (
 		<section className="settings-section" aria-labelledby="memory-settings-title">
-			<h3 id="memory-settings-title">Conversation Memory</h3>
+			<div className="flex items-center justify-between gap-3">
+				<h3 id="memory-settings-title">Conversation Memory</h3>
+				{state.settings && <Switch checked={state.settings.enabled} disabled={state.pending} aria-label={state.settings.enabled ? "Turn off Memory" : "Turn on Memory"} onCheckedChange={(enabled) => void toggle(enabled)} />}
+			</div>
+			{state.settings?.enabled === false && <p className="settings-feedback" role="status">Memory is off. No Memories are recalled into prompts and no new Memories are extracted.</p>}
 				<p>Extraction runs separately from writing generations. Profile transport and authentication stay in Connection Profiles; this form does not probe paid services.</p>
 				{deletedProfile && <p className="settings-feedback-error" role="alert">The saved extraction Connection Profile no longer exists. Choose an available profile.</p>}
 				{incomplete && <p className="settings-feedback" role="status">Memory processing is not ready. Configure an extraction profile and model, its profile credential, and the Typesafe credential in Model Settings.</p>}

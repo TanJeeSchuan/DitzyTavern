@@ -15,6 +15,7 @@ import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { PromptPlan } from "../../shared/contract/conversation-schema";
 import { createTypesafeSettingsModule } from "../typesafe";
+import { createMemorySettingsModule } from "../memory/settings";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;
@@ -420,5 +421,33 @@ describe("Memory recall in Generation preparation", () => {
 		expect(disabled.status).toBe(200);
 		expect(await disabled.json()).toMatchObject({ memoryActivation: { state: "disabled", candidates: [] } });
 		expect(providerCalls).toBe(0);
+	});
+
+	test("turning Memory off stops recall, rejects new extraction, and invalidates running extraction", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		withProfile(database);
+		const reextract = () => createMemoryRoutes(database).handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/memories/reextract`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: source.messageId }) },
+		));
+		expect((await reextract()).status).toBe(200);
+		let release = () => {};
+		const waiting = new Promise<void>((resolve) => { release = resolve; });
+		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
+		try {
+			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "running")).toBe(true);
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5 });
+			release();
+			await worker();
+		} finally { release(); await worker(); }
+		expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "failed", claims: [] }]);
+		const rejected = await reextract();
+		expect(rejected.status).toBe(422);
+		expect(await rejected.text()).toContain("Turn on Memory");
+		const preview = await createConversationRoutes(database, { masterKey: key }).handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "A new scene." }),
+		}));
+		expect(await preview.json()).toMatchObject({ memoryActivation: { state: "disabled", candidates: [] } });
 	});
 });
