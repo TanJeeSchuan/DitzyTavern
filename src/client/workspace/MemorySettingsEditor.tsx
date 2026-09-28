@@ -1,7 +1,8 @@
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, CircleHelp } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { isChatProfile, isEmbeddingsProfile, loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "../connection-settings";
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
@@ -75,7 +76,14 @@ export function MemorySettingsEditor() {
 						</ProfileModelPicker>
 					</Field>
 				</div>
-				<NumberGroup title="Extraction budget" description="Estimated tokens for each extraction request.">
+				<NumberGroup title={<>Extraction budget <Popover>
+					<PopoverTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label="How Jev handles Memory"><CircleHelp className="size-3.5" aria-hidden="true" /></Button></PopoverTrigger>
+					<PopoverContent align="start" aria-label="How Jev handles Memory" className="text-xs leading-relaxed">
+						<p>Your extraction model proposes Memories using this token budget.</p>
+						<p>Jev then checks whether the source supports each claim, whether it is attributed to the right person, and whether it will matter beyond the current scene. Only claims that pass these checks and the usefulness threshold are kept.</p>
+						<p>During recall, Jev scores saved Memories for relevance to the current scene. Configure Jev in Connections under Typesafe Jev.</p>
+					</PopoverContent>
+				</Popover></>} description="Estimated tokens for each extraction request.">
 					<NumberRow id="memory-context-limit" label="Context limit" min={1} step={1} value={draft.contextLimit} onChange={(contextLimit) => update({ contextLimit })} />
 					<NumberRow id="memory-output-reserve" label="Output reserve" min={1} step={1} value={draft.outputReserve} onChange={(outputReserve) => update({ outputReserve })} />
 					<NumberRow id="memory-safety-allowance" label="Safety allowance" min={0} step={1} value={draft.safetyAllowance} onChange={(safetyAllowance) => update({ safetyAllowance })} />
@@ -100,10 +108,10 @@ function ChoiceTrigger({ label, profile, profileId, modelId, ...props }: { label
 	);
 }
 
-function NumberGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+function NumberGroup({ title, description, children }: { title: ReactNode; description: string; children: ReactNode }) {
 	return (
 		<div className="mt-6 grid gap-2">
-			<h4 className="m-0 text-[0.8rem] font-semibold">{title}</h4>
+			<h4 className="m-0 flex items-center gap-1 text-[0.8rem] font-semibold">{title}</h4>
 			<p className="-mt-1 mb-1 text-xs leading-normal text-muted-foreground">{description}</p>
 			{children}
 		</div>
