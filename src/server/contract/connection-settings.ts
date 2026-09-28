@@ -141,9 +141,8 @@ export const createConnectionSettingsRoutes = (
 				try {
 					const prepared = withSettings((domain) => {
 						const profile = validateConnectionProfileDraft(body.profile);
-						const secrets = body.profileId === undefined
-							? null
-							: domain.getProfileSecrets(body.profileId);
+						const savedProfile = body.profileId === undefined ? undefined : domain.get().profiles.find((entry) => entry.id === body.profileId);
+						const secrets = savedProfile?.requestUrl === profile.requestUrl ? domain.getProfileSecrets(savedProfile.id) : null;
 						return {
 							profile,
 							secrets: applyConnectionHeaderOperations(secrets, body.headers ?? []),

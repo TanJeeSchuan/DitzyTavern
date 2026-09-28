@@ -65,12 +65,15 @@ export const createEmbeddingSettingsRoutes = (
 		try {
 			const values = validateEmbeddingSettings(body);
 			if (values.endpoint.length === 0) throw new InvalidEmbeddingSettingsError("An embedding endpoint and model are required for testing.");
-			const storedCredential = withDatabase(database, (connection) => createEmbeddingSettingsModule(connection, options).getCredential());
+			const stored = withDatabase(database, (connection) => {
+				const module = createEmbeddingSettingsModule(connection, options);
+				return { settings: module.get(), credential: module.getCredential() };
+			});
 			const vectors = await requestEmbeddings(["DitzyTavern embedding test"], {
 				endpoint: values.endpoint,
 				model: values.model,
 				timeoutMs: values.deadlineMs,
-				credential: body.credential?.trim() || storedCredential,
+				credential: body.credential?.trim() || (values.endpoint === stored.settings.endpoint ? stored.credential : null),
 				fetch: options.fetch,
 			});
 			return { outcome: "success" as const, dimensions: vectors[0]?.length ?? 0 };

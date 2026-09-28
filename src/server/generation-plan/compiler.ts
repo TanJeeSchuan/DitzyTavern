@@ -135,9 +135,9 @@ export const compileGenerationPlan = (
 	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
 	const memorySlotEnabled = input.recipe.some((slot) => slot.reference === "memory" && slot.enabled);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
-	const memoryCandidates = memorySlotEnabled ? [...(input.memory ?? input.memoryActivation?.candidates ?? [])] : [];
+	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])] : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;
-	const memoryAllowance = input.memoryAllowance ?? input.memoryActivation?.allowance ?? 2_048;
+	const memoryAllowance = input.memoryActivation?.allowance ?? 2_048;
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
 		throw new Error("Lore allowance must be a non-negative whole number.");
 	}

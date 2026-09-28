@@ -150,18 +150,19 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 
 function MemoryAllowancePopover({ conversationId, settings, onSaved }: { conversationId: number; settings: ConversationMemoryAllowance; onSaved: (settings: ConversationMemoryAllowance) => void }) {
 	const [value, setValue] = useState(String(settings.allowance));
+	const [revision, setRevision] = useState(settings.revision);
 	const [pending, setPending] = useState(false);
 	const [message, setMessage] = useState<{ tone: "note" | "problem"; text: string } | null>(null);
 	const save = async (event: FormEvent) => {
 		event.preventDefault();
 		setPending(true); setMessage(null);
-		const result = await saveMemoryAllowance(conversationId, settings.revision, Number(value));
-		if (result.outcome === "applied") { onSaved(result.settings); setValue(String(result.settings.allowance)); setMessage({ tone: "note", text: "Saved." }); }
-		else if (result.outcome === "conflict") { onSaved(result.currentSettings); setValue(String(result.currentSettings.allowance)); setMessage({ tone: "problem", text: "The allowance changed elsewhere. Review the current value before saving again." }); }
+		const result = await saveMemoryAllowance(conversationId, revision, Number(value));
+		if (result.outcome === "applied") { onSaved(result.settings); setRevision(result.settings.revision); setValue(String(result.settings.allowance)); setMessage({ tone: "note", text: "Saved." }); }
+		else if (result.outcome === "conflict") { onSaved(result.currentSettings); setRevision(result.currentSettings.revision); setValue(String(result.currentSettings.allowance)); setMessage({ tone: "problem", text: "The allowance changed elsewhere. Review the current value before saving again." }); }
 		else setMessage({ tone: "problem", text: result.reason });
 		setPending(false);
 	};
-	return <Popover onOpenChange={(open) => { if (open) { setValue(String(settings.allowance)); setMessage(null); } }}>
+	return <Popover onOpenChange={(open) => { if (open) { setRevision(settings.revision); setValue(String(settings.allowance)); setMessage(null); } }}>
 		<PopoverTrigger asChild><button type="button" className="icon-button" aria-label="Memory Allowance" title="Memory Allowance"><Gauge aria-hidden="true" /></button></PopoverTrigger>
 		<PopoverContent align="end" className="memory-allowance">
 			<PopoverHeader>

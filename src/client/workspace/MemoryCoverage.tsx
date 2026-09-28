@@ -34,6 +34,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, o
 	const memoryCount = marks.reduce((total, { source }) => total + (source?.claims.length ?? 0), 0);
 	const rememberedCount = marks.filter(({ mark }) => mark.kind === "remembered").length;
 	const unprocessedCount = marks.filter(({ mark }) => mark.kind === "unprocessed").length;
+	const failedCount = catchup?.state === "failed" ? catchup.failed.length : 0;
 	const indexingCount = marks.reduce((total, { source }) => total + (source && (source.indexing.status === "pending" || source.indexing.status === "running") ? source.indexing.pendingCount : 0), 0);
 	const running = catchup?.state === "running" ? catchup : null;
 	const focusMark = (index: number) => { setCursor(index); strip.current?.querySelectorAll<HTMLButtonElement>(".memory-mark")[index]?.focus(); };
@@ -47,7 +48,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, o
 		? `${label(marks[active].messageId)} · ${marks[active].mark.text}`
 		: running
 			? `Remembering history: ${running.complete} of ${running.pending + running.running + running.complete + running.failed.length}${running.failed.length ? ` · ${running.failed.length} failed` : ""}`
-			: unprocessedCount > 0 ? `${unprocessedCount} ${unprocessedCount === 1 ? "Message" : "Messages"} not remembered yet` : "Every Message has been processed";
+			: failedCount > 0 ? `${failedCount} ${failedCount === 1 ? "Message needs" : "Messages need"} another attempt` : unprocessedCount > 0 ? `${unprocessedCount} ${unprocessedCount === 1 ? "Message" : "Messages"} not remembered yet` : "Every Message has been processed";
 	return <section className="memory-coverage" aria-label="Story coverage">
 		<p className="memory-coverage-summary"><strong>{memoryCount} {memoryCount === 1 ? "Memory" : "Memories"}</strong> from {rememberedCount} of {path.length} {path.length === 1 ? "Message" : "Messages"}{indexingCount > 0 && ` · ${indexingCount} indexing`}</p>
 		<div ref={strip} className="memory-coverage-strip" role="toolbar" aria-label="Messages by Memory state" data-dense={marks.length > 160} onKeyDown={onKeyDown} onMouseLeave={() => setActive(null)}>
@@ -68,7 +69,7 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, o
 			<p>{caption}</p>
 			{running
 				? <Button type="button" size="xs" variant="outline" disabled={busy} onClick={onCancel}>Cancel</Button>
-				: unprocessedCount > 0 && <Button type="button" size="xs" variant="outline" disabled={busy || !enabled} onClick={onStart}>Remember history</Button>}
+				: (failedCount > 0 || unprocessedCount > 0) && <Button type="button" size="xs" variant="outline" disabled={busy || !enabled} onClick={onStart}>{failedCount > 0 ? "Retry history" : "Remember history"}</Button>}
 		</div>
 	</section>;
 }

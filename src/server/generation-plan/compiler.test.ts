@@ -257,8 +257,6 @@ describe("Generation Plan Compiler", () => {
 		const plan = compile({
 			recipe: [{ reference: "memory", enabled: true, role: "system" }],
 			context: [],
-			memory: candidates,
-			memoryAllowance: 6,
 			memoryActivation: memoryActivation(candidates, 6),
 			estimator: (transcript) => transcript.includes("oversized claim") ? 20 : transcript.includes("fits") ? 4 : 0,
 		});
@@ -288,9 +286,7 @@ describe("Generation Plan Compiler", () => {
 			context: [],
 			lore: [{ content: "lore fact" }],
 			loreAllowance: 100,
-			memory: [memory],
-			memoryAllowance: 100,
-			memoryActivation: activation,
+			memoryActivation: { ...activation, allowance: 100 },
 			settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 			estimator: estimate,
 		});
@@ -302,9 +298,7 @@ describe("Generation Plan Compiler", () => {
 				context: [],
 				lore: [{ content: "lore fact" }],
 				loreAllowance: 100,
-				memory: [memory],
-				memoryAllowance: 100,
-				memoryActivation: activation,
+				memoryActivation: { ...activation, allowance: 100 },
 				settings: configuredSettings({ contextLimit: 70, responseBudget: 1, safetyAllowance: 0 }),
 				estimator: estimate,
 			});

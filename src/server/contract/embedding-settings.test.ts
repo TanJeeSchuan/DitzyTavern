@@ -75,4 +75,24 @@ describe("embedding settings transport", () => {
 			body: { model: "draft-model", input: ["DitzyTavern embedding test"] },
 		}]);
 	});
+
+	test("does not send a saved credential to another embedding endpoint", async () => {
+		const authorizations: (string | null)[] = [];
+		app = createEmbeddingSettingsRoutes(database, {
+			masterKey: new Uint8Array(32).fill(7),
+			fetch: async (_input, init) => {
+				authorizations.push(new Headers(init?.headers).get("authorization"));
+				return Response.json({ data: [{ embedding: [1] }] });
+			},
+		});
+		await app.handle(request("/api/embedding-settings/commands", {
+			method: "POST",
+			body: JSON.stringify({ type: "apply", expectedRevision: 0, endpoint: "https://saved.example/v1/embeddings", model: "saved-model", deadlineMs: 2500, credential: "saved-secret" }),
+		}));
+		await app.handle(request("/api/embedding-settings/test", {
+			method: "POST",
+			body: JSON.stringify({ endpoint: "https://other.example/v1/embeddings", model: "draft-model", deadlineMs: 2500 }),
+		}));
+		expect(authorizations).toEqual([null]);
+	});
 });

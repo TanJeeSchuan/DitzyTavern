@@ -194,8 +194,6 @@ export const compilePlanFrom = (
 		lore: configuration.lore.candidates,
 		loreAllowance: configuration.lore.allowance,
 		loreActivation: configuration.lore.activation,
-		memory: configuration.memory.candidates,
-		memoryAllowance: configuration.memory.activation.allowance,
 		memoryActivation: configuration.memory.activation,
 		attempt: configuration.attempt,
 		intent: options.intent,
