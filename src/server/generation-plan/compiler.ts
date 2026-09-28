@@ -193,10 +193,7 @@ export const compileGenerationPlan = (
 		safetyAllowance: input.settings.safetyAllowance,
 		estimator: input.estimator ?? tokenxEstimator,
 	});
-	const selectedMemory = memoryCandidates.map((candidate, index) => ({
-		...candidate,
-		admission: admissions.memory[index]?.reason ?? candidate.admission,
-	}));
+	const selectedMemory = admissions.memory.map(({ candidate, reason }) => ({ ...candidate, admission: reason }));
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan =>
 		compileWith(context, admissions.lore.selected, selectedMemory.filter((candidate) => candidate.admission === "admitted"));
 	const budget = budgetPromptPlan({
@@ -302,7 +299,7 @@ type MemoryBudgetDecision = {
 
 type DynamicBlockAdmission = {
 	lore: LoreAdmission;
-	memory: (MemoryBudgetDecision | undefined)[];
+	memory: MemoryBudgetDecision[];
 };
 
 type DynamicBlockBudgetFailure = "oversized" | "allowance" | "context-limit";
@@ -327,29 +324,9 @@ const admitDynamicBlocks = (input: {
 	const loreSelected: PromptLoreEntry[] = [];
 	const loreDecisions: LoreBudgetDecision[] = [];
 	const memorySelected: MemoryRecallCandidateRecord[] = [];
-	const memoryDecisions: (MemoryBudgetDecision | undefined)[] = [];
+	const memoryDecisions: MemoryBudgetDecision[] = [];
 	const seenMemoryText = new Set<string>();
-	for (const candidate of input.memory) {
-		if (!candidate.judged) {
-			memoryDecisions.push({ candidate, reason: "request-limit" });
-			continue;
-		}
-		if (!candidate.retained) {
-			memoryDecisions.push({ candidate, reason: "not-retained" });
-			continue;
-		}
-		const rendered = renderMemoryClaim(candidate);
-		if (seenMemoryText.has(rendered)) {
-			memoryDecisions.push({ candidate, reason: "duplicate-rendering" });
-			continue;
-		}
-		seenMemoryText.add(rendered);
-		memoryDecisions.push(undefined);
-	}
-	const updateMemoryDecision = (candidate: MemoryRecallCandidateRecord, reason: MemoryRecallCandidateRecord["admission"]) => {
-		const index = input.memory.indexOf(candidate);
-		memoryDecisions[index] = { candidate, reason };
-	};
+	let memoryProcessed = false;
 	const cost = (plan: PromptPlan) => Math.ceil(input.estimator(toEstimationTranscript(plan)));
 	const dynamicBlockCost = (kind: "lore" | "memory", role: "system" | "human" | "model", content: string) =>
 		estimateDynamicBlockTokens(kind, role, content, input.estimator);
@@ -384,17 +361,30 @@ const admitDynamicBlocks = (input: {
 				loreDecisions.push({ candidate, reason: "admitted" });
 			}
 		} else {
+			if (memoryProcessed) continue;
+			memoryProcessed = true;
 			for (const candidate of input.memory) {
-				if (memoryDecisions[input.memory.indexOf(candidate)] !== undefined) continue;
+				if (!candidate.judged) {
+					memoryDecisions.push({ candidate, reason: "request-limit" });
+					continue;
+				}
+				if (!candidate.retained) {
+					memoryDecisions.push({ candidate, reason: "not-retained" });
+					continue;
+				}
 				const content = renderMemoryClaim(candidate);
+				if (seenMemoryText.has(content)) {
+					memoryDecisions.push({ candidate, reason: "duplicate-rendering" });
+					continue;
+				}
+				seenMemoryText.add(content);
 				const nextContent = [...memorySelected.map(renderMemoryClaim), content].join("\n\n");
 				const reason = budgetFailure("memory", role, input.memoryAllowance, content, nextContent, loreSelected, [...memorySelected, candidate]);
+				memoryDecisions.push({ candidate, reason: reason === null ? "admitted" : reason === "allowance" ? "memory-allowance" : reason });
 				if (reason !== null) {
-					updateMemoryDecision(candidate, reason === "allowance" ? "memory-allowance" : reason);
 					continue;
 				}
 				memorySelected.push(candidate);
-				updateMemoryDecision(candidate, "admitted");
 			}
 		}
 	}

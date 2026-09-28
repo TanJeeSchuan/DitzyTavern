@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { readConversationMemories, startMemoryWorker } from "../memory";
-import type { MemoryCandidateJudgment } from "../memory/extraction";
+import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";

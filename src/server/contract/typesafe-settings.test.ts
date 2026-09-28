@@ -49,14 +49,15 @@ describe("Typesafe Settings public contract", () => {
 		try {
 			const first = openInitializedDatabase({ path });
 			expect((await createTypesafeSettingsRoutes(first, { masterKey }).handle(command({ credential: "durable-secret" }))).status).toBe(200);
-			first.close();
+			Bun.gc(true);
+			first.close(true);
 			const second = openInitializedDatabase({ path });
 			try {
 				const body = await (await createTypesafeSettingsRoutes(second, { masterKey }).handle(read())).text();
 				expect(body).toContain('"revision":1');
 				expect(body).toContain('"credentialConfigured":true');
 				expect(body).not.toContain("durable-secret");
-			} finally { second.close(); }
+			} finally { Bun.gc(true); second.close(true); }
 		} finally { rmSync(directory, { recursive: true, force: true }); }
 	});
 });

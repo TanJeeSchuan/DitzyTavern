@@ -7,6 +7,7 @@ export const memoryCandidate = Type.Object({
 	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Number(), attribution: Type.Number(), usefulness: Type.Number() }) }),
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
+export type MemoryCandidateJudgment = Static<typeof memoryCandidate>;
 export const memoryCandidates = Type.Array(memoryCandidate);
 export const memoryIndexing = Type.Object({
 	status: Type.Union([Type.Literal("ready"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("failed"), Type.Literal("disabled"), Type.Literal("unconfigured"), Type.Literal("not-applicable")]),
@@ -14,10 +15,12 @@ export const memoryIndexing = Type.Object({
 	failedCount: Type.Integer(),
 	error: Type.Union([Type.String(), Type.Null()]),
 });
+export type MemoryIndexReadiness = Static<typeof memoryIndexing>;
 export const memoryCollection = Type.Object({
 	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"), Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
 	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
+export type MemoryCollectionView = Static<typeof memoryCollection>;
 export const conversationMemories = Type.Object({ sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
 export type ConversationMemories = Static<typeof conversationMemories>;
 export const memorySourceCommand = Type.Object({ messageId: Type.Integer() });
@@ -50,7 +53,10 @@ export const memoryExtractionResponse = Type.Object({
 	}, { additionalProperties: false }), { maxItems: 16 }),
 }, { additionalProperties: false });
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
+export type MemoryCandidate = MemoryExtractionResponse["candidates"][number];
+export type MemoryEvidence = MemoryCandidate["evidence"][number];
 export const memoryCapturedMessage = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), content: Type.String() });
+export type CapturedMemoryMessage = Static<typeof memoryCapturedMessage>;
 export const memoryWorkSnapshot = Type.Object({ source: memoryCapturedMessage, context: Type.Array(memoryCapturedMessage) });
 export type MemoryWorkSnapshot = Static<typeof memoryWorkSnapshot>;
 export const memoryTraceSteps = Type.Array(Type.Object({ label: Type.String(), at: Type.String(), fields: Type.Record(Type.String(), Type.String()) }));

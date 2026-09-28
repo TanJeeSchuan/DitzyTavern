@@ -101,6 +101,20 @@ describe("Memory source lifecycle public operations", () => {
 		} finally { await stop(); }
 	});
 
+	test("captures catch-up context from one ordered path and caps it at four selected Variants", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const messages = Array.from({ length: 6 }, (_, index) => insertMessage(database, conversation.id, index + 1, `Message ${index + 1}.`));
+		const started = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }));
+		const run = Value.Parse(memoryCatchup, await started.json());
+		const saved = database.query<{ source_snapshot_json: string }, [number, number]>("SELECT source_snapshot_json FROM memory_collection WHERE catchup_run_id = ? AND variant_id = ?").get(run.id, messages[5]!.variantId);
+		expect(saved).not.toBeUndefined();
+		expect(JSON.parse(saved!.source_snapshot_json)).toEqual({
+			source: { messageId: messages[5]!.messageId, variantId: messages[5]!.variantId, content: "Message 6." },
+			context: messages.slice(1, 5).map((message, index) => ({ messageId: message.messageId, variantId: message.variantId, content: `Message ${index + 2}.` })),
+		});
+	});
+
 	test("correction claims source ownership and catch-up skips current, writer-cleared, and empty sources", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);

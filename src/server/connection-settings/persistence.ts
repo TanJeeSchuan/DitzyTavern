@@ -166,6 +166,8 @@ export function writeSecretState(
 	payload: ConnectionProfileSecretSnapshot,
 	masterKey: Uint8Array,
 ): void {
+	const current = readSecret(db, profileId, masterKey);
+	if (current && current.credential === payload.credential && JSON.stringify(Object.entries(current.headers).sort()) === JSON.stringify(Object.entries(payload.headers).sort())) return;
 	if (payload.credential === null && Object.keys(payload.headers).length === 0) {
 		db.delete(connectionSecretTable)
 			.where(eq(connectionSecretTable.profile_id, profileId))

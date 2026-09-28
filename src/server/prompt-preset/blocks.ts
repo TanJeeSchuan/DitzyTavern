@@ -8,6 +8,7 @@ import {
 	type PromptBlockReference,
 	type PromptPresetBlockOccurrence,
 	type PromptPresetRecipe,
+	hasEnabledMemorySlot,
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
@@ -100,7 +101,9 @@ const applyBlockPatch = (
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
-const refreshSelectedMemoryTails = (database: Database, presetId: number) => {
+const refreshSelectedMemoryTails = (database: Database, presetId: number, before: PromptPresetRecipe) => {
+	const after = readPromptPresetRecipe(database, presetId);
+	if (after === undefined || hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
 	invalidateMemoryWorkForPreset(database, presetId);
 	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) queueMemoryTail(database, conversationId);
 };
@@ -148,19 +151,6 @@ const requireRecipe = (
 	return recipe;
 };
 
-const requireBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-): PromptPresetBlockOccurrence => {
-	const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	const occurrence = recipe.slots.find((slot) => slot.id === blockId);
-	if (occurrence === undefined) {
-		throw new PromptPresetBlockNotFoundError(presetId, blockId);
-	}
-	return occurrence;
-};
-
 /** ==[HUMAN APPROVED]==
  * Saves all occurrence-addressed editor patches as one transaction. Every patch is checked
  * against the same authoritative recipe before the first write, so an invalid later patch
@@ -176,7 +166,7 @@ export const savePromptPresetBlockPatches = (
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		validateBlockPatches(recipe, patches);
 		patches.forEach((patch) => applyBlockPatch(db, patch));
-		if (patches.length > 0) refreshSelectedMemoryTails(database, presetId);
+		if (patches.length > 0) refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -196,9 +186,11 @@ const writePromptPresetBlock = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		const occurrence = requireBlock(database, presetId, blockId);
+		const before = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const occurrence = before.slots.find((slot) => slot.id === blockId);
+		if (occurrence === undefined) throw new PromptPresetBlockNotFoundError(presetId, blockId);
 		write(db, occurrence);
-		refreshSelectedMemoryTails(database, presetId);
+		refreshSelectedMemoryTails(database, presetId, before);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -223,7 +215,7 @@ export const addPromptPresetBlock = (
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
 			.run();
-		refreshSelectedMemoryTails(database, presetId);
+		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -238,7 +230,7 @@ export const addPromptPresetInstruction = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		const count = orderedIdsOf(db, presetId).length;
 		db.insert(promptPresetBlockTable)
 			.values({
@@ -251,7 +243,7 @@ export const addPromptPresetInstruction = (
 				content: "",
 			})
 			.run();
-		refreshSelectedMemoryTails(database, presetId);
+		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };

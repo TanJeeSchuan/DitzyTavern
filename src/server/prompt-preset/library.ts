@@ -305,7 +305,6 @@ export function executePromptPresetCommand(
 			.set({ name: requireCommandName(command.name), revision: preset.revision + 1 })
 			.where(eq(promptPresetTable.id, preset.id))
 			.run();
-		invalidateMemoryWorkForPreset(database, preset.id);
 		return { kind: "preset", preset: requireSummary(db, preset.id) };
 	});
 

@@ -10,8 +10,11 @@ import { jevResponse, type JevAnswer, type TypesafeSettingsCommand, type Typesaf
 
 const SETTINGS_ID = 1;
 const MAX_RESPONSE_BYTES = 256 * 1024;
-const MAX_REQUEST_BYTES = 128 * 1024;
+export const JEV_REQUEST_BYTE_LIMIT = 128 * 1024;
+export const JEV_REQUEST_TOKEN_LIMIT = 48_000;
 export const JEV_STATE_TOKEN_LIMIT = 16_000;
+export const JEV_STATE_QUESTION_TOKEN_LIMIT = 32_000;
+export const JEV_TOTAL_INPUT_TOKEN_LIMIT = 64_000;
 type Db = ReturnType<typeof drizzle>;
 
 export class InvalidTypesafeSettingsError extends Error {
@@ -122,7 +125,7 @@ export const jevRequest = <State extends object, Question extends object>(model:
 	const stateTokens = tokenxEstimator(JSON.stringify(state));
 	const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
 	const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
-	const fits = new TextEncoder().encode(request).byteLength <= MAX_REQUEST_BYTES && tokenxEstimator(request) <= 48_000 && stateTokens <= JEV_STATE_TOKEN_LIMIT && stateTokens + Math.max(0, ...questionTokens) <= 32_000 && stateTokens + totalQuestionTokens <= 64_000;
+	const fits = new TextEncoder().encode(request).byteLength <= JEV_REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= JEV_REQUEST_TOKEN_LIMIT && stateTokens <= JEV_STATE_TOKEN_LIMIT && stateTokens + Math.max(0, ...questionTokens) <= JEV_STATE_QUESTION_TOKEN_LIMIT && stateTokens + totalQuestionTokens <= JEV_TOTAL_INPUT_TOKEN_LIMIT;
 	return { request, questionIds: Object.keys(questions), fits };
 };
 

@@ -15,7 +15,7 @@ import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryEmb
 import { judgeMemoryRecallCandidates } from "./extraction";
 import { memoryOwnership, readMemoryAllowance } from "./collections";
 import { sha256 } from "./hash";
-import type { MemoryCandidateJudgment } from "./extraction";
+import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 
 export interface MemoryRecallSceneMessage {
 	readonly messageId: number;

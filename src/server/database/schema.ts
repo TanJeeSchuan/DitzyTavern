@@ -351,13 +351,11 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	revision: int().notNull().default(0),
 	ownership: text().notNull().default("automatic"),
 	work_epoch: int().notNull().default(0),
-	source_epoch: int().notNull().default(0),
 	chat_epoch: int().notNull().default(0),
 	status: text().notNull().default("pending"),
 	error: text(),
 	source_snapshot_json: text().notNull(),
 	claims_json: text().notNull().default("[]"),
-	provenance_json: text().notNull().default("[]"),
 	trace_json: text(),
 	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
 	source_changed: int({ mode: "boolean" }).notNull().default(false),
@@ -374,6 +372,7 @@ export const memoryIndexWorkTable = sqliteTable("memory_index_work", {
 	variant_id: int().primaryKey().references(() => memoryCollectionTable.variant_id, { onDelete: "cascade" }),
 	collection_revision: int().notNull(),
 	epoch: int().notNull(),
+	space_key: text().notNull(),
 	endpoint: text().notNull(),
 	model: text().notNull(),
 	deadline_ms: int().notNull(),
@@ -387,6 +386,7 @@ export const memoryIndexWorkTable = sqliteTable("memory_index_work", {
 
 export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
 	id: int().primaryKey({ autoIncrement: true }),
+	space_key: text().notNull(),
 	endpoint: text().notNull(),
 	model: text().notNull(),
 	text_hash: text().notNull(),
@@ -394,7 +394,7 @@ export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
 	vector_json: text().notNull(),
 	updated_at: text().notNull(),
 }, (table) => [
-	uniqueIndex("memory_embedding_cache_identity").on(table.endpoint, table.model, table.text_hash),
+	uniqueIndex("memory_embedding_cache_identity").on(table.space_key, table.endpoint, table.model, table.text_hash),
 ]);
 
 // ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the

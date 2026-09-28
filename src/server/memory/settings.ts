@@ -60,7 +60,7 @@ export const createMemorySettingsModule = (database: Database) => {
 		if ((profile.apiFormat === "embeddings") !== (role === "embedding")) throw new InvalidMemorySettingsError(role === "embedding" ? "Choose an Embeddings connection for the embedding model." : "Choose a chat connection for the extraction model.");
 		if (model.length === 0) throw new InvalidMemorySettingsError(`Choose an ${role} model for the selected Connection Profile.`);
 	};
-	const apply = (command: MemorySettingsCommand) => {
+	const apply = (command: MemorySettingsCommand) => database.transaction(() => {
 		const model = command.extractionModel.trim();
 		const embeddingModel = command.embeddingModel.trim();
 		checkChoice("extraction", command.extractionProfileId, model);
@@ -80,6 +80,6 @@ export const createMemorySettingsModule = (database: Database) => {
 		}
 		if (!sameEmbeddingConfiguration(embedding, readMemoryEmbeddingConfiguration(database))) queueAllMemoryIndexing(database);
 		return settings;
-	};
+	}).immediate();
 	return { get, apply };
 };

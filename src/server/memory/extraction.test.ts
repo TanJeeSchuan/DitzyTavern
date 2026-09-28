@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { judgeMemoryCandidates, judgeMemoryRecallCandidates, validateMemoryCandidates, type MemoryCandidate } from "./extraction";
+import { judgeMemoryCandidates, judgeMemoryRecallCandidates, validateMemoryCandidates } from "./extraction";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import type { ModelFetch } from "../model-client";
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
+import type { MemoryCandidate } from "../../shared/contract/memory";
 
 const source = { messageId: 10, variantId: 20, content: "Maren promised Writer the brass key." };
 const context = [{ messageId: 9, variantId: 19, content: "Writer asked Maren about the lodge key." }];

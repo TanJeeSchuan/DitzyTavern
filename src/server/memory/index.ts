@@ -1,10 +1,10 @@
 export { createMemorySettingsModule, InvalidMemorySettingsError, StaleMemorySettingsError } from "./settings";
 export { cancelMemoryCatchup, correctMemorySource, invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryWorker, startMemoryCatchup, StaleMemoryCollectionError } from "./collections";
-export type { MemoryCatchupView, MemoryCollectionView, MemoryWorkerOptions } from "./collections";
+export type { MemoryWorkerOptions } from "./collections";
 export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
 export { invalidateMemoryWorkForConversation, invalidateMemoryWorkForPreset } from "./cancellation";
-export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryEvidence } from "./extraction";
-export type { MemoryIndexReadiness, MemoryIndexJob } from "./indexing";
+export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryCollectionView, MemoryEvidence, MemoryIndexReadiness, MemoryCatchup } from "../../shared/contract/memory";
+export type { MemoryIndexJob } from "./indexing";
 export { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot } from "./recall";
 export type { MemoryRecallResult, MemoryRecallSceneMessage, MemoryRecallSnapshot } from "./recall";
 export { judgeMemoryRecallCandidates } from "./extraction";

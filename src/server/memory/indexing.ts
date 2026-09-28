@@ -5,7 +5,7 @@ import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { readConversationPromptPreset } from "../conversation/prompt-preset";
 import { createMemorySettingsModule } from "./settings";
-import { activeGenerationTable, connectionProfileTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import type { ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -14,25 +14,20 @@ import type { ModelFetch } from "../model-client/types";
 import { memoryCandidates } from "../../shared/contract/memory";
 import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import { renderMemoryClaim } from "../../shared/memory-text";
-import type { MemoryCandidateJudgment } from "./extraction";
+import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared/contract/memory";
 import { sha256 } from "./hash";
 
 const memoryVector = Type.Array(Type.Number(), { minItems: 1 });
 
 export interface MemoryEmbeddingConfiguration {
+	readonly spaceKey: string;
 	readonly endpoint: string;
 	readonly model: string;
 	readonly deadlineMs: number;
 }
 
-export interface MemoryIndexReadiness {
-	readonly status: "ready" | "pending" | "running" | "failed" | "disabled" | "unconfigured" | "not-applicable";
-	readonly pendingCount: number;
-	readonly failedCount: number;
-	readonly error: string | null;
-}
-
 export interface MemoryIndexJob {
+	readonly spaceKey: string;
 	readonly variantId: number;
 	readonly conversationId: number;
 	readonly messageId: number;
@@ -72,14 +67,15 @@ export const cancelMemoryIndexWork = (database: Database, variantId: number): vo
 const currentConfiguration = (database: Database): MemoryEmbeddingConfiguration => {
 	const { embeddingProfileId, embeddingModel } = createMemorySettingsModule(database).get();
 	const profile = embeddingProfileId === null ? undefined : drizzle(database).select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
-	if (profile === undefined || profile.timeout_ms === null) return { endpoint: "", model: "", deadlineMs: 0 };
-	return { endpoint: resolveEmbeddingsRequestUrl(profile.request_url), model: embeddingModel, deadlineMs: profile.timeout_ms };
+	if (profile === undefined || profile.timeout_ms === null) return { spaceKey: "", endpoint: "", model: "", deadlineMs: 0 };
+	const secret = drizzle(database).select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
+	return { spaceKey: sha256(JSON.stringify([profile.id, secret?.nonce ?? null])), endpoint: resolveEmbeddingsRequestUrl(profile.request_url), model: embeddingModel, deadlineMs: profile.timeout_ms };
 };
 
 export const readMemoryEmbeddingConfiguration = currentConfiguration;
 
 export const sameEmbeddingConfiguration = (left: MemoryEmbeddingConfiguration, right: MemoryEmbeddingConfiguration): boolean =>
-	left.endpoint === right.endpoint && left.model === right.model && left.deadlineMs === right.deadlineMs;
+	left.spaceKey === right.spaceKey && left.endpoint === right.endpoint && left.model === right.model && left.deadlineMs === right.deadlineMs;
 
 export const readMemoryEmbeddingSecrets = (database: Database): ConnectionProfileSecretSnapshot | null => {
 	const { embeddingProfileId } = createMemorySettingsModule(database).get();
@@ -98,6 +94,7 @@ const parseVector = (serialized: string): readonly number[] | null => {
 
 export const readCachedMemoryVector = (database: Database, configuration: MemoryEmbeddingConfiguration, renderedText: string): readonly number[] | null => {
 	const row = drizzle(database).select().from(memoryEmbeddingCacheTable).where(and(
+		eq(memoryEmbeddingCacheTable.space_key, configuration.spaceKey),
 		eq(memoryEmbeddingCacheTable.endpoint, configuration.endpoint),
 		eq(memoryEmbeddingCacheTable.model, configuration.model),
 		eq(memoryEmbeddingCacheTable.text_hash, sha256(renderedText)),
@@ -110,6 +107,7 @@ const cachedTexts = (database: Database, configuration: MemoryEmbeddingConfigura
 	if (texts.length === 0) return new Set();
 	const hashes = [...new Set(texts.map(sha256))];
 	const rows = drizzle(database).select().from(memoryEmbeddingCacheTable).where(and(
+		eq(memoryEmbeddingCacheTable.space_key, configuration.spaceKey),
 		eq(memoryEmbeddingCacheTable.endpoint, configuration.endpoint),
 		eq(memoryEmbeddingCacheTable.model, configuration.model),
 		inArray(memoryEmbeddingCacheTable.text_hash, hashes),
@@ -139,11 +137,11 @@ export const readMemoryIndexReadiness = (
 		return { status: "unconfigured", pendingCount: claims.length, failedCount: 0, error: "Choose an embedding model in Memory to index saved Memories." };
 	}
 	const texts = claims.map(renderMemoryClaim);
-	const ready = cachedTexts(database, configuration, texts).size;
-	const pendingCount = texts.length - ready;
+	const ready = cachedTexts(database, configuration, texts);
+	const pendingCount = texts.filter((text) => !ready.has(text)).length;
 	if (pendingCount === 0) return { status: "ready", pendingCount: 0, failedCount: 0, error: null };
 	const job = drizzle(database).select().from(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, collection.variant_id)).get();
-	if (!job || job.collection_revision !== collection.revision || job.epoch !== collection.index_epoch || job.endpoint !== configuration.endpoint || job.model !== configuration.model) {
+	if (!job || job.collection_revision !== collection.revision || job.epoch !== collection.index_epoch || job.space_key !== configuration.spaceKey || job.endpoint !== configuration.endpoint || job.model !== configuration.model) {
 		return { status: "pending", pendingCount, failedCount: 0, error: null };
 	}
 	if (job.status === "failed") return { status: "failed", pendingCount: 0, failedCount: pendingCount, error: job.error };
@@ -187,13 +185,14 @@ const scheduleInsideTransaction = (
 		db.delete(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, collection.variant_id)).run();
 		return false;
 	}
-	if (!force && existing && existing.collection_revision === collection.revision && existing.epoch === collection.index_epoch && existing.endpoint === configuration.endpoint && existing.model === configuration.model && existing.deadline_ms === configuration.deadlineMs) return false;
+	if (!force && existing && existing.collection_revision === collection.revision && existing.epoch === collection.index_epoch && existing.space_key === configuration.spaceKey && existing.endpoint === configuration.endpoint && existing.model === configuration.model && existing.deadline_ms === configuration.deadlineMs) return false;
 	const epoch = collection.index_epoch + 1;
 	db.update(memoryCollectionTable).set({ index_epoch: epoch }).where(eq(memoryCollectionTable.variant_id, collection.variant_id)).run();
 	db.insert(memoryIndexWorkTable).values({
 		variant_id: collection.variant_id,
 		collection_revision: collection.revision,
 		epoch,
+		space_key: configuration.spaceKey,
 		endpoint: configuration.endpoint,
 		model: configuration.model,
 		deadline_ms: configuration.deadlineMs,
@@ -202,7 +201,7 @@ const scheduleInsideTransaction = (
 		updated_at: new Date().toISOString(),
 	}).onConflictDoUpdate({
 		target: memoryIndexWorkTable.variant_id,
-		set: { collection_revision: collection.revision, epoch, endpoint: configuration.endpoint, model: configuration.model, deadline_ms: configuration.deadlineMs, status: "pending", error: null, updated_at: new Date().toISOString() },
+		set: { collection_revision: collection.revision, epoch, space_key: configuration.spaceKey, endpoint: configuration.endpoint, model: configuration.model, deadline_ms: configuration.deadlineMs, status: "pending", error: null, updated_at: new Date().toISOString() },
 	}).run();
 	return true;
 };
@@ -267,7 +266,7 @@ export const claimMemoryIndexWork = (database: Database): MemoryIndexJob | undef
 		db.delete(memoryIndexWorkTable).where(and(eq(memoryIndexWorkTable.variant_id, work.variant_id), eq(memoryIndexWorkTable.epoch, work.epoch))).run();
 		return undefined;
 	}
-	if (work.endpoint !== configuration.endpoint || work.model !== configuration.model || work.deadline_ms !== configuration.deadlineMs) {
+	if (work.space_key !== configuration.spaceKey || work.endpoint !== configuration.endpoint || work.model !== configuration.model || work.deadline_ms !== configuration.deadlineMs) {
 		scheduleInsideTransaction(database, collection, configuration, false);
 		return undefined;
 	}
@@ -280,13 +279,13 @@ export const claimMemoryIndexWork = (database: Database): MemoryIndexJob | undef
 		db.update(memoryIndexWorkTable).set({ status: "failed", error: "Saved Memory text is invalid and cannot be indexed." }).where(eq(memoryIndexWorkTable.variant_id, work.variant_id)).run();
 		return undefined;
 	}
-	return { variantId: work.variant_id, conversationId: collection.conversation_id, messageId: collection.message_id, revision: work.collection_revision, epoch: work.epoch, endpoint: work.endpoint, model: work.model, deadlineMs: work.deadline_ms, claims };
+	return { variantId: work.variant_id, conversationId: collection.conversation_id, messageId: collection.message_id, revision: work.collection_revision, epoch: work.epoch, spaceKey: work.space_key, endpoint: work.endpoint, model: work.model, deadlineMs: work.deadline_ms, claims };
 }).immediate();
 
 export const embedMemoryJob = async (database: Database, job: MemoryIndexJob, fetch?: ModelFetch, signal?: AbortSignal) => {
 	if (job.endpoint.length === 0 || job.model.length === 0) throw new Error("Choose an embedding model in Memory to index saved Memories.");
 	const config = currentConfiguration(database);
-	if (config.endpoint !== job.endpoint || config.model !== job.model || config.deadlineMs !== job.deadlineMs) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
+	if (!sameEmbeddingConfiguration(config, job)) throw new Error("The embedding model changed before indexing began. Retry indexing under the current configuration.");
 	const missing = cacheMissingTexts(database, config, job.claims);
 	if (missing.length === 0) return [] as const;
 	const vectors = await requestEmbeddings(missing, { endpoint: config.endpoint, model: config.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: job.deadlineMs, fetch, signal });
@@ -308,17 +307,17 @@ export const publishMemoryIndexVectors = (
 	const active = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(and(
 		eq(activeGenerationTable.variant_id, job.variantId), eq(activeGenerationTable.conversation_id, job.conversationId),
 	)).get();
-	if (!collection || !source || active || !work || work.status !== "running" || work.epoch !== job.epoch || work.collection_revision !== job.revision || collection.revision !== job.revision || collection.index_epoch !== job.epoch || collection.status !== "complete" || (collection.ownership === "automatic" && collection.source_changed) || !isMemoryEnabledForConversation(database, job.conversationId) || config.endpoint !== job.endpoint || config.model !== job.model || config.deadlineMs !== job.deadlineMs) return false;
+	if (!collection || !source || active || !work || work.status !== "running" || work.epoch !== job.epoch || work.collection_revision !== job.revision || collection.revision !== job.revision || collection.index_epoch !== job.epoch || collection.status !== "complete" || (collection.ownership === "automatic" && collection.source_changed) || !isMemoryEnabledForConversation(database, job.conversationId) || !sameEmbeddingConfiguration(config, job)) return false;
 	const currentClaims = parsedClaims(collection.claims_json);
 	if (JSON.stringify(currentClaims.map(renderMemoryClaim)) !== JSON.stringify(job.claims.map(renderMemoryClaim))) return false;
 	for (const { renderedText, vector } of values) {
 		const textHash = sha256(renderedText);
 		const existing = db.select().from(memoryEmbeddingCacheTable).where(and(
-			eq(memoryEmbeddingCacheTable.endpoint, job.endpoint), eq(memoryEmbeddingCacheTable.model, job.model), eq(memoryEmbeddingCacheTable.text_hash, textHash),
+			eq(memoryEmbeddingCacheTable.space_key, job.spaceKey), eq(memoryEmbeddingCacheTable.endpoint, job.endpoint), eq(memoryEmbeddingCacheTable.model, job.model), eq(memoryEmbeddingCacheTable.text_hash, textHash),
 		)).get();
 		if (existing && existing.rendered_text !== renderedText) throw new Error("A Memory text identity collision prevents indexing.");
 		if (existing) continue;
-		db.insert(memoryEmbeddingCacheTable).values({ endpoint: job.endpoint, model: job.model, text_hash: textHash, rendered_text: renderedText, vector_json: JSON.stringify(vector), updated_at: new Date().toISOString() }).onConflictDoNothing().run();
+		db.insert(memoryEmbeddingCacheTable).values({ space_key: job.spaceKey, endpoint: job.endpoint, model: job.model, text_hash: textHash, rendered_text: renderedText, vector_json: JSON.stringify(vector), updated_at: new Date().toISOString() }).onConflictDoNothing().run();
 	}
 	db.delete(memoryIndexWorkTable).where(and(eq(memoryIndexWorkTable.variant_id, job.variantId), eq(memoryIndexWorkTable.epoch, job.epoch))).run();
 	return true;

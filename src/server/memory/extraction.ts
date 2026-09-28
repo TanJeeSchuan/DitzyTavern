@@ -8,7 +8,7 @@ import type { MemorySettingsPayload } from "../../shared/contract/memory-setting
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
-import type { MemoryExtractionResponse } from "../../shared/contract/memory";
+import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse } from "../../shared/contract/memory";
 import type { JevAnswer } from "../../shared/contract/typesafe";
 import { createTypesafeSettingsModule, jevRequest, requestJev, type JevTrace } from "../typesafe";
 
@@ -22,24 +22,6 @@ export type MemoryTrace = JevTrace;
 const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
 const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
-
-export interface CapturedMemoryMessage {
-	messageId: number;
-	variantId: number;
-	content: string;
-}
-export interface MemoryEvidence { messageId: number; excerpt: string }
-export interface MemoryCandidate { claim: string; attribution: string; people: string[]; evidence: MemoryEvidence[] }
-export interface MemoryCandidateJudgment extends MemoryCandidate {
-	writerMaintained?: boolean;
-	judgment: {
-		support: "supported" | "contradicted" | "not_established";
-		attribution: "correct" | "misattributed" | "unclear";
-		usefulness: "retain" | "omit";
-		probabilities: Record<string, number>;
-		confidence: { support: number; attribution: number; usefulness: number };
-	};
-}
 
 const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {
 	if (candidate.claim.trim().length === 0 || candidate.attribution.trim().length === 0 || candidate.claim.length + candidate.attribution.length > MAX_CLAIM) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
@@ -62,7 +44,7 @@ export function validateMemoryCandidates(
 	for (const [index, candidate] of response.candidates.entries()) {
 		const problem = candidateProblem(candidate, messages, sourceMessageId);
 		if (problem !== null) dropped.push(`Memory candidate ${index + 1} ${problem}.`);
-		else valid.push({ claim: candidate.claim, attribution: candidate.attribution, people: candidate.people, evidence: candidate.evidence.map(({ messageId, excerpt }): MemoryEvidence => ({ messageId, excerpt })) });
+		else valid.push({ claim: candidate.claim, attribution: candidate.attribution, people: candidate.people, evidence: candidate.evidence.map(({ messageId, excerpt }) => ({ messageId, excerpt })) });
 	}
 	if (valid.length === 0 && dropped.length > 0) throw new Error(`Every Memory candidate was invalid. ${dropped.join(" ")}`);
 	return { candidates: valid.filter((candidate, index) => valid.findIndex((other) => JSON.stringify(other) === JSON.stringify(candidate)) === index), dropped };

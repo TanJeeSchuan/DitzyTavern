@@ -3,10 +3,11 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { embedMemoryJob } from "../memory/indexing";
+import { claimMemoryIndexWork, embedMemoryJob, publishMemoryIndexVectors, readCachedMemoryVector, readMemoryEmbeddingConfiguration } from "../memory/indexing";
+import { createMemorySettingsModule } from "../memory/settings";
 import { captureMemoryRecallSnapshot } from "../memory/recall";
 import { startMemoryWorker } from "../memory";
-import type { MemoryCandidateJudgment } from "../memory/extraction";
+import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import type { ModelFetch } from "../model-client";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { conversationMemories, memoryCorrectionApplied } from "../../shared/contract/memory";
@@ -15,7 +16,7 @@ import { createMemoryRoutes } from "./memory";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { connectionProfileDraftOf } from "../../shared/contract/connection-settings";
-import { configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
+import { configureMemoryEmbeddings, createChat, createRoutes, key, readOperation, readPreset, runPresetCommand, saveBlockRole, toggleBlock } from "./prompt-preset-test-fixtures";
 
 const waitFor = async (check: () => boolean | Promise<boolean>) => {
 	const deadline = Date.now() + 4_000;
@@ -105,6 +106,94 @@ describe("Memory indexing public lifecycle", () => {
 	});
 
 	afterEach(() => database.close());
+
+	test.each(["profile", "credential", "header"] as const)("separates vectors when the embedding %s changes", async (change) => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const settings = configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "memory-v1");
+		const source = insertSource(database, conversation.id, 1, "Maren returned Writer's key.");
+		await queueSource(memories, conversation.id, source.messageId);
+		const worker = startMemoryWorker(database, {
+			process: async (item) => [candidate(item.messageId, item.content), candidate(item.messageId, "Writer's key")],
+			index: embeddingIndex(database, preparationFetch([])),
+		});
+		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
+		finally { await worker(); }
+		const before = readMemoryEmbeddingConfiguration(database);
+		const connections = createConnectionSettingsModule(database);
+		const profile = connections.get().profiles.find((item) => item.id === settings.embeddingProfileId)!;
+		if (change === "profile") {
+			const next = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...connectionProfileDraftOf(profile), displayName: "Tenant B" }, credential: "tenant-b" }).profiles.find((item) => item.displayName === "Tenant B")!;
+			const memory = createMemorySettingsModule(database);
+			const { revision, ...current } = memory.get();
+			memory.apply({ ...current, expectedRevision: revision, embeddingProfileId: next.id });
+		} else if (change === "credential") {
+			connections.setCredential({ expectedRevision: connections.get().revision, profileId: profile.id, credential: "tenant-b" });
+		} else {
+			connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: connectionProfileDraftOf(profile), headers: [{ operation: "replace", name: "X-Tenant", value: "tenant-b" }] });
+		}
+		const current = readMemoryEmbeddingConfiguration(database);
+		expect(current.spaceKey).not.toBe(before.spaceKey);
+		const text = renderMemoryClaim(candidate(source.messageId, ""));
+		expect(readCachedMemoryVector(database, current, text)).toBeNull();
+		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "pending", pendingCount: 2 });
+		const job = claimMemoryIndexWork(database);
+		if (!job) throw new Error("Tenant change did not durably schedule indexing.");
+		const values = await embedMemoryJob(database, job, async () => Response.json({ data: [{ embedding: [0, 1, 0] }] }));
+		expect(publishMemoryIndexVectors(database, job, values)).toBe(true);
+		expect(readCachedMemoryVector(database, current, text)).toEqual([0, 1, 0]);
+		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "ready", pendingCount: 0 });
+		const unchanged = connections.get().profiles.find((item) => item.id === profile.id)!;
+		connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: { ...connectionProfileDraftOf(unchanged), displayName: "Renamed" } });
+		expect(readMemoryEmbeddingConfiguration(database)).toEqual(current);
+	});
+
+	test("rolls configuration changes back when durable index scheduling fails", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "memory-v1");
+		const source = insertSource(database, conversation.id, 1, "Maren returned Writer's key.");
+		await queueSource(memories, conversation.id, source.messageId);
+		const worker = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], index: embeddingIndex(database, preparationFetch([])) });
+		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
+		finally { await worker(); }
+		database.exec("CREATE TRIGGER reject_index_work BEFORE INSERT ON memory_index_work BEGIN SELECT RAISE(ABORT, 'controlled scheduling failure'); END");
+		const memory = createMemorySettingsModule(database);
+		const { revision, ...settings } = memory.get();
+		const configuration = readMemoryEmbeddingConfiguration(database);
+		expect(() => memory.apply({ ...settings, expectedRevision: revision, embeddingModel: "memory-v2" })).toThrow();
+		expect(memory.get()).toEqual({ ...settings, revision });
+		const connections = createConnectionSettingsModule(database);
+		const before = connections.get();
+		expect(() => connections.setCredential({ expectedRevision: before.revision, profileId: settings.embeddingProfileId!, credential: "tenant-b" })).toThrow();
+		expect(connections.get()).toEqual(before);
+		expect(readMemoryEmbeddingConfiguration(database)).toEqual(configuration);
+		expect((await readSources(memories, conversation.id))[0]?.indexing.status).toBe("ready");
+	});
+
+	test("renaming a preset and editing an unrelated block preserve queued extraction", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const source = insertSource(database, conversation.id, 1, "Maren returned Writer's key.");
+		await queueSource(memories, conversation.id, source.messageId);
+		const queued = database.query<{ status: string; work_epoch: number }, [number]>(
+			"SELECT status, work_epoch FROM memory_collection WHERE variant_id = ?",
+		).get(source.variantId);
+		if (!queued) throw new Error("Queued Memory source missing.");
+
+		const preset = await readPreset(createConversationRoutes(database), conversation.id);
+		const identity = preset.slots.find((slot) => slot.reference === "human-identity");
+		if (!identity) throw new Error("The Default recipe has no Human Identity block.");
+		const renamed = await runPresetCommand(createRoutes(database).library, {
+			type: "rename", presetId: preset.id, expectedRevision: 0, name: "Renamed Default",
+		});
+		expect(renamed.status).toBe(200);
+		await readOperation(saveBlockRole(database, preset.id, identity.id, "assistant"));
+
+		expect(database.query<{ status: string; work_epoch: number }, [number]>(
+			"SELECT status, work_epoch FROM memory_collection WHERE variant_id = ?",
+		).get(source.variantId)).toEqual(queued);
+	});
 
 	test("distinguishes an empty saved collection from an indexing result", async () => {
 		const conversation = createChat(database);
