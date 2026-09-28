@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 import { withDatabase } from "../database/database";
-import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryPath, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryAllowanceInvalid,
@@ -12,7 +12,7 @@ import {
 } from "../../shared/contract/memory";
 
 export const createMemoryRoutes = (database: Database | undefined) => new Elysia()
-	.get("/api/conversations/:id/memories", ({ params }) => withDatabase(database, (db) => ({ sources: readConversationMemories(db, Number(params.id)) })), { params: memoryConversationIdParams, response: conversationMemories })
+	.get("/api/conversations/:id/memories", ({ params }) => withDatabase(database, (db) => ({ sources: readConversationMemories(db, Number(params.id)), path: readMemoryPath(db, Number(params.id)) })), { params: memoryConversationIdParams, response: conversationMemories })
 	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => withDatabase(database, (db) => ({ steps: readMemoryTrace(db, Number(params.id), Number(params.variantId)) })), { params: memoryTraceParams, response: memoryTrace })
 	.get("/api/conversations/:id/memory-allowance", ({ params }) => withDatabase(database, (db) => readMemoryAllowance(db, Number(params.id))), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
 	.post("/api/conversations/:id/memory-allowance", ({ params, body }) => {

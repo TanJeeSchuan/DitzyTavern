@@ -1,132 +1,178 @@
-import { Check, Pencil, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Gauge, Search } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, loadMemoryTrace, resetAndReextract, retryMemoryIndex, saveMemoryAllowance, startMemoryCatchup, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, saveMemoryAllowance, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
 import { PanelHeader } from "../PanelHeader";
-import { useAsyncEffect } from "../lib/use-async";
-import type { MemoryTraceStep } from "../../shared/contract/memory";
+import { MemoryCoverage } from "./MemoryCoverage";
+import { MemorySourceGroup, type MemorySourceActions } from "./MemorySource";
 
-type State = { status: "loading" | "ready" | "failed"; sources: Awaited<ReturnType<typeof loadConversationMemories>>["sources"]; error: string | null; pendingMessageId: number | null };
-type Editing = { messageId: number; revision: number; index: number; claim: string; attribution: string; people: string };
+type Source = ConversationMemories["sources"][number];
+const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
 
-export function MemoriesPanel({ conversationId, onClose, onNavigateSource }: { conversationId: number; onClose: () => void; onNavigateSource: (messageId: number) => void }) {
-	const [state, setState] = useState<State>({ status: "loading", sources: [], error: null, pendingMessageId: null });
-	const [editing, setEditing] = useState<Editing | null>(null);
+export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpenPanel }: {
+	conversationId: number;
+	onClose: () => void;
+	onNavigateSource: (messageId: number) => void;
+	onOpenPanel: (panel: "settings" | "prompts") => void;
+}) {
+	const [memories, setMemories] = useState<ConversationMemories | null>(null);
+	const [loadFailed, setLoadFailed] = useState(false);
 	const [catchup, setCatchup] = useState<MemoryCatchup | null>(null);
-	const [catchupPending, setCatchupPending] = useState(false);
-	const [memoryEnabled, setMemoryEnabled] = useState(false);
-	const editButtonRef = useRef<HTMLButtonElement>(null);
+	const [allowance, setAllowance] = useState<ConversationMemoryAllowance | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
+	const [busyVariant, setBusyVariant] = useState<number | null>(null);
+	const [catchupBusy, setCatchupBusy] = useState(false);
+	const [editing, setEditing] = useState<{ variantId: number; index: number } | null>(null);
+	const [resetTarget, setResetTarget] = useState<Source | null>(null);
+	const [query, setQuery] = useState("");
+	const [person, setPerson] = useState("");
 	const refresh = useCallback(async () => {
-		try { const [result, run, allowance] = await Promise.all([loadConversationMemories(conversationId), loadMemoryCatchup(conversationId), loadMemoryAllowance(conversationId)]); setState((current) => ({ ...current, status: "ready", sources: result.sources, error: null })); setCatchup(run); setMemoryEnabled(allowance.enabled); }
-		catch { setState((current) => ({ ...current, status: "failed", error: "Memories could not be loaded. Try again." })); }
+		try {
+			const [loaded, run, settings] = await Promise.all([loadConversationMemories(conversationId), loadMemoryCatchup(conversationId), loadMemoryAllowance(conversationId)]);
+			setMemories(loaded); setCatchup(run); setAllowance(settings); setLoadFailed(false);
+		} catch { setLoadFailed(true); }
 	}, [conversationId]);
-	useAsyncEffect((cancelled) => { void Promise.all([loadConversationMemories(conversationId), loadMemoryCatchup(conversationId)]).then(([result, run]) => { if (!cancelled()) { setState((current) => ({ ...current, status: "ready", sources: result.sources })); setCatchup(run); } }).catch(() => { if (!cancelled()) setState((current) => ({ ...current, status: "failed", error: "Memories could not be loaded. Try again." })); }); }, [conversationId]);
-	useAsyncEffect((cancelled) => { void loadMemoryAllowance(conversationId).then((settings) => { if (!cancelled()) setMemoryEnabled(settings.enabled); }).catch(() => undefined); }, [conversationId]);
-	useEffect(() => { if (editing === null && editButtonRef.current) requestAnimationFrame(() => editButtonRef.current?.focus()); }, [editing]);
 	useEffect(() => {
-		const interval = window.setInterval(() => { void refresh(); }, 5000);
+		void refresh();
+		const interval = window.setInterval(() => void refresh(), 5000);
 		return () => window.clearInterval(interval);
 	}, [refresh]);
-	const retry = async (messageId: number) => {
-		setState((current) => ({ ...current, pendingMessageId: messageId, error: null }));
-		const result = await resetAndReextract(conversationId, messageId);
-		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
-		else { await refresh(); setState((current) => ({ ...current, pendingMessageId: null })); }
+
+	const replace = (collection: Source) => setMemories((current) => current && { ...current, sources: current.sources.map((item) => item.variantId === collection.variantId ? collection : item) });
+	const act = async (source: Source, task: () => Promise<string | null>) => {
+		setBusyVariant(source.variantId); setNotice(null);
+		try { setNotice(await task()); } finally { setBusyVariant(null); }
 	};
-	const retryIndex = async (source: State["sources"][number]) => {
-		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
-		const result = await retryMemoryIndex(conversationId, source.messageId, source.variantId, source.revision);
-		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
-		else { await refresh(); setState((current) => ({ ...current, pendingMessageId: null, error: result.outcome === "conflict" ? "This collection changed elsewhere. Review the current Memory before retrying indexing." : null })); }
+	const reextract = (source: Source) => act(source, async () => {
+		const result = await resetAndReextract(conversationId, source.messageId);
+		if (result.outcome === "invalid") return result.reason;
+		await refresh();
+		return null;
+	});
+	const catchupAction = async (task: () => Promise<MemoryCatchup>) => {
+		setCatchupBusy(true); setNotice(null);
+		try { setCatchup(await task()); await refresh(); } catch (error) { setNotice(error instanceof Error ? error.message : "History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
-	const saveCorrection = async (source: State["sources"][number], index: number) => {
-		if (!editing) return;
-		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
-		const result = await correctMemory(conversationId, source.messageId, source.variantId, editing.revision, index, "edit", { claim: editing.claim, attribution: editing.attribution, people: editing.people.split(",").map((person) => person.trim()).filter(Boolean) });
-		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
-		else { setState((current) => ({ ...current, pendingMessageId: null, error: result.outcome === "conflict" ? "This collection changed elsewhere. Review the current collection before editing again." : null, sources: current.sources.map((item) => item.variantId === result.collection.variantId ? result.collection : item) })); setEditing(null); }
+	const actions: MemorySourceActions = {
+		label: (messageId) => {
+			const index = memories?.path.findIndex((entry) => entry.messageId === messageId) ?? -1;
+			return index < 0 ? "Earlier Message" : `${memories?.path[index]?.author ?? "Unknown author"} · #${index + 1}`;
+		},
+		navigate: onNavigateSource,
+		retry: (source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
+		retryIndex: (source) => void act(source, async () => {
+			const result = await retryMemoryIndex(conversationId, source.messageId, source.variantId, source.revision);
+			if (result.outcome === "invalid") return result.reason;
+			await refresh();
+			return result.outcome === "conflict" ? conflictNotice : null;
+		}),
+		edit: (source, index) => setEditing(index === null ? null : { variantId: source.variantId, index }),
+		save: (source, index, draft) => void act(source, async () => {
+			const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "edit", draft);
+			if (result.outcome === "invalid") return result.reason;
+			replace(result.collection); setEditing(null);
+			return result.outcome === "conflict" ? conflictNotice : null;
+		}),
+		remove: (source, index) => void act(source, async () => {
+			const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "remove");
+			if (result.outcome === "invalid") return result.reason;
+			replace(result.collection);
+			return result.outcome === "conflict" ? conflictNotice : null;
+		}),
 	};
-	const removeCorrection = async (source: State["sources"][number], index: number) => {
-		setState((current) => ({ ...current, pendingMessageId: source.messageId, error: null }));
-		const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "remove");
-		if (result.outcome === "invalid") setState((current) => ({ ...current, pendingMessageId: null, error: result.reason }));
-		else setState((current) => ({ ...current, pendingMessageId: null, error: result.outcome === "conflict" ? "This collection changed elsewhere. Review the current collection before removing anything else." : null, sources: current.sources.map((item) => item.variantId === result.collection.variantId ? result.collection : item) }));
+
+	const selected = memories?.sources.filter((source) => source.selected) ?? [];
+	const alternatives = memories?.sources.filter((source) => !source.selected && source.claims.length > 0) ?? [];
+	const attention = selected.filter((source) => source.status === "failed" || (source.status === "stale" && source.claims.length === 0) || source.indexing.status === "failed");
+	const awaitingEmbedding = selected.filter((source) => source.indexing.status === "unconfigured").length;
+	const people = [...selected.flatMap((source) => source.claims.flatMap((claim) => claim.people)).reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+	const needle = query.trim().toLowerCase();
+	const filtering = needle !== "" || person !== "";
+	const visibleClaims = (source: Source) => source.claims.map((claim, index) => ({ claim, index })).filter(({ claim }) => (!person || claim.people.includes(person)) && (!needle || [claim.claim, claim.attribution, ...claim.people].some((text) => text.toLowerCase().includes(needle))));
+	const group = (source: Source) => {
+		const claims = visibleClaims(source);
+		const shown = claims.length > 0 || (!filtering && (source.status === "pending" || source.status === "running" || (source.status === "complete" && source.ownership === "writer")));
+		return shown && <MemorySourceGroup key={source.variantId} conversationId={conversationId} source={source} claims={claims} busy={busyVariant === source.variantId} editingIndex={editing?.variantId === source.variantId ? editing.index : null} actions={actions} />;
 	};
-	const beginCatchup = async () => { setCatchupPending(true); setState((current) => ({ ...current, error: null })); try { setCatchup(await startMemoryCatchup(conversationId)); await refresh(); } catch (error) { setState((current) => ({ ...current, error: error instanceof Error ? error.message : "History catch-up could not be started." })); } finally { setCatchupPending(false); } };
-	const stopCatchup = async () => { if (!catchup) return; setCatchupPending(true); try { setCatchup(await cancelMemoryCatchup(conversationId, catchup.id)); await refresh(); } catch (error) { setState((current) => ({ ...current, error: error instanceof Error ? error.message : "History catch-up could not be cancelled." })); } finally { setCatchupPending(false); } };
-	const selectedSources = state.sources;
+	const groups = selected.map(group).filter(Boolean);
+
 	return <aside className="details-panel" data-open="true" aria-label="Memories">
-		<PanelHeader title="Memories" onClose={onClose} />
+		<PanelHeader title="Memories" onClose={onClose} actions={allowance && <MemoryAllowancePopover conversationId={conversationId} settings={allowance} onSaved={setAllowance} />} />
 		<div className="panel-body memory-panel-body">
-			<p className="panel-note">Memories are source-owned story claims with evidence. Unselected alternatives stay inspectable and remain saved to their source.</p>
-			<MemoryAllowanceControl conversationId={conversationId} />
-			<section className="memory-catchup"><h3>Existing history</h3><p>Remember current selected history on request. Current results and writer-maintained collections are skipped.</p>{catchup?.state === "running" ? <><p role="status">{catchup.pending} pending · {catchup.running} running · {catchup.complete} complete · {catchup.failed.length} failed</p><Button type="button" size="sm" variant="outline" disabled={catchupPending} onClick={() => void stopCatchup()}>Cancel catch-up</Button></> : <><Button type="button" size="sm" disabled={catchupPending || !memoryEnabled} onClick={() => void beginCatchup()}>Remember existing history</Button>{catchup && <p role="status">Last run: {catchup.state} · {catchup.complete} complete · {catchup.failed.length} failed</p>}</>}{catchup?.failed.map((item) => <p className="import-problem" key={item.messageId}><button type="button" onClick={() => onNavigateSource(item.messageId)}>Message {item.messageId}</button>: {item.error ?? "Memory extraction failed."} <Button type="button" size="sm" variant="outline" onClick={() => void retry(item.messageId)}>Retry</Button></p>)}</section>
-			{state.status === "loading" && <p role="status">Loading selected-path Memories…</p>}
-			{state.status === "failed" && <div><p className="import-problem" role="alert">{state.error}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></div>}
-			{state.status === "ready" && selectedSources.length === 0 && <p className="panel-note">There are no nonempty selected sources to process.</p>}
-			{state.error && state.status === "ready" && <p className="import-problem" role="alert">{state.error}</p>}
-			{selectedSources.map((source) => <section className="memory-source" key={source.variantId}>
-				<header className="memory-source-header"><div><h3>Message {source.messageId}</h3><span>{source.selected ? "Selected source" : "Unselected alternative"} · {source.status === "complete" ? `${source.claims.length} ${source.claims.length === 1 ? "Memory" : "Memories"}` : source.status === "unprocessed" ? "Not processed" : source.status === "stale" ? "Source changed" : source.status === "pending" ? "Pending" : source.status === "running" ? "Running" : "Failed"}</span></div><Button type="button" size="sm" variant="outline" disabled={!source.selected || state.pendingMessageId === source.messageId || source.status === "pending" || source.status === "running"} onClick={() => void retry(source.messageId)}><RotateCcw aria-hidden="true" /> {source.ownership === "writer" ? "Reset and re-extract" : "Retry extraction"}</Button></header>
-				<p className="panel-note">{source.indexing.status === "ready" ? "Index ready" : source.indexing.status === "pending" ? `${source.indexing.pendingCount} Memories pending indexing` : source.indexing.status === "running" ? `${source.indexing.pendingCount} Memories indexing` : source.indexing.status === "failed" ? `${source.indexing.failedCount} Memories failed indexing` : source.indexing.status === "unconfigured" ? "Embedding settings needed for indexing" : source.indexing.status === "not-applicable" ? source.status === "complete" ? "No saved Memories to index" : "No Memories ready to index" : "Indexing paused"}</p>
-				{source.indexing.error && <p className="import-problem" role="alert">{source.indexing.error}</p>}
-				{source.indexing.status === "failed" && <Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void retryIndex(source)}><RefreshCw aria-hidden="true" /> Retry indexing</Button>}
-				<p className="memory-reset-note">{source.ownership === "writer" ? "Reset and re-extract discards every saved correction and resumes automatic updates for this source." : "Retry extraction replaces this source’s automatic collection."}</p>
-				<button type="button" className="memory-source-link" onClick={() => onNavigateSource(source.messageId)}>Go to source Message</button>
-				{source.error && <p className="import-problem" role="alert">{source.error}</p>}
-				{source.status !== "unprocessed" && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={source.status === "pending" || source.status === "running"} />}
-				{source.status === "complete" && source.claims.length === 0 && <p className="panel-note">{source.ownership === "writer" ? "All Memories were removed. Automatic updates are paused for this source." : "No Memories were found for this source."}</p>}
-				{source.claims.map((claim, index) => <article className="memory-claim" key={`${source.variantId}-${index}`}>
-					{editing?.messageId === source.messageId && editing.index === index ? <div className="memory-edit-form">
-						<label className="field"><span>Memory</span><textarea autoFocus className="field-input" value={editing.claim} onChange={(event) => setEditing({ ...editing, claim: event.target.value })} /></label>
-						<label className="field"><span>Attribution</span><input className="field-input" value={editing.attribution} onChange={(event) => setEditing({ ...editing, attribution: event.target.value })} /></label>
-						<label className="field"><span>People, separated by commas</span><input className="field-input" value={editing.people} onChange={(event) => setEditing({ ...editing, people: event.target.value })} /></label>
-						<Button type="button" size="sm" disabled={state.pendingMessageId === source.messageId} onClick={() => void saveCorrection(source, index)}><Check aria-hidden="true" /> Save</Button><Button type="button" size="sm" variant="outline" onClick={() => setEditing(null)}><X aria-hidden="true" /> Cancel</Button>
-					</div> : <><h4>{claim.claim}</h4><p>{claim.attribution}{claim.people.length ? ` · ${claim.people.join(", ")}` : ""}{claim.writerMaintained && " · Writer-maintained"}</p><Button ref={editButtonRef} type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={(event) => { editButtonRef.current = event.currentTarget; setEditing({ messageId: source.messageId, revision: source.revision, index, claim: claim.claim, attribution: claim.attribution, people: claim.people.join(", ") }); }}><Pencil aria-hidden="true" /> Edit</Button><Button type="button" size="sm" variant="outline" disabled={state.pendingMessageId === source.messageId} onClick={() => void removeCorrection(source, index)}><Trash2 aria-hidden="true" /> Remove</Button></>}
-					<details><summary>Evidence and judgment</summary>{claim.writerMaintained && <p className="panel-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}<ul>{claim.evidence.map((evidence, evidenceIndex) => <li key={`${evidence.messageId}-${evidenceIndex}`}><button type="button" onClick={() => onNavigateSource(evidence.messageId)}>Message {evidence.messageId}</button><blockquote>{evidence.excerpt}</blockquote></li>)}</ul><p>Jev outputs: support {claim.judgment.support} (confidence {claim.judgment.confidence.support.toFixed(2)}); attribution {claim.judgment.attribution} (confidence {claim.judgment.confidence.attribution.toFixed(2)}); usefulness {claim.judgment.usefulness} (confidence {claim.judgment.confidence.usefulness.toFixed(2)}). Probabilities are model outputs, not proof of truth.</p></details>
-				</article>)}
-			</section>)}
+			{loadFailed && <div className="memory-callout" role="alert"><p>Memories could not be loaded.</p><Button type="button" size="xs" variant="outline" onClick={() => void refresh()}>Try again</Button></div>}
+			{memories === null && !loadFailed && <div className="memory-loading" aria-label="Loading Memories"><span /><span /><span /><span /></div>}
+			{memories !== null && <>
+				{allowance?.enabled === false && <div className="memory-callout"><p>Memory is off for this Chat. Add a Memory Block to its Prompt Preset to start remembering. Saved Memories stay here.</p><Button type="button" size="xs" variant="outline" onClick={() => onOpenPanel("prompts")}>Open Prompt Presets</Button></div>}
+				{memories.path.length > 0 && <MemoryCoverage path={memories.path} sources={new Map(selected.map((source) => [source.messageId, source]))} catchup={catchup} enabled={allowance?.enabled ?? false} busy={catchupBusy} label={actions.label} onStart={() => void catchupAction(() => startMemoryCatchup(conversationId))} onCancel={() => catchup && void catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id))} onNavigate={onNavigateSource} />}
+				{notice && <p className="import-problem" role="alert">{notice}</p>}
+				{(attention.length > 0 || awaitingEmbedding > 0) && <section className="memory-attention" aria-label="Needs attention">
+					<header><h3>Needs attention</h3><Button type="button" size="xs" variant="ghost" onClick={() => onOpenPanel("settings")}>Memory Settings</Button></header>
+					{awaitingEmbedding > 0 && <p className="memory-attention-item"><span>{awaitingEmbedding} {awaitingEmbedding === 1 ? "source is" : "sources are"} waiting for embedding settings before their Memories can be recalled.</span></p>}
+					{attention.map((source) => <div className="memory-attention-item" key={source.variantId}>
+						<button type="button" className="memory-source-label" onClick={() => onNavigateSource(source.messageId)}>{actions.label(source.messageId)}</button>
+						<span>{source.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? `${source.indexing.failedCount} Memories failed indexing.` : source.error ?? "Memory extraction failed."}</span>
+						{source.indexing.status === "failed" && source.status !== "failed"
+							? <Button type="button" size="xs" variant="outline" disabled={busyVariant === source.variantId} onClick={() => actions.retryIndex(source)}>Retry indexing</Button>
+							: <Button type="button" size="xs" variant="outline" disabled={busyVariant === source.variantId} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
+					</div>)}
+				</section>}
+				{selected.some((source) => source.claims.length > 0) && <div className="memory-filter">
+					<label className="memory-search"><Search aria-hidden="true" /><input type="search" placeholder="Search Memories" aria-label="Search Memories" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+					{people.length > 1 && <ToggleGroup type="single" size="sm" variant="outline" spacing={4} className="memory-people" aria-label="Filter by person" value={person} onValueChange={setPerson}>
+						{people.map(([name, count]) => <ToggleGroupItem key={name} value={name}>{name}<span>{count}</span></ToggleGroupItem>)}
+					</ToggleGroup>}
+				</div>}
+				{groups.length > 0 ? <div className="memory-list">{groups}</div> : memories.path.length === 0 ? <p className="memory-empty">Memories appear here once the story has saved Messages.</p> : filtering ? <p className="memory-empty">No Memories match this filter.</p> : <p className="memory-empty">Nothing remembered yet.</p>}
+				{alternatives.length > 0 && <details className="memory-alternatives">
+					<summary>Unselected alternatives · {alternatives.length}</summary>
+					<p className="memory-empty">These Memories stay saved with their Swipes and return if one is selected again.</p>
+					<div className="memory-list">{alternatives.map(group)}</div>
+				</details>}
+			</>}
 		</div>
+		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) setResetTarget(null); }}>
+			<DialogContent showCloseButton={false} className="sm:max-w-sm">
+				<DialogHeader>
+					<DialogTitle>Reset and re-extract?</DialogTitle>
+					<DialogDescription>This discards every saved correction for {resetTarget ? actions.label(resetTarget.messageId) : "this source"} and resumes automatic updates. Its Memories are extracted again from the current Message.</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button type="button" variant="ghost" onClick={() => setResetTarget(null)}>Keep corrections</Button>
+					<Button type="button" variant="destructive" onClick={() => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); }}>Reset and re-extract</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	</aside>;
 }
 
-function MemoryAllowanceControl({ conversationId }: { conversationId: number }) {
-	const [settings, setSettings] = useState<ConversationMemoryAllowance | null>(null);
-	const [value, setValue] = useState("2048");
+function MemoryAllowancePopover({ conversationId, settings, onSaved }: { conversationId: number; settings: ConversationMemoryAllowance; onSaved: (settings: ConversationMemoryAllowance) => void }) {
+	const [value, setValue] = useState(String(settings.allowance));
 	const [pending, setPending] = useState(false);
-	const [notice, setNotice] = useState<string | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	useAsyncEffect((cancelled) => { void loadMemoryAllowance(conversationId).then((loaded) => { if (!cancelled()) { setSettings(loaded); setValue(String(loaded.allowance)); } }).catch(() => { if (!cancelled()) setError("Memory Allowance could not be loaded."); }); }, [conversationId]);
-	const save = async () => {
-		if (!settings) return;
-		setPending(true); setError(null); setNotice(null);
+	const [message, setMessage] = useState<{ tone: "note" | "problem"; text: string } | null>(null);
+	const save = async (event: FormEvent) => {
+		event.preventDefault();
+		setPending(true); setMessage(null);
 		const result = await saveMemoryAllowance(conversationId, settings.revision, Number(value));
-		if (result.outcome === "applied") { setSettings(result.settings); setValue(String(result.settings.allowance)); setNotice("Memory Allowance saved."); }
-		else if (result.outcome === "conflict") { setSettings(result.currentSettings); setNotice("Memory Allowance changed elsewhere. Review the current value before saving again."); }
-		else setError(result.reason);
+		if (result.outcome === "applied") { onSaved(result.settings); setValue(String(result.settings.allowance)); setMessage({ tone: "note", text: "Saved." }); }
+		else if (result.outcome === "conflict") { onSaved(result.currentSettings); setValue(String(result.currentSettings.allowance)); setMessage({ tone: "problem", text: "The allowance changed elsewhere. Review the current value before saving again." }); }
+		else setMessage({ tone: "problem", text: result.reason });
 		setPending(false);
 	};
-	return <section className="memory-allowance"><h3>Memory Allowance</h3><p>A ceiling for recalled Memory text in a Generation. Zero keeps remembering enabled and retains saved collections.</p><label className="field"><span>Estimated tokens</span><input className="field-input" type="number" min="0" step="1" value={value} onChange={(event) => setValue(event.target.value)} /></label><Button type="button" size="sm" onClick={() => void save()} disabled={pending || !settings}>Save allowance</Button>{error && <p className="import-problem" role="alert">{error}</p>}{notice && <p className="panel-note" role="status">{notice}</p>}</section>;
-}
-
-function MemoryTraceView({ conversationId, variantId, live }: { conversationId: number; variantId: number; live: boolean }) {
-	const [open, setOpen] = useState(false);
-	const [steps, setSteps] = useState<MemoryTraceStep[] | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	useEffect(() => {
-		if (!open) return;
-		const load = () => { void loadMemoryTrace(conversationId, variantId).then((loaded) => { setSteps(loaded); setError(null); }).catch(() => setError("Pipeline trace could not be loaded.")); };
-		load();
-		if (!live) return;
-		const interval = window.setInterval(load, 2000);
-		return () => window.clearInterval(interval);
-	}, [open, live, conversationId, variantId]);
-	return <details className="memory-trace" onToggle={(event) => setOpen(event.currentTarget.open)}>
-		<summary>Pipeline trace{steps ? ` · ${steps.length} ${steps.length === 1 ? "step" : "steps"}` : ""}{live ? " · live" : ""}</summary>
-		{error && <p className="import-problem" role="alert">{error}</p>}
-		{steps?.length === 0 && <p className="panel-note">No trace recorded yet. Retry extraction to capture one.</p>}
-		<ol>{steps?.map((step, index) => <li key={index}><details open={step.label === "Failed"}>
-			<summary><span>{step.label}</span><span>{new Date(step.at).toLocaleTimeString()}{step.fields.elapsed ? ` · ${step.fields.elapsed}` : ""}</span></summary>
-			{Object.entries(step.fields).map(([key, value]) => <div className="memory-trace-field" key={key}><span>{key}</span><pre>{value}</pre></div>)}
-		</details></li>)}</ol>
-	</details>;
+	return <Popover onOpenChange={(open) => { if (open) { setValue(String(settings.allowance)); setMessage(null); } }}>
+		<PopoverTrigger asChild><button type="button" className="icon-button" aria-label="Memory Allowance" title="Memory Allowance"><Gauge aria-hidden="true" /></button></PopoverTrigger>
+		<PopoverContent align="end" className="memory-allowance">
+			<PopoverHeader>
+				<PopoverTitle>Memory Allowance</PopoverTitle>
+				<PopoverDescription>A ceiling for recalled Memory text in one Generation. Zero keeps remembering on and retains saved Memories.</PopoverDescription>
+			</PopoverHeader>
+			<form onSubmit={(event) => void save(event)}>
+				<label className="field"><span className="field-label">Estimated tokens</span><input className="field-input" type="number" min="0" step="1" value={value} onChange={(event) => setValue(event.target.value)} /></label>
+				<Button type="submit" size="sm" disabled={pending || value === String(settings.allowance)}>Save</Button>
+			</form>
+			{message && <p className={message.tone === "problem" ? "import-problem" : "memory-empty"} role={message.tone === "problem" ? "alert" : "status"}>{message.text}</p>}
+		</PopoverContent>
+	</Popover>;
 }

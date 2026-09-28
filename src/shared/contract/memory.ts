@@ -18,7 +18,7 @@ export const memoryCollection = Type.Object({
 	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"), Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
 	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
-export const conversationMemories = Type.Object({ sources: Type.Array(memoryCollection) });
+export const conversationMemories = Type.Object({ sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
 export type ConversationMemories = Static<typeof conversationMemories>;
 export const memorySourceCommand = Type.Object({ messageId: Type.Integer() });
 export const memoryConversationIdParams = Type.Object({ id: numericWire });

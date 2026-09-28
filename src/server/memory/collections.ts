@@ -211,6 +211,10 @@ export function cancelMemoryCatchup(database: Database, conversationId: number, 
 	}).immediate();
 }
 
+export function readMemoryPath(database: Database, conversationId: number) {
+	return readSelectedHistory(database, conversationId)?.messages.map((message) => ({ messageId: message.id, author: message.author?.capturedName ?? null })) ?? [];
+}
+
 export function readConversationMemories(database: Database, conversationId: number): MemoryCollectionView[] {
 	const history = readSelectedHistory(database, conversationId);
 	if (!history) return [];

@@ -416,9 +416,11 @@ export function ActiveWritingWorkspace({
 			)}
 			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
 				<MemoriesPanel
+					key={session.conversation.id}
 					conversationId={session.conversation.id}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
+					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}
 				/>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
