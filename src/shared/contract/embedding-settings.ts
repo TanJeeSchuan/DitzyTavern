@@ -27,6 +27,42 @@ export const embeddingSettingsInvalid = Type.Object({
 	reason: Type.String(),
 });
 
+export const embeddingModelDiscoveryResponse = Type.Union([
+	Type.Object({ outcome: Type.Literal("success"), catalog: Type.Array(Type.String()) }),
+	Type.Object({
+		outcome: Type.Literal("failure"),
+		kind: Type.Union([
+			Type.Literal("authentication"),
+			Type.Literal("endpoint"),
+			Type.Literal("timeout"),
+			Type.Literal("redirect"),
+			Type.Literal("malformed-response"),
+		]),
+		message: Type.String(),
+	}),
+]);
+
+export const embeddingTestBody = Type.Object({
+	endpoint: Type.String(),
+	model: Type.String(),
+	deadlineMs: Type.Integer(),
+	credential: Type.Optional(Type.String()),
+});
+
+export const embeddingTestResponse = Type.Union([
+	Type.Object({ outcome: Type.Literal("success"), dimensions: Type.Integer({ minimum: 1 }) }),
+	Type.Object({
+		outcome: Type.Literal("failure"),
+		kind: Type.Union([
+			Type.Literal("authentication"),
+			Type.Literal("endpoint"),
+			Type.Literal("timeout"),
+			Type.Literal("malformed-response"),
+		]),
+		message: Type.String(),
+	}),
+]);
+
 export const embeddingSettingsCommandBody = Type.Union([
 	Type.Object({
 		type: Type.Literal("apply"),
@@ -50,4 +86,6 @@ export const embeddingSettingsCommandBody = Type.Union([
 
 export type EmbeddingSettingsPayload = Static<typeof embeddingSettings>;
 export type EmbeddingSettingsCommand = Static<typeof embeddingSettingsCommandBody>;
-
+export type EmbeddingModelDiscoveryResult = Static<typeof embeddingModelDiscoveryResponse>;
+export type EmbeddingTestInput = Static<typeof embeddingTestBody>;
+export type EmbeddingTestResult = Static<typeof embeddingTestResponse> | Static<typeof embeddingSettingsInvalid>;

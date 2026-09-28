@@ -164,4 +164,4 @@ export function createEmbeddingSettingsModule(
 	};
 }
 
-export { normalizeEndpoint as validateEmbeddingEndpoint };
+export { normalize as validateEmbeddingSettings };
