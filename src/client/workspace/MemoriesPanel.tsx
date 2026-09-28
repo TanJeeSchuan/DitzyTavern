@@ -25,7 +25,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busyVariant, setBusyVariant] = useState<number | null>(null);
 	const [catchupBusy, setCatchupBusy] = useState(false);
-	const [editing, setEditing] = useState<{ variantId: number; index: number } | null>(null);
+	const [editing, setEditing] = useState<{ variantId: number; revision: number; index: number } | null>(null);
 	const [resetTarget, setResetTarget] = useState<Source | null>(null);
 	const [query, setQuery] = useState("");
 	const [person, setPerson] = useState("");
@@ -69,13 +69,13 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 			await refresh();
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
-		edit: (source, index) => setEditing(index === null ? null : { variantId: source.variantId, index }),
-		save: (source, index, draft) => void act(source, async () => {
-			const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "edit", draft);
+		edit: (source, index) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
+		save: (source, index, draft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
+			const result = await correctMemory(conversationId, source.messageId, source.variantId, editing.revision, index, "edit", draft);
 			if (result.outcome === "invalid") return result.reason;
 			replace(result.collection); setEditing(null);
 			return result.outcome === "conflict" ? conflictNotice : null;
-		}),
+		}); },
 		remove: (source, index) => void act(source, async () => {
 			const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "remove");
 			if (result.outcome === "invalid") return result.reason;
