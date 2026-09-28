@@ -41,32 +41,31 @@ export interface MemoryCandidateJudgment extends MemoryCandidate {
 	};
 }
 
+const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {
+	if (candidate.claim.trim().length === 0 || candidate.attribution.trim().length === 0 || candidate.claim.length + candidate.attribution.length > MAX_CLAIM) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
+	if (candidate.people.some((person) => person.trim().length === 0) || new Set(candidate.people).size !== candidate.people.length) return "has invalid person labels";
+	if (candidate.evidence.length < 1 || candidate.evidence.length > MAX_EVIDENCE) return "needs one to three evidence excerpts";
+	if (candidate.evidence.some((entry) => entry.excerpt.length === 0 || entry.excerpt.length > MAX_EXCERPT)) return "has invalid evidence";
+	if (candidate.evidence.some((entry) => !messages.get(entry.messageId)?.includes(entry.excerpt))) return "cites an excerpt that is not exact captured source text";
+	if (!candidate.evidence.some((entry) => entry.messageId === sourceMessageId)) return "must cite its owning source";
+	return null;
+};
+
 export function validateMemoryCandidates(
 	response: MemoryExtractionResponse,
 	allowedMessages: readonly CapturedMemoryMessage[],
 	sourceMessageId: number,
-): MemoryCandidate[] {
+) {
 	const messages = new Map(allowedMessages.map((message) => [message.messageId, message.content]));
-	const candidates = response.candidates.map((candidate, index): MemoryCandidate => {
-		if (candidate.claim.trim().length === 0 || candidate.attribution.trim().length === 0 || candidate.claim.length + candidate.attribution.length > MAX_CLAIM) {
-			throw new Error(`Memory candidate ${index + 1} needs a nonblank claim and attribution totaling at most 1,024 characters.`);
-		}
-		if (candidate.people.some((person) => person.trim().length === 0) || new Set(candidate.people).size !== candidate.people.length) {
-			throw new Error(`Memory candidate ${index + 1} has invalid person labels.`);
-		}
-		if (candidate.evidence.length < 1 || candidate.evidence.length > MAX_EVIDENCE) {
-			throw new Error(`Memory candidate ${index + 1} needs one to three evidence excerpts.`);
-		}
-		const evidence = candidate.evidence.map((entry): MemoryEvidence => {
-			if (entry.excerpt.length === 0 || entry.excerpt.length > MAX_EXCERPT) throw new Error(`Memory candidate ${index + 1} has invalid evidence.`);
-			const content = messages.get(entry.messageId);
-			if (content === undefined || !content.includes(entry.excerpt)) throw new Error(`Memory candidate ${index + 1} cites an excerpt that is not exact captured source text.`);
-			return { messageId: entry.messageId, excerpt: entry.excerpt };
-		});
-		if (!evidence.some((item) => item.messageId === sourceMessageId)) throw new Error(`Memory candidate ${index + 1} must cite its owning source.`);
-		return { claim: candidate.claim, attribution: candidate.attribution, people: candidate.people, evidence };
-	});
-	return candidates.filter((candidate, index) => candidates.findIndex((other) => JSON.stringify(other) === JSON.stringify(candidate)) === index);
+	const valid: MemoryCandidate[] = [];
+	const dropped: string[] = [];
+	for (const [index, candidate] of response.candidates.entries()) {
+		const problem = candidateProblem(candidate, messages, sourceMessageId);
+		if (problem !== null) dropped.push(`Memory candidate ${index + 1} ${problem}.`);
+		else valid.push({ claim: candidate.claim, attribution: candidate.attribution, people: candidate.people, evidence: candidate.evidence.map(({ messageId, excerpt }): MemoryEvidence => ({ messageId, excerpt })) });
+	}
+	if (valid.length === 0 && dropped.length > 0) throw new Error(`Every Memory candidate was invalid. ${dropped.join(" ")}`);
+	return { candidates: valid.filter((candidate, index) => valid.findIndex((other) => JSON.stringify(other) === JSON.stringify(candidate)) === index), dropped };
 }
 
 const promptPlanOf = (system: string): PromptPlan => ({
@@ -111,8 +110,8 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	if (result.finishReason !== "stop") throw new Error(result.finishReason === "length" ? "Memory extraction output was truncated. Retry after reducing the source or increasing its output reserve." : "Memory extraction did not finish successfully. Retry this source.");
 	let parsed: MemoryExtractionResponse;
 	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch { throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source."); }
-	const candidates = validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
-	trace("Validated candidates", { count: String(candidates.length), candidates: JSON.stringify(candidates, null, 2) });
+	const { candidates, dropped } = validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId);
+	trace("Validated candidates", { count: String(candidates.length), dropped: dropped.join("\n") || "none", candidates: JSON.stringify(candidates, null, 2) });
 	return { candidates, context: retainedContext };
 };
 

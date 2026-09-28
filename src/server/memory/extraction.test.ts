@@ -17,10 +17,18 @@ const candidate: MemoryCandidate = {
 describe("Memory extraction validation", () => {
 	test("accepts exact selected-source evidence and suppresses duplicate claims", () => {
 		const parsed = { candidates: [candidate, structuredClone(candidate)] };
-		expect(validateMemoryCandidates(parsed, [source], source.messageId)).toEqual([candidate]);
+		expect(validateMemoryCandidates(parsed, [source], source.messageId)).toEqual({ candidates: [candidate], dropped: [] });
 	});
 
-	test("rejects malformed candidates and excerpts that merely resemble captured text", () => {
+	test("drops individual invalid candidates and keeps the valid ones", () => {
+		const inexact = { ...candidate, claim: "Maren gave Writer a key.", evidence: [{ messageId: 10, excerpt: "Maren promised Writer a brass key." }] };
+		expect(validateMemoryCandidates({ candidates: [inexact, candidate] }, [source], source.messageId)).toEqual({
+			candidates: [candidate],
+			dropped: ["Memory candidate 1 cites an excerpt that is not exact captured source text."],
+		});
+	});
+
+	test("fails when every candidate is invalid", () => {
 		expect(() => validateMemoryCandidates({ candidates: [{ ...candidate, evidence: [{ messageId: 10, excerpt: "Maren promised Writer a brass key." }] }] }, [source], source.messageId)).toThrow("not exact captured source text");
 		expect(() => validateMemoryCandidates({ candidates: [{ ...candidate, evidence: [] }] }, [source], source.messageId)).toThrow("one to three evidence excerpts");
 		expect(Value.Check(memoryExtractionResponse, { candidates: [{ ...candidate, extra: true }] })).toBe(false);
