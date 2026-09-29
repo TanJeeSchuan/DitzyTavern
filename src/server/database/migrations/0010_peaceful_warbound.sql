@@ -1,1 +1,0 @@
-ALTER TABLE `memory_collection` ADD `source_epoch` integer DEFAULT 0 NOT NULL;

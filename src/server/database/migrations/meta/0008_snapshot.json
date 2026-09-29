@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "91963edd-fe6d-4365-abb8-1e8f083e0ac4",
+  "id": "a3a30d26-0dd2-490e-b3bd-2bd2285a201e",
   "prevId": "48b3c538-c59a-42e4-9833-f5ed67a4142a",
   "tables": {
     "active_generation": {
@@ -1524,192 +1524,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "embedding_cache": {
-      "name": "embedding_cache",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "endpoint": {
-          "name": "endpoint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source_kind": {
-          "name": "source_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source_text": {
-          "name": "source_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "vector_json": {
-          "name": "vector_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "embedding_cache_source_unique": {
-          "name": "embedding_cache_source_unique",
-          "columns": [
-            "endpoint",
-            "model",
-            "source_kind",
-            "source_text"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "embedding_secret": {
-      "name": "embedding_secret",
-      "columns": {
-        "settings_id": {
-          "name": "settings_id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "format_version": {
-          "name": "format_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key_id": {
-          "name": "key_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "nonce": {
-          "name": "nonce",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ciphertext": {
-          "name": "ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tag": {
-          "name": "tag",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "embedding_secret_settings_id_embedding_settings_id_fk": {
-          "name": "embedding_secret_settings_id_embedding_settings_id_fk",
-          "tableFrom": "embedding_secret",
-          "tableTo": "embedding_settings",
-          "columnsFrom": [
-            "settings_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "embedding_settings": {
-      "name": "embedding_settings",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "endpoint": {
-          "name": "endpoint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
-        "threshold": {
-          "name": "threshold",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0.7
-        },
-        "deadline_ms": {
-          "name": "deadline_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 5000
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "generation_replay": {
       "name": "generation_replay",
       "columns": {
@@ -2056,13 +1870,6 @@
           "autoincrement": false,
           "default": "''"
         },
-        "semantic_threshold": {
-          "name": "semantic_threshold",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "priority": {
           "name": "priority",
           "type": "integer",
@@ -2149,6 +1956,67 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "memory_catchup_run": {
+      "name": "memory_catchup_run",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cancelled": {
+          "name": "cancelled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "memory_catchup_run_conversation": {
+          "name": "memory_catchup_run_conversation",
+          "columns": [
+            "conversation_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "memory_catchup_run_conversation_id_conversation_id_fk": {
+          "name": "memory_catchup_run_conversation_id_conversation_id_fk",
+          "tableFrom": "memory_catchup_run",
+          "tableTo": "conversation",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "memory_collection": {
       "name": "memory_collection",
       "columns": {
@@ -2204,14 +2072,6 @@
           "autoincrement": false,
           "default": 0
         },
-        "chat_epoch": {
-          "name": "chat_epoch",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -2242,13 +2102,41 @@
           "autoincrement": false,
           "default": "'[]'"
         },
-        "provenance_json": {
-          "name": "provenance_json",
+        "trace_json": {
+          "name": "trace_json",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "catchup_run_id": {
+          "name": "catchup_run_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_changed": {
+          "name": "source_changed",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'[]'"
+          "default": false
+        },
+        "index_space_key": {
+          "name": "index_space_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "index_error": {
+          "name": "index_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -2264,6 +2152,13 @@
           "columns": [
             "conversation_id",
             "message_id"
+          ],
+          "isUnique": false
+        },
+        "memory_collection_catchup_run": {
+          "name": "memory_collection_catchup_run",
+          "columns": [
+            "catchup_run_id"
           ],
           "isUnique": false
         }
@@ -2307,6 +2202,19 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "memory_collection_catchup_run_id_memory_catchup_run_id_fk": {
+          "name": "memory_collection_catchup_run_id_memory_catchup_run_id_fk",
+          "tableFrom": "memory_collection",
+          "tableTo": "memory_catchup_run",
+          "columnsFrom": [
+            "catchup_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2322,47 +2230,26 @@
         }
       }
     },
-    "memory_secret": {
-      "name": "memory_secret",
+    "memory_embedding_cache": {
+      "name": "memory_embedding_cache",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "format_version": {
-          "name": "format_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key_id": {
-          "name": "key_id",
+        "space_key": {
+          "name": "space_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "nonce": {
-          "name": "nonce",
+        "text_hash": {
+          "name": "text_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "ciphertext": {
-          "name": "ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tag": {
-          "name": "tag",
-          "type": "text",
+        "vector": {
+          "name": "vector",
+          "type": "blob",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -2370,7 +2257,15 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "memory_embedding_cache_space_key_text_hash_pk": {
+          "columns": [
+            "space_key",
+            "text_hash"
+          ],
+          "name": "memory_embedding_cache_space_key_text_hash_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -2391,6 +2286,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "extraction_profile_id": {
           "name": "extraction_profile_id",
@@ -2431,31 +2334,40 @@
           "autoincrement": false,
           "default": 500
         },
-        "jev_model": {
-          "name": "jev_model",
+        "usefulness_confidence_gate": {
+          "name": "usefulness_confidence_gate",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0.3
+        },
+        "recall_relevance_minimum": {
+          "name": "recall_relevance_minimum",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1.5
+        },
+        "embedding_profile_id": {
+          "name": "embedding_profile_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "embedding_model": {
+          "name": "embedding_model",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'jev-1.13.0'"
+          "default": "''"
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "memory_settings_extraction_profile_id_connection_profile_id_fk": {
-          "name": "memory_settings_extraction_profile_id_connection_profile_id_fk",
-          "tableFrom": "memory_settings",
-          "tableTo": "connection_profile",
-          "columnsFrom": [
-            "extraction_profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -3279,6 +3191,112 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "typesafe_secret": {
+      "name": "typesafe_secret",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "format_version": {
+          "name": "format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ciphertext": {
+          "name": "ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "typesafe_settings": {
+      "name": "typesafe_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "jev_model": {
+          "name": "jev_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'jev-1.13.0'"
+        },
+        "lore_trigger_mode": {
+          "name": "lore_trigger_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'jev'"
+        },
+        "lore_trigger_threshold": {
+          "name": "lore_trigger_threshold",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0.5
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "typesafe_settings_lore_trigger_mode_check": {
+          "name": "typesafe_settings_lore_trigger_mode_check",
+          "value": "\"typesafe_settings\".\"lore_trigger_mode\" IN ('jev', 'off')"
+        }
+      }
     }
   },
   "views": {},

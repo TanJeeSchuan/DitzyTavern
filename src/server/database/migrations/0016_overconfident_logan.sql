@@ -1,1 +1,0 @@
-ALTER TABLE `memory_settings` ADD `usefulness_confidence_gate` real DEFAULT 0.3 NOT NULL;

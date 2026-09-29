@@ -39,12 +39,6 @@ CREATE TABLE `__new_prompt_preset_block` (
 				AND "__new_prompt_preset_block"."role" IN ('system', 'user', 'assistant')
 				AND "__new_prompt_preset_block"."name" IS NULL
 				AND "__new_prompt_preset_block"."content" IS NULL
-			) OR (
-				"__new_prompt_preset_block"."reference" = 'memory'
-				AND "__new_prompt_preset_block"."role" IS NOT NULL
-				AND "__new_prompt_preset_block"."role" IN ('system', 'user', 'assistant')
-				AND "__new_prompt_preset_block"."name" IS NULL
-				AND "__new_prompt_preset_block"."content" IS NULL
 			))
 );
 --> statement-breakpoint
