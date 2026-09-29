@@ -11,8 +11,6 @@ A writing studio for AI-assisted stories. You steer, the model writes, and every
   </picture>
 </p>
 
-DitzyTavern is for people who already know SillyTavern: character cards, Swipes, prompt presets, lorebooks. It keeps those ideas and drops the cockpit. The story reads as prose, not chat bubbles. Your own turns are usually guidance ("Mara finds a letter"), and the model writes the scene. If you want full roleplay, put a character in your seat instead of the Writer persona.
-
 It runs locally. One Bun process serves the app and keeps everything in SQLite.
 
 ## Memory that knows who said what
@@ -33,8 +31,6 @@ The hard part is attribution. "Joss says Mara set the fire" and "Mara set the fi
 
 In the animation, the extractor overreaches with "Tev believes Mara set the fire." Tev only heard it, so Jev answers `not established` and the claim is dropped.
 
-Memories stay inside their Chat. They follow the Swipe you selected, so an alternative you rejected doesn't leak facts into the story. Edit or remove a Memory and its source becomes writer-maintained; automatic extraction will not overwrite your correction. The Memories panel shows every claim with its evidence, and processing runs in the background without blocking writing.
-
 ## See the prompt before it's sent
 
 <p align="center">
@@ -44,7 +40,7 @@ Memories stay inside their Chat. They follow the Swipe you selected, so an alter
   </picture>
 </p>
 
-Turn on "Inspect Prompt Plan before generating" and Send opens the assembled Prompt Plan instead of calling the model. Each block is there: main prompt, character, Lore, Memories, history and your guidance, each with its token estimate. Estimates are checked against the context limit plus the safety allowance and response budget. Edit any block and "Send exact plan" sends what you see, without reassembling it. The edit applies to that one Generation. Your preset stays unchanged.
+Turn on "Inspect Prompt Plan before generating" and Send opens the assembled Prompt Plan instead of calling the model. Each block is there: main prompt, character, Lore, Memories, history and your guidance, each with its token estimate. Estimates are checked against the context limit . Edit any block and "Send exact plan" sends what you see, without reassembling it. The edit applies to that one Generation. Your preset stays unchanged.
 
 Every finished Message keeps its Generation details: the model, settings, the captured Prompt Plan, and which Lore and Memories went in.
 
@@ -75,11 +71,10 @@ Every generated Message keeps its alternatives, not only the latest one. Next on
 ## Also in the box
 
 - **SillyTavern imports.** Bring in `.jsonl` chats with all their Swipes, World Info books and prompt presets. An imported chat becomes an ordinary Chat. DitzyTavern keeps the original file, detects duplicate imports, and reports anything it could not map.
-- **Prompt presets with SillyTavern macro syntax.** `{{random}}`, `{{roll}}`, `{{pick}}`, `{{if}}`, `{{setvar}}` and the other variable macros; `{{char}}` and `{{user}}` convert on import. Macro variables carry through Swipes, so each alternative keeps its own state.
+- **Prompt presets with macro syntax.** `{{random}}`, `{{roll}}`, `{{pick}}`, `{{if}}`, `{{setvar}}` and the other variable macros; `{{char}}` and `{{user}}` convert on import. Macro variables carry through Swipes, so each alternative keeps its own state.
 - **Generations run on the server.** Close the tab mid-reply and the Generation keeps going. Reopen it and the stream resumes.
-- **Two seats, any cast.** "Writing as" and "Responding as" each hold a character from the Chat's cast. Picking the other seat's occupant swaps the two.
-- **Connection profiles.** OpenAI-compatible endpoints, DeepSeek and OpenRouter, each with its own model list. API keys are encrypted at rest with a local key.
-- **Daylight and evening themes** that follow your OS.
+- **Connection profiles.** OpenAI-compatible endpoints each with its own model list. API keys are encrypted at rest with a local key.
+- **Daylight and evening themes** (Custom themes WIP).
 
 ## Running it
 
