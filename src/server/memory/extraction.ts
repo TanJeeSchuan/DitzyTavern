@@ -259,9 +259,11 @@ export async function judgeMemoryRecallCandidates(
 
 export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace): Promise<MemoryCandidateJudgment[]> {
 	const settings = createMemorySettingsModule(database).get();
-	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
 	const typesafe = createTypesafeSettingsModule(database);
-	const judgments = await judgeMemoryCandidates({ source, context: extracted.context }, extracted.candidates, typesafe.getCredential() ?? "", typesafe.get().jevModel, fetcher, signal, trace);
+	const jevModel = typesafe.get().jevModel;
+	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
+	signal?.throwIfAborted();
+	const judgments = await judgeMemoryCandidates({ source, context: extracted.context }, extracted.candidates, typesafe.getCredential() ?? "", jevModel, fetcher, signal, trace);
 	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.confidence.usefulness >= settings.usefulnessConfidenceGate);
 	trace("Kept memories", { rule: `supported, correctly attributed, and retain with confidence >= ${settings.usefulnessConfidenceGate}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
 	return kept;

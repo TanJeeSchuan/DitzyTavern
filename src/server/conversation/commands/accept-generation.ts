@@ -52,6 +52,7 @@ import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variabl
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
 import { generationJsonObject } from "../../../shared/generation-provenance";
+import { queueMemorySource } from "../../memory/collections";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -359,10 +360,14 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 			input.expectedRevision + 1,
 			input.timestamp,
 		);
+		const conversation = requireConversationSummary(db, input.conversationId);
+		if (input.lifecycle === "Tail" && validation.humanMessageId !== null) {
+			queueMemorySource(database, input.conversationId, validation.humanMessageId);
+		}
 		return {
 			generationId: activeGenerationId,
 			provisional,
-			conversation: requireConversationSummary(db, input.conversationId),
+			conversation,
 			validation,
 		};
 	});

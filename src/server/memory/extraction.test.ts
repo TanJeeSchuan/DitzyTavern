@@ -5,6 +5,13 @@ import type { ModelFetch } from "../model-client";
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
 import type { MemoryCandidate } from "../../shared/contract/memory";
+import type { Database } from "bun:sqlite";
+import { openInitializedDatabase } from "../database/database";
+import { initializeConnectionSecretKey } from "../connection-secrets";
+import { createConnectionSettingsModule } from "../connection-settings";
+import { createMemorySettingsModule } from "./settings";
+import { createTypesafeSettingsModule } from "../typesafe";
+import { extractAndJudgeMemorySource } from "./extraction";
 
 const source = { messageId: 10, variantId: 20, content: "Maren promised Writer the brass key." };
 const context = [{ messageId: 9, variantId: 19, content: "Writer asked Maren about the lodge key." }];
@@ -37,6 +44,63 @@ describe("Memory extraction validation", () => {
 });
 
 describe("Typesafe Memory judgments", () => {
+	test("captures the Jev model before extraction suspends", async () => {
+		const database: Database = openInitializedDatabase({ path: ":memory:" });
+		const key = new Uint8Array(32).fill(11);
+		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
+		let releaseExtraction = () => {};
+		let extractionStarted = () => {};
+		const extractionGate = new Promise<void>((resolve) => { releaseExtraction = resolve; });
+		const extractionRequest = new Promise<void>((resolve) => { extractionStarted = resolve; });
+		let jevModel = "";
+		try {
+			const connections = createConnectionSettingsModule(database, { masterKey: key });
+			const profileId = connections.createProfile({ expectedRevision: 0, profile: {
+				displayName: "Extraction test",
+				apiFormat: "chat-completions",
+				requestUrl: "http://127.0.0.1:43131/v1/",
+				modelsUrl: "",
+				modelBackend: "automatic",
+				adapter: "deepseek",
+				outputTokenRepresentation: "automatic",
+				timeoutMs: 120_000,
+				pinnedModels: [],
+			}, credential: "extraction-secret" }).profiles[0]?.id;
+			if (profileId === undefined) throw new Error("Memory extraction fixture Connection Profile setup failed.");
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			const typesafe = createTypesafeSettingsModule(database, { masterKey: key });
+			typesafe.apply({ type: "apply", expectedRevision: 0, jevModel: "jev-before", loreTriggerMode: "off", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+			const fakeFetch: ModelFetch = async (input, init) => {
+				if (String(input).includes("typesafe.ai")) {
+					// SAFETY: requestJev serializes the Jev model as a string in the captured request body.
+					jevModel = (JSON.parse(String(init?.body)) as { model: string }).model;
+					return Response.json({ answers: {
+						candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 }, confidence: 1 },
+						candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 1, misattributed: 0, unclear: 0 }, confidence: 1 },
+						candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 }, confidence: 1 },
+					} });
+				}
+				extractionStarted();
+				await extractionGate;
+				const content = JSON.stringify({ candidates: [{ claim: "Maren promised Writer the brass key.", attribution: "Narrated event", people: ["Maren", "Writer"], evidence: [{ messageId: source.messageId, excerpt: source.content }] }] });
+				const stream = [
+					{ choices: [{ index: 0, delta: { content }, finish_reason: null }] },
+					{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+				].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
+				return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+			};
+			const evaluation = extractAndJudgeMemorySource(database, source, context, fakeFetch);
+			await extractionRequest;
+			typesafe.apply({ type: "apply", expectedRevision: 1, jevModel: "jev-after", loreTriggerMode: "off", loreTriggerThreshold: 0.5 });
+			releaseExtraction();
+			await evaluation;
+			expect(jevModel).toBe("jev-before");
+		} finally {
+			releaseExtraction();
+			database.close();
+		}
+	});
+
 	test("sends the source once in state and each candidate in its own support, attribution, and usefulness questions", async () => {
 		let requestBody = "";
 		let authorization = "";

@@ -47,8 +47,9 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 		try { setNotice(await task()); } finally { setBusyVariant(null); }
 	};
 	const reextract = (source: Source) => act(source, async () => {
-		const result = await resetAndReextract(conversationId, source.messageId);
+		const result = await resetAndReextract(conversationId, source.messageId, source.variantId, source.revision);
 		if (result.outcome === "invalid") return result.reason;
+		if (result.outcome === "conflict") { replace(result.collection); return conflictNotice; }
 		await refresh();
 		return null;
 	});

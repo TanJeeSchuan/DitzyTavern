@@ -29,6 +29,11 @@ const insertVariant = (database: Database, messageId: number, content: string, s
 	if (!row) throw new Error("Memory fixture Variant insert failed.");
 	return row.id;
 };
+const resetCommand = (database: Database, messageId: number) => {
+	const source = database.query<{ variantId: number; expectedRevision: number }, [number]>("SELECT v.id AS variantId, coalesce(c.revision, 0) AS expectedRevision FROM message_variant v LEFT JOIN memory_collection c ON c.variant_id = v.id WHERE v.message_id = ? ORDER BY v.selected DESC, v.position DESC LIMIT 1").get(messageId);
+	if (!source) throw new Error("Memory fixture has no Variant to reset.");
+	return { messageId, ...source };
+};
 
 describe("Memory source public contract", () => {
 	let database: Database;
@@ -41,15 +46,15 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Maren returned the key to Writer.", true);
 		const app = createMemoryRoutes(database);
 		const queuedResponse = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		expect(queuedResponse.status).toBe(200);
 		expect(await queuedResponse.json()).toMatchObject({ outcome: "queued", collection: { variantId, status: "pending", claims: [] } });
 
 		const stop = startMemoryWorker(database, { process: async () => [] });
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "complete")).toBe(true);
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ messageId, variantId, status: "complete", claims: [] }]);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ messageId, variantId, status: "complete", claims: [] }]);
 		} finally { await stop(); }
 	});
 
@@ -59,15 +64,15 @@ describe("Memory source public contract", () => {
 		insertVariant(database, messageId, "Retained alternate.", false);
 		const app = createMemoryRoutes(database);
 		const response = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		expect(response.status).toBe(422);
-		expect(await response.text()).toContain("selected Variant");
+		expect(await response.text()).toContain("This source is no longer available for extraction.");
 
 		const emptyMessageId = insertMessage(database, conversation.id, 2);
 		insertVariant(database, emptyMessageId, "   ", true);
 		const emptyResponse = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: emptyMessageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, emptyMessageId)),
 		}));
 		expect(emptyResponse.status).toBe(422);
 		expect(await emptyResponse.text()).toContain("Empty sources are not processed");
@@ -85,12 +90,12 @@ describe("Memory source public contract", () => {
 		insertVariant(database, messageId, "Owning source.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let capturedContext: readonly { messageId: number; content: string }[] = [];
 		const stop = startMemoryWorker(database, { process: async (_source, context) => { capturedContext = context; return []; } });
 		try {
-			await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "complete" || readConversationMemories(database, conversation.id)[0]?.status === "failed");
+			await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete" || readConversationMemories(database, conversation.id).sources[0]?.status === "failed");
 			expect(database.query<{ status: string; error: string | null }, [number]>("SELECT status, error FROM memory_collection WHERE conversation_id = ?").get(conversation.id)).toMatchObject({ status: "complete", error: null });
 			expect(capturedContext.map(({ messageId: id }) => id)).toEqual(priorIds.slice(1));
 			expect(capturedContext.at(-2)?.content).toBe("");
@@ -103,7 +108,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Original story.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
@@ -119,7 +124,7 @@ describe("Memory source public contract", () => {
 			release();
 			await stop();
 			expect(database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status).toBe("pending");
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "pending", claims: [] }]);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "pending", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
 
@@ -129,7 +134,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Source to delete.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
@@ -153,7 +158,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Source around a setting change.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
@@ -168,7 +173,7 @@ describe("Memory source public contract", () => {
 			await readOperation(toggleBlock(database, preset.id, memory.id, true));
 			release();
 			expect(await waitFor(() => processCount === 2 && database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "complete")).toBe(true);
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "complete", claims: [] }]);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "complete", claims: [] }]);
 		} finally { release(); await stop(); }
 	});
 
@@ -186,7 +191,7 @@ describe("Memory source public contract", () => {
 		insertVariant(database, secondMessageId, "Second source.", true);
 		const queue = createMemoryRoutes(database);
 		const queueSource = (messageId: number) => queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		await queueSource(firstMessageId);
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -217,7 +222,7 @@ describe("Memory source public contract", () => {
 			releaseFirst();
 			expect(await waitFor(() => models.length === 2)).toBe(true);
 			expect(models).toEqual(["older-model", "newer-model"]);
-			expect(await waitFor(() => readConversationMemories(database, conversation.id).every((source) => source.status === "complete"))).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources.every((source) => source.status === "complete"))).toBe(true);
 		} finally { releaseFirst(); await stop(); }
 	});
 
@@ -238,7 +243,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Maren returned Writer's brass key.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let typesafeAuthorization: string | null = null;
 		const fakeFetch: ModelFetch = async (input, init) => {
@@ -260,9 +265,9 @@ describe("Memory source public contract", () => {
 		};
 		const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "complete")).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
 			expect<string | null>(typesafeAuthorization).toBe("Bearer typesafe-secret");
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ variantId, status: "complete", claims: claims.map((claim) => ({ ...claim, evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] })) }]);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ variantId, status: "complete", claims: claims.map((claim) => ({ ...claim, evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] })) }]);
 			const response = await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories`));
 			expect(await response.text()).not.toContain("typesafe-secret");
 		} finally { await stop(); }
@@ -279,7 +284,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "A valid but incomplete response.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		const fakeFetch: ModelFetch = async () => {
 			const encoder = new TextEncoder();
@@ -292,9 +297,9 @@ describe("Memory source public contract", () => {
 		};
 		const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "failed")).toBe(true);
-			expect(readConversationMemories(database, conversation.id)).toMatchObject([{ variantId, status: "failed", claims: [] }]);
-			expect(readConversationMemories(database, conversation.id)[0]?.error).toContain("did not finish successfully");
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "failed")).toBe(true);
+			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ variantId, status: "failed", claims: [] }]);
+			expect(readConversationMemories(database, conversation.id).sources[0]?.error).toContain("did not finish successfully");
 		} finally { await stop(); }
 	});
 
@@ -310,7 +315,7 @@ describe("Memory source public contract", () => {
 		const messageId = insertMessage(database, conversation.id, 3);
 		const variantId = insertVariant(database, messageId, "Owning source.", true);
 		await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let requestBody = "";
 		const fakeFetch: ModelFetch = async (_input, init) => {
@@ -323,8 +328,8 @@ describe("Memory source public contract", () => {
 		};
 		const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
 		try {
-			await waitFor(() => ["complete", "failed"].includes(readConversationMemories(database, conversation.id).at(-1)?.status ?? ""));
-			expect(readConversationMemories(database, conversation.id).at(-1)).toMatchObject({ variantId, status: "complete", error: null });
+			await waitFor(() => ["complete", "failed"].includes(readConversationMemories(database, conversation.id).sources.at(-1)?.status ?? ""));
+			expect(readConversationMemories(database, conversation.id).sources.at(-1)).toMatchObject({ variantId, status: "complete", error: null });
 			expect(requestBody).toContain("Recent context.");
 			expect(requestBody).not.toContain("Oldest context.");
 		} finally { await stop(); }
@@ -336,7 +341,7 @@ describe("Memory source public contract", () => {
 		const variantId = insertVariant(database, messageId, "Restart recovery source.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		const abandoned = startMemoryWorker(database, { process: (_source, _context, signal) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("shutdown")), { once: true })) });
 		expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status === "running")).toBe(true);
@@ -344,7 +349,7 @@ describe("Memory source public contract", () => {
 		expect(database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(variantId)?.status).toBe("running");
 		const recovered = startMemoryWorker(database, { process: async () => [] });
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "complete")).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
 		} finally { await recovered(); }
 	});
 
@@ -357,7 +362,7 @@ describe("Memory source public contract", () => {
 		});
 		const queue = createMemoryRoutes(database);
 		for (const messageId of messageIds) await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }),
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
 		let active = 0;
 		let started = 0;
@@ -373,7 +378,7 @@ describe("Memory source public contract", () => {
 			await new Promise((resolve) => setTimeout(resolve, 350));
 			expect(started).toBe(2);
 			release();
-			expect(await waitFor(() => readConversationMemories(database, conversation.id).every((source) => source.status === "complete"))).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources.every((source) => source.status === "complete"))).toBe(true);
 			expect(maximum).toBe(2);
 		} finally { release(); await stop(); }
 	});

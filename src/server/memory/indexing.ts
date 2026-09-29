@@ -121,12 +121,14 @@ const cachedTexts = (database: Database, configuration: MemoryEmbeddingConfigura
 
 const parsedClaims = (serialized: string): MemoryCandidateJudgment[] => Value.Parse(memoryCandidates, JSON.parse(serialized));
 type MemoryCollectionRow = typeof memoryCollectionTable.$inferSelect;
+type IndexableCollection = Pick<MemoryCollectionRow, "variant_id" | "ownership" | "source_changed" | "claims_json" | "revision" | "index_epoch">;
 
-export const readMemoryIndexReadiness = (
-	database: Database,
-	collection: typeof memoryCollectionTable.$inferSelect,
+const indexReadiness = (
+	collection: IndexableCollection,
 	enabled: boolean,
-	configuration = currentConfiguration(database),
+	configuration: MemoryEmbeddingConfiguration,
+	ready: ReadonlySet<string>,
+	job: typeof memoryIndexWorkTable.$inferSelect | undefined,
 ): MemoryIndexReadiness => {
 	if (!enabled) return { status: "disabled", pendingCount: 0, failedCount: 0, error: null };
 	if (collection.ownership === "automatic" && collection.source_changed) return { status: "disabled", pendingCount: 0, failedCount: 0, error: "This automatic collection is stale. Reset and re-extract it to index the current source." };
@@ -137,16 +139,27 @@ export const readMemoryIndexReadiness = (
 		return { status: "unconfigured", pendingCount: claims.length, failedCount: 0, error: "Choose an embedding model in Memory to index saved Memories." };
 	}
 	const texts = claims.map(renderMemoryClaim);
-	const ready = cachedTexts(database, configuration, texts);
 	const pendingCount = texts.filter((text) => !ready.has(text)).length;
 	if (pendingCount === 0) return { status: "ready", pendingCount: 0, failedCount: 0, error: null };
-	const job = drizzle(database).select().from(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, collection.variant_id)).get();
 	if (!job || job.collection_revision !== collection.revision || job.epoch !== collection.index_epoch || job.space_key !== configuration.spaceKey || job.endpoint !== configuration.endpoint || job.model !== configuration.model) {
 		return { status: "pending", pendingCount, failedCount: 0, error: null };
 	}
 	if (job.status === "failed") return { status: "failed", pendingCount: 0, failedCount: pendingCount, error: job.error };
 	return { status: job.status === "running" ? "running" : "pending", pendingCount, failedCount: 0, error: null };
 };
+
+export const readMemoryIndexReadinessBatch = (database: Database, collections: readonly IndexableCollection[], enabled: boolean, configuration = currentConfiguration(database)): Map<number, MemoryIndexReadiness> => {
+	const texts = enabled ? collections.flatMap((collection) => {
+		try { return parsedClaims(collection.claims_json).map(renderMemoryClaim); } catch { return []; }
+	}) : [];
+	const ready = cachedTexts(database, configuration, texts);
+	const jobs = collections.length === 0 || !enabled ? [] : drizzle(database).select().from(memoryIndexWorkTable).where(inArray(memoryIndexWorkTable.variant_id, collections.map((collection) => collection.variant_id))).all();
+	const byVariant = new Map(jobs.map((job) => [job.variant_id, job]));
+	return new Map(collections.map((collection) => [collection.variant_id, indexReadiness(collection, enabled, configuration, ready, byVariant.get(collection.variant_id))]));
+};
+
+export const readMemoryIndexReadiness = (database: Database, collection: IndexableCollection, enabled: boolean, configuration = currentConfiguration(database)): MemoryIndexReadiness =>
+	readMemoryIndexReadinessBatch(database, [collection], enabled, configuration).get(collection.variant_id)!;
 
 const cacheMissingTexts = (database: Database, configuration: MemoryEmbeddingConfiguration, claims: readonly MemoryCandidateJudgment[]) => {
 	const uniqueTexts = [...new Set(claims.map(renderMemoryClaim))];

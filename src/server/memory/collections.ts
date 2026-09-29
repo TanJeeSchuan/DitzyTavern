@@ -1,13 +1,14 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readSelectedHistory, type SelectedHistoryRead } from "../conversation/selected-history";
 import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, memoryIndexWorkTable, messageTable, messageVariantTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import type { MemoryIndexJob } from "./indexing";
-import { cancelMemoryIndexWork, claimMemoryIndexWork, embedMemoryJob, failMemoryIndexWork, isMemoryEnabledForConversation, publishMemoryIndexVectors, queueAllMemoryIndexing, queueMemoryIndexForVariant, readMemoryIndexReadiness, registerMemoryIndexController, retryMemoryIndexing, requeueInterruptedMemoryIndexWork, StaleMemoryIndexRevisionError } from "./indexing";
+import { cancelMemoryIndexWork, claimMemoryIndexWork, embedMemoryJob, failMemoryIndexWork, isMemoryEnabledForConversation, publishMemoryIndexVectors, queueAllMemoryIndexing, queueMemoryIndexForVariant, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, registerMemoryIndexController, retryMemoryIndexing, requeueInterruptedMemoryIndexWork, StaleMemoryIndexRevisionError } from "./indexing";
 import { Value } from "@sinclair/typebox/value";
 import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryTraceStep } from "../../shared/contract/memory";
+import { cancelMemoryExtractionWork, registerMemoryExtractionController } from "./extraction-jobs";
 import { sha256 } from "./hash";
 
 export class StaleMemoryCollectionError extends Error {
@@ -71,14 +72,22 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 };
 
 // ==[HUMAN APPROVED]== Queue one explicit replacement using only its selected Variant and four prior selected Messages.
-export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number): MemoryCollectionView {
+export function resetAndReextractMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number): MemoryCollectionView {
 	const db = drizzle(database);
 	return database.transaction(() => {
 		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering a source.");
+		const confirmed = db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(and(eq(messageVariantTable.id, variantId), eq(messageTable.id, messageId), eq(messageTable.conversation_id, conversationId))).get();
+		if (!confirmed) throw new InvalidMemorySourceError("This source no longer exists.");
+		const current = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, variantId)).get();
+		if (!confirmed.selected || (current?.revision ?? 0) !== expectedRevision) {
+			const collection = readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId);
+			if (!collection) throw new InvalidMemorySourceError("This source is no longer available for extraction.");
+			throw new StaleMemoryCollectionError(collection);
+		}
 		const captured = capture(database, conversationId, messageId);
-		const current = db.select().from(memoryCollectionTable).where(and(eq(memoryCollectionTable.variant_id, captured.source.variantId), eq(memoryCollectionTable.conversation_id, conversationId))).get();
 		const now = new Date().toISOString();
 		const { revision } = writeQueuedCollection(database, conversationId, messageId, captured, null, current, now);
+		cancelMemoryExtractionWork(database, variantId);
 		db.delete(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, captured.source.variantId)).run();
 		cancelMemoryIndexWork(database, captured.source.variantId);
 		return {
@@ -104,6 +113,7 @@ export function queueMemorySource(database: Database, conversationId: number, me
 	if (current && current.source_hash === captured.sourceHash && current.status === "complete") return false;
 	const { variantId } = writeQueuedCollection(database, conversationId, messageId, captured, catchupRunId, current, new Date().toISOString());
 	db.delete(memoryIndexWorkTable).where(eq(memoryIndexWorkTable.variant_id, variantId)).run();
+	cancelMemoryExtractionWork(database, variantId);
 	cancelMemoryIndexWork(database, variantId);
 	return true;
 }
@@ -163,42 +173,39 @@ export function cancelMemoryCatchup(database: Database, conversationId: number, 
 		const db = drizzle(database);
 		const run = db.select().from(memoryCatchupRunTable).where(and(eq(memoryCatchupRunTable.id, runId), eq(memoryCatchupRunTable.conversation_id, conversationId))).get();
 		if (!run || run.state !== "running") throw new InvalidMemorySourceError("This history catch-up run is no longer active.");
+		const activeVariants = db.select({ variantId: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "running"))).all().map(({ variantId }) => variantId);
 		db.delete(memoryCollectionTable).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "pending"))).run();
 		db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: "History catch-up was cancelled.", catchup_run_id: null, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "running"))).run();
+		for (const variantId of activeVariants) cancelMemoryExtractionWork(database, variantId);
 		db.update(memoryCatchupRunTable).set({ state: "cancelled" }).where(eq(memoryCatchupRunTable.id, runId)).run();
 		return readMemoryCatchup(database, runId);
 	}).immediate();
 }
 
-export function readMemoryPath(database: Database, conversationId: number) {
-	return readSelectedHistory(database, conversationId)?.messages.map((message) => ({ messageId: message.id, author: message.author?.capturedName ?? null })) ?? [];
-}
-
-export function readConversationMemories(database: Database, conversationId: number): MemoryCollectionView[] {
-	const history = readSelectedHistory(database, conversationId);
-	if (!history) return [];
+export function readConversationMemories(database: Database, conversationId: number) {
 	const db = drizzle(database);
-	const activeVariants = new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(eq(activeGenerationTable.conversation_id, conversationId)).all().map((row) => row.id));
-	const rows = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).orderBy(asc(memoryCollectionTable.message_id)).all();
-	const byVariant = new Map(rows.map((row) => [row.variant_id, row]));
-	const sources = new Map<number, { messageId: number; variantId: number; selected: boolean }>();
-	for (const message of history.messages) if (message.variant && !activeVariants.has(message.variant.id)) sources.set(message.variant.id, { messageId: message.id, variantId: message.variant.id, selected: true });
-	for (const row of rows) if (!sources.has(row.variant_id) && !activeVariants.has(row.variant_id)) sources.set(row.variant_id, { messageId: row.message_id, variantId: row.variant_id, selected: false });
+	const path = db.select({ messageId: messageTable.id, author: messageTable.author_name }).from(messageTable).where(eq(messageTable.conversation_id, conversationId)).orderBy(asc(messageTable.position)).all();
+	const rows = db.select({
+		messageId: messageTable.id, variantId: messageVariantTable.id, selected: messageVariantTable.selected, content: messageVariantTable.content,
+		collection: { variant_id: memoryCollectionTable.variant_id, source_hash: memoryCollectionTable.source_hash, source_changed: memoryCollectionTable.source_changed, claims_json: memoryCollectionTable.claims_json, ownership: memoryCollectionTable.ownership, status: memoryCollectionTable.status, error: memoryCollectionTable.error, revision: memoryCollectionTable.revision, index_epoch: memoryCollectionTable.index_epoch },
+	}).from(messageTable).innerJoin(messageVariantTable, eq(messageVariantTable.message_id, messageTable.id))
+		.leftJoin(memoryCollectionTable, eq(memoryCollectionTable.variant_id, messageVariantTable.id))
+		.leftJoin(activeGenerationTable, eq(activeGenerationTable.variant_id, messageVariantTable.id))
+		.where(and(eq(messageTable.conversation_id, conversationId), or(eq(messageVariantTable.selected, true), isNotNull(memoryCollectionTable.variant_id)), isNull(activeGenerationTable.id)))
+		.orderBy(desc(messageVariantTable.selected), asc(messageTable.position), asc(messageVariantTable.position)).all();
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
-	return [...sources.values()].flatMap(({ messageId, variantId, selected }) => {
-		if (activeVariants.has(variantId)) return [];
-		const row = byVariant.get(variantId);
-		const currentSource = db.select({ content: messageVariantTable.content }).from(messageVariantTable).innerJoin(messageTable, eq(messageVariantTable.message_id, messageTable.id)).where(and(eq(messageVariantTable.id, variantId), eq(messageTable.conversation_id, conversationId))).get();
-		if (!currentSource) return [];
-		if (!row && (selected && currentSource.content.trim().length === 0)) return [];
+	const readiness = readMemoryIndexReadinessBatch(database, rows.flatMap(({ collection }) => collection ? [collection] : []), enabled);
+	const sources = rows.flatMap(({ messageId, variantId, selected, content, collection: row }): MemoryCollectionView[] => {
+		if (!row && content.trim().length === 0) return [];
 		if (!row) return [{ messageId, variantId, selected, status: "unprocessed" as const, error: null, revision: 0, ownership: "automatic" as const, sourceChanged: false, claims: [], indexing: { status: enabled ? "not-applicable" as const : "disabled" as const, pendingCount: 0, failedCount: 0, error: null } }];
-		const sourceChanged = row.source_changed || sha256(currentSource.content) !== row.source_hash || (row.status === "failed" && Boolean(row.error?.startsWith("This source changed")));
+		const sourceChanged = row.source_changed || sha256(content) !== row.source_hash || (row.status === "failed" && Boolean(row.error?.startsWith("This source changed")));
 		let claims: MemoryCandidateJudgment[] = [];
 		try { claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json)); } catch { claims = []; }
 		const ownership = memoryOwnership(row.ownership);
 		const error = sourceChanged ? ownership === "writer" ? "This source changed. Automatic updates are paused for this writer-maintained collection." : row.error ?? "This source changed after its Memory collection was created." : row.error;
-		return [{ messageId, variantId, selected, status: sourceChanged ? "stale" as const : collectionStatus(row.status), error, revision: row.revision, ownership, sourceChanged, claims: sourceChanged && ownership === "automatic" ? [] : claims, indexing: readMemoryIndexReadiness(database, row, enabled) }];
+		return [{ messageId, variantId, selected, status: sourceChanged ? "stale" as const : collectionStatus(row.status), error, revision: row.revision, ownership, sourceChanged, claims: sourceChanged && ownership === "automatic" ? [] : claims, indexing: readiness.get(variantId)! }];
 	});
+	return { sources, path };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }): MemoryCollectionView {
@@ -218,6 +225,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 			claims[index] = { ...claims[index]!, ...replacement, writerMaintained: true };
 		} else claims.splice(index, 1);
 		const revision = row.revision + 1;
+		cancelMemoryExtractionWork(database, variantId);
 		cancelMemoryIndexWork(database, variantId);
 		db.update(memoryCollectionTable).set({ revision, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(claims), work_epoch: row.work_epoch + 1, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, row.variant_id), eq(memoryCollectionTable.revision, row.revision))).run();
 		queueMemoryIndexForVariant(database, variantId);
@@ -228,7 +236,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 }
 
 export function retryMemorySourceIndex(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number): MemoryCollectionView {
-	const current = readConversationMemories(database, conversationId).find((item) => item.variantId === variantId && item.messageId === messageId);
+	const current = readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId && item.messageId === messageId);
 	if (!current) throw new InvalidMemorySourceError("This source has no saved Memory collection to index.");
 	if (current.revision !== expectedRevision) throw new StaleMemoryCollectionError(current);
 	try { retryMemoryIndexing(database, conversationId, variantId, expectedRevision); }
@@ -236,7 +244,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		if (error instanceof StaleMemoryIndexRevisionError) throw new StaleMemoryCollectionError(current);
 		throw error;
 	}
-	return readConversationMemories(database, conversationId).find((item) => item.variantId === variantId && item.messageId === messageId) ?? current;
+	return readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId && item.messageId === messageId) ?? current;
 }
 
 export class StaleMemoryAllowanceError extends Error {
@@ -250,7 +258,10 @@ export class StaleMemoryAllowanceError extends Error {
 export function invalidateMemoryWorkForVariant(database: Database, variantId: number) {
 	const db = drizzle(database);
 	const automatic = db.select({ variantId: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.ownership, "automatic"))).get();
-	if (automatic) cancelMemoryIndexWork(database, variantId);
+	if (automatic) {
+		cancelMemoryExtractionWork(database, variantId);
+		cancelMemoryIndexWork(database, variantId);
+	}
 	db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, source_changed: true, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, variantId)).run();
 	if (automatic) {
 		db.update(memoryCollectionTable).set({ status: "failed", error: "This source changed after its Memory collection was created. Reset and re-extract it to create a collection for the current source version." }).where(and(eq(memoryCollectionTable.variant_id, variantId), eq(memoryCollectionTable.ownership, "automatic"))).run();
@@ -311,6 +322,8 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 				drizzle(database).update(memoryCollectionTable).set({ trace_json: JSON.stringify(steps) }).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.work_epoch, job.work_epoch))).run();
 			};
 			if (!job && !indexJob) { await new Promise((resolve) => setTimeout(resolve, 300)); continue; }
+			const extractionController = job ? new AbortController() : undefined;
+			const unregisterExtraction = job && extractionController ? registerMemoryExtractionController(database, job.variant_id, extractionController) : () => {};
 			try {
 				if (indexJob) {
 					const jobController = new AbortController();
@@ -322,7 +335,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 					} finally { unregister(); }
 					continue;
 				}
-				if (!job) continue;
+				if (!job || !extractionController) continue;
 				if (job.catchup_run_id !== null) {
 					const selected = database.query<{ selected: number }, [number]>("SELECT selected FROM message_variant WHERE id=?").get(job.variant_id);
 					if (!selected?.selected) {
@@ -338,7 +351,7 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 					continue;
 				}
 				const snapshot = Value.Parse(memoryWorkSnapshot, JSON.parse(job.source_snapshot_json));
-				const claims = await options.process(snapshot.source, snapshot.context, controller.signal, trace);
+				const claims = await options.process(snapshot.source, snapshot.context, AbortSignal.any([controller.signal, extractionController.signal]), trace);
 				database.transaction(() => {
 					const finalSource = database.query<{ content: string }, [number, number]>("SELECT v.content FROM message_variant v JOIN messages m ON m.id=v.message_id WHERE v.id=? AND m.conversation_id=?").get(job.variant_id, job.conversation_id);
 					const finalChat = drizzle(database).select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, job.conversation_id)).get();
@@ -350,12 +363,14 @@ export function startMemoryWorker(database: Database, options: MemoryWorkerOptio
 					}
 				}).immediate();
 			} catch (error) {
-				if (stopped) continue;
+				if (stopped || extractionController?.signal.aborted) continue;
 				if (indexJob) { failMemoryIndexWork(database, indexJob, error instanceof Error ? error : new Error("Memory indexing failed.")); continue; }
 				if (!job) continue;
 				const message = error instanceof Error ? error.message.slice(0, 1024) : "Memory extraction failed.";
 				trace("Failed", { error: message });
 				drizzle(database).update(memoryCollectionTable).set({ status: "failed", error: message, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.revision, job.revision), eq(memoryCollectionTable.work_epoch, job.work_epoch), eq(memoryCollectionTable.status, "running"), eq(memoryCollectionTable.ownership, "automatic"))).run();
+			} finally {
+				unregisterExtraction();
 			}
 		}
 	};

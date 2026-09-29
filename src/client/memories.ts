@@ -1,6 +1,6 @@
 import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryTraceStep } from "../shared/contract/memory";
 import { Value } from "@sinclair/typebox/value";
-import { memoryInvalid, conversationMemoryAllowanceConflict, memoryCorrectionConflict, memoryIndexRetryConflict, memoryCatchup } from "../shared/contract/memory";
+import { memoryInvalid, memoryResetConflict, conversationMemoryAllowanceConflict, memoryCorrectionConflict, memoryIndexRetryConflict, memoryCatchup } from "../shared/contract/memory";
 import { api } from "./lib/eden";
 
 export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
@@ -15,13 +15,14 @@ export async function loadMemoryTrace(conversationId: number, variantId: number)
 	return data.steps;
 }
 
-export async function resetAndReextract(conversationId: number, messageId: number): Promise<{ outcome: "queued" } | { outcome: "invalid"; reason: string }> {
-	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.reextract.post({ messageId });
+export async function resetAndReextract(conversationId: number, messageId: number, variantId: number, expectedRevision: number) {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.reextract.post({ messageId, variantId, expectedRevision });
 	if (data !== undefined && data !== null) return data;
 	const value = error?.value;
+	if (value !== undefined && Value.Check(memoryResetConflict, value)) return Value.Parse(memoryResetConflict, value);
 	return value !== undefined && Value.Check(memoryInvalid, value)
 		? Value.Parse(memoryInvalid, value)
-		: { outcome: "invalid", reason: "Memory work could not be queued." };
+		: { outcome: "invalid" as const, reason: "Memory work could not be queued." };
 }
 
 export async function correctMemory(conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }) {

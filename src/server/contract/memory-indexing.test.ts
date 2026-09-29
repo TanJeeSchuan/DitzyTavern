@@ -60,9 +60,11 @@ const enableMemory = async (database: Database, conversationId: number) => {
 };
 
 const queueSource = async (app: ReturnType<typeof createMemoryRoutes>, conversationId: number, messageId: number) => {
+	const source = (await readSources(app, conversationId)).find((item) => item.messageId === messageId && item.selected);
+	if (!source) throw new Error("Memory source fixture has no selected Variant.");
 	const response = await app.handle(request(`/api/conversations/${conversationId}/memories/reextract`, {
 		method: "POST",
-		body: JSON.stringify({ messageId }),
+		body: JSON.stringify({ messageId, variantId: source.variantId, expectedRevision: source.revision }),
 	}));
 	if (response.status !== 200) throw new Error(`Memory source fixture failed: ${await response.text()}`);
 };

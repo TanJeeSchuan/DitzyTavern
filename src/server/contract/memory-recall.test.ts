@@ -61,9 +61,11 @@ const memoryClaim = (messageId: number, claim: string, excerpt: string, attribut
 });
 
 const queueAndIndex = async (database: Database, conversationId: number, messageId: number, variantId: number, claim: MemoryCandidateJudgment) => {
+	const source = readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId);
+	if (!source) throw new Error("Memory recall fixture source missing.");
 	const queued = await createMemoryRoutes(database).handle(new Request(
 		`http://localhost/api/conversations/${conversationId}/memories/reextract`,
-		{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId }) },
+		{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId, variantId, expectedRevision: source.revision }) },
 	));
 	expect(queued.status).toBe(200);
 	const worker = startMemoryWorker(database, {
@@ -71,7 +73,7 @@ const queueAndIndex = async (database: Database, conversationId: number, message
 		index: async (job) => job.claims.map((candidate) => ({ renderedText: renderMemoryClaim(candidate), vector: [1, 0] })),
 	});
 	try {
-		expect(await waitFor(() => readConversationMemories(database, conversationId).find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
+		expect(await waitFor(() => readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
 	} finally {
 		await worker();
 	}
@@ -83,7 +85,7 @@ const reindexSavedMemories = async (database: Database, conversationId: number, 
 		index: async (job) => job.claims.map((candidate) => ({ renderedText: renderMemoryClaim(candidate), vector: [1, 0] })),
 	});
 	try {
-		expect(await waitFor(() => readConversationMemories(database, conversationId).find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
+		expect(await waitFor(() => readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
 	} finally {
 		await worker();
 	}
@@ -114,7 +116,7 @@ describe("Memory recall in Generation preparation", () => {
 		await selectVariant(database, conversation.id, source.messageId, source.variantId);
 		const extraction = memoryClaim(source.messageId, "Maren now holds Writer's key.", "Maren returned Writer's key.");
 		await queueAndIndex(database, conversation.id, source.messageId, source.variantId, extraction);
-		const collection = readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId);
+		const collection = readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId);
 		if (!collection) throw new Error("Indexed Memory source missing.");
 		const correction = await memoryRoutes.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/memories/correct`,
@@ -249,7 +251,7 @@ describe("Memory recall in Generation preparation", () => {
 		const { generationId } = await accepted.json() as { generationId: number };
 		const generationEvents = app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`)).then((response) => response.text());
 		await firstGenerationStarted;
-		const memoryDuringAttempt = readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId);
+		const memoryDuringAttempt = readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId);
 		if (!memoryDuringAttempt) throw new Error("Memory collection missing during active Generation.");
 		const concurrentCorrection = await memoryRoutes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/correct`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -278,7 +280,7 @@ describe("Memory recall in Generation preparation", () => {
 			finalMemoryText: editedMemoryText,
 			candidates: [{ messageId: source.messageId, variantId: source.variantId, evidence: [{ messageId: source.messageId, excerpt: "Maren returned Writer's key." }] }],
 		} });
-		const correctedDuringAttempt = readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId);
+		const correctedDuringAttempt = readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId);
 		if (!correctedDuringAttempt) throw new Error("Corrected Memory collection missing after active Generation.");
 		const restoreMemory = await memoryRoutes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/correct`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -350,7 +352,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await failedRecall.json()).toMatchObject({ reason: "Memory recall failed: The embedding endpoint rejected the request." });
 
 		const stalePreview = await previewOperation({ kind: "continuation" });
-		const currentSourceCollection = readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId);
+		const currentSourceCollection = readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId);
 		if (!currentSourceCollection) throw new Error("Current Memory collection missing before stale-preview edit.");
 		const changedCollection = await memoryRoutes.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/correct`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
@@ -385,7 +387,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await empty.json()).toMatchObject({ memoryActivation: { state: "empty", candidates: [] } });
 		const queued = await createMemoryRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/memories/reextract`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: source.messageId }) },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: source.messageId, variantId: source.variantId, expectedRevision: 0 }) },
 		));
 		expect(queued.status).toBe(200);
 		const rebuilding = await preview();
@@ -396,7 +398,7 @@ describe("Memory recall in Generation preparation", () => {
 			index: async () => [],
 		});
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id).find((item) => item.variantId === source.variantId)?.status === "failed")).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId)?.status === "failed")).toBe(true);
 		} finally {
 			await failedWorker();
 		}
@@ -420,19 +422,19 @@ describe("Memory recall in Generation preparation", () => {
 		withProfile(database);
 		const reextract = () => createMemoryRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/memories/reextract`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: source.messageId }) },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messageId: source.messageId, variantId: source.variantId, expectedRevision: 0 }) },
 		));
 		expect((await reextract()).status).toBe(200);
 		let release = () => {};
 		const waiting = new Promise<void>((resolve) => { release = resolve; });
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
-			expect(await waitFor(() => readConversationMemories(database, conversation.id)[0]?.status === "running")).toBe(true);
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "running")).toBe(true);
 			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			release();
 			await worker();
 		} finally { release(); await worker(); }
-		expect(readConversationMemories(database, conversation.id)).toMatchObject([{ status: "failed", claims: [] }]);
+		expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ status: "failed", claims: [] }]);
 		const rejected = await reextract();
 		expect(rejected.status).toBe(422);
 		expect(await rejected.text()).toContain("Turn on Memory");

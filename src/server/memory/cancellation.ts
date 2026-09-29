@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationMemorySettingsTable, conversationPromptPresetTable, memoryCollectionTable, memoryIndexWorkTable } from "../database/schema";
+import { cancelMemoryExtractionWork } from "./extraction-jobs";
 import { cancelMemoryIndexWork, isMemoryEnabledForConversation, queueMemoryIndexingForConversation } from "./indexing";
 
 // ==[HUMAN APPROVED]== Invalidate in-flight work when one of its shared recipe inputs changes.
@@ -15,7 +16,9 @@ export function invalidateMemoryWorkForConversation(database: Database, conversa
 	const db = drizzle(database);
 	db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId }).onConflictDoNothing().run();
 	db.update(conversationMemorySettingsTable).set({ chat_epoch: sql`${conversationMemorySettingsTable.chat_epoch} + 1` }).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).run();
-	db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: reason, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.conversation_id, conversationId), inArray(memoryCollectionTable.status, ["pending", "running"]))).run();
+	const extractionVariants = db.select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(and(eq(memoryCollectionTable.conversation_id, conversationId), eq(memoryCollectionTable.ownership, "automatic"), inArray(memoryCollectionTable.status, ["pending", "running"]))).all().map(({ id }) => id);
+	for (const variantId of extractionVariants) cancelMemoryExtractionWork(database, variantId);
+	db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: reason, updated_at: new Date().toISOString() }).where(and(eq(memoryCollectionTable.conversation_id, conversationId), eq(memoryCollectionTable.ownership, "automatic"), inArray(memoryCollectionTable.status, ["pending", "running"]))).run();
 	if (isMemoryEnabledForConversation(database, conversationId)) queueMemoryIndexingForConversation(database, conversationId);
 	else {
 		const variants = db.select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all().map(({ id }) => id);

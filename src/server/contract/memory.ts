@@ -1,18 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 import { withDatabase } from "../database/database";
-import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryPath, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryAllowanceInvalid,
-	memoryInvalid, memoryQueueApplied, memorySourceCommand,
+	memoryInvalid, memoryResetCommand, memoryResetApplied, memoryResetConflict,
 	memoryCorrectionCommand, memoryCorrectionApplied, memoryCorrectionConflict,
 	memoryIndexRetryCommand, memoryIndexRetryApplied, memoryIndexRetryConflict,
 	memoryCatchup, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead, memoryTrace, memoryTraceParams,
 } from "../../shared/contract/memory";
 
 export const createMemoryRoutes = (database: Database | undefined) => new Elysia()
-	.get("/api/conversations/:id/memories", ({ params }) => withDatabase(database, (db) => ({ sources: readConversationMemories(db, Number(params.id)), path: readMemoryPath(db, Number(params.id)) })), { params: memoryConversationIdParams, response: conversationMemories })
+	.get("/api/conversations/:id/memories", ({ params }) => withDatabase(database, (db) => readConversationMemories(db, Number(params.id))), { params: memoryConversationIdParams, response: conversationMemories })
 	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => withDatabase(database, (db) => ({ steps: readMemoryTrace(db, Number(params.id), Number(params.variantId)) })), { params: memoryTraceParams, response: memoryTrace })
 	.get("/api/conversations/:id/memory-allowance", ({ params }) => withDatabase(database, (db) => readMemoryAllowance(db, Number(params.id))), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
 	.post("/api/conversations/:id/memory-allowance", ({ params, body }) => {
@@ -25,12 +25,13 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: conversationMemoryAllowanceInvalid } })
 	.post("/api/conversations/:id/memories/reextract", ({ params, body }) => {
 		try {
-			const collection = withDatabase(database, (db) => resetAndReextractMemorySource(db, Number(params.id), body.messageId));
+			const collection = withDatabase(database, (db) => resetAndReextractMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision));
 			return { outcome: "queued" as const, collection };
 		} catch (error) {
+			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory work could not be queued." });
 		}
-	}, { params: memoryConversationIdParams, body: memorySourceCommand, response: { 200: memoryQueueApplied, 422: memoryInvalid } })
+	}, { params: memoryConversationIdParams, body: memoryResetCommand, response: { 200: memoryResetApplied, 409: memoryResetConflict, 422: memoryInvalid } })
 	.post("/api/conversations/:id/memories/correct", ({ params, body }) => {
 		try {
 			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision, body.index, body.operation, body.operation === "edit" ? { claim: body.claim ?? "", attribution: body.attribution ?? "", people: body.people ?? [] } : undefined));
