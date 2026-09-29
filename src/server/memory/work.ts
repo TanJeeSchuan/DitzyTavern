@@ -25,3 +25,5 @@ export const abortMemoryWork = (database: Database, variantIds: Iterable<number>
 
 export const indexingVariants = (database: Database, spaceKey: string): Set<number> =>
 	new Set([...running(database)].filter(([, entries]) => [...entries].some((work) => work.indexSpaceKey === spaceKey)).map(([variantId]) => variantId));
+
+export const registeredMemoryVariants = (database: Database): number[] => [...running(database).keys()];

@@ -1,7 +1,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { collectReleasedCharacterTombstones } from "../../character-library";
-import { messageTable, messageVariantTable, participantTable } from "../../database/schema";
-import { abortMemoryWork } from "../../memory/work";
+import { messageTable, participantTable } from "../../database/schema";
+import { syncMemorySources } from "../../memory";
 import type { ConversationDatabase } from "../internal";
 import { messageReferencesParticipant } from "../internal";
 import { requireMessage } from "../internal";
@@ -74,7 +74,7 @@ const collectReleasedTombstones = (
 
 export function deleteMessage(db: ConversationDatabase, input: DeleteMessageInput) {
 	requireMessage(db, input.conversationId, input.messageId);
-	abortMemoryWork(db.$client, db.select({ id: messageVariantTable.id }).from(messageVariantTable).where(eq(messageVariantTable.message_id, input.messageId)).all().map(({ id }) => id));
 	db.delete(messageTable).where(eq(messageTable.id, input.messageId)).run();
+	syncMemorySources(db.$client, input.conversationId, []);
 	collectReleasedTombstones(db, input.conversationId);
 }

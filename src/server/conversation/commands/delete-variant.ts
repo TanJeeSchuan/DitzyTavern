@@ -1,7 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import { queueMemorySource } from "../../memory";
-import { abortMemoryWork } from "../../memory/work";
+import { syncMemorySources } from "../../memory";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -50,7 +49,7 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 		.where(eq(messageVariantTable.message_id, input.messageId))
 		.orderBy(asc(messageVariantTable.position))
 		.all();
-	let replacementSelected = false;
+	let replacementId: number | undefined;
 
 	if (siblings.length === 1) {
 		throw new InvalidConversationCommandError(
@@ -73,13 +72,12 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 			.set({ selected: true })
 			.where(eq(messageVariantTable.id, replacement.id))
 			.run();
-		replacementSelected = true;
+		replacementId = replacement.id;
 	}
 
-	abortMemoryWork(db.$client, [variant.id]);
 	db.delete(messageVariantTable)
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
 	compactVariantPositions(db, input.messageId, variant.position);
-	if (replacementSelected) queueMemorySource(db.$client, input.conversationId, input.messageId);
+	syncMemorySources(db.$client, input.conversationId, replacementId === undefined ? [] : [replacementId]);
 }

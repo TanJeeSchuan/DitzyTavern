@@ -1,17 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { conversationPromptPresetTable, memoryCollectionTable } from "../database/schema";
+import { memoryCollectionTable } from "../database/schema";
 import { isMemoryEnabledForConversation } from "./settings";
 import { abortMemoryWork } from "./work";
 
 const presetChanged = "The selected Prompt Preset changed. Reset and re-extract this source to try again.";
-
-// ==[HUMAN APPROVED]== Invalidate in-flight work when one of its shared recipe inputs changes.
-export function invalidateMemoryWorkForPreset(database: Database, presetId: number, reason = presetChanged) {
-	const conversations = drizzle(database).select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all();
-	for (const { id } of conversations) invalidateMemoryWorkForConversation(database, id, reason);
-}
 
 export function invalidateMemoryWorkForConversation(database: Database, conversationId: number, reason = presetChanged) {
 	const db = drizzle(database);

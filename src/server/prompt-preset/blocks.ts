@@ -12,7 +12,7 @@ import {
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
-import { invalidateMemoryWorkForPreset, queueMemoryTail } from "../memory";
+import { refreshMemoryForConversation } from "../memory";
 
 // ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
@@ -104,8 +104,7 @@ type RecipeDatabase = ReturnType<typeof drizzle>;
 const refreshSelectedMemoryTails = (database: Database, presetId: number, before: PromptPresetRecipe) => {
 	const after = readPromptPresetRecipe(database, presetId);
 	if (after === undefined || hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
-	invalidateMemoryWorkForPreset(database, presetId);
-	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) queueMemoryTail(database, conversationId);
+	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) refreshMemoryForConversation(database, conversationId);
 };
 
 // ==[HUMAN APPROVED]== The stored position of every slot is a dense 1-based order, so a

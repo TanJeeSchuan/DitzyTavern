@@ -3,7 +3,7 @@ import { messageTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { insertMessage, insertVariants, readControlAssignment, requireParticipant } from "../internal";
-import { queueMemorySource } from "../../memory/collections";
+import { syncMemorySources } from "../../memory";
 
 export interface CreateMessageInput {
 	conversationId: number;
@@ -61,5 +61,5 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 			selected: index === selectedVariantIndex,
 		})),
 	);
-	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId && variants[selectedVariantIndex] !== undefined && input.variantContents[selectedVariantIndex]?.trim()) queueMemorySource(db.$client, input.conversationId, messageId);
+	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) syncMemorySources(db.$client, input.conversationId, [variants[selectedVariantIndex]!]);
 }

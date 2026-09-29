@@ -2,8 +2,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { connectionProfileTable, conversationPromptPresetTable, memorySettingsTable } from "../database/schema";
-import { invalidateMemoryWorkForConversation } from "./cancellation";
-import { queueMemoryTail } from "./collections";
+import { refreshMemoryForConversation } from "./sync";
 import type { MemorySettingsCommand, MemorySettingsPayload } from "../../shared/contract/memory-settings";
 
 const SETTINGS_ID = 1;
@@ -72,10 +71,7 @@ export const createMemorySettingsModule = (database: Database) => {
 		const settings = commit(command.expectedRevision, (connection) => {
 			connection.update(memorySettingsTable).set({ enabled: command.enabled, extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, usefulness_confidence_gate: command.usefulnessConfidenceGate, recall_relevance_minimum: command.recallRelevanceMinimum, embedding_profile_id: command.embeddingProfileId, embedding_model: embeddingModel }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
 		});
-		if (toggled) for (const { id } of db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all()) {
-			invalidateMemoryWorkForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
-			queueMemoryTail(database, id);
-		}
+		if (toggled) for (const { id } of db.select({ id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).all()) refreshMemoryForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
 		return settings;
 	}).immediate();
 	return { get, apply };

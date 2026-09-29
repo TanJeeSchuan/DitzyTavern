@@ -43,7 +43,7 @@ import {
 	isMemoryActivationRecord,
 	MemoryActivationRecordParseError,
 } from "../../../shared/contract/memory-recall";
-import { queueMemorySource } from "../../memory/collections";
+import { syncMemorySources } from "../../memory";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -344,7 +344,7 @@ export function resolveConversationGeneration(
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
-		if (input.content.trim()) queueMemorySource(db.$client, input.conversationId, active.message_id);
+		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -378,7 +378,6 @@ export const removeConversationGeneration = (
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		if (transition.durableOutput && active.checkpoint_content.trim()) queueMemorySource(db.$client, input.conversationId, active.message_id);
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
@@ -604,9 +603,7 @@ export function stopConversationGeneration(
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		if (transition.durableOutput && active.checkpoint_content.trim() && db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, active.variant_id)).get()?.selected) {
-			queueMemorySource(db.$client, input.conversationId, active.message_id);
-		}
+		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
 		return advanceConversationRevision(
 			db,
 			input.conversationId,
@@ -649,7 +646,7 @@ export function stopConversationGenerations(
 			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
 		}
 		restoreStoppedSiblingSelection(db, removedSiblings);
-		if (durableOutput) for (const messageId of new Set(activeRows.filter((active) => active.checkpoint_content.trim() && db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, active.variant_id)).get()?.selected).map((active) => active.message_id))) queueMemorySource(db.$client, input.conversationId, messageId);
+		syncMemorySources(db.$client, input.conversationId, activeRows.map((active) => active.variant_id));
 		const snapshot = advanceConversationRevision(
 			db,
 			input.conversationId,

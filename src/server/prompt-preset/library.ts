@@ -28,7 +28,7 @@ import {
 	readPromptPresetRecipe,
 	type PromptPresetDatabase,
 } from "./recipe";
-import { invalidateMemoryWorkForPreset, queueMemoryTail } from "../memory";
+import { refreshMemoryForConversation } from "../memory";
 import {
 	convertSillyTavernPromptPreset,
 } from "./sillytavern";
@@ -252,7 +252,6 @@ export function executePromptPresetCommand(
 				);
 			}
 			const defaultId = readDefaultPromptPresetId(db);
-			invalidateMemoryWorkForPreset(database, preset.id, "The selected Prompt Preset was deleted. Choose a preset with Memory and reset this source to process it again.");
 			const reassigned = db
 				.update(conversationPromptPresetTable)
 				.set({ prompt_preset_id: defaultId })
@@ -260,7 +259,7 @@ export function executePromptPresetCommand(
 				.returning({ conversation_id: conversationPromptPresetTable.conversation_id })
 				.all();
 			db.delete(promptPresetTable).where(eq(promptPresetTable.id, preset.id)).run();
-			for (const { conversation_id: conversationId } of reassigned) queueMemoryTail(database, conversationId);
+			for (const { conversation_id: conversationId } of reassigned) refreshMemoryForConversation(database, conversationId, "The selected Prompt Preset was deleted. Choose a preset with Memory and reset this source to process it again.");
 			return {
 				kind: "deleted",
 				result: {

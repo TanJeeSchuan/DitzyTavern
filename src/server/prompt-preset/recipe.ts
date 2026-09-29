@@ -13,7 +13,6 @@ import {
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
 import { PromptPresetNotFoundError } from "./errors";
-import { invalidateMemoryWorkForConversation } from "../memory";
 
 const connect = (database: Database) => drizzle(database);
 export type PromptPresetDatabase = ReturnType<typeof connect>;
@@ -90,7 +89,6 @@ export const selectConversationPromptPreset = (
 			set: { prompt_preset_id: promptPresetId },
 		})
 		.run();
-	invalidateMemoryWorkForConversation(db.$client, conversationId);
 };
 
 const storedOccurrences = (
