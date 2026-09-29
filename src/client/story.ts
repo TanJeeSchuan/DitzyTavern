@@ -334,7 +334,7 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			if (messages.length === state.messages.length) return state;
 			if (state.page === null) return { ...state, revision: action.revision, messages };
 			const totalMessages = Math.max(0, state.page.totalMessages - 1);
-			const index = Math.max(1, state.page.index - 1);
+			const index = Math.max(0, state.page.index - 1);
 			return {
 				...state,
 				revision: action.revision,

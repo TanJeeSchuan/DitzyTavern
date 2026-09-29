@@ -245,6 +245,31 @@ describe("story reading state", () => {
 		});
 	});
 
+	test("deleting from page one refetches the shifted page before loading older pages", () => {
+		const state = reduceStory(
+			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
+			{
+				type: "first-page",
+				page: page({
+					page: { index: 1, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: false },
+					messages: [message({ id: 14, position: 5 }), message({ id: 15, position: 6 })],
+				}),
+			},
+		);
+		const deleted = reduceStory(state, { type: "message-deleted", messageId: 15, revision: 4 });
+		expect(deleted.page?.index).toBe(0);
+
+		const shiftedPage = reduceStory(deleted, {
+			type: "next-page-arrived",
+			page: page({
+				page: { index: 1, pageSize: 2, totalMessages: 5, totalPages: 3, hasOlder: true, hasNewer: false },
+				messages: [message({ id: 13, position: 4 }), message({ id: 14, position: 5 })],
+			}),
+		});
+		expect(shiftedPage.messages.map((entry) => entry.id)).toEqual([13, 14]);
+		expect(shiftedPage.page?.index).toBe(1);
+	});
+
 	test("swipe selection updates the active Variant position locally", () => {
 		const state = reduceStory(
 			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
