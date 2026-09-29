@@ -26,14 +26,16 @@ export type ConversationMemories = Static<typeof conversationMemories>;
 export const memoryConversationIdParams = Type.Object({ id: numericWire });
 export const memoryInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
 export const memoryResetCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer() });
-export const memoryResetApplied = Type.Object({ outcome: Type.Literal("queued"), collection: memoryCollection });
-export const memoryResetConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
-export const memoryCorrectionCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer(), index: Type.Integer(), operation: Type.Union([Type.Literal("edit"), Type.Literal("remove")]), claim: Type.Optional(Type.String()), attribution: Type.Optional(Type.String()), people: Type.Optional(Type.Array(Type.String())) });
+export const memoryQueued = Type.Object({ outcome: Type.Literal("queued"), collection: memoryCollection });
+export const memoryCollectionConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
+const memoryCorrectionTarget = { messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer(), index: Type.Integer() };
+export const memoryCorrectionCommand = Type.Union([
+	Type.Object({ ...memoryCorrectionTarget, operation: Type.Literal("edit"), claim: Type.String(), attribution: Type.String(), people: Type.Array(Type.String()) }),
+	Type.Object({ ...memoryCorrectionTarget, operation: Type.Literal("remove") }),
+]);
+export type MemoryCorrectionCommand = Static<typeof memoryCorrectionCommand>;
 export const memoryCorrectionApplied = Type.Object({ outcome: Type.Literal("applied"), collection: memoryCollection });
-export const memoryCorrectionConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
 export const memoryIndexRetryCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer() });
-export const memoryIndexRetryApplied = Type.Object({ outcome: Type.Literal("queued"), collection: memoryCollection });
-export const memoryIndexRetryConflict = Type.Object({ outcome: Type.Literal("conflict"), collection: memoryCollection });
 export const memoryCatchup = Type.Object({ id: Type.Integer(), state: Type.Union([Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed"), Type.Literal("cancelled")]), pending: Type.Integer(), running: Type.Integer(), complete: Type.Integer(), failed: Type.Array(Type.Object({ messageId: Type.Integer(), error: Type.Union([Type.String(), Type.Null()]) })) });
 export const memoryCatchupRead = Type.Object({ run: Type.Union([memoryCatchup, Type.Null()]) });
 export const memoryCatchupCommand = Type.Object({});
@@ -44,7 +46,6 @@ export const conversationMemoryAllowance = Type.Object({ revision: Type.Integer(
 export const conversationMemoryAllowanceCommand = Type.Object({ expectedRevision: Type.Integer(), allowance: Type.Integer() });
 export const conversationMemoryAllowanceApplied = Type.Object({ outcome: Type.Literal("applied"), settings: conversationMemoryAllowance });
 export const conversationMemoryAllowanceConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: conversationMemoryAllowance });
-export const conversationMemoryAllowanceInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
 export type ConversationMemoryAllowance = Static<typeof conversationMemoryAllowance>;
 
 export const memoryExtractionResponse = Type.Object({

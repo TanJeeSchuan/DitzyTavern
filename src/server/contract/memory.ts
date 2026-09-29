@@ -4,10 +4,9 @@ import { withDatabase } from "../database/database";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
-	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryAllowanceInvalid,
-	memoryInvalid, memoryResetCommand, memoryResetApplied, memoryResetConflict,
-	memoryCorrectionCommand, memoryCorrectionApplied, memoryCorrectionConflict,
-	memoryIndexRetryCommand, memoryIndexRetryApplied, memoryIndexRetryConflict,
+	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
+	memoryInvalid, memoryQueued, memoryCollectionConflict, memoryResetCommand,
+	memoryCorrectionCommand, memoryCorrectionApplied, memoryIndexRetryCommand,
 	memoryCatchup, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead, memoryTrace, memoryTraceParams,
 } from "../../shared/contract/memory";
 
@@ -22,7 +21,7 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 			if (error instanceof StaleMemoryAllowanceError) return status(409, { outcome: "conflict" as const, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision, currentSettings: error.currentSettings });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory Allowance could not be saved." });
 		}
-	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: conversationMemoryAllowanceInvalid } })
+	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: memoryInvalid } })
 	.post("/api/conversations/:id/memories/reextract", ({ params, body }) => {
 		try {
 			const collection = withDatabase(database, (db) => resetAndReextractMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision));
@@ -31,16 +30,16 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory work could not be queued." });
 		}
-	}, { params: memoryConversationIdParams, body: memoryResetCommand, response: { 200: memoryResetApplied, 409: memoryResetConflict, 422: memoryInvalid } })
+	}, { params: memoryConversationIdParams, body: memoryResetCommand, response: { 200: memoryQueued, 409: memoryCollectionConflict, 422: memoryInvalid } })
 	.post("/api/conversations/:id/memories/correct", ({ params, body }) => {
 		try {
-			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision, body.index, body.operation, body.operation === "edit" ? { claim: body.claim ?? "", attribution: body.attribution ?? "", people: body.people ?? [] } : undefined));
+			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision, body.index, body.operation, body.operation === "edit" ? { claim: body.claim, attribution: body.attribution, people: body.people } : undefined));
 			return { outcome: "applied" as const, collection };
 		} catch (error) {
 			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory correction could not be saved." });
 		}
-	}, { params: memoryConversationIdParams, body: memoryCorrectionCommand, response: { 200: memoryCorrectionApplied, 409: memoryCorrectionConflict, 422: memoryInvalid } })
+	}, { params: memoryConversationIdParams, body: memoryCorrectionCommand, response: { 200: memoryCorrectionApplied, 409: memoryCollectionConflict, 422: memoryInvalid } })
 	.post("/api/conversations/:id/memories/indexing/retry", ({ params, body }) => {
 		try {
 			const collection = withDatabase(database, (db) => retryMemorySourceIndex(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision));
@@ -49,7 +48,7 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory indexing could not be retried." });
 		}
-	}, { params: memoryConversationIdParams, body: memoryIndexRetryCommand, response: { 200: memoryIndexRetryApplied, 409: memoryIndexRetryConflict, 422: memoryInvalid } })
+	}, { params: memoryConversationIdParams, body: memoryIndexRetryCommand, response: { 200: memoryQueued, 409: memoryCollectionConflict, 422: memoryInvalid } })
 	.get("/api/conversations/:id/memories/catchup", ({ params }) => ({ run: withDatabase(database, (db) => readLatestMemoryCatchup(db, Number(params.id))) }), { params: memoryConversationIdParams, response: memoryCatchupRead })
 	.post("/api/conversations/:id/memories/catchup", ({ params }) => {
 		try { return withDatabase(database, (db) => startMemoryCatchup(db, Number(params.id))); }

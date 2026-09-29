@@ -112,6 +112,5 @@ export const isMemoryActivationRecord = (value: unknown): value is MemoryActivat
 export const parseMemoryActivationRecord = (serialized: string): MemoryActivationRecord => {
 	let parsed: unknown;
 	try { parsed = JSON.parse(serialized); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record is not valid JSON."); }
-	if (!Value.Check(memoryActivationRecord, parsed)) throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema.");
-	return Value.Parse(memoryActivationRecord, parsed);
+	try { return Value.Parse(memoryActivationRecord, parsed); } catch { throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema."); }
 };

@@ -1,13 +1,8 @@
 import type { TypesafeSettingsCommand, TypesafeSettingsPayload } from "../shared/contract/typesafe";
-import { Value } from "@sinclair/typebox/value";
-import { typesafeSettingsConflict, typesafeSettingsInvalid } from "../shared/contract/typesafe";
 import { api } from "./lib/eden";
 
 export type TypesafeSettings = TypesafeSettingsPayload;
-export type TypesafeSettingsResult =
-	| { outcome: "applied"; settings: TypesafeSettings }
-	| { outcome: "conflict"; expectedRevision: number; actualRevision: number; currentSettings: TypesafeSettings }
-	| { outcome: "invalid"; reason: string };
+export type TypesafeSettingsResult = Awaited<ReturnType<typeof saveTypesafeSettings>>;
 
 export async function loadTypesafeSettings(): Promise<TypesafeSettings> {
 	const { data, error } = await api.api["typesafe-settings"].get();
@@ -15,15 +10,10 @@ export async function loadTypesafeSettings(): Promise<TypesafeSettings> {
 	return data;
 }
 
-export async function saveTypesafeSettings(command: TypesafeSettingsCommand): Promise<TypesafeSettingsResult> {
+export async function saveTypesafeSettings(command: TypesafeSettingsCommand) {
+	const failed = { outcome: "invalid" as const, reason: "Typesafe Settings could not be saved." };
 	try {
 		const { data, error } = await api.api["typesafe-settings"].commands.post(command);
-		if (data !== undefined && data !== null) return data;
-		const value = error?.value;
-		if (value !== undefined && Value.Check(typesafeSettingsConflict, value)) return Value.Parse(typesafeSettingsConflict, value);
-		if (value !== undefined && Value.Check(typesafeSettingsInvalid, value)) return Value.Parse(typesafeSettingsInvalid, value);
-		return { outcome: "invalid", reason: "Typesafe Settings could not be saved." };
-	} catch {
-		return { outcome: "invalid", reason: "Typesafe Settings could not be saved." };
-	}
+		return error === null ? data : error.status === 409 || error.status === 422 ? error.value : failed;
+	} catch { return failed; }
 }

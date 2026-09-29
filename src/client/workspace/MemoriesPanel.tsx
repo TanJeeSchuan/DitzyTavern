@@ -72,13 +72,13 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 		}),
 		edit: (source, index) => setEditing(index === null ? null : { variantId: source.variantId, revision: source.revision, index }),
 		save: (source, index, draft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
-			const result = await correctMemory(conversationId, source.messageId, source.variantId, editing.revision, index, "edit", draft);
+			const result = await correctMemory(conversationId, { messageId: source.messageId, variantId: source.variantId, expectedRevision: editing.revision, index, operation: "edit", ...draft });
 			if (result.outcome === "invalid") return result.reason;
 			replace(result.collection); setEditing(null);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}); },
 		remove: (source, index) => void act(source, async () => {
-			const result = await correctMemory(conversationId, source.messageId, source.variantId, source.revision, index, "remove");
+			const result = await correctMemory(conversationId, { messageId: source.messageId, variantId: source.variantId, expectedRevision: source.revision, index, operation: "remove" });
 			if (result.outcome === "invalid") return result.reason;
 			replace(result.collection);
 			return result.outcome === "conflict" ? conflictNotice : null;
