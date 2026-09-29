@@ -151,6 +151,8 @@ export function cancelMemoryCatchup(database: Database, conversationId: number, 
 		const db = drizzle(database);
 		const run = db.select().from(memoryCatchupRunTable).where(and(eq(memoryCatchupRunTable.id, runId), eq(memoryCatchupRunTable.conversation_id, conversationId))).get();
 		if (!run || run.cancelled) throw new InvalidMemorySourceError("This history catch-up run is no longer active.");
+		const current = readMemoryCatchup(database, run);
+		if (current.pending + current.running === 0 && (current.complete > 0 || current.failed.length > 0)) throw new InvalidMemorySourceError("This history catch-up run is already finished.");
 		db.delete(memoryCollectionTable).where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "pending"))).run();
 		const superseded = db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: "History catch-up was cancelled.", catchup_run_id: null, updated_at: new Date().toISOString() })
 			.where(and(eq(memoryCollectionTable.catchup_run_id, runId), eq(memoryCollectionTable.status, "running"))).returning({ id: memoryCollectionTable.variant_id }).all();

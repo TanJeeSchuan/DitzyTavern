@@ -255,6 +255,20 @@ describe("Memory source lifecycle public operations", () => {
 		} finally { await stop(); }
 	});
 
+	test("a completed catch-up remains complete when cancellation arrives late", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const source = insertMessage(database, conversation.id, 1, "Completed catch-up source.");
+		const memories = createMemoryRoutes(database);
+		const run = Value.Parse(memoryCatchup, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json());
+		const stop = startMemoryWorker(database, { process: async (item) => supportedMemory(item.messageId, item.content) });
+		try {
+			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(source.variantId)?.status === "complete")).toBe(true);
+			expect((await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup/${run.id}`, { method: "DELETE" }))).status).toBe(422);
+			expect(await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`))).json()).toMatchObject({ run: { id: run.id, state: "complete", complete: 1 } });
+		} finally { await stop(); }
+	});
+
 	test("catch-up cancellation aborts both extraction jobs and releases worker capacity", async () => {
 		const conversation = createChat(database);
 		await enableMemory(database, conversation.id);
