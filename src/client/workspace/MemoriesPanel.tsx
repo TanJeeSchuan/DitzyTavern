@@ -17,7 +17,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 	conversationId: number;
 	onClose: () => void;
 	onNavigateSource: (messageId: number) => void;
-	onOpenPanel: (panel: "settings" | "prompts") => void;
+	onOpenPanel: (panel: "memory" | "prompts") => void;
 }) {
 	const [memories, setMemories] = useState<ConversationMemories | null>(null);
 	const [loadFailed, setLoadFailed] = useState(false);
@@ -112,7 +112,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 				{memories.path.length > 0 && <MemoryCoverage path={memories.path} sources={new Map(selected.map((source) => [source.messageId, source]))} catchup={catchup} enabled={allowance?.enabled ?? false} busy={catchupBusy} label={actions.label} onStart={() => void catchupAction(() => startMemoryCatchup(conversationId))} onCancel={() => catchup && void catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id))} onNavigate={onNavigateSource} />}
 				{notice && <p className="import-problem" role="alert">{notice}</p>}
 				{(attention.length > 0 || awaitingEmbedding > 0) && <section className="memory-attention" aria-label="Needs attention">
-					<header><h3>Needs attention</h3><Button type="button" size="xs" variant="ghost" onClick={() => onOpenPanel("settings")}>Memory Settings</Button></header>
+					<header><h3>Needs attention</h3><Button type="button" size="xs" variant="ghost" onClick={() => onOpenPanel("memory")}>Memory Settings</Button></header>
 					{awaitingEmbedding > 0 && <p className="memory-attention-item"><span>{awaitingEmbedding} {awaitingEmbedding === 1 ? "source is" : "sources are"} waiting for embedding settings before their Memories can be recalled.</span></p>}
 					{attention.map((source) => <div className="memory-attention-item" key={source.variantId}>
 						<button type="button" className="memory-source-label" onClick={() => onNavigateSource(source.messageId)}>{actions.label(source.messageId)}</button>

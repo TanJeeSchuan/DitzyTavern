@@ -4,7 +4,7 @@ import { createContract } from "../src/server/contract";
 import { openInitializedDatabase } from "../src/server/database/database";
 import { seed } from "../src/server/database/seed";
 import { createConnectionSettingsModule } from "../src/server/connection-settings";
-import { createEmbeddingSettingsModule } from "../src/server/embedding-settings";
+import { createMemorySettingsModule } from "../src/server/memory/settings";
 import { initializeConnectionSecretKey } from "../src/server/connection-secrets";
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../src/server/model-client";
@@ -36,19 +36,20 @@ const fakeFetch: ModelFetch = async (_url, init) => {
 	].join(""), { headers: { "content-type": "text/event-stream" } });
 };
 
-createConnectionSettingsModule(database, { masterKey }).createProfile({
-	expectedRevision: 0,
-	profile: {
-		displayName: "Screenshot provider", apiFormat: "chat-completions", adapter: "openai-compatible",
-		requestUrl: "https://screenshots.invalid/v1/", modelsUrl: "https://screenshots.invalid/v1/models",
-		modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
-		pinnedModels: ["deepseek-chat"],
-	},
-});
-createEmbeddingSettingsModule(database, { masterKey }).apply({
-	type: "apply", expectedRevision: 0, endpoint: "https://screenshots.invalid/v1/embeddings",
-	model: "screenshot-embedding", threshold: 0.5, deadlineMs: 1000,
-});
+const connections = createConnectionSettingsModule(database, { masterKey });
+const profile = {
+	apiFormat: "chat-completions", adapter: "openai-compatible",
+	requestUrl: "https://screenshots.invalid/v1/", modelsUrl: "https://screenshots.invalid/v1/models",
+	modelBackend: "automatic", outputTokenRepresentation: "automatic", timeoutMs: 10_000,
+} as const;
+connections.createProfile({ expectedRevision: 0, profile: { ...profile, displayName: "Screenshot provider", pinnedModels: ["deepseek-chat"] } });
+const embeddings = connections.createProfile({
+	expectedRevision: connections.get().revision,
+	profile: { ...profile, displayName: "Screenshot embeddings", apiFormat: "embeddings", requestUrl: "https://screenshots.invalid/v1/embeddings", pinnedModels: ["screenshot-embedding"] },
+}).profiles.find((entry) => entry.apiFormat === "embeddings");
+const memory = createMemorySettingsModule(database);
+const { revision, ...memorySettings } = memory.get();
+memory.apply({ ...memorySettings, expectedRevision: revision, embeddingProfileId: embeddings?.id ?? null, embeddingModel: "screenshot-embedding" });
 
 const app = createContract(database, { masterKey, fetch: fakeFetch }, join(directory, "artifacts"))
 	.get("/", () => Bun.file("dist/index.html"))
