@@ -55,6 +55,15 @@ Every finished Message keeps its Generation details: the model, settings, the ca
 
 Lorebooks work the way SillyTavern's World Info does: entries with Keywords, a scan window over recent Messages, and Always entries. DitzyTavern adds Semantic Triggers, plain-language descriptions of when an entry matters. "Someone claims to have been somewhere they were not" fires on "I was home all night" even though the two share no words.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/lore-jev-evening.gif">
+    <img alt="The scan window goes to Jev as scene state. Each Semantic Trigger becomes one question, Jev answers with a probability, and entries at or above the threshold are included. Raising the threshold to 0.80 drops one match." src="docs/media/lore-jev-daylight.gif" width="100%">
+  </picture>
+</p>
+
+Jev decides whether the meaning matches. DitzyTavern sends the scan window to Jev once, as the `scene`, and turns every Semantic Trigger into one question: does this situation happen or get discussed in the scene? Jev answers each with a probability. A trigger matches when its probability meets the threshold, one setting shared by every entry and 0.5 by default. Raise it and the weaker matches drop out. Nothing is cached; every Generation asks again. If Jev is off or unreachable, that Generation falls back to Keywords only, and its details say so.
+
 Selected entries go into a Lore Block, capped by a Lore Allowance. Your prompt preset decides where the block goes. Each Generation records which entries it considered and why it kept or skipped each one. Attach a book to a character, a participant or a whole Chat.
 
 ## Swipes
