@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
-import { tokenxEstimator } from "../prompt-compiler";
-import { JEV_REQUEST_BYTE_LIMIT, JEV_REQUEST_TOKEN_LIMIT, JEV_STATE_QUESTION_TOKEN_LIMIT, JEV_STATE_TOKEN_LIMIT, JEV_TOTAL_INPUT_TOKEN_LIMIT } from "../typesafe";
+import { jevRequest } from "../typesafe";
 
 const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
 const settings: SemanticSettingsSnapshot = { mode: "jev", threshold: 0.5, jevModel: "jev-1.13.0", credential: "typesafe-secret" };
@@ -54,15 +53,7 @@ describe("semantic Lore evaluation", () => {
 				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
 			},
 		});
-		expect(bodies.every((body) => {
-			const stateTokens = tokenxEstimator(JSON.stringify(body.state));
-			const questionTokens = Object.values(body.questions).map((question) => tokenxEstimator(JSON.stringify(question)));
-			return stateTokens <= JEV_STATE_TOKEN_LIMIT
-				&& stateTokens + Math.max(0, ...questionTokens) <= JEV_STATE_QUESTION_TOKEN_LIMIT
-				&& stateTokens + questionTokens.reduce((total, tokens) => total + tokens, 0) <= JEV_TOTAL_INPUT_TOKEN_LIMIT
-				&& tokenxEstimator(JSON.stringify(body)) <= JEV_REQUEST_TOKEN_LIMIT
-				&& new TextEncoder().encode(JSON.stringify(body)).byteLength <= JEV_REQUEST_BYTE_LIMIT;
-		})).toBe(true);
+		expect(bodies.every((body) => jevRequest(body.model, body.state, body.questions).fits)).toBe(true);
 		expect(bodies.length).toBeLessThan(triggers.length);
 		expect(peakInFlight).toBe(1);
 		const scanned = bodies.flatMap((body) => body.state.scene).join("");

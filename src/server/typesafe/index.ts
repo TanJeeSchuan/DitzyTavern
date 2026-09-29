@@ -4,17 +4,17 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { typesafeSecretTable, typesafeSettingsTable } from "../database/schema";
 import { decryptConnectionSecretSync, encryptConnectionSecretSync, getConnectionSecretKey } from "../connection-secrets";
-import type { ModelFetch } from "../model-client";
+import { fetchWithTimeout, readBoundedResponse, type ModelFetch } from "../model-client/model-fetch";
 import { tokenxEstimator } from "../prompt-compiler";
 import { jevResponse, type JevAnswer, type TypesafeSettingsCommand, type TypesafeSettingsPayload } from "../../shared/contract/typesafe";
 
 const SETTINGS_ID = 1;
 const MAX_RESPONSE_BYTES = 256 * 1024;
-export const JEV_REQUEST_BYTE_LIMIT = 128 * 1024;
-export const JEV_REQUEST_TOKEN_LIMIT = 48_000;
+const JEV_REQUEST_BYTE_LIMIT = 128 * 1024;
+const JEV_REQUEST_TOKEN_LIMIT = 48_000;
 export const JEV_STATE_TOKEN_LIMIT = 16_000;
-export const JEV_STATE_QUESTION_TOKEN_LIMIT = 32_000;
-export const JEV_TOTAL_INPUT_TOKEN_LIMIT = 64_000;
+const JEV_STATE_QUESTION_TOKEN_LIMIT = 32_000;
+const JEV_TOTAL_INPUT_TOKEN_LIMIT = 64_000;
 type Db = ReturnType<typeof drizzle>;
 
 export class InvalidTypesafeSettingsError extends Error {
@@ -98,35 +98,39 @@ export const createTypesafeSettingsModule = (database: Database, options: Typesa
 	};
 };
 
-async function readBoundedResponse(response: Response): Promise<string> {
-	const declared = Number(response.headers.get("content-length"));
-	if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) throw new Error("Typesafe Jev response exceeded 256 KiB.");
-	if (!response.body) return "";
-	const reader = response.body.getReader();
-	const chunks: Uint8Array[] = [];
-	let total = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		total += value.byteLength;
-		if (total > MAX_RESPONSE_BYTES) { await reader.cancel(); throw new Error("Typesafe Jev response exceeded 256 KiB."); }
-		chunks.push(value);
-	}
-	const bytes = new Uint8Array(total);
-	let offset = 0;
-	for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-	return new TextDecoder().decode(bytes);
-}
-
-const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+export const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 
 export const jevRequest = <State extends object, Question extends object>(model: string, state: State, questions: Readonly<Record<string, Question>>) => {
 	const request = JSON.stringify({ model, state, questions });
-	const stateTokens = tokenxEstimator(JSON.stringify(state));
 	const questionTokens = Object.values(questions).map((question) => tokenxEstimator(JSON.stringify(question)));
-	const totalQuestionTokens = questionTokens.reduce((sum, count) => sum + count, 0);
-	const fits = new TextEncoder().encode(request).byteLength <= JEV_REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= JEV_REQUEST_TOKEN_LIMIT && stateTokens <= JEV_STATE_TOKEN_LIMIT && stateTokens + Math.max(0, ...questionTokens) <= JEV_STATE_QUESTION_TOKEN_LIMIT && stateTokens + totalQuestionTokens <= JEV_TOTAL_INPUT_TOKEN_LIMIT;
+	const stateBudget = Math.min(JEV_STATE_TOKEN_LIMIT, JEV_STATE_QUESTION_TOKEN_LIMIT - Math.max(0, ...questionTokens), JEV_TOTAL_INPUT_TOKEN_LIMIT - questionTokens.reduce((sum, count) => sum + count, 0));
+	const fits = new TextEncoder().encode(request).byteLength <= JEV_REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= JEV_REQUEST_TOKEN_LIMIT && tokenxEstimator(JSON.stringify(state)) <= stateBudget;
 	return { request, questionIds: Object.keys(questions), fits };
+};
+
+type JevRequest = ReturnType<typeof jevRequest>;
+
+export const packJev = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => JevRequest, unfittable: string, maxPerBatch = Infinity) => {
+	const packed: (JevRequest & { readonly items: readonly Item[] })[] = [];
+	let hint = 1;
+	for (let start = 0; start < items.length;) {
+		const limit = Math.min(maxPerBatch, items.length - start);
+		let best: JevRequest & { readonly items: readonly Item[] } | undefined;
+		let fitting = 0;
+		let failing = limit + 1;
+		const probe = (size: number) => {
+			const batch = items.slice(start, start + size);
+			const next = { ...build(batch), items: batch };
+			if (next.fits) { best = next; fitting = size; } else failing = size;
+		};
+		probe(Math.min(hint, limit));
+		for (let step = 1; failing > limit && fitting < limit; step *= 2) probe(Math.min(fitting + step, limit));
+		while (failing - fitting > 1) probe(Math.floor((fitting + failing) / 2));
+		if (best === undefined) throw new Error(unfittable);
+		packed.push(best);
+		start += hint = fitting;
+	}
+	return packed;
 };
 
 export type JevTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
@@ -141,13 +145,16 @@ export async function requestJev(input: {
 }): Promise<Readonly<Record<string, JevAnswer>>> {
 	input.trace?.("Jev request", { body: prettyJson(input.request) });
 	const startedAt = Date.now();
-	const response = await (input.fetch ?? fetch)("https://api.typesafe.ai/v1/systemone", {
+	const { response, text } = await fetchWithTimeout(input.fetch ?? fetch, "https://api.typesafe.ai/v1/systemone", {
 		method: "POST",
-		signal: input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
+		signal: input.signal,
 		headers: { authorization: `Bearer ${input.credential}`, "content-type": "application/json" },
 		body: input.request,
+	}, 15_000, async (response, signal) => {
+		const { bytes, truncated } = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
+		if (truncated) throw new Error("Typesafe Jev response exceeded 256 KiB.");
+		return { response, text: new TextDecoder().decode(bytes) };
 	});
-	const text = await readBoundedResponse(response);
 	input.trace?.("Jev response", { elapsed: `${((Date.now() - startedAt) / 1000).toFixed(1)} s`, status: String(response.status), body: prettyJson(text) });
 	if (!response.ok) throw new Error(`Typesafe Jev request failed with HTTP ${response.status}.`);
 	let answers: Record<string, JevAnswer>;

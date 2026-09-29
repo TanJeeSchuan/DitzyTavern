@@ -5,6 +5,5 @@ export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandi
 export { invalidateMemoryWorkForConversation, invalidateMemoryWorkForPreset } from "./cancellation";
 export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryCollectionView, MemoryEvidence, MemoryIndexReadiness, MemoryCatchup } from "../../shared/contract/memory";
 export type { MemoryIndexJob } from "./indexing";
-export { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot } from "./recall";
+export { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "./recall";
 export type { MemoryRecallResult, MemoryRecallSceneMessage, MemoryRecallSnapshot } from "./recall";
-export { judgeMemoryRecallCandidates } from "./extraction";

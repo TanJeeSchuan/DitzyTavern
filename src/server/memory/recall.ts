@@ -2,20 +2,21 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
+import { sliceByTokens } from "tokenx";
 import { memoryCandidates } from "../../shared/contract/memory";
 import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { createTypesafeSettingsModule, jevRequest, requestJev } from "../typesafe";
 import { cosineSimilarity, requestEmbeddings } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
 import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryEmbeddingSecrets, readMemoryIndexReadiness } from "./indexing";
-import { judgeMemoryRecallCandidates } from "./extraction";
 import { memoryOwnership, readMemoryAllowance } from "./collections";
 import { sha256 } from "./hash";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
+import type { JevAnswer } from "../../shared/contract/typesafe";
 
 export interface MemoryRecallSceneMessage {
 	readonly messageId: number;
@@ -95,15 +96,8 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 	}
 	if (scene.length === 1 && tokenxEstimator(render()) > 4_000) {
 		const text = scene[0]!.text;
-		let low = 0;
-		let high = text.length;
-		while (low < high) {
-			const middle = Math.ceil((low + high) / 2);
-			scene[0]!.text = text.slice(text.length - middle);
-			if (tokenxEstimator(render()) <= 4_000) low = middle;
-			else high = middle - 1;
-		}
-		scene[0]!.text = text.slice(text.length - low);
+		let keep = 4_000;
+		do scene[0]!.text = sliceByTokens(text, -keep--); while (keep > 0 && tokenxEstimator(render()) > 4_000);
 		truncated = true;
 	}
 	return {
@@ -112,6 +106,73 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 		truncated,
 	};
 };
+
+const scoreLabels = ["irrelevant", "incidental", "useful", "central"] as const;
+const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
+	type: "score",
+	instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "How much does `memory` help write the next reply to `scene`?" },
+	criteria: [
+		"Irrelevant: the next reply would be the same without it",
+		"Incidental: loosely connected, such as background detail about someone present",
+		"Useful: a fact, relationship, or earlier event the next reply should stay consistent with",
+		"Central: the next reply depends on it, such as a promise, secret, or event being discussed",
+	],
+});
+
+const parseScore = (answer: JevAnswer) => {
+	if (answer.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
+	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
+	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
+};
+
+export async function judgeMemoryRecallCandidates(
+	candidates: readonly MemoryRecallCandidateRecord[],
+	scene: string,
+	relevanceMinimum: number,
+	credential: string,
+	model = "jev-1.13.0",
+	fetcher: ModelFetch = fetch,
+	signal?: AbortSignal,
+): Promise<MemoryRecallCandidateRecord[]> {
+	if (candidates.length === 0) return [];
+	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
+	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
+		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
+		return jevRequest(model, { scene }, questions);
+	};
+	let packed = [...candidates];
+	let request = buildRequest(packed);
+	while (packed.length > 0 && !request.fits) {
+		packed.pop();
+		request = buildRequest(packed);
+	}
+	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
+	const answers = await requestJev({ request: request.request, questionIds: request.questionIds, credential, fetch: fetcher, signal });
+	const judged = new Map<string, MemoryRecallCandidateRecord>();
+	for (const candidate of packed) {
+		const relevance = parseScore(answers[`candidate_${candidate.identity}_relevance`]!);
+		const retained = relevance.score >= relevanceMinimum;
+		judged.set(candidate.identity, {
+			...candidate,
+			judged: true,
+			relevance: relevance.label,
+			relevanceScore: relevance.score,
+			retained,
+			requestIncluded: true,
+			admission: retained ? "admitted" : "not-retained",
+		});
+	}
+	return candidates.map((candidate) => judged.get(candidate.identity) ?? {
+		...candidate,
+		judged: false,
+		relevance: null,
+		relevanceScore: null,
+		retained: false,
+		requestIncluded: false,
+		admission: "request-limit",
+	});
+}
+
 
 const initialActivation = (input: {
 	enabled: boolean;

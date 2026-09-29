@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { judgeMemoryCandidates, judgeMemoryRecallCandidates, validateMemoryCandidates } from "./extraction";
+import { judgeMemoryCandidates, validateMemoryCandidates } from "./extraction";
+import { judgeMemoryRecallCandidates } from "./recall";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 import type { ModelFetch } from "../model-client";
 import { Value } from "@sinclair/typebox/value";
