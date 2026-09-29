@@ -345,12 +345,22 @@ export function ActiveWritingWorkspace({
 									isModelAuthoredMessage(message) &&
 									message.continuable === true
 								}
+								canRegenerate={
+									generation.assemblyAvailable &&
+									latestStoryMessage?.id === message.id &&
+									generation.activeGenerationTargets.length === 0 &&
+									message.authorParticipantId === conversation?.control.humanParticipantId
+								}
 								onSibling={generation.canOfferSiblingMessage(message) ? generation.siblingMessage : undefined}
 								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 								onContinue={generation.continueMessage}
+								onRegenerate={generation.regenerateResponse}
 								onInspect={openVariantDetails}
 								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
+								onDelete={!assemblyActive && !generation.isGenerating
+									? (messageId) => void storyActions.deleteStoryMessage(messageId)
+									: undefined}
 							/>
 						))}
 						{story.status === "loading-first" && <HistoryLoading />}

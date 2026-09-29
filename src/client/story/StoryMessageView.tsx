@@ -5,6 +5,7 @@ import {
 	Edit3,
 	Info,
 	RefreshCw,
+	Trash2,
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
 import { useEffect, useState } from "react";
@@ -35,8 +36,11 @@ export function StoryMessageView({
 	canContinue = false,
 	continueLabel = "Continue",
 	onContinue,
+	canRegenerate = false,
+	onRegenerate,
 	onSibling,
 	onInspect,
+	onDelete,
 }: {
 	message: StoryMessage;
 	isLatest?: boolean;
@@ -58,8 +62,11 @@ export function StoryMessageView({
 	canContinue?: boolean;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
+	canRegenerate?: boolean;
+	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onInspect?: (messageId: number, variantId: number) => void;
+	onDelete?: (messageId: number) => void;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
@@ -162,6 +169,18 @@ export function StoryMessageView({
 							<Info aria-hidden="true" /> Details
 						</button>
 					)}
+					{onDelete !== undefined && (
+						<button
+							className="edit-action delete-action"
+							type="button"
+							disabled={mutationsDisabled}
+							onClick={() => {
+								if (window.confirm("Delete this Message?")) onDelete(message.id);
+							}}
+						>
+							<Trash2 aria-hidden="true" /> Delete
+						</button>
+					)}
 				</div>
 			</header>
 			{isEditing && active !== undefined ? (
@@ -227,24 +246,36 @@ export function StoryMessageView({
 			)}
 
 			<footer className="message-actions">
-				<button
-					className="edit-action"
-					type="button"
-					disabled={mutationsDisabled}
-					onClick={() => setIsEditing(true)}
-				>
-					<Edit3 aria-hidden="true" /> Edit
-				</button>
-				{canContinue && onContinue !== undefined && (
+				<div className="message-primary-actions">
 					<button
-						className="secondary-button continue-action"
+						className="edit-action"
 						type="button"
 						disabled={mutationsDisabled}
-						onClick={() => onContinue(message.id)}
+						onClick={() => setIsEditing(true)}
 					>
-						{continueLabel}
+						<Edit3 aria-hidden="true" /> Edit
 					</button>
-				)}
+					{canRegenerate && onRegenerate !== undefined && (
+						<button
+							className="secondary-button continue-action"
+							type="button"
+							disabled={mutationsDisabled}
+							onClick={() => onRegenerate(message.id)}
+						>
+							<RefreshCw aria-hidden="true" /> Regenerate response
+						</button>
+					)}
+					{canContinue && onContinue !== undefined && (
+						<button
+							className="secondary-button continue-action"
+							type="button"
+							disabled={mutationsDisabled}
+							onClick={() => onContinue(message.id)}
+						>
+							{continueLabel}
+						</button>
+					)}
+				</div>
 				<div className="swipe-controls" aria-label="Swipe controls">
 					<button
 						className="icon-button"
