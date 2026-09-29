@@ -393,7 +393,7 @@
 	visibility: hidden;
 	transition: opacity 150ms ease, visibility 150ms ease;
 	display: grid;
-	grid-template-columns: 1fr auto;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
 	gap: 0.7rem;
 	min-height: 2.3rem;
@@ -402,6 +402,8 @@
 
 .message-primary-actions {
 	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.45rem;
 }

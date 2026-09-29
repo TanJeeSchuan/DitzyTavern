@@ -211,6 +211,40 @@ describe("story reading state", () => {
 		expect(refreshed.messages).toHaveLength(1);
 	});
 
+	test("an applied deletion preserves loaded history and rebases the next older page", () => {
+		const opened = reduceStory(createStoryState(), {
+			type: "chat-opened",
+			conversationId: 7,
+		});
+		const first = reduceStory(opened, {
+			type: "first-page",
+			page: page({
+				page: { index: 1, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: false },
+				messages: [message({ id: 14, position: 5 }), message({ id: 15, position: 6 })],
+			}),
+		});
+		const second = reduceStory(first, {
+			type: "next-page-arrived",
+			page: page({
+				page: { index: 2, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: true, hasNewer: true },
+				messages: [message({ id: 12, position: 3 }), message({ id: 13, position: 4 })],
+			}),
+		});
+
+		const deleted = reduceStory(second, { type: "message-deleted", messageId: 14, revision: 4 });
+
+		expect(deleted.messages.map((entry) => entry.id)).toEqual([12, 13, 15]);
+		expect(deleted.revision).toBe(4);
+		expect(deleted.page).toEqual({
+			index: 1,
+			pageSize: 2,
+			totalMessages: 5,
+			totalPages: 3,
+			hasOlder: true,
+			hasNewer: false,
+		});
+	});
+
 	test("swipe selection updates the active Variant position locally", () => {
 		const state = reduceStory(
 			reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),

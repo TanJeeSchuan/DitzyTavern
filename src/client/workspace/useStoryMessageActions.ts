@@ -187,15 +187,11 @@ export function useStoryMessageActions({
 			},
 			notices: STORY_COMMAND_NOTICES,
 			callbacks: {
-				onApplied: () => {
-					void chatHistoryTransport
-						.loadHistory(conversationId, { page: 1 })
-						.then((freshHistory) => {
-							if (freshHistory.status === "available") {
-								dispatchStory({ type: "first-page", page: freshHistory.page });
-							}
-						});
-				},
+				onApplied: (applied) => dispatchStory({
+					type: "message-deleted",
+					messageId,
+					revision: applied.revision,
+				}),
 				onNotPlayable: noPresentation,
 				onNotRemovable: noPresentation,
 			},

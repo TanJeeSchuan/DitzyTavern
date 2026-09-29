@@ -208,7 +208,7 @@ body > .details-panel > .panel-body {
 	}
 
 	.message-actions {
-		grid-template-columns: 1fr auto;
+		grid-template-columns: minmax(0, 1fr) auto;
 	}
 
 	.composer {
