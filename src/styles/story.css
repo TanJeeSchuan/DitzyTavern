@@ -803,7 +803,7 @@
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 0.55rem;
-	margin: -2.7rem 0 2.4rem;
+	margin: 0.5rem 0 2.4rem;
 }
 
 .generation-controls .secondary-button {
