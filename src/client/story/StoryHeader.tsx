@@ -1,4 +1,4 @@
-import { Brain, ChevronDown, Info, Variable } from "lucide-react";
+import { Brain, Info, UsersRound, Variable } from "lucide-react";
 import type { ChatSummary } from "../workspace";
 
 export function StoryHeader({
@@ -37,10 +37,10 @@ export function StoryHeader({
 				<Variable aria-hidden="true" />
 			</button>
 			<button className="icon-button memories-button" type="button" onClick={onOpenMemories} aria-label="Memories"><Brain aria-hidden="true" /></button>
-			<button className="cast-control" type="button" onClick={onOpenCast}>
-				<span>Cast</span>
-				<ChevronDown aria-hidden="true" />
-			</button>
+		<button className="cast-control" type="button" onClick={onOpenCast} aria-label="Cast">
+			<UsersRound aria-hidden="true" />
+			<span>Cast</span>
+		</button>
 		</header>
 	);
 }

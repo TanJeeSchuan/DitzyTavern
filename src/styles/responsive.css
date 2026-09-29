@@ -170,15 +170,17 @@ body > .details-panel > .panel-body {
 	}
 
 	.story-header {
-		grid-template-columns: minmax(0, 1fr) auto auto auto;
+		grid-template-columns: minmax(0, 1fr) repeat(4, auto);
 		padding: 0 0.75rem 0 1rem;
 	}
 
 	.cast-control {
-		padding-right: 0.5rem;
+		justify-content: center;
+		width: 2.55rem;
+		padding: 0;
 	}
 
-	.cast-control > span:not(.portrait-stack) {
+	.cast-control > span {
 		display: none;
 	}
 
