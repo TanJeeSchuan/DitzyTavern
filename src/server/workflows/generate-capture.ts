@@ -459,11 +459,7 @@ function prepareGenerationInputsSnapshot(
 		pendingHumanText: input.kind === "send" ? input.content : undefined,
 		humanName: human.name,
 	});
-	const memory: MemoryRecallResult = {
-		activation: memorySnapshot.activation,
-		candidates: [],
-		fingerprintInputs: memorySnapshot.fingerprintInputs,
-	};
+	const memory: MemoryRecallResult = { captured: memorySnapshot.activation, activation: memorySnapshot.activation };
 	const preparation = {
 		conversationId: input.conversationId,
 		formatting,

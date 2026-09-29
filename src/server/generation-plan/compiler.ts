@@ -326,7 +326,6 @@ const admitDynamicBlocks = (input: {
 	const memorySelected: MemoryRecallCandidateRecord[] = [];
 	const memoryDecisions: MemoryBudgetDecision[] = [];
 	const seenMemoryText = new Set<string>();
-	let memoryProcessed = false;
 	const cost = (plan: PromptPlan) => Math.ceil(input.estimator(toEstimationTranscript(plan)));
 	const dynamicBlockCost = (kind: "lore" | "memory", role: "system" | "human" | "model", content: string) =>
 		estimateDynamicBlockTokens(kind, role, content, input.estimator);
@@ -361,8 +360,6 @@ const admitDynamicBlocks = (input: {
 				loreDecisions.push({ candidate, reason: "admitted" });
 			}
 		} else {
-			if (memoryProcessed) continue;
-			memoryProcessed = true;
 			for (const candidate of input.memory) {
 				if (!candidate.judged) {
 					memoryDecisions.push({ candidate, reason: "request-limit" });

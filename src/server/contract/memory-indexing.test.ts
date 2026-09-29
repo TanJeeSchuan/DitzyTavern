@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { embedMemoryTexts, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
+import { embedMemoryTexts, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
 import { sha256 } from "../memory/hash";
 import { createMemorySettingsModule } from "../memory/settings";
 import { captureMemoryRecallSnapshot } from "../memory/recall";
@@ -147,12 +147,12 @@ describe("Memory indexing public lifecycle", () => {
 		const current = readMemoryEmbeddingConfiguration(database);
 		expect(current.spaceKey).not.toBe(before.spaceKey);
 		const text = renderMemoryClaim(candidate(source.messageId, ""));
-		expect(readCachedMemoryVector(database, current, text)).toBeNull();
+		expect(readCachedMemoryVectors(database, current.spaceKey, [text]).has(text)).toBe(false);
 		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "pending", pendingCount: 2 });
 		const rebuild = startMemoryWorker(database, { process: async () => [], embed: async (texts) => texts.map(() => [0, 1, 0]) });
 		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
 		finally { await rebuild(); }
-		expect(readCachedMemoryVector(database, current, text)).toEqual([0, 1, 0]);
+		expect(readCachedMemoryVectors(database, current.spaceKey, [text]).get(text)).toEqual([0, 1, 0]);
 		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "ready", pendingCount: 0 });
 		const unchanged = connections.get().profiles.find((item) => item.id === profile.id)!;
 		connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: { ...connectionProfileDraftOf(unchanged), displayName: "Renamed" } });

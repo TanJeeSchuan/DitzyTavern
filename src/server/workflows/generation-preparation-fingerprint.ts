@@ -37,7 +37,7 @@ export const generationPreparationFingerprint = (
 ): string => JSON.stringify({
 	...preparation,
 	lore: loreFingerprintOf(preparation),
-	memory: preparation.memory.fingerprintInputs,
+	memory: preparation.memory.captured,
 	macroState: [...preparation.macroState.entries()]
 		.sort(([left], [right]) => left.localeCompare(right)),
 });

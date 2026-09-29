@@ -50,9 +50,10 @@ export const embedMemoryQuery = (database: Database, text: string, configuration
 const encodeVector = (vector: readonly number[]) => Buffer.from(new Float32Array(vector).buffer);
 const decodeVector = (bytes: Uint8Array): number[] => [...new Float32Array(new Uint8Array(bytes).buffer)];
 
-export const readCachedMemoryVector = (database: Database, configuration: MemoryEmbeddingConfiguration, renderedText: string): readonly number[] | null => {
-	const row = drizzle(database).select({ vector: memoryEmbeddingCacheTable.vector }).from(memoryEmbeddingCacheTable).where(and(eq(memoryEmbeddingCacheTable.space_key, configuration.spaceKey), eq(memoryEmbeddingCacheTable.text_hash, sha256(renderedText)))).get();
-	return row ? decodeVector(row.vector) : null;
+export const readCachedMemoryVectors = (database: Database, spaceKey: string, texts: readonly string[]): Map<string, number[]> => {
+	const byHash = new Map(texts.map((text) => [sha256(text), text]));
+	const rows = queryBatches([...byHash.keys()]).flatMap((batch) => drizzle(database).select({ hash: memoryEmbeddingCacheTable.text_hash, vector: memoryEmbeddingCacheTable.vector }).from(memoryEmbeddingCacheTable).where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch))).all());
+	return new Map(rows.map(({ hash, vector }) => [byHash.get(hash)!, decodeVector(vector)]));
 };
 
 const cachedHashes = (database: Database, spaceKey: string, texts: readonly string[]): Set<string> =>

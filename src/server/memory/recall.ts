@@ -12,7 +12,7 @@ import { createTypesafeSettingsModule, jevRequest, requestJev } from "../typesaf
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
-import { embedMemoryQuery, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
+import { embedMemoryQuery, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
 import { readMemoryAllowance } from "./collections";
 import { sha256 } from "./hash";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
@@ -34,50 +34,18 @@ interface IndexedMemoryCandidate {
 }
 
 export interface MemoryRecallSnapshot {
-	readonly enabled: boolean;
-	readonly allowance: number;
 	readonly activation: MemoryActivationRecord;
-	readonly fingerprintInputs: Readonly<MemoryRecallFingerprintInputs>;
 	readonly embedding: MemoryEmbeddingConfiguration;
-	readonly jevModel: string;
-	readonly relevanceMinimum: number;
 	readonly indexed: readonly IndexedMemoryCandidate[];
 	readonly recent: readonly IndexedMemoryCandidate[];
 }
 
 export interface MemoryRecallResult {
+	readonly captured: MemoryActivationRecord;
 	readonly activation: MemoryActivationRecord;
-	readonly candidates: readonly MemoryRecallCandidateRecord[];
-	readonly fingerprintInputs: Readonly<MemoryRecallFingerprintInputs>;
 }
 
-export interface MemoryRecallFingerprintInputs {
-	readonly enabled: boolean;
-	readonly allowance: number;
-	readonly sourceSnapshotFingerprint: string;
-	readonly embeddingConfigurationFingerprint: string;
-	readonly scene: string;
-	readonly scanMessageIds: readonly number[];
-	readonly scanTruncated: boolean;
-	readonly jevModel: string;
-	readonly jevConfigured: boolean;
-	readonly relevanceMinimum: number;
-	readonly embeddingModel: string;
-	readonly embeddingDeadlineMs: number;
-}
-
-const blankCandidateStatus = (candidate: IndexedMemoryCandidate["record"], semanticSimilarity: number | null, semanticRank: number | null, recentRank: number | null): MemoryRecallCandidateRecord => ({
-	...candidate,
-	semanticSimilarity,
-	semanticRank,
-	recentRank,
-	judged: false,
-	relevance: null,
-	relevanceScore: null,
-	retained: false,
-	requestIncluded: false,
-	admission: "request-limit",
-});
+const unjudged = { judged: false, relevance: null, relevanceScore: null, retained: false, requestIncluded: false, admission: "request-limit" } as const;
 
 const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string) => {
 	const pendingAlreadySelected = pendingHumanText !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pendingHumanText;
@@ -97,7 +65,8 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 	if (scene.length === 1 && tokenxEstimator(render()) > 4_000) {
 		const text = scene[0]!.text;
 		let keep = 4_000;
-		do scene[0]!.text = sliceByTokens(text, -keep--); while (keep > 0 && tokenxEstimator(render()) > 4_000);
+		scene[0]!.text = sliceByTokens(text, -keep);
+		while (keep > 0 && tokenxEstimator(render()) > 4_000) scene[0]!.text = sliceByTokens(text, -(keep -= tokenxEstimator(render()) - 4_000));
 		truncated = true;
 	}
 	return {
@@ -162,77 +131,18 @@ export async function judgeMemoryRecallCandidates(
 			admission: retained ? "admitted" : "not-retained",
 		});
 	}
-	return candidates.map((candidate) => judged.get(candidate.identity) ?? {
-		...candidate,
-		judged: false,
-		relevance: null,
-		relevanceScore: null,
-		retained: false,
-		requestIncluded: false,
-		admission: "request-limit",
-	});
+	return candidates.map((candidate) => judged.get(candidate.identity) ?? { ...candidate, ...unjudged });
 }
 
-
-const initialActivation = (input: {
-	enabled: boolean;
-	allowance: number;
-	eligibleSourceCount: number;
-	readyRecordCount: number;
-	embeddingModel: string;
-	embeddingDeadlineMs: number;
-	jevModel: string;
-	jevConfigured: boolean;
-	relevanceMinimum: number;
-	pendingSourceCount: number;
-	pendingIndexCount: number;
-	failedIndexCount: number;
-	failedSourceCount: number;
-	unconfigured: boolean;
-	sourceSnapshotFingerprint: string;
-	embeddingConfigurationFingerprint: string;
-	scanMessageIds: number[];
-	scanTruncated: boolean;
-	scene: string;
-}): MemoryActivationRecord => {
-	const state: MemoryActivationRecord["state"] = !input.enabled
-		? "disabled"
-		: input.allowance === 0
-			? "allowance-zero"
-			: input.readyRecordCount > 0
-			? input.pendingSourceCount > 0 || input.pendingIndexCount > 0 || input.failedIndexCount > 0 || input.failedSourceCount > 0 ? "partial" : "ready"
-			: input.unconfigured ? "unconfigured"
-			: input.pendingIndexCount > 0 || input.pendingSourceCount > 0 ? "rebuilding"
-				: input.failedIndexCount > 0 ? "index-failed"
-					: input.failedSourceCount > 0 ? "source-failed"
-						: "empty";
-	return {
-		version: 1,
-		state,
-		allowance: input.allowance,
-		eligibleSourceCount: input.eligibleSourceCount,
-		readyRecordCount: input.readyRecordCount,
-		embeddingModel: input.embeddingModel,
-		embeddingDeadlineMs: input.embeddingDeadlineMs,
-		jevModel: input.jevModel,
-		jevConfigured: input.jevConfigured,
-		relevanceMinimum: input.relevanceMinimum,
-		pendingSourceCount: input.pendingSourceCount,
-		pendingIndexCount: input.pendingIndexCount,
-		failedIndexCount: input.failedIndexCount,
-		failedSourceCount: input.failedSourceCount,
-		sourceSnapshotFingerprint: input.sourceSnapshotFingerprint,
-		embeddingConfigurationFingerprint: input.embeddingConfigurationFingerprint,
-		scanMessageIds: input.scanMessageIds,
-		scanTruncated: input.scanTruncated,
-		scene: input.scene,
-		semanticShortlistCount: 0,
-		recentShortlistCount: 0,
-		candidates: [],
-		automaticMemoryText: "",
-		finalMemoryText: "",
-		manuallyEdited: false,
-	};
+const activationState = (input: { enabled: boolean; allowance: number; ready: number; unconfigured: boolean; pendingSourceCount: number; pendingIndexCount: number; failedIndexCount: number; failedSourceCount: number }): MemoryActivationRecord["state"] => {
+	if (!input.enabled) return "disabled";
+	if (input.allowance === 0) return "allowance-zero";
+	const pending = input.pendingSourceCount > 0 || input.pendingIndexCount > 0;
+	if (input.ready > 0) return pending || input.failedIndexCount > 0 || input.failedSourceCount > 0 ? "partial" : "ready";
+	if (input.unconfigured) return "unconfigured";
+	if (pending) return "rebuilding";
+	if (input.failedIndexCount > 0) return "index-failed";
+	return input.failedSourceCount > 0 ? "source-failed" : "empty";
 };
 
 export const captureMemoryRecallSnapshot = (input: {
@@ -244,27 +154,20 @@ export const captureMemoryRecallSnapshot = (input: {
 	humanName: string;
 }): MemoryRecallSnapshot => {
 	const db = drizzle(input.database);
-	const settings = readMemoryAllowance(input.database, input.conversationId);
-	const processing = createMemorySettingsModule(input.database).get();
+	const { allowance } = readMemoryAllowance(input.database, input.conversationId);
+	const { recallRelevanceMinimum } = createMemorySettingsModule(input.database).get();
 	const typesafe = createTypesafeSettingsModule(input.database).get();
 	const embedding = readMemoryEmbeddingConfiguration(input.database);
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName);
-	const path = input.messages.map((message) => ({
-		messageId: message.messageId,
-		variantId: message.variantId,
-		contentHash: sha256(message.content),
-	}));
+	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
 	const variantIds = [...new Set(input.messages.map((message) => message.variantId))];
 	const active = variantIds.length === 0 ? new Set<number>() : new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(inArray(activeGenerationTable.variant_id, variantIds)).all().map((row) => row.id));
 	const collections = variantIds.length === 0 ? [] : db.select().from(memoryCollectionTable).where(and(eq(memoryCollectionTable.conversation_id, input.conversationId), inArray(memoryCollectionTable.variant_id, variantIds))).orderBy(asc(memoryCollectionTable.message_id)).all();
 	const byVariant = new Map(collections.map((collection) => [collection.variant_id, collection]));
 	const readinessByVariant = readMemoryIndexReadinessBatch(input.database, collections, input.enabled, embedding);
 	const fingerprintSources: unknown[] = [];
-	const indexed: IndexedMemoryCandidate[] = [];
-	let pendingIndexCount = 0;
-	let failedIndexCount = 0;
-	let failedSourceCount = 0;
-	let pendingSourceCount = 0;
+	const claimed: Omit<IndexedMemoryCandidate, "vector">[] = [];
+	const counts = { pendingSourceCount: 0, pendingIndexCount: 0, failedIndexCount: 0, failedSourceCount: 0 };
 	let unconfigured = false;
 	let eligibleSourceCount = 0;
 	for (const message of input.messages) {
@@ -275,93 +178,47 @@ export const captureMemoryRecallSnapshot = (input: {
 			fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, status: "unprocessed" });
 			continue;
 		}
-		const ownership = collection.ownership;
 		const sourceChanged = collection.source_changed || sha256(message.content) !== collection.source_hash;
-		const staleAutomaticSource = ownership === "automatic" && sourceChanged;
+		const staleAutomaticSource = collection.ownership === "automatic" && sourceChanged;
 		const readiness = readinessByVariant.get(collection.variant_id)!;
-		if (collection.status === "pending" || collection.status === "running") pendingSourceCount += 1;
+		if (collection.status === "pending" || collection.status === "running") counts.pendingSourceCount += 1;
 		if (readiness.status === "unconfigured") unconfigured = true;
-		pendingIndexCount += readiness.pendingCount;
-		failedIndexCount += readiness.failedCount;
-		if (collection.status === "failed" || staleAutomaticSource) failedSourceCount += 1;
-		fingerprintSources.push({
-			messageId: message.messageId,
-			variantId: message.variantId,
-			position: message.position,
-			revision: collection.revision,
-						ownership,
-			status: collection.status,
-			sourceChanged,
-			indexStatus: readiness.status,
-			pendingIndexCount: readiness.pendingCount,
-			failedIndexCount: readiness.failedCount,
-		});
+		counts.pendingIndexCount += readiness.pendingCount;
+		counts.failedIndexCount += readiness.failedCount;
+		if (collection.status === "failed" || staleAutomaticSource) counts.failedSourceCount += 1;
+		fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, position: message.position, revision: collection.revision, ownership: collection.ownership, status: collection.status, sourceChanged, indexStatus: readiness.status, pendingIndexCount: readiness.pendingCount, failedIndexCount: readiness.failedCount });
 		if (!input.enabled || staleAutomaticSource || collection.status !== "complete" || readiness.status === "disabled" || readiness.status === "unconfigured" || readiness.status === "not-applicable") continue;
 		let claims: MemoryCandidateJudgment[];
-		try { claims = Value.Parse(memoryCandidates, JSON.parse(collection.claims_json)); } catch { failedSourceCount += 1; continue; }
-		for (const [claimIndex, claim] of claims.entries()) {
-			const renderedText = renderMemoryClaim(claim);
-			const vector = readCachedMemoryVector(input.database, embedding, renderedText);
-			if (!vector) continue;
-			indexed.push({
-				record: {
-					identity: `${message.messageId}:${message.variantId}:${collection.revision}:${claimIndex}`,
-					messageId: message.messageId,
-					variantId: message.variantId,
-					collectionRevision: collection.revision,
-										ownership,
-					sourceChanged,
-					claimIndex,
-					claim: claim.claim,
-					attribution: claim.attribution,
-					people: claim.people,
-					evidence: claim.evidence,
-					sourcePosition: message.position,
-				},
-				renderedText,
-				vector,
-			});
-		}
+		try { claims = Value.Parse(memoryCandidates, JSON.parse(collection.claims_json)); } catch { counts.failedSourceCount += 1; continue; }
+		for (const [claimIndex, claim] of claims.entries()) claimed.push({
+			record: {
+				identity: `${message.messageId}:${message.variantId}:${collection.revision}:${claimIndex}`,
+				messageId: message.messageId, variantId: message.variantId, collectionRevision: collection.revision,
+				ownership: collection.ownership, sourceChanged, claimIndex, claim: claim.claim, attribution: claim.attribution,
+				people: claim.people, evidence: claim.evidence, sourcePosition: message.position,
+			},
+			renderedText: renderMemoryClaim(claim),
+		});
 	}
-	const sourceSnapshotFingerprint = sha256(JSON.stringify({ path, sources: fingerprintSources }));
-	const embeddingConfigurationFingerprint = sha256(JSON.stringify(embedding));
-	const fingerprintInputs = {
-		enabled: input.enabled,
-		allowance: settings.allowance,
-		sourceSnapshotFingerprint,
-		embeddingConfigurationFingerprint,
-		scene: scene.text,
-		scanMessageIds: scene.messageIds,
-		scanTruncated: scene.truncated,
-		jevModel: typesafe.jevModel,
-		jevConfigured: typesafe.credentialConfigured,
-		relevanceMinimum: processing.recallRelevanceMinimum,
-		embeddingModel: embedding.model,
-		embeddingDeadlineMs: embedding.deadlineMs,
-	};
-	const activation = initialActivation({
-		enabled: input.enabled,
-		allowance: settings.allowance,
-		eligibleSourceCount,
-		readyRecordCount: indexed.length,
-		embeddingModel: embedding.model,
-		embeddingDeadlineMs: embedding.deadlineMs,
-		jevModel: typesafe.jevModel,
-		jevConfigured: typesafe.credentialConfigured,
-		relevanceMinimum: processing.recallRelevanceMinimum,
-		pendingSourceCount,
-		pendingIndexCount,
-		failedIndexCount,
-		failedSourceCount,
-		unconfigured,
-		sourceSnapshotFingerprint,
-		embeddingConfigurationFingerprint,
-		scanMessageIds: scene.messageIds,
-		scanTruncated: scene.truncated,
-		scene: scene.text,
+	const vectors = readCachedMemoryVectors(input.database, embedding.spaceKey, claimed.map(({ renderedText }) => renderedText));
+	const indexed = claimed.flatMap((candidate) => {
+		const vector = vectors.get(candidate.renderedText);
+		return vector ? [{ ...candidate, vector }] : [];
 	});
+	const activation: MemoryActivationRecord = {
+		version: 1,
+		state: activationState({ enabled: input.enabled, allowance, ready: indexed.length, unconfigured, ...counts }),
+		allowance, eligibleSourceCount, readyRecordCount: indexed.length,
+		embeddingModel: embedding.model, embeddingDeadlineMs: embedding.deadlineMs,
+		jevModel: typesafe.jevModel, jevConfigured: typesafe.credentialConfigured, relevanceMinimum: recallRelevanceMinimum,
+		...counts,
+		sourceSnapshotFingerprint: sha256(JSON.stringify({ path, sources: fingerprintSources })),
+		embeddingConfigurationFingerprint: sha256(JSON.stringify(embedding)),
+		scanMessageIds: scene.messageIds, scanTruncated: scene.truncated, scene: scene.text,
+		semanticShortlistCount: 0, recentShortlistCount: 0, candidates: [], automaticMemoryText: "", finalMemoryText: "", manuallyEdited: false,
+	};
 	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
-	return { enabled: input.enabled, allowance: settings.allowance, activation, fingerprintInputs, embedding, jevModel: typesafe.jevModel, relevanceMinimum: processing.recallRelevanceMinimum, indexed, recent };
+	return { activation, embedding, indexed, recent };
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
@@ -370,44 +227,23 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	fetch?: ModelFetch;
 	signal?: AbortSignal;
 }): Promise<MemoryRecallResult> => {
-	const { snapshot } = input;
-	if (!snapshot.enabled || snapshot.allowance === 0 || snapshot.indexed.length === 0) {
-		return { activation: snapshot.activation, candidates: [], fingerprintInputs: snapshot.fingerprintInputs };
-	}
+	const { activation, indexed, recent } = input.snapshot;
+	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return { captured: activation, activation };
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
-	if (snapshot.activation.scene.trim().length > 0) {
-		const queryVector = (await embedMemoryQuery(input.database, snapshot.activation.scene, snapshot.embedding, input.fetch))[0];
+	if (activation.scene.trim().length > 0) {
+		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
-		if (snapshot.indexed.some((record) => record.vector.length !== queryVector.length)) throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
-		semantic = snapshot.indexed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, candidate.vector) }))
+		if (indexed.some((record) => record.vector.length !== queryVector.length)) throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
+		semantic = indexed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, candidate.vector) }))
 			.sort((left, right) => right.similarity - left.similarity || left.candidate.record.identity.localeCompare(right.candidate.record.identity))
 			.slice(0, 48);
 	}
-	const selected = new Map<string, MemoryRecallCandidateRecord>();
-	for (const [index, { candidate, similarity }] of semantic.entries()) selected.set(candidate.record.identity, blankCandidateStatus(candidate.record, similarity, index + 1, null));
-	for (const [index, candidate] of snapshot.recent.entries()) {
-		const existing = selected.get(candidate.record.identity);
-		selected.set(candidate.record.identity, existing
-			? { ...existing, recentRank: index + 1 }
-			: blankCandidateStatus(candidate.record, null, null, index + 1));
+	const shortlist = new Map<string, MemoryRecallCandidateRecord>();
+	for (const [index, { candidate, similarity }] of semantic.entries()) shortlist.set(candidate.record.identity, { ...candidate.record, semanticSimilarity: similarity, semanticRank: index + 1, recentRank: null, ...unjudged });
+	for (const [index, candidate] of recent.entries()) {
+		const existing = shortlist.get(candidate.record.identity);
+		shortlist.set(candidate.record.identity, existing ? { ...existing, recentRank: index + 1 } : { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
-	const shortlist = [...selected.values()];
-	const judged = await judgeMemoryRecallCandidates(
-		shortlist,
-		snapshot.activation.scene,
-		snapshot.relevanceMinimum,
-		createTypesafeSettingsModule(input.database).getCredential() ?? "",
-		snapshot.jevModel,
-		input.fetch,
-		input.signal,
-	);
-	const ranked = [...judged].filter((candidate) => candidate.judged && candidate.retained)
-		.sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity));
-	const activation: MemoryActivationRecord = {
-		...snapshot.activation,
-		semanticShortlistCount: semantic.length,
-		recentShortlistCount: snapshot.recent.length,
-		candidates: judged,
-	};
-	return { activation, candidates: ranked, fingerprintInputs: snapshot.fingerprintInputs };
+	const candidates = await judgeMemoryRecallCandidates([...shortlist.values()], activation.scene, activation.relevanceMinimum, createTypesafeSettingsModule(input.database).getCredential() ?? "", activation.jevModel, input.fetch, input.signal);
+	return { captured: activation, activation: { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates } };
 };
