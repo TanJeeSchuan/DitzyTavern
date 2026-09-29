@@ -103,4 +103,4 @@ bun run check        # lint, contract checks, types and tests
 
 ---
 
-<sub>The animations are drawn frame by frame in Rust with [fframes](https://github.com/dmtrKovalenko/fframes), using the app's own colors, fonts and icons. They show real features with a made-up story. They are not screen recordings.</sub>
+<sub>The animations are drawn frame by frame in Rust with [fframes](https://github.com/dmtrKovalenko/fframes) by [dmtrKovalenko](https://github.com/dmtrKovalenko), using the app's own colors, fonts and icons.</sub>
