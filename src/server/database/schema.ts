@@ -3,6 +3,7 @@
 
 import { sql } from "drizzle-orm";
 import {
+	blob,
 	check,
 	index,
 	int,
@@ -330,17 +331,15 @@ export const conversationMemorySettingsTable = sqliteTable("conversation_memory_
 	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
 	allowance: int().notNull().default(2048),
 	revision: int().notNull().default(0),
-	chat_epoch: int().notNull().default(0),
 });
 
 export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
 	id: int().primaryKey({ autoIncrement: true }),
 	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
-	state: text().notNull().default("running"),
+	cancelled: int({ mode: "boolean" }).notNull().default(false),
 	created_at: text().notNull(),
 }, (table) => [
-	index("memory_catchup_run_conversation_state").on(table.conversation_id, table.state),
-	check("memory_catchup_run_state_check", sql`${table.state} IN ('running', 'complete', 'failed', 'cancelled')`),
+	index("memory_catchup_run_conversation").on(table.conversation_id),
 ]);
 
 export const memoryCollectionTable = sqliteTable("memory_collection", {
@@ -349,17 +348,17 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	message_id: int().notNull().references(() => messageTable.id, { onDelete: "cascade" }),
 	source_hash: text().notNull(),
 	revision: int().notNull().default(0),
-	ownership: text().notNull().default("automatic"),
+	ownership: text({ enum: ["automatic", "writer"] }).notNull().default("automatic"),
 	work_epoch: int().notNull().default(0),
-	chat_epoch: int().notNull().default(0),
-	status: text().notNull().default("pending"),
+	status: text({ enum: ["pending", "running", "complete", "failed"] }).notNull().default("pending"),
 	error: text(),
 	source_snapshot_json: text().notNull(),
 	claims_json: text().notNull().default("[]"),
 	trace_json: text(),
 	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
 	source_changed: int({ mode: "boolean" }).notNull().default(false),
-	index_epoch: int().notNull().default(0),
+	index_space_key: text(),
+	index_error: text(),
 	updated_at: text().notNull(),
 }, (table) => [
 	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
@@ -368,33 +367,12 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
 ]);
 
-export const memoryIndexWorkTable = sqliteTable("memory_index_work", {
-	variant_id: int().primaryKey().references(() => memoryCollectionTable.variant_id, { onDelete: "cascade" }),
-	collection_revision: int().notNull(),
-	epoch: int().notNull(),
-	space_key: text().notNull(),
-	endpoint: text().notNull(),
-	model: text().notNull(),
-	deadline_ms: int().notNull(),
-	status: text().notNull().default("pending"),
-	error: text(),
-	updated_at: text().notNull(),
-}, (table) => [
-	index("memory_index_work_status_updated").on(table.status, table.updated_at),
-	check("memory_index_work_status_check", sql`${table.status} IN ('pending', 'running', 'failed')`),
-]);
-
 export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
-	id: int().primaryKey({ autoIncrement: true }),
 	space_key: text().notNull(),
-	endpoint: text().notNull(),
-	model: text().notNull(),
 	text_hash: text().notNull(),
-	rendered_text: text().notNull(),
-	vector_json: text().notNull(),
-	updated_at: text().notNull(),
+	vector: blob({ mode: "buffer" }).notNull(),
 }, (table) => [
-	uniqueIndex("memory_embedding_cache_identity").on(table.space_key, table.endpoint, table.model, table.text_hash),
+	primaryKey({ columns: [table.space_key, table.text_hash] }),
 ]);
 
 // ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the

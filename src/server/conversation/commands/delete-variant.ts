@@ -1,8 +1,7 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
 import { queueMemorySource } from "../../memory";
-import { cancelMemoryExtractionWork } from "../../memory/extraction-jobs";
-import { cancelMemoryIndexWork } from "../../memory/indexing";
+import { abortMemoryWork } from "../../memory/work";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -77,8 +76,7 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 		replacementSelected = true;
 	}
 
-	cancelMemoryExtractionWork(db.$client, variant.id);
-	cancelMemoryIndexWork(db.$client, variant.id);
+	abortMemoryWork(db.$client, [variant.id]);
 	db.delete(messageVariantTable)
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();

@@ -9,11 +9,11 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
 import { createTypesafeSettingsModule, jevRequest, requestJev } from "../typesafe";
-import { cosineSimilarity, requestEmbeddings } from "../model-client/embeddings";
+import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
-import { readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryEmbeddingSecrets, readMemoryIndexReadiness } from "./indexing";
-import { memoryOwnership, readMemoryAllowance } from "./collections";
+import { embedMemoryQuery, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
+import { readMemoryAllowance } from "./collections";
 import { sha256 } from "./hash";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import type { JevAnswer } from "../../shared/contract/typesafe";
@@ -38,7 +38,7 @@ export interface MemoryRecallSnapshot {
 	readonly allowance: number;
 	readonly activation: MemoryActivationRecord;
 	readonly fingerprintInputs: Readonly<MemoryRecallFingerprintInputs>;
-	readonly embedding: { readonly endpoint: string; readonly model: string; readonly deadlineMs: number };
+	readonly embedding: MemoryEmbeddingConfiguration;
 	readonly jevModel: string;
 	readonly relevanceMinimum: number;
 	readonly indexed: readonly IndexedMemoryCandidate[];
@@ -258,6 +258,7 @@ export const captureMemoryRecallSnapshot = (input: {
 	const active = variantIds.length === 0 ? new Set<number>() : new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(inArray(activeGenerationTable.variant_id, variantIds)).all().map((row) => row.id));
 	const collections = variantIds.length === 0 ? [] : db.select().from(memoryCollectionTable).where(and(eq(memoryCollectionTable.conversation_id, input.conversationId), inArray(memoryCollectionTable.variant_id, variantIds))).orderBy(asc(memoryCollectionTable.message_id)).all();
 	const byVariant = new Map(collections.map((collection) => [collection.variant_id, collection]));
+	const readinessByVariant = readMemoryIndexReadinessBatch(input.database, collections, input.enabled, embedding);
 	const fingerprintSources: unknown[] = [];
 	const indexed: IndexedMemoryCandidate[] = [];
 	let pendingIndexCount = 0;
@@ -274,10 +275,10 @@ export const captureMemoryRecallSnapshot = (input: {
 			fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, status: "unprocessed" });
 			continue;
 		}
-		const ownership = memoryOwnership(collection.ownership);
+		const ownership = collection.ownership;
 		const sourceChanged = collection.source_changed || sha256(message.content) !== collection.source_hash;
 		const staleAutomaticSource = ownership === "automatic" && sourceChanged;
-		const readiness = readMemoryIndexReadiness(input.database, collection, input.enabled, embedding);
+		const readiness = readinessByVariant.get(collection.variant_id)!;
 		if (collection.status === "pending" || collection.status === "running") pendingSourceCount += 1;
 		if (readiness.status === "unconfigured") unconfigured = true;
 		pendingIndexCount += readiness.pendingCount;
@@ -288,8 +289,7 @@ export const captureMemoryRecallSnapshot = (input: {
 			variantId: message.variantId,
 			position: message.position,
 			revision: collection.revision,
-			indexEpoch: collection.index_epoch,
-			ownership,
+						ownership,
 			status: collection.status,
 			sourceChanged,
 			indexStatus: readiness.status,
@@ -305,12 +305,11 @@ export const captureMemoryRecallSnapshot = (input: {
 			if (!vector) continue;
 			indexed.push({
 				record: {
-					identity: `${message.messageId}:${message.variantId}:${collection.revision}:${collection.index_epoch}:${claimIndex}`,
+					identity: `${message.messageId}:${message.variantId}:${collection.revision}:${claimIndex}`,
 					messageId: message.messageId,
 					variantId: message.variantId,
 					collectionRevision: collection.revision,
-					indexEpoch: collection.index_epoch,
-					ownership,
+										ownership,
 					sourceChanged,
 					claimIndex,
 					claim: claim.claim,
@@ -377,13 +376,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	}
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (snapshot.activation.scene.trim().length > 0) {
-		const queryVector = (await requestEmbeddings([snapshot.activation.scene], {
-			endpoint: snapshot.embedding.endpoint,
-			model: snapshot.embedding.model,
-			secrets: readMemoryEmbeddingSecrets(input.database),
-			timeoutMs: snapshot.embedding.deadlineMs,
-			fetch: input.fetch,
-		}))[0];
+		const queryVector = (await embedMemoryQuery(input.database, snapshot.activation.scene, snapshot.embedding, input.fetch))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
 		if (snapshot.indexed.some((record) => record.vector.length !== queryVector.length)) throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
 		semantic = snapshot.indexed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, candidate.vector) }))

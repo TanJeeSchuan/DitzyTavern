@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { claimMemoryIndexWork, embedMemoryJob, publishMemoryIndexVectors, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
+import { embedMemoryTexts, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
 import { sha256 } from "../memory/hash";
 import { createMemorySettingsModule } from "../memory/settings";
 import { captureMemoryRecallSnapshot } from "../memory/recall";
@@ -88,8 +88,6 @@ const preparationFetch = (requests: EmbeddingRequest[], wait?: (url: string, sig
 	return Response.json({ data: body.input.map(() => ({ embedding: [1, 0] })) });
 };
 
-const embeddingIndex = (database: Database, fetcher: ModelFetch) => (job: Parameters<typeof embedMemoryJob>[1], signal: AbortSignal) => embedMemoryJob(database, job, fetcher, signal);
-
 const waitAt = () => {
 	let release = () => {};
 	let started = () => {};
@@ -112,9 +110,9 @@ describe("Memory indexing public lifecycle", () => {
 
 	test("reads readiness beyond SQLite's binding limit and preserves later cached claims", () => {
 		const configuration = { spaceKey: "long-chat", endpoint: "http://embedding.test/v1/embeddings", model: "memory-v1", deadlineMs: 1000 };
-		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic", source_changed: false, revision: 1, index_epoch: 0, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
+		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic" as const, source_changed: false, index_space_key: null, index_error: null, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
 		const cachedText = renderMemoryClaim(candidate(65_536, "Source evidence.", "Event 65536 occurred."));
-		database.query("INSERT INTO memory_embedding_cache (space_key, endpoint, model, text_hash, rendered_text, vector_json, updated_at) VALUES (?, ?, ?, ?, ?, '[1,0]', '2026-09-29T00:00:00.000Z')").run(configuration.spaceKey, configuration.endpoint, configuration.model, sha256(cachedText), cachedText);
+		database.query("INSERT INTO memory_embedding_cache (space_key, text_hash, vector) VALUES (?, ?, ?)").run(configuration.spaceKey, sha256(cachedText), Buffer.from(new Float32Array([1, 0]).buffer));
 		const readiness = readMemoryIndexReadinessBatch(database, collections, true, configuration);
 		expect(readiness.size).toBe(collections.length);
 		expect(readiness.get(1)).toMatchObject({ status: "pending", pendingCount: 1 });
@@ -129,7 +127,7 @@ describe("Memory indexing public lifecycle", () => {
 		await queueSource(memories, conversation.id, source.messageId);
 		const worker = startMemoryWorker(database, {
 			process: async (item) => [candidate(item.messageId, item.content), candidate(item.messageId, "Writer's key")],
-			index: embeddingIndex(database, preparationFetch([])),
+			embed: embedMemoryTexts(database, preparationFetch([])),
 		});
 		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
 		finally { await worker(); }
@@ -151,38 +149,14 @@ describe("Memory indexing public lifecycle", () => {
 		const text = renderMemoryClaim(candidate(source.messageId, ""));
 		expect(readCachedMemoryVector(database, current, text)).toBeNull();
 		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "pending", pendingCount: 2 });
-		const job = claimMemoryIndexWork(database);
-		if (!job) throw new Error("Tenant change did not durably schedule indexing.");
-		const values = await embedMemoryJob(database, job, async () => Response.json({ data: [{ embedding: [0, 1, 0] }] }));
-		expect(publishMemoryIndexVectors(database, job, values)).toBe(true);
+		const rebuild = startMemoryWorker(database, { process: async () => [], embed: async (texts) => texts.map(() => [0, 1, 0]) });
+		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
+		finally { await rebuild(); }
 		expect(readCachedMemoryVector(database, current, text)).toEqual([0, 1, 0]);
 		expect((await readSources(memories, conversation.id))[0]?.indexing).toMatchObject({ status: "ready", pendingCount: 0 });
 		const unchanged = connections.get().profiles.find((item) => item.id === profile.id)!;
 		connections.applyProfile({ expectedRevision: connections.get().revision, profileId: profile.id, profile: { ...connectionProfileDraftOf(unchanged), displayName: "Renamed" } });
 		expect(readMemoryEmbeddingConfiguration(database)).toEqual(current);
-	});
-
-	test("rolls configuration changes back when durable index scheduling fails", async () => {
-		const conversation = createChat(database);
-		await enableMemory(database, conversation.id);
-		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "memory-v1");
-		const source = insertSource(database, conversation.id, 1, "Maren returned Writer's key.");
-		await queueSource(memories, conversation.id, source.messageId);
-		const worker = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], index: embeddingIndex(database, preparationFetch([])) });
-		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
-		finally { await worker(); }
-		database.exec("CREATE TRIGGER reject_index_work BEFORE INSERT ON memory_index_work BEGIN SELECT RAISE(ABORT, 'controlled scheduling failure'); END");
-		const memory = createMemorySettingsModule(database);
-		const { revision, ...settings } = memory.get();
-		const configuration = readMemoryEmbeddingConfiguration(database);
-		expect(() => memory.apply({ ...settings, expectedRevision: revision, embeddingModel: "memory-v2" })).toThrow();
-		expect(memory.get()).toEqual({ ...settings, revision });
-		const connections = createConnectionSettingsModule(database);
-		const before = connections.get();
-		expect(() => connections.setCredential({ expectedRevision: before.revision, profileId: settings.embeddingProfileId!, credential: "tenant-b" })).toThrow();
-		expect(connections.get()).toEqual(before);
-		expect(readMemoryEmbeddingConfiguration(database)).toEqual(configuration);
-		expect((await readSources(memories, conversation.id))[0]?.indexing.status).toBe("ready");
 	});
 
 	test("renaming a preset and editing an unrelated block preserve queued extraction", async () => {
@@ -237,7 +211,7 @@ describe("Memory indexing public lifecycle", () => {
 		const stop = startMemoryWorker(database, {
 			concurrency: 1,
 			process: async (source) => { extractions += 1; return [candidate(source.messageId, source.content)]; },
-			index: embeddingIndex(database, preparationFetch(requests)),
+			embed: embedMemoryTexts(database, preparationFetch(requests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).every((source) => source.status === "complete" && source.indexing.status === "ready"))).toBe(true);
@@ -262,7 +236,7 @@ describe("Memory indexing public lifecycle", () => {
 		let correctionExtractions = 0;
 		const failedIndex = startMemoryWorker(database, {
 			process: async () => { correctionExtractions += 1; throw new Error("Saved writer text must not be re-extracted."); },
-			index: async () => { throw new Error("Controlled indexing failure."); },
+			embed: async () => { throw new Error("Controlled indexing failure."); },
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).find((source) => source.variantId === first.variantId)?.indexing.status === "failed")).toBe(true);
@@ -279,7 +253,7 @@ describe("Memory indexing public lifecycle", () => {
 		const retryRequests: EmbeddingRequest[] = [];
 		const retried = startMemoryWorker(database, {
 			process: async () => { correctionExtractions += 1; throw new Error("Retry must use saved writer text."); },
-			index: embeddingIndex(database, preparationFetch(retryRequests)),
+			embed: embedMemoryTexts(database, preparationFetch(retryRequests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).find((source) => source.variantId === first.variantId)?.indexing.status === "ready")).toBe(true);
@@ -302,7 +276,7 @@ describe("Memory indexing public lifecycle", () => {
 				extractionPass += 1;
 				return [candidate(item.messageId, item.content)];
 			},
-			index: embeddingIndex(database, preparationFetch(requests)),
+			embed: embedMemoryTexts(database, preparationFetch(requests)),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true);
@@ -315,7 +289,7 @@ describe("Memory indexing public lifecycle", () => {
 				extractionPass += 1;
 				return [candidate(item.messageId, item.content), candidate(item.messageId, item.content, "The second Memory is pending.", "Writer correction")];
 			},
-			index: async (job, signal) => { gate.started(); await gate.gate; return embedMemoryJob(database, job, preparationFetch(requests), signal); },
+			embed: async (texts, configuration, signal) => { gate.started(); await gate.gate; return embedMemoryTexts(database, preparationFetch(requests))(texts, configuration, signal); },
 		});
 		try {
 			await gate.reached;
@@ -347,7 +321,7 @@ describe("Memory indexing public lifecycle", () => {
 		const source = insertSource(database, conversation.id, 1, "Maren held the key.");
 		await queueSource(memories, conversation.id, source.messageId);
 		const requests: EmbeddingRequest[] = [];
-		const worker = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], index: embeddingIndex(database, preparationFetch(requests)) });
+		const worker = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], embed: embedMemoryTexts(database, preparationFetch(requests)) });
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true);
 			const connections = createConnectionSettingsModule(database, { masterKey: key }).get();
@@ -373,7 +347,7 @@ describe("Memory indexing public lifecycle", () => {
 		configureMemoryEmbeddings(database, "http://embedding-a.test/v1/embeddings", "memory-a");
 		const source = insertSource(database, conversation.id, 1, "Maren held the key.");
 		await queueSource(memories, conversation.id, source.messageId);
-		const initial = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], index: async (job) => job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })) });
+		const initial = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], embed: async (texts) => texts.map(() => [1, 0]) });
 		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
 		finally { await initial(); }
 		configureMemoryEmbeddings(database, "http://embedding-b.test/v1/embeddings", "memory-b");
@@ -384,7 +358,7 @@ describe("Memory indexing public lifecycle", () => {
 			if (url.includes("embedding-b")) { oldRequest.started(); await oldRequest.gate; }
 			if (url.includes("embedding-c")) { currentRequest.started(); await currentRequest.gate; }
 		});
-		const worker = startMemoryWorker(database, { process: async () => { throw new Error("Configuration rebuild must not extract."); }, index: embeddingIndex(database, transport) });
+		const worker = startMemoryWorker(database, { process: async () => { throw new Error("Configuration rebuild must not extract."); }, embed: embedMemoryTexts(database, transport) });
 		try {
 			await oldRequest.reached;
 			configureMemoryEmbeddings(database, "http://embedding-c.test/v1/embeddings", "memory-c");
@@ -412,7 +386,7 @@ describe("Memory indexing public lifecycle", () => {
 		const initial = startMemoryWorker(database, {
 			concurrency: 1,
 			process: async (item) => [candidate(item.messageId, item.content, item.messageId === first.messageId ? "Maren carries the old key." : "Writer keeps the old key.")],
-			index: async (job) => job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })),
+			embed: async (texts) => texts.map(() => [1, 0]),
 		});
 		try {
 			expect(await waitFor(async () => {
@@ -434,7 +408,7 @@ describe("Memory indexing public lifecycle", () => {
 		const worker = startMemoryWorker(database, {
 			concurrency: 2,
 			process: async (item) => [candidate(item.messageId, item.content, "Maren carries the new key.")],
-			index: embeddingIndex(database, transport),
+			embed: embedMemoryTexts(database, transport),
 		});
 		try {
 			await indexRequests.reached;
@@ -470,7 +444,7 @@ describe("Memory indexing public lifecycle", () => {
 		let extractions = 0;
 		const initial = startMemoryWorker(database, {
 			process: async (item) => { extractions += 1; return [candidate(item.messageId, item.content)]; },
-			index: async (job) => job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })),
+			embed: async (texts) => texts.map(() => [1, 0]),
 		});
 		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
 		finally { await initial(); }
@@ -484,7 +458,7 @@ describe("Memory indexing public lifecycle", () => {
 		});
 		const worker = startMemoryWorker(database, {
 			process: async () => { extractions += 1; throw new Error("Re-enabling indexing must use saved claims."); },
-			index: embeddingIndex(database, transport),
+			embed: embedMemoryTexts(database, transport),
 		});
 		try {
 			await pending.reached;
@@ -512,7 +486,7 @@ describe("Memory indexing public lifecycle", () => {
 		configureMemoryEmbeddings(database, "http://embedding-a.test/v1/embeddings", "memory-a");
 		const indexed = insertSource(database, conversation.id, 1, "Maren held the key.");
 		await queueSource(memories, conversation.id, indexed.messageId);
-		const initial = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], index: async (job) => job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })) });
+		const initial = startMemoryWorker(database, { process: async (item) => [candidate(item.messageId, item.content)], embed: async (texts) => texts.map(() => [1, 0]) });
 		try { expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.indexing.status === "ready")).toBe(true); }
 		finally { await initial(); }
 		configureMemoryEmbeddings(database, "http://embedding-b.test/v1/embeddings", "memory-b");
@@ -535,7 +509,7 @@ describe("Memory indexing public lifecycle", () => {
 		const mixed = startMemoryWorker(database, {
 			concurrency: 9,
 			process: async (item) => { await enter(extractionStarted); return [candidate(item.messageId, item.content)]; },
-			index: async (job) => { await enter(indexStarted); return job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })); },
+			embed: async (texts) => { await enter(indexStarted); return texts.map(() => [1, 0]); },
 		});
 		try {
 			await Promise.all([started, indexedStarted]);
@@ -548,7 +522,7 @@ describe("Memory indexing public lifecycle", () => {
 		const restartGate = waitAt();
 		const interrupted = startMemoryWorker(database, {
 			process: async () => { throw new Error("Restart must recover indexing without extraction."); },
-			index: async (_job, signal) => new Promise((_, reject) => {
+			embed: async (_texts, _configuration, signal) => new Promise((_, reject) => {
 				restartGate.started();
 				signal.addEventListener("abort", () => reject(new Error("Worker stopped.")), { once: true });
 			}),
@@ -557,7 +531,7 @@ describe("Memory indexing public lifecycle", () => {
 		await interrupted();
 		const recovered = startMemoryWorker(database, {
 			process: async () => { throw new Error("Recovered index work must not extract."); },
-			index: async (job) => job.claims.map((claim) => ({ renderedText: renderMemoryClaim(claim), vector: [1, 0] })),
+			embed: async (texts) => texts.map(() => [1, 0]),
 		});
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).every((source) => source.indexing.status === "ready"))).toBe(true);

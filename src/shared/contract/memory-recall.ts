@@ -26,7 +26,6 @@ export const memoryRecallCandidate = Type.Object({
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
 	collectionRevision: Type.Integer(),
-	indexEpoch: Type.Integer(),
 	ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]),
 	sourceChanged: Type.Boolean(),
 	claimIndex: Type.Integer(),

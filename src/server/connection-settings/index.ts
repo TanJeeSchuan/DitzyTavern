@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { queueAllMemoryIndexing, readMemoryEmbeddingConfiguration, sameEmbeddingConfiguration } from "../memory/indexing";
 import { asc, eq, isNull } from "drizzle-orm";
 import {
 	connectionProfileDiscoveryModelTable,
@@ -146,11 +145,8 @@ export function createConnectionSettingsModule(
 			const db = connect(database);
 			const settings = ensureSettingsRow(db);
 			requireRevision(read, settings.revision, input.expectedRevision);
-			const embedding = readMemoryEmbeddingConfiguration(database);
 			input.mutate({ db, settings });
 			advanceRevision(db, settings.revision);
-			const nextEmbedding = readMemoryEmbeddingConfiguration(database);
-			if (!sameEmbeddingConfiguration(embedding, nextEmbedding)) queueAllMemoryIndexing(database, nextEmbedding);
 			return read();
 		});
 		return write.immediate();

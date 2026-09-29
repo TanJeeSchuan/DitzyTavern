@@ -133,7 +133,7 @@ describe("Typesafe Memory judgments", () => {
 	});
 
 	test("labels recalled relevance from the same score that decides admission", async () => {
-		const record: MemoryRecallCandidateRecord = { identity: "1:1:1:1:0", messageId: 1, variantId: 1, collectionRevision: 1, indexEpoch: 1, ownership: "automatic", sourceChanged: false, claimIndex: 0, claim: candidate.claim, attribution: candidate.attribution, people: [], evidence: candidate.evidence, sourcePosition: 1, semanticSimilarity: 0.5, semanticRank: 1, recentRank: null, judged: false, relevance: null, relevanceScore: null, retained: false, requestIncluded: false, admission: "request-limit" };
+		const record: MemoryRecallCandidateRecord = { identity: "1:1:1:1:0", messageId: 1, variantId: 1, collectionRevision: 1, ownership: "automatic", sourceChanged: false, claimIndex: 0, claim: candidate.claim, attribution: candidate.attribution, people: [], evidence: candidate.evidence, sourcePosition: 1, semanticSimilarity: 0.5, semanticRank: 1, recentRank: null, judged: false, relevance: null, relevanceScore: null, retained: false, requestIncluded: false, admission: "request-limit" };
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			"candidate_1:1:1:1:0_relevance": { type: "score", score: 1.56, legend: { 0: "Irrelevant", 1: "Incidental", 2: "Useful", 3: "Central" }, probabilities: { 0: 0.42, 1: 0, 2: 0.18, 3: 0.4 }, confidence: 0.1 },
 		} });

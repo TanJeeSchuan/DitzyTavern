@@ -162,6 +162,20 @@
       "when": 1790612196482,
       "tag": "0022_fair_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790652940561,
+      "tag": "0023_silky_northstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1790652941351,
+      "tag": "0024_slim_marvel_zombies",
+      "breakpoints": true
     }
   ]
 }

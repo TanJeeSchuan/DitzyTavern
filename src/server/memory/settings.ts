@@ -4,7 +4,6 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { connectionProfileTable, conversationPromptPresetTable, memorySettingsTable } from "../database/schema";
 import { invalidateMemoryWorkForConversation } from "./cancellation";
 import { queueMemoryTail } from "./collections";
-import { queueAllMemoryIndexing, readMemoryEmbeddingConfiguration, sameEmbeddingConfiguration } from "./indexing";
 import type { MemorySettingsCommand, MemorySettingsPayload } from "../../shared/contract/memory-settings";
 
 const SETTINGS_ID = 1;
@@ -70,7 +69,6 @@ export const createMemorySettingsModule = (database: Database) => {
 		if (!(command.usefulnessConfidenceGate >= 0 && command.usefulnessConfidenceGate <= 1)) throw new InvalidMemorySettingsError("The usefulness confidence gate must be between 0 and 1.");
 		if (!(command.recallRelevanceMinimum >= 0 && command.recallRelevanceMinimum <= 3)) throw new InvalidMemorySettingsError("The recall relevance minimum must be between 0 and 3.");
 		const toggled = get().enabled !== command.enabled;
-		const embedding = readMemoryEmbeddingConfiguration(database);
 		const settings = commit(command.expectedRevision, (connection) => {
 			connection.update(memorySettingsTable).set({ enabled: command.enabled, extraction_profile_id: command.extractionProfileId, extraction_model: model, context_limit: command.contextLimit, output_reserve: command.outputReserve, safety_allowance: command.safetyAllowance, usefulness_confidence_gate: command.usefulnessConfidenceGate, recall_relevance_minimum: command.recallRelevanceMinimum, embedding_profile_id: command.embeddingProfileId, embedding_model: embeddingModel }).where(eq(memorySettingsTable.id, SETTINGS_ID)).run();
 		});
@@ -78,8 +76,10 @@ export const createMemorySettingsModule = (database: Database) => {
 			invalidateMemoryWorkForConversation(database, id, "Memory was turned off. Reset and re-extract this source to try again.");
 			queueMemoryTail(database, id);
 		}
-		if (!sameEmbeddingConfiguration(embedding, readMemoryEmbeddingConfiguration(database))) queueAllMemoryIndexing(database);
 		return settings;
 	}).immediate();
 	return { get, apply };
 };
+
+export const isMemoryEnabledForConversation = (database: Database, conversationId: number): boolean =>
+	createMemorySettingsModule(database).get().enabled && database.query<{ enabled: number }, [number]>("SELECT 1 AS enabled FROM conversation_prompt_preset p JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id WHERE p.conversation_id = ? AND b.reference = 'memory' AND b.enabled = 1").get(conversationId) !== null;

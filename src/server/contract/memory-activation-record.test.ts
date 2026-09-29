@@ -45,7 +45,6 @@ const activation = (
 		messageId,
 		variantId,
 		collectionRevision: 1,
-		indexEpoch: 1,
 		ownership: "automatic",
 		sourceChanged: false,
 		claimIndex: 0,

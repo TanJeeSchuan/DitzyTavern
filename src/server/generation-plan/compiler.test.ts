@@ -75,7 +75,6 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	messageId: sourcePosition + 1,
 	variantId: sourcePosition + 1,
 	collectionRevision: 1,
-	indexEpoch: 1,
 	ownership: "automatic",
 	sourceChanged: false,
 	claimIndex: 0,

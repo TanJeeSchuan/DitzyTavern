@@ -70,7 +70,7 @@ const queueAndIndex = async (database: Database, conversationId: number, message
 	expect(queued.status).toBe(200);
 	const worker = startMemoryWorker(database, {
 		process: async () => [claim],
-		index: async (job) => job.claims.map((candidate) => ({ renderedText: renderMemoryClaim(candidate), vector: [1, 0] })),
+		embed: async (texts) => texts.map(() => [1, 0]),
 	});
 	try {
 		expect(await waitFor(() => readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
@@ -82,7 +82,7 @@ const queueAndIndex = async (database: Database, conversationId: number, message
 const reindexSavedMemories = async (database: Database, conversationId: number, variantId: number) => {
 	const worker = startMemoryWorker(database, {
 		process: async () => [],
-		index: async (job) => job.claims.map((candidate) => ({ renderedText: renderMemoryClaim(candidate), vector: [1, 0] })),
+		embed: async (texts) => texts.map(() => [1, 0]),
 	});
 	try {
 		expect(await waitFor(() => readConversationMemories(database, conversationId).sources.find((item) => item.variantId === variantId)?.indexing.status === "ready")).toBe(true);
@@ -395,7 +395,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await rebuilding.json()).toMatchObject({ memoryActivation: { state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] } });
 		const failedWorker = startMemoryWorker(database, {
 			process: async () => { throw new Error("Memory extraction unavailable."); },
-			index: async () => [],
+			embed: async () => [],
 		});
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId)?.status === "failed")).toBe(true);
