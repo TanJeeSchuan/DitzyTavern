@@ -1,17 +1,28 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 import { withDatabase } from "../database/database";
+import { mergeMemoryLabels, StaleMemoryLabelsError } from "../memory/labels";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
 	memoryInvalid, memoryQueued, memoryCollectionConflict, memoryResetCommand,
 	memoryCorrectionCommand, memoryCorrectionApplied, memoryIndexRetryCommand,
+	memoryLabelMergeCommand, memoryLabelsMerged, memoryLabelsConflict,
 	memoryCatchup, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead, memoryTrace, memoryTraceParams,
 } from "../../shared/contract/memory";
 
 export const createMemoryRoutes = (database: Database | undefined) => new Elysia()
 	.get("/api/conversations/:id/memories", ({ params }) => withDatabase(database, (db) => readConversationMemories(db, Number(params.id))), { params: memoryConversationIdParams, response: conversationMemories })
+	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => withDatabase(database, (db) => {
+		try {
+			mergeMemoryLabels(db, Number(params.id), body);
+			return { outcome: "applied" as const, memories: readConversationMemories(db, Number(params.id)) };
+		} catch (error) {
+			if (error instanceof StaleMemoryLabelsError) return status(409, { outcome: "conflict" as const, memories: readConversationMemories(db, Number(params.id)) });
+			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Labels could not be merged." });
+		}
+	}), { params: memoryConversationIdParams, body: memoryLabelMergeCommand, response: { 200: memoryLabelsMerged, 409: memoryLabelsConflict, 422: memoryInvalid } })
 	.get("/api/conversations/:id/memories/:variantId/trace", ({ params }) => withDatabase(database, (db) => ({ steps: readMemoryTrace(db, Number(params.id), Number(params.variantId)) })), { params: memoryTraceParams, response: memoryTrace })
 	.get("/api/conversations/:id/memory-allowance", ({ params }) => withDatabase(database, (db) => readMemoryAllowance(db, Number(params.id))), { params: memoryConversationIdParams, response: conversationMemoryAllowance })
 	.post("/api/conversations/:id/memory-allowance", ({ params, body }) => {

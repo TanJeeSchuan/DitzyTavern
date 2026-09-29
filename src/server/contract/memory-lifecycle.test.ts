@@ -121,8 +121,8 @@ describe("Memory source lifecycle public operations", () => {
 		const saved = database.query<{ source_snapshot_json: string }, [number, number]>("SELECT source_snapshot_json FROM memory_collection WHERE catchup_run_id = ? AND variant_id = ?").get(run.id, messages[5]!.variantId);
 		expect(saved).not.toBeUndefined();
 		expect(JSON.parse(saved!.source_snapshot_json)).toEqual({
-			source: { messageId: messages[5]!.messageId, variantId: messages[5]!.variantId, content: "Message 6." },
-			context: messages.slice(1, 5).map((message, index) => ({ messageId: message.messageId, variantId: message.variantId, content: `Message ${index + 2}.` })),
+			source: { messageId: messages[5]!.messageId, variantId: messages[5]!.variantId, speaker: null, content: "Message 6." },
+			context: messages.slice(1, 5).map((message, index) => ({ messageId: message.messageId, variantId: message.variantId, speaker: null, content: `Message ${index + 2}.` })),
 		});
 	});
 

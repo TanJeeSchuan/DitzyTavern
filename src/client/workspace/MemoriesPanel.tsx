@@ -8,6 +8,7 @@ import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemor
 import { PanelHeader } from "../PanelHeader";
 import { MemoryCoverage } from "./MemoryCoverage";
 import { MemorySourceGroup, type MemorySourceActions } from "./MemorySource";
+import { MemoryLabelMergeDialog } from "./MemoryLabelMergeDialog";
 
 type Source = ConversationMemories["sources"][number];
 const conflictNotice = "This collection changed elsewhere. Review the current Memories before changing them again.";
@@ -29,6 +30,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 	const [resetTarget, setResetTarget] = useState<Source | null>(null);
 	const [query, setQuery] = useState("");
 	const [person, setPerson] = useState("");
+	const [mergingLabels, setMergingLabels] = useState(false);
 	const refresh = useCallback(async () => {
 		try {
 			const [loaded, run, settings] = await Promise.all([loadConversationMemories(conversationId), loadMemoryCatchup(conversationId), loadMemoryAllowance(conversationId)]);
@@ -89,7 +91,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 	const alternatives = memories?.sources.filter((source) => !source.selected && source.claims.length > 0) ?? [];
 	const attention = selected.filter((source) => source.status === "failed" || (source.status === "stale" && source.claims.length === 0) || source.indexing.status === "failed");
 	const awaitingEmbedding = selected.filter((source) => source.indexing.status === "unconfigured").length;
-	const people = [...selected.flatMap((source) => source.claims.flatMap((claim) => claim.people)).reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
+	const people = [...selected.flatMap((source) => source.claims.flatMap((claim) => [...new Set(claim.people)])).reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 	const needle = query.trim().toLowerCase();
 	const filtering = needle !== "" || person !== "";
 	const visibleClaims = (source: Source) => source.claims.map((claim, index) => ({ claim, index })).filter(({ claim }) => (!person || claim.people.includes(person)) && (!needle || [claim.claim, claim.attribution, ...claim.people].some((text) => text.toLowerCase().includes(needle))));
@@ -120,11 +122,12 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 							: <Button type="button" size="xs" variant="outline" disabled={busyVariant === source.variantId} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
 					</div>)}
 				</section>}
-				{selected.some((source) => source.claims.length > 0) && <div className="memory-filter">
+				{memories.sources.some((source) => source.claims.length > 0) && <div className="memory-filter">
 					<label className="memory-search"><Search aria-hidden="true" /><input type="search" placeholder="Search Memories" aria-label="Search Memories" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
 					{people.length > 1 && <ToggleGroup type="single" size="sm" variant="outline" spacing={4} className="memory-people" aria-label="Filter by person" value={person} onValueChange={setPerson}>
 						{people.map(([name, count]) => <ToggleGroupItem key={name} value={name}>{name}<span>{count}</span></ToggleGroupItem>)}
 					</ToggleGroup>}
+					{memories.sources.some((source) => source.claims.some((claim) => claim.people.length > 0)) && <Button type="button" size="xs" variant="ghost" className="self-start" onClick={() => setMergingLabels(true)}>Merge labels</Button>}
 				</div>}
 				{groups.length > 0 ? <div className="memory-list">{groups}</div> : memories.path.length === 0 ? <p className="memory-empty">Memories appear here once the story has saved Messages.</p> : filtering ? <p className="memory-empty">No Memories match this filter.</p> : <p className="memory-empty">Nothing remembered yet.</p>}
 				{alternatives.length > 0 && <details className="memory-alternatives">
@@ -134,6 +137,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 				</details>}
 			</>}
 		</div>
+		{mergingLabels && memories && <MemoryLabelMergeDialog conversationId={conversationId} memories={memories} onClose={() => setMergingLabels(false)} onMerged={(updated, destination) => { setMemories(updated); setPerson(""); setEditing(null); setMergingLabels(false); setNotice(`Labels merged into ${destination}.`); }} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) setResetTarget(null); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>

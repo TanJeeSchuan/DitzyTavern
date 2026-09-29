@@ -21,8 +21,12 @@ export const memoryCollection = Type.Object({
 	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
 export type MemoryCollectionView = Static<typeof memoryCollection>;
-export const conversationMemories = Type.Object({ sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
+export const conversationMemories = Type.Object({ labelRevision: Type.Integer(), sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
 export type ConversationMemories = Static<typeof conversationMemories>;
+export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
+export type MemoryLabelMergeCommand = Static<typeof memoryLabelMergeCommand>;
+export const memoryLabelsMerged = Type.Object({ outcome: Type.Literal("applied"), memories: conversationMemories });
+export const memoryLabelsConflict = Type.Object({ outcome: Type.Literal("conflict"), memories: conversationMemories });
 export const memoryConversationIdParams = Type.Object({ id: numericWire });
 export const memoryInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
 export const memoryResetCommand = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), expectedRevision: Type.Integer() });
@@ -57,7 +61,7 @@ export const memoryExtractionResponse = Type.Object({
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
 export type MemoryCandidate = MemoryExtractionResponse["candidates"][number];
 export type MemoryEvidence = MemoryCandidate["evidence"][number];
-export const memoryCapturedMessage = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), content: Type.String() });
+export const memoryCapturedMessage = Type.Object({ messageId: Type.Integer(), variantId: Type.Integer(), speaker: Type.Union([Type.String(), Type.Null()]), content: Type.String() });
 export type CapturedMemoryMessage = Static<typeof memoryCapturedMessage>;
 export const memoryWorkSnapshot = Type.Object({ source: memoryCapturedMessage, context: Type.Array(memoryCapturedMessage) });
 export type MemoryWorkSnapshot = Static<typeof memoryWorkSnapshot>;

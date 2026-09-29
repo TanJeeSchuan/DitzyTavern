@@ -10,6 +10,7 @@ import { isMemoryEnabledForConversation } from "./settings";
 import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryIndexReadiness, type MemoryTraceStep } from "../../shared/contract/memory";
 import { abortMemoryWork, registerMemoryWork } from "./work";
 import { sha256 } from "./hash";
+import { applyMemoryLabelMerges, readMemoryLabelState } from "./labels";
 
 export class StaleMemoryCollectionError extends Error {
 	constructor(readonly collection: MemoryCollectionView) { super("This Memory collection changed in another session."); this.name = "StaleMemoryCollectionError"; }
@@ -20,7 +21,7 @@ export class InvalidMemorySourceError extends Error {
 }
 
 type CollectionRow = typeof memoryCollectionTable.$inferSelect;
-type SourceVariant = CapturedMemoryMessage & { selected: boolean };
+type SourceVariant = Omit<CapturedMemoryMessage, "speaker"> & { selected: boolean };
 type CapturedMemorySource = { source: CapturedMemoryMessage; context: readonly CapturedMemoryMessage[]; sourceHash: string };
 
 const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[]): CapturedMemorySource => {
@@ -29,11 +30,11 @@ const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemor
 };
 
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {
-	const source = database.query<{ position: number; variant_id: number; content: string }, [number, number]>("SELECT m.position, v.id AS variant_id, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.id=?").get(conversationId, messageId);
+	const source = database.query<{ position: number; variant_id: number; speaker: string | null; content: string }, [number, number]>("SELECT m.position, m.author_name AS speaker, v.id AS variant_id, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.id=?").get(conversationId, messageId);
 	if (!source) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");
 	if (database.query<{ id: number }, [number]>("SELECT id FROM active_generation WHERE variant_id=?").get(source.variant_id)) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
-	const previous = database.query<CapturedMemoryMessage, [number, number]>("SELECT m.id AS messageId, v.id AS variantId, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.position<? ORDER BY m.position DESC LIMIT 4").all(conversationId, source.position).reverse();
-	return captured({ messageId, variantId: source.variant_id, content: source.content }, previous);
+	const previous = database.query<CapturedMemoryMessage, [number, number]>("SELECT m.id AS messageId, v.id AS variantId, m.author_name AS speaker, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.position<? ORDER BY m.position DESC LIMIT 4").all(conversationId, source.position).reverse();
+	return captured({ messageId, variantId: source.variant_id, speaker: source.speaker, content: source.content }, previous);
 };
 
 const parseClaims = (claimsJson: string): MemoryCandidateJudgment[] | null => {
@@ -122,7 +123,7 @@ export function startMemoryCatchup(database: Database, conversationId: number): 
 		const previous: CapturedMemoryMessage[] = [];
 		for (const message of history.messages) {
 			if (!message.variant) continue;
-			const source = { messageId: message.id, variantId: message.variant.id, content: message.variant.content };
+			const source = { messageId: message.id, variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content };
 			if (source.content.trim().length > 0 && !activeVariants.has(source.variantId)) queueMemorySource(database, conversationId, message.id, run.id, captured(source, [...previous]));
 			previous.push(source);
 			if (previous.length > 4) previous.shift();
@@ -176,7 +177,7 @@ export function readConversationMemories(database: Database, conversationId: num
 		if (collection) return [toView(collection, variant, readiness.get(variant.variantId)!)];
 		return variant.content.trim().length === 0 ? [] : [unprocessedView(variant, enabled)];
 	});
-	return { sources, path };
+	return { sources, path, labelRevision: readMemoryLabelState(database, conversationId).revision };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }): MemoryCollectionView {
@@ -194,7 +195,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 			if (!replacement || !replacement.claim.trim() || !replacement.attribution.trim() || replacement.claim.length + replacement.attribution.length > 1024 || replacement.people.some((person) => !person.trim()) || new Set(replacement.people).size !== replacement.people.length) throw new InvalidMemorySourceError("Memory text, attribution, or person labels are invalid.");
 			claims[index] = { ...claims[index]!, ...replacement, writerMaintained: true };
 		} else claims.splice(index, 1);
-		const updated = drizzle(database).update(memoryCollectionTable).set({ revision: row.revision + 1, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(claims), work_epoch: row.work_epoch + 1, index_space_key: null, index_error: null, updated_at: new Date().toISOString() })
+		const updated = drizzle(database).update(memoryCollectionTable).set({ revision: row.revision + 1, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(applyMemoryLabelMerges(claims, readMemoryLabelState(database, conversationId).merges)), work_epoch: row.work_epoch + 1, index_space_key: null, index_error: null, updated_at: new Date().toISOString() })
 			.where(eq(memoryCollectionTable.variant_id, variantId)).returning().get()!;
 		abortMemoryWork(database, [variantId]);
 		return toView(updated, variant, readMemoryIndexReadiness(database, updated, enabled));
@@ -287,7 +288,10 @@ const runMemoryExtraction = async (database: Database, job: CollectionRow, proce
 	try {
 		const snapshot = Value.Parse(memoryWorkSnapshot, JSON.parse(job.source_snapshot_json));
 		const claims = await process(snapshot.source, snapshot.context, AbortSignal.any([shutdown, signal]), trace);
-		db.update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(claims), error: null, index_space_key: null, index_error: null, updated_at: new Date().toISOString() }).where(current).run();
+		database.transaction(() => {
+			const merged = applyMemoryLabelMerges(claims, readMemoryLabelState(database, job.conversation_id).merges);
+			db.update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(merged), error: null, index_space_key: null, index_error: null, updated_at: new Date().toISOString() }).where(current).run();
+		}).immediate();
 	} catch (error) {
 		if (shutdown.aborted) return;
 		if (signal.aborted) {

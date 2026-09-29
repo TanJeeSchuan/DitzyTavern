@@ -242,6 +242,45 @@
 
 /* Sources and claims */
 
+.memory-merge-form {
+	display: grid;
+	gap: 1rem;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.memory-merge-form fieldset {
+	min-width: 0;
+}
+
+.memory-merge-form legend {
+	margin-bottom: 0.5rem;
+}
+
+.memory-merge-form .memory-people > button {
+	max-width: 100%;
+	height: auto;
+	min-height: 2rem;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.memory-merge-claims {
+	max-height: 12rem;
+	overflow-y: auto;
+	font-size: 0.82rem;
+	overflow-wrap: anywhere;
+}
+
+.memory-merge-claims > div {
+	padding-block: 0.5rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.memory-merge-claims small {
+	color: var(--text-muted);
+}
+
 .memory-list {
 	display: grid;
 	gap: 1.35rem;

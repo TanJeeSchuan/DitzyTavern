@@ -5,7 +5,7 @@ import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-r
 import type { ModelFetch } from "../model-client";
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
-import type { MemoryCandidate } from "../../shared/contract/memory";
+import type { CapturedMemoryMessage, MemoryCandidate } from "../../shared/contract/memory";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
@@ -14,8 +14,8 @@ import { createMemorySettingsModule } from "./settings";
 import { createTypesafeSettingsModule } from "../typesafe";
 import { extractAndJudgeMemorySource } from "./extraction";
 
-const source = { messageId: 10, variantId: 20, content: "Maren promised Writer the brass key." };
-const context = [{ messageId: 9, variantId: 19, content: "Writer asked Maren about the lodge key." }];
+const source = { messageId: 10, variantId: 20, speaker: "Maren", content: "Maren promised Writer the brass key." };
+const context = [{ messageId: 9, variantId: 19, speaker: "Writer", content: "Writer asked Maren about the lodge key." }];
 const candidate: MemoryCandidate = {
 	claim: "Maren promised Writer the brass key.",
 	attribution: "Narrated as an established event",
@@ -116,9 +116,9 @@ describe("Typesafe Memory judgments", () => {
 		};
 		const [judgment] = await judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch);
 		// ==[HUMAN APPROVED]== SAFETY: The fake captures the request emitted by judgeMemoryCandidates, whose request shape is asserted below.
-		const sent = JSON.parse(requestBody) as { state: { source: string; context: string[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution?: string; evidence?: string[] } } }> };
+		const sent = JSON.parse(requestBody) as { state: { source: CapturedMemoryMessage; context: CapturedMemoryMessage[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution?: string; evidence?: string[] } } }> };
 		expect(authorization).toBe("Bearer secret");
-		expect(sent.state).toEqual({ source: source.content, context: [context[0].content] });
+		expect(sent.state).toEqual({ source, context });
 		expect(sent.questions.candidate_0_support.instructions.memory).toEqual({ claim: candidate.claim, evidence: [candidate.evidence[0].excerpt] });
 		expect(sent.questions.candidate_0_attribution.instructions.memory).toEqual({ claim: candidate.claim, attribution: candidate.attribution });
 		expect(sent.questions.candidate_0_usefulness.instructions.memory).toEqual({ claim: candidate.claim, attribution: candidate.attribution });

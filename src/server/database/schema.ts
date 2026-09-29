@@ -331,6 +331,7 @@ export const conversationMemorySettingsTable = sqliteTable("conversation_memory_
 	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
 	allowance: int().notNull().default(2048),
 	revision: int().notNull().default(0),
+	label_merges: text({ mode: "json" }).$type<Array<{ from: string; to: string }>>().notNull().default([]),
 });
 
 export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {

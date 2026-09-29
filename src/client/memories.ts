@@ -1,5 +1,11 @@
-import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryTraceStep } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryLabelMergeCommand, MemoryTraceStep } from "../shared/contract/memory";
 import { api, domainOutcome } from "./lib/eden";
+
+export async function mergeMemoryLabels(conversationId: number, command: MemoryLabelMergeCommand) {
+	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories["merge-labels"].post(command);
+	if (error === null) return data;
+	return domainOutcome(error.value, "Labels could not be merged.");
+}
 
 export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.get();
