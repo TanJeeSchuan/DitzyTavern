@@ -3,7 +3,8 @@ import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { claimMemoryIndexWork, embedMemoryJob, publishMemoryIndexVectors, readCachedMemoryVector, readMemoryEmbeddingConfiguration } from "../memory/indexing";
+import { claimMemoryIndexWork, embedMemoryJob, publishMemoryIndexVectors, readCachedMemoryVector, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch } from "../memory/indexing";
+import { sha256 } from "../memory/hash";
 import { createMemorySettingsModule } from "../memory/settings";
 import { captureMemoryRecallSnapshot } from "../memory/recall";
 import { startMemoryWorker } from "../memory";
@@ -108,6 +109,17 @@ describe("Memory indexing public lifecycle", () => {
 	});
 
 	afterEach(() => database.close());
+
+	test("reads readiness beyond SQLite's binding limit and preserves later cached claims", () => {
+		const configuration = { spaceKey: "long-chat", endpoint: "http://embedding.test/v1/embeddings", model: "memory-v1", deadlineMs: 1000 };
+		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic", source_changed: false, revision: 1, index_epoch: 0, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
+		const cachedText = renderMemoryClaim(candidate(65_536, "Source evidence.", "Event 65536 occurred."));
+		database.query("INSERT INTO memory_embedding_cache (space_key, endpoint, model, text_hash, rendered_text, vector_json, updated_at) VALUES (?, ?, ?, ?, ?, '[1,0]', '2026-09-29T00:00:00.000Z')").run(configuration.spaceKey, configuration.endpoint, configuration.model, sha256(cachedText), cachedText);
+		const readiness = readMemoryIndexReadinessBatch(database, collections, true, configuration);
+		expect(readiness.size).toBe(collections.length);
+		expect(readiness.get(1)).toMatchObject({ status: "pending", pendingCount: 1 });
+		expect(readiness.get(65_536)).toMatchObject({ status: "ready", pendingCount: 0 });
+	}, 15_000);
 
 	test.each(["profile", "credential", "header"] as const)("separates vectors when the embedding %s changes", async (change) => {
 		const conversation = createChat(database);

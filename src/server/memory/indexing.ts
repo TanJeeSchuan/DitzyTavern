@@ -18,6 +18,7 @@ import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared
 import { sha256 } from "./hash";
 
 const memoryVector = Type.Array(Type.Number(), { minItems: 1 });
+const queryBatches = <T>(values: readonly T[]): T[][] => Array.from({ length: Math.ceil(values.length / 500) }, (_, index) => values.slice(index * 500, (index + 1) * 500));
 
 export interface MemoryEmbeddingConfiguration {
 	readonly spaceKey: string;
@@ -106,12 +107,12 @@ export const readCachedMemoryVector = (database: Database, configuration: Memory
 const cachedTexts = (database: Database, configuration: MemoryEmbeddingConfiguration, texts: readonly string[]): Set<string> => {
 	if (texts.length === 0) return new Set();
 	const hashes = [...new Set(texts.map(sha256))];
-	const rows = drizzle(database).select().from(memoryEmbeddingCacheTable).where(and(
+	const rows = queryBatches(hashes).flatMap((batch) => drizzle(database).select().from(memoryEmbeddingCacheTable).where(and(
 		eq(memoryEmbeddingCacheTable.space_key, configuration.spaceKey),
 		eq(memoryEmbeddingCacheTable.endpoint, configuration.endpoint),
 		eq(memoryEmbeddingCacheTable.model, configuration.model),
-		inArray(memoryEmbeddingCacheTable.text_hash, hashes),
-	)).all();
+		inArray(memoryEmbeddingCacheTable.text_hash, batch),
+	)).all());
 	const byHash = new Map(rows.map((row) => [row.text_hash, row]));
 	return new Set(texts.filter((text) => {
 		const row = byHash.get(sha256(text));
@@ -153,7 +154,7 @@ export const readMemoryIndexReadinessBatch = (database: Database, collections: r
 		try { return parsedClaims(collection.claims_json).map(renderMemoryClaim); } catch { return []; }
 	}) : [];
 	const ready = cachedTexts(database, configuration, texts);
-	const jobs = collections.length === 0 || !enabled ? [] : drizzle(database).select().from(memoryIndexWorkTable).where(inArray(memoryIndexWorkTable.variant_id, collections.map((collection) => collection.variant_id))).all();
+	const jobs = !enabled ? [] : queryBatches(collections.map((collection) => collection.variant_id)).flatMap((batch) => drizzle(database).select().from(memoryIndexWorkTable).where(inArray(memoryIndexWorkTable.variant_id, batch)).all());
 	const byVariant = new Map(jobs.map((job) => [job.variant_id, job]));
 	return new Map(collections.map((collection) => [collection.variant_id, indexReadiness(collection, enabled, configuration, ready, byVariant.get(collection.variant_id))]));
 };
