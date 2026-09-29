@@ -1,5 +1,5 @@
 import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryTraceStep } from "../shared/contract/memory";
-import { api } from "./lib/eden";
+import { api, domainOutcome } from "./lib/eden";
 
 export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.get();
@@ -16,19 +16,19 @@ export async function loadMemoryTrace(conversationId: number, variantId: number)
 export async function resetAndReextract(conversationId: number, messageId: number, variantId: number, expectedRevision: number) {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.reextract.post({ messageId, variantId, expectedRevision });
 	if (error === null) return data;
-	return error.status === 409 || error.status === 422 ? error.value : { outcome: "invalid" as const, reason: "Memory work could not be queued." };
+	return domainOutcome(error.value, "Memory work could not be queued.");
 }
 
 export async function correctMemory(conversationId: number, command: MemoryCorrectionCommand) {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.correct.post(command);
 	if (error === null) return data;
-	return error.status === 409 || error.status === 422 ? error.value : { outcome: "invalid" as const, reason: "Memory correction could not be saved." };
+	return domainOutcome(error.value, "Memory correction could not be saved.");
 }
 
 export async function retryMemoryIndex(conversationId: number, messageId: number, variantId: number, expectedRevision: number) {
 	const { data, error } = await api.api.conversations({ id: String(conversationId) }).memories.indexing.retry.post({ messageId, variantId, expectedRevision });
 	if (error === null) return data;
-	return error.status === 409 || error.status === 422 ? error.value : { outcome: "invalid" as const, reason: "Memory indexing could not be retried." };
+	return domainOutcome(error.value, "Memory indexing could not be retried.");
 }
 
 export async function loadMemoryCatchup(conversationId: number): Promise<MemoryCatchup | null> {
