@@ -55,7 +55,7 @@ export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpe
 					{awaitingEmbedding > 0 && <p className="memory-attention-item"><span>{awaitingEmbedding} {awaitingEmbedding === 1 ? "source is" : "sources are"} waiting for embedding settings before their Memories can be recalled.</span></p>}
 					{attention.map((source) => <div className="memory-attention-item" key={source.variantId}>
 						<button type="button" className="memory-source-label" onClick={() => onNavigateSource(source.messageId)}>{actions.label(source.messageId)}</button>
-						<span>{source.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? `${source.indexing.failedCount} Memories failed indexing.` : source.error ?? "Memory extraction failed."}</span>
+						<span>{source.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? "Memory indexing failed." : source.error ?? "Memory extraction failed."}</span>
 						{source.indexing.status === "failed" && source.status !== "failed"
 							? <Button type="button" size="xs" variant="outline" disabled={busy.has(source.variantId)} onClick={() => actions.retryIndex(source)}>Retry indexing</Button>
 							: <Button type="button" size="xs" variant="outline" disabled={busy.has(source.variantId)} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}

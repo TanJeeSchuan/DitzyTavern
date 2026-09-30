@@ -110,7 +110,7 @@ describe("Memory indexing public lifecycle", () => {
 
 	test("reads readiness beyond SQLite's binding limit and preserves later cached claims", () => {
 		const configuration = { spaceKey: "long-chat", endpoint: "http://embedding.test/v1/embeddings", model: "memory-v1", deadlineMs: 1000 };
-		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic" as const, source_changed: false, index_space_key: null, index_error: null, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
+		const collections = Array.from({ length: 65_536 }, (_, index) => ({ variant_id: index + 1, ownership: "automatic" as const, source_changed: false, index_attempt_json: null, claims_json: JSON.stringify([candidate(index + 1, "Source evidence.", `Event ${index + 1} occurred.`)]) }));
 		const cachedText = renderMemoryClaim(candidate(65_536, "Source evidence.", "Event 65536 occurred."));
 		database.query("INSERT INTO memory_embedding_cache (space_key, text_hash, vector) VALUES (?, ?, ?)").run(configuration.spaceKey, sha256(cachedText), Buffer.from(new Float32Array([1, 0]).buffer));
 		const readiness = readMemoryIndexReadinessBatch(database, collections, true, configuration);
@@ -194,7 +194,7 @@ describe("Memory indexing public lifecycle", () => {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id))[0]?.status === "complete")).toBe(true);
 		} finally { await worker(); }
 		expect(await readSources(memories, conversation.id)).toMatchObject([
-			{ status: "complete", claims: [], indexing: { status: "not-applicable", pendingCount: 0, failedCount: 0 } },
+			{ status: "complete", claims: [], indexing: { status: "not-applicable", pendingCount: 0 } },
 		]);
 	});
 
@@ -244,7 +244,7 @@ describe("Memory indexing public lifecycle", () => {
 		expect(correctionExtractions).toBe(0);
 		const failedCollection = (await readSources(memories, conversation.id)).find((source) => source.variantId === first.variantId);
 		if (!failedCollection) throw new Error("Writer Memory collection missing after index failure.");
-		expect(failedCollection).toMatchObject({ ownership: "writer", claims: [{ claim: "Maren now carries the key." }], indexing: { status: "failed", failedCount: 1 } });
+		expect(failedCollection).toMatchObject({ ownership: "writer", claims: [{ claim: "Maren now carries the key." }], indexing: { status: "failed" } });
 		const retry = await memories.handle(request(`/api/conversations/${conversation.id}/memories/indexing/retry`, {
 			method: "POST",
 			body: JSON.stringify({ messageId: first.messageId, variantId: first.variantId, expectedRevision: failedCollection.revision }),
@@ -294,7 +294,7 @@ describe("Memory indexing public lifecycle", () => {
 		try {
 			await gate.reached;
 			const current = (await readSources(memories, conversation.id))[0];
-			expect(current?.indexing).toMatchObject({ status: "running", pendingCount: 1, failedCount: 0 });
+			expect(current?.indexing).toMatchObject({ status: "running", pendingCount: 1 });
 			const snapshot = captureMemoryRecallSnapshot({
 				database,
 				conversationId: conversation.id,

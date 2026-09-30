@@ -170,9 +170,9 @@ export const captureMemoryRecallSnapshot = (input: {
 		if (collection.status === "pending" || collection.status === "running") counts.pendingSourceCount += 1;
 		if (readiness.status === "unconfigured") unconfigured = true;
 		counts.pendingIndexCount += readiness.pendingCount;
-		counts.failedIndexCount += readiness.failedCount;
+		counts.failedIndexCount += readiness.status === "failed" ? 1 : 0;
 		if (collection.status === "failed" || staleAutomaticSource) counts.failedSourceCount += 1;
-		fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, position: message.position, revision: collection.revision, ownership: collection.ownership, status: collection.status, sourceChanged, indexStatus: readiness.status, pendingIndexCount: readiness.pendingCount, failedIndexCount: readiness.failedCount });
+		fingerprintSources.push({ messageId: message.messageId, variantId: message.variantId, position: message.position, revision: collection.revision, ownership: collection.ownership, status: collection.status, sourceChanged, indexStatus: readiness.status, pendingIndexCount: readiness.pendingCount, failedIndexCount: readiness.status === "failed" ? 1 : 0 });
 		if (!input.enabled || staleAutomaticSource || collection.status !== "complete" || readiness.status === "disabled" || readiness.status === "unconfigured" || readiness.status === "not-applicable") continue;
 		let claims: MemoryCandidateJudgment[];
 		try { claims = Value.Parse(memoryCandidates, JSON.parse(collection.claims_json)); } catch { counts.failedSourceCount += 1; continue; }

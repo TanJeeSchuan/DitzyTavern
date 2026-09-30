@@ -2,13 +2,13 @@ import type { Database } from "bun:sqlite";
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createMemorySettingsModule } from "./settings";
+import { createMemorySettingsModule, isMemoryEnabledForConversation } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
 import { resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
 import type { ModelFetch } from "../model-client/types";
-import { memoryCandidates } from "../../shared/contract/memory";
+import { memoryCandidates, memoryIndexAttempt } from "../../shared/contract/memory";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryCandidateJudgment, MemoryIndexReadiness } from "../../shared/contract/memory";
 import { indexingVariants, registerMemoryWork } from "./work";
@@ -61,23 +61,28 @@ const cachedHashes = (database: Database, spaceKey: string, texts: readonly stri
 
 const renderedClaims = (claimsJson: string): string[] => Value.Parse(memoryCandidates, JSON.parse(claimsJson)).map(renderMemoryClaim);
 
-type IndexableCollection = Pick<typeof memoryCollectionTable.$inferSelect, "variant_id" | "ownership" | "source_changed" | "claims_json" | "index_space_key" | "index_error">;
+type IndexableCollection = Pick<typeof memoryCollectionTable.$inferSelect, "variant_id" | "ownership" | "source_changed" | "claims_json" | "index_attempt_json">;
+
+const readIndexAttempt = (json: string | null) => {
+	try { return json === null ? null : Value.Parse(memoryIndexAttempt, JSON.parse(json)); } catch { return null; }
+};
 
 const indexReadiness = (collection: IndexableCollection, configuration: MemoryEmbeddingConfiguration, cached: ReadonlySet<string>, running: ReadonlySet<number>): MemoryIndexReadiness => {
-	if (collection.ownership === "automatic" && collection.source_changed) return { status: "disabled", pendingCount: 0, failedCount: 0, error: "This automatic collection is stale. Reset and re-extract it to index the current source." };
+	if (collection.ownership === "automatic" && collection.source_changed) return { status: "disabled", pendingCount: 0, error: "This automatic collection is stale. Reset and re-extract it to index the current source." };
 	let texts: string[];
-	try { texts = renderedClaims(collection.claims_json); } catch { return { status: "failed", pendingCount: 0, failedCount: 1, error: "Saved Memory text is invalid and cannot be indexed." }; }
-	if (texts.length === 0) return { status: "not-applicable", pendingCount: 0, failedCount: 0, error: null };
-	if (configuration.spaceKey === "") return { status: "unconfigured", pendingCount: texts.length, failedCount: 0, error: "Choose an embedding model in Memory to index saved Memories." };
+	try { texts = renderedClaims(collection.claims_json); } catch { return { status: "failed", pendingCount: 0, error: "Saved Memory text is invalid and cannot be indexed." }; }
+	if (texts.length === 0) return { status: "not-applicable", pendingCount: 0, error: null };
+	if (configuration.spaceKey === "") return { status: "unconfigured", pendingCount: texts.length, error: "Choose an embedding model in Memory to index saved Memories." };
 	const pendingCount = texts.filter((text) => !cached.has(sha256(text))).length;
-	if (pendingCount === 0) return { status: "ready", pendingCount: 0, failedCount: 0, error: null };
-	if (running.has(collection.variant_id)) return { status: "running", pendingCount, failedCount: 0, error: null };
-	if (collection.index_space_key === configuration.spaceKey && collection.index_error !== null) return { status: "failed", pendingCount: 0, failedCount: pendingCount, error: collection.index_error };
-	return { status: "pending", pendingCount, failedCount: 0, error: null };
+	if (pendingCount === 0) return { status: "ready", pendingCount: 0, error: null };
+	if (running.has(collection.variant_id)) return { status: "running", pendingCount, error: null };
+	const attempt = readIndexAttempt(collection.index_attempt_json);
+	if (attempt?.spaceKey === configuration.spaceKey && attempt.error !== null) return { status: "failed", pendingCount: 0, error: attempt.error };
+	return { status: "pending", pendingCount, error: null };
 };
 
 export const readMemoryIndexReadinessBatch = (database: Database, collections: readonly IndexableCollection[], enabled: boolean, configuration = readMemoryEmbeddingConfiguration(database)): Map<number, MemoryIndexReadiness> => {
-	if (!enabled) return new Map(collections.map((collection) => [collection.variant_id, { status: "disabled", pendingCount: 0, failedCount: 0, error: null }]));
+	if (!enabled) return new Map(collections.map((collection) => [collection.variant_id, { status: "disabled", pendingCount: 0, error: null }]));
 	const cached = cachedHashes(database, configuration.spaceKey, collections.flatMap((collection) => { try { return renderedClaims(collection.claims_json); } catch { return []; } }));
 	const running = indexingVariants(database, configuration.spaceKey);
 	return new Map(collections.map((collection) => [collection.variant_id, indexReadiness(collection, configuration, cached, running)]));
@@ -94,19 +99,21 @@ export interface MemoryIndexJob {
 }
 
 const markIndexed = (database: Database, job: Pick<MemoryIndexJob, "variantId" | "workEpoch" | "configuration">, error: string | null) =>
-	drizzle(database).update(memoryCollectionTable).set({ index_space_key: job.configuration.spaceKey, index_error: error }).where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch))).run();
+	drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }) }).where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch))).run();
 
 export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefined => {
 	if (!createMemorySettingsModule(database).get().enabled) return undefined;
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	if (configuration.spaceKey === "") return undefined;
-	const row = database.query<{ variant_id: number; work_epoch: number; claims_json: string }, [string, string]>(`
-		SELECT c.variant_id, c.work_epoch, c.claims_json FROM memory_collection c
-		JOIN conversation_prompt_preset p ON p.conversation_id = c.conversation_id
-		JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id AND b.reference = 'memory' AND b.enabled = 1
+	const candidates = database.query<{ variant_id: number; conversation_id: number }, [string, string]>(`
+		SELECT c.variant_id, c.conversation_id FROM memory_collection c
 		WHERE c.status = 'complete' AND c.claims_json <> '[]' AND NOT (c.ownership = 'automatic' AND c.source_changed)
-			AND (c.index_space_key IS NULL OR c.index_space_key <> ?1) AND c.variant_id NOT IN (SELECT value FROM json_each(?2))
-		ORDER BY c.updated_at LIMIT 1`).get(configuration.spaceKey, JSON.stringify([...indexingVariants(database, configuration.spaceKey)]));
+			AND (c.index_attempt_json IS NULL OR json_extract(c.index_attempt_json, '$.spaceKey') <> ?1) AND c.variant_id NOT IN (SELECT value FROM json_each(?2))
+		ORDER BY c.updated_at`).all(configuration.spaceKey, JSON.stringify([...indexingVariants(database, configuration.spaceKey)]));
+	const enabled = new Map<number, boolean>();
+	const isEnabled = (conversationId: number) => enabled.get(conversationId) ?? enabled.set(conversationId, isMemoryEnabledForConversation(database, conversationId)).get(conversationId)!;
+	const chosen = candidates.find(({ conversation_id }) => isEnabled(conversation_id));
+	const row = chosen && drizzle(database).select({ variant_id: memoryCollectionTable.variant_id, work_epoch: memoryCollectionTable.work_epoch, claims_json: memoryCollectionTable.claims_json }).from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, chosen.variant_id)).get();
 	if (!row) return undefined;
 	const job = { variantId: row.variant_id, workEpoch: row.work_epoch, configuration };
 	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claims_json)) }; }

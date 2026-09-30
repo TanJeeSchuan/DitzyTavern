@@ -54,7 +54,7 @@ const toView = (row: CollectionRow, variant: SourceVariant, indexing: MemoryInde
 
 const unprocessedView = (variant: SourceVariant, enabled: boolean): MemoryCollectionView => ({
 	...variant, status: "unprocessed", error: null, revision: 0, ownership: "automatic", sourceChanged: false, claims: [],
-	indexing: { status: enabled ? "not-applicable" : "disabled", pendingCount: 0, failedCount: 0, error: null },
+	indexing: { status: enabled ? "not-applicable" : "disabled", pendingCount: 0, error: null },
 });
 
 const readSourceVariant = (database: Database, conversationId: number, messageId: number, variantId: number): SourceVariant | undefined =>
@@ -67,7 +67,7 @@ const writeQueuedCollection = (database: Database, conversationId: number, messa
 		variant_id: source.source.variantId, conversation_id: conversationId, message_id: messageId,
 		source_hash: source.sourceHash, revision: (current?.revision ?? 0) + 1, ownership: "automatic", work_epoch: (current?.work_epoch ?? 0) + 1,
 		status: "pending", error: null, source_snapshot_json: JSON.stringify({ source: source.source, context: source.context }),
-		claims_json: "[]", trace_json: null, catchup_run_id: catchupRunId, source_changed: false, index_space_key: null, index_error: null, updated_at: new Date().toISOString(),
+		claims_json: "[]", trace_json: null, catchup_run_id: catchupRunId, source_changed: false, index_attempt_json: null, updated_at: new Date().toISOString(),
 	};
 	const row = drizzle(database).insert(memoryCollectionTable).values(values).onConflictDoUpdate({ target: memoryCollectionTable.variant_id, set: values }).returning().get();
 	abortMemoryWork(database, [source.source.variantId]);
@@ -195,7 +195,7 @@ export function correctMemorySource(database: Database, conversationId: number, 
 			if (!replacement || !replacement.claim.trim() || !replacement.attribution.trim() || replacement.claim.length + replacement.attribution.length > 1024 || replacement.people.some((person) => !person.trim()) || new Set(replacement.people).size !== replacement.people.length) throw new InvalidMemorySourceError("Memory text, attribution, or person labels are invalid.");
 			claims[index] = { ...claims[index]!, ...replacement, writerMaintained: true };
 		} else claims.splice(index, 1);
-		const updated = drizzle(database).update(memoryCollectionTable).set({ revision: row.revision + 1, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(applyMemoryLabelMerges(claims, readMemoryLabelState(database, conversationId).merges)), work_epoch: row.work_epoch + 1, index_space_key: null, index_error: null, updated_at: new Date().toISOString() })
+		const updated = drizzle(database).update(memoryCollectionTable).set({ revision: row.revision + 1, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(applyMemoryLabelMerges(claims, readMemoryLabelState(database, conversationId).merges)), work_epoch: row.work_epoch + 1, index_attempt_json: null, updated_at: new Date().toISOString() })
 			.where(eq(memoryCollectionTable.variant_id, variantId)).returning().get()!;
 		abortMemoryWork(database, [variantId]);
 		return toView(updated, variant, readMemoryIndexReadiness(database, updated, enabled));
@@ -211,7 +211,7 @@ export function retryMemorySourceIndex(database: Database, conversationId: numbe
 		if (row.revision !== expectedRevision) throw new StaleMemoryCollectionError(toView(row, variant, readMemoryIndexReadiness(database, row, enabled)));
 		if (row.status !== "complete") throw new InvalidMemorySourceError("Indexing requires a completed saved Memory collection.");
 		if (!enabled) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before indexing saved Memories.");
-		const updated = drizzle(database).update(memoryCollectionTable).set({ index_space_key: null, index_error: null }).where(eq(memoryCollectionTable.variant_id, variantId)).returning().get()!;
+		const updated = drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: null }).where(eq(memoryCollectionTable.variant_id, variantId)).returning().get()!;
 		return toView(updated, variant, readMemoryIndexReadiness(database, updated, enabled));
 	}).immediate();
 }
@@ -265,7 +265,9 @@ export interface MemoryWorkerOptions {
 const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 	const db = drizzle(database);
 	const extraction = db.select().from(memoryCollectionTable).where(and(eq(memoryCollectionTable.status, "pending"), eq(memoryCollectionTable.ownership, "automatic"))).orderBy(asc(memoryCollectionTable.catchup_run_id), asc(memoryCollectionTable.updated_at)).get();
-	const index = extraction?.catchup_run_id === null ? undefined : claimMemoryIndexJob(database);
+	// Live (non-catch-up) extraction outranks indexing; indexing runs only when no live extraction is waiting.
+	const liveExtractionPending = extraction !== undefined && extraction.catchup_run_id === null;
+	const index = liveExtractionPending ? undefined : claimMemoryIndexJob(database);
 	if (index) return { kind: "index" as const, job: index };
 	if (!extraction) return undefined;
 	db.update(memoryCollectionTable).set({ status: "running", updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, extraction.variant_id)).run();
@@ -290,7 +292,7 @@ const runMemoryExtraction = async (database: Database, job: CollectionRow, proce
 		const claims = await process(snapshot.source, snapshot.context, AbortSignal.any([shutdown, signal]), trace);
 		database.transaction(() => {
 			const merged = applyMemoryLabelMerges(claims, readMemoryLabelState(database, job.conversation_id).merges);
-			db.update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(merged), error: null, index_space_key: null, index_error: null, updated_at: new Date().toISOString() }).where(current).run();
+			db.update(memoryCollectionTable).set({ status: "complete", claims_json: JSON.stringify(merged), error: null, index_attempt_json: null, updated_at: new Date().toISOString() }).where(current).run();
 		}).immediate();
 	} catch (error) {
 		if (shutdown.aborted) return;

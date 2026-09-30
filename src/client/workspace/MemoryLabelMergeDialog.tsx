@@ -27,7 +27,7 @@ export function MemoryLabelMergeDialog({ conversationId, memories, onClose, onMe
 			if (result.outcome === "invalid") setError(result.reason);
 			else if (result.outcome === "conflict") {
 				setSnapshot(result.memories); setLabels([]);
-				setError("Memory settings changed elsewhere. Review the current labels and select them again.");
+				setError("These labels changed elsewhere. Review the current labels and select them again.");
 			} else onMerged(result.memories, target);
 		} catch { setError("Labels could not be merged. Try again."); }
 		finally { setPending(false); }

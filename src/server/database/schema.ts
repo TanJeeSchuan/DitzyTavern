@@ -331,7 +331,8 @@ export const conversationMemorySettingsTable = sqliteTable("conversation_memory_
 	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
 	allowance: int().notNull().default(2048),
 	revision: int().notNull().default(0),
-	label_merges: text({ mode: "json" }).$type<Array<{ from: string; to: string }>>().notNull().default([]),
+	label_revision: int().notNull().default(0),
+	label_merges: text().notNull().default("[]"),
 });
 
 export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
@@ -358,8 +359,7 @@ export const memoryCollectionTable = sqliteTable("memory_collection", {
 	trace_json: text(),
 	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
 	source_changed: int({ mode: "boolean" }).notNull().default(false),
-	index_space_key: text(),
-	index_error: text(),
+	index_attempt_json: text(),
 	updated_at: text().notNull(),
 }, (table) => [
 	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),

@@ -3,14 +3,20 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { conversationMemorySettingsTable, conversationTable, memoryCollectionTable } from "../database/schema";
-import { memoryCandidates, type MemoryCandidateJudgment, type MemoryLabelMergeCommand } from "../../shared/contract/memory";
+import { memoryCandidates, memoryLabelMerges, type MemoryCandidateJudgment, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "../../shared/contract/memory";
 
 export class StaleMemoryLabelsError extends Error {}
 
-export const readMemoryLabelState = (database: Database, conversationId: number) =>
-	drizzle(database).select({ revision: conversationMemorySettingsTable.revision, merges: conversationMemorySettingsTable.label_merges }).from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get() ?? { revision: 0, merges: [] };
+const parseMerges = (json: string): MemoryLabelMerge[] => {
+	try { return Value.Parse(memoryLabelMerges, JSON.parse(json)); } catch { return []; }
+};
 
-export const applyMemoryLabelMerges = (claims: readonly MemoryCandidateJudgment[], merges: readonly { from: string; to: string }[]): MemoryCandidateJudgment[] => {
+export const readMemoryLabelState = (database: Database, conversationId: number) => {
+	const row = drizzle(database).select({ revision: conversationMemorySettingsTable.label_revision, merges: conversationMemorySettingsTable.label_merges }).from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
+	return { revision: row?.revision ?? 0, merges: parseMerges(row?.merges ?? "[]") };
+};
+
+export const applyMemoryLabelMerges = (claims: readonly MemoryCandidateJudgment[], merges: readonly MemoryLabelMerge[]): MemoryCandidateJudgment[] => {
 	const names = new Map(merges.map(({ from, to }) => [from, to]));
 	return claims.map((claim) => ({ ...claim, people: [...new Set(claim.people.map((person) => names.get(person) ?? person))] }));
 };
@@ -28,7 +34,7 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 		const merges = new Map(state.merges.map(({ from, to }) => [from, labels.has(to) ? destination : to]));
 		for (const label of labels) merges.set(label, destination);
 		merges.delete(destination);
-		const next = [...merges].map(([from, to]) => ({ from, to }));
+		const next: MemoryLabelMerge[] = [...merges].map(([from, to]) => ({ from, to }));
 		const rows = db.select().from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
 		for (const row of rows) {
 			const claims = Value.Parse(memoryCandidates, JSON.parse(row.claims_json));
@@ -36,6 +42,6 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 			if (JSON.stringify(claims) === JSON.stringify(updated)) continue;
 			db.update(memoryCollectionTable).set({ claims_json: JSON.stringify(updated), revision: row.revision + 1, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, row.variant_id)).run();
 		}
-		db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId, label_merges: next, revision: state.revision + 1 }).onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: { label_merges: next, revision: state.revision + 1 } }).run();
+		db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId, label_merges: JSON.stringify(next), label_revision: state.revision + 1 }).onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: { label_merges: JSON.stringify(next), label_revision: state.revision + 1 } }).run();
 	}).immediate();
 }

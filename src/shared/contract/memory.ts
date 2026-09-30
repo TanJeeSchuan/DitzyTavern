@@ -12,9 +12,9 @@ export const memoryCandidates = Type.Array(memoryCandidate);
 export const memoryIndexing = Type.Object({
 	status: Type.Union([Type.Literal("ready"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("failed"), Type.Literal("disabled"), Type.Literal("unconfigured"), Type.Literal("not-applicable")]),
 	pendingCount: Type.Integer(),
-	failedCount: Type.Integer(),
 	error: Type.Union([Type.String(), Type.Null()]),
 });
+export const memoryIndexAttempt = Type.Object({ spaceKey: Type.String(), error: Type.Union([Type.String(), Type.Null()]) });
 export type MemoryIndexReadiness = Static<typeof memoryIndexing>;
 export const memoryCollection = Type.Object({
 	messageId: Type.Integer(), variantId: Type.Integer(), selected: Type.Boolean(), status: Type.Union([Type.Literal("unprocessed"), Type.Literal("stale"), Type.Literal("pending"), Type.Literal("running"), Type.Literal("complete"), Type.Literal("failed")]),
@@ -23,6 +23,9 @@ export const memoryCollection = Type.Object({
 export type MemoryCollectionView = Static<typeof memoryCollection>;
 export const conversationMemories = Type.Object({ labelRevision: Type.Integer(), sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
 export type ConversationMemories = Static<typeof conversationMemories>;
+export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
+export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
+export const memoryLabelMerges = Type.Array(memoryLabelMerge);
 export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
 export type MemoryLabelMergeCommand = Static<typeof memoryLabelMergeCommand>;
 export const memoryLabelsMerged = Type.Object({ outcome: Type.Literal("applied"), memories: conversationMemories });

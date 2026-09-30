@@ -5,7 +5,7 @@ import { openInitializedDatabase } from "../database/database";
 import { memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import { createChat } from "./prompt-preset-test-fixtures";
 import { createMemoryRoutes } from "./memory";
-import { correctMemorySource, readConversationMemories, resetAndReextractMemorySource, startMemoryCatchup, startMemoryWorker, StaleMemoryCollectionError } from "../memory/collections";
+import { correctMemorySource, readConversationMemories, readMemoryAllowance, setMemoryAllowance, resetAndReextractMemorySource, startMemoryCatchup, startMemoryWorker, StaleMemoryCollectionError } from "../memory/collections";
 import { sha256 } from "../memory/hash";
 import { Value } from "@sinclair/typebox/value";
 import { memoryLabelsMerged, memoryWorkSnapshot, type MemoryCandidateJudgment } from "../../shared/contract/memory";
@@ -57,6 +57,25 @@ describe("Memory label merging", () => {
 		const current = readConversationMemories(database, chat.id).sources[0]!;
 		const corrected = correctMemorySource(database, chat.id, source.messageId, source.variantId, current.revision, 0, "edit", { claim: "Bob has the key.", attribution: "Alice said it.", people: ["Alice", "Narrator", "Assistant", "Bob"] });
 		expect(corrected.claims[0]!.people).toEqual(["assistant", "Bob"]);
+	});
+
+	test("advances the label revision only on merges and the allowance revision only on allowance saves", async () => {
+		const chat = createChat(database);
+		addSource(database, chat.id, 1, ["assistant"]);
+		setMemoryAllowance(database, chat.id, 0, 500);
+		expect(readConversationMemories(database, chat.id).labelRevision).toBe(0);
+		expect((await merge(database, chat.id, ["assistant"], "Alice", 0)).status).toBe(200);
+		expect(readMemoryAllowance(database, chat.id).revision).toBe(1);
+		expect(readConversationMemories(database, chat.id).labelRevision).toBe(1);
+	});
+
+	test("reads an invalid persisted merge mapping as empty instead of failing the panel", () => {
+		const chat = createChat(database);
+		readMemoryAllowance(database, chat.id);
+		for (const invalid of ["{}", "null", "[{\"from\":1}]", "[{"]) {
+			database.run("UPDATE conversation_memory_settings SET label_merges = ? WHERE conversation_id = ?", [invalid, chat.id]);
+			expect(readConversationMemories(database, chat.id).labelRevision).toBe(0);
+		}
 	});
 
 	test("rejects stale or invalid merges without changing any collections", async () => {
