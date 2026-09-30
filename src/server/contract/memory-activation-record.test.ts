@@ -93,7 +93,7 @@ const acceptedInput = (conversation: ReturnType<typeof createChat>, memory: Memo
 	capturedHumanName: "Writer",
 	capturedModelName: "Maren",
 	promptPlan: { blocks: [{ kind: "memory" as const, role: "system" as const, content: memory.finalMemoryText }], warnings: [] },
-	promptInspection: { memoryActivation: memory },
+	memoryActivation: memory,
 	promptContext: [],
 	generationSettings: {},
 	connection: null,
@@ -148,7 +148,7 @@ describe("permanent Memory Activation Records", () => {
 		expect(corruptDetails.status).toBe(422);
 		expect(await corruptDetails.json()).toEqual({ outcome: "invalid", reason: "Persisted Memory Activation Record is not valid JSON." });
 
-		database.run("UPDATE message_variant_data SET value = ? WHERE message_variant_id = ? AND namespace = ? AND key = ?", ["null", generatedVariant.id, "generation-memory", "activation"]);
+		database.run("UPDATE message_variant_data SET value = ? WHERE message_variant_id = ? AND namespace = ? AND key = ?", ["{}", generatedVariant.id, "generation-memory", "activation"]);
 		const nullDetails = await app.handle(new Request(`http://localhost/api/conversations/${created.id}/messages/${generated.id}/variants/${generatedVariant.id}/details`));
 		expect(nullDetails.status).toBe(422);
 		expect(await nullDetails.json()).toEqual({ outcome: "invalid", reason: "Persisted Memory Activation Record does not match its schema." });
@@ -174,7 +174,7 @@ describe("permanent Memory Activation Records", () => {
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [{ kind: "memory", role: "system", content: record.finalMemoryText }], warnings: [] },
-			promptInspection: { memoryActivation: record },
+			memoryActivation: record,
 			promptContext: [],
 			generationSettings: {},
 			connection: null,
@@ -221,9 +221,9 @@ describe("permanent Memory Activation Records", () => {
 			action: { type: "put-data", scope: { type: "conversation" }, namespace: "generation-memory", key: "activation", value: "{}" },
 		})).toThrow("server-owned provenance");
 		const accepted = module.acceptTailGeneration(acceptedInput(created, memory));
-		database.run("UPDATE active_generation SET prompt_inspection_json = ? WHERE id = ?", [JSON.stringify({ memoryActivation: { version: 1 } }), accepted.generationId]);
+		database.run("UPDATE active_generation SET memory_activation_json = ? WHERE id = ?", [JSON.stringify({ version: 1 }), accepted.generationId]);
 		const inspection = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspection.status).toBe(422);
-		expect(await inspection.json()).toEqual({ outcome: "invalid", reason: "Persisted Memory Activation evidence is invalid." });
+		expect(await inspection.json()).toEqual({ outcome: "invalid", reason: "Persisted Memory Activation Record does not match its schema." });
 	});
 });

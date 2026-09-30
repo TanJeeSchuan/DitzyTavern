@@ -682,6 +682,7 @@ export const activeGenerationTable = sqliteTable(
 		// ==[HUMAN APPROVED]== Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
 		lore_activation_json: text().notNull().default("null"),
+		memory_activation_json: text().notNull().default("null"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
@@ -729,6 +730,7 @@ export const generationReplayTable = sqliteTable(
 		prompt_inspection_json: text().notNull(),
 		prompt_context_json: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
+		memory_activation_json: text().notNull().default("null"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),

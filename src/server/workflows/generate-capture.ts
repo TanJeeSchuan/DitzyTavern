@@ -614,11 +614,12 @@ export function capturedAcceptanceFields(
 		capturedHumanName: capture.humanParticipant.name,
 		capturedModelName: capture.author.capturedName,
 		promptPlan: capture.plan.promptPlan,
-		promptInspection: promptInspectionJson(capture.plan.budget, capture.plan.memoryActivation),
+		promptInspection: promptInspectionJson(capture.plan.budget),
 		promptContext: promptContextJson(capture.context),
 		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
 		connection: connectionJson(capture.connection),
 		loreActivation: capture.plan.loreActivation,
+		memoryActivation: capture.plan.memoryActivation,
 		provenance: capture.provenance,
 		macroPresetId: capture.macroPresetId,
 		macroWrites: capture.macroWrites,
@@ -626,7 +627,7 @@ export function capturedAcceptanceFields(
 		AcceptTailGenerationInput,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "provenance" |
+		"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "provenance" |
 		"macroPresetId" | "macroWrites"
 	>;
 }
@@ -739,7 +740,7 @@ export const connectionJson = (
 // ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. It is
 // deliberately not copied into terminal Variant provenance.
-export const promptInspectionJson = (budget: PromptBudgetResult, memoryActivation: GenerationPlan["memoryActivation"]): ConversationJsonValue => ({
+export const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
 	tokenEstimate: budget.tokenEstimate,
 	responseBudget: budget.responseBudget,
 	safetyAllowance: budget.safetyAllowance,
@@ -751,7 +752,6 @@ export const promptInspectionJson = (budget: PromptBudgetResult, memoryActivatio
 		content: entry.content,
 		role: entry.role,
 	})),
-	memoryActivation,
 });
 
 export interface SendGenerationCapture extends CapturedGeneration {

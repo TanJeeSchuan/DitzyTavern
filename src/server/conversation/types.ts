@@ -1,3 +1,4 @@
+import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
@@ -435,6 +436,7 @@ export interface GenerationAcceptanceCapture {
 	connection: ConversationJsonValue;
 	/** Captured server-owned lore evidence retained with the terminal Variant. */
 	loreActivation?: LoreActivationRecord | null;
+	memoryActivation?: MemoryActivationRecord | null;
 	generationIntent?: ConversationJsonValue | undefined;
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only

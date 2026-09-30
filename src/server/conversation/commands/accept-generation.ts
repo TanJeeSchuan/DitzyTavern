@@ -51,7 +51,6 @@ import type {
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
-import { generationJsonObject } from "../../../shared/generation-provenance";
 import { syncMemorySources } from "../../memory";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
@@ -94,7 +93,7 @@ const ensureConversationRevision = (
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
-	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "generationIntent" |
+	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
 	"provenance" | "macroPresetId" | "macroWrites"
 >;
 
@@ -118,8 +117,8 @@ const persistActiveGeneration = (
 			"The Lore Activation Record does not match the canonical schema.",
 		);
 	}
-	const memoryActivation = generationJsonObject(input.promptInspection ?? null)?.memoryActivation;
-	if (memoryActivation !== undefined && memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
+	const memoryActivation = input.memoryActivation ?? null;
+	if (memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
 		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
 	}
 	const active = db
@@ -141,6 +140,7 @@ const persistActiveGeneration = (
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
+			memory_activation_json: jsonText(memoryActivation, "Memory activation evidence"),
 			generation_intent_json: jsonText(input.generationIntent, "Generation intent"),
 			provenance_namespace: input.provenance?.namespace ?? null,
 			provenance_key: input.provenance?.key ?? null,

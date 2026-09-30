@@ -19,8 +19,6 @@ import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, parseLoreActivationReco
 import {
 	MEMORY_ACTIVATION_KEY,
 	MEMORY_ACTIVATION_NAMESPACE,
-	isMemoryActivationRecord,
-	MemoryActivationRecordParseError,
 	parseMemoryActivationRecord,
 } from "../../shared/contract/memory-recall";
 import {
@@ -206,11 +204,7 @@ export function readActiveGenerationDetailsFromConnection(
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	const loreActivation = parseLoreActivationRecord(row.lore_activation_json);
-	const memoryActivationValue = inspectionRecord?.memoryActivation ?? null;
-	if (memoryActivationValue !== null && !isMemoryActivationRecord(memoryActivationValue)) {
-		throw new MemoryActivationRecordParseError("Persisted Memory Activation evidence is invalid.");
-	}
-	const memoryActivation = memoryActivationValue === null ? null : memoryActivationValue;
+	const memoryActivation = parseMemoryActivationRecord(row.memory_activation_json);
 	return {
 		conversationId,
 		generationId: row.id,

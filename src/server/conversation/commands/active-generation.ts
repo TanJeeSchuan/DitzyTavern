@@ -40,8 +40,7 @@ import {
 import {
 	MEMORY_ACTIVATION_KEY,
 	MEMORY_ACTIVATION_NAMESPACE,
-	isMemoryActivationRecord,
-	MemoryActivationRecordParseError,
+	parseMemoryActivationRecord,
 } from "../../../shared/contract/memory-recall";
 import { syncMemorySources } from "../../memory";
 
@@ -137,6 +136,7 @@ const replayCarriedColumns = (
 	prompt_inspection_json: active.prompt_inspection_json,
 	prompt_context_json: active.prompt_context_json,
 	lore_activation_json: active.lore_activation_json,
+	memory_activation_json: active.memory_activation_json,
 	generation_settings_json: active.generation_settings_json,
 	connection_json: active.connection_json,
 	generation_intent_json: active.generation_intent_json,
@@ -207,27 +207,14 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 };
 
 const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
-	let inspection: ReturnType<typeof generationJsonObject>;
+	let value;
 	try {
-		inspection = generationJsonObject(JSON.parse(active.prompt_inspection_json));
-	} catch {
-		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
+		value = parseMemoryActivationRecord(active.memory_activation_json);
+	} catch (error) {
+		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Memory Activation evidence.");
 	}
-	if (inspection === null) {
-		throw new InvalidConversationCommandError("The Active Generation has invalid persisted prompt inspection.");
-	}
-	const activation = inspection.memoryActivation;
-	if (activation === undefined || activation === null) return [];
-	if (!isMemoryActivationRecord(activation)) {
-		throw new MemoryActivationRecordParseError("Persisted Memory Activation Record does not match its schema.");
-	}
-	const value = JSON.stringify(activation);
-	if (value === undefined) throw new InvalidConversationCommandError("The Memory Activation Record could not be persisted as JSON.");
-	return [{
-		namespace: MEMORY_ACTIVATION_NAMESPACE,
-		key: MEMORY_ACTIVATION_KEY,
-		value,
-	}];
+	if (value === null) return [];
+	return [{ namespace: MEMORY_ACTIVATION_NAMESPACE, key: MEMORY_ACTIVATION_KEY, value: active.memory_activation_json }];
 };
 
 /**
