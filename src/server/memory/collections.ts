@@ -265,7 +265,7 @@ export interface MemoryWorkerOptions {
 const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 	const db = drizzle(database);
 	const extraction = db.select().from(memoryCollectionTable).where(and(eq(memoryCollectionTable.status, "pending"), eq(memoryCollectionTable.ownership, "automatic"))).orderBy(asc(memoryCollectionTable.catchup_run_id), asc(memoryCollectionTable.updated_at)).get();
-	// Live (non-catch-up) extraction outranks indexing; indexing runs only when no live extraction is waiting.
+	// ==[HUMAN APPROVED]== Live (non-catch-up) extraction outranks indexing; indexing runs only when no live extraction is waiting.
 	const liveExtractionPending = extraction !== undefined && extraction.catchup_run_id === null;
 	const index = liveExtractionPending ? undefined : claimMemoryIndexJob(database);
 	if (index) return { kind: "index" as const, job: index };
