@@ -2,7 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { loadConversationGenerationSettings, type ConversationSummary } from "./conversation";
 import { commitConversationModel, MODEL_SELECTION_UNAVAILABLE_NOTICE } from "./model-selection-command";
-import { isChatProfile, loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
+import { loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
 import { ProfileModelPicker, type ProfileModelChoice } from "./ProfileModelPicker";
 
@@ -58,7 +58,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 
 	return (
 		<div className="model-selector">
-			<ProfileModelPicker settings={settings} onSettingsChange={setSettings} accepts={isChatProfile} selected={selected} onSelect={updateSelection} disabled={disabled || pending} side="top" emptyLabel="Add a connection in Connections to choose a model.">
+			<ProfileModelPicker settings={settings} onSettingsChange={setSettings} selected={selected} onSelect={updateSelection} disabled={disabled || pending} side="top" emptyLabel="Add a connection in Connections to choose a model.">
 				<button className="model-selector-trigger" type="button" disabled={disabled || pending || selected === null}
 					aria-label={`Model: ${selected?.modelId || "Choose a model"}`}
 					aria-describedby={disabledReason ? reasonId : undefined}

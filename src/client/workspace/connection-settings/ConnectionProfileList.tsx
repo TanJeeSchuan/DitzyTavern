@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CONNECTION_ADAPTER_LABELS, isChatProfile, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
+import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
 import type { TypesafeSettingsController } from "../TypesafeSettingsEditor";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
@@ -39,7 +39,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, t
 					</DropdownMenu>
 				</div>
 				<p>Write Messages and extract Memories.</p>
-				<ProfileRows label="Chat connections" profiles={settings.profiles.filter(isChatProfile)} controller={controller}
+				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => !isEmbeddingsProfile(profile))} controller={controller}
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
 					empty={<EmptyProfiles title="No connections yet">Add one to start generating. Chats and imports work without it.</EmptyProfiles>} />

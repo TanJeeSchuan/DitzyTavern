@@ -1,10 +1,10 @@
-import { ChevronsUpDown, CircleHelp } from "lucide-react";
+import { CircleHelp } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { isChatProfile, isEmbeddingsProfile, loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "../connection-settings";
+import { loadConnectionSettings, type ConnectionSettings } from "../connection-settings";
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
 import type { MemorySettingsCommand } from "../../shared/contract/memory-settings";
 import { useAsyncEffect } from "../lib/use-async";
@@ -66,14 +66,10 @@ export function MemorySettingsEditor() {
 				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && <p className="settings-feedback" role="status">Memory recall is not ready. Choose an embedding model so saved Memories can be recalled.</p>}
 				<div className="grid grid-cols-1 gap-4">
 					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
-						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} accepts={isChatProfile} selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }} onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })} emptyLabel="Add a chat connection in Connections to choose a model.">
-							<ChoiceTrigger label="Extraction model" profile={extractionProfile} profileId={draft.extractionProfileId} modelId={draft.extractionModel} />
-						</ProfileModelPicker>
+						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }} onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })} emptyLabel="Add a chat connection in Connections to choose a model." label="Extraction model" />
 					</Field>
 					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
-						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} accepts={isEmbeddingsProfile} selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }} onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })} emptyLabel="Add an Embeddings connection in Connections to choose a model.">
-							<ChoiceTrigger label="Embedding model" profile={embeddingProfile} profileId={draft.embeddingProfileId} modelId={draft.embeddingModel} />
-						</ProfileModelPicker>
+						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} embeddings selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }} onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })} emptyLabel="Add an Embeddings connection in Connections to choose a model." label="Embedding model" />
 					</Field>
 				</div>
 				<NumberGroup title={<>Extraction budget <Popover>
@@ -95,16 +91,6 @@ export function MemorySettingsEditor() {
 				{state.notice && <p className="settings-feedback" role="status">{state.notice}</p>}
 			</section>
 		</div><SaveFooter dirty={dirty} saving={state.pending} error={state.error} onSave={() => void submit()} /></>
-	);
-}
-
-function ChoiceTrigger({ label, profile, profileId, modelId, ...props }: { label: string; profile: ConnectionProfile | undefined; profileId: number | null; modelId: string }) {
-	const text = profile !== undefined ? <>{profile.displayName} · <span className="font-mono text-[0.78rem]">{modelId}</span></> : profileId !== null ? "Unavailable connection" : "Choose a model";
-	return (
-		<button type="button" aria-label={`${label}: ${profile ? `${profile.displayName} / ${modelId}` : "Choose a model"}`} className="field-input flex min-w-0 items-center justify-between gap-2 text-left" {...props}>
-			<span className={profile ? "min-w-0 truncate" : "text-muted-foreground"}>{text}</span>
-			<ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-		</button>
 	);
 }
 

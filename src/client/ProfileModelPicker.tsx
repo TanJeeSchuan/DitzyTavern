@@ -1,8 +1,8 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Star } from "lucide-react";
+import { ChevronsUpDown, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { loadConnectionSettings, saveConnectionCommand, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
+import { isEmbeddingsProfile, loadConnectionSettings, saveConnectionCommand, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { commitModelId, modelSuggestions, togglePinnedModel } from "./model-selection";
 
 export interface ProfileModelChoice {
@@ -10,28 +10,30 @@ export interface ProfileModelChoice {
 	modelId: string;
 }
 
-export function ProfileModelPicker({ settings, onSettingsChange, accepts, selected, onSelect, disabled = false, side = "bottom", emptyLabel, children }: {
+export function ProfileModelPicker({ settings, onSettingsChange, embeddings = false, selected, onSelect, disabled = false, side = "bottom", emptyLabel, label = "Model", children }: {
 	settings: ConnectionSettings | null;
 	onSettingsChange: (settings: ConnectionSettings) => void;
-	accepts: (profile: ConnectionProfile) => boolean;
+	embeddings?: boolean;
 	selected: ProfileModelChoice | null;
 	onSelect: (profile: ConnectionProfile, modelId: string) => Promise<void> | void;
 	disabled?: boolean;
 	side?: "top" | "bottom";
 	emptyLabel: string;
-	children: ReactElement;
+	label?: string;
+	children?: ReactElement;
 }) {
 	const [query, setQuery] = useState("");
 	const [open, setOpen] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const profiles = useMemo(() => (settings?.profiles ?? []).filter(accepts), [settings, accepts]);
+	const profiles = useMemo(() => (settings?.profiles ?? []).filter((profile) => isEmbeddingsProfile(profile) === embeddings), [settings, embeddings]);
 	const groups = useMemo(() => profiles.map((profile) => ({
 		profile,
 		models: modelSuggestions({ query, discoveryCatalog: profile.discoveryCatalog, pinnedModels: profile.pinnedModels }),
 	})).filter(({ models }) => models.length > 0), [profiles, query]);
 	const busy = disabled || pending;
+	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
 	useEffect(() => {
 		if (disabled) setOpen(false);
 	}, [disabled]);
@@ -79,7 +81,10 @@ export function ProfileModelPicker({ settings, onSettingsChange, accepts, select
 				void loadConnectionSettings().then(onSettingsChange).catch(() => setError("Connection Settings could not be loaded."));
 			}
 		}}>
-			<PopoverTrigger asChild>{children}</PopoverTrigger>
+			<PopoverTrigger asChild>{children ?? <button type="button" disabled={busy} aria-label={`${label}: ${selectedProfile ? `${selectedProfile.displayName} / ${selected?.modelId}` : "Choose a model"}`} className="field-input flex min-w-0 items-center justify-between gap-2 text-left">
+				<span className={selectedProfile ? "min-w-0 truncate" : "text-muted-foreground"}>{selectedProfile ? <>{selectedProfile.displayName} · <span className="font-mono text-[0.78rem]">{selected?.modelId}</span></> : selected !== null && selected.connectionProfileId !== null ? "Unavailable connection" : "Choose a model"}</span>
+				<ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+			</button>}</PopoverTrigger>
 			<PopoverContent side={side} align="start" className="w-[min(24rem,calc(100vw-2rem))] p-0" onOpenAutoFocus={(event) => event.preventDefault()}>
 				<Command shouldFilter={false}>
 					<CommandInput aria-label="Search models" value={query} disabled={busy} autoFocus placeholder="Search or enter a model ID" onValueChange={setQuery} />

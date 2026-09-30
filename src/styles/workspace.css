@@ -227,6 +227,13 @@
 	border-bottom: 1px solid var(--border);
 }
 
+.panel-header-actions {
+	display: flex;
+	margin-left: auto;
+	align-items: center;
+	gap: 0.15rem;
+}
+
 .panel-header h2 {
 	margin: 0;
 	font-size: 1rem;
