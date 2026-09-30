@@ -17,6 +17,7 @@ import {
 import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
+import { Prose } from "./prose";
 
 // ==[HUMAN APPROVED]== The story renders one native Message from the paginated read model: the
 // immutable Author Stamp name, the persisted selected Variant, and the
@@ -236,9 +237,7 @@ export function StoryMessageView({
 						data-generation-active={generationActive}
 					>
 						{active !== undefined && !(generationActive && active.empty)
-							? visibleVariantContent(active)
-									.split("\n\n")
-									.map((paragraph, index) => <p key={index}>{paragraph}</p>)
+							? <Prose text={visibleVariantContent(active)} streaming={generationActive} />
 							: null}
 						{generationActive && <GenerationSphere authorName={authorName} />}
 					</div>

@@ -109,6 +109,8 @@ DitzyTavern supports an adaptive daylight and evening theme from the start.
 
 Muted coral carries focus, selection, active authorship, and important actions. It should be calm enough for long sessions, with stronger values reserved for focus and primary action states.
 
+Quoted dialogue in story prose uses a muted teal. It is the only hue inside prose, is never character-derived, and stays clear of coral so it never reads as interactive.
+
 Character-derived color is allowed only in the decorative ambient field. It must be low-saturation, nonsemantic, and isolated from text, controls, focus states, status colors, and the central story canvas.
 
 The ambient field responds to the current composer identity:
@@ -178,9 +180,10 @@ Motion is gently responsive and always motivated.
 - Panel transitions communicate depth and nesting.
 - Hover, focus, press, and selection states provide immediate feedback.
 - Author detail disclosure progresses from idle to partial to full without abrupt jumps.
-- Newly generated prose streams live with stable line wrapping.
+- Newly generated prose appears a paragraph at a time with stable line wrapping.
 - Do not simulate a theatrical typewriter.
-- The floating composer recedes while the user reads older Messages and returns near the latest Message, on focus, or through a keyboard action.
+- The floating composer recedes while the user reads older Messages and returns near the latest Message, on focus, or through a keyboard action. It stays open while a Generation runs.
+- The story view glides to the latest content while the user is at the bottom, and stops following once they scroll up.
 - Character-responsive ambient color transitions softly when the composer identity changes.
 
 No ambient loops are required. No motion should compete with prose. Reduced-motion preferences must replace movement with stable, immediate state changes.
@@ -247,11 +250,13 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 - Character identity frames the submission as in-character writing, chosen through the same two seat selectors rather than a separate mode toggle.
 - The composer floats above the lower edge of the central story surface as an opaque tonal layer.
 - It recedes while the user reads older Messages and returns when writing intent resumes.
+- It stays open while a Generation runs, because it holds the Stop control.
 - It must not obscure the latest Message or create unstable content jumps.
 
 ### Live generation
 
-- Prose streams continuously into the current generated Message.
+- Each paragraph appears once it is complete and fades in whole. A paragraph longer than a few sentences is released in sentence-aligned chunks that each fade in, so long paragraphs still show progress.
+- While the user is at the bottom, the view follows new content with a smooth scroll. A new Swipe or Regenerate on the latest Message returns the view to the bottom.
 - Keep line wrapping and paragraph positions stable.
 - Place a restrained generation-state indicator near the author header.
 - Avoid blinking cursors, fake keystroke timing, or other theatrical effects.

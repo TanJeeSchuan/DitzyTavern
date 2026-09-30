@@ -146,7 +146,6 @@ export function ActiveWritingWorkspace({
 	const viewport = useStoryViewport({
 		messages: story.messages,
 		conversationId: story.conversationId,
-		isGenerating: generation.isGenerating,
 	});
 	const preview = usePreviewController({
 		story,
@@ -217,7 +216,7 @@ export function ActiveWritingWorkspace({
 	const modelParticipant = conversation === null
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
-	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused;
+	const composerIsReceded = !viewport.isAtLatest && !isComposerFocused && !generation.isGenerating;
 
 	const openActiveGenerationDetails = () => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
@@ -310,7 +309,7 @@ export function ActiveWritingWorkspace({
 					{preview.previewError !== null && <p className="preview-error" role="alert">{preview.previewError}</p>}
 				</div>
 			)}
-				<div className="story-scroll" ref={viewport.storyScrollRef}>
+				<div className="story-scroll" ref={viewport.storyScrollRef} onScroll={viewport.onStoryScroll}>
 					<div className="story-content">
 						{story.page?.hasOlder === true && (
 							<div className="history-load-more">
@@ -351,10 +350,18 @@ export function ActiveWritingWorkspace({
 									generation.activeGenerationTargets.length === 0 &&
 									message.authorParticipantId === conversation?.control.humanParticipantId
 								}
-								onSibling={generation.canOfferSiblingMessage(message) ? generation.siblingMessage : undefined}
+								onSibling={generation.canOfferSiblingMessage(message)
+									? (messageId) => {
+										viewport.followLatest(messageId);
+										generation.siblingMessage(messageId);
+									}
+									: undefined}
 								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 								onContinue={generation.continueMessage}
-								onRegenerate={generation.regenerateResponse}
+								onRegenerate={(messageId) => {
+									viewport.followLatest(messageId);
+									generation.regenerateResponse(messageId);
+								}}
 								onInspect={openVariantDetails}
 								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
@@ -378,7 +385,6 @@ export function ActiveWritingWorkspace({
 								onInspect={openActiveGenerationDetails}
 							/>
 						)}
-						<div className="latest-anchor" ref={viewport.latestRef} aria-hidden="true" />
 					</div>
 				</div>
 
