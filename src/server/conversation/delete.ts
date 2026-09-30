@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { conversationTable } from "../database/schema";
+import { abandonMemoryWorkForRemovedVariants } from "../memory";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "./errors";
 import { connectConversationDatabase, hasActiveGeneration } from "./internal";
 
@@ -17,4 +18,5 @@ export function deleteConversation(database: Database, conversationId: number) {
 		.returning({ id: conversationTable.id })
 		.all();
 	if (deleted.length === 0) throw new ConversationNotFoundError(conversationId);
+	abandonMemoryWorkForRemovedVariants(database);
 }

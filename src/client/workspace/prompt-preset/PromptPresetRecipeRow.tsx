@@ -69,6 +69,12 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 			source: "Attached lorebooks",
 		};
 	}
+	if (slot.reference === "memory") {
+		return {
+			description: "Uses Conversation Memories recalled when a Generation is assembled.",
+			source: "Conversation Memories",
+		};
+	}
 	return slot.sourceName === null
 		? { description: `No participant is assigned to the ${title}.`, source: "No participant assigned" }
 		: { description: `Uses the ${title} from ${slot.sourceName}.`, source: slot.sourceName };

@@ -34,7 +34,7 @@ describe("scoped Lore activation", () => {
 				always: false,
 				requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
 				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
-				semanticThreshold: null, priority: 1, enabled: true,
+				priority: 1, enabled: true,
 			}],
 		});
 		attachLorebookToCharacter(database, { characterId: character.id, bookId: book.id, scope: "controlled-participant" });

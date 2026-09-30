@@ -8,6 +8,9 @@ import { createConversationModule } from "../conversation";
 import { createFakeModelClient } from "../model-client";
 import { sendThroughProvisionalTailGeneration } from ".";
 import { requireSnapshot } from "../conversation/test-fixtures";
+import { createMemorySettingsModule } from "../memory/settings";
+import { createConversationRoutes } from "../contract/conversation";
+import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -197,6 +200,36 @@ describe("Send through provisional Tail Generation", () => {
 		expect(currentSnapshot().messages).toHaveLength(2);
 		expect(currentSnapshot().messages[0]?.author?.participantId).toBe(humanId);
 		expect(currentSnapshot().messages[1]?.variants[0]?.content).toBe("Now it works.");
+	});
+
+	test("queues newly inserted and reused accepted Human sources when Memory is enabled", async () => {
+		const settings = createMemorySettingsModule(database);
+		const { revision, ...current } = settings.get();
+		settings.apply({ ...current, expectedRevision: revision, enabled: true });
+		const routes = createConversationRoutes(database);
+		const preset = await readPreset(routes, conversationId);
+		const memorySlot = preset.slots.find((slot) => slot.reference === "memory");
+		if (memorySlot === undefined) throw new Error("The Default recipe has no Memory block.");
+		if (!memorySlot.enabled) await readOperation(toggleBlock(database, preset.id, memorySlot.id, true));
+
+		await expect(sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: 0,
+			content: "Maren asked about the brass key.",
+			modelClient: createFakeModelClient(() => [{ type: "failed", kind: "provider", message: "No answer." }]),
+		})).rejects.toThrow("No answer.");
+		const insertedHuman = currentSnapshot().messages[0];
+		if (insertedHuman === undefined) throw new Error("The accepted Human Message is missing.");
+		const insertedSourceStatus = database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE message_id = ?").get(insertedHuman.id)?.status;
+		await sendThroughProvisionalTailGeneration(database, {
+			conversationId,
+			expectedRevision: currentSnapshot().revision,
+			content: "Maren asked about the brass key.",
+			modelClient: createFakeModelClient(() => "Maren waits for an answer."),
+		});
+		expect(currentSnapshot().messages[0]?.id).toBe(insertedHuman.id);
+		const reusedSourceStatus = database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE message_id = ?").get(insertedHuman.id)?.status;
+		expect([insertedSourceStatus, reusedSourceStatus]).toEqual(["pending", "pending"]);
 	});
 
 	test("rejects an oversized candidate before any Message or Active Generation is persisted", async () => {

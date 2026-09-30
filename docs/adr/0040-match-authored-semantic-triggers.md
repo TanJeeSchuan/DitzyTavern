@@ -1,5 +1,7 @@
 # Match separately authored Semantic Triggers
 
+> Superseded in part by [ADR-0044](0044-judge-semantic-triggers-with-jev.md) (judge Semantic Triggers with Typesafe Jev). The authored-trigger model, AND/OR operator, secondary conditions, literal fields and whole-Generation keyword fallback stand. The sentence-embedding matcher, application-wide embedding configuration, cosine threshold and embedding deadline described below are replaced.
+
 A Lore Entry's Semantic Triggers are authored separately from its Keywords and lore content. Semantic matching uses those phrases as its target, allowing the author to describe when lore is relevant without making the same text serve both literal and semantic matching.
 
 This deliberately differs from [SillyTavern's vector matching](../research/sillytavern-lorebooks.md), which embeds full entry content. Using the whole entry would let incidental facts and content edits change what situations match. Keeping a separate authored field requires more authoring work but gives the author direct control over the semantic target.

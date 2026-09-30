@@ -27,7 +27,7 @@ import {
 	type LoreAttachmentState,
 } from "../lorebook-library";
 import type { LoreEntry, LoreEntryFields } from "../../shared/contract/lorebook";
-import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
+import { hasEnabledLoreSlot, type SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 import { PanelHeader } from "../PanelHeader";
 import { loadConversationPromptPreset } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
@@ -47,7 +47,6 @@ const blankEntry = (): LoreEntryFields => ({
 	wholeWord: true,
 	keywordMode: "literal",
 	regexFlags: "",
-	semanticThreshold: null,
 	priority: 0,
 	enabled: true,
 });
@@ -441,7 +440,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 
-	const loreBlockMissing = selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled);
+	const loreBlockMissing = selectedPreset !== null && !hasEnabledLoreSlot(selectedPreset.slots);
 	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });
 	const bookName = (bookId: number) => books.find((item) => item.id === bookId)?.name ?? "Unavailable Lorebook";
 	const participantName = (participantId: number) => cast.find((participant) => participant.id === participantId)?.duplicateLabel ?? "Removed Participant";
@@ -623,7 +622,7 @@ function MatchTesterResult({ result }: { result: LoreMatchTest }) {
 		{result.matches.length === 0 ? <p className="panel-intro">This Lorebook has no saved entries.</p> : result.matches.map((entry) => <details className="lore-match-entry" key={`${entry.bookId}-${entry.entryId}`} open={entry.active}>
 			<summary><span>{entry.title || "Untitled entry"}</span><strong data-active={entry.active}>{entry.active ? "Active" : entry.skipped ? "Skipped" : "Not active"}</strong></summary>
 			<div className="lore-match-entry-body">
-				{entry.semantic.matches.length > 0 && <div><small>Strongest semantic match</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).sentence}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "Unavailable"})</p></div>}
+				{entry.semantic.matches.length > 0 && <div><small>Strongest Semantic Trigger</small><p>“{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).trigger}” <strong>{entry.semantic.matches.reduce((strongest, match) => match.score > strongest.score ? match : strongest).score.toFixed(3)}</strong> (threshold {entry.semantic.threshold?.toFixed(2) ?? "Unavailable"})</p></div>}
 				<div><small>Primary Keywords</small><p>{conditionSummary(entry.primary)}</p></div>
 				<div><small>Secondary conditions</small>{secondarySummary(entry)}</div>
 				{entry.reasons.length > 0 && <p className="lore-match-reasons">{entry.reasons.join(" · ")}</p>}
@@ -683,7 +682,6 @@ function EntryEditor({ entry, onChange, onListChange, onDelete, pending }: { ent
 			{entry.keywordMode === "regex" && <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Regex flags<Input className="w-20" value={entry.regexFlags} onChange={(event) => set("regexFlags", event.target.value)} /></label>}
 			<div className="flex flex-col gap-1.5"><span className="text-xs text-muted-foreground">Operator</span><Select value={entry.matchOperator} onValueChange={(value) => set("matchOperator", parseOperator(value))}><SelectTrigger aria-label="Operator"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="or">OR</SelectItem><SelectItem value="and">AND</SelectItem></SelectContent></Select></div>
 			<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Priority<Input className="w-20" type="number" value={entry.priority} onChange={(event) => set("priority", Number(event.target.value))} /></label>
-			<label className="flex flex-col gap-1.5 text-xs text-muted-foreground">Semantic threshold<Input className="w-24" type="number" min="0" max="1" step="0.01" value={entry.semanticThreshold ?? ""} onChange={(event) => set("semanticThreshold", event.target.value === "" ? null : Number(event.target.value))} /></label>
 		</div>
 		{onDelete && <Button type="button" size="sm" variant="destructive" className="self-start" disabled={pending} onClick={onDelete}>Delete entry</Button>}
 	</section>;

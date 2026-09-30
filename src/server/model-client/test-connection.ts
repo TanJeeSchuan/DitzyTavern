@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
-import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
+import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
+import { EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 import { authenticatedHeaders } from "./authenticated-headers";
 import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
@@ -53,6 +54,7 @@ export async function testConnection(
 	if (modelId.length === 0) {
 		return failure("endpoint", "A model ID is required to test the Connection Profile.");
 	}
+	if (input.profile.apiFormat === "embeddings") return testEmbeddings(input.profile, modelId, input.secrets ?? null, options);
 	if (input.profile.apiFormat !== "chat-completions") {
 		return failure("adapter-unavailable", "The selected API Format is unavailable.");
 	}
@@ -135,6 +137,27 @@ export async function testConnection(
 		});
 	} finally {
 		clearTimeout(timeout);
+	}
+}
+
+async function testEmbeddings(
+	profile: ConnectionProfileDraft,
+	modelId: string,
+	secrets: ConnectionProfileSecretSnapshot | null,
+	options: TestConnectionOptions,
+): Promise<TestConnectionResult> {
+	try {
+		const vectors = await requestEmbeddings(["DitzyTavern embedding test"], {
+			endpoint: resolveEmbeddingsRequestUrl(profile.requestUrl),
+			model: modelId,
+			secrets,
+			timeoutMs: Math.min(profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),
+			fetch: options.fetch,
+		});
+		return { outcome: "success", message: `Connection succeeded. The endpoint returned ${vectors[0]?.length ?? 0}-dimension vectors.` };
+	} catch (error) {
+		if (error instanceof EmbeddingServiceError) return failure(error.kind, error.message);
+		return failure("endpoint", error instanceof Error ? error.message : "The embedding request failed.");
 	}
 }
 

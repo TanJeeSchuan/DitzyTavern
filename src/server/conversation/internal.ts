@@ -298,10 +298,6 @@ export const hasRetainedParticipantReference = (
 		.limit(1)
 		.get() !== undefined;
 
-// ==[HUMAN APPROVED]== Generic data commands write only generic namespaces. The import-owned
-// namespaces hold server-owned provenance written by the import projection
-// at Conversation creation (ADR-0028); no generic write or delete may ever
-// address them, in any scope.
 export const requireGenericDataNamespace = (namespace: string): void => {
 	if (isServerOwnedDataNamespace(namespace)) {
 		throw new InvalidConversationCommandError(

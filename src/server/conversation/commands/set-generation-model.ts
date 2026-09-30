@@ -25,11 +25,12 @@ export function setGenerationModel(
 ) {
 	const modelId = input.modelId.trim();
 	if (modelId.length === 0) throw new InvalidConversationCommandError("A model ID is required.");
-	const profile = db.select({ id: connectionProfileTable.id })
+	const profile = db.select({ apiFormat: connectionProfileTable.api_format })
 		.from(connectionProfileTable)
 		.where(eq(connectionProfileTable.id, input.connectionProfileId))
 		.get();
 	if (profile === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
+	if (profile.apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
 	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
 	return updateConversationModelSelection(db, input.conversationId, {
 		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),

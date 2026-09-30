@@ -2,7 +2,8 @@ import { eq, max } from "drizzle-orm";
 import { messageTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
-import { insertMessage, insertVariants, requireParticipant } from "../internal";
+import { insertMessage, insertVariants, readControlAssignment, requireParticipant } from "../internal";
+import { syncSelectedMemorySource } from "../../memory";
 
 export interface CreateMessageInput {
 	conversationId: number;
@@ -60,4 +61,5 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 			selected: index === selectedVariantIndex,
 		})),
 	);
+	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) syncSelectedMemorySource(db.$client, input.conversationId, messageId);
 }

@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
+import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
@@ -81,12 +82,24 @@ export const createChat = (
 		control: { human: 0, model: 1 },
 	});
 
-export const withProfile = (database: Database) =>
-	createConnectionSettingsModule(database, { masterKey: key }).createProfile({
-		expectedRevision: 0,
-		profile,
-		credential: "preset-secret",
-	});
+export const withProfile = (database: Database) => {
+	const settings = createConnectionSettingsModule(database, { masterKey: key });
+	return settings.createProfile({ expectedRevision: settings.get().revision, profile, credential: "preset-secret" });
+};
+
+export const configureMemoryEmbeddings = (database: Database, endpoint: string, model: string) => {
+	const connections = createConnectionSettingsModule(database, { masterKey: key });
+	const displayName = `Embeddings ${new URL(endpoint).host}`;
+	const created = connections.createProfile({
+		expectedRevision: connections.get().revision,
+		profile: { ...profile, displayName, apiFormat: "embeddings", requestUrl: endpoint, adapter: "openai-compatible", timeoutMs: 1_000 },
+		credential: "embedding-secret",
+	}).profiles.find((entry) => entry.displayName === displayName);
+	if (!created) throw new Error("Embeddings Connection Profile fixture failed.");
+	const memory = createMemorySettingsModule(database);
+	const { revision, ...settings } = memory.get();
+	return memory.apply({ ...settings, expectedRevision: revision, embeddingProfileId: created.id, embeddingModel: model });
+};
 
 // ==[HUMAN APPROVED]== Library and selection tests exercise the ordinary public routes
 // against one isolated initialized database: the same seam the popup uses,

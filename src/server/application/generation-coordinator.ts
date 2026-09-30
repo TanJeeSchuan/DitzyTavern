@@ -244,7 +244,8 @@ export class GenerationCoordinator {
 					...input,
 					modelClient,
 					connection,
-					embeddingFetch: this.options.fetch,
+					preparationFetch: this.options.fetch,
+					connectionSettings: this.options,
 					onBeforeTerminal,
 				}, callbacks),
 		});
@@ -260,7 +261,8 @@ export class GenerationCoordinator {
 					...input,
 					modelClient,
 					connection,
-					embeddingFetch: this.options.fetch,
+					preparationFetch: this.options.fetch,
+					connectionSettings: this.options,
 					onBeforeTerminal,
 				}, callbacks),
 		});
@@ -276,7 +278,8 @@ export class GenerationCoordinator {
 					...input,
 					modelClient,
 					connection,
-					embeddingFetch: this.options.fetch,
+					preparationFetch: this.options.fetch,
+					connectionSettings: this.options,
 					onBeforeTerminal,
 				}, callbacks),
 		});

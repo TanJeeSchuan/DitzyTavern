@@ -24,14 +24,18 @@ const addableReferences = [
 	"history",
 	"model-post-history-instruction",
 	"lore",
+	"memory",
 ] as const satisfies readonly PromptBlockReference[];
+const singleUseReferences: readonly PromptBlockReference[] = ["lore", "memory"];
 
 const AddBlockMenu = ({
 	disabled,
+	existing,
 	onAddReference,
 	onAddInstruction,
 }: {
 	disabled: boolean;
+	existing: readonly ConversationPromptPreset["slots"][number][];
 	onAddReference: (reference: PromptBlockReference) => void;
 	onAddInstruction: () => void;
 }) => {
@@ -50,7 +54,7 @@ const AddBlockMenu = ({
 					className="z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none"
 				>
 					<DropdownMenu.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Reference</DropdownMenu.Label>
-					{addableReferences.map((reference) => (
+					{addableReferences.filter((reference) => !(singleUseReferences.includes(reference) && existing.some((slot) => slot.reference === reference))).map((reference) => (
 						<DropdownMenu.Item
 							key={reference}
 							className="cursor-default rounded-md px-2 py-1.5 outline-none select-none focus:bg-muted"
@@ -123,6 +127,7 @@ export function PromptPresetRecipeEditor({
 			<h2 className="whitespace-nowrap text-sm font-medium">Preset contents</h2>
 			<AddBlockMenu
 				disabled={pending}
+				existing={preset.slots}
 				onAddReference={(reference) => onOperation(() => addPromptPresetReference(preset.id, reference))}
 				onAddInstruction={() => {
 					instructionIdsBeforeAdd.current = new Set(

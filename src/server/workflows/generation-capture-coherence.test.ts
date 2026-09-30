@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
+import { initializeConnectionSecretKey } from "../connection-secrets";
+import { createTypesafeSettingsModule } from "../typesafe";
 import { createConversationModule } from "../conversation";
 import {
 	importNativePromptPreset,
@@ -32,14 +33,8 @@ const prompt = {
 
 const setup = () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	createEmbeddingSettingsModule(database, { masterKey: new Uint8Array(32).fill(5) }).apply({
-		type: "apply",
-		expectedRevision: 0,
-		endpoint: "http://localhost/v1/embeddings",
-		model: "coherence-test",
-		threshold: 0.7,
-		deadlineMs: 1_000,
-	});
+	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
+	createTypesafeSettingsModule(database).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
 	const conversation = createConversationModule(database).create({
 		name: "Capture Coherence",
 		participants: [
@@ -74,7 +69,6 @@ const setup = () => {
 			wholeWord: true,
 			keywordMode: "literal",
 			regexFlags: "",
-			semanticThreshold: null,
 			priority: 1,
 			enabled: true,
 		}],
@@ -106,19 +100,16 @@ describe("generation capture coherence", () => {
 			const semanticStarted = new Promise<void>((resolve) => { started = resolve; });
 			const semanticRelease = new Promise<void>((resolve) => { release = resolve; });
 			let requestCount = 0;
-			const embeddingFetch = async (_url: RequestInfo | URL, init?: RequestInit) => {
+			const preparationFetch = async () => {
 				requestCount += 1;
 				if (requestCount === 1) {
 					started();
 					await semanticRelease;
 				}
-				// ==[HUMAN APPROVED]== SAFETY: The production embedding client created this request body
-				// immediately before invoking the test fetch and always supplies its input string array.
-				const body = JSON.parse(String(init?.body)) as { input: readonly string[] };
-				return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [1, 0] })) }), { status: 200 });
+				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 			};
 
-			const input = { database: state.database, conversationId: state.conversationId, embeddingFetch };
+			const input = { database: state.database, conversationId: state.conversationId, preparationFetch };
 			const pending = (() => {
 				if (kind === "send") {
 					return captureSendGenerationAsync({ ...input, content: "signal" });
@@ -137,7 +128,7 @@ describe("generation capture coherence", () => {
 				entryId: state.book.entries[0]?.id,
 				entry: {
 					...state.book.entries[0],
-					content: "Edited while embeddings were pending.",
+					content: "Edited while Jev was pending.",
 				},
 			});
 			release();
@@ -145,10 +136,10 @@ describe("generation capture coherence", () => {
 			const result = await pending;
 			const capturedBook = result.preparation.lore.sources?.books[0]?.book.entries[0]?.content;
 			expect(capturedBook).toBe("Captured before the edit.");
-			expect(capturedBook).not.toBe("Edited while embeddings were pending.");
+			expect(capturedBook).not.toBe("Edited while Jev was pending.");
 			if (kind !== "sibling") {
 				expect(loreText(result.plan.promptPlan)).toContain("Captured before the edit.");
-				expect(loreText(result.plan.promptPlan)).not.toContain("Edited while embeddings were pending.");
+				expect(loreText(result.plan.promptPlan)).not.toContain("Edited while Jev was pending.");
 			}
 		});
 	}
@@ -161,17 +152,15 @@ describe("generation capture coherence", () => {
 		const firstReady = new Promise<void>((resolve) => { firstStarted = resolve; });
 		const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve; });
 		let requests = 0;
-		const embeddingFetch = async (_url: RequestInfo | URL, init?: RequestInit) => {
+		const preparationFetch = async () => {
 			requests += 1;
 			if (requests === 1) {
 				firstStarted();
 				await firstRelease;
 			}
-			// SAFETY: the embedding client always sends a JSON body containing the requested input strings.
-			const body = JSON.parse(String(init?.body)) as { input: readonly string[] };
-			return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [1, 0] })) }), { status: 200 });
+			return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 		};
-		const input = { database: state.database, conversationId: state.conversationId, embeddingFetch };
+		const input = { database: state.database, conversationId: state.conversationId, preparationFetch };
 		const older = createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "older" });
 		await firstReady;
 		const newer = await createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "newer" });

@@ -12,7 +12,6 @@ export interface LoreScanMessage {
 export interface LoreSemanticMatch {
 	readonly trigger: string;
 	readonly score: number;
-	readonly sentence: string;
 }
 
 export interface LoreSemanticEvaluation {
@@ -50,7 +49,6 @@ export interface LoreEntryMatch {
 	readonly reasons: readonly string[];
 }
 
-const DEFAULT_SEMANTIC_THRESHOLD = 0.7;
 const WORD = /[\p{L}\p{N}_]/u;
 const NO_SEMANTIC_MATCHES: readonly LoreSemanticMatch[] = [];
 
@@ -190,7 +188,7 @@ const semanticEvidence = (
 	entry: LoreEntryFields,
 	evaluation: LoreSemanticEvaluation | undefined,
 ) => {
-	const threshold = entry.semanticThreshold ?? evaluation?.threshold ?? DEFAULT_SEMANTIC_THRESHOLD;
+	const threshold = evaluation?.threshold ?? null;
 	if (entry.semanticTriggers.length === 0) return {
 		available: evaluation?.available ?? true,
 		matched: false,
@@ -206,12 +204,12 @@ const semanticEvidence = (
 		fallbackReason: evaluation?.fallbackReason,
 	};
 	const matches = (evaluation.matches ?? []).filter((match) => entry.semanticTriggers.includes(match.trigger));
-	return { available: true, matched: matches.some((match) => match.score >= threshold), threshold, matches, fallbackReason: evaluation.fallbackReason };
+	return { available: true, matched: matches.some((match) => match.score >= evaluation.threshold), threshold, matches, fallbackReason: evaluation.fallbackReason };
 };
 
 /** ==[HUMAN APPROVED]==
  * Evaluate one entry against a captured scan window. The lexical pass is always
- * message-bounded; only the semantic adapter may provide sentence-level evidence.
+ * message-bounded.
  */
 export const matchLoreEntry = (
 	entry: LoreEntryFields,
@@ -262,56 +260,4 @@ export const matchLoreEntry = (
 		semantic: semanticResult,
 		reasons,
 	};
-};
-
-const SENTENCE_ABBREVIATIONS = new Set([
-	"a.m", "apr", "aug", "dec", "dr", "e.g", "etc", "feb", "i.e", "jan", "jr", "mar", "mr", "mrs", "ms", "nov", "oct", "p.m", "prof", "sep", "sept", "sr", "st", "vs",
-]);
-
-const isLetter = (character: string | undefined): boolean => character !== undefined && /\p{L}/u.test(character);
-const isDigit = (character: string | undefined): boolean => character !== undefined && /\d/u.test(character);
-
-const periodToken = (content: string, periodIndex: number): string => {
-	let start = periodIndex;
-	while (start > 0 && !/\s/u.test(content[start - 1] ?? "")) start -= 1;
-	return content.slice(start, periodIndex).replace(/^[^\p{L}\p{N}]+/u, "").toLowerCase();
-};
-
-const periodEndsSentence = (content: string, periodIndex: number): boolean => {
-	const previous = content[periodIndex - 1];
-	const next = content[periodIndex + 1];
-	if (next === ".") return false;
-	if (isDigit(previous) && isDigit(next)) return false;
-	const token = periodToken(content, periodIndex);
-	if (SENTENCE_ABBREVIATIONS.has(token)) return false;
-	// ==[HUMAN APPROVED]== A single capital and dotted initials (A. Smith, A.B. Smith) are names, not sentences.
-	if (token.length === 1 && isLetter(content[periodIndex - 1]) && content[periodIndex - 1] === content[periodIndex - 1]?.toUpperCase()) return false;
-	if (/^(?:[a-z]\.)+[a-z]?$/u.test(token)) return false;
-	return true;
-};
-
-/** ==[HUMAN APPROVED]== Split only for semantic adapters; lexical matching receives complete Messages. */
-export const splitLoreSentences = (content: string): string[] => {
-	const sentences: string[] = [];
-	let start = 0;
-	const append = (end: number): void => {
-		const sentence = content.slice(start, end).trim();
-		if (sentence.length > 0) sentences.push(sentence);
-	};
-	for (let index = 0; index < content.length; index += 1) {
-		const character = content[index];
-		if (character === "\n" || character === "\r") {
-			append(index);
-			start = index + 1;
-			continue;
-		}
-		if (character !== "." && character !== "!" && character !== "?" && character !== "。" && character !== "！" && character !== "？") continue;
-		if (character === "." && !periodEndsSentence(content, index)) continue;
-		const next = content[index + 1];
-		if (next !== undefined && !/\s/u.test(next)) continue;
-		append(index + 1);
-		start = index + 1;
-	}
-	append(content.length);
-	return sentences;
 };

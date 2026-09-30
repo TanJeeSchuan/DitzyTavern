@@ -290,6 +290,19 @@ export function useGenerationController({
 		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
 	};
 
+	const regenerateResponse = (messageId: number) => {
+		if (!assemblyAvailable || conversation === null) return;
+		const latest = story.messages.at(-1);
+		const content = latest?.swipes[latest.activeSwipe]?.content;
+		if (
+			latest?.id !== messageId ||
+			latest.authorParticipantId !== conversation.control.humanParticipantId ||
+			content === undefined ||
+			content.trim() === ""
+		) return;
+		requestGeneration({ kind: "send", content, ...clientFormattingContext() });
+	};
+
 	const siblingMessage = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
 		const target = story.messages.find((message) => message.id === messageId);
@@ -335,6 +348,7 @@ export function useGenerationController({
 		cancelGeneration,
 		submitMessage,
 		continueMessage,
+		regenerateResponse,
 		siblingMessage,
 		canOfferSiblingMessage,
 	};

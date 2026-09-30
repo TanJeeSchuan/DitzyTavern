@@ -57,9 +57,9 @@ import {
 } from "./generate-capture";
 import {
 	consumeGenerationPreview,
-	captureContinuationGenerationPreviewAsync,
-	captureSendGenerationPreviewAsync,
-	captureSiblingGenerationPreviewAsync,
+	captureContinuationGenerationPreview,
+	captureSendGenerationPreview,
+	captureSiblingGenerationPreview,
 	type GenerationPreviewAcceptance,
 	type GenerationPreviewAcceptanceFor,
 } from "./generation-preview";
@@ -239,15 +239,15 @@ export async function sendThroughProvisionalTailGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSendGenerationPreviewAsync({
+				return Promise.resolve(captureSendGenerationPreview({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					content: current.content,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
-				});
+				}));
 			}
 			return captureSendGenerationAsync({
 				database: currentDatabase,
@@ -257,7 +257,7 @@ export async function sendThroughProvisionalTailGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
-				embeddingFetch: current.embeddingFetch,
+				preparationFetch: current.preparationFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptTailGeneration({
@@ -296,14 +296,14 @@ export async function continueGeneration(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureContinuationGenerationPreviewAsync({
+				return Promise.resolve(captureContinuationGenerationPreview({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
-				});
+				}));
 			}
 			return captureContinuationGenerationAsync({
 				database: currentDatabase,
@@ -312,7 +312,7 @@ export async function continueGeneration(
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
 				formatting: current.formatting,
-				embeddingFetch: current.embeddingFetch,
+				preparationFetch: current.preparationFetch,
 			});
 		},
 		accept: (conversation, current, capture, timestamp) => conversation.acceptContinuationGeneration({
@@ -371,7 +371,7 @@ export interface GenerateSiblingVariantInput {
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
 	formatting?: GenerationFormattingContext;
-	embeddingFetch?: import("../model-client/types").ModelFetch;
+	preparationFetch?: import("../model-client/types").ModelFetch;
 }
 
 export type SiblingGenerationResult = AcceptedSiblingGeneration;
@@ -391,15 +391,15 @@ export async function generateSiblingVariant(
 	return runGenerationLifecycle(database, input, input.onAccepted, {
 		capture: (currentDatabase, conversationId, current) => {
 			if (current.preview !== undefined) {
-				return captureSiblingGenerationPreviewAsync({
+				return Promise.resolve(captureSiblingGenerationPreview({
 					database: currentDatabase,
 					conversationId,
 					preview: current.preview,
 					messageId: current.messageId,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					embeddingFetch: current.embeddingFetch,
-				});
+				}));
 			}
 			return captureSiblingGenerationAsync({
 				database: currentDatabase,

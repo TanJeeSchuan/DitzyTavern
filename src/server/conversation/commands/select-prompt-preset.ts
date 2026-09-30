@@ -4,6 +4,7 @@ import {
 } from "../../prompt-preset";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
+import { refreshMemoryForConversation } from "../../memory";
 
 // ==[HUMAN APPROVED]== One Conversation's authoritative selection of a shared Prompt
 // Preset. The library reference is validated inside the caller's transaction;
@@ -18,6 +19,7 @@ export const selectPromptPreset = (
 ): void => {
 	try {
 		selectConversationPromptPreset(db, input.conversationId, input.promptPresetId);
+		refreshMemoryForConversation(db.$client, input.conversationId);
 	} catch (error) {
 		if (error instanceof PromptPresetNotFoundError) {
 			throw new InvalidConversationCommandError(

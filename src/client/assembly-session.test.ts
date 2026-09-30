@@ -17,11 +17,12 @@ const preview = (content = "Expanded"): GenerationPreview => ({
 	conversationId: 7,
 	kind: "send",
 	promptPlan: plan(content),
-	participants: { human: null, model: null },
-	// SAFETY: the reducer tests only inspect plan and lifecycle fields; settings are not exercised.
-	effectiveSettings: {} as GenerationPreview["effectiveSettings"],
-	pendingWrites: [],
-	budget: {
+		participants: { human: null, model: null },
+		// SAFETY: the reducer tests only inspect plan and lifecycle fields; settings are not exercised.
+		effectiveSettings: {} as GenerationPreview["effectiveSettings"],
+		pendingWrites: [],
+		memorySources: { messageIds: [], variantIds: [] },
+		budget: {
 		tokenEstimate: 1,
 		responseBudget: 1,
 		safetyAllowance: 1,

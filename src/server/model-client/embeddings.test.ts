@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cosineSimilarity, requestEmbeddings } from "./embedding-client";
+import { cosineSimilarity, requestEmbeddings } from "./embeddings";
 
 describe("embedding client", () => {
 	test("requests OpenAI-compatible vectors and validates dimensions", async () => {
@@ -7,7 +7,7 @@ describe("embedding client", () => {
 		const vectors = await requestEmbeddings(["one", "two"], {
 			endpoint: "http://localhost/v1/embeddings",
 			model: "test-model",
-			credential: "secret",
+			secrets: { credential: "secret", headers: {} },
 			timeoutMs: 1000,
 			fetch: async (_input, init) => {
 				body = String(init?.body);

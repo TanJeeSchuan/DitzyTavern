@@ -38,7 +38,8 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 		setTestModelId(value);
 		updateDraft({ pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] });
 	};
-	const customEndpoint = draft.adapter === "openai-compatible";
+	const embeddings = draft.apiFormat === "embeddings";
+	const customEndpoint = embeddings || draft.adapter === "openai-compatible";
 	const endpointFields = <>
 		<Field htmlFor="connection-request-url" label="Request URL" helper={resolvedRequestUrl === "" ? "Add a trailing slash to a base URL. Without it, the URL is treated as the exact endpoint." : `Sends to ${resolvedRequestUrl}. Add a trailing slash to a base URL.`}>
 			<input id="connection-request-url" className="field-input" value={draft.requestUrl} onChange={(event) => updateDraft({ requestUrl: event.target.value })} placeholder="https://example.com/v1/" autoComplete="url" />
@@ -47,7 +48,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 			<input id="connection-models-url" className="field-input" value={draft.modelsUrl} onChange={(event) => updateDraft({ modelsUrl: event.target.value })} placeholder="https://example.com/v1/models" autoComplete="url" />
 		</Field>
 	</>;
-	const provider = CONNECTION_ADAPTER_LABELS[draft.adapter];
+	const provider = embeddings ? "Embeddings" : CONNECTION_ADAPTER_LABELS[draft.adapter];
 	const title = draft.displayName.trim() || "New connection";
 
 	return (
@@ -104,6 +105,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
 							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
 						</Field>
+						{!embeddings && <>
 						<Field htmlFor="connection-model-backend" label="Model backend">
 							<AppSelect id="connection-model-backend" className="field-input" value={draft.modelBackend} onValueChange={(value) => updateDraft({ modelBackend: value === "ai-sdk" ? "ai-sdk" : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "ai-sdk", label: "AI SDK" }]} />
 						</Field>
@@ -113,15 +115,16 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field htmlFor="connection-output-token" label="Output limit field">
 							<AppSelect id="connection-output-token" className="field-input" value={draft.outputTokenRepresentation} onValueChange={(value) => updateDraft({ outputTokenRepresentation: value === "max_tokens" || value === "max_completion_tokens" || value === "omit" ? value : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "max_tokens", label: "max_tokens" }, { value: "max_completion_tokens", label: "max_completion_tokens" }, { value: "omit", label: "Don’t send a limit" }]} />
 						</Field>
+						</>}
 						<div className="grid gap-1.5">
 							<div className="flex items-center justify-between gap-3">
-								<label htmlFor="connection-timeout" className="text-[13px] font-medium text-muted-foreground">Stream inactivity timeout</label>
+								<label htmlFor="connection-timeout" className="text-[13px] font-medium text-muted-foreground">{embeddings ? "Request timeout" : "Stream inactivity timeout"}</label>
 								<span className="flex items-center gap-2 text-xs text-muted-foreground">
-									<span className="w-20"><input id="connection-timeout" className="field-input text-right tabular-nums" type="number" min="0" step="1" value={draft.timeoutMs === null ? "" : draft.timeoutMs / 1000} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Math.round(Number(event.target.value) * 1000) })} placeholder="Off" /></span>
+									<span className="w-20"><input id="connection-timeout" className="field-input text-right tabular-nums" type="number" min="0" step="1" value={draft.timeoutMs === null ? "" : draft.timeoutMs / 1000} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Math.round(Number(event.target.value) * 1000) })} placeholder={embeddings ? "Required" : "Off"} /></span>
 									seconds
 								</span>
 							</div>
-							<small className="text-xs text-muted-foreground">Aborts a stream that stays quiet this long. Blank or zero disables it.</small>
+							<small className="text-xs text-muted-foreground">{embeddings ? "Abandons an embedding request that takes longer than this." : "Aborts a stream that stays quiet this long. Blank or zero disables it."}</small>
 						</div>
 					</div>
 				</details>

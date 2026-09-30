@@ -101,6 +101,7 @@ export type StoryAction =
 	// it arrives or fails.
 	| { type: "load-more-started" }
 	| { type: "history-failed" }
+	| { type: "message-deleted"; messageId: number; revision: number }
 	// ==[HUMAN APPROVED]== An optimistic selected-Variant update following the revisioned
 	// select-variant command; the server response is authoritative but the
 	// local position updates immediately so reading never waits.
@@ -328,6 +329,26 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 			return state.status === "loading-first" || state.status === "loading-more"
 				? { ...state, status: "error" }
 				: state;
+		case "message-deleted": {
+			const messages = state.messages.filter((message) => message.id !== action.messageId);
+			if (messages.length === state.messages.length) return state;
+			if (state.page === null) return { ...state, revision: action.revision, messages };
+			const totalMessages = Math.max(0, state.page.totalMessages - 1);
+			const index = Math.max(0, state.page.index - 1);
+			return {
+				...state,
+				revision: action.revision,
+				messages,
+				page: {
+					...state.page,
+					index,
+					totalMessages,
+					totalPages: Math.ceil(totalMessages / state.page.pageSize),
+					hasOlder: messages.length < totalMessages,
+					hasNewer: index > 1,
+				},
+			};
+		}
 		case "swipe-selected":
 			if (state.preview !== null) return state;
 			return {

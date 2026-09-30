@@ -4,6 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
+import { createTypesafeSettingsModule } from "../typesafe";
 import {
 	clearGenerationPreviewRegistry,
 } from "../workflows/generation-preview";
@@ -643,5 +644,29 @@ describe("Prompt Plan inspection", () => {
 			},
 		));
 		expect(rejected.status).toBe(422);
+	});
+
+	test("requires a refresh after replacing or clearing the Typesafe credential", async () => {
+		const conversation = createChat(database);
+		withProfile(database);
+		const masterKey = new Uint8Array(32).fill(11);
+		const typesafe = createTypesafeSettingsModule(database, { masterKey });
+		const saveCredential = (credential: string) => {
+			const { revision, jevModel, loreTriggerMode, loreTriggerThreshold } = typesafe.get();
+			typesafe.apply({ type: "apply", expectedRevision: revision, jevModel, loreTriggerMode, loreTriggerThreshold, credential });
+		};
+		saveCredential("original-secret");
+		const app = createConversationRoutes(database, { masterKey, fetch: captureModelFetch(() => {}) });
+		for (const credential of ["replacement-secret", ""]) {
+			const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
+			saveCredential(credential);
+			const rejected = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ expectedRevision: conversation.revision, content: "hello", previewId: plan.previewId }),
+			}));
+			expect(rejected.status).toBe(422);
+			expect(await rejected.json()).toEqual({ outcome: "invalid", reason: "The Prompt Plan is stale. Refresh it before sending." });
+		}
 	});
 });

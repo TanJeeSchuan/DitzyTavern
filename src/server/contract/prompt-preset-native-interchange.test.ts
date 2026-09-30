@@ -45,6 +45,7 @@ describe("Native Prompt Preset interchange", () => {
 				},
 				{ reference: "model-identity", enabled: true, role: "user" },
 				{ reference: "model-identity", enabled: true, role: "assistant" },
+				{ reference: "memory", enabled: false, role: "assistant" },
 				{ reference: "history", enabled: false },
 			],
 		};
@@ -67,12 +68,26 @@ describe("Native Prompt Preset interchange", () => {
 			"instruction",
 			"model-identity",
 			"model-identity",
+			"memory",
 			"history",
 		]);
 		expect(roundTrip).not.toHaveProperty("id");
 		expect(roundTrip).not.toHaveProperty("sourceName");
 		expect(roundTrip).not.toHaveProperty("content", "I am Maren.");
 		expect(resolved?.slots[1]).toMatchObject({ sourceName: "Maren", content: "I am {{self}}." });
+	});
+
+	test("rejects duplicate Memory references in native import", async () => {
+		const routes = createRoutes(database);
+		const result = await importPreset(routes.library, {
+			name: "Duplicate Memory",
+			slots: [
+				{ reference: "memory", enabled: false, role: "system" },
+				{ reference: "memory", enabled: true, role: "assistant" },
+			],
+		});
+		expect(result.status).toBe(422);
+		expect(await listPresets(routes.library)).toHaveLength(1);
 	});
 
 	test("imports as a new independent preset and invalid input leaves the library unchanged", async () => {

@@ -25,7 +25,7 @@ describe("shared Connection Profile validation", () => {
 				{ ...validDraft(), apiFormat: "responses", requestUrl: "not a url" },
 				[],
 			),
-		).toBe("Only the Chat Completions API Format is available in version one.");
+		).toBe("Only the Chat Completions and Embeddings API Formats are available.");
 		expect(
 			sharedConnectionProfileValidationError({ ...validDraft(), requestUrl: "not a url" }, []),
 		).toBe("The request URL must be a valid HTTP or HTTPS URL.");

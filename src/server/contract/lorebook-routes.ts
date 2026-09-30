@@ -49,14 +49,13 @@ import {
 	readParticipantLorebookAttachments,
 } from "../lorebook/attachments";
 import { matchLoreEntry } from "../lorebook/matching";
-import { evaluateSemanticLore } from "../lorebook/semantic";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
+import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
-import type { EmbeddingSettingsModuleOptions } from "../embedding-settings";
+import type { TypesafeSettingsModuleOptions } from "../typesafe";
 import type { ModelFetch } from "../model-client/types";
 
-export interface LorebookRouteOptions extends EmbeddingSettingsModuleOptions {
+export interface LorebookRouteOptions extends TypesafeSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
 
@@ -120,10 +119,9 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 			if (book === undefined) return undefined;
 			const scan = [{ id: null, content: body.writing }];
 			const semantic = await evaluateSemanticLore({
-				database: connection,
 				entries: book.entries,
 				messages: scan,
-				settings: createEmbeddingSettingsModule(connection, options),
+				settings: captureSemanticSettings(connection, options),
 				fetch: options.fetch,
 			});
 			return {

@@ -16,8 +16,6 @@ export interface PutDataInput {
 }
 
 export function putData(db: ConversationDatabase, input: PutDataInput) {
-	// ==[HUMAN APPROVED]== Import provenance is server-owned (ADR-0028): the generic data seam
-	// cannot address the import-owned namespaces in any scope.
 	requireGenericDataNamespace(input.namespace);
 	switch (input.scope.type) {
 		case "conversation":

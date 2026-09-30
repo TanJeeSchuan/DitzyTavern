@@ -37,6 +37,12 @@ import {
 	LORE_ACTIVATION_NAMESPACE,
 	parseLoreActivationRecord,
 } from "../../../shared/contract/lore-activation";
+import {
+	MEMORY_ACTIVATION_KEY,
+	MEMORY_ACTIVATION_NAMESPACE,
+	parseMemoryActivationRecord,
+} from "../../../shared/contract/memory-recall";
+import { syncMemorySources } from "../../memory";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -130,6 +136,7 @@ const replayCarriedColumns = (
 	prompt_inspection_json: active.prompt_inspection_json,
 	prompt_context_json: active.prompt_context_json,
 	lore_activation_json: active.lore_activation_json,
+	memory_activation_json: active.memory_activation_json,
 	generation_settings_json: active.generation_settings_json,
 	connection_json: active.connection_json,
 	generation_intent_json: active.generation_intent_json,
@@ -199,6 +206,17 @@ const terminalLoreActivationData = (active: ActiveGenerationRow): ConversationDa
 	}];
 };
 
+const terminalMemoryActivationData = (active: ActiveGenerationRow): ConversationDataEntry[] => {
+	let value;
+	try {
+		value = parseMemoryActivationRecord(active.memory_activation_json);
+	} catch (error) {
+		throw new InvalidConversationCommandError(error instanceof Error ? error.message : "The Active Generation has invalid persisted Memory Activation evidence.");
+	}
+	if (value === null) return [];
+	return [{ namespace: MEMORY_ACTIVATION_NAMESPACE, key: MEMORY_ACTIVATION_KEY, value: active.memory_activation_json }];
+};
+
 /**
  * ==[HUMAN APPROVED]== Persist one terminal Variant's Conversation-scoped data: the compact
  * generation provenance first, then the lifecycle's private reasoning
@@ -215,14 +233,16 @@ export const persistTerminalVariantData = (
 		suppliedData: readonly ConversationDataEntry[];
 		macroData?: readonly ConversationDataEntry[];
 		loreActivationData?: readonly ConversationDataEntry[];
+		memoryActivationData?: readonly ConversationDataEntry[];
 	},
 ): void => {
 	const suppliedData = input.suppliedData.filter((entry) =>
-		entry.namespace !== LORE_ACTIVATION_NAMESPACE,
+		entry.namespace !== LORE_ACTIVATION_NAMESPACE && entry.namespace !== MEMORY_ACTIVATION_NAMESPACE,
 	);
 	const data = [
 		...(input.macroData ?? []),
 		...(input.loreActivationData ?? []),
+		...(input.memoryActivationData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
 		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
 			!suppliedData.some((entry) => entry.namespace === "generation" && entry.key === "reasoning")
@@ -281,6 +301,7 @@ function commitDurableTerminalGenerationInTransaction(
 		suppliedData: input.suppliedData,
 		macroData: terminalMacroData(active),
 		loreActivationData: terminalLoreActivationData(active),
+		memoryActivationData: terminalMemoryActivationData(active),
 	});
 	retainTerminalInspection(db, active, input.suppliedData, input.content, input.reasoning);
 	db.delete(activeGenerationTable)
@@ -310,6 +331,7 @@ export function resolveConversationGeneration(
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
+		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -568,6 +590,7 @@ export function stopConversationGeneration(
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
+		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
 		return advanceConversationRevision(
 			db,
 			input.conversationId,
@@ -610,6 +633,7 @@ export function stopConversationGenerations(
 			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
 		}
 		restoreStoppedSiblingSelection(db, removedSiblings);
+		syncMemorySources(db.$client, input.conversationId, activeRows.map((active) => active.variant_id));
 		const snapshot = advanceConversationRevision(
 			db,
 			input.conversationId,

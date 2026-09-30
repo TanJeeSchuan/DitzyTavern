@@ -28,6 +28,8 @@ export const CONNECTION_ADAPTER_LABELS = {
 	"openai-compatible": "OpenAI Compatible",
 } satisfies Record<ConnectionAdapter, string>;
 
+export const isEmbeddingsProfile = (profile: ConnectionProfile): boolean => profile.apiFormat === "embeddings";
+
 export type ConnectionSettingsResult = ConnectionSettingsCommandResultPayload;
 
 export type DiscoveryResult =

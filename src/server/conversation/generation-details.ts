@@ -5,7 +5,7 @@
 
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
 	activeGenerationTable,
 	conversationTable,
@@ -16,6 +16,11 @@ import {
 	participantTable,
 } from "../database/schema";
 import { LORE_ACTIVATION_KEY, LORE_ACTIVATION_NAMESPACE, parseLoreActivationRecord } from "../../shared/contract/lore-activation";
+import {
+	MEMORY_ACTIVATION_KEY,
+	MEMORY_ACTIVATION_NAMESPACE,
+	parseMemoryActivationRecord,
+} from "../../shared/contract/memory-recall";
 import {
 	connectConversationDatabase,
 	readActiveCast,
@@ -199,6 +204,7 @@ export function readActiveGenerationDetailsFromConnection(
 	const settings = safeGenerationSettings(parseGenerationJson(row.generation_settings_json, {}));
 	const omittedContext = Array.isArray(inspectionRecord?.omittedContext) ? inspectionRecord.omittedContext : [];
 	const loreActivation = parseLoreActivationRecord(row.lore_activation_json);
+	const memoryActivation = parseMemoryActivationRecord(row.memory_activation_json);
 	return {
 		conversationId,
 		generationId: row.id,
@@ -214,6 +220,8 @@ export function readActiveGenerationDetailsFromConnection(
 		promptPlan: persistedPromptPlan(row.prompt_plan_json),
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		loreActivation,
+		memoryActivation,
+		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
@@ -269,11 +277,15 @@ export function readVariantDetailsFromConnection(
 		.all();
 	const provenanceEntry = data.find((entry) => entry.namespace === "generation" && entry.key === "provenance");
 	const loreActivationEntry = data.find((entry) => entry.namespace === LORE_ACTIVATION_NAMESPACE && entry.key === LORE_ACTIVATION_KEY);
+	const memoryActivationEntry = data.find((entry) => entry.namespace === MEMORY_ACTIVATION_NAMESPACE && entry.key === MEMORY_ACTIVATION_KEY);
 	let provenanceValue: ConversationJsonValue | null = null;
 	if (provenanceEntry !== undefined) provenanceValue = parseGenerationJson(provenanceEntry.value, null);
 	const loreActivation = loreActivationEntry === undefined
 		? null
 		: parseLoreActivationRecord(loreActivationEntry.value);
+	const memoryActivation = memoryActivationEntry === undefined
+		? null
+		: parseMemoryActivationRecord(memoryActivationEntry.value);
 	const castIds = message.author_participant_id === null
 		? new Set<number>()
 		: new Set(readActiveCast(db, conversationId).map((participant) => participant.id));
@@ -287,5 +299,27 @@ export function readVariantDetailsFromConnection(
 		historicalContext: toHistoricalContext(message),
 		provenance: safeProvenance(provenanceValue, data),
 		loreActivation,
+		memoryActivation,
+		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
 	};
 }
+
+const readMemorySourceAvailabilityFromConnection = (
+	db: ConversationDatabase,
+	conversationId: number,
+	activation: ActiveGenerationDetails["memoryActivation"],
+): ActiveGenerationDetails["memorySources"] => {
+	const messageIds = [...new Set([...activation?.scanMessageIds ?? [], ...activation?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? []])];
+	const variantIds = [...new Set(activation?.candidates.map(({ variantId }) => variantId) ?? [])];
+	return {
+		messageIds: messageIds.length === 0 ? [] : db.select({ id: messageTable.id }).from(messageTable).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, messageIds))).all().map(({ id }) => id),
+		variantIds: variantIds.length === 0 ? [] : db.select({ id: messageVariantTable.id }).from(messageVariantTable).innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, variantIds))).all().map(({ id }) => id),
+	};
+};
+
+export const readMemorySourceAvailability = (
+	database: Database,
+	conversationId: number,
+	activation: ActiveGenerationDetails["memoryActivation"],
+): ActiveGenerationDetails["memorySources"] =>
+	readMemorySourceAvailabilityFromConnection(connectConversationDatabase(database), conversationId, activation);

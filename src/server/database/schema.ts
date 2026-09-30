@@ -3,6 +3,7 @@
 
 import { sql } from "drizzle-orm";
 import {
+	blob,
 	check,
 	index,
 	int,
@@ -71,6 +72,9 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
+		uniqueIndex("prompt_preset_single_memory_block")
+			.on(table.preset_id)
+			.where(sql`${table.reference} = 'memory'`),
 		check(
 			"prompt_preset_block_shape_check",
 			sql`(
@@ -99,6 +103,12 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.content} IS NULL
 			) OR (
 				${table.reference} = 'lore'
+				AND ${table.role} IS NOT NULL
+				AND ${table.role} IN ('system', 'user', 'assistant')
+				AND ${table.name} IS NULL
+				AND ${table.content} IS NULL
+			) OR (
+				${table.reference} = 'memory'
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
@@ -140,7 +150,6 @@ export const lorebookEntryTable = sqliteTable(
 		whole_word: int({ mode: "boolean" }).notNull().default(true),
 		keyword_mode: text().notNull().default("literal"),
 		regex_flags: text().notNull().default(""),
-		semantic_threshold: real(),
 		priority: int().notNull().default(0),
 		enabled: int({ mode: "boolean" }).notNull().default(true),
 	},
@@ -199,41 +208,36 @@ export const conversationLoreSettingsTable = sqliteTable("conversation_lore_sett
 	allowance: int().notNull().default(2048),
 });
 
-// ==[HUMAN APPROVED]== Semantic matching is application-wide and independent of the writing
-// model. Credentials remain in the dedicated encrypted table; this row contains only the safe
-// endpoint identity and matching policy.
-export const embeddingSettingsTable = sqliteTable("embedding_settings", {
+export const memorySettingsTable = sqliteTable("memory_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
-	endpoint: text().notNull().default(""),
-	model: text().notNull().default(""),
-	threshold: real().notNull().default(0.7),
-	deadline_ms: int().notNull().default(5000),
+	enabled: int({ mode: "boolean" }).notNull().default(true),
+	// ==[HUMAN APPROVED]== Preserve deleted Profile identity so settings reads can report the broken choice.
+	extraction_profile_id: int(),
+	extraction_model: text().notNull().default(""),
+	context_limit: int().notNull().default(16384),
+	output_reserve: int().notNull().default(2048),
+	safety_allowance: int().notNull().default(500),
+	usefulness_confidence_gate: real().notNull().default(0.3),
+	recall_relevance_minimum: real().notNull().default(1.5),
+	embedding_profile_id: int(),
+	embedding_model: text().notNull().default(""),
 });
 
-export const embeddingSecretTable = sqliteTable("embedding_secret", {
-	settings_id: int().primaryKey().references(() => embeddingSettingsTable.id, { onDelete: "cascade" }),
-	format_version: int().notNull(),
-	key_id: text().notNull(),
-	nonce: text().notNull(),
-	ciphertext: text().notNull(),
-	tag: text().notNull(),
-});
-
-// ==[HUMAN APPROVED]== Derived vectors are reusable only when endpoint, model and source kind
-// are identical. Authored content and trigger text remain the cache key, never provider data.
-export const embeddingCacheTable = sqliteTable(
-	"embedding_cache",
-	{
-		id: int().primaryKey({ autoIncrement: true }),
-		endpoint: text().notNull(),
-		model: text().notNull(),
-		source_kind: text().notNull(),
-		source_text: text().notNull(),
-		vector_json: text().notNull(),
-	},
-	(table) => [uniqueIndex("embedding_cache_source_unique").on(table.endpoint, table.model, table.source_kind, table.source_text)],
-);
+export const typesafeSettingsTable = sqliteTable("typesafe_settings", {
+	id: int().primaryKey(),
+	revision: int().notNull().default(0),
+	jev_model: text().notNull().default("jev-1.13.0"),
+	lore_trigger_mode: text().notNull().default("jev"),
+	lore_trigger_threshold: real().notNull().default(0.5),
+	format_version: int(),
+	key_id: text(),
+	nonce: text(),
+	ciphertext: text(),
+	tag: text(),
+}, (table) => [
+	check("typesafe_settings_lore_trigger_mode_check", sql`${table.lore_trigger_mode} IN ('jev', 'off')`),
+]);
 
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
@@ -318,6 +322,55 @@ export const messageVariantTable = sqliteTable(
 			.where(sql`${table.selected} = 1`),
 	],
 );
+
+export const conversationMemorySettingsTable = sqliteTable("conversation_memory_settings", {
+	conversation_id: int().primaryKey().references(() => conversationTable.id, { onDelete: "cascade" }),
+	allowance: int().notNull().default(2048),
+	revision: int().notNull().default(0),
+	label_revision: int().notNull().default(0),
+	label_merges: text().notNull().default("[]"),
+});
+
+export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {
+	id: int().primaryKey({ autoIncrement: true }),
+	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
+	cancelled: int({ mode: "boolean" }).notNull().default(false),
+	created_at: text().notNull(),
+}, (table) => [
+	index("memory_catchup_run_conversation").on(table.conversation_id),
+]);
+
+export const memoryCollectionTable = sqliteTable("memory_collection", {
+	variant_id: int().primaryKey().references(() => messageVariantTable.id, { onDelete: "cascade" }),
+	conversation_id: int().notNull().references(() => conversationTable.id, { onDelete: "cascade" }),
+	message_id: int().notNull().references(() => messageTable.id, { onDelete: "cascade" }),
+	source_hash: text().notNull(),
+	revision: int().notNull().default(0),
+	ownership: text({ enum: ["automatic", "writer"] }).notNull().default("automatic"),
+	work_epoch: int().notNull().default(0),
+	status: text({ enum: ["pending", "running", "complete", "failed"] }).notNull().default("pending"),
+	error: text(),
+	source_snapshot_json: text().notNull(),
+	claims_json: text().notNull().default("[]"),
+	trace_json: text(),
+	catchup_run_id: int().references(() => memoryCatchupRunTable.id, { onDelete: "set null" }),
+	source_changed: int({ mode: "boolean" }).notNull().default(false),
+	index_attempt_json: text(),
+	updated_at: text().notNull(),
+}, (table) => [
+	index("memory_collection_conversation_message").on(table.conversation_id, table.message_id),
+	index("memory_collection_catchup_run").on(table.catchup_run_id),
+	check("memory_collection_status_check", sql`${table.status} IN ('pending', 'running', 'complete', 'failed')`),
+	check("memory_collection_ownership_check", sql`${table.ownership} IN ('automatic', 'writer')`),
+]);
+
+export const memoryEmbeddingCacheTable = sqliteTable("memory_embedding_cache", {
+	space_key: text().notNull(),
+	text_hash: text().notNull(),
+	vector: blob({ mode: "buffer" }).notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.space_key, table.text_hash] }),
+]);
 
 // ==[HUMAN APPROVED]== Character lifecycle base record. Definition content lives in the
 // character_prompt and character_opening child tables, so a future
@@ -625,6 +678,7 @@ export const activeGenerationTable = sqliteTable(
 		// ==[HUMAN APPROVED]== Captured lore evidence is copied to durable Variant data at terminal
 		// resolution; keeping it on the active row makes restart/recovery lossless.
 		lore_activation_json: text().notNull().default("null"),
+		memory_activation_json: text().notNull().default("null"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull().default('{"type":"tail"}'),
@@ -672,6 +726,7 @@ export const generationReplayTable = sqliteTable(
 		prompt_inspection_json: text().notNull(),
 		prompt_context_json: text().notNull(),
 		lore_activation_json: text().notNull().default("null"),
+		memory_activation_json: text().notNull().default("null"),
 		generation_settings_json: text().notNull(),
 		connection_json: text().notNull(),
 		generation_intent_json: text().notNull(),

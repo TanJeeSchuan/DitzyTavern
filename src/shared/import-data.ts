@@ -16,28 +16,27 @@ export const IMPORT_NAMESPACE = "import.sillytavern";
 export const ARCHIVE_NAMESPACE = "archive";
 
 import { LORE_ACTIVATION_NAMESPACE } from "./contract/lore-activation";
+import { MEMORY_ACTIVATION_NAMESPACE } from "./contract/memory-recall";
+
+const importOwnedDataNamespaces = [IMPORT_NAMESPACE, ARCHIVE_NAMESPACE] as const;
+const serverOwnedDataNamespaces = [
+	...importOwnedDataNamespaces,
+	LORE_ACTIVATION_NAMESPACE,
+	MEMORY_ACTIVATION_NAMESPACE,
+] as const;
 
 // ==[HUMAN APPROVED]== True for every namespace whose Conversation-scoped data is import-owned.
 // The generic put-data/delete-data commands reject these namespaces in
 // every scope; the import projection is the only writer.
 export const isImportOwnedDataNamespace = (namespace: string): boolean =>
-	namespace === IMPORT_NAMESPACE || namespace === ARCHIVE_NAMESPACE;
+	importOwnedDataNamespaces.some((ownedNamespace) => ownedNamespace === namespace);
 
 export const isServerOwnedDataNamespace = (namespace: string): boolean =>
-	isImportOwnedDataNamespace(namespace) || namespace === LORE_ACTIVATION_NAMESPACE;
+	serverOwnedDataNamespaces.some((ownedNamespace) => ownedNamespace === namespace);
 
-// ==[HUMAN APPROVED]== The same reservation expressed as the wire pattern for the generic data
-// commands' namespace field: the transport rejects command bodies that
-// address import-owned namespaces before dispatch. The Conversation seam
-// enforces the identical reservation through the predicate above; the
-// grouped alternation makes the exact-match exclusion explicit.
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export const genericDataNamespacePattern = `^(?!(?:${[
-	IMPORT_NAMESPACE,
-	ARCHIVE_NAMESPACE,
-	LORE_ACTIVATION_NAMESPACE,
-]
+export const genericDataNamespacePattern = `^(?!(?:${serverOwnedDataNamespaces
 	.map(escapeRegExp)
 	.join("|")})$).*`;

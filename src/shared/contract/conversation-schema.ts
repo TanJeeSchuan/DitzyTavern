@@ -24,6 +24,8 @@ import type {
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 export type { LoreActivationRecord } from "./lore-activation";
+import { memoryActivationRecord } from "./memory-recall";
+export type { MemoryActivationRecord } from "./memory-recall";
 
 export { effectiveGenerationSettings } from "./generation-settings";
 
@@ -56,6 +58,7 @@ const promptDefinitionBlockKind = Type.Union([
 	// a Participant.
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
+	Type.Literal("memory"),
 ]);
 
 const promptBlock = Type.Union([
@@ -277,6 +280,11 @@ const provenanceSettingsWireSchemas = {
 
 export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
 
+const memorySourceAvailability = Type.Object({
+	messageIds: Type.Array(Type.Integer()),
+	variantIds: Type.Array(Type.Integer()),
+});
+
 const generationProvenance = Type.Union([Type.Null(), Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	connectionSettingsRevision: Type.Union([Type.Null(), Type.Integer()]),
@@ -313,6 +321,8 @@ export const activeGenerationDetails = Type.Object({
 	promptPlan,
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
+	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
+	memorySources: memorySourceAvailability,
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -351,8 +361,10 @@ export const variantDetails = Type.Object({
 	})]),
 	provenance: generationProvenance,
 	// Captured activation evidence is independent from compact Generation provenance
-	// and survives the transient inspection/replay lifecycle.
+	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
+	memoryActivation: Type.Union([memoryActivationRecord, Type.Null()]),
+	memorySources: memorySourceAvailability,
 });
 
 export type GenerationProvenance = SharedGenerationProvenance;
@@ -502,11 +514,7 @@ const deleteMessageAction = Type.Object({
 	messageId: Type.Integer(),
 });
 
-// Generic data namespaces exclude the import-owned namespaces
-// (shared/import-data): import provenance is written only by the import
-// projection at Conversation creation and can never be rewritten or deleted
-// through these commands (ADR-0028). The Conversation seam enforces the
-// same reservation for non-transport callers.
+// Generic data commands cannot address namespaces owned by server domains.
 const putDataAction = Type.Object({
 	type: Type.Literal("put-data"),
 	scope: dataScope,
@@ -728,6 +736,8 @@ export const generationPreview = Type.Object({
 	effectiveSettings: effectiveGenerationSettings,
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
+	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
+	memorySources: memorySourceAvailability,
 	budget: generationPreviewBudget,
 });
 

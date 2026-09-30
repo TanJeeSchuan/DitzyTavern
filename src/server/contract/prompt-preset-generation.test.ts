@@ -112,6 +112,7 @@ describe("Prompt Preset durability", () => {
 				["model-scenario", true],
 				["model-example-dialogue", false],
 				["lore", true],
+				["memory", true],
 				["history", true],
 				["model-post-history-instruction", true],
 			]);

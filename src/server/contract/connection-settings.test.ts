@@ -74,6 +74,7 @@ describe("Connection Settings transport adapter", () => {
 			"deepseek",
 			"openrouter",
 			"generic-openai-compatible",
+			"openai-compatible-embeddings",
 		]);
 	});
 
@@ -258,7 +259,7 @@ describe("Connection Settings transport adapter", () => {
 		expect((await deleted.json()).settings.profiles).toEqual([firstBody.settings.profiles[0]]);
 	});
 
-	test("tests the unsaved draft with kept or replacement credentials without durable side effects", async () => {
+	test("uses a saved credential only with its saved request URL", async () => {
 		const createdResponse = await post({
 			type: "create-profile",
 			expectedRevision: 0,
@@ -267,8 +268,6 @@ describe("Connection Settings transport adapter", () => {
 		});
 		const createdBody = await createdResponse.json();
 		const profileId = createdBody.settings.profiles[0].id;
-		const before = await get("/api/connection-settings");
-		const beforeBody = await before.json();
 		type CapturedRequestBody = { model: string; max_tokens: number; messages: Array<{ role: string; content: string }> };
 		const requests: Array<{ url: string; authorization: string | null; body: CapturedRequestBody }> = [];
 		const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -290,15 +289,10 @@ describe("Connection Settings transport adapter", () => {
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		};
 		const testApp = createConnectionSettingsRoutes(database, { masterKey: key, fetch: fakeFetch });
-		type TestDraftRequestBody = {
-			profileId: number;
-			profile: typeof deepSeekProfile;
-			modelId: string;
-		};
-		const test = () => {
-			const body: TestDraftRequestBody = {
+		const test = (requestUrl: string) => {
+			const body = {
 				profileId,
-				profile: { ...deepSeekProfile, requestUrl: "http://127.0.0.1:43127/v1/?tenant=test" },
+				profile: { ...deepSeekProfile, requestUrl },
 				modelId: "deepseek-chat",
 			};
 			return testApp.handle(new Request("http://localhost/api/connection-settings/test-connection", {
@@ -308,23 +302,17 @@ describe("Connection Settings transport adapter", () => {
 		}));
 		};
 
-		const kept = await test();
+		const kept = await test(deepSeekProfile.requestUrl);
 		expect(kept.status).toBe(200);
 		expect((await kept.json()).outcome).toBe("success");
-		expect(requests[0]?.url).toBe("http://127.0.0.1:43127/v1/chat/completions?tenant=test");
+		expect(requests[0]?.url).toBe("https://api.deepseek.com/chat/completions");
 		expect(requests[0]?.authorization).toBe("Bearer existing-secret");
 		expect(requests[0]?.body.model).toBe("deepseek-chat");
 
-		const update = await post({
-			type: "set-credential",
-			expectedRevision: beforeBody.revision,
-			profileId,
-			credential: "replacement-secret",
-		});
-		expect(update.status).toBe(200);
-		const replacement = await test();
-		expect(replacement.status).toBe(200);
-		expect(requests[1]?.authorization).toBe("Bearer replacement-secret");
+		const changedEndpoint = await test("http://127.0.0.1:43127/v1/?tenant=test");
+		expect(changedEndpoint.status).toBe(200);
+		expect(requests[1]?.url).toBe("http://127.0.0.1:43127/v1/chat/completions?tenant=test");
+		expect(requests[1]?.authorization).toBeNull();
 		const after = await get("/api/connection-settings");
 		const afterBody = await after.json();
 		expect(afterBody.profiles[0]?.credential).toBeUndefined();

@@ -85,6 +85,28 @@ export function useConversationSession({
 		}
 	};
 
+	const navigateToSourceMessage = async (messageId: number) => {
+		const scroll = () => document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+		if (document.querySelector(`[data-message-id="${messageId}"]`)) {
+			scroll();
+			return;
+		}
+		const conversationId = story.conversationId;
+		let page = story.page;
+		while (conversationId !== null && page?.hasOlder) {
+			if (Number(activeChatIdRef.current) !== conversationId) return;
+			const outcome = await chatHistoryTransport.loadHistory(conversationId, { page: page.index + 1 });
+			if (outcome.status !== "available") return;
+			dispatchStory({ type: "next-page-arrived", page: outcome.page });
+			page = outcome.page.page;
+			if (outcome.page.messages.some((message) => message.id === messageId)) {
+				await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+				if (Number(activeChatIdRef.current) === conversationId) scroll();
+				return;
+			}
+		}
+	};
+
 	const refreshStory = useCallback(async (conversationId: number) => {
 		const [freshConversation, freshHistory] = await Promise.all([
 			loadConversation(conversationId),
@@ -110,6 +132,7 @@ export function useConversationSession({
 		activeChatIdRef,
 		selectChat,
 		loadMoreHistory,
+		navigateToSourceMessage,
 		refreshStory,
 	};
 }

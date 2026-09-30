@@ -1,89 +1,97 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Database } from "bun:sqlite";
-import { openInitializedDatabase } from "../database/database";
-import { createEmbeddingSettingsModule } from "../embedding-settings";
-import { evaluateSemanticLore } from "./semantic";
+import { describe, expect, test } from "bun:test";
+import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
+import { jevRequest } from "../typesafe";
 
-const entry = {
-	id: 1,
-	position: 1,
-	title: "Harbor",
-	content: "The harbor is old.",
-	keywords: [],
-	semanticTriggers: ["ships arrive"],
-	matchOperator: "or" as const,
-	always: false,
-	requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-	caseSensitive: false, wholeWord: true, keywordMode: "literal" as const, regexFlags: "",
-	semanticThreshold: null, priority: 0, enabled: true,
-};
+const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
+const settings: SemanticSettingsSnapshot = { mode: "jev", threshold: 0.5, jevModel: "jev-1.13.0", credential: "typesafe-secret" };
+const unreachable = async (): Promise<Response> => { throw new Error("Jev must not be called."); };
 
 describe("semantic Lore evaluation", () => {
-	let database: Database;
-	beforeEach(() => {
-		database = openInitializedDatabase({ path: ":memory:" });
-		createEmbeddingSettingsModule(database, { masterKey: new Uint8Array(32).fill(5) }).apply({ type: "apply", expectedRevision: 0, endpoint: "http://localhost/v1/embeddings", model: "test", threshold: 0.7, deadlineMs: 1000 });
-	});
-	afterEach(() => database.close());
-
-	test("compares triggers with individual sentences and reuses compatible vectors", async () => {
-		let requests = 0;
-		const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-			requests += 1;
-			// ==[HUMAN APPROVED]== SAFETY: the client test sends this exact request body shape.
-			const body = JSON.parse(String(init?.body)) as { input: string[] };
-			return new Response(JSON.stringify({ data: body.input.map((_, index) => ({ embedding: index === 0 || index === 1 ? [1, 0] : [0, 1] })) }), { status: 200 });
-		};
-		const input = { database, entries: [entry], messages: [{ content: "A ship arrives. The market opens." }], fetch };
-		const first = await evaluateSemanticLore(input);
-		expect(first.available).toBe(true);
-		expect(first.matches?.[0]).toMatchObject({ trigger: "ships arrive", sentence: "A ship arrives." });
-		await evaluateSemanticLore(input);
-		expect(requests).toBe(2);
-	});
-
-	test("uses one unavailable result for the whole pass", async () => {
-		const result = await evaluateSemanticLore({ database, entries: [entry], messages: [{ content: "A ship arrives." }], fetch: async () => new Response("offline", { status: 503 }) });
-		expect(result).toMatchObject({ available: false, threshold: 0.7 });
-	});
-
-	test("falls back when provider batches have incompatible or zero vectors", async () => {
-		const dimensions = await evaluateSemanticLore({
-			database,
-			entries: [entry],
-			messages: [{ content: "A ship arrives." }],
-			fetch: async (_input, init) => {
-				// ==[HUMAN APPROVED]== SAFETY: the test client sends the exact request body shape asserted here.
-				const body = JSON.parse(String(init?.body)) as { input: string[] };
-				return new Response(JSON.stringify({ data: body.input.map((value) => ({ embedding: value === "ships arrive" ? [1, 0] : [1, 0, 0] })) }), { status: 200 });
-			},
-		});
-		expect(dimensions.available).toBe(false);
-
-		const zero = await evaluateSemanticLore({
-			database,
-			entries: [{ ...entry, semanticTriggers: ["zero vector"] }],
-			messages: [{ content: "A zero vector." }],
-			fetch: async (_input, init) => {
-				// ==[HUMAN APPROVED]== SAFETY: the test client sends the exact request body shape asserted here.
-				const body = JSON.parse(String(init?.body)) as { input: string[] };
-				return new Response(JSON.stringify({ data: body.input.map(() => ({ embedding: [0, 0] })) }), { status: 200 });
-			},
-		});
-		expect(zero.available).toBe(false);
-	});
-
-	test("retains the strongest semantic evidence when its cosine score is negative", async () => {
+	test("asks Jev one question per distinct trigger against the scan window", async () => {
+		let body = "";
 		const result = await evaluateSemanticLore({
-			database,
-			entries: [entry],
-			messages: [{ content: "An unrelated sentence." }],
+			entries: [entry, { enabled: true, semanticTriggers: ["ships arrive", "a storm breaks"] }, { enabled: false, semanticTriggers: ["disabled trigger"] }],
+			messages: [{ content: "A ship arrives." }, { id: null, content: "Writer waves." }],
+			settings,
 			fetch: async (_input, init) => {
-				// ==[HUMAN APPROVED]== SAFETY: the test client sends the exact request body shape asserted here.
-				const body = JSON.parse(String(init?.body)) as { input: string[] };
-				return new Response(JSON.stringify({ data: body.input.map((value) => ({ embedding: value === "ships arrive" ? [1, 0] : [-1, 0] })) }), { status: 200 });
+				body = String(init?.body);
+				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 }, trigger_1: { type: "noul", noul: 0.1 } } });
 			},
 		});
-		expect(result).toMatchObject({ available: true, matches: [{ trigger: "ships arrive", score: -1, sentence: "An unrelated sentence." }] });
+		// SAFETY: the fake captures the request emitted by evaluateSemanticLore, whose shape is asserted below.
+		const sent = JSON.parse(body) as { model: string; state: { scene: string[] }; questions: Record<string, { instructions: { situation: string } }> };
+		expect(sent.model).toBe("jev-1.13.0");
+		expect(sent.state.scene).toEqual(["A ship arrives.", "Writer waves."]);
+		expect(Object.values(sent.questions).map((question) => question.instructions.situation)).toEqual(["ships arrive", "a storm breaks"]);
+		expect(result).toEqual({ available: true, threshold: 0.5, matches: [{ trigger: "ships arrive", score: 0.9 }, { trigger: "a storm breaks", score: 0.1 }] });
+	});
+
+	test("reports why the whole pass is unavailable without calling Jev when off or unconfigured", async () => {
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, mode: "off" }, fetch: unreachable }))
+			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Typesafe Jev under Connections." });
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, credential: null }, fetch: unreachable }))
+			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
+	});
+
+	test("covers the whole scan window within Jev limits, two requests at a time", async () => {
+		const bodies: { model: string; state: { scene: string[] }; questions: Record<string, { type: string }> }[] = [];
+		const triggers = Array.from({ length: 120 }, (_, index) => `situation ${index} ${"detail ".repeat(300)}`);
+		let inFlight = 0;
+		let peakInFlight = 0;
+		const result = await evaluateSemanticLore({
+			entries: [{ enabled: true, semanticTriggers: triggers }],
+			messages: [{ content: `only in the oldest message ${"oldest ".repeat(40_000)}` }, { content: `${"filler ".repeat(40_000)}newest line` }],
+			settings,
+			fetch: async (_input, init) => {
+				// SAFETY: the fake captures the request emitted by evaluateSemanticLore, whose shape is asserted below.
+				const body = JSON.parse(String(init?.body)) as { model: string; state: { scene: string[] }; questions: Record<string, { type: string }> };
+				bodies.push(body);
+				peakInFlight = Math.max(peakInFlight, ++inFlight);
+				await Bun.sleep(1);
+				inFlight -= 1;
+				const seesOldest = body.state.scene.some((text) => text.startsWith("only in the oldest message"));
+				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
+			},
+		});
+		expect(bodies.every((body) => jevRequest(body.model, body.state, body.questions).fits)).toBe(true);
+		expect(bodies.length).toBeLessThan(triggers.length);
+		expect(peakInFlight).toBe(2);
+		const scanned = bodies.flatMap((body) => body.state.scene).join("");
+		expect(scanned).toContain("only in the oldest message");
+		expect(scanned).toContain("newest line");
+		expect(result.matches).toHaveLength(triggers.length);
+		expect(result.matches?.[0]).toEqual({ trigger: triggers[0], score: 0.9 });
+	});
+
+	test("uses one unavailable result when Jev fails", async () => {
+		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
+		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+	});
+
+	test("cancels the other request and stops later batches when a parallel request fails", async () => {
+		let requests = 0;
+		let cancelled = false;
+		const result = await evaluateSemanticLore({
+			entries: [{ enabled: true, semanticTriggers: Array.from({ length: 9 }, (_, index) => `situation ${index} ${"detail ".repeat(6000)}`) }],
+			messages: [],
+			settings,
+			fetch: async (_input, init) => {
+				if (++requests === 1) return new Response("offline", { status: 503 });
+				return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
+			},
+		});
+		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+		expect(requests).toBe(2);
+		expect(cancelled).toBe(true);
+	});
+
+	test("keeps semantic matches when an empty saved message enters the scan window", async () => {
+		const result = await evaluateSemanticLore({
+			entries: [entry],
+			messages: [{ id: 1, content: "" }, { id: 2, content: "A ship arrives." }],
+			settings,
+			fetch: async () => Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } }),
+		});
+		expect(result).toEqual({ available: true, threshold: 0.5, matches: [{ trigger: "ships arrive", score: 0.9 }] });
 	});
 });

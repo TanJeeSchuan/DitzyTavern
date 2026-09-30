@@ -1,16 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { promptPresetBlockTable } from "../database/schema";
+import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
 	type PromptPresetBlockOccurrence,
 	type PromptPresetRecipe,
+	hasEnabledMemorySlot,
 } from "../../shared/contract/prompt-preset";
 import { readPromptPresetRecipe } from "./recipe";
 import { PromptPresetNotFoundError } from "./errors";
+import { refreshMemoryForConversation } from "../memory";
 
 // ==[HUMAN APPROVED]== The authoritative Prompt Preset recipe operations. Every operation
 // persists the smallest change it names and returns the stored recipe as a
@@ -30,6 +32,14 @@ export class InvalidPromptPresetOperationError extends Error {
 		this.name = "InvalidPromptPresetOperationError";
 	}
 }
+
+const uniqueBlockName = (reference: string) =>
+	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : null;
+
+const assertNoSecondUniqueBlock = (reference: string, exists: boolean) => {
+	const name = uniqueBlockName(reference);
+	if (name !== null && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${name} block.`);
+};
 
 const validateBlockPatches = (
 	recipe: PromptPresetRecipe,
@@ -91,6 +101,12 @@ const applyBlockPatch = (
 
 type RecipeDatabase = ReturnType<typeof drizzle>;
 
+const refreshSelectedMemoryTails = (database: Database, presetId: number, before: PromptPresetRecipe) => {
+	const after = readPromptPresetRecipe(database, presetId);
+	if (after === undefined || hasEnabledMemorySlot(before.slots) === hasEnabledMemorySlot(after.slots)) return;
+	for (const { conversation_id: conversationId } of drizzle(database).select({ conversation_id: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable).where(eq(conversationPromptPresetTable.prompt_preset_id, presetId)).all()) refreshMemoryForConversation(database, conversationId);
+};
+
 // ==[HUMAN APPROVED]== The stored position of every slot is a dense 1-based order, so a
 // move target and a duplicate's neighbor stay meaningful. Renumbering goes
 // through one offset pass first because `position` is unique per preset:
@@ -134,19 +150,6 @@ const requireRecipe = (
 	return recipe;
 };
 
-const requireBlock = (
-	database: Database,
-	presetId: number,
-	blockId: number,
-): PromptPresetBlockOccurrence => {
-	const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-	const occurrence = recipe.slots.find((slot) => slot.id === blockId);
-	if (occurrence === undefined) {
-		throw new PromptPresetBlockNotFoundError(presetId, blockId);
-	}
-	return occurrence;
-};
-
 /** ==[HUMAN APPROVED]==
  * Saves all occurrence-addressed editor patches as one transaction. Every patch is checked
  * against the same authoritative recipe before the first write, so an invalid later patch
@@ -162,6 +165,7 @@ export const savePromptPresetBlockPatches = (
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		validateBlockPatches(recipe, patches);
 		patches.forEach((patch) => applyBlockPatch(db, patch));
+		if (patches.length > 0) refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -181,8 +185,11 @@ const writePromptPresetBlock = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		const occurrence = requireBlock(database, presetId, blockId);
+		const before = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const occurrence = before.slots.find((slot) => slot.id === blockId);
+		if (occurrence === undefined) throw new PromptPresetBlockNotFoundError(presetId, blockId);
 		write(db, occurrence);
+		refreshSelectedMemoryTails(database, presetId, before);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -196,9 +203,7 @@ export const addPromptPresetBlock = (
 	const db = drizzle(database);
 	return database.transaction(() => {
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
-		if (reference === "lore" && recipe.slots.some((slot) => slot.reference === "lore")) {
-			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
-		}
+		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 		const count = orderedIdsOf(db, presetId).length;
 		db.insert(promptPresetBlockTable)
 			.values({
@@ -209,6 +214,7 @@ export const addPromptPresetBlock = (
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
 			.run();
+		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -223,7 +229,7 @@ export const addPromptPresetInstruction = (
 ): PromptPresetRecipe => {
 	const db = drizzle(database);
 	return database.transaction(() => {
-		requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
+		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		const count = orderedIdsOf(db, presetId).length;
 		db.insert(promptPresetBlockTable)
 			.values({
@@ -236,6 +242,7 @@ export const addPromptPresetInstruction = (
 				content: "",
 			})
 			.run();
+		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
 };
@@ -283,9 +290,7 @@ export const duplicatePromptPresetBlock = (
 	blockId: number,
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
-		if (original.reference === "lore") {
-			throw new InvalidPromptPresetOperationError("A Prompt Preset may contain at most one Lore block.");
-		}
+		assertNoSecondUniqueBlock(original.reference, uniqueBlockName(original.reference) !== null);
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.

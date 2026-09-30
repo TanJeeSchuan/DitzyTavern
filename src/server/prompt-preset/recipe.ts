@@ -29,7 +29,7 @@ type StoredPromptPresetBlock = {
 	enabled: boolean;
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
-	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: PromptLoreReference | "memory"; role: PromptOutgoingRole; name: null; content: null }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
 			reference: ReferencedDefinitionBlock;

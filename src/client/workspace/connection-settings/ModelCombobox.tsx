@@ -29,7 +29,7 @@ export function ModelCombobox({ id, value, options, onChange, refreshDisabledRea
 				<Command>
 					<CommandInput placeholder="Search or type a model ID" value={search} onValueChange={setSearch} />
 					<CommandList>
-						<CommandEmpty>No suggestions. Refresh the catalog or type an ID.</CommandEmpty>
+					<CommandEmpty>No suggestions. Refresh the catalog or type an ID.</CommandEmpty>
 						{typed.length > 0 && !options.includes(typed) && (
 							<CommandGroup>
 								<CommandItem value={typed} onSelect={() => choose(typed)}>Use “<span className="font-mono">{typed}</span>”</CommandItem>

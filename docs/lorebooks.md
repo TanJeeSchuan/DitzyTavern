@@ -28,12 +28,12 @@ The shared Lore Scan Window is Chat-owned and defaults to four individual Messag
 
 Keywords default to case-insensitive whole-word matching, with case-sensitive and substring options. Explicit `/pattern/flags` regex keywords are supported. A Keyword or regex must match inside one complete Message. Primary and secondary results combine across the scan window; text from different Messages cannot manufacture a single phrase match.
 
-Semantic matching splits each scanned Message into sentences. Compare each authored Semantic Trigger with individual sentences and use the strongest sentence's cosine similarity as its score. Sentence splitting must respect sentence boundaries rather than treating every period as a boundary, and must not merge text across Messages. Matching is sentence-based, with no paragraph aggregation or overlapping-passage scheme. This can miss context spanning several sentences.
+Semantic matching sends the scanned Messages to Typesafe Jev as the scene and asks one yes/no question per distinct enabled Semantic Trigger: whether its situation happens or is discussed in the scene. Jev's probability is the trigger's score. A long scene or many triggers are split across bounded requests sent one after another, and a trigger keeps its highest score.
 
 | Entry configuration | Primary result |
 | --- | --- |
 | Keywords only | Any Keyword matches |
-| Semantic Triggers only | Any trigger meets its effective threshold |
+| Semantic Triggers only | Any trigger meets the threshold |
 | Both lists, OR | Either matcher succeeds |
 | Both lists, AND | Both matchers succeed |
 | Neither list populated | No match |
@@ -43,17 +43,15 @@ Only populated lists participate. OR is the default operator. Conditional entrie
 
 An empty secondary list supplies no additional condition. Disabled entries contribute no content. Entry titles are editing metadata rather than matching targets or automatically injected text.
 
-## Embeddings and fallback
+## Jev and fallback
 
-Use one application-wide OpenAI-compatible embedding configuration, separate from the writing model. It contains endpoint, credential, model, default threshold and deadline. The endpoint may be local or remote. The initial cosine threshold is 0.70, editable globally and overridable per entry. It is an uncalibrated starting value; no minimum quota forces weak semantic matches into the prompt.
+Semantic Triggers are configured once under Connections, in the Typesafe Jev section shared with Memory: the Jev model, the write-only credential, a Jev or Off mode, and one probability threshold that starts at 0.5. There is no per-entry threshold and no minimum quota forcing weak semantic matches into the prompt. Authored text saves independently of Jev availability.
 
-Embeddings are derived data tied to source text and the embedding endpoint/model. Reuse compatible results and obtain new ones when their source or embedding identity changes. Never compare embeddings from different model configurations. Authored text saves independently of endpoint availability.
+Each Jev request has a fifteen-second deadline. Use a complete semantic evaluation or keyword-only fallback for the whole Generation, including when Semantic Triggers are off or the credential is missing. Do not mix partial semantic results with per-entry fallback.
 
-Required embedding work has a configurable five-second deadline. Use a complete semantic evaluation or keyword-only fallback for the whole Generation. Do not mix partial semantic results with per-entry fallback. If all required compatible embeddings are already available, no remote request is needed merely to prove endpoint availability.
+In fallback, evaluate Keywords alone even for AND entries. Skip semantic-only entries, retain secondary Keyword conditions, and keep Always entries eligible. Indicate fallback in inspection and the retained record. Missing, failed or unusable Jev results must not masquerade as semantic non-matches.
 
-In fallback, evaluate Keywords alone even for AND entries. Skip semantic-only entries, retain secondary Keyword conditions, and keep Always entries eligible. Indicate fallback in inspection and the retained record. Missing, failed or unusable required embedding results must not masquerade as semantic non-matches or silently use stale vectors.
-
-The match tester operates on the saved entries in the open Lorebook and the writing supplied to it. It is an independent entry-level check: it does not require Chat attachments, attachment eligibility, Chat history or an enabled Lore block in the Prompt Preset. It shows the strongest matching sentence, score and effective threshold, along with lexical and secondary-condition results, and does not rewrite historical records.
+The match tester operates on the saved entries in the open Lorebook and the writing supplied to it. It is an independent entry-level check: it does not require Chat attachments, attachment eligibility, Chat history or an enabled Lore block in the Prompt Preset. It shows the strongest Semantic Trigger, its Jev probability and the threshold, along with lexical and secondary-condition results, and does not rewrite historical records.
 
 ## Prompt placement and budget
 
@@ -72,7 +70,7 @@ Admission and final Lore text use this order:
 
 Admit whole entries within both the Lore Allowance and available prompt space. Skip an entry that does not fit and continue to smaller ones. The estimate must account for assembled content and its separators, rather than allowing formatting to escape the budget. Older history then uses remaining space. Always entries may be omitted for budget.
 
-When no Lore block is enabled, no lore matching or embedding work contributes to Generation. The independent match tester remains available for saved entries in the open Lorebook. If books are attached, explain why lore is inactive and offer the appropriate add or enable action.
+When no Lore block is enabled, no lore matching or Jev work contributes to Generation. The independent match tester remains available for saved entries in the open Lorebook. If books are attached, explain why lore is inactive and offer the appropriate add or enable action.
 
 New Default recipes include Lore immediately before history. Existing saved recipes acquire it explicitly through Add Lore Block; do not silently change their authored order. Blank custom presets remain authored recipes to which the user can add the slot.
 
@@ -96,7 +94,7 @@ A new entry starts enabled and conditional, with empty triggers, OR and priority
 
 Support standalone SillyTavern lorebook JSON import and native Lorebook JSON import/export. Preserve supported fields and behavior. Warn about unsupported behavior while leaving supported portions usable, rather than disabling an entry solely because its source used an unsupported feature. Preserve an explicit source-disabled state. Do not invent Semantic Triggers from entry content or Keywords, turn an unmatchable imported entry into Always, or evaluate imported macro syntax.
 
-Unsupported recursion, timing, probability, groups, full-content vector matching, placement and macro behavior need actionable diagnostics. A semantic-only source entry whose full-content matching is unsupported may have no usable native triggers until edited, despite remaining enabled. The native format includes authored book and entry data, not embedding caches, credentials, attachment scopes or historical activation records.
+Unsupported recursion, timing, probability, groups, full-content vector matching, placement and macro behavior need actionable diagnostics. A semantic-only source entry whose full-content matching is unsupported may have no usable native triggers until edited, despite remaining enabled. The native format includes authored book and entry data, not credentials, attachment scopes or historical activation records.
 
 For new SillyTavern Prompt Preset imports, keep the location of the first enabled World Info placeholder in the selected source order as the single Lore block. If all such placeholders are disabled, keep the first disabled. Warn that other World Info positions were collapsed. Native imports containing duplicate Lore blocks fail validation.
 
@@ -106,7 +104,7 @@ For new SillyTavern Prompt Preset imports, keep the location of the first enable
 | --- | --- |
 | One Message ends with `Silver`; the next starts with `Keep` | Keyword `Silver Keep` does not match |
 | A primary match is in one Message and excluded `dream` is in another scanned Message | The secondary condition blocks the entry |
-| An AND entry has a Keyword match but required embeddings fail | Whole-Generation fallback allows the Keyword result, still subject to secondary conditions |
+| An AND entry has a Keyword match but Jev is unavailable | Whole-Generation fallback allows the Keyword result, still subject to secondary conditions |
 | The same outage affects a semantic-only entry | It is skipped; it does not become Always |
 | A book is attached directly to Chat and to an unseated Controlled Participant | Chat attachment makes it eligible, once |
 | An entry matches text that budgeting removes | Its lore remains eligible without rematching |
@@ -119,16 +117,17 @@ For new SillyTavern Prompt Preset imports, keep the location of the first enable
 
 ## Implementation boundaries and deferrals
 
-Resolve embedding I/O outside the existing pure compiler and capture its results with the Generation's inputs. Keep one Generation planning path for normal sends, Swipes, continuation and inspection. Use Variant-owned durable data for permanent evidence rather than extending the five-minute replay timer. Server-owned evidence must not be editable through generic data commands. These are integration consequences of the existing architecture, not separate user-facing workflows.
+Resolve Jev I/O outside the existing pure compiler and capture its results with the Generation's inputs. Keep one Generation planning path for normal sends, Swipes, continuation and inspection. Use Variant-owned durable data for permanent evidence rather than extending the five-minute replay timer. Server-owned evidence must not be editable through generic data commands. These are integration consequences of the existing architecture, not separate user-facing workflows.
 
-Sentence segmentation mechanics, schema layout, caching representation and numeric validation must implement the accepted behavior without adding new product modes. The 0.70 threshold requires tuning for the user's chosen embedding model; this design makes no measured retrieval-quality claim. Appropriate implementation verification covers matching, budgets, imports and Generation/Variant lifecycle. The repository forbids UI tests.
+Schema layout and numeric validation must implement the accepted behavior without adding new product modes. The 0.5 threshold requires tuning for the user's chosen Jev model and writing; this design makes no measured retrieval-quality claim. Appropriate implementation verification covers matching, budgets, imports and Generation/Variant lifecycle. The repository forbids UI tests.
 
-Defer global book activation, recursive matching, probability, inclusion groups, sticky/cooldown/delay rules, automatic memory, full-content embeddings, per-entry scan depths, per-entry history placement, named outlets, PNG book extraction and a bundled embedding runtime. Lore fields do not evaluate macros. Complete SillyTavern compatibility is outside scope.
+Defer global book activation, recursive matching, probability, inclusion groups, sticky/cooldown/delay rules, full-content semantic matching, per-entry scan depths, per-entry history placement, named outlets and PNG book extraction. Lore fields do not evaluate macros. Complete SillyTavern compatibility is outside scope.
 
 ## Decision references
 
 - [ADR-0039: shared native Lorebooks](adr/0039-introduce-shared-native-lorebooks.md)
-- [ADR-0040: separately authored Semantic Triggers](adr/0040-match-authored-semantic-triggers.md)
+- [ADR-0040: separately authored Semantic Triggers](adr/0040-match-authored-semantic-triggers.md); its matching mechanism is superseded by ADR-0044
+- [ADR-0044: judge Semantic Triggers with Jev](adr/0044-judge-semantic-triggers-with-jev.md)
 - [ADR-0041: one budgeted Lore block](adr/0041-assemble-lore-through-a-budgeted-preset-block.md)
 - [ADR-0042: send the inspected Prompt Plan](adr/0042-send-the-inspected-prompt-plan-without-reassembly.md)
 - [ADR-0043: permanent Lore Activation Records](adr/0043-retain-lore-activation-records-with-variants.md)

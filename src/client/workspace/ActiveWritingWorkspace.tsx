@@ -3,6 +3,7 @@ import { Toast } from "radix-ui";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { SaveGuardContext, SaveNavigationContext, UnsavedChangesDialog, type SaveGuard } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
+import { MemoriesPanel } from "./MemoriesPanel";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import {
@@ -289,6 +290,11 @@ export function ActiveWritingWorkspace({
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "macro-variables-opened" });
 					}}
+					onOpenMemories={() => {
+						if (assemblyActive) return;
+						setGenerationDetailsTarget(null);
+						dispatchPanel({ type: "memories-opened" });
+					}}
 				/>
 
 				{story.preview !== null && previewedMessage !== undefined && (
@@ -339,12 +345,22 @@ export function ActiveWritingWorkspace({
 									isModelAuthoredMessage(message) &&
 									message.continuable === true
 								}
+								canRegenerate={
+									generation.assemblyAvailable &&
+									latestStoryMessage?.id === message.id &&
+									generation.activeGenerationTargets.length === 0 &&
+									message.authorParticipantId === conversation?.control.humanParticipantId
+								}
 								onSibling={generation.canOfferSiblingMessage(message) ? generation.siblingMessage : undefined}
 								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
 								onContinue={generation.continueMessage}
+								onRegenerate={generation.regenerateResponse}
 								onInspect={openVariantDetails}
 								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
+								onDelete={!assemblyActive && !generation.isGenerating
+									? (messageId) => void storyActions.deleteStoryMessage(messageId)
+									: undefined}
 							/>
 						))}
 						{story.status === "loading-first" && <HistoryLoading />}
@@ -396,6 +412,7 @@ export function ActiveWritingWorkspace({
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
+					onNavigateSource={session.navigateToSourceMessage}
 					onClose={generation.cancelPromptPlanPreview}
 				/>
 			)}
@@ -407,9 +424,20 @@ export function ActiveWritingWorkspace({
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
+			{!assemblyActive && panelState.detailsSurface === "memories" && session.conversation !== null && (
+				<MemoriesPanel
+					key={session.conversation.id}
+					conversationId={session.conversation.id}
+					conversationRevision={session.conversation.revision}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
+					onNavigateSource={session.navigateToSourceMessage}
+					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}
+				/>
+			)}
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
+					onNavigateSource={session.navigateToSourceMessage}
 					onClose={() => {
 						setGenerationDetailsTarget(null);
 						dispatchPanel({ type: "details-closed" });

@@ -13,6 +13,7 @@ import {
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
+import type { MemoryActivationRecord } from "../shared/contract/memory-recall";
 import { useAsyncEffect } from "./lib/use-async";
 import { PanelHeader } from "./PanelHeader";
 
@@ -23,9 +24,11 @@ export type GenerationDetailsTarget =
 export function GenerationDetailsPanel({
 	target,
 	onClose,
+	onNavigateSource,
 }: {
 	target: GenerationDetailsTarget;
 	onClose: () => void;
+	onNavigateSource?: (messageId: number) => void;
 }) {
 	const [state, setState] = useState<
 		| { status: "loading" }
@@ -77,14 +80,14 @@ export function GenerationDetailsPanel({
 			<div className="panel-body generation-details-body">
 				{state.status === "loading" && <p className="panel-note" role="status">Loading Generation details…</p>}
 				{state.status === "error" && <p className="import-problem" role="alert">{state.message}</p>}
-				{state.status === "inspection" && <GenerationInspectionDetails details={state.details} />}
-				{state.status === "variant" && <VariantDetailsView details={state.details} />}
+				{state.status === "inspection" && <GenerationInspectionDetails details={state.details} onNavigateSource={onNavigateSource} />}
+				{state.status === "variant" && <VariantDetailsView details={state.details} onNavigateSource={onNavigateSource} />}
 			</div>
 		</aside>
 	);
 }
 
-function GenerationInspectionDetails({ details }: { details: ActiveGenerationDetails }) {
+function GenerationInspectionDetails({ details, onNavigateSource }: { details: ActiveGenerationDetails; onNavigateSource?: (messageId: number) => void }) {
 	const intent = intentLabel(details.intent);
 	const omitted = Array.isArray(details.budget.omittedContext) ? details.budget.omittedContext : [];
 	return (
@@ -114,6 +117,7 @@ function GenerationInspectionDetails({ details }: { details: ActiveGenerationDet
 				</section>
 			)}
 			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
+			{details.memoryActivation != null && <MemoryActivationDetails record={details.memoryActivation} memorySources={details.memorySources} onNavigateSource={onNavigateSource} />}
 			<PromptPlan plan={details.promptPlan} />
 		</>
 	);
@@ -139,7 +143,7 @@ function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 	);
 }
 
-function VariantDetailsView({ details }: { details: VariantDetails }) {
+function VariantDetailsView({ details, onNavigateSource }: { details: VariantDetails; onNavigateSource?: (messageId: number) => void }) {
 	const provenance = details.provenance;
 	return (
 		<>
@@ -158,6 +162,7 @@ function VariantDetailsView({ details }: { details: VariantDetails }) {
 			</dl>
 			{provenance !== null && <ProvenanceSettings provenance={provenance} />}
 			{details.loreActivation !== null && <LoreActivationDetails record={details.loreActivation} />}
+			{details.memoryActivation !== null && <MemoryActivationDetails record={details.memoryActivation} memorySources={details.memorySources} onNavigateSource={onNavigateSource} />}
 			{provenance === null && <p className="panel-note">This Variant has no Generation provenance.</p>}
 		</>
 	);
@@ -183,6 +188,82 @@ export function LoreActivationDetails({ record }: { record: LoreActivationRecord
 			</details>
 		</section>
 	);
+}
+
+const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
+	disabled: "Memory block disabled",
+	"allowance-zero": "Memory Allowance is zero",
+	empty: "No ready Memories",
+	rebuilding: "Memory indexes are being built",
+	partial: "Some Memory indexes are unavailable",
+	ready: "Memory indexes ready",
+	"index-failed": "Memory indexing failed",
+	"source-failed": "Some Memory sources failed",
+	unconfigured: "Embedding settings needed",
+}[state]);
+
+const admissionLabel = (record: MemoryActivationRecord["candidates"][number], manuallyEdited: boolean): string => {
+	if (record.admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
+	if (record.admission === "not-retained") return "Below relevance minimum";
+	if (record.admission === "request-limit") return "Omitted from Jev request";
+	if (record.admission === "duplicate-rendering") return "Duplicate rendering";
+	if (record.admission === "allowance") return "Over Memory Allowance";
+	if (record.admission === "oversized") return "Too large for Memory Allowance";
+	return "Does not fit the context limit";
+};
+
+export function MemoryActivationDetails({ record, memorySources, onNavigateSource }: {
+	record: MemoryActivationRecord;
+	memorySources: ActiveGenerationDetails["memorySources"];
+	onNavigateSource?: (messageId: number) => void;
+}) {
+	return (
+		<section className="generation-detail-section">
+			<h3>Memory recall</h3>
+			<dl className="detail-list compact-detail-list">
+				<div><dt>Status</dt><dd>{memoryStateLabel(record.state)}</dd></div>
+				<div><dt>Eligible sources</dt><dd>{record.eligibleSourceCount}</dd></div>
+				<div><dt>Ready claims</dt><dd>{record.readyRecordCount}</dd></div>
+				<div><dt>Shortlist</dt><dd>{record.semanticShortlistCount} semantic · {record.recentShortlistCount} recent</dd></div>
+				<div><dt>Pending indexes</dt><dd>{record.pendingIndexCount}{record.pendingSourceCount > 0 ? ` · ${record.pendingSourceCount} sources processing` : ""}</dd></div>
+				<div><dt>Failed</dt><dd>{record.failedIndexCount} indexes · {record.failedSourceCount} sources</dd></div>
+				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
+				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
+				<div><dt>Jev model</dt><dd>{record.jevModel}{record.jevConfigured ? " · credential configured" : " · credential missing"}</dd></div>
+				<div><dt>Relevance minimum</dt><dd>{record.relevanceMinimum}</dd></div>
+				<div><dt>Prompt edit</dt><dd>{record.manuallyEdited ? "Manual" : "Automatic"}</dd></div>
+			</dl>
+			<p className="panel-note">{record.manuallyEdited ? "This Memory block was edited for this Generation. Saved source Memories are unchanged." : "This Generation used its automatic Memory selection. Saved Memory corrections are managed separately in Memories."}</p>
+			{record.readyRecordCount === 0 && record.pendingIndexCount + record.pendingSourceCount > 0 && <p className="panel-note">The empty block reflects unfinished indexing or extraction; it does not mean recall found no relevant claims.</p>}
+			{record.manuallyEdited && <details><summary>Automatic Memory selection</summary><pre className="generation-detail-preformatted">{record.automaticMemoryText || "No Memory text was selected automatically."}</pre></details>}
+			<details><summary>Final Memory block</summary><pre className="generation-detail-preformatted">{record.finalMemoryText || "The final Memory block was empty."}</pre></details>
+			<details>
+				<summary>Considered claims ({record.candidates.length})</summary>
+				{record.candidates.length === 0 ? <p className="panel-note">No ready claims were considered for this scene.</p> : <ol>
+					{record.candidates.map((candidate) => <li key={candidate.identity}>
+						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
+						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
+						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null ? "Not judged" : `Jev relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}</p>
+						{candidate.evidence.length > 0 && <details><summary>Supporting excerpts</summary><ul>{candidate.evidence.map((evidence, index) => <li key={`${evidence.messageId}-${index}`}><MemorySourceLink messageId={evidence.messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /><blockquote>{evidence.excerpt}</blockquote></li>)}</ul></details>}
+					</li>)}
+				</ol>}
+			</details>
+			{record.candidates.some((candidate) => candidate.relevance !== null) && <p className="panel-note">Jev relevance is a model judgment about this scene, not proof that a Memory claim is true.</p>}
+			<details><summary>Captured recall scene</summary><p className="panel-note">Messages {record.scanMessageIds.length ? record.scanMessageIds.map((messageId, index) => <span key={messageId}>{index > 0 ? ", " : ""}<MemorySourceLink messageId={messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /></span>) : "none"}{record.scanTruncated ? " · scene text truncated to fit the scan limit" : ""}</p><pre className="generation-detail-preformatted">{record.scene || "No visible scene text was available."}</pre></details>
+		</section>
+	);
+}
+
+function MemorySourceLink({ messageId, variantId, sources, onNavigateSource }: {
+	messageId: number;
+	variantId: number | null;
+	sources: ActiveGenerationDetails["memorySources"];
+	onNavigateSource?: (messageId: number) => void;
+}) {
+	const exists = variantId === null ? sources.messageIds.includes(messageId) : sources.variantIds.includes(variantId);
+	return exists && onNavigateSource !== undefined
+		? <button type="button" className="memory-source-link" onClick={() => onNavigateSource(messageId)}>Message {messageId}</button>
+		: <>Message {messageId}</>;
 }
 
 function ProvenanceSettings({ provenance }: { provenance: GenerationProvenance }) {

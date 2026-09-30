@@ -12,13 +12,16 @@ const headerOperation = Type.Union([
 	Type.Object({ name: Type.String(), operation: Type.Literal("remove") }),
 ]);
 
+const apiFormat = Type.Union([
+	Type.Literal("chat-completions"),
+	Type.Literal("responses"),
+	Type.Literal("anthropic-messages"),
+	Type.Literal("embeddings"),
+]);
+
 const profileDraft = Type.Object({
 	displayName: Type.String(),
-	apiFormat: Type.Union([
-		 Type.Literal("chat-completions"),
-		 Type.Literal("responses"),
-		 Type.Literal("anthropic-messages"),
-	]),
+	apiFormat,
 	requestUrl: Type.String(),
 	modelsUrl: Type.String(),
 	modelBackend: Type.Union([Type.Literal("automatic"), Type.Literal("ai-sdk")]),
@@ -40,11 +43,7 @@ const profileDraft = Type.Object({
 const profile = Type.Object({
 	id: Type.Integer(),
 	displayName: Type.String(),
-	apiFormat: Type.Union([
-		Type.Literal("chat-completions"),
-		Type.Literal("responses"),
-		Type.Literal("anthropic-messages"),
-	]),
+	apiFormat,
 	requestUrl: Type.String(),
 	modelsUrl: Type.String(),
 	modelBackend: Type.Union([Type.Literal("automatic"), Type.Literal("ai-sdk")]),

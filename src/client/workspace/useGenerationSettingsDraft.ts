@@ -196,7 +196,7 @@ export function useGenerationSettingsDraft({
 		const selectedProfile = connectionProfiles.find(
 			(profile) => profile.id === settings.connectionProfileId,
 		);
-		setTransmittingNamespace(selectedProfile === undefined
+		setTransmittingNamespace(selectedProfile === undefined || selectedProfile.apiFormat === "embeddings"
 			? { status: "no-active-profile" }
 			: { status: "known", namespace: selectedProfile.apiFormat });
 	}, [connectionProfiles, settings]);

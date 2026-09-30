@@ -169,5 +169,34 @@ export function useStoryMessageActions({
 		});
 	};
 
-	return { changeSwipe, editStoryMessage };
+	const deleteStoryMessage = async (messageId: number) => {
+		if (story.preview !== null) return;
+		const conversationId = story.conversationId;
+		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
+
+		await runConversationCommand({
+			revision: () => conversation?.revision ?? story.revision,
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
+					type: "delete-message",
+					messageId,
+				}),
+			reconciliation: {
+				adoptSnapshot: setConversation,
+				showNotice: noPresentation,
+			},
+			notices: STORY_COMMAND_NOTICES,
+			callbacks: {
+				onApplied: (applied) => dispatchStory({
+					type: "message-deleted",
+					messageId,
+					revision: applied.revision,
+				}),
+				onNotPlayable: noPresentation,
+				onNotRemovable: noPresentation,
+			},
+		});
+	};
+
+	return { changeSwipe, editStoryMessage, deleteStoryMessage };
 }

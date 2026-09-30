@@ -13,18 +13,22 @@ import {
 	captureContinuationGenerationAsync,
 	captureSendGenerationAsync,
 	captureSiblingGenerationAsync,
+	prepareGenerationInputsSnapshot,
 	type ContinuationGenerationCapture,
+	type PrepareGenerationInputs,
 	type SendGenerationCapture,
 	type CapturedGeneration,
 } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { promptPlan } from "../../shared/contract/conversation-schema";
 import { InvalidConversationCommandError } from "../conversation";
+import { estimateDynamicBlockTokens } from "../generation-plan";
 import type {
 	GenerationFormattingContext,
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
+import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
 
 export type GenerationPreviewCapture =
 	| { kind: "send"; capture: SendGenerationCapture; content: string }
@@ -67,7 +71,7 @@ export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> 
 	readonly formatting?: GenerationFormattingContext;
 	readonly connection?: ModelClientConnectionSnapshot | null;
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
-	readonly embeddingFetch?: ModelFetch;
+	readonly preparationFetch?: ModelFetch;
 	readonly tokenEstimator?: TokenEstimator;
 };
 
@@ -82,7 +86,7 @@ const buildPreviewCaptureAsync = async (
 		connectionSettings: request.connectionSettings,
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
-		embeddingFetch: request.embeddingFetch,
+		preparationFetch: request.preparationFetch,
 	};
 	switch (request.kind) {
 		case "send":
@@ -210,7 +214,7 @@ export const createGenerationPreviewAsync = async (
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
 		conversationId: input.conversationId,
-		fingerprint: generationPreparationFingerprint(capture.capture.preparation),
+		fingerprint: capture.capture.preparation.fingerprint,
 		capture,
 		createdAt: now,
 		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
@@ -222,11 +226,7 @@ export const createGenerationPreviewAsync = async (
 const acceptedEditedPlan = (
 	record: GenerationPreviewRecord,
 	editedPlan: PromptPlan,
-	preparation: CapturedGeneration["preparation"],
 ) => {
-	if (generationPreparationFingerprint(preparation) !== record.fingerprint) {
-		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
-	}
 	if (!Value.Check(promptPlan, editedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
 	}
@@ -246,7 +246,16 @@ const acceptedEditedPlan = (
 	const loreActivation = sourceLore === null
 		? null
 		: editedLoreActivation(sourceLore, editedPlan);
-	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation };
+	const sourceMemory = record.capture.capture.plan.memoryActivation;
+	const editedMemoryBlock = editedPlan.blocks.find((block) => block.kind === "memory");
+	if (sourceMemory !== null && editedMemoryBlock?.kind === "memory" &&
+		estimateDynamicBlockTokens("memory", editedMemoryBlock.role, editedMemoryBlock.content) > sourceMemory.allowance) {
+		throw new InvalidConversationCommandError("The edited Memory block exceeds this Chat's Memory Allowance.");
+	}
+	const memoryActivation = sourceMemory === null
+		? null
+		: editedMemoryActivation(sourceMemory, editedPlan);
+	return { ...record.capture.capture.plan, promptPlan: editedPlan, budget, loreActivation, memoryActivation };
 };
 
 const editedLoreActivation = (
@@ -261,83 +270,96 @@ const editedLoreActivation = (
 	};
 };
 
+const editedMemoryActivation = (
+	source: MemoryActivationRecord,
+	plan: PromptPlan,
+): MemoryActivationRecord => {
+	const finalMemoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
+	return memoryActivationWithFinalText(source, finalMemoryText);
+};
+
 interface PreviewAcceptanceContext {
 	readonly database: Database;
 	readonly conversationId: number;
 	readonly connection: ModelClientConnectionSnapshot | null | undefined;
+	readonly connectionSettings: ConnectionSettingsModuleOptions | undefined;
 	readonly formatting: GenerationFormattingContext | undefined;
-	readonly embeddingFetch: ModelFetch | undefined;
 }
 
-export const captureSendGenerationPreviewAsync = async (
+type PreviewSnapshotKind =
+	| { readonly kind: "send"; readonly content: string }
+	| { readonly kind: "continuation" }
+	| { readonly kind: "sibling"; readonly messageId: number };
+
+const assertPreviewCurrent = (
+	context: PreviewAcceptanceContext,
+	record: GenerationPreviewRecord,
+	kind: PreviewSnapshotKind,
+): void => {
+	const input: PrepareGenerationInputs = {
+		database: context.database,
+		conversationId: context.conversationId,
+		connection: context.connection,
+		connectionSettings: context.connectionSettings,
+		formatting: context.formatting,
+		...kind,
+	};
+	if (generationPreparationFingerprint(prepareGenerationInputsSnapshot(input)) !== record.fingerprint) {
+		throw new InvalidConversationCommandError("The Prompt Plan is stale. Refresh it before sending.");
+	}
+};
+
+export const captureSendGenerationPreview = (
 	context: PreviewAcceptanceContext & {
 		readonly preview: GenerationPreviewAcceptanceFor<"send">;
 		readonly content: string;
 	},
-): Promise<SendGenerationCapture> => {
-	const { database, conversationId, connection, formatting, preview, content } = context;
-	ensureRecord(preview.record.id, conversationId);
+): SendGenerationCapture => {
+	const { preview, content } = context;
+	ensureRecord(preview.record.id, context.conversationId);
 	if (content !== preview.record.capture.content) {
 		throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
 	}
-	const current = await captureSendGenerationAsync({
-		database,
-		conversationId,
-		connection,
-		formatting,
-		embeddingFetch: context.embeddingFetch,
-		content,
-	});
-	return { ...current, plan: acceptedEditedPlan(context.preview.record, context.preview.editedPlan, current.preparation) };
+	assertPreviewCurrent(context, preview.record, { kind: "send", content });
+	const recorded = preview.record.capture.capture;
+	return { ...recorded, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
 };
 
-export const captureContinuationGenerationPreviewAsync = async (
+export const captureContinuationGenerationPreview = (
 	context: PreviewAcceptanceContext & {
 		readonly preview: GenerationPreviewAcceptanceFor<"continuation">;
 	},
-): Promise<ContinuationGenerationCapture> => {
-	const { database, conversationId, connection, formatting, preview } = context;
-	ensureRecord(preview.record.id, conversationId);
-	const current = await captureContinuationGenerationAsync({
-		database,
-		conversationId,
-		connection,
-		formatting,
-		embeddingFetch: context.embeddingFetch,
-	});
-	const assistantPrefill = current.assistantPrefill === undefined
+): ContinuationGenerationCapture => {
+	const { preview } = context;
+	ensureRecord(preview.record.id, context.conversationId);
+	assertPreviewCurrent(context, preview.record, { kind: "continuation" });
+	const recorded = preview.record.capture.capture;
+	const assistantPrefill = recorded.assistantPrefill === undefined
 		? undefined
 		: {
-			...current.assistantPrefill,
+			...recorded.assistantPrefill,
 			prefix: [...preview.editedPlan.blocks].reverse().find(
 				(block) => block.kind === "history" && block.role === "model",
-			)?.content ?? current.assistantPrefill.prefix,
+			)?.content ?? recorded.assistantPrefill.prefix,
 		};
 	return {
-		...current,
-		plan: acceptedEditedPlan(preview.record, preview.editedPlan, current.preparation),
+		...recorded,
+		plan: acceptedEditedPlan(preview.record, preview.editedPlan),
 		assistantPrefill,
 	};
 };
 
-export const captureSiblingGenerationPreviewAsync = async (
+export const captureSiblingGenerationPreview = (
 	context: PreviewAcceptanceContext & {
 		readonly preview: GenerationPreviewAcceptanceFor<"sibling">;
 		readonly messageId: number;
 	},
-): Promise<CapturedGeneration> => {
-	const { database, conversationId, connection, formatting, preview, messageId } = context;
-	ensureRecord(preview.record.id, conversationId);
+): CapturedGeneration => {
+	const { preview, messageId } = context;
+	ensureRecord(preview.record.id, context.conversationId);
 	if (messageId !== preview.record.capture.messageId) {
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}
-	const current = await captureSiblingGenerationAsync({
-		database,
-		conversationId,
-		connection,
-		formatting,
-		embeddingFetch: context.embeddingFetch,
-		messageId,
-	});
-	return { ...current, plan: acceptedEditedPlan(preview.record, preview.editedPlan, current.preparation) };
+	assertPreviewCurrent(context, preview.record, { kind: "sibling", messageId });
+	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
 };

@@ -25,6 +25,7 @@ import {
 	type PromptLoreEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
@@ -33,6 +34,8 @@ import type {
 	GenerationConnectionFacts,
 	GenerationPlan,
 } from "./types";
+import { renderMemoryClaim } from "../../shared/memory-text";
+import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
 
 /**
  * ==[HUMAN APPROVED]== The Continuation intent one configured strategy produces. Instruction
@@ -130,15 +133,22 @@ export const compileGenerationPlan = (
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
-	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
+	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
+	const memorySlotEnabled = hasEnabledMemorySlot(input.recipe);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
+	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity)) : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;
+	const memoryAllowance = input.memoryActivation?.allowance ?? 2_048;
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
 		throw new Error("Lore allowance must be a non-negative whole number.");
+	}
+	if (!Number.isInteger(memoryAllowance) || memoryAllowance < 0) {
+		throw new Error("Memory allowance must be a non-negative whole number.");
 	}
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
+		memory: readonly MemoryRecallCandidateRecord[],
 	): PromptPlan => {
 		const compiled = compilePrompt({
 			human: input.human,
@@ -146,6 +156,7 @@ export const compileGenerationPlan = (
 			context,
 			recipe: input.recipe,
 			lore,
+			memory,
 			attempt,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
@@ -170,17 +181,22 @@ export const compileGenerationPlan = (
 	const protectedContext = loreProtectedIndex === undefined
 		? []
 		: [input.context[loreProtectedIndex]];
-	const loreAdmission = admitLore({
-		candidates,
-		compile: compileWith,
+	const admissions = admitDynamicBlocks({
+		recipe: input.recipe,
+		lore: candidates,
+		memory: memoryCandidates,
+		loreAllowance,
+		memoryAllowance,
 		protectedContext,
+		compile: compileWith,
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
-		loreAllowance,
 		estimator: input.estimator ?? tokenxEstimator,
 	});
-	const compile = (context: readonly PromptContextEntry[]): PromptPlan => compileWith(context, loreAdmission.selected);
+	const selectedMemory = admissions.memory.map(({ candidate, reason }) => ({ ...candidate, admission: reason }));
+	const compile = (context: readonly PromptContextEntry[]): PromptPlan =>
+		compileWith(context, admissions.lore.selected, selectedMemory.filter((candidate) => candidate.admission === "admitted"));
 	const budget = budgetPromptPlan({
 		plan: compile(input.context),
 		compile,
@@ -196,12 +212,42 @@ export const compileGenerationPlan = (
 		budget,
 		loreActivation: input.loreActivation === undefined || input.loreActivation === null
 			? null
-			: withLoreBudgetEvidence(input.loreActivation, candidates, loreAdmission.decisions, loreAllowance),
+			: withLoreBudgetEvidence(input.loreActivation, candidates, admissions.lore.decisions, loreAllowance),
+		memoryActivation: input.memoryActivation == null
+			? null
+			: withMemoryBudgetEvidence(input.memoryActivation, selectedMemory, budget.plan),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
 			input.connection,
 		),
+	};
+};
+
+export const estimateDynamicBlockTokens = (
+	kind: "lore" | "memory",
+	role: "system" | "human" | "model",
+	content: string,
+	estimator: (transcript: string) => number = tokenxEstimator,
+): number => content.length === 0
+	? 0
+	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [] }))));
+
+const withMemoryBudgetEvidence = (
+	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,
+	candidates: readonly MemoryRecallCandidateRecord[],
+	plan: PromptPlan,
+): NonNullable<CompileGenerationPlanInput["memoryActivation"]> => {
+	const memoryText = plan.blocks.find((block) => block.kind === "memory")?.content ?? "";
+	const compiledByIdentity = new Map(candidates.map((candidate) => [candidate.identity, candidate]));
+	return {
+		...record,
+		candidates: record.candidates.map((candidate) => {
+			const compiled = compiledByIdentity.get(candidate.identity);
+			return compiled === undefined ? candidate : { ...candidate, ...compiled };
+		}),
+		automaticMemoryText: record.automaticMemoryText || memoryText,
+		finalMemoryText: memoryText,
 	};
 };
 
@@ -247,50 +293,99 @@ type LoreAdmission = {
 	decisions: LoreBudgetDecision[];
 };
 
-const admitLore = (input: {
-	candidates: readonly PromptLoreEntry[];
-	compile: (context: readonly PromptContextEntry[], lore: readonly PromptLoreEntry[]) => PromptPlan;
+type MemoryBudgetDecision = {
+	candidate: MemoryRecallCandidateRecord;
+	reason: MemoryRecallCandidateRecord["admission"];
+};
+
+type DynamicBlockAdmission = {
+	lore: LoreAdmission;
+	memory: MemoryBudgetDecision[];
+};
+
+type DynamicBlockBudgetFailure = "oversized" | "allowance" | "context-limit";
+
+const admitDynamicBlocks = (input: {
+	recipe: CompileGenerationPlanInput["recipe"];
+	lore: readonly PromptLoreEntry[];
+	memory: readonly MemoryRecallCandidateRecord[];
+	loreAllowance: number;
+	memoryAllowance: number;
+	compile: (
+		context: readonly PromptContextEntry[],
+		lore: readonly PromptLoreEntry[],
+		memory: readonly MemoryRecallCandidateRecord[],
+	) => PromptPlan;
 	protectedContext: readonly PromptContextEntry[];
 	contextLimit: number;
 	responseBudget: number;
 	safetyAllowance: number;
-	loreAllowance: number;
 	estimator: (transcript: string) => number;
-}): LoreAdmission => {
-	if (input.candidates.length === 0) return { selected: [], decisions: [] };
-	if (input.loreAllowance === 0) {
-		return {
-			selected: [],
-			decisions: input.candidates.map((candidate) => ({ candidate, reason: "allowance" })),
-		};
+	}): DynamicBlockAdmission => {
+	const loreSelected: PromptLoreEntry[] = [];
+	const loreDecisions: LoreBudgetDecision[] = [];
+	const memorySelected: MemoryRecallCandidateRecord[] = [];
+	const memoryDecisions: MemoryBudgetDecision[] = [];
+	const seenMemoryText = new Set<string>();
+	const cost = (plan: PromptPlan) => Math.ceil(input.estimator(toEstimationTranscript(plan)));
+	const dynamicBlockCost = (kind: "lore" | "memory", role: "system" | "human" | "model", content: string) =>
+		estimateDynamicBlockTokens(kind, role, content, input.estimator);
+	const compileTrial = (lore: readonly PromptLoreEntry[], memory: readonly MemoryRecallCandidateRecord[]) =>
+		input.compile(input.protectedContext, lore, memory.map((candidate) => ({ ...candidate, admission: "admitted" })));
+	const budgetFailure = (
+		kind: "lore" | "memory",
+		role: "system" | "human" | "model",
+		allowance: number,
+		content: string,
+		nextContent: string,
+		trialLore: readonly PromptLoreEntry[],
+		trialMemory: readonly MemoryRecallCandidateRecord[],
+	): DynamicBlockBudgetFailure | null => {
+		if (dynamicBlockCost(kind, role, content) > allowance) return "oversized";
+		if (dynamicBlockCost(kind, role, nextContent) > allowance) return "allowance";
+		const estimate = cost(compileTrial(trialLore, trialMemory));
+		return estimate + input.responseBudget + input.safetyAllowance > input.contextLimit ? "context-limit" : null;
+	};
+	for (const slot of input.recipe) {
+		if (!slot.enabled || (slot.reference !== "lore" && slot.reference !== "memory")) continue;
+		const role = slot.role === "system" ? "system" : slot.role === "user" ? "human" : "model";
+		if (slot.reference === "lore") {
+			for (const candidate of input.lore) {
+				const nextContent = [...loreSelected.map((entry) => entry.content), candidate.content].filter((text) => text.length > 0).join("\n\n");
+				const reason = budgetFailure("lore", role, input.loreAllowance, candidate.content, nextContent, [...loreSelected, candidate], memorySelected);
+				if (reason !== null) {
+					loreDecisions.push({ candidate, reason });
+					continue;
+				}
+				loreSelected.push(candidate);
+				loreDecisions.push({ candidate, reason: "admitted" });
+			}
+		} else {
+			for (const candidate of input.memory) {
+				if (candidate.admission === "request-limit" || candidate.admission === "not-retained") {
+					memoryDecisions.push({ candidate, reason: candidate.admission });
+					continue;
+				}
+				const content = renderMemoryClaim(candidate);
+				if (seenMemoryText.has(content)) {
+					memoryDecisions.push({ candidate, reason: "duplicate-rendering" });
+					continue;
+				}
+				seenMemoryText.add(content);
+				const nextContent = [...memorySelected.map(renderMemoryClaim), content].join("\n\n");
+				const reason = budgetFailure("memory", role, input.memoryAllowance, content, nextContent, loreSelected, [...memorySelected, candidate]);
+				memoryDecisions.push({ candidate, reason: reason ?? "admitted" });
+				if (reason !== null) {
+					continue;
+				}
+				memorySelected.push(candidate);
+			}
+		}
 	}
-	const base = input.compile(input.protectedContext, []);
-	const baseEstimate = Math.ceil(input.estimator(toEstimationTranscript(base)));
-	const selected: PromptLoreEntry[] = [];
-	const decisions: LoreBudgetDecision[] = [];
-	for (const candidate of input.candidates) {
-		const individualTrial = input.compile(input.protectedContext, [candidate]);
-		const individualEstimate = Math.ceil(input.estimator(toEstimationTranscript(individualTrial)));
-		const candidateEstimate = Math.max(0, individualEstimate - baseEstimate);
-		const trial = input.compile(input.protectedContext, [...selected, candidate]);
-		const estimate = Math.ceil(input.estimator(toEstimationTranscript(trial)));
-		const loreEstimate = Math.max(0, estimate - baseEstimate);
-		if (candidateEstimate > input.loreAllowance) {
-			decisions.push({ candidate, reason: "oversized" });
-			continue;
-		}
-		if (loreEstimate > input.loreAllowance) {
-			decisions.push({ candidate, reason: "allowance" });
-			continue;
-		}
-		if (estimate + input.responseBudget + input.safetyAllowance > input.contextLimit) {
-			decisions.push({ candidate, reason: "context-limit" });
-			continue;
-		}
-		selected.push(candidate);
-		decisions.push({ candidate, reason: "admitted" });
-	}
-	return { selected, decisions };
+	return {
+		lore: { selected: loreSelected, decisions: loreDecisions },
+		memory: memoryDecisions,
+	};
 };
 
 /**

@@ -7,8 +7,8 @@ import { readLorebook } from "./library";
 import { matchLoreEntry, type LoreEntryMatch, type LoreScanMessage } from "./matching";
 import { captureLoreScanWindow, type LoreScanSourceMessage } from "./scan";
 import { readLoreSettings, readLorebookAttachmentEligibility } from "./attachments";
-import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
-import { createEmbeddingSettingsModule, type EmbeddingSettingsModuleOptions } from "../embedding-settings";
+import { captureSemanticSettings, evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
+import type { TypesafeSettingsModuleOptions } from "../typesafe";
 import type { ModelFetch } from "../model-client";
 
 export interface ScopedLoreEvaluation {
@@ -62,20 +62,13 @@ const evidenceFor = (input: {
 	attachmentSelection: LoreBookAttachmentSelectionEvidence;
 	messages: readonly LoreScanMessage[];
 }) => {
-	const semantic: GenerationJsonValue = input.match.semantic.fallbackReason === undefined
-		? {
-			available: input.match.semantic.available,
-			matched: input.match.semantic.matched,
-			threshold: input.match.semantic.threshold,
-			matches: input.match.semantic.matches.map((match) => ({ trigger: match.trigger, score: match.score, sentence: match.sentence })),
-		}
-		: {
-			available: input.match.semantic.available,
-			matched: input.match.semantic.matched,
-			threshold: input.match.semantic.threshold,
-			matches: input.match.semantic.matches.map((match) => ({ trigger: match.trigger, score: match.score, sentence: match.sentence })),
-			fallbackReason: input.match.semantic.fallbackReason,
-		};
+	const semantic: GenerationJsonValue = {
+		available: input.match.semantic.available,
+		matched: input.match.semantic.matched,
+		threshold: input.match.semantic.threshold,
+		matches: input.match.semantic.matches.map((match) => ({ trigger: match.trigger, score: match.score })),
+		fallbackReason: input.match.semantic.fallbackReason ?? null,
+	};
 	return {
 	book: {
 		id: input.book.id,
@@ -100,7 +93,6 @@ const evidenceFor = (input: {
 		wholeWord: input.entry.wholeWord,
 		keywordMode: input.entry.keywordMode,
 		regexFlags: input.entry.regexFlags,
-		semanticThreshold: input.entry.semanticThreshold,
 		priority: input.entry.priority,
 		enabled: input.entry.enabled,
 	},
@@ -134,7 +126,7 @@ interface ScopedLoreInput {
 	messages: readonly LoreScanSourceMessage[];
 	pendingHumanText?: string;
 	beforeMessageId?: number;
-	embeddingSettings?: EmbeddingSettingsModuleOptions;
+	typesafeSettings?: TypesafeSettingsModuleOptions;
 }
 
 export interface ScopedLoreSources {
@@ -146,14 +138,7 @@ export interface ScopedLoreSources {
 }
 
 const collectSources = (input: ScopedLoreInput): ScopedLoreSources => {
-	const embeddingSettings = createEmbeddingSettingsModule(input.database, input.embeddingSettings);
-	const configuredSemanticSettings = embeddingSettings.get();
-	const semanticSettings: SemanticSettingsSnapshot = {
-		...configuredSemanticSettings,
-		credential: configuredSemanticSettings.endpoint.length > 0 && configuredSemanticSettings.model.length > 0
-			? embeddingSettings.getCredential()
-			: null,
-	};
+	const semanticSettings = captureSemanticSettings(input.database, input.typesafeSettings);
 	const settings = readLoreSettings(input.database, input.conversationId);
 	const scan = captureLoreScanWindow({
 		messages: input.messages,
@@ -259,10 +244,9 @@ export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation
 export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch }, capturedSources?: ScopedLoreSources): Promise<ScopedLoreEvaluation> => {
 	const sources = capturedSources ?? collectSources(input);
 	const semantic = await evaluateSemanticLore({
-		database: input.database,
 		entries: sources.books.flatMap(({ book }) => book.entries),
 		messages: sources.scanMessages,
-		capturedSettings: sources.semanticSettings,
+		settings: sources.semanticSettings,
 		fetch: input.fetch,
 	});
 	return assembleEvaluation(sources, semantic);

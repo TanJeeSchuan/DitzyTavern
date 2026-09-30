@@ -252,6 +252,7 @@ describe("Prompt Preset authored instruction macros", () => {
 			["model-scenario", false],
 			["model-example-dialogue", true],
 			["lore", true],
+			["memory", true],
 			["history", true],
 			["instruction", true],
 		]);

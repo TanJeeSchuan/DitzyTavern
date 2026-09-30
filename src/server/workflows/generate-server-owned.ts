@@ -53,7 +53,7 @@ export interface GenerationAttemptInput {
 	// carries this one value through budgeting and send.
 	formatting?: GenerationFormattingContext;
 	/** ==[HUMAN APPROVED]== Optional embedding transport seam; production uses the standard fetch implementation. */
-	embeddingFetch?: ModelFetch;
+	preparationFetch?: ModelFetch;
 }
 
 /** ==[HUMAN APPROVED]== Provider cancellation handle passed only to the server-owned runtime seam. */

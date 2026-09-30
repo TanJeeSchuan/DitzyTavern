@@ -101,30 +101,59 @@ export function readProfile(
 	};
 }
 
-export function readSecret(
-	db: ConnectionSettingsDb,
-	profileId: number,
+export type EncryptedSecretRow = {
+	format_version: number;
+	key_id: string;
+	nonce: string;
+	ciphertext: string;
+	tag: string;
+};
+export type NullableEncryptedSecretRow = { [Column in keyof EncryptedSecretRow]: EncryptedSecretRow[Column] | null };
+export const NO_ENCRYPTED_SECRET: NullableEncryptedSecretRow = { format_version: null, key_id: null, nonce: null, ciphertext: null, tag: null };
+
+export function readEncryptedSecret(
+	row: NullableEncryptedSecretRow | undefined,
+	id: number,
 	masterKey: Uint8Array,
 ): ConnectionProfileSecretSnapshot | null {
-	const secret = db
-		.select()
-		.from(connectionSecretTable)
-		.where(eq(connectionSecretTable.profile_id, profileId))
-		.get();
-	if (secret === undefined) return null;
-	const payload = decryptConnectionSecretSync(masterKey, profileId, {
+	if (row === undefined || row.format_version === null || row.key_id === null || row.nonce === null || row.ciphertext === null || row.tag === null) return null;
+	const payload = decryptConnectionSecretSync(masterKey, id, {
 		// ==[HUMAN APPROVED]== SAFETY: the encryption module accepts the versioned value and rejects any
 		// unsupported value before decrypting it.
-		formatVersion: secret.format_version as 1,
-		keyId: secret.key_id,
-		nonce: secret.nonce,
-		ciphertext: secret.ciphertext,
-		tag: secret.tag,
+		formatVersion: row.format_version as 1,
+		keyId: row.key_id,
+		nonce: row.nonce,
+		ciphertext: row.ciphertext,
+		tag: row.tag,
 	});
 	return {
 		credential: payload.credential,
 		headers: { ...payload.headers },
 	};
+}
+
+export function writeEncryptedSecret(
+	payload: ConnectionProfileSecretSnapshot,
+	id: number,
+	masterKey: Uint8Array,
+): EncryptedSecretRow {
+	const encrypted = encryptConnectionSecretSync(masterKey, id, {
+		credential: payload.credential,
+		headers: { ...payload.headers },
+	});
+	return { format_version: encrypted.formatVersion, key_id: encrypted.keyId, nonce: encrypted.nonce, ciphertext: encrypted.ciphertext, tag: encrypted.tag };
+}
+
+export function readSecret(
+	db: ConnectionSettingsDb,
+	profileId: number,
+	masterKey: Uint8Array,
+): ConnectionProfileSecretSnapshot | null {
+	return readEncryptedSecret(
+		db.select().from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profileId)).get(),
+		profileId,
+		masterKey,
+	);
 }
 
 export function toProfileRow(profile: ConnectionProfileDraft) {
@@ -166,35 +195,18 @@ export function writeSecretState(
 	payload: ConnectionProfileSecretSnapshot,
 	masterKey: Uint8Array,
 ): void {
+	const current = readSecret(db, profileId, masterKey);
+	if (current && current.credential === payload.credential && JSON.stringify(Object.entries(current.headers).sort()) === JSON.stringify(Object.entries(payload.headers).sort())) return;
 	if (payload.credential === null && Object.keys(payload.headers).length === 0) {
 		db.delete(connectionSecretTable)
 			.where(eq(connectionSecretTable.profile_id, profileId))
 			.run();
 		return;
 	}
-	const encrypted = encryptConnectionSecretSync(masterKey, profileId, {
-		credential: payload.credential,
-		headers: { ...payload.headers },
-	});
+	const encrypted = writeEncryptedSecret(payload, profileId, masterKey);
 	db.insert(connectionSecretTable)
-		.values({
-			profile_id: profileId,
-			format_version: encrypted.formatVersion,
-			key_id: encrypted.keyId,
-			nonce: encrypted.nonce,
-			ciphertext: encrypted.ciphertext,
-		tag: encrypted.tag,
-		})
-		.onConflictDoUpdate({
-			target: connectionSecretTable.profile_id,
-			set: {
-				format_version: encrypted.formatVersion,
-				key_id: encrypted.keyId,
-				nonce: encrypted.nonce,
-				ciphertext: encrypted.ciphertext,
-				tag: encrypted.tag,
-			},
-		})
+		.values({ profile_id: profileId, ...encrypted })
+		.onConflictDoUpdate({ target: connectionSecretTable.profile_id, set: encrypted })
 		.run();
 }
 

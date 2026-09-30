@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
+import { syncMemorySources } from "../../memory";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
 
@@ -11,9 +12,11 @@ export interface EditVariantInput {
 }
 
 export function editVariant(db: ConversationDatabase, input: EditVariantInput) {
-	requireVariant(db, input.conversationId, input.messageId, input.variantId);
+	const current = requireVariant(db, input.conversationId, input.messageId, input.variantId);
+	if (current.content === input.content) return;
 	db.update(messageVariantTable)
 		.set({ content: input.content })
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
+	syncMemorySources(db.$client, input.conversationId, [input.variantId]);
 }
