@@ -28,7 +28,7 @@ export interface MemoryRecallSceneMessage {
 }
 
 interface IndexedMemoryCandidate {
-	readonly record: Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "judged" | "relevance" | "relevanceScore" | "retained" | "requestIncluded" | "admission">;
+	readonly record: Omit<MemoryRecallCandidateRecord, "semanticSimilarity" | "semanticRank" | "recentRank" | "relevance" | "relevanceScore" | "admission">;
 	readonly renderedText: string;
 	readonly vector: readonly number[];
 }
@@ -40,7 +40,7 @@ export interface MemoryRecallSnapshot {
 	readonly recent: readonly IndexedMemoryCandidate[];
 }
 
-const unjudged = { judged: false, relevance: null, relevanceScore: null, retained: false, requestIncluded: false, admission: "request-limit" } as const;
+const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
 
 const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string) => {
 	const pendingAlreadySelected = pendingHumanText !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pendingHumanText;
@@ -115,16 +115,7 @@ export async function judgeMemoryRecallCandidates(
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of packed) {
 		const relevance = parseScore(answers[`candidate_${candidate.identity}_relevance`]!);
-		const retained = relevance.score >= relevanceMinimum;
-		judged.set(candidate.identity, {
-			...candidate,
-			judged: true,
-			relevance: relevance.label,
-			relevanceScore: relevance.score,
-			retained,
-			requestIncluded: true,
-			admission: retained ? "admitted" : "not-retained",
-		});
+		judged.set(candidate.identity, { ...candidate, relevance: relevance.label, relevanceScore: relevance.score, admission: relevance.score >= relevanceMinimum ? "admitted" : "not-retained" });
 	}
 	return candidates.map((candidate) => judged.get(candidate.identity) ?? { ...candidate, ...unjudged });
 }

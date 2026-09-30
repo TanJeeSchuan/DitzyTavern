@@ -86,11 +86,8 @@ const memoryCandidate = (identity: string, claim: string, sourcePosition = 0): M
 	semanticSimilarity: 0.9,
 	semanticRank: 1,
 	recentRank: null,
-	judged: true,
 	relevance: "useful",
 	relevanceScore: 2,
-	retained: true,
-	requestIncluded: true,
 	admission: "admitted",
 });
 
@@ -285,7 +282,7 @@ describe("Generation Plan Compiler", () => {
 		});
 
 		expect(plan.memoryActivation?.candidates.map(({ identity, admission }) => [identity, admission])).toEqual([
-			["lower", "memory-allowance"],
+			["lower", "allowance"],
 			["higher", "admitted"],
 		]);
 	});

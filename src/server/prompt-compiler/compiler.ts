@@ -259,6 +259,6 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 }
 
 const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>
-	entries.filter((entry) => entry.retained && entry.admission === "admitted")
+	entries.filter((entry) => entry.admission === "admitted")
 		.map(renderMemoryClaim)
 		.join("\n\n");

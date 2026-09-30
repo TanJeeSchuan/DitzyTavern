@@ -361,12 +361,8 @@ const admitDynamicBlocks = (input: {
 			}
 		} else {
 			for (const candidate of input.memory) {
-				if (!candidate.judged) {
-					memoryDecisions.push({ candidate, reason: "request-limit" });
-					continue;
-				}
-				if (!candidate.retained) {
-					memoryDecisions.push({ candidate, reason: "not-retained" });
+				if (candidate.admission === "request-limit" || candidate.admission === "not-retained") {
+					memoryDecisions.push({ candidate, reason: candidate.admission });
 					continue;
 				}
 				const content = renderMemoryClaim(candidate);
@@ -377,7 +373,7 @@ const admitDynamicBlocks = (input: {
 				seenMemoryText.add(content);
 				const nextContent = [...memorySelected.map(renderMemoryClaim), content].join("\n\n");
 				const reason = budgetFailure("memory", role, input.memoryAllowance, content, nextContent, loreSelected, [...memorySelected, candidate]);
-				memoryDecisions.push({ candidate, reason: reason === null ? "admitted" : reason === "allowance" ? "memory-allowance" : reason });
+				memoryDecisions.push({ candidate, reason: reason ?? "admitted" });
 				if (reason !== null) {
 					continue;
 				}

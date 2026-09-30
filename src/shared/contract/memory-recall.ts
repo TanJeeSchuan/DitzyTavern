@@ -15,7 +15,7 @@ export const memoryAdmissionReason = Type.Union([
 	Type.Literal("admitted"),
 	Type.Literal("not-retained"),
 	Type.Literal("duplicate-rendering"),
-	Type.Literal("memory-allowance"),
+	Type.Literal("allowance"),
 	Type.Literal("oversized"),
 	Type.Literal("context-limit"),
 	Type.Literal("request-limit"),
@@ -37,11 +37,8 @@ export const memoryRecallCandidate = Type.Object({
 	semanticSimilarity: Type.Union([Type.Number(), Type.Null()]),
 	semanticRank: Type.Union([Type.Integer(), Type.Null()]),
 	recentRank: Type.Union([Type.Integer(), Type.Null()]),
-	judged: Type.Boolean(),
 	relevance: Type.Union([memoryRelevanceScore, Type.Null()]),
 	relevanceScore: Type.Union([Type.Number(), Type.Null()]),
-	retained: Type.Boolean(),
-	requestIncluded: Type.Boolean(),
 	admission: memoryAdmissionReason,
 });
 

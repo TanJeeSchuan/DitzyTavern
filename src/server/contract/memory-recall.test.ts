@@ -225,7 +225,7 @@ describe("Memory recall in Generation preparation", () => {
 			semanticShortlistCount: 1,
 			recentShortlistCount: 1,
 			automaticMemoryText: memoryText,
-			candidates: [{ messageId: source.messageId, variantId: source.variantId, ownership: "writer", sourceChanged: true, requestIncluded: true, retained: true, relevance: "useful", admission: "admitted" }],
+			candidates: [{ messageId: source.messageId, variantId: source.variantId, ownership: "writer", sourceChanged: true, relevance: "useful", admission: "admitted" }],
 		});
 		expect(preview.memoryActivation.candidates.map((candidate) => candidate.variantId)).toEqual([source.variantId]);
 		expect(preview.memorySources).toContainEqual({ messageId: source.messageId, variantId: source.variantId, exists: true });
