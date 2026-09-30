@@ -260,9 +260,8 @@ function MemorySourceLink({ messageId, variantId, sources, onNavigateSource }: {
 	sources: ActiveGenerationDetails["memorySources"];
 	onNavigateSource?: (messageId: number) => void;
 }) {
-	const source = sources.find((item) => item.messageId === messageId && item.variantId === variantId);
-	if (source === undefined) throw new Error("Memory source availability is missing for a retained reference.");
-	return source.exists && onNavigateSource !== undefined
+	const exists = variantId === null ? sources.messageIds.includes(messageId) : sources.variantIds.includes(variantId);
+	return exists && onNavigateSource !== undefined
 		? <button type="button" className="memory-source-link" onClick={() => onNavigateSource(messageId)}>Message {messageId}</button>
 		: <>Message {messageId}</>;
 }

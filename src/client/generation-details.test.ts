@@ -43,7 +43,7 @@ const retainedInspection = (status: ActiveGenerationDetails["status"]): ActiveGe
 	promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
 	generationSettings: { modelId: "test-model" },
 	connection: { profileId: 23 },
-	memorySources: [],
+	memorySources: { messageIds: [], variantIds: [] },
 	budget: {
 		tokenEstimate: 40,
 		responseBudget: 64,

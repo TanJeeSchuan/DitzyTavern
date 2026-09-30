@@ -281,9 +281,8 @@ const provenanceSettingsWireSchemas = {
 export const generationProvenanceSettingsWire = Type.Object(provenanceSettingsWireSchemas);
 
 const memorySourceAvailability = Type.Object({
-	messageId: Type.Integer(),
-	variantId: Type.Union([Type.Null(), Type.Integer()]),
-	exists: Type.Boolean(),
+	messageIds: Type.Array(Type.Integer()),
+	variantIds: Type.Array(Type.Integer()),
 });
 
 const generationProvenance = Type.Union([Type.Null(), Type.Object({
@@ -323,7 +322,7 @@ export const activeGenerationDetails = Type.Object({
 	promptContext: jsonValue,
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: Type.Array(memorySourceAvailability),
+	memorySources: memorySourceAvailability,
 	generationSettings: jsonValue,
 	connection: jsonValue,
 	budget: Type.Object({
@@ -365,7 +364,7 @@ export const variantDetails = Type.Object({
 	// during the active inspection lifecycle.
 	loreActivation: Type.Union([loreActivationRecord, Type.Null()]),
 	memoryActivation: Type.Union([memoryActivationRecord, Type.Null()]),
-	memorySources: Type.Array(memorySourceAvailability),
+	memorySources: memorySourceAvailability,
 });
 
 export type GenerationProvenance = SharedGenerationProvenance;
@@ -738,7 +737,7 @@ export const generationPreview = Type.Object({
 	pendingWrites: Type.Array(macroVariableWrite),
 	loreActivation: Type.Optional(Type.Union([loreActivationRecord, Type.Null()])),
 	memoryActivation: Type.Optional(Type.Union([memoryActivationRecord, Type.Null()])),
-	memorySources: Type.Array(memorySourceAvailability),
+	memorySources: memorySourceAvailability,
 	budget: generationPreviewBudget,
 });
 

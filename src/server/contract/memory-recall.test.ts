@@ -216,7 +216,7 @@ describe("Memory recall in Generation preparation", () => {
 			previewId: string;
 			promptPlan: PromptPlan;
 			memoryActivation: MemoryActivationRecord;
-			memorySources: { messageId: number; variantId: number | null; exists: boolean }[];
+			memorySources: { messageIds: number[]; variantIds: number[] };
 		};
 		const memoryText = "Maren now holds Writer's key. (attribution: Narrated event)";
 		expect(preview.promptPlan.blocks).toContainEqual({ kind: "memory", role: "system", content: memoryText });
@@ -228,8 +228,8 @@ describe("Memory recall in Generation preparation", () => {
 			candidates: [{ messageId: source.messageId, variantId: source.variantId, ownership: "writer", sourceChanged: true, relevance: "useful", admission: "admitted" }],
 		});
 		expect(preview.memoryActivation.candidates.map((candidate) => candidate.variantId)).toEqual([source.variantId]);
-		expect(preview.memorySources).toContainEqual({ messageId: source.messageId, variantId: source.variantId, exists: true });
-		expect(preview.memorySources).toContainEqual({ messageId: source.messageId, variantId: null, exists: true });
+		expect(preview.memorySources.messageIds).toContain(source.messageId);
+		expect(preview.memorySources.variantIds).toContain(source.variantId);
 		expect(embeddingCalls).toBe(1);
 		expect(jevCalls).toBe(1);
 

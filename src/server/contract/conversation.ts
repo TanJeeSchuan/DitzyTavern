@@ -308,7 +308,7 @@ export const createConversationRoutes = (
 						createGenerationPreviewAsync(connection, input));
 					const capture = preview.capture.capture;
 					const memoryActivation = capture.plan.memoryActivation;
-					const memorySources = memoryActivation == null ? [] : withDatabase(database, (connection) =>
+					const memorySources = withDatabase(database, (connection) =>
 						readMemorySourceAvailability(connection, params.id, memoryActivation));
 					return {
 						outcome: "available" as const,

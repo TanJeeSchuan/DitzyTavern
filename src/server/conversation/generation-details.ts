@@ -227,7 +227,7 @@ export function readActiveGenerationDetailsFromConnection(
 		promptContext: parseGenerationJson(row.prompt_context_json, []),
 		loreActivation,
 		memoryActivation,
-		memorySources: memoryActivation === null ? [] : readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
+		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
 		generationSettings: settings,
 		connection: safeConnection(parseGenerationJson(row.connection_json, null)),
 		budget: {
@@ -306,50 +306,26 @@ export function readVariantDetailsFromConnection(
 		provenance: safeProvenance(provenanceValue, data),
 		loreActivation,
 		memoryActivation,
-		memorySources: memoryActivation === null ? [] : readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
+		memorySources: readMemorySourceAvailabilityFromConnection(db, conversationId, memoryActivation),
 	};
 }
 
 const readMemorySourceAvailabilityFromConnection = (
 	db: ConversationDatabase,
 	conversationId: number,
-	activation: NonNullable<ActiveGenerationDetails["memoryActivation"]>,
+	activation: ActiveGenerationDetails["memoryActivation"],
 ): ActiveGenerationDetails["memorySources"] => {
-	const references = new Map<string, { messageId: number; variantId: number | null }>();
-	for (const messageId of activation.scanMessageIds) {
-		const reference = { messageId, variantId: null };
-		references.set(`${messageId}:`, reference);
-	}
-	for (const candidate of activation.candidates) {
-		for (const reference of [
-			{ messageId: candidate.messageId, variantId: candidate.variantId },
-			...candidate.evidence.map(({ messageId }) => ({ messageId, variantId: null })),
-		]) references.set(`${reference.messageId}:${reference.variantId ?? ""}`, reference);
-	}
-	if (references.size === 0) return [];
-	const refs = [...references.values()];
-	const messageIds = [...new Set(refs.map(({ messageId }) => messageId))];
-	const variantIds = [...new Set(refs.flatMap(({ variantId }) => variantId === null ? [] : [variantId]))];
-	const existingMessages = new Set(db.select({ id: messageTable.id })
-		.from(messageTable)
-		.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, messageIds)))
-		.all().map(({ id }) => id));
-	const existingVariants = new Set(variantIds.length === 0 ? [] : db.select({ messageId: messageVariantTable.message_id, variantId: messageVariantTable.id })
-		.from(messageVariantTable)
-		.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
-		.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, variantIds)))
-		.all().map(({ messageId, variantId }) => `${messageId}:${variantId}`));
-	return refs.map((reference) => ({
-		...reference,
-		exists: reference.variantId === null
-			? existingMessages.has(reference.messageId)
-			: existingVariants.has(`${reference.messageId}:${reference.variantId}`),
-	}));
+	const messageIds = [...new Set([...activation?.scanMessageIds ?? [], ...activation?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? []])];
+	const variantIds = [...new Set(activation?.candidates.map(({ variantId }) => variantId) ?? [])];
+	return {
+		messageIds: messageIds.length === 0 ? [] : db.select({ id: messageTable.id }).from(messageTable).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, messageIds))).all().map(({ id }) => id),
+		variantIds: variantIds.length === 0 ? [] : db.select({ id: messageVariantTable.id }).from(messageVariantTable).innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, variantIds))).all().map(({ id }) => id),
+	};
 };
 
 export const readMemorySourceAvailability = (
 	database: Database,
 	conversationId: number,
-	activation: NonNullable<ActiveGenerationDetails["memoryActivation"]>,
+	activation: ActiveGenerationDetails["memoryActivation"],
 ): ActiveGenerationDetails["memorySources"] =>
 	readMemorySourceAvailabilityFromConnection(connectConversationDatabase(database), conversationId, activation);

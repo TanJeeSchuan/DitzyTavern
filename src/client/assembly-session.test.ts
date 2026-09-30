@@ -21,7 +21,7 @@ const preview = (content = "Expanded"): GenerationPreview => ({
 		// SAFETY: the reducer tests only inspect plan and lifecycle fields; settings are not exercised.
 		effectiveSettings: {} as GenerationPreview["effectiveSettings"],
 		pendingWrites: [],
-		memorySources: [],
+		memorySources: { messageIds: [], variantIds: [] },
 		budget: {
 		tokenEstimate: 1,
 		responseBudget: 1,

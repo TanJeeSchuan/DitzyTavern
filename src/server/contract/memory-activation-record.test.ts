@@ -117,10 +117,7 @@ describe("permanent Memory Activation Records", () => {
 		expect(inspected.status).toBe(200);
 		const inspectedDetails = generationJsonObject(await inspected.json());
 		expect(inspectedDetails?.memoryActivation).toEqual(memory);
-		expect(inspectedDetails?.memorySources).toEqual(expect.arrayContaining([
-			{ messageId: source.id, variantId: sourceVariant.id, exists: true },
-			{ messageId: source.id, variantId: null, exists: true },
-		]));
+		expect(inspectedDetails?.memorySources).toEqual({ messageIds: [source.id], variantIds: [sourceVariant.id] });
 
 		module.resolveGeneration({ conversationId: created.id, generationId: accepted.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
 		const generated = module.getSnapshot(created.id)!.messages.at(-1)!;
@@ -131,13 +128,13 @@ describe("permanent Memory Activation Records", () => {
 		module.execute({ conversationId: created.id, expectedRevision: revision, action: { type: "edit-variant", messageId: source.id, variantId: sourceVariant.id, content: "Maren returned the key." } });
 		const afterEdit = module.readVariantDetails(created.id, generated.id, generatedVariant.id)!;
 		expect(afterEdit.memoryActivation).toEqual(memory);
-		expect(afterEdit.memorySources.find((entry) => entry.variantId === sourceVariant.id)?.exists).toBe(true);
+		expect(afterEdit.memorySources.variantIds).toContain(sourceVariant.id);
 
 		const beforeDeleteRevision = module.getSnapshot(created.id)!.revision;
 		module.execute({ conversationId: created.id, expectedRevision: beforeDeleteRevision, action: { type: "delete-message", messageId: source.id } });
 		const afterDeletion = module.readVariantDetails(created.id, generated.id, generatedVariant.id)!;
 		expect(afterDeletion.memoryActivation?.candidates[0]?.evidence[0]?.excerpt).toBe("Maren kept the brass key.");
-		expect(afterDeletion.memorySources.find((entry) => entry.variantId === sourceVariant.id)?.exists).toBe(false);
+		expect(afterDeletion.memorySources.variantIds).not.toContain(sourceVariant.id);
 
 		database.run("UPDATE generation_replay SET expires_at = ? WHERE id = ?", ["2000-01-01T00:00:00.000Z", accepted.generationId]);
 		const expiredInspection = await app.handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
