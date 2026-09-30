@@ -42,6 +42,18 @@ export interface MemoryRecallSnapshot {
 
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
 
+const SCENE_TOKEN_LIMIT = 4_000;
+
+const fitToTokenBudget = (text: string, limit: number) => {
+	for (let keep = limit; keep > 0;) {
+		const fitted = sliceByTokens(text, -keep);
+		const over = tokenxEstimator(fitted) - limit;
+		if (over <= 0) return fitted;
+		keep -= over;
+	}
+	return "";
+};
+
 const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string) => {
 	const pendingAlreadySelected = pendingHumanText !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pendingHumanText;
 	const scene = messages.slice(-(pendingHumanText !== undefined && !pendingAlreadySelected ? 3 : 4)).map((message) => ({
@@ -53,15 +65,13 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 	}
 	let truncated = false;
 	const render = () => scene.map((message) => message.text).join("\n\n");
-	while (scene.length > 1 && tokenxEstimator(render()) > 4_000) {
+	while (scene.length > 1 && tokenxEstimator(render()) > SCENE_TOKEN_LIMIT) {
 		scene.shift();
 		truncated = true;
 	}
-	if (scene.length === 1 && tokenxEstimator(render()) > 4_000) {
-		const text = scene[0]!.text;
-		let keep = 4_000;
-		scene[0]!.text = sliceByTokens(text, -keep);
-		while (keep > 0 && tokenxEstimator(render()) > 4_000) scene[0]!.text = sliceByTokens(text, -(keep -= tokenxEstimator(render()) - 4_000));
+	const [only] = scene;
+	if (only && scene.length === 1 && tokenxEstimator(only.text) > SCENE_TOKEN_LIMIT) {
+		only.text = fitToTokenBudget(only.text, SCENE_TOKEN_LIMIT);
 		truncated = true;
 	}
 	return {
