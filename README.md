@@ -1,6 +1,10 @@
 <h1 align="center">DitzyTavern</h1>
 
 <p align="center">
+<b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
 A writing studio for AI-assisted stories. You steer, the model writes, and every reply shows you what went into it.
 </p>
 
