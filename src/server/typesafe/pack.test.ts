@@ -30,4 +30,14 @@ describe("packJev", () => {
 		expect(largestFittingBatch(items([40_000, 40_000, 40_000, 40_000]), build)?.items.map((item) => item.id)).toEqual(["q0", "q1", "q2"]);
 		expect(largestFittingBatch(items([200_000, 10]), build)).toBeUndefined();
 	});
+
+	test("bounds request estimates for a large overflowing trigger batch", () => {
+		const triggers = items(Array.from({ length: 256 }, () => 1_000));
+		let estimates = 0;
+		const packed = largestFittingBatch(triggers, (batch) => { estimates += 1; return build(batch); });
+		if (packed === undefined) throw new Error("No trigger batch fit.");
+		expect(build(packed.items).fits).toBe(true);
+		expect(build(triggers.slice(0, packed.items.length + 1)).fits).toBe(false);
+		expect(estimates).toBeLessThanOrEqual(9);
+	});
 });

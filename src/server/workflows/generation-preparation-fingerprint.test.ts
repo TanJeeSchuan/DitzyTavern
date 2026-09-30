@@ -35,6 +35,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	return {
 		kind: "send",
 		conversationId: 1,
+		typesafeRevision: 0,
 		formatting: {},
 		derivation: {
 			human: participant(1, "Writer"),

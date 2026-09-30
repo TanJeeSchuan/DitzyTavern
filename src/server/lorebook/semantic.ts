@@ -28,6 +28,7 @@ export const captureSemanticSettings = (database: Database, options?: TypesafeSe
 const sceneFits = (model: string, scene: readonly string[]) => jevRequest(model, { scene }, {}).fits;
 
 const splitMessage = (model: string, text: string): string[] => {
+	if (sceneFits(model, [text])) return [text];
 	for (let size = tokenxEstimator(text); size > 0; size = Math.floor(size / 2)) {
 		const pieces = splitByTokens(text, size);
 		if (pieces.every((piece) => sceneFits(model, [piece]))) return pieces;

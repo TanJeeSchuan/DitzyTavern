@@ -245,6 +245,7 @@ export async function sendThroughProvisionalTailGeneration(
 					preview: current.preview,
 					content: current.content,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
 				}));
 			}
@@ -300,6 +301,7 @@ export async function continueGeneration(
 					conversationId,
 					preview: current.preview,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
 				}));
 			}
@@ -395,6 +397,7 @@ export async function generateSiblingVariant(
 					preview: current.preview,
 					messageId: current.messageId,
 					connection: current.connection,
+					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
 				}));
 			}

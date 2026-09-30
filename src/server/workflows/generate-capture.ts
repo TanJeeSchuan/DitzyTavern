@@ -24,6 +24,7 @@ import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryR
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { createMemorySettingsModule } from "../memory/settings";
+import { createTypesafeSettingsModule } from "../typesafe";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
@@ -238,6 +239,7 @@ interface AttemptConfiguration {
 
 interface GenerationPreparationBase {
 	readonly conversationId: number;
+	readonly typesafeRevision: number;
 	readonly formatting: GenerationFormattingContext;
 	readonly derivation: GenerationDerivation;
 	readonly participation: ParticipatingHistory;
@@ -465,6 +467,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
+		typesafeRevision: createTypesafeSettingsModule(input.database).get().revision,
 		formatting,
 		derivation,
 		participation,

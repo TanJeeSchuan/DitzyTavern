@@ -67,4 +67,14 @@ describe("semantic Lore evaluation", () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
 		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
 	});
+
+	test("keeps semantic matches when an empty saved message enters the scan window", async () => {
+		const result = await evaluateSemanticLore({
+			entries: [entry],
+			messages: [{ id: 1, content: "" }, { id: 2, content: "A ship arrives." }],
+			settings,
+			fetch: async () => Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } }),
+		});
+		expect(result).toEqual({ available: true, threshold: 0.5, matches: [{ trigger: "ships arrive", score: 0.9 }] });
+	});
 });

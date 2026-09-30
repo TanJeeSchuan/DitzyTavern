@@ -282,6 +282,7 @@ interface PreviewAcceptanceContext {
 	readonly database: Database;
 	readonly conversationId: number;
 	readonly connection: ModelClientConnectionSnapshot | null | undefined;
+	readonly connectionSettings: ConnectionSettingsModuleOptions | undefined;
 	readonly formatting: GenerationFormattingContext | undefined;
 }
 
@@ -299,6 +300,7 @@ const assertPreviewCurrent = (
 		database: context.database,
 		conversationId: context.conversationId,
 		connection: context.connection,
+		connectionSettings: context.connectionSettings,
 		formatting: context.formatting,
 		...kind,
 	};

@@ -62,11 +62,19 @@ export const jevRequest = (model: string, state: JevJson, questions: Readonly<Re
 };
 
 export const largestFittingBatch = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => ReturnType<typeof jevRequest>) => {
-	for (let size = items.length; size > 0; size--) {
+	let lower = 1;
+	let upper = items.length;
+	let best: { request: string; items: readonly Item[] } | undefined;
+	while (lower <= upper) {
+		const size = Math.floor((lower + upper) / 2);
 		const batch = items.slice(0, size);
 		const { request, fits } = build(batch);
-		if (fits) return { request, items: batch };
+		if (fits) {
+			best = { request, items: batch };
+			lower = size + 1;
+		} else upper = size - 1;
 	}
+	return best;
 };
 
 export const packJev = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => ReturnType<typeof jevRequest>, unfittable: string, maxPerBatch = Infinity) => {
