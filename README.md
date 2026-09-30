@@ -62,7 +62,7 @@ Lorebooks work the way SillyTavern's World Info does: entries with Keywords, a s
   </picture>
 </p>
 
-Jev decides whether the meaning matches. DitzyTavern sends the scan window to Jev once, as the `scene`, and turns every Semantic Trigger into one question: does this situation happen or get discussed in the scene? Jev answers each with a probability. A trigger matches when its probability meets the threshold, one setting shared by every entry and 0.5 by default. Raise it and the weaker matches drop out. Nothing is cached; every Generation asks again. If Jev is off or unreachable, that Generation falls back to Keywords only, and its details say so.
+Jev decides whether the meaning matches. DitzyTavern sends the scan window to Jev as the `scene` and turns every Semantic Trigger into one question: does this situation happen or get discussed in the scene? Jev answers each with a probability. A long scene or many triggers are split across a bounded number of requests, sent one after another. A trigger matches when its probability meets the threshold, one setting shared by every entry and 0.5 by default. Raise it and the weaker matches drop out. Nothing is cached; every Generation asks again. If Jev is off or unreachable, that Generation falls back to Keywords only, and its details say so.
 
 Selected entries go into a Lore Block, capped by a Lore Allowance. Your prompt preset decides where the block goes. Each Generation records which entries it considered and why it kept or skipped each one. Attach a book to a character, a participant or a whole Chat.
 
@@ -97,7 +97,11 @@ bun run start        # http://127.0.0.1:3000
 
 The server listens on loopback only. On first start it writes a `CONNECTION_SECRET_KEY` to `.env`, which encrypts stored API keys; keep that file if you want your keys to survive. The database lives in `data/ditzytavern.sqlite` and migrates itself on start.
 
-Add a connection profile under Connections, pick a model from the composer, and write. Memory and Semantic Triggers also need an embeddings connection profile and a Typesafe credential for Jev.
+Add a connection profile under Connections, pick a model from the composer, and write. Memory and Semantic Triggers need extra setup, and it differs:
+
+- **Memory extraction** needs a chat connection profile and an extraction model in Memory Settings, plus a Typesafe credential for Jev to judge each claim.
+- **Memory indexing and recall** need an embeddings connection profile and model in Memory Settings, plus Jev to judge relevance.
+- **Semantic Triggers** need Jev turned on with a Typesafe credential under Connections. They do not use embeddings.
 
 ### Development
 

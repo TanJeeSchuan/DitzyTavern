@@ -1,0 +1,11 @@
+# Judge Semantic Triggers with Typesafe Jev
+
+Semantic Triggers are judged by Typesafe Jev instead of compared by embedding similarity. The Lore Scan Window is sent as Jev's `scene` state, and each distinct enabled trigger becomes one question: does this situation happen or get discussed in the scene? Jev's probability is the trigger's score, and the trigger matches when the score meets the threshold. This supersedes the matching mechanism in [ADR-0040](0040-match-authored-semantic-triggers.md): sentence splitting, cosine similarity, the application-wide embedding configuration, per-entry threshold overrides, embedding caches and the five-second embedding deadline. Lore no longer uses embeddings. Embeddings remain a Memory concern, configured through an Embeddings Connection Profile.
+
+An earlier sentence-embedding implementation was removed after a comparison on a real Chat showed cosine scores keyed on character names rather than situations. Asking a model whether the situation happens costs a network call per Generation and depends on a third-party service, but it judges meaning across sentences, which similarity scores did not.
+
+Semantic Triggers stay separately authored, so the target is never the entry content or title. Everything else in ADR-0040 stands: the AND or OR operator with its OR default, secondary Keyword conditions gating semantic hits, literal fields, and the whole-Generation keyword-only fallback.
+
+One application-wide Typesafe setting, next to the write-only Typesafe credential and the Jev model, chooses Jev or Off. A single probability threshold, initially an editable 0.5, applies to every entry. Nothing is calibrated, no minimum match count is forced, and nothing is cached: every Generation asks again.
+
+Jev requests are bounded rather than single. A long scene is split into chunks that fit Jev's state limit, and triggers are packed into as few questions per request as its size limits allow. Requests run sequentially, and a trigger's score is its highest across them. Each request has a fifteen-second deadline. If Semantic Triggers are off, the credential is missing, or any request fails or returns unusable answers, the whole Generation uses keyword-only fallback and reports it. Partial semantic results are never mixed with per-entry fallback.

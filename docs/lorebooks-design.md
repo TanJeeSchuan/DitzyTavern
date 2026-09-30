@@ -2,6 +2,8 @@
 
 Status: all 36 interview decisions and the consolidated [Lorebook design](lorebooks.md) are accepted. Published as [DT-43](https://plane.tanjs.dev/personal/projects/2a12c18a-22fe-41c6-95fe-37d0a3cbd829/work-items/1a48d224-0529-4226-8588-456d6a92cd13/), in Todo with ready-for-agent. The user also confirmed the existing server Generation/inspection contract boundary and focused compiler, import and Variant-lifecycle tests, with no UI or internal-structure tests. No implementation has started.
 
+> Q8, Q13, Q21, Q23 and Q33 describe the sentence-embedding matcher, since replaced by Typesafe Jev ([ADR-0044](adr/0044-judge-semantic-triggers-with-jev.md)); the consolidated [Lorebook design](lorebooks.md) is current.
+
 The user requested a lorebook design interview, with SillyTavern as a behavioral reference and an embedding keyword matcher under consideration. This document tracks the decision tree. Resolved domain terms belong in [CONTEXT.md](../CONTEXT.md); durable architectural trade-offs belong in [ADRs](adr/).
 
 ## Existing constraints
