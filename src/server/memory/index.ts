@@ -5,4 +5,4 @@ export { extractAndJudgeMemorySource, judgeMemoryCandidates, validateMemoryCandi
 export { refreshMemoryForConversation, syncMemorySources } from "./sync";
 export type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryCollectionView, MemoryEvidence, MemoryIndexReadiness, MemoryCatchup } from "../../shared/contract/memory";
 export { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, judgeMemoryRecallCandidates } from "./recall";
-export type { MemoryRecallResult, MemoryRecallSceneMessage, MemoryRecallSnapshot } from "./recall";
+export type { MemoryRecallSceneMessage, MemoryRecallSnapshot } from "./recall";

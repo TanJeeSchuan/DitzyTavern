@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation/generation-settings";
 import { effectiveGenerationSettingsFor } from "../generation-plan";
-import type { GenerationPreparation } from "./generate-capture";
+import type { GenerationPreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 
@@ -30,7 +30,7 @@ const participant = (id: number, name: string) => ({
 	},
 });
 
-const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): GenerationPreparation => {
+const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnapshot): GenerationPreparationSnapshot => {
 	const settings = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	return {
 		kind: "send",
@@ -72,33 +72,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			},
 		},
 		memory: {
-			captured: {
-				version: 1,
-				state: "disabled",
-				allowance: 2_048,
-				eligibleSourceCount: 0,
-				readyRecordCount: 0,
-				embeddingModel: "",
-				embeddingDeadlineMs: 1_000,
-				jevModel: "jev-1.13.0",
-				jevConfigured: false,
-				relevanceMinimum: 1.5,
-				pendingSourceCount: 0,
-				pendingIndexCount: 0,
-				failedIndexCount: 0,
-				failedSourceCount: 0,
-				sourceSnapshotFingerprint: "sources",
-				embeddingConfigurationFingerprint: "embedding",
-				scanMessageIds: [],
-				scanTruncated: false,
-				scene: "",
-				semanticShortlistCount: 0,
-				recentShortlistCount: 0,
-				candidates: [],
-				automaticMemoryText: "",
-				finalMemoryText: "",
-				manuallyEdited: false,
-			},
 			activation: {
 				version: 1,
 				state: "disabled",
@@ -126,6 +99,9 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 				finalMemoryText: "",
 				manuallyEdited: false,
 			},
+			embedding: { spaceKey: "", endpoint: "", model: "", deadlineMs: 1_000 },
+			indexed: [],
+			recent: [],
 		},
 		content: "Hello",
 	};
@@ -144,7 +120,7 @@ interface Fingerprint {
 	};
 }
 
-describe("generation preparation fingerprint", () => {
+describe("generation preparation snapshot fingerprint", () => {
 	test("captures Semantic Trigger configuration without its credential", () => {
 		// ==[HUMAN APPROVED]== SAFETY: The fingerprint is produced by the function under test and
 		// this type describes the fields asserted from its JSON projection.

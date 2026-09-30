@@ -40,11 +40,6 @@ export interface MemoryRecallSnapshot {
 	readonly recent: readonly IndexedMemoryCandidate[];
 }
 
-export interface MemoryRecallResult {
-	readonly captured: MemoryActivationRecord;
-	readonly activation: MemoryActivationRecord;
-}
-
 const unjudged = { judged: false, relevance: null, relevanceScore: null, retained: false, requestIncluded: false, admission: "request-limit" } as const;
 
 const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string) => {
@@ -226,9 +221,9 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	snapshot: MemoryRecallSnapshot;
 	fetch?: ModelFetch;
 	signal?: AbortSignal;
-}): Promise<MemoryRecallResult> => {
+}): Promise<MemoryActivationRecord> => {
 	const { activation, indexed, recent } = input.snapshot;
-	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return { captured: activation, activation };
+	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
 		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch))[0];
@@ -245,5 +240,5 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		shortlist.set(candidate.record.identity, existing ? { ...existing, recentRank: index + 1 } : { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
 	const candidates = await judgeMemoryRecallCandidates([...shortlist.values()], activation.scene, activation.relevanceMinimum, createTypesafeSettingsModule(input.database).getCredential() ?? "", activation.jevModel, input.fetch, input.signal);
-	return { captured: activation, activation: { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates } };
+	return { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates };
 };
