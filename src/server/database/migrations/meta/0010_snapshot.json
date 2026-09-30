@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "695fab90-6783-4f56-b2da-192feb07a508",
+  "id": "0d125ab9-3ac2-43b4-9f4a-6bdb1ea27b5f",
   "prevId": "6689eae5-99e2-4fbc-9892-79187aab69c2",
   "tables": {
     "active_generation": {
@@ -109,6 +109,14 @@
         },
         "lore_activation_json": {
           "name": "lore_activation_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'null'"
+        },
+        "memory_activation_json": {
+          "name": "memory_activation_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1629,6 +1637,14 @@
         },
         "lore_activation_json": {
           "name": "lore_activation_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'null'"
+        },
+        "memory_activation_json": {
+          "name": "memory_activation_json",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -3201,58 +3217,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "typesafe_secret": {
-      "name": "typesafe_secret",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "format_version": {
-          "name": "format_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key_id": {
-          "name": "key_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "nonce": {
-          "name": "nonce",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ciphertext": {
-          "name": "ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tag": {
-          "name": "tag",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "typesafe_settings": {
       "name": "typesafe_settings",
       "columns": {
@@ -3294,6 +3258,41 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0.5
+        },
+        "format_version": {
+          "name": "format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ciphertext": {
+          "name": "ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
