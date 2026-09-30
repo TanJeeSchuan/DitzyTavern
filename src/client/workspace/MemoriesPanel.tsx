@@ -14,13 +14,14 @@ import { useConversationMemories } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
 
-export function MemoriesPanel({ conversationId, onClose, onNavigateSource, onOpenPanel }: {
+export function MemoriesPanel({ conversationId, conversationRevision, onClose, onNavigateSource, onOpenPanel }: {
 	conversationId: number;
+	conversationRevision: number;
 	onClose: () => void;
 	onNavigateSource: (messageId: number) => void;
 	onOpenPanel: (panel: "memory" | "prompts") => void;
 }) {
-	const { status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, setAllowance, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged } = useConversationMemories(conversationId);
+	const { status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, setAllowance, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged } = useConversationMemories(conversationId, conversationRevision);
 	const [query, setQuery] = useState("");
 	const [person, setPerson] = useState("");
 	const [mergingLabels, setMergingLabels] = useState(false);

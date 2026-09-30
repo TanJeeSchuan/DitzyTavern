@@ -65,15 +65,21 @@ export async function evaluateSemanticLore(input: {
 	const triggerItems = triggers.map((trigger, index) => ({ id: `trigger_${index}`, question: triggerQuestion(trigger) }));
 	const requestsFor = (scene: readonly string[]) => packJev(triggerItems, (batch) => jevRequest(settings.jevModel, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Jev request.");
 	const credential = settings.credential;
+	const controller = new AbortController();
 	try {
 		const scores = new Map<string, number>();
-		for (const { request } of sceneChunks(settings.jevModel, input.messages).flatMap(requestsFor)) for (const [id, answer] of await requestJev({ request, credential, fetch: input.fetch })) {
-			if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
-			scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
+		const requests = sceneChunks(settings.jevModel, input.messages).flatMap(requestsFor);
+		for (let start = 0; start < requests.length; start += 2) {
+			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request }) => requestJev({ request, credential, fetch: input.fetch, signal: controller.signal })));
+			for (const answers of responses) for (const [id, answer] of answers) {
+				if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
+				scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
+			}
 		}
 		const matches = triggers.map((trigger, index) => ({ trigger, score: scores.get(`trigger_${index}`)! }));
 		return { available: true, threshold: settings.threshold, matches };
 	} catch (error) {
+		controller.abort();
 		return { available: false, threshold: settings.threshold, fallbackReason: error instanceof Error ? error.message : "Semantic matching was unavailable." };
 	}
 }

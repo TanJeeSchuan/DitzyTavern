@@ -45,7 +45,7 @@ export const createMemoryRoutes = (database: Database | undefined) => new Elysia
 	}, { params: memoryConversationIdParams, body: memorySourceTarget, response: { 200: memoryQueued, 409: memoryCollectionConflict, 422: invalidOutcome } })
 	.post("/api/conversations/:id/memories/correct", ({ params, body }) => {
 		try {
-			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body.messageId, body.variantId, body.expectedRevision, body.index, body.operation, body.operation === "edit" ? { claim: body.claim, attribution: body.attribution, people: body.people } : undefined));
+			const collection = withDatabase(database, (db) => correctMemorySource(db, Number(params.id), body));
 			return { outcome: "applied" as const, collection };
 		} catch (error) {
 			if (error instanceof StaleMemoryCollectionError) return status(409, { outcome: "conflict" as const, collection: error.collection });

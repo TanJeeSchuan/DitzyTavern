@@ -5,6 +5,7 @@
 
 @import "./styles/theme.css";
 @import "./styles/workspace.css";
+@import "./styles/workspace-settings.css";
 @import "./styles/memories.css";
 @import "./styles/connection-settings.css";
 @import "./styles/story.css";

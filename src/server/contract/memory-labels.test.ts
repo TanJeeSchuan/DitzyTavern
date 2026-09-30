@@ -45,7 +45,7 @@ describe("Memory label merging", () => {
 			expect(source.claims[0]).toEqual({ ...before.sources[index]!.claims[0]!, people: source.claims[0]!.people });
 		}
 		expect(readConversationMemories(database, other.id).sources[0]!.claims[0]!.people).toEqual(["assistant"]);
-		expect(() => correctMemorySource(database, chat.id, selected.messageId, selected.variantId, 1, 0, "remove")).toThrow(StaleMemoryCollectionError);
+		expect(() => correctMemorySource(database, chat.id, { ...selected, expectedRevision: 1, index: 0, operation: "remove" })).toThrow(StaleMemoryCollectionError);
 	});
 
 	test("flattens repeated merges, supports renaming back, and applies mappings to manual corrections", async () => {
@@ -55,7 +55,7 @@ describe("Memory label merging", () => {
 		expect((await merge(database, chat.id, ["Alice"], "Narrator")).status).toBe(200);
 		expect((await merge(database, chat.id, ["Narrator"], "assistant")).status).toBe(200);
 		const current = readConversationMemories(database, chat.id).sources[0]!;
-		const corrected = correctMemorySource(database, chat.id, source.messageId, source.variantId, current.revision, 0, "edit", { claim: "Bob has the key.", attribution: "Alice said it.", people: ["Alice", "Narrator", "Assistant", "Bob"] });
+		const corrected = correctMemorySource(database, chat.id, { ...source, expectedRevision: current.revision, index: 0, operation: "edit", claim: "Bob has the key.", attribution: "Alice said it.", people: ["Alice", "Narrator", "Assistant", "Bob"] });
 		expect(corrected.claims[0]!.people).toEqual(["assistant", "Bob"]);
 	});
 

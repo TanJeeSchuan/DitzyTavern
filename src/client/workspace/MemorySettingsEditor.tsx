@@ -43,7 +43,7 @@ export function MemorySettingsEditor() {
 	};
 	const { settings, draft, connections } = state;
 	const dirty = settings !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
-	const submit = async () => settings !== null && draft !== null && save({ expectedRevision: settings.revision, enabled: settings.enabled, ...draft }, (saved) => applyLoaded(saved, connections));
+	const submit = async () => settings !== null && draft !== null && save({ expectedRevision: settings.revision, enabled: settings.enabled, ...draft }, (saved) => setState((current) => ({ ...current, settings: saved, draft: current.draft === draft ? draftOf(saved) : current.draft, pending: false, error: null, notice: null })));
 	useSaveGuard({ dirty, saving: state.pending, save: submit, discard: () => setState((current) => current.settings === null ? current : ({ ...current, draft: draftOf(current.settings), error: null, notice: null })) });
 	if (state.loading) return <div className="panel-body settings-panel-body"><section aria-busy="true"><h3>Conversation Memory</h3><p role="status">Loading Memory Settings…</p></section></div>;
 	if (settings === null || draft === null) return <div className="panel-body settings-panel-body"><section><h3>Conversation Memory</h3><div className="settings-feedback-error" role="alert"><p>{state.error}</p><Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button></div></section></div>;

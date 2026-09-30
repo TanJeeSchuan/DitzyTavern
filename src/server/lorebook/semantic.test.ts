@@ -33,7 +33,7 @@ describe("semantic Lore evaluation", () => {
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
 	});
 
-	test("covers the whole scan window within Jev limits, one request at a time", async () => {
+	test("covers the whole scan window within Jev limits, two requests at a time", async () => {
 		const bodies: { model: string; state: { scene: string[] }; questions: Record<string, { type: string }> }[] = [];
 		const triggers = Array.from({ length: 120 }, (_, index) => `situation ${index} ${"detail ".repeat(300)}`);
 		let inFlight = 0;
@@ -55,7 +55,7 @@ describe("semantic Lore evaluation", () => {
 		});
 		expect(bodies.every((body) => jevRequest(body.model, body.state, body.questions).fits)).toBe(true);
 		expect(bodies.length).toBeLessThan(triggers.length);
-		expect(peakInFlight).toBe(1);
+		expect(peakInFlight).toBe(2);
 		const scanned = bodies.flatMap((body) => body.state.scene).join("");
 		expect(scanned).toContain("only in the oldest message");
 		expect(scanned).toContain("newest line");
@@ -66,6 +66,23 @@ describe("semantic Lore evaluation", () => {
 	test("uses one unavailable result when Jev fails", async () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
 		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+	});
+
+	test("cancels the other request and stops later batches when a parallel request fails", async () => {
+		let requests = 0;
+		let cancelled = false;
+		const result = await evaluateSemanticLore({
+			entries: [{ enabled: true, semanticTriggers: Array.from({ length: 9 }, (_, index) => `situation ${index} ${"detail ".repeat(6000)}`) }],
+			messages: [],
+			settings,
+			fetch: async (_input, init) => {
+				if (++requests === 1) return new Response("offline", { status: 503 });
+				return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
+			},
+		});
+		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+		expect(requests).toBe(2);
+		expect(cancelled).toBe(true);
 	});
 
 	test("keeps semantic matches when an empty saved message enters the scan window", async () => {

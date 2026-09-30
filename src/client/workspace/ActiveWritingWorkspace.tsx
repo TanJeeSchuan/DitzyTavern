@@ -428,6 +428,7 @@ export function ActiveWritingWorkspace({
 				<MemoriesPanel
 					key={session.conversation.id}
 					conversationId={session.conversation.id}
+					conversationRevision={session.conversation.revision}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
 					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}

@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { createMemorySettingsModule, isMemoryEnabledForConversation } from "./settings";
+import { createMemorySettingsModule } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
@@ -105,15 +105,16 @@ export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefi
 	if (!createMemorySettingsModule(database).get().enabled) return undefined;
 	const configuration = readMemoryEmbeddingConfiguration(database);
 	if (configuration.spaceKey === "") return undefined;
-	const candidates = database.query<{ variant_id: number; conversation_id: number }, [string, string]>(`
-		SELECT c.variant_id, c.conversation_id FROM memory_collection c
+	const row = database.query<{ variant_id: number; work_epoch: number; claims_json: string }, [string, string]>(`
+		SELECT c.variant_id, c.work_epoch, c.claims_json FROM memory_collection c
 		WHERE c.status = 'complete' AND c.claims_json <> '[]' AND NOT (c.ownership = 'automatic' AND c.source_changed)
 			AND (c.index_attempt_json IS NULL OR json_extract(c.index_attempt_json, '$.spaceKey') <> ?1) AND c.variant_id NOT IN (SELECT value FROM json_each(?2))
-		ORDER BY c.updated_at`).all(configuration.spaceKey, JSON.stringify([...indexingVariants(database, configuration.spaceKey)]));
-	const enabled = new Map<number, boolean>();
-	const isEnabled = (conversationId: number) => enabled.get(conversationId) ?? enabled.set(conversationId, isMemoryEnabledForConversation(database, conversationId)).get(conversationId)!;
-	const chosen = candidates.find(({ conversation_id }) => isEnabled(conversation_id));
-	const row = chosen && drizzle(database).select({ variant_id: memoryCollectionTable.variant_id, work_epoch: memoryCollectionTable.work_epoch, claims_json: memoryCollectionTable.claims_json }).from(memoryCollectionTable).where(eq(memoryCollectionTable.variant_id, chosen.variant_id)).get();
+			AND EXISTS (
+				SELECT 1 FROM conversation_prompt_preset p
+				JOIN prompt_preset_block b ON b.preset_id = p.prompt_preset_id
+				WHERE p.conversation_id = c.conversation_id AND b.reference = 'memory' AND b.enabled = 1
+			)
+		ORDER BY c.updated_at LIMIT 1`).get(configuration.spaceKey, JSON.stringify([...indexingVariants(database, configuration.spaceKey)]));
 	if (!row) return undefined;
 	const job = { variantId: row.variant_id, workEpoch: row.work_epoch, configuration };
 	try { return { ...job, claims: Value.Parse(memoryCandidates, JSON.parse(row.claims_json)) }; }

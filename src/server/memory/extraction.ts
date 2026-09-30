@@ -10,8 +10,8 @@ import { memoryExtractionResponse } from "../../shared/contract/memory";
 import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse } from "../../shared/contract/memory";
 import type { JevAnswer } from "../../shared/contract/typesafe";
 import { createTypesafeSettingsModule, jevRequest, packJev, prettyJson, requestJev, type JevTrace } from "../typesafe";
+import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
-const MAX_CLAIM = 1024;
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
@@ -22,8 +22,8 @@ const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
 
 const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {
-	if (candidate.claim.trim().length === 0 || candidate.attribution.trim().length === 0 || candidate.claim.length + candidate.attribution.length > MAX_CLAIM) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
-	if (candidate.people.some((person) => person.trim().length === 0) || new Set(candidate.people).size !== candidate.people.length) return "has invalid person labels";
+	if (!hasValidMemoryClaimText(candidate.claim, candidate.attribution)) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
+	if (!hasValidMemoryPeople(candidate.people)) return "has invalid person labels";
 	if (candidate.evidence.length < 1 || candidate.evidence.length > MAX_EVIDENCE) return "needs one to three evidence excerpts";
 	if (candidate.evidence.some((entry) => entry.excerpt.length === 0 || entry.excerpt.length > MAX_EXCERPT)) return "has invalid evidence";
 	if (candidate.evidence.some((entry) => !messages.get(entry.messageId)?.includes(entry.excerpt))) return "cites an excerpt that is not exact captured source text";

@@ -7,10 +7,11 @@ import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRu
 import type { MemoryTrace } from "./extraction";
 import { claimMemoryIndexJob, embedMemoryTexts, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, runMemoryIndexJob, type MemoryEmbed } from "./indexing";
 import { isMemoryEnabledForConversation } from "./settings";
-import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryIndexReadiness, type MemoryTraceStep } from "../../shared/contract/memory";
+import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryCorrectionCommand, type MemoryIndexReadiness, type MemoryTraceStep } from "../../shared/contract/memory";
 import { abortMemoryWork, registerMemoryWork } from "./work";
 import { sha256 } from "./hash";
 import { applyMemoryLabelMerges, readMemoryLabelState } from "./labels";
+import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
 export class StaleMemoryCollectionError extends Error {
 	constructor(readonly collection: MemoryCollectionView) { super("This Memory collection changed in another session."); this.name = "StaleMemoryCollectionError"; }
@@ -180,7 +181,8 @@ export function readConversationMemories(database: Database, conversationId: num
 	return { sources, path, labelRevision: readMemoryLabelState(database, conversationId).revision };
 }
 
-export function correctMemorySource(database: Database, conversationId: number, messageId: number, variantId: number, expectedRevision: number, index: number, operation: "edit" | "remove", replacement?: { claim: string; attribution: string; people: string[] }): MemoryCollectionView {
+export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {
+	const { messageId, variantId, expectedRevision, index } = command;
 	return database.transaction(() => {
 		const variant = readSourceVariant(database, conversationId, messageId, variantId);
 		if (!variant) throw new InvalidMemorySourceError("This source no longer exists.");
@@ -191,9 +193,9 @@ export function correctMemorySource(database: Database, conversationId: number, 
 		const claims = parseClaims(row.claims_json);
 		if (!claims) throw new InvalidMemorySourceError("This Memory collection cannot be edited because its saved content is invalid.");
 		if (!Number.isSafeInteger(index) || index < 0 || index >= claims.length) throw new InvalidMemorySourceError("This Memory no longer exists in the source collection.");
-		if (operation === "edit") {
-			if (!replacement || !replacement.claim.trim() || !replacement.attribution.trim() || replacement.claim.length + replacement.attribution.length > 1024 || replacement.people.some((person) => !person.trim()) || new Set(replacement.people).size !== replacement.people.length) throw new InvalidMemorySourceError("Memory text, attribution, or person labels are invalid.");
-			claims[index] = { ...claims[index]!, ...replacement, writerMaintained: true };
+		if (command.operation === "edit") {
+			if (!hasValidMemoryClaimText(command.claim, command.attribution) || !hasValidMemoryPeople(command.people)) throw new InvalidMemorySourceError("Memory text, attribution, or person labels are invalid.");
+			claims[index] = { ...claims[index]!, claim: command.claim, attribution: command.attribution, people: command.people, writerMaintained: true };
 		} else claims.splice(index, 1);
 		const updated = drizzle(database).update(memoryCollectionTable).set({ revision: row.revision + 1, ownership: "writer", status: "complete", error: null, claims_json: JSON.stringify(applyMemoryLabelMerges(claims, readMemoryLabelState(database, conversationId).merges)), work_epoch: row.work_epoch + 1, index_attempt_json: null, updated_at: new Date().toISOString() })
 			.where(eq(memoryCollectionTable.variant_id, variantId)).returning().get()!;
