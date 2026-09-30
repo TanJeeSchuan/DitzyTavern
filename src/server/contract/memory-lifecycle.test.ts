@@ -7,7 +7,7 @@ import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
 import { Value } from "@sinclair/typebox/value";
-import { conversationMemories, memoryCorrectionApplied, memoryCatchup, memoryCatchupRead } from "../../shared/contract/memory";
+import { conversationMemories, memoryCorrectionApplied, memoryCatchup, memoryCatchupQueued, memoryCatchupRead } from "../../shared/contract/memory";
 
 const waitFor = async (check: () => boolean | Promise<boolean>) => {
 	const deadline = Date.now() + 4000;
@@ -117,7 +117,7 @@ describe("Memory source lifecycle public operations", () => {
 		await enableMemory(database, conversation.id);
 		const messages = Array.from({ length: 6 }, (_, index) => insertMessage(database, conversation.id, index + 1, `Message ${index + 1}.`));
 		const started = await createMemoryRoutes(database).handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }));
-		const run = Value.Parse(memoryCatchup, await started.json());
+		const run = Value.Parse(memoryCatchupQueued, await started.json()).run;
 		const saved = database.query<{ source_snapshot_json: string }, [number, number]>("SELECT source_snapshot_json FROM memory_collection WHERE catchup_run_id = ? AND variant_id = ?").get(run.id, messages[5]!.variantId);
 		expect(saved).not.toBeUndefined();
 		expect(JSON.parse(saved!.source_snapshot_json)).toEqual({
@@ -152,7 +152,7 @@ describe("Memory source lifecycle public operations", () => {
 			expect(await removed.json()).toMatchObject({ outcome: "applied", collection: { ownership: "writer", revision: 3, claims: [] } });
 			const started = await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }));
 			expect(started.status).toBe(200);
-			const run = Value.Parse(memoryCatchup, await started.json());
+			const run = Value.Parse(memoryCatchupQueued, await started.json()).run;
 			expect(run).toMatchObject({ pending: 1, state: "running" });
 			expect(database.query<{ variant_id: number }, [number]>("SELECT variant_id FROM memory_collection WHERE catchup_run_id = ?").all(run.id)).toEqual([{ variant_id: historical.variantId }]);
 			expect(database.query<{ count: number }, [number]>("SELECT count(*) AS count FROM memory_collection WHERE variant_id = ?").get(empty.variantId)).toMatchObject({ count: 0 });
@@ -218,7 +218,7 @@ describe("Memory source lifecycle public operations", () => {
 		const source = insertMessage(database, conversation.id, 1, "Catch-up source.");
 		const memories = createMemoryRoutes(database);
 		const started = await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }));
-		const run = Value.Parse(memoryCatchup, await started.json());
+		const run = Value.Parse(memoryCatchupQueued, await started.json()).run;
 		let release = () => {};
 		let running = () => {};
 		const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -244,7 +244,7 @@ describe("Memory source lifecycle public operations", () => {
 		await enableMemory(database, conversation.id);
 		const source = insertMessage(database, conversation.id, 1, "Shared catch-up source.");
 		const memories = createMemoryRoutes(database);
-		const start = async () => Value.Parse(memoryCatchup, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json());
+		const start = async () => Value.Parse(memoryCatchupQueued, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json()).run;
 		const older = await start();
 		const newer = await start();
 		expect((await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup/${older.id}`, { method: "DELETE" }))).status).toBe(200);
@@ -260,7 +260,7 @@ describe("Memory source lifecycle public operations", () => {
 		await enableMemory(database, conversation.id);
 		const source = insertMessage(database, conversation.id, 1, "Completed catch-up source.");
 		const memories = createMemoryRoutes(database);
-		const run = Value.Parse(memoryCatchup, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json());
+		const run = Value.Parse(memoryCatchupQueued, await (await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }))).json()).run;
 		const stop = startMemoryWorker(database, { process: async (item) => supportedMemory(item.messageId, item.content) });
 		try {
 			expect(await waitFor(() => database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(source.variantId)?.status === "complete")).toBe(true);
@@ -275,7 +275,7 @@ describe("Memory source lifecycle public operations", () => {
 		const sources = [insertMessage(database, conversation.id, 1, "First catch-up source."), insertMessage(database, conversation.id, 2, "Second catch-up source.")];
 		const memories = createMemoryRoutes(database);
 		const started = await memories.handle(request(`/api/conversations/${conversation.id}/memories/catchup`, { method: "POST", body: "{}" }));
-		const run = Value.Parse(memoryCatchup, await started.json());
+		const run = Value.Parse(memoryCatchupQueued, await started.json()).run;
 		const signals: AbortSignal[] = [];
 		let attempts = 0;
 		const stop = startMemoryWorker(database, { concurrency: 2, process: async (_source, _context, signal) => {

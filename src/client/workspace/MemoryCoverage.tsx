@@ -1,19 +1,9 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import type { ConversationMemories, MemoryCatchup } from "../memories";
+import { memorySourceState } from "./memory-source-state";
 
 type Source = ConversationMemories["sources"][number];
-type Mark = { kind: "remembered" | "empty" | "unprocessed" | "working" | "failed" | "skipped"; text: string };
-
-const markOf = (source: Source | undefined): Mark => {
-	if (!source) return { kind: "skipped", text: "Nothing to process" };
-	if (source.status === "unprocessed") return { kind: "unprocessed", text: "Not remembered yet" };
-	if (source.status === "pending") return { kind: "working", text: "Queued" };
-	if (source.status === "running") return { kind: "working", text: "Remembering" };
-	if (source.status === "failed" || source.indexing.status === "failed" || (source.status === "stale" && source.claims.length === 0)) return { kind: "failed", text: source.status === "stale" ? "Source changed" : "Needs attention" };
-	if (source.claims.length === 0) return { kind: "empty", text: "Nothing worth remembering" };
-	return { kind: "remembered", text: `${source.claims.length} ${source.claims.length === 1 ? "Memory" : "Memories"}` };
-};
 
 export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, onStart, onCancel, onNavigate }: {
 	path: ConversationMemories["path"];
@@ -29,12 +19,12 @@ export function MemoryCoverage({ path, sources, catchup, enabled, busy, label, o
 	const [active, setActive] = useState<number | null>(null);
 	const [cursor, setCursor] = useState(0);
 	const strip = useRef<HTMLDivElement>(null);
-	const marks = path.map((entry) => ({ messageId: entry.messageId, source: sources.get(entry.messageId), mark: markOf(sources.get(entry.messageId)) }));
+	const marks = path.map((entry) => ({ messageId: entry.messageId, source: sources.get(entry.messageId), mark: memorySourceState(sources.get(entry.messageId)) }));
 	const densest = Math.max(1, ...marks.map(({ source }) => source?.claims.length ?? 0));
 	const memoryCount = marks.reduce((total, { source }) => total + (source?.claims.length ?? 0), 0);
 	const rememberedCount = marks.filter(({ mark }) => mark.kind === "remembered").length;
 	const unprocessedCount = marks.filter(({ mark }) => mark.kind === "unprocessed").length;
-	const historyFailureCount = marks.filter(({ source }) => source?.status === "failed" || (source?.status === "stale" && source.claims.length === 0)).length;
+	const historyFailureCount = marks.filter(({ mark }) => mark.needsAttention).length;
 	const indexingCount = marks.reduce((total, { source }) => total + (source && (source.indexing.status === "pending" || source.indexing.status === "running") ? source.indexing.pendingCount : 0), 0);
 	const running = catchup?.state === "running" ? catchup : null;
 	const focusMark = (index: number) => { setCursor(index); strip.current?.querySelectorAll<HTMLButtonElement>(".memory-mark")[index]?.focus(); };

@@ -1,35 +1,32 @@
 import { Check, ChevronDown, Ellipsis, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { memo, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { formatJudgment, formatTimestamp } from "../lib/format";
 import { loadMemoryTrace, type ConversationMemories } from "../memories";
 import type { MemoryTraceStep } from "../../shared/contract/memory";
+import { memorySourceState } from "./memory-source-state";
+import type { ClaimDraft, ConversationMemoryActions } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
 type Claim = Source["claims"][number];
-export type ClaimDraft = { claim: string; attribution: string; people: string[] };
-export interface MemorySourceActions {
-	label: (messageId: number) => string;
-	navigate: (messageId: number) => void;
-	retry: (source: Source) => void;
-	retryIndex: (source: Source) => void;
-	edit: (source: Source, index: number | null) => void;
-	save: (source: Source, index: number, draft: ClaimDraft) => void;
-	remove: (source: Source, index: number) => void;
-}
 
-export function MemorySourceGroup({ conversationId, source, claims, busy, editingIndex, actions }: {
+type GroupProps = {
 	conversationId: number;
 	source: Source;
 	claims: { claim: Claim; index: number }[];
 	busy: boolean;
 	editingIndex: number | null;
-	actions: MemorySourceActions;
-}) {
+	actions: ConversationMemoryActions;
+	onNavigate: (messageId: number) => void;
+};
+
+export const MemorySourceGroup = memo(function MemorySourceGroup({ conversationId, source, claims, busy, editingIndex, actions, onNavigate }: GroupProps) {
 	const [traceOpen, setTraceOpen] = useState(false);
-	const working = source.status === "pending" || source.status === "running";
-	const notes = [!source.selected && "Alternative", source.ownership === "writer" && "Writer-maintained", source.sourceChanged && "Source changed", working && (source.status === "pending" ? "Queued" : "Remembering")].filter(Boolean).join(" · ");
+	const { kind, text } = memorySourceState(source);
+	const working = kind === "working";
+	const notes = [!source.selected && "Alternative", source.ownership === "writer" && "Writer-maintained", source.sourceChanged && "Source changed", working && text].filter(Boolean).join(" · ");
 	return <Collapsible.Root defaultOpen asChild><section className="memory-source" data-selected={source.selected}>
 		<header className="memory-source-header">
 			<Collapsible.Trigger className="memory-source-label group flex items-center gap-1.5 py-1"><ChevronDown className="size-3.5 shrink-0 group-data-[state=closed]:-rotate-90" aria-hidden="true" />{actions.label(source.messageId)}</Collapsible.Trigger>
@@ -37,7 +34,7 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${actions.label(source.messageId)}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="min-w-48">
-					<DropdownMenuItem onSelect={() => actions.navigate(source.messageId)}>Go to Message</DropdownMenuItem>
+					<DropdownMenuItem onSelect={() => onNavigate(source.messageId)}>Go to Message</DropdownMenuItem>
 					{source.status !== "unprocessed" && <DropdownMenuItem onSelect={() => setTraceOpen(!traceOpen)}>{traceOpen ? "Hide pipeline trace" : "Show pipeline trace"}</DropdownMenuItem>}
 					{source.indexing.status === "failed" && <DropdownMenuItem disabled={busy} onSelect={() => actions.retryIndex(source)}>Retry indexing</DropdownMenuItem>}
 					<DropdownMenuSeparator />
@@ -55,6 +52,7 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 			busy={busy}
 			editing={editingIndex === index}
 			actions={actions}
+			onNavigate={onNavigate}
 			onEdit={() => actions.edit(source, index)}
 			onCancel={() => actions.edit(source, null)}
 			onSave={(draft) => actions.save(source, index, draft)}
@@ -62,15 +60,15 @@ export function MemorySourceGroup({ conversationId, source, claims, busy, editin
 		/>)}
 		</Collapsible.Content>
 	</section></Collapsible.Root>;
-}
+}, (previous, next) => previous.source === next.source && previous.busy === next.busy && previous.editingIndex === next.editingIndex && previous.actions === next.actions && previous.onNavigate === next.onNavigate && previous.conversationId === next.conversationId
+	&& previous.claims.length === next.claims.length && previous.claims.every(({ claim, index }, position) => claim === next.claims[position]!.claim && index === next.claims[position]!.index));
 
-const judgmentWord = (value: string) => value.replace("_", " ").replace(/^./, (letter) => letter.toUpperCase());
-
-function MemoryClaimRow({ claim, busy, editing, actions, onEdit, onCancel, onSave, onRemove }: {
+function MemoryClaimRow({ claim, busy, editing, actions, onNavigate, onEdit, onCancel, onSave, onRemove }: {
 	claim: Claim;
 	busy: boolean;
 	editing: boolean;
-	actions: MemorySourceActions;
+	actions: ConversationMemoryActions;
+	onNavigate: (messageId: number) => void;
 	onEdit: () => void;
 	onCancel: () => void;
 	onSave: (draft: ClaimDraft) => void;
@@ -95,12 +93,12 @@ function MemoryClaimRow({ claim, busy, editing, actions, onEdit, onCancel, onSav
 			{claim.writerMaintained && <p className="memory-evidence-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}
 			{claim.evidence.map((evidence, index) => <figure key={index}>
 				<blockquote>{evidence.excerpt}</blockquote>
-				<figcaption><button type="button" onClick={() => actions.navigate(evidence.messageId)}>{actions.label(evidence.messageId)}</button></figcaption>
+				<figcaption><button type="button" onClick={() => onNavigate(evidence.messageId)}>{actions.label(evidence.messageId)}</button></figcaption>
 			</figure>)}
 			<dl className="memory-judgment">
 				{([["Support", judgment.support, judgment.confidence.support], ["Attribution", judgment.attribution, judgment.confidence.attribution], ["Usefulness", judgment.usefulness, judgment.confidence.usefulness]] as const).map(([name, value, confidence]) => <div key={name}>
 					<dt>{name}</dt>
-					<dd>{judgmentWord(value)}</dd>
+					<dd>{formatJudgment(value)}</dd>
 					<dd className="memory-confidence"><span style={{ width: `${Math.round(confidence * 100)}%` }} /></dd>
 					<dd className="memory-confidence-value">{confidence.toFixed(2)}</dd>
 				</div>)}
@@ -144,7 +142,7 @@ function MemoryTraceView({ conversationId, variantId, live, onClose }: { convers
 		{error && <p className="import-problem" role="alert">{error}</p>}
 		{steps?.length === 0 && <p className="memory-source-empty">No trace recorded yet. Retry extraction to capture one.</p>}
 		<ol>{steps?.map((step, index) => <li key={index} data-failed={step.label === "Failed"}><details open={step.label === "Failed"}>
-			<summary><span>{step.label}</span><time>{new Date(step.at).toLocaleTimeString()}{step.fields.elapsed ? ` · ${step.fields.elapsed}` : ""}</time></summary>
+			<summary><span>{step.label}</span><time>{formatTimestamp(step.at)}{step.fields.elapsed ? ` · ${step.fields.elapsed}` : ""}</time></summary>
 			{Object.entries(step.fields).map(([key, value]) => <div className="memory-trace-field" key={key}><span>{key}</span><pre>{value}</pre></div>)}
 		</details></li>)}</ol>
 	</div>;

@@ -20,6 +20,5 @@ export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applie
 export const memorySettingsConflict = Type.Object({
 	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettings,
 });
-export const memorySettingsInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
 export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), Type.Omit(memorySettings, ["revision"])]);
 export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;
