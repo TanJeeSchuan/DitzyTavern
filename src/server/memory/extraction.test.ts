@@ -114,7 +114,7 @@ describe("Typesafe Memory judgments", () => {
 				candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 0.9, omit: 0.1 }, confidence: 0.8 },
 			} });
 		};
-		const [judgment] = await judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch);
+		const [judgment] = await judgeMemoryCandidates({ source, context, candidates: [candidate], credential: "secret", model: "jev-1.13.0", fetch: fakeFetch });
 		// ==[HUMAN APPROVED]== SAFETY: The fake captures the request emitted by judgeMemoryCandidates, whose request shape is asserted below.
 		const sent = JSON.parse(requestBody) as { state: { source: CapturedMemoryMessage; context: CapturedMemoryMessage[] }; questions: Record<string, { instructions: { memory: { claim: string; attribution?: string; evidence?: string[] } } }> };
 		expect(authorization).toBe("Bearer secret");
@@ -129,7 +129,7 @@ describe("Typesafe Memory judgments", () => {
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 }, confidence: 1 },
 		} });
-		await expect(judgeMemoryCandidates({ source, context }, [candidate], "secret", "jev-1.13.0", fakeFetch)).rejects.toThrow("omitted or added required answers");
+		await expect(judgeMemoryCandidates({ source, context, candidates: [candidate], credential: "secret", model: "jev-1.13.0", fetch: fakeFetch })).rejects.toThrow("omitted or added required answers");
 	});
 
 	test("labels recalled relevance from the same score that decides admission", async () => {
@@ -137,7 +137,7 @@ describe("Typesafe Memory judgments", () => {
 		const fakeFetch: ModelFetch = async () => Response.json({ answers: {
 			"candidate_1:1:1:1:0_relevance": { type: "score", score: 1.56, legend: { 0: "Irrelevant", 1: "Incidental", 2: "Useful", 3: "Central" }, probabilities: { 0: 0.42, 1: 0, 2: 0.18, 3: 0.4 }, confidence: 0.1 },
 		} });
-		const [judged] = await judgeMemoryRecallCandidates([record], "Maren asks about the key.", 1.5, "secret", "jev-1.13.0", fakeFetch);
+		const [judged] = await judgeMemoryRecallCandidates({ candidates: [record], scene: "Maren asks about the key.", relevanceMinimum: 1.5, credential: "secret", model: "jev-1.13.0", fetch: fakeFetch });
 		expect(judged).toMatchObject({ relevance: "useful", relevanceScore: 1.56, admission: "admitted" });
 	});
 });

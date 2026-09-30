@@ -42,7 +42,7 @@ export function useTypesafeSettings() {
 		if (settings === null || draft === null) return false;
 		setState((current) => ({ ...current, pending: true, error: null }));
 		const { credential, ...fields } = draft;
-		const command: Extract<TypesafeSettingsCommand, { type: "apply" }> = { type: "apply", expectedRevision: settings.revision, ...fields };
+		const command: TypesafeSettingsCommand = { type: "apply", expectedRevision: settings.revision, ...fields };
 		if (credential.length > 0) command.credential = credential;
 		return settle(await saveTypesafeSettings(command), (current) => current !== draft);
 	};
@@ -50,7 +50,7 @@ export function useTypesafeSettings() {
 	const removeCredential = async () => {
 		if (settings === null) return;
 		setState((current) => ({ ...current, pending: true, error: null }));
-		settle(await saveTypesafeSettings({ type: "reset-credential", expectedRevision: settings.revision, confirmed: true }), () => true);
+		settle(await saveTypesafeSettings({ type: "apply", expectedRevision: settings.revision, jevModel: settings.jevModel, loreTriggerMode: settings.loreTriggerMode, loreTriggerThreshold: settings.loreTriggerThreshold, credential: "" }), () => true);
 	};
 
 	return {

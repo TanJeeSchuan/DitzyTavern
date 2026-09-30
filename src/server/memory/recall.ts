@@ -8,7 +8,7 @@ import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
-import { createTypesafeSettingsModule, jevRequest, requestJev } from "../typesafe";
+import { createTypesafeSettingsModule, jevRequest, largestFittingBatch, requestJev } from "../typesafe";
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
@@ -93,38 +93,29 @@ const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
 	],
 });
 
-const parseScore = (answer: JevAnswer) => {
-	if (answer.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
+const parseScore = (answer: JevAnswer | undefined) => {
+	if (answer?.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
 	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
 	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
 };
 
-export async function judgeMemoryRecallCandidates(
-	candidates: readonly MemoryRecallCandidateRecord[],
-	scene: string,
-	relevanceMinimum: number,
-	credential: string,
-	model = "jev-1.13.0",
-	fetcher: ModelFetch = fetch,
-	signal?: AbortSignal,
-): Promise<MemoryRecallCandidateRecord[]> {
+export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, credential, model, fetch, signal }: {
+	candidates: readonly MemoryRecallCandidateRecord[];
+	scene: string;
+	relevanceMinimum: number;
+	credential: string;
+	model: string;
+	fetch?: ModelFetch;
+	signal?: AbortSignal;
+}): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
 	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
-	const buildRequest = (values: readonly MemoryRecallCandidateRecord[]) => {
-		const questions = Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]));
-		return jevRequest(model, { scene }, questions);
-	};
-	let packed = [...candidates];
-	let request = buildRequest(packed);
-	while (packed.length > 0 && !request.fits) {
-		packed.pop();
-		request = buildRequest(packed);
-	}
-	if (packed.length === 0) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
-	const answers = await requestJev({ request: request.request, questionIds: request.questionIds, credential, fetch: fetcher, signal });
+	const batch = largestFittingBatch(candidates, (values) => jevRequest(model, { scene }, Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]))));
+	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
+	const answers = await requestJev({ request: batch.request, credential, fetch, signal });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
-	for (const candidate of packed) {
-		const relevance = parseScore(answers[`candidate_${candidate.identity}_relevance`]!);
+	for (const candidate of batch.items) {
+		const relevance = parseScore(answers.get(`candidate_${candidate.identity}_relevance`));
 		judged.set(candidate.identity, { ...candidate, relevance: relevance.label, relevanceScore: relevance.score, admission: relevance.score >= relevanceMinimum ? "admitted" : "not-retained" });
 	}
 	return candidates.map((candidate) => judged.get(candidate.identity) ?? { ...candidate, ...unjudged });
@@ -240,6 +231,6 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		const existing = shortlist.get(candidate.record.identity);
 		shortlist.set(candidate.record.identity, existing ? { ...existing, recentRank: index + 1 } : { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
-	const candidates = await judgeMemoryRecallCandidates([...shortlist.values()], activation.scene, activation.relevanceMinimum, createTypesafeSettingsModule(input.database).getCredential() ?? "", activation.jevModel, input.fetch, input.signal);
+	const candidates = await judgeMemoryRecallCandidates({ candidates: [...shortlist.values()], scene: activation.scene, relevanceMinimum: activation.relevanceMinimum, credential: createTypesafeSettingsModule(input.database).getCredential() ?? "", model: activation.jevModel, fetch: input.fetch, signal: input.signal });
 	return { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates };
 };

@@ -9,7 +9,7 @@ import { createTypesafeSettingsRoutes } from "./typesafe-settings";
 const command = (body: Record<string, boolean | number | string>) => new Request("http://localhost/api/typesafe-settings/commands", {
 	method: "POST",
 	headers: { "content-type": "application/json" },
-	body: JSON.stringify(body.type === "reset-credential" ? body : { type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, ...body }),
+	body: JSON.stringify({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, ...body }),
 });
 const read = () => new Request("http://localhost/api/typesafe-settings");
 
@@ -28,8 +28,8 @@ describe("Typesafe Settings public contract", () => {
 		expect(saved.status).toBe(200);
 		expect(await saved.text()).not.toContain("private-typesafe-token");
 		expect(await (await app.handle(read())).json()).toMatchObject({ revision: 1, loreTriggerMode: "off", loreTriggerThreshold: 0.7, credentialConfigured: true });
-		expect(database.query("SELECT ciphertext FROM typesafe_secret WHERE id = 1").get()).not.toEqual({ ciphertext: "private-typesafe-token" });
-		const reset = await app.handle(command({ type: "reset-credential", expectedRevision: 1, confirmed: true }));
+		expect(database.query("SELECT ciphertext FROM typesafe_settings WHERE id = 1").get()).not.toEqual({ ciphertext: "private-typesafe-token" });
+		const reset = await app.handle(command({ expectedRevision: 1, credential: "" }));
 		expect(await reset.json()).toMatchObject({ settings: { revision: 2, credentialConfigured: false } });
 	});
 

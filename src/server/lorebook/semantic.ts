@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ModelFetch } from "../model-client";
 import { splitByTokens } from "tokenx";
-import { createTypesafeSettingsModule, JEV_STATE_TOKEN_LIMIT, jevRequest, packJev, requestJev, type TypesafeSettingsModuleOptions } from "../typesafe";
+import { createTypesafeSettingsModule, jevRequest, packJev, requestJev, type TypesafeSettingsModuleOptions } from "../typesafe";
 import { tokenxEstimator } from "../prompt-compiler";
 import type { LoreScanMessage, LoreSemanticEvaluation } from "./matching";
 import type { Lorebook } from "../../shared/contract/lorebook";
@@ -25,22 +25,21 @@ export const captureSemanticSettings = (database: Database, options?: TypesafeSe
 	};
 };
 
-const sceneFits = (scene: readonly string[]) => tokenxEstimator(JSON.stringify({ scene })) <= JEV_STATE_TOKEN_LIMIT;
+const sceneFits = (model: string, scene: readonly string[]) => jevRequest(model, { scene }, {}).fits;
 
-const splitMessage = (text: string): string[] => {
-	if (sceneFits([text])) return [text];
-	for (let size = JEV_STATE_TOKEN_LIMIT - 64; size > 0; size = Math.floor(size * 0.9)) {
+const splitMessage = (model: string, text: string): string[] => {
+	for (let size = tokenxEstimator(text); size > 0; size = Math.floor(size / 2)) {
 		const pieces = splitByTokens(text, size);
-		if (pieces.every((piece) => sceneFits([piece]))) return pieces;
+		if (pieces.every((piece) => sceneFits(model, [piece]))) return pieces;
 	}
 	throw new Error("A scene character exceeds Jev's state token limit.");
 };
 
-const sceneChunks = (messages: readonly LoreScanMessage[]): string[][] => {
+const sceneChunks = (model: string, messages: readonly LoreScanMessage[]): string[][] => {
 	const chunks: string[][] = [[]];
-	for (const piece of messages.flatMap((message) => splitMessage(message.content))) {
+	for (const piece of messages.flatMap((message) => splitMessage(model, message.content))) {
 		const current = chunks.at(-1)!;
-		if (sceneFits([...current, piece])) current.push(piece);
+		if (sceneFits(model, [...current, piece])) current.push(piece);
 		else chunks.push([piece]);
 	}
 	return chunks;
@@ -67,7 +66,7 @@ export async function evaluateSemanticLore(input: {
 	const credential = settings.credential;
 	try {
 		const scores = new Map<string, number>();
-		for (const request of sceneChunks(input.messages).flatMap(requestsFor)) for (const [id, answer] of Object.entries(await requestJev({ ...request, credential, fetch: input.fetch }))) {
+		for (const { request } of sceneChunks(settings.jevModel, input.messages).flatMap(requestsFor)) for (const [id, answer] of await requestJev({ request, credential, fetch: input.fetch })) {
 			if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
 			scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
 		}

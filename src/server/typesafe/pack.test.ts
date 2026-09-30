@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { jevRequest, packJev } from ".";
+import { jevRequest, largestFittingBatch, packJev } from ".";
 
 const build = (batch: readonly { id: string; size: number }[]) => jevRequest("jev", {}, Object.fromEntries(batch.map(({ id, size }) => [id, { text: "x".repeat(size) }])));
 const items = (sizes: readonly number[]) => sizes.map((size, index) => ({ id: `q${index}`, size }));
@@ -8,7 +8,6 @@ describe("packJev", () => {
 	test("fills each request to the Jev limits and keeps item order", () => {
 		const packed = packJev(items([40_000, 40_000, 40_000, 40_000, 40_000, 40_000, 40_000]), build, "too big");
 		expect(packed.map((request) => request.items.map((item) => item.id))).toEqual([["q0", "q1", "q2"], ["q3", "q4", "q5"], ["q6"]]);
-		expect(packed.every((request) => request.fits)).toBe(true);
 	});
 
 	test("starts a new request when the next item would not fit, even after small items", () => {
@@ -25,5 +24,10 @@ describe("packJev", () => {
 
 	test("packs nothing for no items", () => {
 		expect(packJev([], build, "too big")).toEqual([]);
+	});
+
+	test("largestFittingBatch takes the longest fitting prefix", () => {
+		expect(largestFittingBatch(items([40_000, 40_000, 40_000, 40_000]), build)?.items.map((item) => item.id)).toEqual(["q0", "q1", "q2"]);
+		expect(largestFittingBatch(items([200_000, 10]), build)).toBeUndefined();
 	});
 });

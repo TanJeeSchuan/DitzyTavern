@@ -16,10 +16,7 @@ export const typesafeSettingsConflict = Type.Object({
 	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: typesafeSettings,
 });
 export const typesafeSettingsInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
-export const typesafeSettingsCommandBody = Type.Union([
-	Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer(), jevModel: Type.String(), loreTriggerMode, loreTriggerThreshold: Type.Number(), credential: Type.Optional(Type.String()) }),
-	Type.Object({ type: Type.Literal("reset-credential"), expectedRevision: Type.Integer(), confirmed: Type.Boolean() }),
-]);
+export const typesafeSettingsCommandBody = Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer(), jevModel: Type.String(), loreTriggerMode, loreTriggerThreshold: Type.Number(), credential: Type.Optional(Type.String()) });
 export type TypesafeSettingsCommand = Static<typeof typesafeSettingsCommandBody>;
 
 export const jevAnswer = Type.Union([

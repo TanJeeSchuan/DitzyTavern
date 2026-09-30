@@ -230,18 +230,14 @@ export const typesafeSettingsTable = sqliteTable("typesafe_settings", {
 	jev_model: text().notNull().default("jev-1.13.0"),
 	lore_trigger_mode: text().notNull().default("jev"),
 	lore_trigger_threshold: real().notNull().default(0.5),
+	format_version: int(),
+	key_id: text(),
+	nonce: text(),
+	ciphertext: text(),
+	tag: text(),
 }, (table) => [
 	check("typesafe_settings_lore_trigger_mode_check", sql`${table.lore_trigger_mode} IN ('jev', 'off')`),
 ]);
-
-export const typesafeSecretTable = sqliteTable("typesafe_secret", {
-	id: int().primaryKey(),
-	format_version: int().notNull(),
-	key_id: text().notNull(),
-	nonce: text().notNull(),
-	ciphertext: text().notNull(),
-	tag: text().notNull(),
-});
 
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
