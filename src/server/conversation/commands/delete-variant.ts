@@ -1,6 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import { syncMemorySources } from "../../memory";
+import { abandonMemoryWorkForRemovedVariants, syncMemorySources } from "../../memory";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -79,5 +79,6 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
 	compactVariantPositions(db, input.messageId, variant.position);
-	syncMemorySources(db.$client, input.conversationId, replacementId === undefined ? [] : [replacementId]);
+	if (replacementId === undefined) abandonMemoryWorkForRemovedVariants(db.$client);
+	else syncMemorySources(db.$client, input.conversationId, [replacementId]);
 }

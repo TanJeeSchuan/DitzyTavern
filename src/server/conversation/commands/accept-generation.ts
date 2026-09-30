@@ -51,7 +51,7 @@ import type {
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
-import { syncMemorySources } from "../../memory";
+import { syncSelectedMemorySource } from "../../memory";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -362,7 +362,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 		);
 		const conversation = requireConversationSummary(db, input.conversationId);
 		if (input.lifecycle === "Tail" && validation.humanMessageId !== null) {
-			syncMemorySources(database, input.conversationId, db.select({ id: messageVariantTable.id }).from(messageVariantTable).where(and(eq(messageVariantTable.message_id, validation.humanMessageId), eq(messageVariantTable.selected, true))).all().map(({ id }) => id));
+			syncSelectedMemorySource(db.$client, input.conversationId, validation.humanMessageId);
 		}
 		return {
 			generationId: activeGenerationId,
