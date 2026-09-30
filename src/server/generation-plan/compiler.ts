@@ -25,6 +25,7 @@ import {
 	type PromptLoreEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
+import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import type {
@@ -132,8 +133,8 @@ export const compileGenerationPlan = (
 	// ==[HUMAN APPROVED]== Every budget candidate recompiles through the internal Prompt Compiler
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
-	const loreSlotEnabled = input.recipe.some((slot) => slot.reference === "lore" && slot.enabled);
-	const memorySlotEnabled = input.recipe.some((slot) => slot.reference === "memory" && slot.enabled);
+	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
+	const memorySlotEnabled = hasEnabledMemorySlot(input.recipe);
 	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
 	const memoryCandidates = memorySlotEnabled ? [...(input.memoryActivation?.candidates ?? [])].sort((left, right) => (right.relevanceScore ?? -1) - (left.relevanceScore ?? -1) || right.sourcePosition - left.sourcePosition || left.identity.localeCompare(right.identity)) : [];
 	const loreAllowance = input.loreAllowance ?? 2_048;

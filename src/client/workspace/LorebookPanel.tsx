@@ -27,7 +27,7 @@ import {
 	type LoreAttachmentState,
 } from "../lorebook-library";
 import type { LoreEntry, LoreEntryFields } from "../../shared/contract/lorebook";
-import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
+import { hasEnabledLoreSlot, type SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 import { PanelHeader } from "../PanelHeader";
 import { loadConversationPromptPreset } from "../conversation";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
@@ -440,7 +440,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 
-	const loreBlockMissing = selectedPreset !== null && !selectedPreset.slots.some((slot) => slot.reference === "lore" && slot.enabled);
+	const loreBlockMissing = selectedPreset !== null && !hasEnabledLoreSlot(selectedPreset.slots);
 	useSaveGuard({ dirty, saving: pending || attachmentPending, save: saveDirty, discard: () => undefined });
 	const bookName = (bookId: number) => books.find((item) => item.id === bookId)?.name ?? "Unavailable Lorebook";
 	const participantName = (participantId: number) => cast.find((participant) => participant.id === participantId)?.duplicateLabel ?? "Removed Participant";

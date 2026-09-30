@@ -114,6 +114,8 @@ export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
 export const hasEnabledMemorySlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "memory" && slot.enabled);
+export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
+	slots.some((slot) => slot.reference === "lore" && slot.enabled);
 
 // ==[HUMAN APPROVED]== A stored occurrence derives from the canonical slot and adds only local
 // database identity. Deliberate duplicates are separate occurrences, so

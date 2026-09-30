@@ -59,7 +59,7 @@ import {
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
 import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
-import { hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
+import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import {
 	createAttemptEnvironment,
 	type AttemptEnvironment,
@@ -409,7 +409,7 @@ export function prepareGenerationInputsSnapshot(
 	const reuseHumanMessageId = input.kind === "send"
 		? reusableHumanMessageId(participation.messages, human.id, input.content)
 		: undefined;
-	const lore = recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled)
+	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
 			database: input.database,
 			conversationId: input.conversationId,
@@ -495,7 +495,7 @@ export async function prepareGenerationInputsAsync(
 	// generation start.
 	const snapshot = prepareGenerationInputsSnapshot(input);
 	const { memory: memorySnapshot, ...preparation } = snapshot;
-	const needsSemantic = preparation.recipe.slots.some((slot) => slot.reference === "lore" && slot.enabled) &&
+	const needsSemantic = hasEnabledLoreSlot(preparation.recipe.slots) &&
 		preparation.lore.activation.mode === "keyword-fallback";
 	const lorePromise = needsSemantic
 		? evaluateScopedLoreAsync({
