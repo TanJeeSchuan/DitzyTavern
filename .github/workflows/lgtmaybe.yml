@@ -41,7 +41,7 @@ jobs:
           max_tokens: "0"
           # CLIProxyAPI suffixes select reasoning effort independently per role.
           triage_model: opencode-go/deepseek-v4.1-flash(max)
-          # opencode-go calls die at CLIProxyAPI's 5-minute plugin host timeout; (max) lens output (~40k tokens) overruns it.
-          model: opencode-go/deepseek-v4.1-flash(high)
+          # (max) lens calls emit ~40k tokens and run past 5 minutes; the proxy's opencode-go request-timeout is raised to 30m for them.
+          model: opencode-go/deepseek-v4.1-flash(max)
           reflect_model: gpt-6.1-sol(high)
-          fallback_model: opencode-go/glm-5.3-flash(high)
+          fallback_model: opencode-go/glm-5.3-flash(max)
