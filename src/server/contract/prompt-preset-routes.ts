@@ -23,7 +23,7 @@ import {
 	setPromptPresetBlockEnabled,
 	StalePromptPresetRevisionError,
 } from "../prompt-preset";
-import { withDatabase } from "../database/database";
+
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
 import {
@@ -170,7 +170,7 @@ const recipeResponseSchema = {
 	422: invalidOutcome,
 };
 
-export const createPromptPresetRoutes = (database: Database | undefined) =>
+export const createPromptPresetRoutes = (database: Database) =>
 	new Elysia()
 		.post(
 			"/api/prompt-presets/import/sillytavern/review",
@@ -196,8 +196,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 				}
 				return importResponse(
 					runImportOperation(() =>
-						withDatabase(database, (connection) =>
-							importSillyTavernPromptPreset(connection, body))),
+						importSillyTavernPromptPreset(database, body)),
 					(imported) => imported,
 				);
 			},
@@ -209,9 +208,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.get(
 			"/api/prompt-presets/:presetId/export",
 			({ params }) => {
-				const exported = withDatabase(database, (connection) =>
-					readNativePromptPreset(connection, params.presetId),
-				);
+				const exported = readNativePromptPreset(database, params.presetId);
 				return exported === undefined ? notFoundResponse() : exported;
 			},
 			{
@@ -224,8 +221,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 			({ body }) =>
 				importResponse(
 					runImportOperation(() =>
-						withDatabase(database, (connection) =>
-							importNativePromptPreset(connection, body))),
+						importNativePromptPreset(database, body)),
 					(preset) => ({ outcome: "applied" as const, preset }),
 				),
 			{
@@ -236,7 +232,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.get(
 			"/api/prompt-presets",
 			() => ({
-				presets: withDatabase(database, (connection) => listPromptPresets(connection)),
+				presets: listPromptPresets(database),
 			}),
 			{ response: promptPresetListResponse },
 		)
@@ -248,8 +244,7 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 					// boundary; the library then guards the revision and derives the
 					// deletion impact from the selections present in the transaction.
 					runPresetCommand(() =>
-						withDatabase(database, (connection) =>
-							executePromptPresetCommand(connection, body))),
+						executePromptPresetCommand(database, body)),
 					(outcome) => outcome.kind === "deleted"
 						? { outcome: "deleted" as const, result: outcome.result }
 						: { outcome: "applied" as const, preset: outcome.preset },
@@ -267,9 +262,8 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/patches",
 			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
-						savePromptPresetBlockPatches(connection, params.presetId, body.patches)))),
+				recipeResponse(runRecipeOperation(() =>
+						savePromptPresetBlockPatches(database, params.presetId, body.patches))),
 			{
 				params: presetIdParams,
 				body: promptPresetBlockPatchesBody,
@@ -279,9 +273,8 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
 			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
-						addPromptPresetBlock(connection, params.presetId, body.reference)))),
+				recipeResponse(runRecipeOperation(() =>
+						addPromptPresetBlock(database, params.presetId, body.reference))),
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,
@@ -291,14 +284,13 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/move",
 			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
+				recipeResponse(runRecipeOperation(() =>
 						movePromptPresetBlock(
-							connection,
+							database,
 							params.presetId,
 							params.blockId,
 							body.toPosition,
-						)))),
+						))),
 			{
 				params: blockIdParams,
 				body: movePromptPresetBlockBody,
@@ -308,14 +300,13 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/toggle",
 			({ params, body }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
+				recipeResponse(runRecipeOperation(() =>
 						setPromptPresetBlockEnabled(
-							connection,
+							database,
 							params.presetId,
 							params.blockId,
 							body.enabled,
-						)))),
+						))),
 			{
 				params: blockIdParams,
 				body: setPromptPresetBlockEnabledBody,
@@ -325,9 +316,8 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/blocks/:blockId/duplicate",
 			({ params }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
-						duplicatePromptPresetBlock(connection, params.presetId, params.blockId)))),
+				recipeResponse(runRecipeOperation(() =>
+						duplicatePromptPresetBlock(database, params.presetId, params.blockId))),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -336,9 +326,8 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.delete(
 			"/api/prompt-presets/:presetId/blocks/:blockId",
 			({ params }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
-						removePromptPresetBlock(connection, params.presetId, params.blockId)))),
+				recipeResponse(runRecipeOperation(() =>
+						removePromptPresetBlock(database, params.presetId, params.blockId))),
 			{
 				params: blockIdParams,
 				response: recipeResponseSchema,
@@ -347,9 +336,8 @@ export const createPromptPresetRoutes = (database: Database | undefined) =>
 		.post(
 			"/api/prompt-presets/:presetId/instructions",
 			({ params }) =>
-				withDatabase(database, (connection) =>
-					recipeResponse(runRecipeOperation(() =>
-						addPromptPresetInstruction(connection, params.presetId)))),
+				recipeResponse(runRecipeOperation(() =>
+						addPromptPresetInstruction(database, params.presetId))),
 			{
 				params: presetIdParams,
 				response: recipeResponseSchema,

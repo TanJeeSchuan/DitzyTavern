@@ -1,3 +1,5 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
 import { useEffect, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
 import type { ConnectionProfile } from "../connection-settings";
@@ -28,7 +30,6 @@ import {
 	type SamplingField,
 	type SamplingValues,
 } from "../generation-settings-draft";
-import { useAsyncEffect } from "../lib/use-async";
 
 // ==[HUMAN APPROVED]== The Generation Settings save wording: each notice names what this surface
 // preserved or could not reach, while the runner owns when each notice is
@@ -98,14 +99,8 @@ function applyDraftsToGenerationSettings(
 ): ConversationGenerationSettings {
 	return {
 		...base,
-		temperature: drafts.sampling.temperature,
-		topP: drafts.sampling.topP,
-		frequencyPenalty: drafts.sampling.frequencyPenalty,
-		presencePenalty: drafts.sampling.presencePenalty,
-		contextLimit: drafts.budget.contextLimit,
-		responseBudget: drafts.budget.responseBudget,
-		safetyAllowance: drafts.budget.safetyAllowance,
-		siblingGenerationLimit: drafts.budget.siblingGenerationLimit,
+		...drafts.sampling,
+		...drafts.budget,
 		continuationStrategy: drafts.strategy,
 		continuationInstruction: drafts.instruction,
 		continuationPrefillSuffix: drafts.prefillSuffix,
@@ -113,7 +108,23 @@ function applyDraftsToGenerationSettings(
 	};
 }
 
-type LoadStatus = "loading" | "ready" | "saving" | "load-error";
+interface GenerationSettingsFields {
+	instruction: string;
+	strategy: ConversationGenerationSettings["continuationStrategy"];
+	prefillSuffix: ContinuationPrefillSuffix;
+	samplingDrafts: SamplingDrafts;
+	budgetDrafts: BudgetDrafts;
+	overridesDrafts: OverridesDrafts;
+}
+
+const fieldsFromSettings = (settings: ConversationGenerationSettings): GenerationSettingsFields => ({
+	instruction: settings.continuationInstruction,
+	strategy: settings.continuationStrategy,
+	prefillSuffix: settings.continuationPrefillSuffix,
+	samplingDrafts: samplingDraftsFromSettings(settings),
+	budgetDrafts: budgetDraftsFromSettings(settings),
+	overridesDrafts: overridesDraftsFromSettings(settings),
+});
 
 interface GenerationSettingsDraftOptions {
 	conversation: ConversationSummary | null;
@@ -133,76 +144,45 @@ export function useGenerationSettingsDraft({
 	onConversationChange,
 	connectionProfiles,
 }: GenerationSettingsDraftOptions) {
-	const [settings, setSettings] = useState<ConversationGenerationSettings | null>(null);
-	const [instruction, setInstruction] = useState("");
-	const [strategy, setStrategy] = useState<ConversationGenerationSettings["continuationStrategy"]>("instruction");
-	const [prefillSuffix, setPrefillSuffix] = useState<ContinuationPrefillSuffix>("");
-	const [samplingDrafts, setSamplingDrafts] = useState<SamplingDrafts>(makeEmptySamplingDrafts());
-	const [budgetDrafts, setBudgetDrafts] = useState<BudgetDrafts>(makeEmptyBudgetDrafts());
-	const [overridesDrafts, setOverridesDrafts] = useState<OverridesDrafts>(makeEmptyOverridesDrafts());
-	// ==[HUMAN APPROVED]== The namespace transmitted with requests follows the active Connection
-	// Profile's API Format. The state is a discriminated union so the badges
-	// only claim a namespace is transmitted after Contact resolves one; the
-	// no-active-profile and load-failure cases carry their own status lines.
-	const [transmittingNamespace, setTransmittingNamespace] = useState<
-		| { status: "loading" }
-		| { status: "unavailable" }
-		| { status: "no-active-profile" }
-		| { status: "known"; namespace: OverridesNamespace }
-	>({ status: "loading" });
-	const [status, setStatus] = useState<LoadStatus>("loading");
+	const client = useQueryClient();
+	const conversationId = conversation?.id ?? null;
+	const query = useQuery({
+		queryKey: ["generation-settings", conversationId],
+		queryFn: ({ signal }) => loadConversationGenerationSettings(conversationId!, signal),
+		enabled: conversationId !== null,
+	});
+	const settings = query.data ?? null;
+	const form = useForm<GenerationSettingsFields>({ defaultValues: {
+		instruction: "", strategy: "instruction", prefillSuffix: "",
+		samplingDrafts: makeEmptySamplingDrafts(), budgetDrafts: makeEmptyBudgetDrafts(), overridesDrafts: makeEmptyOverridesDrafts(),
+	} });
+	const { reset, getValues, setValue, watch, formState: { isDirty } } = form;
+	const { instruction, strategy, prefillSuffix, samplingDrafts, budgetDrafts, overridesDrafts } = watch();
+	const [saving, setSaving] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
-	const conversationIdRef = useRef<number | null>(conversation?.id ?? null);
+	const conversationIdRef = useRef(conversationId);
+	const initializedConversation = useRef<number | null>(null);
 	const draftVersionRef = useRef(0);
 	const saveVersionRef = useRef(0);
-	conversationIdRef.current = conversation?.id ?? null;
-
-	useAsyncEffect((isCancelled) => {
-		if (conversation === null) {
-			setSettings(null);
-			setStatus("loading");
-			return;
-		}
-		const loadDraftVersion = draftVersionRef.current;
-		setStatus("loading");
-		void loadConversationGenerationSettings(conversation.id)
-			.then((loaded) => {
-				if (isCancelled()) return;
-				setSettings(loaded);
-				if (draftVersionRef.current !== loadDraftVersion) {
-					setProblem(null);
-					setStatus("ready");
-					return;
-				}
-				setInstruction(loaded.continuationInstruction);
-				setStrategy(loaded.continuationStrategy);
-				setPrefillSuffix(loaded.continuationPrefillSuffix);
-				setSamplingDrafts(samplingDraftsFromSettings(loaded));
-				setBudgetDrafts(budgetDraftsFromSettings(loaded));
-				setOverridesDrafts(overridesDraftsFromSettings(loaded));
-				setProblem(null);
-				setStatus("ready");
-			})
-			.catch(() => {
-				if (!isCancelled()) setStatus("load-error");
-			});
-	}, [conversation?.id]);
-
+	conversationIdRef.current = conversationId;
+	const status = query.isError ? "load-error" : query.isPending ? "loading" : saving ? "saving" : "ready";
 	useEffect(() => {
-		if (connectionProfiles === undefined || settings === null) {
-			setTransmittingNamespace({ status: "loading" });
-			return;
-		}
-		const selectedProfile = connectionProfiles.find(
-			(profile) => profile.id === settings.connectionProfileId,
-		);
-		setTransmittingNamespace(selectedProfile === undefined || selectedProfile.apiFormat === "embeddings"
-			? { status: "no-active-profile" }
-			: { status: "known", namespace: selectedProfile.apiFormat });
-	}, [connectionProfiles, settings]);
-
+		if (settings === null) return;
+		const preserve = initializedConversation.current === conversationId;
+		const current = getValues();
+		reset(fieldsFromSettings(settings));
+		if (preserve) reset(current, { keepDefaultValues: true });
+		else { initializedConversation.current = conversationId; setProblem(null); }
+	}, [conversationId, settings, reset, getValues]);
+	const selectedProfile = connectionProfiles?.find((profile) => profile.id === settings?.connectionProfileId);
+	const transmittingNamespace = settings === null || connectionProfiles === undefined
+		? { status: "loading" as const }
+		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings"
+			? { status: "no-active-profile" as const }
+			: { status: "known" as const, namespace: selectedProfile.apiFormat };
 	const adoptModelSelection = (connectionProfileId: number, modelId: string) => {
-		setSettings((current) => current === null ? null : { ...current, connectionProfileId, modelId });
+		void client.cancelQueries({ queryKey: ["generation-settings", conversationId] });
+		client.setQueryData<ConversationGenerationSettings>(["generation-settings", conversationId], (current) => current && { ...current, connectionProfileId, modelId });
 	};
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
@@ -215,48 +195,14 @@ export function useGenerationSettingsDraft({
 		budgetValues !== null &&
 		overridesValues !== null &&
 		instruction.trim() !== "";
-	const dirty = settings !== null && (
-		instruction !== settings.continuationInstruction || strategy !== settings.continuationStrategy || prefillSuffix !== settings.continuationPrefillSuffix ||
-		JSON.stringify(samplingDrafts) !== JSON.stringify(samplingDraftsFromSettings(settings)) ||
-		JSON.stringify(budgetDrafts) !== JSON.stringify(budgetDraftsFromSettings(settings)) ||
-		JSON.stringify(overridesDrafts) !== JSON.stringify(overridesDraftsFromSettings(settings))
-	);
-
-	const updateSampling = (field: SamplingField, raw: string) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setSamplingDrafts((current) => ({ ...current, [field]: raw }));
-	};
-
-	const updateBudget = (field: BudgetField, raw: string) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setBudgetDrafts((current) => ({ ...current, [field]: raw }));
-	};
-
-	const updateOverrides = (namespace: OverridesNamespace, value: JsonData) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setOverridesDrafts((current) => ({ ...current, [namespace]: value }));
-	};
-
-	const updateInstruction = (value: string) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setInstruction(value);
-	};
-
-	const updateStrategy = (value: ConversationGenerationSettings["continuationStrategy"]) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setStrategy(value);
-	};
-
-	const updatePrefillSuffix = (value: ContinuationPrefillSuffix) => {
-		draftVersionRef.current += 1;
-		setProblem(null);
-		setPrefillSuffix(value);
-	};
+	const dirty = settings !== null && isDirty;
+	const edited = () => { draftVersionRef.current += 1; setProblem(null); };
+	const updateSampling = (field: SamplingField, raw: string) => { edited(); setValue("samplingDrafts", { ...getValues("samplingDrafts"), [field]: raw }, { shouldDirty: true }); };
+	const updateBudget = (field: BudgetField, raw: string) => { edited(); setValue("budgetDrafts", { ...getValues("budgetDrafts"), [field]: raw }, { shouldDirty: true }); };
+	const updateOverrides = (namespace: OverridesNamespace, value: JsonData) => { edited(); setValue("overridesDrafts", { ...getValues("overridesDrafts"), [namespace]: value }, { shouldDirty: true }); };
+	const updateInstruction = (value: string) => { edited(); setValue("instruction", value, { shouldDirty: true }); };
+	const updateStrategy = (value: GenerationSettingsFields["strategy"]) => { edited(); setValue("strategy", value, { shouldDirty: true }); };
+	const updatePrefillSuffix = (value: ContinuationPrefillSuffix) => { edited(); setValue("prefillSuffix", value, { shouldDirty: true }); };
 
 	const save = async () => {
 		if (
@@ -270,7 +216,7 @@ export function useGenerationSettingsDraft({
 		const draftVersion = draftVersionRef.current;
 		const saveVersion = ++saveVersionRef.current;
 		let applied = false;
-		setStatus("saving");
+		setSaving(true);
 		const ownsSave = () => saveVersionRef.current === saveVersion && conversationIdRef.current === conversationId;
 		const showUnreachable = () => {
 			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
@@ -295,25 +241,14 @@ export function useGenerationSettingsDraft({
 					},
 				},
 				onApplied: (next) => {
+					void client.cancelQueries({ queryKey: ["generation-settings", conversationId] });
+					client.setQueryData(["generation-settings", conversationId], next);
 					if (!ownsSave()) return;
 					applied = true;
-					setSettings(next);
-					if (draftVersionRef.current === draftVersion) {
-						setStrategy(next.continuationStrategy);
-						setPrefillSuffix(next.continuationPrefillSuffix);
-					}
+					if (draftVersionRef.current === draftVersion) reset(fieldsFromSettings(next));
 					setProblem(null);
 				},
-				onConflict: (current) => {
-					// ==[HUMAN APPROVED]== Refresh the displayed authoritative settings so a retry starts
-					// from fresh values; every local draft stays untouched. The
-					// write itself re-reads the authoritative settings anyway.
-					void loadConversationGenerationSettings(current.id)
-						.then((fresh) => {
-							if (ownsSave() && conversationIdRef.current === current.id) setSettings(fresh);
-						})
-						.catch(() => undefined);
-				},
+				onConflict: (current) => { void client.invalidateQueries({ queryKey: ["generation-settings", current.id] }); },
 				onNotPlayable: showUnreachable,
 				onNotRemovable: showUnreachable,
 			});
@@ -322,19 +257,14 @@ export function useGenerationSettingsDraft({
 			// surface owns the unreachable presentation for that case too.
 			if (ownsSave()) setProblem(SAVE_NOTICES.unreachable);
 		} finally {
-			if (ownsSave()) setStatus("ready");
+			if (saveVersionRef.current === saveVersion) setSaving(false);
 		}
 		return applied && draftVersionRef.current === draftVersion;
 	};
 	const discard = () => {
 		if (settings === null) return;
 		draftVersionRef.current += 1;
-		setInstruction(settings.continuationInstruction);
-		setStrategy(settings.continuationStrategy);
-		setPrefillSuffix(settings.continuationPrefillSuffix);
-		setSamplingDrafts(samplingDraftsFromSettings(settings));
-		setBudgetDrafts(budgetDraftsFromSettings(settings));
-		setOverridesDrafts(overridesDraftsFromSettings(settings));
+		reset(fieldsFromSettings(settings));
 		setProblem(null);
 	};
 

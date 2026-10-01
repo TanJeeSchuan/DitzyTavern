@@ -1,9 +1,8 @@
 import type { Database } from "bun:sqlite";
-import { withDatabase } from "./database";
 
-export const listChatSummaries = (database?: Database) =>
-	withDatabase(database, (connection) =>
-		connection
+
+export const listChatSummaries = (database: Database) =>
+	database
 			.query<{ id: number; name: string; creation_time: string; last_message_time: string; cast_names: string | null; excerpt: string | null }, []>(`
 				SELECT c.id, c.name, c.creation_time, c.last_message_time,
 					(SELECT group_concat(name, char(31)) FROM (SELECT name FROM participant WHERE conversation_id = c.id AND deleted_at IS NULL ORDER BY position)) AS cast_names,
@@ -19,5 +18,4 @@ export const listChatSummaries = (database?: Database) =>
 				lastMessageTime: chat.last_message_time,
 				castNames: chat.cast_names?.split("") ?? [],
 				excerpt: (chat.excerpt ?? "").replace(/\s+/g, " ").trim().slice(0, 160),
-			})),
-	);
+			}));

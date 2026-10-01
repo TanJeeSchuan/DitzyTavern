@@ -351,14 +351,6 @@ export function createConnectionSettingsModule(
 	};
 }
 
-export function withConnectionSettings<T>(
-	database: Database,
-	run: (settings: ConnectionSettingsModule) => T,
-	options: ConnectionSettingsModuleOptions = {},
-): T {
-	return run(createConnectionSettingsModule(database, options));
-}
-
 function requireRevision(
 	read: () => ConnectionSettingsSnapshot,
 	actualRevision: number,

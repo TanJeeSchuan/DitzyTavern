@@ -6,7 +6,7 @@ import {
 	InvalidConnectionProfileError,
 	applyConnectionHeaderOperations,
 	StaleConnectionSettingsRevisionError,
-	withConnectionSettings,
+	createConnectionSettingsModule,
 	validateConnectionProfileDraft,
 	type ConnectionSettingsModuleOptions,
 	type ConnectionSettingsModule,
@@ -14,7 +14,7 @@ import {
 	type ConnectionSettingsSnapshot,
 } from "../connection-settings";
 import { discoverModels, testConnection, type TestConnectionResult } from "../model-client";
-import { withDatabase } from "../database/database";
+
 import {
 	connectionCommandBody,
 	connectionProfileDraftOf,
@@ -46,13 +46,12 @@ const staleSettingsResponse = (error: StaleConnectionSettingsRevisionError) =>
 // ==[HUMAN APPROVED]== Thin typed adapters over the Connection Settings seam; schemas stay in the
 // shared contract and this module only maps domain outcomes to responses.
 export const createConnectionSettingsRoutes = (
-	database: Database | undefined,
+	database: Database,
 	options: ConnectionSettingsRouteOptions = {},
 ) => {
+	const settings = createConnectionSettingsModule(database, options);
 	const withSettings = <T>(run: (settings: ConnectionSettingsModule) => T): T =>
-		withDatabase(database, (connection) =>
-			withConnectionSettings(connection, run, options),
-		);
+		run(settings);
 
 	return new Elysia()
 		.get(

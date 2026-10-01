@@ -42,7 +42,6 @@ export {
 	GenerationRuntime,
 	GenerationRuntimeRegistry,
 	generationRuntimeFor,
-	defaultGenerationRuntime,
 	type GenerationEventEnvelope,
 	type GenerationRuntimeState,
 	type GenerationRuntimeSubscription,

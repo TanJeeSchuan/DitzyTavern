@@ -83,9 +83,8 @@ const loreText = (plan: PromptPlan): string =>
 describe("generation capture coherence", () => {
 	let databases: Database[] = [];
 	afterEach(() => {
-		for (const database of databases) database.close();
+		for (const database of databases) { clearGenerationPreviewRegistry(database); database.close(); }
 		databases = [];
-		clearGenerationPreviewRegistry();
 	});
 
 	for (const kind of ["send", "continuation", "sibling"] as const) {
@@ -166,6 +165,17 @@ describe("generation capture coherence", () => {
 		const newer = await createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "newer" });
 		releaseFirst();
 		await older;
-		expect(previewRecordFor(newer.id, state.conversationId, "send").id).toBe(newer.id);
+		expect(previewRecordFor(state.database, newer.id, state.conversationId, "send").id).toBe(newer.id);
 	});
+	test("independent databases retain previews for identical Conversation IDs", async () => {
+		const first = setup();
+		const second = setup();
+		databases.push(first.database, second.database);
+		expect(first.conversationId).toBe(second.conversationId);
+		const left = await createGenerationPreviewAsync(first.database, { conversationId: first.conversationId, kind: "send", content: "First application." });
+		const right = await createGenerationPreviewAsync(second.database, { conversationId: second.conversationId, kind: "send", content: "Second application." });
+		expect(previewRecordFor(first.database, left.id, first.conversationId, "send").id).toBe(left.id);
+		expect(previewRecordFor(second.database, right.id, second.conversationId, "send").id).toBe(right.id);
+	});
+
 });

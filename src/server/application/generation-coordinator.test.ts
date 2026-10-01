@@ -309,7 +309,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const conversation = conversationSnapshot("Stop ordering");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 11, conversation.id);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order),
 			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[11, runtime]]), order),
 		});
@@ -328,7 +328,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const conversation = conversationSnapshot("Stop race");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 12, conversation.id);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopError: new InvalidConversationCommandError("The Active Generation is no longer available."),
 			}),
@@ -350,7 +350,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 	test("Stop stops nothing when no runtime exists and the durable target is gone", async () => {
 		const conversation = conversationSnapshot("Stop missing");
 		const order: string[] = [];
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopError: new InvalidConversationCommandError("The Active Generation is no longer available."),
 			}),
@@ -367,7 +367,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const conversation = conversationSnapshot("Stop unknown conversation");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 14, conversation.id);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopError: new ConversationNotFoundError(conversation.id),
 			}),
@@ -388,7 +388,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const conversation = conversationSnapshot("Stop foreign runtime");
 		const order: string[] = [];
 		const runtime = recordRuntime(order, 15, conversation.id + 999);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order),
 			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[15, runtime]]), order),
 		});
@@ -405,7 +405,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const runtime = recordRuntime(order, 16, conversation.id, {
 			markStoppedError: new Error("Runtime settlement exploded."),
 		});
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order),
 			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[16, runtime]]), order),
 		});
@@ -431,7 +431,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const runtime = recordRuntime(order, 18, conversation.id, {
 			stopError: new Error("Runtime abort failed."),
 		});
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order),
 			runtimeLifecycle: fakeRuntimeLifecycle(new Map([[18, runtime]]), order),
 		});
@@ -447,7 +447,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 			[21, recordRuntime(order, 21, conversation.id)],
 			[22, recordRuntime(order, 22, conversation.id)],
 		]);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopGenerationsIds: [21, 22],
 			}),
@@ -479,7 +479,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 			// A stale registry entry reusing a generation id of another chat.
 			[31, recordRuntime(order, 31, conversation.id + 777)],
 		]);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopGenerationsIds: [31],
 			}),
@@ -501,7 +501,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 		const runtimes = new Map<number, GenerationRuntimeHandle>([
 			[41, recordRuntime(order, 41, conversation.id)],
 		]);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopGenerationsError: new InvalidConversationCommandError(
 					"The Conversation has no active Generations to stop.",
@@ -531,7 +531,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 			})],
 			[53, recordRuntime(order, 53, conversation.id)],
 		]);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopGenerationsIds: [51, 52, 53],
 			}),
@@ -566,7 +566,7 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 				stopError: new Error("Runtime 55 abort failed."),
 			})],
 		]);
-		const coordinator = createGenerationCoordinator(undefined, {
+		const coordinator = createGenerationCoordinator(database, {
 			conversationLifecycle: fakeConversationLifecycle(conversation, order, {
 				stopGenerationsIds: [54, 55],
 			}),

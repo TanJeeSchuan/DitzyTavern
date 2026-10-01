@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { gracefullyShutdownGenerations } from "./generation-recovery";
 import {
-	defaultGenerationRuntime,
 	generationRuntimeFor,
 	GenerationRuntimeRegistry,
 } from "./generation-runtime";
@@ -235,9 +234,9 @@ describe("Generation runtime", () => {
 		expect(checkpoints).toHaveLength(1);
 	});
 
-	test("graceful shutdown flushes and stops the production default registry", () => {
+	test("graceful shutdown flushes and stops the application registry", async () => {
 		const database = openInitializedDatabase({ path: ":memory:" });
-		const registry = defaultGenerationRuntime();
+		const registry = generationRuntimeFor(database);
 		const generationId = 91_234;
 		registry.remove(generationId);
 		let stopped = false;
@@ -255,7 +254,7 @@ describe("Generation runtime", () => {
 			});
 			runtime.publish({ type: "content", text: "production partial" });
 
-			gracefullyShutdownGenerations(database);
+			await gracefullyShutdownGenerations(database);
 
 			expect(checkpoints).toEqual(["production partial"]);
 			expect(stopped).toBe(true);
@@ -266,17 +265,23 @@ describe("Generation runtime", () => {
 		}
 	});
 
-	test("selects the process registry without a database and reuses injected database scope", () => {
+	test("shutdown waits for detached work before releasing retained state", async () => {
 		const database = openInitializedDatabase({ path: ":memory:" });
-		try {
-			const processRegistry = generationRuntimeFor(undefined);
-			const databaseRegistry = generationRuntimeFor(database);
-
-			expect(processRegistry).toBe(defaultGenerationRuntime());
-			expect(generationRuntimeFor(database)).toBe(databaseRegistry);
-			expect(databaseRegistry).not.toBe(processRegistry);
-		} finally {
-			database.close();
-		}
+		const registry = generationRuntimeFor(database);
+		const work = Promise.withResolvers<void>();
+		let released = false;
+		let shutdownFinished = false;
+		registry.track(work.promise);
+		registry.start({ generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
+			startedAt: new Date().toISOString(), onRetentionExpired: () => { released = true; } });
+		const shutdown = gracefullyShutdownGenerations(database).then(() => { shutdownFinished = true; });
+		await Promise.resolve();
+		expect(shutdownFinished).toBe(false);
+		expect(released).toBe(false);
+		work.resolve();
+		await shutdown;
+		expect(released).toBe(true);
+		database.close();
 	});
+
 });

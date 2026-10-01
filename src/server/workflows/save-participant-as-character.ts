@@ -12,7 +12,7 @@
 
 import type { Database } from "bun:sqlite";
 import type { CharacterSnapshot } from "../character-library";
-import { withCharacterLibrary } from "../character-library";
+import { createCharacterLibraryModule } from "../character-library";
 import {
 	ConversationNotFoundError,
 	ParticipantNotFoundError,
@@ -65,8 +65,8 @@ export function saveParticipantAsCharacter(
 		// ==[HUMAN APPROVED]== Copy the authoritative server-side Definition into a new library
 		// Character. Creation is atomic: the lifecycle row, Prompt row, and
 		// all Opening rows commit together or not at all.
-		return withCharacterLibrary(database, (library) => ({
-			character: library.execute({
+		return ({
+			character: createCharacterLibraryModule(database).execute({
 				type: "create",
 				definition: {
 					name: participant.name,
@@ -74,7 +74,7 @@ export function saveParticipantAsCharacter(
 					openings: participant.openings,
 				},
 			}),
-		}));
+		});
 	});
 
 	return save.immediate();

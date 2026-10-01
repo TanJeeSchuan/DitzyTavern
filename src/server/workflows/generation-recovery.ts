@@ -10,7 +10,7 @@ import {
 	createConversationModule,
 } from "../conversation";
 import {
-	defaultGenerationRuntime,
+	generationRuntimeFor,
 	type GenerationRuntimeRegistry,
 } from "./generation-runtime";
 import { interruptedGenerationData } from "./generate-server-owned";
@@ -106,11 +106,13 @@ export const shutdownActiveGenerations = (database: Database): GenerationRecover
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
 /** ==[HUMAN APPROVED]== Flush and stop the process-owned runtime before terminalizing its rows. */
-export function gracefullyShutdownGenerations(
+export async function gracefullyShutdownGenerations(
 	database: Database,
-	runtime: GenerationRuntimeRegistry = defaultGenerationRuntime(),
-): GenerationRecoverySummary {
+	runtime: GenerationRuntimeRegistry = generationRuntimeFor(database),
+): Promise<GenerationRecoverySummary> {
 	runtime.flushAll();
 	runtime.stopAll();
-	return shutdownActiveGenerations(database);
+	const summary = shutdownActiveGenerations(database);
+	await runtime.drain();
+	return summary;
 }

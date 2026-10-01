@@ -13,8 +13,8 @@ import {
 	StagedChatImportTokenMismatchError,
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
-	withChatImport,
-	withChatImportDetails,
+	createChatImportModule,
+	createChatImportDetailsModule,
 } from "../sillytavern";
 import { invalidResponse } from "./responses";
 import { toConversationSummary } from "./projections";
@@ -51,7 +51,7 @@ const stagedGoneBody = (error: Error) => {
 // managed temporary storage exactly once instead of buffering the artifact.
 // The preview and discard routes stay tiny mappings of typed outcomes.
 export const createChatImportRoutes = (
-	database: Database | undefined,
+	database: Database,
 	artifactDirectory: string,
 ) =>
 	new Elysia()
@@ -74,15 +74,10 @@ export const createChatImportRoutes = (
 					});
 				}
 				try {
-					const result = await withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.stageFile({
+					const result = await createChatImportModule(database, { artifactDirectory: artifactDirectory }).stageFile({
 								bytes: body,
 								originalFilename,
-							}),
-					);
+							});
 					return { outcome: "staged" as const, ...result };
 				} catch (error) {
 					if (error instanceof SillyTavernImportError) {
@@ -105,12 +100,7 @@ export const createChatImportRoutes = (
 			"/api/imports/chats/:token/preview",
 			({ params, body, status }) => {
 				try {
-					const preview = withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.preview(params.token, body.sha256),
-					);
+					const preview = createChatImportModule(database, { artifactDirectory: artifactDirectory }).preview(params.token, body.sha256);
 					return { outcome: "available" as const, preview };
 				} catch (error) {
 					const gone = error instanceof Error ? stagedGoneBody(error) : undefined;
@@ -135,17 +125,12 @@ export const createChatImportRoutes = (
 			"/api/imports/chats/:token/commit",
 			({ params, body, status }) => {
 				try {
-					const result = withChatImport(
-						database,
-						artifactDirectory,
-						(chatImport) =>
-							chatImport.commit(params.token, {
+					const result = createChatImportModule(database, { artifactDirectory: artifactDirectory }).commit(params.token, {
 								sha256: body.sha256,
 								title: body.title,
 								duplicateConfirmed: body.duplicateConfirmed,
 								participants: body.participants,
-							}),
-					);
+							});
 					return {
 						outcome: "committed" as const,
 						conversation: toConversationSummary(result.conversation),
@@ -184,9 +169,7 @@ export const createChatImportRoutes = (
 			({ params }) => {
 				// ==[HUMAN APPROVED]== Discard is idempotent: unknown and already-discarded handles
 				// report the same removed outcome without touching anything.
-				withChatImport(database, artifactDirectory, (chatImport) =>
-					chatImport.discard(params.token),
-				);
+				createChatImportModule(database, { artifactDirectory: artifactDirectory }).discard(params.token);
 				return { outcome: "discarded" as const };
 			},
 			{
@@ -199,11 +182,7 @@ export const createChatImportRoutes = (
 		.get(
 			"/api/conversations/:id/import-details",
 			({ params, status }) => {
-				const details = withChatImportDetails(
-					database,
-					artifactDirectory,
-					(importDetails) => importDetails.importDetails(params.id),
-				);
+				const details = createChatImportDetailsModule(database, artifactDirectory).importDetails(params.id);
 				if (details === undefined) {
 					// ==[HUMAN APPROVED]== Either the Chat is missing or it carries no import
 					// provenance; the client treats both as "no Import Details".
@@ -222,12 +201,7 @@ export const createChatImportRoutes = (
 		.get(
 			"/api/conversations/:id/import-source",
 			({ params, status }) => {
-				const result = withChatImportDetails(
-					database,
-					artifactDirectory,
-					(importDetails) =>
-						importDetails.downloadExactSource(params.id),
-				);
+				const result = createChatImportDetailsModule(database, artifactDirectory).downloadExactSource(params.id);
 				if (result === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}

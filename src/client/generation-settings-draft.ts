@@ -9,21 +9,6 @@ import type {
 	GenerationRequestOverrides,
 } from "./conversation";
 
-// ==[HUMAN APPROVED]== The four first-class sampling keys mirror the server validation domain:
-// null means the provider default, otherwise a finite number between -2 and 2.
-export type SamplingField =
-	| "temperature"
-	| "topP"
-	| "frequencyPenalty"
-	| "presencePenalty";
-
-export const SAMPLING_FIELDS = [
-	"temperature",
-	"topP",
-	"frequencyPenalty",
-	"presencePenalty",
-] as const satisfies readonly SamplingField[];
-
 export const SAMPLING_FIELD_LABELS = {
 	temperature: "Temperature",
 	topP: "Top P",
@@ -31,23 +16,11 @@ export const SAMPLING_FIELD_LABELS = {
 	presencePenalty: "Presence penalty",
 } as const;
 
-export interface SamplingDrafts {
-	temperature: string;
-	topP: string;
-	frequencyPenalty: string;
-	presencePenalty: string;
-}
-
-export function makeEmptySamplingDrafts(): SamplingDrafts {
-	return { temperature: "", topP: "", frequencyPenalty: "", presencePenalty: "" };
-}
-
-export interface SamplingValues {
-	temperature: number | null;
-	topP: number | null;
-	frequencyPenalty: number | null;
-	presencePenalty: number | null;
-}
+export type SamplingField = keyof typeof SAMPLING_FIELD_LABELS;
+export const SAMPLING_FIELDS = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(SAMPLING_FIELD_LABELS) as SamplingField[];
+export type SamplingDrafts = Record<SamplingField, string>;
+export type SamplingValues = Pick<ConversationGenerationSettings, SamplingField>;
+export const makeEmptySamplingDrafts = (): SamplingDrafts => /* SAFETY: mapping every sampling key supplies a string for every field. */ Object.fromEntries(SAMPLING_FIELDS.map((key) => [key, ""])) as SamplingDrafts;
 
 export type SamplingDraftValue =
 	| { status: "empty" }
@@ -67,38 +40,9 @@ export function parseSamplingDraft(raw: string): SamplingDraftValue {
 export function samplingDraftsFromSettings(
 	settings: Pick<ConversationGenerationSettings, SamplingField>,
 ): SamplingDrafts {
-	return {
-		temperature: samplingValueToDraft(settings.temperature),
-		topP: samplingValueToDraft(settings.topP),
-		frequencyPenalty: samplingValueToDraft(settings.frequencyPenalty),
-		presencePenalty: samplingValueToDraft(settings.presencePenalty),
-	};
+	// SAFETY: mapping the complete field list supplies every key with a string value.
+	return Object.fromEntries(SAMPLING_FIELDS.map((key) => [key, settings[key] === null ? "" : String(settings[key])])) as SamplingDrafts;
 }
-
-function samplingValueToDraft(value: number | null): string {
-	return value === null ? "" : String(value);
-}
-
-function draftNumber(parsed: SamplingDraftValue): number | null {
-	return parsed.status === "valid" ? parsed.value : null;
-}
-
-// ==[HUMAN APPROVED]== The four budget keys mirror the server validation domain: positive whole
-// numbers for the first three, and a non-negative whole number for the Safety
-// allowance. Unlike Sampling, a budget is always a concrete value, so a blank
-// draft is invalid rather than a provider default.
-export type BudgetField =
-	| "contextLimit"
-	| "responseBudget"
-	| "safetyAllowance"
-	| "siblingGenerationLimit";
-
-export const BUDGET_FIELDS = [
-	"contextLimit",
-	"responseBudget",
-	"safetyAllowance",
-	"siblingGenerationLimit",
-] as const satisfies readonly BudgetField[];
 
 export const BUDGET_FIELD_LABELS = {
 	contextLimit: "Context limit",
@@ -123,28 +67,11 @@ const BUDGET_FIELD_MINIMUM = {
 	siblingGenerationLimit: 1,
 } as const satisfies Record<BudgetField, number>;
 
-export interface BudgetDrafts {
-	contextLimit: string;
-	responseBudget: string;
-	safetyAllowance: string;
-	siblingGenerationLimit: string;
-}
-
-export function makeEmptyBudgetDrafts(): BudgetDrafts {
-	return {
-		contextLimit: "",
-		responseBudget: "",
-		safetyAllowance: "",
-		siblingGenerationLimit: "",
-	};
-}
-
-export interface BudgetValues {
-	contextLimit: number;
-	responseBudget: number;
-	safetyAllowance: number;
-	siblingGenerationLimit: number;
-}
+export type BudgetField = keyof typeof BUDGET_FIELD_LABELS;
+export const BUDGET_FIELDS = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(BUDGET_FIELD_LABELS) as BudgetField[];
+export type BudgetDrafts = Record<BudgetField, string>;
+export type BudgetValues = Pick<ConversationGenerationSettings, BudgetField>;
+export const makeEmptyBudgetDrafts = (): BudgetDrafts => /* SAFETY: mapping every budget key supplies a string for every field. */ Object.fromEntries(BUDGET_FIELDS.map((key) => [key, ""])) as BudgetDrafts;
 
 export type BudgetDraftValue =
 	| { status: "valid"; value: number }
@@ -167,70 +94,29 @@ export function parseBudgetDraft(field: BudgetField, raw: string): BudgetDraftVa
 export function budgetDraftsFromSettings(
 	settings: Pick<ConversationGenerationSettings, BudgetField>,
 ): BudgetDrafts {
-	return {
-		contextLimit: String(settings.contextLimit),
-		responseBudget: String(settings.responseBudget),
-		safetyAllowance: String(settings.safetyAllowance),
-		siblingGenerationLimit: String(settings.siblingGenerationLimit),
-	};
+	// SAFETY: mapping the complete field list supplies every key with a string value.
+	return Object.fromEntries(BUDGET_FIELDS.map((key) => [key, String(settings[key])])) as BudgetDrafts;
 }
 
-// ==[HUMAN APPROVED]== Returns null whenever any draft is invalid so Apply cannot send a partially
-// resolved aggregate; unlike Sampling, budgets resolve to always-concrete numbers.
 export function resolveBudgetValues(drafts: BudgetDrafts): BudgetValues | null {
-	const contextLimit = parseBudgetDraft("contextLimit", drafts.contextLimit);
-	if (contextLimit.status === "invalid") return null;
-	const responseBudget = parseBudgetDraft("responseBudget", drafts.responseBudget);
-	if (responseBudget.status === "invalid") return null;
-	const safetyAllowance = parseBudgetDraft("safetyAllowance", drafts.safetyAllowance);
-	if (safetyAllowance.status === "invalid") return null;
-	const siblingGenerationLimit = parseBudgetDraft(
-		"siblingGenerationLimit",
-		drafts.siblingGenerationLimit,
-	);
-	if (siblingGenerationLimit.status === "invalid") return null;
-	return {
-		contextLimit: contextLimit.value,
-		responseBudget: responseBudget.value,
-		safetyAllowance: safetyAllowance.value,
-		siblingGenerationLimit: siblingGenerationLimit.value,
-	};
+	const entries = BUDGET_FIELDS.map((key) => [key, parseBudgetDraft(key, drafts[key])] as const);
+	if (entries.some(([, parsed]) => parsed.status === "invalid")) return null;
+	// SAFETY: every budget key is present and invalid values were rejected above.
+	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as BudgetValues;
 }
 
-// ==[HUMAN APPROVED]== Returns null whenever any draft is invalid so Apply cannot send a partially
-// resolved aggregate; valid blanks become explicit nulls (provider default).
-export function resolveSamplingValues(
-	drafts: SamplingDrafts,
-): SamplingValues | null {
-	const temperature = parseSamplingDraft(drafts.temperature);
-	const topP = parseSamplingDraft(drafts.topP);
-	const frequencyPenalty = parseSamplingDraft(drafts.frequencyPenalty);
-	const presencePenalty = parseSamplingDraft(drafts.presencePenalty);
-	for (const parsed of [temperature, topP, frequencyPenalty, presencePenalty]) {
-		if (parsed.status === "invalid") return null;
-	}
-	return {
-		temperature: draftNumber(temperature),
-		topP: draftNumber(topP),
-		frequencyPenalty: draftNumber(frequencyPenalty),
-		presencePenalty: draftNumber(presencePenalty),
-	};
+export function resolveSamplingValues(drafts: SamplingDrafts): SamplingValues | null {
+	const entries = SAMPLING_FIELDS.map((key) => [key, parseSamplingDraft(drafts[key])] as const);
+	if (entries.some(([, parsed]) => parsed.status === "invalid")) return null;
+	// SAFETY: every sampling key is present; blanks map to null after rejecting invalid values.
+	return Object.fromEntries(entries.map(([key, parsed]) => [key, parsed.status === "valid" ? parsed.value : null])) as SamplingValues;
 }
 
 // ==[HUMAN APPROVED]== Request Overrides drafts. Each namespace is an independent JSON object and
 // the closed namespace set mirrors the Conversation Generation Settings
 // contract, so switching the selected Connection Profile never transmits
 // overrides authored for another API Format.
-export type OverridesNamespace =
-	| "chat-completions"
-	| "responses"
-	| "anthropic-messages";
-
-export const OVERRIDES_NAMESPACES = [
-	"chat-completions",
-	"responses",
-	"anthropic-messages",
-] as const satisfies readonly OverridesNamespace[];
+export type OverridesNamespace = keyof ConversationGenerationSettings["requestOverrides"];
 
 export const OVERRIDES_NAMESPACE_LABELS = {
 	"chat-completions": "Chat Completions",
@@ -238,24 +124,17 @@ export const OVERRIDES_NAMESPACE_LABELS = {
 	"anthropic-messages": "Anthropic Messages",
 } as const;
 
-export interface OverridesDrafts {
-	"chat-completions": unknown;
-	responses: unknown;
-	"anthropic-messages": unknown;
-}
+export const OVERRIDES_NAMESPACES = /* SAFETY: these keys come from the closed field declaration above. */ Object.keys(OVERRIDES_NAMESPACE_LABELS) as OverridesNamespace[];
+export type OverridesDrafts = Record<OverridesNamespace, JsonData>;
 
-export function makeEmptyOverridesDrafts(): OverridesDrafts {
+export function makeEmptyOverridesDrafts() {
 	return { "chat-completions": {}, responses: {}, "anthropic-messages": {} };
 }
 
 export function overridesDraftsFromSettings(
 	settings: Pick<ConversationGenerationSettings, "requestOverrides">,
-): OverridesDrafts {
-	return {
-		"chat-completions": settings.requestOverrides["chat-completions"],
-		responses: settings.requestOverrides["responses"],
-		"anthropic-messages": settings.requestOverrides["anthropic-messages"],
-	};
+) {
+	return { ...settings.requestOverrides };
 }
 
 export type OverridesDraftValue =

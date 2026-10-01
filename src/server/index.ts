@@ -1,6 +1,7 @@
 import { staticPlugin } from "@elysiajs/static";
 import { registerWireFormats } from "../shared/contract/wire-formats";
-import { contract } from "./contract";
+import { createContract } from "./contract";
+import { clearGenerationPreviewRegistry } from "./workflows/generation-preview";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
@@ -30,7 +31,7 @@ const staticAssets = await staticPlugin({
 	alwaysStatic: true,
 });
 
-const app = contract
+const app = createContract(database)
 	.get("/", serveIndex)
 	.use(staticAssets)
 	.onError(({ code, path }) => {
@@ -45,15 +46,17 @@ const app = contract
 	.listen({ hostname: "127.0.0.1", port: 3000 });
 
 const shutdown = async () => {
-	app.stop();
+	const stopped = app.stop();
 	await stopMemoryWorker();
-	const shutdownRecovery = gracefullyShutdownGenerations(database);
+	const shutdownRecovery = await gracefullyShutdownGenerations(database);
 	if (shutdownRecovery.failed > 0) {
 		console.error(
 			`[generation-recovery] Shutdown recovery left ${shutdownRecovery.failed} ` +
 			`generation(s) unresolved.`,
 		);
 	}
+	await stopped;
+	clearGenerationPreviewRegistry(database);
 	database.close();
 };
 

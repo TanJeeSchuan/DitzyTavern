@@ -1,3 +1,4 @@
+import { createParser } from "eventsource-parser";
 // The Conversation JSON routes use the typed Eden client. This module owns
 // ==[HUMAN APPROVED]== the one deliberately manual protocol: the resumable Generation SSE stream.
 // SSE framing, comments, partial frames, HTTP status interpretation, and
@@ -141,25 +142,12 @@ async function consumeGenerationStream(
 	}
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
-	let pending = "";
 	let result: GenerationStreamResult | null = null;
 	let lastEventId = 0;
-	const consumeFrame = (frame: string) => {
-		let eventType = "message";
-		let frameId: number | undefined;
-		let malformedId = false;
-		const dataLines: string[] = [];
-		for (const line of frame.split(/\r?\n/)) {
-			if (line.startsWith("event:")) eventType = line.slice(6).trim();
-			if (line.startsWith("id:")) {
-				const candidate = Number(line.slice(3).trim());
-				if (!Number.isInteger(candidate) || candidate < 1) malformedId = true;
-				else frameId = candidate;
-			}
-			if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-		}
-		if (dataLines.length === 0 || malformedId) return;
-		const payload = parseStreamPayload(dataLines.join("\n"));
+	const parser = createParser({ onEvent: ({ event: eventType, id, data }) => {
+		const frameId = id === undefined ? undefined : Number(id);
+		if (frameId !== undefined && (!Number.isSafeInteger(frameId) || frameId < 1)) return;
+		const payload = parseStreamPayload(data);
 		if (payload === null) return;
 		if (eventType === "generation") {
 			const event = decodeWirePayload(generationEvent, payload);
@@ -199,16 +187,17 @@ async function consumeGenerationStream(
 				? { outcome: "not-found" }
 				: { outcome: failure.outcome, reason: failure.reason };
 		}
-	};
-	while (true) {
-		const next = await reader.read();
-		pending += decoder.decode(next.value ?? new Uint8Array(), { stream: !next.done });
-		const frames = pending.split(/\r?\n\r?\n/);
-		pending = frames.pop() ?? "";
-		for (const frame of frames) consumeFrame(frame);
-		if (next.done) break;
+	} });
+	try {
+		while (true) {
+			const next = await reader.read();
+			parser.feed(decoder.decode(next.value, { stream: !next.done }));
+			if (next.done) break;
+		}
+	} finally {
+		reader.releaseLock();
 	}
-	if (pending.length > 0) consumeFrame(pending);
+
 	return result ?? { outcome: "interrupted", reason: "Generation ended without a terminal result." };
 }
 

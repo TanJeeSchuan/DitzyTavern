@@ -103,7 +103,7 @@ describe("Generation runtime behavior", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

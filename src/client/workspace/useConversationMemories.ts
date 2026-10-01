@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MemorySourceTarget } from "../../shared/contract/memory";
-import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance, type MemoryCatchup } from "../memories";
+import { cancelMemoryCatchup, correctMemory, loadConversationMemories, loadMemoryAllowance, loadMemoryCatchup, resetAndReextract, retryMemoryIndex, startMemoryCatchup, type ConversationMemories, type ConversationMemoryAllowance } from "../memories";
 
 type Source = ConversationMemories["sources"][number];
 export type ClaimDraft = { claim: string; attribution: string; people: string[] };
@@ -9,37 +10,35 @@ const targetOf = ({ messageId, variantId, revision }: Source): MemorySourceTarge
 const inFlight = (status: string) => status === "pending" || status === "running";
 
 export function useConversationMemories(conversationId: number, conversationRevision: number) {
-	const readGeneration = useRef(0);
-	const invalidateReads = useCallback(() => { readGeneration.current += 1; }, []);
-	const [status, setStatus] = useState<"loading" | "ready" | "stale" | "failed">("loading");
-	const [memories, setMemories] = useState<ConversationMemories | null>(null);
-	const [catchup, setCatchup] = useState<MemoryCatchup | null>(null);
-	const [allowance, setAllowance] = useState<ConversationMemoryAllowance | null>(null);
+	const client = useQueryClient();
+	const queryKey = useMemo(() => ["memories", conversationId] as const, [conversationId]);
+	const query = useQuery({
+		queryKey,
+		queryFn: async ({ signal }) => {
+			const [memories, catchup, allowance] = await Promise.all([loadConversationMemories(conversationId, signal), loadMemoryCatchup(conversationId, signal), loadMemoryAllowance(conversationId, signal)]);
+			return { memories, catchup, allowance };
+		},
+		refetchInterval: ({ state: { data } }) => data?.catchup?.state === "running" || data?.memories.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)) ? 5000 : false,
+	});
+	const memories = query.data?.memories ?? null;
+	const catchup = query.data?.catchup ?? null;
+	const allowance = query.data?.allowance ?? null;
+	const status = query.isPending ? "loading" : query.isError ? query.data === undefined ? "failed" : "stale" : "ready";
+	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
+	useEffect(() => { void refresh(); }, [conversationRevision, refresh]);
+	const update = useCallback(async (change: (current: NonNullable<typeof query.data>) => NonNullable<typeof query.data>) => {
+		await client.cancelQueries({ queryKey });
+		client.setQueryData<NonNullable<typeof query.data>>(queryKey, (current) => current && change(current));
+	}, [client, queryKey]);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
 	const [catchupBusy, setCatchupBusy] = useState(false);
 	const [editing, setEditing] = useState<{ variantId: number; revision: number; index: number } | null>(null);
 	const [resetTarget, setResetTarget] = useState<Source | null>(null);
-	const refresh = useCallback(async () => {
-		const generation = ++readGeneration.current;
-		try {
-			const [loaded, run, settings] = await Promise.all([loadConversationMemories(conversationId), loadMemoryCatchup(conversationId), loadMemoryAllowance(conversationId)]);
-			if (generation !== readGeneration.current) return;
-			setMemories(loaded); setCatchup(run); setAllowance(settings); setStatus("ready");
-		} catch { if (generation === readGeneration.current) setStatus((current) => current === "loading" || current === "failed" ? "failed" : "stale"); }
-	}, [conversationId]);
-	const live = catchup?.state === "running" || (memories?.sources.some((source) => inFlight(source.status) || inFlight(source.indexing.status)) ?? false);
-	useEffect(() => { void refresh(); return invalidateReads; }, [conversationRevision, invalidateReads, refresh]);
-	useEffect(() => {
-		if (!live) return;
-		const interval = window.setInterval(() => void refresh(), 5000);
-		return () => window.clearInterval(interval);
-	}, [live, refresh]);
-
-	const replace = useCallback((collection: Source) => {
-		invalidateReads();
-		setMemories((current) => current && { ...current, sources: current.sources.map((item) => item.variantId === collection.variantId && item.revision <= collection.revision ? collection : item) });
-	}, [invalidateReads]);
+	const replace = useCallback((collection: Source) => update((current) => ({
+		...current,
+		memories: { ...current.memories, sources: current.memories.sources.map((item) => item.variantId === collection.variantId && item.revision <= collection.revision ? collection : item) },
+	})), [update]);
 	const act = useCallback(async (source: Source, task: () => Promise<string | null>) => {
 		setBusy((current) => new Set(current).add(source.variantId)); setNotice(null);
 		try { setNotice(await task()); } finally { setBusy((current) => { const next = new Set(current); next.delete(source.variantId); return next; }); }
@@ -47,7 +46,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 	const reextract = useCallback((source: Source) => act(source, async () => {
 		const result = await resetAndReextract(conversationId, targetOf(source));
 		if (result.outcome === "invalid") return result.reason;
-		replace(result.collection);
+		await replace(result.collection);
 		await refresh();
 		return result.outcome === "conflict" ? conflictNotice : null;
 	}), [act, conversationId, refresh, replace]);
@@ -55,7 +54,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		setCatchupBusy(true); setNotice(null);
 		try {
 			const result = await task();
-			if (result.outcome === "invalid") setNotice(result.reason); else { invalidateReads(); setCatchup(result.run); await refresh(); }
+			if (result.outcome === "invalid") setNotice(result.reason); else { await update((current) => ({ ...current, catchup: result.run })); await refresh(); }
 		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
 	const actions = useMemo(() => ({
@@ -67,7 +66,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		retryIndex: (source: Source) => void act(source, async () => {
 			const result = await retryMemoryIndex(conversationId, targetOf(source));
 			if (result.outcome === "invalid") return result.reason;
-			replace(result.collection);
+			await replace(result.collection);
 			await refresh();
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
@@ -75,25 +74,25 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		save: (source: Source, index: number, draft: ClaimDraft) => { if (editing?.variantId !== source.variantId || editing.index !== index) return; void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), expectedRevision: editing.revision, index, operation: "edit", ...draft });
 			if (result.outcome === "invalid") return result.reason;
-			replace(result.collection); setEditing(null);
+			await replace(result.collection); setEditing(null);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}); },
 		remove: (source: Source, index: number) => void act(source, async () => {
 			const result = await correctMemory(conversationId, { ...targetOf(source), index, operation: "remove" });
 			if (result.outcome === "invalid") return result.reason;
-			replace(result.collection);
+			await replace(result.collection);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
 	}), [act, conversationId, editing, memories, reextract, refresh, replace]);
 
 	return {
 		status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,
-		setAllowance: (settings: ConversationMemoryAllowance) => { invalidateReads(); setAllowance(settings); },
+		setAllowance: (settings: ConversationMemoryAllowance) => update((current) => ({ ...current, allowance: settings })),
 		startCatchup: () => catchupAction(() => startMemoryCatchup(conversationId)),
 		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
 		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },
 		cancelReset: () => setResetTarget(null),
-		labelsMerged: (updated: ConversationMemories, destination: string) => { invalidateReads(); setMemories(updated); setEditing(null); setNotice(`Labels merged into ${destination}.`); },
+		labelsMerged: async (updated: ConversationMemories, destination: string) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(`Labels merged into ${destination}.`); },
 	};
 }
 

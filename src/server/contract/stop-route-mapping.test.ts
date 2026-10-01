@@ -102,7 +102,7 @@ describe("Generation Stop route mapping", () => {
 		runtimeLifecycle: GenerationRuntimeLifecycle,
 		conversationId: number,
 		generationId: number,
-	) => createConversationRoutes(undefined, { conversationLifecycle, runtimeLifecycle }).handle(
+	) => createConversationRoutes(database, { conversationLifecycle, runtimeLifecycle }).handle(
 		new Request(`http://localhost/api/conversations/${conversationId}/generations/${generationId}/stop`, {
 			method: "POST",
 			body: "{}",
@@ -113,7 +113,7 @@ describe("Generation Stop route mapping", () => {
 		conversationLifecycle: GenerationConversationLifecycle,
 		runtimeLifecycle: GenerationRuntimeLifecycle,
 		conversationId: number,
-	) => createConversationRoutes(undefined, { conversationLifecycle, runtimeLifecycle }).handle(
+	) => createConversationRoutes(database, { conversationLifecycle, runtimeLifecycle }).handle(
 		new Request(`http://localhost/api/conversations/${conversationId}/generations/stop-all`, {
 			method: "POST",
 			body: "{}",

@@ -156,7 +156,7 @@ async function runGenerationLifecycle<
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
-	if (input.preview !== undefined) consumeGenerationPreview(input.preview.record);
+	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	await notifyAccepted<Accepted>({ onAccepted }, accepted);
 	return runAcceptedGeneration(input, policy.request(capture, input), {
 		remove: () => {

@@ -22,7 +22,7 @@ import {
 	type ArtifactDownloadResult,
 } from "../artifact";
 import { createConversationModule } from "../conversation";
-import { withDatabase } from "../database/database";
+
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
@@ -138,18 +138,6 @@ export function createChatImportDetailsModule(
 	};
 }
 
-// ==[HUMAN APPROVED]== Runs one committed-import details operation against a request-scoped
-// module instance, mirroring the staged import seam's helper so transport
-// adapters stay thin.
-export function withChatImportDetails<T>(
-	database: Database | undefined,
-	artifactDirectory: string,
-	run: (details: ChatImportDetailsModule) => T,
-): T {
-	return withDatabase(database, (connection) =>
-		run(createChatImportDetailsModule(connection, artifactDirectory)),
-	);
-}
 // ==[HUMAN APPROVED]== One Conversation-scoped import entry by key from the read seam's entries.
 // The seam may legitimately return other import keys for the Chat, so the
 // lookup narrows by key and never assumes order or completeness.

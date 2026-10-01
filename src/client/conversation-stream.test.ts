@@ -72,6 +72,18 @@ describe("server-owned Generation client", () => {
 		expect(result).toEqual({ outcome: "applied" });
 	});
 
+	test("an unterminated terminal frame remains an interrupted subscription", async () => {
+		installFetch(async () => new Response(`event: complete\ndata: ${terminalPayload({ outcome: "applied", latestEventId: 3 })}\n`));
+		const result = await subscribeConversationGeneration(42, 7, { messageId: 9, variantId: 10, onDelta: () => {} });
+		expect(result.outcome).toBe("interrupted");
+	});
+
+	test("accepts CR-only SSE framing", async () => {
+		installFetch(async () => new Response(`event: complete\rdata: ${terminalPayload({ outcome: "applied", latestEventId: 3 })}\r\r`));
+		const result = await subscribeConversationGeneration(42, 7, { messageId: 9, variantId: 10, onDelta: () => {} });
+		expect(result.outcome).toBe("applied");
+	});
+
 	test("does not turn malformed or non-terminal frames into visible Generation state", async () => {
 		installFetch(async () => new Response(
 			"event: generation\ndata: {not-json}\n\nevent: message\ndata: {}\n\n",

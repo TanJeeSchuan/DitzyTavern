@@ -6,7 +6,7 @@ import {
 	StaleCharacterRevisionError,
 } from "../character-library";
 import { InvalidConversationCreationError } from "../conversation";
-import { withDatabase } from "../database/database";
+
 import { createNativeConversation } from "../workflows";
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toConversationSummary } from "./projections";
@@ -17,20 +17,18 @@ import {
 } from "../../shared/contract/native-conversation";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
-export const createNativeConversationRoutes = (database: Database | undefined) =>
+export const createNativeConversationRoutes = (database: Database) =>
 	new Elysia().post(
 		"/api/conversations/native",
 		({ body }) => {
 			try {
-				const conversation = withDatabase(database, (connection) =>
-					createNativeConversation(connection, {
+				const conversation = createNativeConversation(database, {
 						name: body.name,
 						humanSeat: body.humanSeat,
 						modelSeat: body.modelSeat,
 						timeZone: body.timeZone,
 						locale: body.locale,
-					}),
-				);
+					});
 				return {
 					outcome: "created" as const,
 					conversation: toConversationSummary(conversation),

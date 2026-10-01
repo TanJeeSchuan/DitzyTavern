@@ -50,7 +50,6 @@ export type { SillyTavernImportResult } from "./import";
 export { findPriorImportsBySource } from "./prior-imports";
 export {
 	createChatImportDetailsModule,
-	withChatImportDetails,
 } from "./import-details";
 export type {
 	ChatImportDetails,
@@ -59,7 +58,6 @@ export type {
 export {
 	clearStagedImportRegistry,
 	createChatImportModule,
-	withChatImport,
 } from "./staged";
 export type {
 	ChatImportCommitInput,

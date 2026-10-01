@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 import { isSillyTavernJsonValue } from "../prompt-preset";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
-import { withDatabase } from "../database/database";
+
 import {
 	executeLorebookCommand,
 	importNativeLorebook,
@@ -80,30 +80,30 @@ const execute = <T>(operation: () => T) => {
 	}
 };
 
-export const createLorebookRoutes = (database: Database | undefined, options: LorebookRouteOptions = {}) => new Elysia()
-	.get("/api/lorebooks", () => ({ books: withDatabase(database, listLorebooks) }), { response: lorebookListResponse })
+export const createLorebookRoutes = (database: Database, options: LorebookRouteOptions = {}) => new Elysia()
+	.get("/api/lorebooks", () => ({ books: listLorebooks(database) }), { response: lorebookListResponse })
 	.get("/api/lorebooks/:bookId", ({ params }) => {
-		const book = withDatabase(database, (connection) => readLorebook(connection, params.bookId));
+		const book = readLorebook(database, params.bookId);
 		return book ?? notFoundResponse();
 	}, { params: bookIdParams, response: { 200: lorebook, 404: notFoundOutcome } })
 	.get("/api/lorebooks/:bookId/export", ({ params }) => {
-		const book = withDatabase(database, (connection) => readNativeLorebook(connection, params.bookId));
+		const book = readNativeLorebook(database, params.bookId);
 		return book ?? notFoundResponse();
 	}, { params: bookIdParams, response: { 200: nativeLorebook, 404: notFoundOutcome } })
 	.post("/api/lorebooks/import", ({ body }) => {
-		const result = execute(() => withDatabase(database, (connection) => importNativeLorebook(connection, body)));
+		const result = execute(() => importNativeLorebook(database, body));
 		if (!result.ok) return result.failure.outcome === "invalid" ? invalidResponse(result.failure.reason) : notFoundResponse();
 		return { outcome: "applied" as const, book: result.value, warnings: [] };
 	}, { body: nativeLorebook, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
 	.post("/api/lorebooks/import/sillytavern", ({ body }) => {
 		if (!isSillyTavernJsonValue(body.source)) return invalidResponse("SillyTavern lorebook JSON must be valid JSON.");
 		// ==[HUMAN APPROVED]== SAFETY: the guard above proves the opaque request value is valid JSON at this boundary.
-		const result = execute(() => withDatabase(database, (connection) => importSillyTavernLorebook(connection, body.source as SillyTavernJsonValue)));
+		const result = execute(() => importSillyTavernLorebook(database, body.source as SillyTavernJsonValue));
 		if (!result.ok) return result.failure.outcome === "invalid" ? invalidResponse(result.failure.reason) : notFoundResponse();
 		return { outcome: "applied" as const, book: result.value.book, warnings: result.value.warnings };
 	}, { body: sillyTavernLorebookImportBody, response: { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome } })
 	.post("/api/lorebooks/commands", ({ body }) => {
-		const result = execute(() => withDatabase(database, (connection) => executeLorebookCommand(connection, body)));
+		const result = execute(() => executeLorebookCommand(database, body));
 		if (!result.ok) {
 			if (result.failure.outcome === "not-found") return notFoundResponse();
 			if (result.failure.outcome === "invalid") return invalidResponse(result.failure.reason);
@@ -114,14 +114,14 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 			: { outcome: "applied" as const, book: result.value };
 	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
 	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
-		const result = await withDatabase(database, async (connection) => {
-			const book = readLorebook(connection, body.bookId);
+		const result = await (async () => {
+			const book = readLorebook(database, body.bookId);
 			if (book === undefined) return undefined;
 			const scan = [{ id: null, content: body.writing }];
 			const semantic = await evaluateSemanticLore({
 				entries: book.entries,
 				messages: scan,
-				settings: captureSemanticSettings(connection, options),
+				settings: captureSemanticSettings(database, options),
 				fetch: options.fetch,
 			});
 			return {
@@ -130,7 +130,7 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 				scan,
 				matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
 			};
-		});
+		})();
 		if (result === undefined) return respond(404, { outcome: "not-found" as const });
 		return respond(200, {
 			mode: result.mode,
@@ -155,38 +155,38 @@ export const createLorebookRoutes = (database: Database | undefined, options: Lo
 	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
 
-export const createLorebookAttachmentRoutes = (database: Database | undefined) => new Elysia()
+export const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments", ({ query }) => {
-		const state = withDatabase(database, (connection) => readLorebookAttachmentState(connection, query.conversationId));
+		const state = readLorebookAttachmentState(database, query.conversationId);
 		return state ?? notFoundResponse();
 	}, { query: loreAttachmentQuery, response: { 200: loreAttachmentState, 404: notFoundOutcome } })
 	.get("/api/lorebooks/:bookId/attachments", ({ params }) => {
-		const impact = withDatabase(database, (connection) => readLorebookAttachmentImpact(connection, params.bookId));
+		const impact = readLorebookAttachmentImpact(database, params.bookId);
 		return impact ?? notFoundResponse();
 	}, { params: bookIdParams, response: { 200: lorebookAttachmentImpact, 404: notFoundOutcome } })
 	.get("/api/lorebooks/attachments/character", ({ query }) => {
-		const state = withDatabase(database, (connection) => readCharacterLorebookAttachments(connection, query.ownerId));
+		const state = readCharacterLorebookAttachments(database, query.ownerId);
 		return state ?? notFoundResponse();
 	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
 	.get("/api/lorebooks/attachments/participant", ({ query }) => {
-		const state = withDatabase(database, (connection) => readParticipantLorebookAttachments(connection, query.ownerId));
+		const state = readParticipantLorebookAttachments(database, query.ownerId);
 		return state ?? notFoundResponse();
 	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
 		try {
-			withDatabase(database, (connection) => executeLorebookAttachmentCommand(connection, body));
+			executeLorebookAttachmentCommand(database, body);
 			return { outcome: "applied" as const };
 		} catch (error) {
 			if (error instanceof StaleLoreAttachmentRevisionError) {
-				const currentState = withDatabase(database, (connection) => {
+				const currentState = (() => {
 					switch (error.command.type) {
 						case "attach-character":
-						case "detach-character": return readCharacterLorebookAttachments(connection, error.command.characterId);
+						case "detach-character": return readCharacterLorebookAttachments(database, error.command.characterId);
 						case "attach-participant":
-						case "detach-participant": return readParticipantLorebookAttachments(connection, error.command.participantId);
-						default: return readLorebookAttachmentState(connection, error.command.conversationId);
+						case "detach-participant": return readParticipantLorebookAttachments(database, error.command.participantId);
+						default: return readLorebookAttachmentState(database, error.command.conversationId);
 					}
-				});
+				})();
 				if (currentState === undefined) return notFoundResponse();
 				return status(409, {
 					outcome: "conflict" as const,
