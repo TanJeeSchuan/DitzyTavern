@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { type JsonData } from "json-edit-react";
 import type { ConnectionProfile } from "../connection-settings";
 import {
@@ -165,15 +165,17 @@ export function useGenerationSettingsDraft({
 	const draftVersionRef = useRef(0);
 	const saveVersionRef = useRef(0);
 	conversationIdRef.current = conversationId;
-	const status = query.isError ? "load-error" : query.isPending ? "loading" : saving ? "saving" : "ready";
-	useEffect(() => {
+	const status = settings === null ? query.isError ? "load-error" : "loading" : saving ? "saving" : "ready";
+	const syncDraft = useEffectEvent(() => {
 		if (settings === null) return;
-		const preserve = initializedConversation.current === conversationId;
+		const sameConversation = initializedConversation.current === conversationId;
+		const preserve = sameConversation && isDirty;
 		const current = getValues();
 		reset(fieldsFromSettings(settings));
 		if (preserve) reset(current, { keepDefaultValues: true });
-		else { initializedConversation.current = conversationId; setProblem(null); }
-	}, [conversationId, settings, reset, getValues]);
+		if (!sameConversation) { initializedConversation.current = conversationId; setProblem(null); }
+	});
+	useEffect(() => { syncDraft(); }, [conversationId, settings]);
 	const selectedProfile = connectionProfiles?.find((profile) => profile.id === settings?.connectionProfileId);
 	const transmittingNamespace = settings === null || connectionProfiles === undefined
 		? { status: "loading" as const }
@@ -245,7 +247,9 @@ export function useGenerationSettingsDraft({
 					client.setQueryData(["generation-settings", conversationId], next);
 					if (!ownsSave()) return;
 					applied = true;
-					if (draftVersionRef.current === draftVersion) reset(fieldsFromSettings(next));
+					const current = getValues();
+					reset(fieldsFromSettings(next));
+					if (draftVersionRef.current !== draftVersion) reset(current, { keepDefaultValues: true });
 					setProblem(null);
 				},
 				onConflict: (current) => { void client.invalidateQueries({ queryKey: ["generation-settings", current.id] }); },

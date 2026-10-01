@@ -1,6 +1,6 @@
 # Complexity reduction draft handoff
 
-Status: validation completed on Windows on 2026-10-01; ready for the user's RHF pilot review.
+Status: RHF pilot reviewed; keep the scoped pilot with the refresh corrections below. Ready for PR review.
 Base: `bcc736d` (`docs: document client and server complexity reduction opportunities`).
 Source recommendations: `complexity-reduction.md` and `complexity-reduction-packages.md` in this directory.
 
@@ -22,9 +22,15 @@ Source recommendations: `complexity-reduction.md` and `complexity-reduction-pack
 - Manual browser checks: lorebook create, rename, save, and close; memory panel coverage/data loading.
 - `git diff --check` passed before this handoff.
 
-## Remaining work
+## RHF review and corrections
 
-Review the RHF pilot with the user, as requested. The browser checks below passed; user review is still pending. No UI tests were added.
+The user requested an agent review and summary, not a separate manual acceptance step. The review recommends keeping this pilot scoped and deferring broader form migration.
+
+- Clean forms now adopt fresh server settings when revisiting a cached chat. Actual unsaved edits still preserve the entire local draft; there is no field-level merge.
+- Failed background reads retain an editable draft when authoritative data is already cached. Initial reads without data still show a load error. Saving retries through the existing fresh-base read and revisioned command.
+- A successful save rebases defaults while preserving edits made during the request, including edits that return a field to its old saved value.
+- Focused validation after the corrections: 22 generation-settings tests passed; library-level probes passed for clean refresh, whole-draft preservation, in-flight reversion, and failed background refresh. Lint and `git diff --check` passed with the existing comment warnings. A follow-up scoped review found no issues.
+- The final corrections have not had another full check/build or browser pass on this machine because of its memory pressure. The Windows results below apply before these corrections. No UI tests were added.
 
 ## Follow-up validation, 2026-10-01
 
