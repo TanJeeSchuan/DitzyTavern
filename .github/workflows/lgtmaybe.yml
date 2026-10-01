@@ -37,8 +37,9 @@ jobs:
           api_key: ${{ secrets.LGTMAYBE_API_KEY }}
           # DeepSeek's OpenCode Go route rejects response_format.
           structured_output: false
-          # openai-compatible defaults to a 16384-token cap shared with reasoning; 0 removes it.
-          max_tokens: "0"
+          # Shared with reasoning: 16384 truncated every lens, while uncapped lenses can reason for 30+ minutes
+          # without answering. Truncation triggers lgtmaybe's lower-effort retry; a timeout returns nothing.
+          max_tokens: "65536"
           # CLIProxyAPI suffixes select reasoning effort independently per role.
           triage_model: opencode-go/deepseek-v4.1-flash(max)
           # (max) lens calls emit ~40k tokens and run past 5 minutes; the proxy's opencode-go request-timeout is raised to 30m for them.
