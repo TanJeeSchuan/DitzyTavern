@@ -40,9 +40,10 @@ jobs:
           # Shared with reasoning: 16384 truncated every lens, while uncapped lenses can reason for 30+ minutes
           # without answering. Truncation triggers lgtmaybe's lower-effort retry; a timeout returns nothing.
           max_tokens: "65536"
-          # CLIProxyAPI suffixes select reasoning effort independently per role.
+          # CLIProxyAPI model suffixes override the request's reasoning_effort, so suffixed roles never step down.
           triage_model: opencode-go/deepseek-v4.1-flash(max)
-          # (max) lens calls emit ~40k tokens and run past 5 minutes; the proxy's opencode-go request-timeout is raised to 30m for them.
-          model: opencode-go/deepseek-v4.1-flash(max)
           reflect_model: gpt-6.1-sol(high)
-          fallback_model: opencode-go/glm-5.3-flash(max)
+          # Unsuffixed so a truncated lens can retry at a lower reasoning_effort, then with reasoning off.
+          model: opencode-go/deepseek-v4.1-flash
+          fallback_model: opencode-go/glm-5.3-flash
+          reasoning_effort: xhigh
