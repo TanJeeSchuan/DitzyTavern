@@ -225,11 +225,6 @@ export function RequestOverridesEditor({
 		<section aria-labelledby="generation-overrides-title">
 			<h3 id="generation-overrides-title" className="sr-only">Request Overrides</h3>
 			<p>Extra request body fields for this Chat. Each API Format keeps its own set, and only the one matching the selected Connection Profile is sent.</p>
-			{transmittingNamespace.status === "unavailable" && (
-				<small className="overrides-namespace-status" role="note">
-					Connection Settings could not be loaded, so the sent API Format is unknown.
-				</small>
-			)}
 			{transmittingNamespace.status === "no-active-profile" && (
 				<small className="overrides-namespace-status" role="note">
 					No model connection is selected, so no overrides are sent.

@@ -1,6 +1,6 @@
 # Complexity reduction draft handoff
 
-Status: work in progress, paused for transfer to a machine with more memory.
+Status: validation completed on Windows on 2026-10-01; ready for the user's RHF pilot review.
 Base: `bcc736d` (`docs: document client and server complexity reduction opportunities`).
 Source recommendations: `complexity-reduction.md` and `complexity-reduction-packages.md` in this directory.
 
@@ -24,12 +24,21 @@ Source recommendations: `complexity-reduction.md` and `complexity-reduction-pack
 
 ## Remaining work
 
-1. Run the final `bun run check` on the better machine. Attempts after RHF were interrupted by memory pressure; the typecheck log had no diagnostic but its successful exit was not confirmed. Do not treat final validation as complete.
-2. Review the RHF pilot with the user, as requested. Manually verify dirty/reset behavior, authoritative updates while a local draft is dirty, save conflicts, and edits made while a save is in flight. No UI tests per project instructions.
-3. Review shutdown/draining and Query mutation cancellation/cache behavior before marking the draft ready.
+Review the RHF pilot with the user, as requested. The browser checks below passed; user review is still pending. No UI tests were added.
+
+## Follow-up validation, 2026-10-01
+
+- Installed the locked dependencies with `bun install --frozen-lockfile`.
+- Removed the obsolete `unavailable` namespace branch in `GenerationSettingsEditors.tsx`, which caused TS2367 after the hook stopped returning that state.
+- Final `bun run check` exited successfully: 1,165 application tests and 50 lint-rule tests passed, including both typechecks. Comment-approval warnings and the contract audit's nine advisory matches remain.
+- `bun run build` passed. The approximately 1.26 MB minified JavaScript bundle still triggers the size warning.
+- Browser checks confirmed dirty state clears when an edit returns to its saved value; remote updates and revision conflicts preserve the entire local draft; retrying a conflicted save succeeds; edits made during a delayed save response remain dirty; discard restores the latest saved values; exponent text in a budget field blocks saving.
+- A delayed lorebook list read was aborted by a successful rename. Releasing its stale response did not overwrite the saved cache. Reopening the book fetched an external rename. Closing Memories aborted all three pending reads.
+- Reviewed shutdown ordering and database-scoped runtime ownership. The passing runtime tests cover checkpoint flushing, aborting active work, and waiting for detached work before releasing retained state.
+- Standards and scoped-spec reviews found no remaining issues. `git diff --check` passed.
 
 ## Local environment notes
 
-The existing development database failed startup migration because `conversation_memory_settings` already exists. No existing user data was deleted or migrated. Browser checks used an isolated seeded database under `/tmp/ditzy-complexity-preview`; the temporary lorebook was named `Query review book`. This temporary database is not part of the commit. A fresh environment must prepare its own database.
+The original machine's development database failed startup migration because `conversation_memory_settings` already exists. No existing user data was deleted or migrated. Its browser checks used an isolated seeded database under `/tmp/ditzy-complexity-preview`.
 
-The server, client, and final-check process groups started for this work are stopped. Validation logs and pre-RHF copies under `/tmp` are machine-local and are not needed to check out or continue this draft.
+The Windows follow-up used `%TEMP%/ditzy-complexity-review/data/ditzytavern.sqlite`, seeded from the existing seed module. Validation output is in `%TEMP%/ditzy-complexity-check.log`. These files are machine-local. The isolated API on port 3000 and Vite on port 5173 were left running for user review, with Generation Settings open in the collaborative preview. Browser request-delay instrumentation was removed.
