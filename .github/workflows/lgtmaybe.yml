@@ -37,6 +37,8 @@ jobs:
           api_key: ${{ secrets.LGTMAYBE_API_KEY }}
           # DeepSeek's OpenCode Go route rejects response_format.
           structured_output: false
+          # openai-compatible defaults to a 16384-token cap shared with reasoning; 0 removes it.
+          max_tokens: "0"
           # CLIProxyAPI suffixes select reasoning effort independently per role.
           triage_model: opencode-go/deepseek-v4.1-flash(max)
           model: opencode-go/deepseek-v4.1-flash(max)
