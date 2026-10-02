@@ -382,8 +382,8 @@ export class GenerationCoordinator {
 
 	/**
 	 * ==[HUMAN APPROVED]== Resolves the durable Conversation stop adapter: the composed seam when
-	 * provided, otherwise the deep Conversation module over the request or
-	 * configured database.
+	 * provided, otherwise constructs the deep Conversation module with the
+	 * Coordinator's database.
 	 */
 	private conversationLifecycle(database: Database): GenerationConversationLifecycle {
 		if (this.options.conversationLifecycle !== undefined) return this.options.conversationLifecycle;
@@ -403,19 +403,23 @@ export class GenerationCoordinator {
 		input: ManagedGenerationInput<TAccepted, TResult>,
 	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
 		const database = this.database;
+		const runtimeRegistry = generationRuntimeFor(database);
+		runtimeRegistry.assertAccepting();
 		if (!createConversationModule(database).exists(input.conversationId)) {
 			throw new ConversationNotFoundError(input.conversationId);
 		}
 		const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
 		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
-		const runtimeRegistry = generationRuntimeFor(this.database);
 		let runtime: GenerationRuntime | undefined;
 		const started = input.start({
 			database,
 			modelClient: transport.modelClient,
 			connection: transport.connection,
-			onBeforeTerminal: () => runtime?.flushCheckpoint(),
+			onBeforeTerminal: () => {
+				if (runtime?.isTerminal) throw new ModelClientGenerationError("cancelled", "Generation has already stopped.");
+				runtime?.flushCheckpoint();
+			},
 			callbacks: {
 				onAccepted: (accepted, control) => {
 					runtime = runtimeRegistry.start({

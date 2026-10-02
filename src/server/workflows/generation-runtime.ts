@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { ModelClientGenerationError } from "../model-client";
 import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
@@ -118,7 +119,12 @@ export class GenerationRuntimeRegistry {
 		this.cancel = scheduler.cancel ?? ((handle) => handle.cancel());
 	}
 
+	assertAccepting(): void {
+		if (this.stopping) throw new ModelClientGenerationError("cancelled", "Generation runtime is shutting down.");
+	}
+
 	start(input: StartGenerationRuntimeInput): GenerationRuntime {
+		this.assertAccepting();
 		this.cleanup();
 		const existing = this.runtimes.get(input.generationId);
 		if (existing !== undefined) {
@@ -128,7 +134,6 @@ export class GenerationRuntimeRegistry {
 		}
 		const runtime = new GenerationRuntime(input, () => this.scheduleCleanup());
 		this.runtimes.set(input.generationId, runtime);
-		if (this.stopping) runtime.stop();
 		return runtime;
 	}
 

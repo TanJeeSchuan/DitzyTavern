@@ -24,6 +24,7 @@ jobs:
         startsWith(github.event.comment.body, '/describe') ||
         startsWith(github.event.comment.body, '/diagram')))
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       # Read configuration from the trusted base branch; never execute PR code.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

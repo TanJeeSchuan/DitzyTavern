@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../conversation";
 import { requireSnapshot } from "../conversation/test-fixtures";
 import { openInitializedDatabase } from "../database/database";
+import { gracefullyShutdownGenerations } from "../workflows/generation-recovery";
 import {
 	generationRuntimeFor,
 	type GenerationRuntime,
@@ -121,6 +122,43 @@ describe("GenerationCoordinator", () => {
 			content: "Start the scene.",
 		})).rejects.toBeInstanceOf(ConversationNotFoundError);
 	});
+
+	test("a provider settling after shutdown never accesses the closed database", async () => {
+		const conversation = createConversationModule(database).create({
+			name: "Shutdown Chat",
+			participants: [
+				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ definition: { name: "Maren", prompt, openings: [] } },
+			],
+			control: { human: 0, model: 1 },
+		});
+		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
+			expectedRevision: 0, profile, credential: "shutdown-test-secret",
+		});
+		const requested = Promise.withResolvers<void>();
+		const response = Promise.withResolvers<Response>();
+		const coordinator = createGenerationCoordinator(database, {
+			masterKey: key,
+			fetch: () => { requested.resolve(); return response.promise; },
+		});
+		const started = await coordinator.startSendGeneration({
+			conversationId: conversation.id, expectedRevision: conversation.revision, content: "Stop on shutdown.",
+		});
+		await requested.promise;
+		await gracefullyShutdownGenerations(database);
+		database.close();
+		const prepare = spyOn(database, "prepare");
+		const transaction = spyOn(database, "transaction");
+		try {
+			response.resolve(streamResponse());
+			await expect(started.result).rejects.toThrow();
+			expect(prepare).not.toHaveBeenCalled();
+			expect(transaction).not.toHaveBeenCalled();
+		} finally {
+			prepare.mockRestore();
+			transaction.mockRestore();
+		}
+	}, 10_000);
 
 	test("stops a running attempt through one application entrance", async () => {
 		const conversation = createConversationModule(database).create({

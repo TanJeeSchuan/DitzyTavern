@@ -1,9 +1,6 @@
 import { createParser } from "eventsource-parser";
-// ==[HUMAN APPROVED]== The AI SDK surfaces only parsed deltas, but the Connection Profile's Stream
-// Inactivity Timeout is quiet-byte semantics: keep-alive pings prove liveness
-// while no token is ready. Raw byte visibility is available only by wrapping
-// the response body at the fetch boundary, so this module keeps a deliberately
-// observer for activity detection only.
+// ==[HUMAN APPROVED]== The AI SDK surfaces parsed deltas. Observe SSE comments and meaningful
+// events at the fetch boundary so keep-alive pings reset the Stream Inactivity Timeout.
 
 interface ProviderSseFrame {
 	choices?: Array<{

@@ -26,7 +26,7 @@ export { toCharacterPayload };
 
 // ==[HUMAN APPROVED]== Thin typed adapters over the Character Library seam. The database is
 // injected so tests can mount the same routes against a temporary store;
-// production passes undefined to use the default connection per request.
+// production provides the server-owned database connection.
 export const createCharacterLibraryRoutes = (database: Database) =>
 	new Elysia()
 		.get(

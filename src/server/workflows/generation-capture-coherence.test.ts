@@ -22,6 +22,9 @@ import {
 	previewRecordFor,
 } from "./generation-preview";
 import type { PromptPlan } from "../prompt-compiler";
+import { createConnectionSettingsModule } from "../connection-settings";
+import { createGenerationCoordinator } from "../application/generation-coordinator";
+import { gracefullyShutdownGenerations } from "./generation-recovery";
 
 const prompt = {
 	systemInstruction: "",
@@ -142,6 +145,40 @@ describe("generation capture coherence", () => {
 			}
 		});
 	}
+
+	test("shutdown refuses acceptance when suspended preparation finishes after draining", async () => {
+		const state = setup();
+		databases.push(state.database);
+		const masterKey = new Uint8Array(32).fill(5);
+		createConnectionSettingsModule(state.database, { masterKey }).createProfile({
+			expectedRevision: 0,
+			profile: {
+				displayName: "Shutdown", apiFormat: "chat-completions", requestUrl: "http://127.0.0.1:43127/v1/",
+				modelsUrl: "", modelBackend: "automatic", adapter: "deepseek", outputTokenRepresentation: "automatic",
+				timeoutMs: null, pinnedModels: [],
+			},
+			credential: "shutdown-test-secret",
+		});
+		const requested = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const coordinator = createGenerationCoordinator(state.database, {
+			masterKey,
+			fetch: async () => {
+				requested.resolve();
+				await release.promise;
+				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
+			},
+		});
+		const snapshot = createConversationModule(state.database).getSnapshot(state.conversationId)!;
+		const pending = coordinator.startSendGeneration({
+			conversationId: state.conversationId, expectedRevision: snapshot.revision, content: "signal",
+		});
+		await requested.promise;
+		await gracefullyShutdownGenerations(state.database);
+		release.resolve();
+		await expect(pending).rejects.toThrow("shutting down");
+		expect(createConversationModule(state.database).getSnapshot(state.conversationId)?.messages).toEqual(snapshot.messages);
+	}, 10_000);
 
 	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {
 		const state = setup();

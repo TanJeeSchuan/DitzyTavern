@@ -56,3 +56,11 @@ The Windows follow-up used `%TEMP%/ditzy-complexity-review/data/ditzytavern.sqli
 - Anchored all five comment commands at the beginning of the comment. A predicate probe rejected quoted `/review` and `/ask` text while accepting the supported commands. Pinned the review container to the registry-verified v2.11.0 linux/amd64 digest; the pinned action passes that image reference directly to Docker.
 - Removed both route wrappers and shared the generation form's authoritative reset sequence, retaining the distinct refresh and save preservation predicates. Updated the research document to distinguish implemented changes, scoped pilots, and deferred work; all local document links exist.
 - Validation passed: 1,166 application tests, both typechecks, lint, production build, and `git diff --check`. Comment-approval warnings, the contract audit's nine advisory matches, and the build's approximately 1.26 MB bundle warning remain. No UI tests were added.
+
+## PR #9 shutdown follow-up, 2026-10-02
+
+- Reproduced a provider settling after the five-second drain deadline and attempting a transaction after database close. The coordinator now rejects terminal writes when its runtime is already terminal.
+- Reproduced suspended prompt preparation accepting a generation after drain completed. The registry now rejects new starts during shutdown, and the workflow checks acceptance again after asynchronous preparation.
+- Added regression coverage through the real coordinator for both races. Existing Stop, Stop All, and successful-generation coverage still passes.
+- Corrected the remaining database-lifetime and activity-observer comments. Set the review job timeout to 45 minutes; recent successful reviews took about 32–34 minutes.
+- Validation passed: 1,168 application tests, 50 lint-rule tests, both typechecks, lint, the contract audit, production build, and `git diff --check`. The existing comment warnings, nine contract-audit advisories, and bundle-size warning remain. No UI tests were added.
