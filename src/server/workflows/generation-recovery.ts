@@ -105,11 +105,12 @@ export function recoverActiveGenerations(
 export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
-/** Flush and stop this database's runtime, terminalize its rows, then drain work within the shutdown grace period. Await before closing the database. */
+/** Stop preparation and providers, terminalize persisted rows, then join detached work before closing the database. */
 export async function gracefullyShutdownGenerations(
 	database: Database,
 	runtime: GenerationRuntimeRegistry = generationRuntimeFor(database),
 ): Promise<GenerationRecoverySummary> {
+	runtime.beginShutdown();
 	runtime.flushAll();
 	runtime.stopAll();
 	const summary = shutdownActiveGenerations(database);

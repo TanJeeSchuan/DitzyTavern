@@ -23,6 +23,7 @@ import { readSelectedHistoryFromConnection } from "../conversation/selected-hist
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
+import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createTypesafeSettingsModule } from "../typesafe";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
@@ -493,6 +494,8 @@ export function prepareGenerationInputsSnapshot(
 export async function prepareGenerationInputsAsync(
 	input: PrepareGenerationInputs,
 ): Promise<GenerationPreparation> {
+	const signal = generationRuntimeFor(input.database).shutdownSignal;
+	signal.throwIfAborted();
 	// ==[HUMAN APPROVED]== The snapshot is captured before semantic work can suspend, so books,
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
@@ -507,12 +510,15 @@ export async function prepareGenerationInputsAsync(
 			messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
 			fetch: input.preparationFetch,
+			signal,
 		}, preparation.lore.sources)
 		: Promise.resolve(preparation.lore);
-	const memoryPromise = evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch }).catch((error) => {
+	const memoryPromise = evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch, signal }).catch((error) => {
+		signal.throwIfAborted();
 		throw new InvalidConversationCommandError(`Memory recall failed: ${error instanceof Error ? error.message : "Retry preparation or disable Memory."}`);
 	});
 	const [lore, memory] = await Promise.all([lorePromise, memoryPromise]);
+	signal.throwIfAborted();
 	return { ...preparation, lore, memory, fingerprint: generationPreparationFingerprint(snapshot) };
 }
 

@@ -146,7 +146,7 @@ describe("generation capture coherence", () => {
 		});
 	}
 
-	test("shutdown refuses acceptance when suspended preparation finishes after draining", async () => {
+	test("shutdown cancels suspended preparation before acceptance", async () => {
 		const state = setup();
 		databases.push(state.database);
 		const masterKey = new Uint8Array(32).fill(5);
@@ -161,9 +161,11 @@ describe("generation capture coherence", () => {
 		});
 		const requested = Promise.withResolvers<void>();
 		const release = Promise.withResolvers<void>();
+		let preparationSignal: AbortSignal | null | undefined;
 		const coordinator = createGenerationCoordinator(state.database, {
 			masterKey,
-			fetch: async () => {
+			fetch: async (_input, init) => {
+				preparationSignal = init?.signal;
 				requested.resolve();
 				await release.promise;
 				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
@@ -174,11 +176,14 @@ describe("generation capture coherence", () => {
 			conversationId: state.conversationId, expectedRevision: snapshot.revision, content: "signal",
 		});
 		await requested.promise;
+		const rejected = pending.catch((error: Error) => error);
 		await gracefullyShutdownGenerations(state.database);
-		release.resolve();
+		expect(preparationSignal?.aborted).toBe(true);
+		expect(await rejected).toBeInstanceOf(Error);
 		await expect(pending).rejects.toThrow("shutting down");
+		release.resolve();
 		expect(createConversationModule(state.database).getSnapshot(state.conversationId)?.messages).toEqual(snapshot.messages);
-	}, 10_000);
+	}, 3_000);
 
 	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {
 		const state = setup();

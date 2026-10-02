@@ -19,12 +19,12 @@ The initial review was static; package searches used Exa and primary documentati
 
 ## Implemented server lifetime
 
-- [server/index.ts](../../src/server/index.ts) opens one database and passes it to `createContract`, startup recovery, and the memory worker. Shutdown awaits memory work and generation cleanup before closing it.
+- [server/index.ts](../../src/server/index.ts) opens one database and passes it to `createContract`, startup recovery, and the memory worker. [application/shutdown.ts](../../src/server/application/shutdown.ts) starts HTTP, memory, and generation shutdown together under one five-second process deadline. It closes the database only after all work finishes; deadline expiry terminates the process without closing a connection still used by pending tasks.
 - [contract/index.ts](../../src/server/contract/index.ts) requires the application database. [database/database.ts](../../src/server/database/database.ts) retains explicit opening and initialization; `withDatabase` and its owned/borrowed connection branches are gone.
 - [generation-coordinator.ts](../../src/server/application/generation-coordinator.ts) uses its injected database for detached generations rather than acquiring and releasing a connection for each attempt.
 - [generation-runtime.ts](../../src/server/workflows/generation-runtime.ts) keys runtime registries by database identity. Starts, subscriptions, stops, and shutdown share that registry; the process-wide default registry is gone.
 - [generation-preview.ts](../../src/server/workflows/generation-preview.ts) keeps preview stores per database. Clearing a registry disposes only that database's store and is a no-op when no store exists.
-- [generation-recovery.ts](../../src/server/workflows/generation-recovery.ts) flushes checkpoints, requests cancellation, terminalizes persisted rows, and then awaits the runtime drain. Detached tasks have a five-second grace period; state is released when they settle or the deadline expires.
+- [generation-recovery.ts](../../src/server/workflows/generation-recovery.ts) cancels preparation, flushes checkpoints, requests provider cancellation, terminalizes persisted rows, and then joins detached tasks. The registry releases retained state only after those tasks settle. Lore matching and Memory recall use the registry's shutdown signal, including before Generation acceptance.
 
 Keep transactions synchronous and short. Provider calls run outside SQLite transactions. CLI entry points and tests open and close their own databases explicitly.
 

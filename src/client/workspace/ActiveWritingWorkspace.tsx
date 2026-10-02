@@ -406,7 +406,6 @@ export function ActiveWritingWorkspace({
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
 							onControlChange={(text) => setControlChangeToast({ text, id: ++controlToastId.current })}
-							onModelSelectionChange={generationSettings.adoptModelSelection}
 						/>
 					) : null}
 				/>

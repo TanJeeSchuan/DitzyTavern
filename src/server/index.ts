@@ -1,10 +1,10 @@
 import { staticPlugin } from "@elysiajs/static";
 import { registerWireFormats } from "../shared/contract/wire-formats";
 import { createContract } from "./contract";
-import { clearGenerationPreviewRegistry } from "./workflows/generation-preview";
+import { shutdownApplication } from "./application/shutdown";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
-import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
+import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
 
 registerWireFormats();
@@ -45,19 +45,10 @@ const app = createContract(database)
 	})
 	.listen({ hostname: "127.0.0.1", port: 3000 });
 
-const shutdown = async () => {
-	const stopped = app.stop();
-	await stopMemoryWorker();
-	const shutdownRecovery = await gracefullyShutdownGenerations(database);
-	if (shutdownRecovery.failed > 0) {
-		console.error(
-			`[generation-recovery] Shutdown recovery left ${shutdownRecovery.failed} ` +
-			`generation(s) unresolved.`,
-		);
-	}
-	await stopped;
-	clearGenerationPreviewRegistry(database);
-	database.close();
+const shutdown = () => {
+	process.off("SIGINT", shutdown);
+	process.off("SIGTERM", shutdown);
+	void shutdownApplication(database, async () => { await app.stop(); }, stopMemoryWorker);
 };
 
 process.once("SIGINT", shutdown);

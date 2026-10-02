@@ -123,7 +123,7 @@ describe("GenerationCoordinator", () => {
 		})).rejects.toBeInstanceOf(ConversationNotFoundError);
 	});
 
-	test("a provider settling after shutdown never accesses the closed database", async () => {
+	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
 		const conversation = createConversationModule(database).create({
 			name: "Shutdown Chat",
 			participants: [
@@ -145,12 +145,16 @@ describe("GenerationCoordinator", () => {
 			conversationId: conversation.id, expectedRevision: conversation.revision, content: "Stop on shutdown.",
 		});
 		await requested.promise;
-		await gracefullyShutdownGenerations(database);
+		let drained = false;
+		const shutdown = gracefullyShutdownGenerations(database).then(() => { drained = true; });
+		await Promise.resolve();
+		expect(drained).toBe(false);
+		response.resolve(streamResponse());
+		await shutdown;
 		database.close();
 		const prepare = spyOn(database, "prepare");
 		const transaction = spyOn(database, "transaction");
 		try {
-			response.resolve(streamResponse());
 			await expect(started.result).rejects.toThrow();
 			expect(prepare).not.toHaveBeenCalled();
 			expect(transaction).not.toHaveBeenCalled();

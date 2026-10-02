@@ -207,14 +207,14 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		if (intent !== null) performLeave(intent);
 	};
 
-	const upsertBookSummary = (saved: Lorebook) => {
+	const refreshLibrary = () => {
 		void client.cancelQueries({ queryKey: ["lorebooks"] });
+		void client.invalidateQueries({ queryKey: ["lorebooks"] });
+	};
+	const refreshBookCaches = (saved: Lorebook) => {
 		void client.cancelQueries({ queryKey: ["lorebook", saved.id] });
 		client.setQueryData(["lorebook", saved.id], saved);
-		client.setQueryData<Awaited<ReturnType<typeof listLorebooks>>>(["lorebooks"], (items = []) => {
-		const summary = { id: saved.id, name: saved.name, description: saved.description, revision: saved.revision, entryCount: saved.entries.length };
-		return items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? summary : item) : [...items, summary];
-		});
+		refreshLibrary();
 	};
 
 	const saveDirty = async (): Promise<boolean> => {
@@ -235,7 +235,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				}
 				return false;
 			}
-			upsertBookSummary(result.book);
+			refreshBookCaches(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			current = result.book;
 			setBook(current);
@@ -253,7 +253,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				if (result.status === "conflict") setBook(result.currentBook);
 				return false;
 			}
-			upsertBookSummary(result.book);
+			refreshBookCaches(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			setBook(result.book);
 			if (entryId === null && entryDraftVersionRef.current === initialEntryDraftVersion) {
@@ -291,10 +291,9 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
-			if (result.status === "applied") upsertBookSummary(result.book);
+			if (result.status === "applied") refreshBookCaches(result.book);
 			else if (result.status === "deleted") {
-				await client.cancelQueries({ queryKey: ["lorebooks"] });
-				client.setQueryData<Awaited<ReturnType<typeof listLorebooks>>>(["lorebooks"], (items) => items?.filter((item) => item.id !== result.bookId));
+				refreshLibrary();
 				client.removeQueries({ queryKey: ["lorebook", result.bookId] });
 				void client.invalidateQueries({ queryKey: ["lorebook-attachments"] });
 			}
@@ -428,7 +427,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
-			if (result.status === "applied") upsertBookSummary(result.book);
+			if (result.status === "applied") refreshBookCaches(result.book);
 			if (request !== importRequestRef.current || token !== viewTokenRef.current) return;
 			if (result.status === "applied") {
 				invalidateView();

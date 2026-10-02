@@ -56,6 +56,7 @@ export async function evaluateSemanticLore(input: {
 	readonly messages: readonly LoreScanMessage[];
 	readonly settings: SemanticSettingsSnapshot;
 	readonly fetch?: ModelFetch;
+	readonly signal?: AbortSignal;
 }): Promise<LoreSemanticEvaluation> {
 	const { settings } = input;
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
@@ -66,11 +67,12 @@ export async function evaluateSemanticLore(input: {
 	const requestsFor = (scene: readonly string[]) => packJev(triggerItems, (batch) => jevRequest(settings.jevModel, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Jev request.");
 	const credential = settings.credential;
 	const controller = new AbortController();
+	const signal = input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
 	try {
 		const scores = new Map<string, number>();
 		const requests = sceneChunks(settings.jevModel, input.messages).flatMap(requestsFor);
 		for (let start = 0; start < requests.length; start += 2) {
-			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request }) => requestJev({ request, credential, fetch: input.fetch, signal: controller.signal })));
+			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request }) => requestJev({ request, credential, fetch: input.fetch, signal })));
 			for (const answers of responses) for (const [id, answer] of answers) {
 				if (answer.type !== "noul") throw new Error("Typesafe Jev returned a malformed Semantic Trigger answer.");
 				scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
@@ -80,6 +82,7 @@ export async function evaluateSemanticLore(input: {
 		return { available: true, threshold: settings.threshold, matches };
 	} catch (error) {
 		controller.abort();
+		input.signal?.throwIfAborted();
 		return { available: false, threshold: settings.threshold, fallbackReason: error instanceof Error ? error.message : "Semantic matching was unavailable." };
 	}
 }

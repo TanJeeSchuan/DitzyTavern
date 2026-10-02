@@ -9,7 +9,6 @@ import {
 	createConnectionSettingsModule,
 	validateConnectionProfileDraft,
 	type ConnectionSettingsModuleOptions,
-	type ConnectionSettingsModule,
 	type ConnectionPreset as DomainConnectionPreset,
 	type ConnectionSettingsSnapshot,
 } from "../connection-settings";
@@ -50,64 +49,47 @@ export const createConnectionSettingsRoutes = (
 	options: ConnectionSettingsRouteOptions = {},
 ) => {
 	const settings = createConnectionSettingsModule(database, options);
-	const withSettings = <T>(run: (settings: ConnectionSettingsModule) => T): T =>
-		run(settings);
 
 	return new Elysia()
 		.get(
 			"/api/connection-settings",
-			() =>
-				toSettingsPayload(
-					withSettings((domain) => domain.get()),
-				),
+			() => toSettingsPayload(settings.get()),
 			{ response: connectionSettingsResponse },
 		)
 		.get(
 			"/api/connection-settings/presets",
 			() => ({
-				presets: withSettings((domain) =>
-					domain.listPresets().map((entry) => ({
-						...entry,
-						profile: toPresetProfilePayload(entry.profile),
-					})),
-				),
+				presets: settings.listPresets().map((entry) => ({
+					...entry,
+					profile: toPresetProfilePayload(entry.profile),
+				})),
 			}),
 			{ response: connectionPresetsResponse },
 		)
 		.post(
 			"/api/connection-settings/discovery",
 			async ({ body, status }) => {
-				const prepared = withSettings((domain) => {
-					const snapshot = domain.get();
-					const profile = snapshot.profiles.find((entry) => entry.id === body.profileId);
-					if (profile === undefined) return null;
-					return {
-						profile,
-						revision: snapshot.revision,
-						secrets: domain.getProfileSecrets(profile.id),
-					};
-				});
-				if (prepared === null) return status(404, { outcome: "not-found" as const });
-				if (prepared.profile.modelsUrl.trim().length === 0) {
+				const snapshot = settings.get();
+				const profile = snapshot.profiles.find((entry) => entry.id === body.profileId);
+				if (profile === undefined) return status(404, { outcome: "not-found" as const });
+				if (profile.modelsUrl.trim().length === 0) {
 					return status(422, {
 						outcome: "invalid" as const,
 						reason: "Refresh requires an exact Models URL.",
 					});
 				}
 				const discovered = await discoverModels(
-					{ profile: prepared.profile, secrets: prepared.secrets },
+					{ profile, secrets: settings.getProfileSecrets(profile.id) },
 					{ fetch: options.fetch },
 				);
 				if (discovered.outcome === "failure") return discovered;
 				let replaced: ConnectionSettingsSnapshot["profiles"][number];
 				try {
-					replaced = withSettings((domain) =>
-						domain.replaceDiscoveryCatalog(
-							body.profileId,
-							discovered.catalog,
-							prepared.revision,
-							prepared.profile.modelsUrl,
-						),
+					replaced = settings.replaceDiscoveryCatalog(
+						body.profileId,
+						discovered.catalog,
+						snapshot.revision,
+						profile.modelsUrl,
 					);
 				} catch (error) {
 					if (error instanceof ConnectionProfileNotFoundError) {
@@ -121,38 +103,32 @@ export const createConnectionSettingsRoutes = (
 				return {
 					outcome: "success" as const,
 					profile: toProfilePayload(replaced),
-					settingsRevision: withSettings((domain) => domain.get().revision),
+					settingsRevision: settings.get().revision,
 				};
 			},
-				{
-					body: connectionDiscoveryBody,
-					response: {
-						200: connectionDiscoveryResponse,
-						404: connectionNotFoundResponse,
-						422: connectionInvalidResponse,
-						409: connectionSettingsConflict,
-					},
+			{
+				body: connectionDiscoveryBody,
+				response: {
+					200: connectionDiscoveryResponse,
+					404: connectionNotFoundResponse,
+					422: connectionInvalidResponse,
+					409: connectionSettingsConflict,
 				},
-			)
+			},
+		)
 		.post(
 			"/api/connection-settings/test-connection",
 			async ({ body, status }) => {
 				try {
-					const prepared = withSettings((domain) => {
-						const profile = validateConnectionProfileDraft(body.profile);
-						const savedProfile = body.profileId === undefined ? undefined : domain.get().profiles.find((entry) => entry.id === body.profileId);
-						const secrets = savedProfile?.requestUrl === profile.requestUrl ? domain.getProfileSecrets(savedProfile.id) : null;
-						return {
-							profile,
-							secrets: applyConnectionHeaderOperations(secrets, body.headers ?? []),
-						};
-					});
+					const profile = validateConnectionProfileDraft(body.profile);
+					const savedProfile = body.profileId === undefined ? undefined : settings.get().profiles.find((entry) => entry.id === body.profileId);
+					const secrets = savedProfile?.requestUrl === profile.requestUrl ? settings.getProfileSecrets(savedProfile.id) : null;
 					const result = await testConnection(
 						{
-							profile: prepared.profile,
+							profile,
 							modelId: body.modelId,
-							secrets: prepared.secrets,
-					},
+							secrets: applyConnectionHeaderOperations(secrets, body.headers ?? []),
+						},
 						{
 							fetch: options.fetch,
 							timeoutMs: options.testConnectionTimeoutMs,
@@ -181,22 +157,27 @@ export const createConnectionSettingsRoutes = (
 			"/api/connection-settings/commands",
 			({ body, status }) => {
 				try {
-					const result = withSettings((domain) => {
-						switch (body.type) {
-							case "create-profile":
-								return domain.createProfile(body);
-							case "apply-profile":
-								return domain.applyProfile(body);
-							case "set-credential":
-								return domain.setCredential(body);
-							case "reset-credential":
-								return domain.resetCredential(body);
-							case "delete-profile":
-								return domain.deleteProfile(body);
-							case "set-pinned-models":
-								return domain.setPinnedModels(body);
-						}
-					});
+					let result: ConnectionSettingsSnapshot;
+					switch (body.type) {
+						case "create-profile":
+							result = settings.createProfile(body);
+							break;
+						case "apply-profile":
+							result = settings.applyProfile(body);
+							break;
+						case "set-credential":
+							result = settings.setCredential(body);
+							break;
+						case "reset-credential":
+							result = settings.resetCredential(body);
+							break;
+						case "delete-profile":
+							result = settings.deleteProfile(body);
+							break;
+						case "set-pinned-models":
+							result = settings.setPinnedModels(body);
+							break;
+					}
 					return { outcome: "applied" as const, settings: toSettingsPayload(result) };
 				} catch (error) {
 					if (error instanceof StaleConnectionSettingsRevisionError) {

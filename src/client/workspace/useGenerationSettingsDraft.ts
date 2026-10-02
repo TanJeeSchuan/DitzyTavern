@@ -184,10 +184,6 @@ export function useGenerationSettingsDraft({
 		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings"
 			? { status: "no-active-profile" as const }
 			: { status: "known" as const, namespace: selectedProfile.apiFormat };
-	const adoptModelSelection = (connectionProfileId: number, modelId: string) => {
-		void client.cancelQueries({ queryKey: ["generation-settings", conversationId] });
-		client.setQueryData<ConversationGenerationSettings>(["generation-settings", conversationId], (current) => current && { ...current, connectionProfileId, modelId });
-	};
 
 	const samplingValues = resolveSamplingValues(samplingDrafts);
 	const budgetValues = resolveBudgetValues(budgetDrafts);
@@ -277,7 +273,6 @@ export function useGenerationSettingsDraft({
 		status,
 		problem,
 		transmittingNamespace,
-		adoptModelSelection,
 		instruction,
 		strategy,
 		setStrategy: updateStrategy,

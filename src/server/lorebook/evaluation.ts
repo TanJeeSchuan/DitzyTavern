@@ -241,13 +241,14 @@ export const evaluateScopedLore = (input: ScopedLoreInput): ScopedLoreEvaluation
  * performed once for the captured window; any incomplete provider pass is represented as one
  * unavailable result so every entry follows the same keyword fallback policy.
  */
-export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch }, capturedSources?: ScopedLoreSources): Promise<ScopedLoreEvaluation> => {
+export const evaluateScopedLoreAsync = async (input: ScopedLoreInput & { fetch?: ModelFetch; signal?: AbortSignal }, capturedSources?: ScopedLoreSources): Promise<ScopedLoreEvaluation> => {
 	const sources = capturedSources ?? collectSources(input);
 	const semantic = await evaluateSemanticLore({
 		entries: sources.books.flatMap(({ book }) => book.entries),
 		messages: sources.scanMessages,
 		settings: sources.semanticSettings,
 		fetch: input.fetch,
+		signal: input.signal,
 	});
 	return assembleEvaluation(sources, semantic);
 };

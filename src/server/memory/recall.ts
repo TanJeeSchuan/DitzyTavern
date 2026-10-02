@@ -218,7 +218,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
-		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch))[0];
+		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch, input.signal))[0];
 		if (!queryVector) throw new Error("The embedding endpoint returned no Memory query vector.");
 		if (indexed.some((record) => record.vector.length !== queryVector.length)) throw new Error("A compatible Memory vector has different dimensions from the current query. Rebuild Memory indexes before retrying recall.");
 		semantic = indexed.map((candidate) => ({ candidate, similarity: cosineSimilarity(queryVector, candidate.vector) }))
@@ -231,6 +231,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		const existing = shortlist.get(candidate.record.identity);
 		shortlist.set(candidate.record.identity, existing ? { ...existing, recentRank: index + 1 } : { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
+	input.signal?.throwIfAborted();
 	const candidates = await judgeMemoryRecallCandidates({ candidates: [...shortlist.values()], scene: activation.scene, relevanceMinimum: activation.relevanceMinimum, credential: createTypesafeSettingsModule(input.database).getCredential() ?? "", model: activation.jevModel, fetch: input.fetch, signal: input.signal });
 	return { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates };
 };

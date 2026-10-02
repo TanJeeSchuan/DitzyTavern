@@ -1,5 +1,15 @@
 # Complexity reduction draft handoff
 
+## Branch quality fixes, 2026-10-02
+
+- Application shutdown owns one five-second deadline for HTTP handlers, Memory workers, and detached Generations. It starts their shutdown together and closes SQLite only after they finish. At the deadline it terminates the process, leaving connection release to process teardown so pending tasks cannot resume against a closed database.
+- Generation preparation forwards the database-scoped shutdown signal through semantic Lore matching and Memory recall. Suspended preparation rejects before acceptance when shutdown starts. The runtime drain no longer owns a separate timeout.
+- The model selector and Generation Settings draft share the same Query cache. The selection callback chain is removed. Successful model selection cancels stale reads and refetches authoritative settings, including when the cache is empty.
+- Lorebook writes update the detail cache and restart the authoritative library read. They never construct a complete library from a single book response, and saving does not wait for the list refresh.
+- Connection routes call their shared settings module directly; the obsolete callback wrapper and temporary projections are removed.
+- Focused runtime checks pass, including suspended preparation cancellation, joining providers before database close, and a subprocess with unfinished HTTP, worker, and generation work terminated by the single deadline. QueryObserver probes cover empty and populated settings caches, two subscribers, and creation during an initial library read. No UI tests were added.
+- Final validation passed: 1,170 application tests, 50 lint-rule tests, both typechecks, lint, contract audit, production build, and `git diff --check`. Existing comment warnings, nine contract-audit advisories, and the bundle-size warning remain.
+
 Status: RHF pilot reviewed; keep the scoped pilot with the refresh corrections below. Ready for PR review.
 Base: `bcc736d` (`docs: document client and server complexity reduction opportunities`).
 Source recommendations: `complexity-reduction.md` and `complexity-reduction-packages.md` in this directory.
