@@ -1,5 +1,5 @@
 import MarkdownIt, { type Delimiter, type StateInline, type Token } from "markdown-it";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const QUOTE = 0x22;
 // markdown-it's own text terminators plus the dialogue quotes, so the text rule stops at them.
@@ -116,7 +116,9 @@ function fadeTextAfter(root: HTMLElement, offset: number) {
 
 // Once a Prose has streamed, blocks it mounts fade in whole and text added to a mounted
 // block fades in from where it previously ended. History that never streamed stays still.
-function ProseBlock({ html, fade }: { html: string; fade: boolean }) {
+// Memoized because React rewrites dangerouslySetInnerHTML on every render, which would wipe
+// the fade spans of a block whose html did not change.
+const ProseBlock = memo(function ProseBlock({ html, fade }: { html: string; fade: boolean }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [entering] = useState(fade);
 	const shownLength = useRef<number>(undefined);
@@ -127,7 +129,7 @@ function ProseBlock({ html, fade }: { html: string; fade: boolean }) {
 		shownLength.current = element.textContent.length;
 	}, [html, fade]);
 	return <div ref={ref} className={entering ? `prose-block ${FADE}` : "prose-block"} dangerouslySetInnerHTML={{ __html: html }} />;
-}
+});
 
 export function Prose({ text, streaming }: { text: string; streaming: boolean }) {
 	const [streamed, setStreamed] = useState(streaming);
