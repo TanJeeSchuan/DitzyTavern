@@ -105,7 +105,7 @@ export function recoverActiveGenerations(
 export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
-/** ==[HUMAN APPROVED]== Flush and stop the process-owned runtime before terminalizing its rows. */
+/** Flush and stop this database's runtime, terminalize its rows, then drain work within the shutdown grace period. Await before closing the database. */
 export async function gracefullyShutdownGenerations(
 	database: Database,
 	runtime: GenerationRuntimeRegistry = generationRuntimeFor(database),

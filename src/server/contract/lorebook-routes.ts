@@ -114,24 +114,21 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 			: { outcome: "applied" as const, book: result.value };
 	}, { body: lorebookCommandBody, response: { 200: lorebookCommandResponse, 404: notFoundOutcome, 409: lorebookConflict, 422: invalidOutcome } })
 	.post("/api/lorebooks/match-test", async ({ body, status: respond }) => {
-		const result = await (async () => {
-			const book = readLorebook(database, body.bookId);
-			if (book === undefined) return undefined;
-			const scan = [{ id: null, content: body.writing }];
-			const semantic = await evaluateSemanticLore({
-				entries: book.entries,
-				messages: scan,
-				settings: captureSemanticSettings(database, options),
-				fetch: options.fetch,
-			});
-			return {
-				mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
-				fallbackReason: semantic.fallbackReason,
-				scan,
-				matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
-			};
-		})();
-		if (result === undefined) return respond(404, { outcome: "not-found" as const });
+		const book = readLorebook(database, body.bookId);
+		if (book === undefined) return respond(404, { outcome: "not-found" as const });
+		const scan = [{ id: null, content: body.writing }];
+		const semantic = await evaluateSemanticLore({
+			entries: book.entries,
+			messages: scan,
+			settings: captureSemanticSettings(database, options),
+			fetch: options.fetch,
+		});
+		const result = {
+			mode: book.entries.length === 0 ? "none" as const : semantic.available ? "semantic" as const : "keyword-fallback" as const,
+			fallbackReason: semantic.fallbackReason,
+			scan,
+			matches: book.entries.map((entry) => ({ bookId: book.id, bookName: book.name, entryId: entry.id, title: entry.title, match: matchLoreEntry(entry, scan, semantic) })),
+		};
 		return respond(200, {
 			mode: result.mode,
 			fallbackReason: result.fallbackReason,
@@ -178,15 +175,14 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 			return { outcome: "applied" as const };
 		} catch (error) {
 			if (error instanceof StaleLoreAttachmentRevisionError) {
-				const currentState = (() => {
-					switch (error.command.type) {
-						case "attach-character":
-						case "detach-character": return readCharacterLorebookAttachments(database, error.command.characterId);
-						case "attach-participant":
-						case "detach-participant": return readParticipantLorebookAttachments(database, error.command.participantId);
-						default: return readLorebookAttachmentState(database, error.command.conversationId);
-					}
-				})();
+				let currentState: ReturnType<typeof readLorebookAttachmentState | typeof readCharacterLorebookAttachments | typeof readParticipantLorebookAttachments>;
+				switch (error.command.type) {
+					case "attach-character":
+					case "detach-character": currentState = readCharacterLorebookAttachments(database, error.command.characterId); break;
+					case "attach-participant":
+					case "detach-participant": currentState = readParticipantLorebookAttachments(database, error.command.participantId); break;
+					default: currentState = readLorebookAttachmentState(database, error.command.conversationId);
+				}
 				if (currentState === undefined) return notFoundResponse();
 				return status(409, {
 					outcome: "conflict" as const,

@@ -284,4 +284,36 @@ describe("Generation runtime", () => {
 		database.close();
 	});
 
+	test("shutdown releases state when a provider ignores cancellation past the grace period", async () => {
+		let deadline: (() => void) | undefined;
+		let cancelled = false;
+		let released = false;
+		const registry = new GenerationRuntimeRegistry({
+			schedule: (callback) => {
+				deadline = callback;
+				return { cancel: () => { cancelled = true; } };
+			},
+		});
+		const work = Promise.withResolvers<void>();
+		registry.track(work.promise);
+		const runtime = registry.start({
+			generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
+			startedAt: new Date().toISOString(), onRetentionExpired: () => { released = true; },
+		});
+		const draining = registry.drain();
+		expect(runtime.signal.aborted).toBe(true);
+		expect(released).toBe(false);
+		expect(deadline).toBeDefined();
+		deadline!();
+		await draining;
+		expect(released).toBe(true);
+		expect(registry.get(1)).toBeUndefined();
+		expect(cancelled).toBe(true);
+		runtime.publish({ type: "content", text: "late provider output" });
+		work.resolve();
+		await work.promise;
+		expect(runtime.state.content).toBe("");
+		expect(runtime.state.status).toBe("stopped");
+	});
+
 });

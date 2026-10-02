@@ -98,6 +98,7 @@ type PendingProviderTerminal =
 export class GenerationRuntimeRegistry {
 	static readonly MAX_RETAINED_EVENTS = 256;
 	static readonly TERMINAL_REPLAY_RETENTION_MS = GENERATION_REPLAY_RETENTION_MS;
+	static readonly SHUTDOWN_GRACE_MS = 5_000;
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
 	private readonly now: () => number;
@@ -137,10 +138,20 @@ export class GenerationRuntimeRegistry {
 		return task;
 	}
 
+	/** Stop detached work, wait up to five seconds, then release replay state. */
 	async drain(): Promise<void> {
 		this.stopping = true;
 		this.stopAll();
-		while (this.pending.size > 0) await Promise.allSettled(this.pending);
+		const timedOut = Promise.withResolvers<true>();
+		const deadline = this.schedule(() => timedOut.resolve(true), GenerationRuntimeRegistry.SHUTDOWN_GRACE_MS);
+		try {
+			while (this.pending.size > 0) {
+				if (await Promise.race([Promise.allSettled(this.pending).then(() => false), timedOut.promise])) break;
+			}
+		} finally {
+			this.cancel(deadline);
+		}
+		this.pending.clear();
 		if (this.cleanupHandle !== undefined) this.cancel(this.cleanupHandle);
 		this.cleanupHandle = undefined;
 		for (const runtime of this.runtimes.values()) { runtime.markStopped(); runtime.expireRetention(); }
@@ -184,6 +195,7 @@ export class GenerationRuntimeRegistry {
 			this.cancel(this.cleanupHandle);
 			this.cleanupHandle = undefined;
 		}
+		if (this.stopping) return;
 		let nextExpiry: number | undefined;
 		for (const runtime of this.runtimes.values()) {
 			if (runtime.terminalTime === null) continue;

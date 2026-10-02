@@ -48,3 +48,11 @@ The user requested an agent review and summary, not a separate manual acceptance
 The original machine's development database failed startup migration because `conversation_memory_settings` already exists. No existing user data was deleted or migrated. Its browser checks used an isolated seeded database under `/tmp/ditzy-complexity-preview`.
 
 The Windows follow-up used `%TEMP%/ditzy-complexity-review/data/ditzytavern.sqlite`, seeded from the existing seed module. Validation output is in `%TEMP%/ditzy-complexity-check.log`. These files are machine-local. The isolated API on port 3000 and Vite on port 5173 were left running for user review, with Generation Settings open in the collaborative preview. Browser request-delay instrumentation was removed.
+
+## PR #9 review fixes, 2026-10-02
+
+- Verified all nine findings against the original PR code. The workflow predicate accepted quoted commands, both lorebook IIFEs remained, draft resets were duplicated, and the four documentation findings described superseded ownership or omitted per-database behavior.
+- Reproduced the missing shutdown deadline with a failing runtime test before fixing it. Drain now races detached work against one five-second grace period, releases retained state, and cancels its timer. Late output cannot change a stopped runtime. Existing tests still cover waiting for work that settles normally.
+- Anchored all five comment commands at the beginning of the comment. A predicate probe rejected quoted `/review` and `/ask` text while accepting the supported commands. Pinned the review container to the registry-verified v2.11.0 linux/amd64 digest; the pinned action passes that image reference directly to Docker.
+- Removed both route wrappers and shared the generation form's authoritative reset sequence, retaining the distinct refresh and save preservation predicates. Updated the research document to distinguish implemented changes, scoped pilots, and deferred work; all local document links exist.
+- Validation passed: 1,166 application tests, both typechecks, lint, production build, and `git diff --check`. Comment-approval warnings, the contract audit's nine advisory matches, and the build's approximately 1.26 MB bundle warning remain. No UI tests were added.

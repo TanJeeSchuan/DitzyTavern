@@ -18,11 +18,11 @@ jobs:
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)) ||
       (github.event.issue.pull_request &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
-       (contains(github.event.comment.body, '/review') ||
-        contains(github.event.comment.body, '/improve') ||
-        contains(github.event.comment.body, '/ask') ||
-        contains(github.event.comment.body, '/describe') ||
-        contains(github.event.comment.body, '/diagram')))
+       (startsWith(github.event.comment.body, '/review') ||
+        startsWith(github.event.comment.body, '/improve') ||
+        startsWith(github.event.comment.body, '/ask') ||
+        startsWith(github.event.comment.body, '/describe') ||
+        startsWith(github.event.comment.body, '/diagram')))
     runs-on: ubuntu-latest
     steps:
       # Read configuration from the trusted base branch; never execute PR code.
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: MattJColes/lgtmaybe@4efda46ecb1fba574c5716f33e2e1b87c6880d74 # v2.11.0
         with:
-          image: ghcr.io/mattjcoles/lgtmaybe:2.11.0
+          image: ghcr.io/mattjcoles/lgtmaybe@sha256:e56b2b03938ba46b0c5bf5d2cd632399bf9e8114d9fd4243b83b5e054325f914 # v2.11.0 linux/amd64
           provider: openai-compatible
           api_base: https://api.tanjs.dev/v1/
           api_key: ${{ secrets.LGTMAYBE_API_KEY }}

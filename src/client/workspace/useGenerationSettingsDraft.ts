@@ -166,13 +166,15 @@ export function useGenerationSettingsDraft({
 	const saveVersionRef = useRef(0);
 	conversationIdRef.current = conversationId;
 	const status = settings === null ? query.isError ? "load-error" : "loading" : saving ? "saving" : "ready";
+	const resetDraft = (authoritative: ConversationGenerationSettings, preserve: boolean) => {
+		const current = getValues();
+		reset(fieldsFromSettings(authoritative));
+		if (preserve) reset(current, { keepDefaultValues: true });
+	};
 	const syncDraft = useEffectEvent(() => {
 		if (settings === null) return;
 		const sameConversation = initializedConversation.current === conversationId;
-		const preserve = sameConversation && isDirty;
-		const current = getValues();
-		reset(fieldsFromSettings(settings));
-		if (preserve) reset(current, { keepDefaultValues: true });
+		resetDraft(settings, sameConversation && isDirty);
 		if (!sameConversation) { initializedConversation.current = conversationId; setProblem(null); }
 	});
 	useEffect(() => { syncDraft(); }, [conversationId, settings]);
@@ -247,9 +249,7 @@ export function useGenerationSettingsDraft({
 					client.setQueryData(["generation-settings", conversationId], next);
 					if (!ownsSave()) return;
 					applied = true;
-					const current = getValues();
-					reset(fieldsFromSettings(next));
-					if (draftVersionRef.current !== draftVersion) reset(current, { keepDefaultValues: true });
+					resetDraft(next, draftVersionRef.current !== draftVersion);
 					setProblem(null);
 				},
 				onConflict: (current) => { void client.invalidateQueries({ queryKey: ["generation-settings", current.id] }); },

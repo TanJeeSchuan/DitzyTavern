@@ -123,6 +123,7 @@ const previewStore = (database: Database) => {
 	return store;
 };
 
+/** Dispose and forget this database's preview store; no-op if it never created one. */
 export const clearGenerationPreviewRegistry = (database: Database): void => {
 	stores.get(database)?.dispose();
 	stores.delete(database);
