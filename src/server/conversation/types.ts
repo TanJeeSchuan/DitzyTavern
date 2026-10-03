@@ -1,3 +1,4 @@
+import type { ImagePool } from "../image";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -304,6 +305,7 @@ export interface ConversationCommand {
 	conversationId: number;
 	expectedRevision: number;
 	action: ConversationAction;
+	images?: ImagePool | undefined;
 }
 
 export interface ConversationModule {
@@ -593,4 +595,5 @@ export interface ConversationCreationInput {
 	// Native creation captures the initiating client's formatting context for
 	// the one opening assembly; imported/preservation records leave it unset.
 	formatting?: GenerationFormattingContext | undefined;
+	images?: ImagePool | undefined;
 }

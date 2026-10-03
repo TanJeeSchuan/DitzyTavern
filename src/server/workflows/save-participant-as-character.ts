@@ -72,6 +72,7 @@ export function saveParticipantAsCharacter(
 					name: participant.name,
 					prompt: participant.prompt,
 					openings: participant.openings,
+					portrait: participant.portrait,
 				},
 			}),
 		});

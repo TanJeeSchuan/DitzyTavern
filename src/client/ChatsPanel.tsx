@@ -86,7 +86,7 @@ export function ChatsPanel({
 					<ul className="-mx-3 flex flex-col gap-0.5">
 						{items.map((chat) => (
 							<li key={chat.id} className="group relative flex items-start gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40 data-[active=true]:bg-muted/70" data-active={chat.id === activeId}>
-								<CastStack names={chat.castNames} />
+								<CastStack names={chat.castNames} portraits={chat.castPortraits} />
 								{renamingId === chat.id ? (
 									<input
 										ref={renameInput}
@@ -139,10 +139,10 @@ export function ChatsPanel({
 	);
 }
 
-function CastStack({ names }: { names: string[] }) {
+function CastStack({ names, portraits }: { names: string[]; portraits: ChatSummary["castPortraits"] }) {
 	return (
 		<span className="mt-0.5 flex w-[3.65rem] shrink-0 -space-x-2" title={names.join(", ")}>
-			{names.slice(0, 3).map((name, index) => <span key={index} className="rounded-[30%] ring-2 ring-(--surface)"><Portrait name={name} size="small" /></span>)}
+			{names.slice(0, 3).map((name, index) => <span key={index} className="rounded-[30%] ring-2 ring-(--surface)"><Portrait name={name} portrait={portraits[index]} size="small" /></span>)}
 		</span>
 	);
 }

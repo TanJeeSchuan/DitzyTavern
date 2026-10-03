@@ -2,22 +2,27 @@ import { ArrowLeft, Plus, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Portrait } from "../story/Portrait";
+import { PortraitDialog } from "./PortraitDialog";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
+import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { promptChannelLabels } from "../../shared/definition";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveNavigation } from "../SaveGuard";
 
-export type Definition = ParticipantDefinition;
+export type Definition = ParticipantDefinition & { upload?: string | undefined };
 
-export const definitionOf = ({ name, prompt, openings }: { name: string; prompt: PromptChannels; openings: readonly string[] }): Definition =>
-	({ name, prompt, openings: [...openings] });
+export const definitionOf = ({ name, prompt, openings, portrait }: { name: string; prompt: PromptChannels; openings: readonly string[]; portrait?: PortraitImage | undefined }): Definition =>
+	({ name, prompt, openings: [...openings], portrait });
 
 export const sameDefinition = (a: Definition, b: Definition) => JSON.stringify(a) === JSON.stringify(b);
 
 // ==[HUMAN APPROVED]== Blank Opening cards are editor scratch space; the server rejects blank Openings.
-export const submittableDefinition = (draft: Definition): Definition =>
-	({ ...draft, openings: draft.openings.filter((opening) => opening.trim() !== "") });
+export const submittableDefinition = (draft: Definition): ParticipantDefinition =>
+	({ name: draft.name, prompt: draft.prompt, openings: draft.openings.filter((opening) => opening.trim() !== ""), portrait: draft.portrait });
+
+export const submittableImages = (draft: Definition) => draft.upload === undefined ? undefined : [draft.upload];
 
 const primaryChannels = [
 	["identity", "Appearance, personality, voice…"],
@@ -55,8 +60,11 @@ export function DefinitionEditor({
 	onBack: () => void;
 }) {
 	const navigate = useSaveNavigation();
+	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const setChannel = (key: keyof PromptChannels, value: string) => onDraftChange({ ...draft, prompt: { ...draft.prompt, [key]: value } });
+	const setPortrait = (portrait: PortraitImage | undefined, upload?: string) =>
+		onDraftChange({ ...draft, portrait, upload: portrait === undefined ? undefined : upload ?? draft.upload });
 	const setOpenings = (openings: string[]) => onDraftChange({ ...draft, openings });
 	const channel = (key: keyof PromptChannels, placeholder?: string) => (
 		<label key={key} className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
@@ -73,7 +81,11 @@ export function DefinitionEditor({
 					<span className="flex-1" />
 					{actions}
 				</div>
-				<div className="flex flex-col gap-1">
+				<div className="flex items-center gap-3">
+					<button type="button" className="rounded-[28%] outline-none focus-visible:ring-3 focus-visible:ring-ring/50" aria-label={draft.portrait === undefined ? "Add a Portrait" : "Edit the Portrait"} onClick={() => setEditingPortrait(true)}>
+						<Portrait name={draft.name} portrait={draft.portrait} size="large" />
+					</button>
+					<div className="flex min-w-0 flex-1 flex-col gap-1">
 					<input
 						className="-mx-2 rounded-md bg-transparent px-2 py-1 text-xl font-semibold tracking-[-0.02em] outline-none hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-3 focus-visible:ring-ring/50"
 						value={draft.name}
@@ -84,7 +96,9 @@ export function DefinitionEditor({
 						onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
 					/>
 					<p className="text-xs text-muted-foreground">{subtitle}</p>
+					</div>
 				</div>
+				<PortraitDialog open={editingPortrait} portrait={draft.portrait} onOpenChange={setEditingPortrait} onChange={setPortrait} />
 				{banner}
 				<section className="flex flex-col gap-4" aria-label="Prompt">
 					{primaryChannels.map(([key, placeholder]) => channel(key, placeholder))}

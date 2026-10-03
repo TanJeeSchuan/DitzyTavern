@@ -7,7 +7,9 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	fromPortraitColumns,
 	participantTable,
+	toPromptChannels,
 } from "../database/schema";
 import type { CharacterDatabase } from "./internal";
 import type {
@@ -65,14 +67,8 @@ export function readCharacterSnapshot(
 		return undefined;
 	}
 
-	const prompt = db
-		.select({
-			systemInstruction: characterPromptTable.system_instruction,
-			identity: characterPromptTable.identity,
-			scenario: characterPromptTable.scenario,
-			exampleDialogue: characterPromptTable.example_dialogue,
-			postHistoryInstruction: characterPromptTable.post_history_instruction,
-		})
+	const promptRow = db
+		.select()
 		.from(characterPromptTable)
 		.where(eq(characterPromptTable.character_id, characterId))
 		.get();
@@ -89,8 +85,9 @@ export function readCharacterSnapshot(
 		name: character.name,
 		revision: character.revision,
 		pinned: character.pinned,
-		prompt: prompt ?? emptyPromptChannels(),
+		prompt: promptRow === undefined ? emptyPromptChannels() : toPromptChannels(promptRow),
 		openings,
+		portrait: fromPortraitColumns(promptRow),
 		deletionImpact: readDeletionImpact(db, characterId),
 	};
 }
@@ -118,6 +115,9 @@ export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
 			pinned: characterTable.pinned,
 			deletedAt: characterTable.deleted_at,
 			identity: characterPromptTable.identity,
+			portrait_hash: characterPromptTable.portrait_hash,
+			portrait_focal_x: characterPromptTable.portrait_focal_x,
+			portrait_focal_y: characterPromptTable.portrait_focal_y,
 		})
 		.from(characterTable)
 		.leftJoin(
@@ -135,6 +135,7 @@ export function listCharacters(db: CharacterDatabase): CharacterSummary[] {
 			revision: row.revision,
 			pinned: row.pinned,
 			preview: promptPreview(row.identity ?? ""),
+			portrait: fromPortraitColumns(row),
 			provenanceReferenceCount: references.get(row.id) ?? 0,
 		}))
 		.sort(compareByLibraryOrder);

@@ -103,10 +103,12 @@ export async function applyConversationCommand(
 	conversationId: number,
 	expectedRevision: number,
 	action: ConversationAction,
+	images?: string[],
 ): Promise<CommandOutcome> {
 	const { data, error } = await api.api.conversations({ id: conversationId }).commands.post({
 		expectedRevision,
 		action,
+		images,
 	});
 	if (error) {
 		return commandOutcome(error.value, {

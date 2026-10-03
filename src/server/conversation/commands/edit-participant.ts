@@ -3,14 +3,18 @@ import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
+	toPortraitColumns,
 	toPromptChannelRow,
 } from "../../database/schema";
+import type { ImagePool } from "../../image";
 import {
 	type ConversationDatabase,
 	requireParticipant,
 	requireParticipantName,
 	requireParticipantOpenings,
+	syncParticipantPortrait,
 } from "../internal";
+import type { Portrait } from "../../../shared/contract/image";
 import type { PromptChannels } from "../../../shared/contract/prompt-schema";
 
 export interface EditParticipantNameInput {
@@ -94,15 +98,17 @@ export function replaceParticipantOpenings(
 export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	conversationId: number;
 	participantId: number;
-	definition: { name: string; prompt: PromptChannels; openings: string[] };
+	definition: { name: string; prompt: PromptChannels; openings: string[]; portrait?: Portrait | undefined };
+	images?: ImagePool | undefined;
 }) {
 	const name = requireParticipantName(input.definition.name);
 	const openings = requireParticipantOpenings(input.definition.openings);
 	const participant = requireParticipant(db, input.conversationId, input.participantId);
 	db.update(participantTable).set({ name }).where(eq(participantTable.id, participant.id)).run();
-	const promptRow = toPromptChannelRow(input.definition.prompt);
+	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...toPortraitColumns(input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
+	syncParticipantPortrait(db, participant.id, input.definition.portrait, input.images ?? new Map());
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
 	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
 }

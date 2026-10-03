@@ -1,4 +1,5 @@
 import { Type } from "@sinclair/typebox";
+import { portrait } from "./image";
 
 // Workspace-level transport schemas: the health probe and the active-chat
 // overview returned by the server root.
@@ -11,6 +12,7 @@ export const chatSummary = Type.Object({
 	creationTime: Type.String(),
 	lastMessageTime: Type.String(),
 	castNames: Type.Array(Type.String()),
+	castPortraits: Type.Array(Type.Union([Type.Null(), portrait])),
 	excerpt: Type.String(),
 });
 

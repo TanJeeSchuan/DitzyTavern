@@ -12,8 +12,11 @@ import {
 	participantPromptTable,
 	participantLorebookAttachmentTable,
 	participantTable,
+	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
+import type { Portrait } from "../../shared/contract/image";
+import { syncPortraitReference, type ImagePool } from "../image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
@@ -71,6 +74,9 @@ export interface ActiveCastRow {
 	scenario: string;
 	exampleDialogue: string;
 	postHistoryInstruction: string;
+	portrait_hash: string | null;
+	portrait_focal_x: number | null;
+	portrait_focal_y: number | null;
 }
 
 // ==[HUMAN APPROVED]== Every Conversation read model uses the same active Cast query. The
@@ -94,6 +100,9 @@ export const readActiveCast = (
 			scenario: participantPromptTable.scenario,
 			exampleDialogue: participantPromptTable.example_dialogue,
 			postHistoryInstruction: participantPromptTable.post_history_instruction,
+			portrait_hash: participantPromptTable.portrait_hash,
+			portrait_focal_x: participantPromptTable.portrait_focal_x,
+			portrait_focal_y: participantPromptTable.portrait_focal_y,
 		})
 		.from(participantTable)
 		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
@@ -220,6 +229,7 @@ export const requireParticipantDefinition = (
 	name: requireParticipantName(definition.name),
 	prompt: definition.prompt,
 	openings: requireParticipantOpenings(definition.openings),
+	portrait: definition.portrait,
 });
 
 export const requireParticipant = (
@@ -363,6 +373,17 @@ export const requireVariant = (
 	return variant;
 };
 
+export const syncParticipantPortrait = (
+	db: ConversationDatabase,
+	participantId: number,
+	portrait: Portrait | undefined,
+	images: ImagePool,
+) => {
+	if (!syncPortraitReference(db, "participant_id", participantId, portrait, images)) {
+		throw new InvalidConversationCommandError("The Portrait image was not provided.");
+	}
+};
+
 export interface InsertedParticipant {
 	id: number;
 	name: string;
@@ -381,6 +402,7 @@ export const insertParticipant = (
 	position: number,
 	definition: ParticipantDefinition,
 	sourceCharacterId: number | null,
+	images: ImagePool = new Map(),
 ): InsertedParticipant => {
 	const name = normalizeParticipantName(definition.name);
 	const inserted = db
@@ -403,8 +425,10 @@ export const insertParticipant = (
 		.values({
 			participant_id: inserted.id,
 			...toPromptChannelRow(definition.prompt),
+			...toPortraitColumns(definition.portrait),
 		})
 		.run();
+	syncParticipantPortrait(db, inserted.id, definition.portrait, images);
 
 	const openings = [...definition.openings];
 	if (openings.length > 0) {

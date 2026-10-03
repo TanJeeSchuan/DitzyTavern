@@ -6,6 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
+import { inlineImages, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -121,6 +122,7 @@ const castParticipant = Type.Object({
 	name: Type.String(),
 	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
+	portrait: Type.Optional(portrait),
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 	sourceCharacterName: Type.Union([Type.Null(), Type.String()]),
 	// Derived fields so clients never reproduce Cast rules.
@@ -462,6 +464,7 @@ const participantDefinition = Type.Object({
 	name: Type.String(),
 	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
+	portrait: Type.Optional(portrait),
 });
 
 export type ParticipantDefinition = Static<typeof participantDefinition>;
@@ -646,6 +649,7 @@ export type ConversationAction = Static<typeof conversationCommandAction>;
 export const conversationCommandBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	action: conversationCommandAction,
+	images: inlineImages,
 });
 
 export const generationFormattingContext = Type.Object({

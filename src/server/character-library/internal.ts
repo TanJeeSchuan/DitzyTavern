@@ -1,7 +1,9 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import type { Portrait } from "../../shared/contract/image";
 import { characterTable } from "../database/schema";
+import { syncPortraitReference, type ImagePool } from "../image";
 import {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
@@ -71,6 +73,17 @@ export const requireCommandOpenings = (
 	openings: readonly string[],
 ): readonly string[] =>
 	requireOpenings(openings, (message) => new InvalidCharacterCommandError(message));
+
+export const syncPortrait = (
+	db: CharacterDatabase,
+	characterId: number,
+	portrait: Portrait | undefined,
+	images: ImagePool,
+) => {
+	if (!syncPortraitReference(db, "character_id", characterId, portrait, images)) {
+		throw new InvalidCharacterCommandError("The Portrait image was not provided.");
+	}
+};
 
 export interface CharacterRowState {
 	id: number;

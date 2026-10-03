@@ -422,6 +422,7 @@ export function createConversation(
 					index + 1,
 					seed.definition,
 					seed.sourceCharacterId ?? null,
+					input.images,
 				),
 			),
 		);

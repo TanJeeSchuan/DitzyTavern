@@ -8,12 +8,14 @@ import {
 	requireParticipantDefinition,
 	writeControlAssignment,
 } from "../internal";
+import type { ImagePool } from "../../image";
 import type { ParticipantDefinition } from "../types";
 
 export interface AddParticipantInput {
 	conversationId: number;
 	definition: ParticipantDefinition;
 	sourceCharacterId?: number | undefined;
+	images?: ImagePool | undefined;
 }
 
 // ==[HUMAN APPROVED]== Appends a new Participant to the stable Cast tail with a complete local
@@ -60,6 +62,7 @@ export function addParticipant(
 		(latestPosition ?? 0) + 1,
 		definition,
 		input.sourceCharacterId ?? null,
+		input.images,
 	);
 
 	// ==[HUMAN APPROVED]== Completion fill: only an incomplete Conversation (fewer than two

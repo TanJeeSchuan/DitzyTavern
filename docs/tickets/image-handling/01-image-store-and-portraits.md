@@ -1,6 +1,6 @@
 # Image store and Portraits
 
-Status: TODO
+Status: DONE
 
 Blocked By: None
 
@@ -20,15 +20,15 @@ Add the single content-addressed Image store, and give Definitions Portraits as 
 
 ## Work
 
-- [ ] Add the `image` table keyed by SHA-256 (bytes, media type, byte size, width, height). Add a reference index with cascading deletes from every owner kind: Variant, Character and Participant Prompt, Character and Participant Opening, Definition Portrait, Macro State value, and Active Generation record. Add a trigger that deletes an Image when its last reference row goes.
-- [ ] Implement ingest. Accept PNG, JPEG, WebP, and GIF by magic bytes up to 20 MB, and reject anything else with a typed error. Strip metadata with `@uwx/exif-be-gone-web`, read dimensions from the header, then hash. Never resize, transcode, or decode.
-- [ ] Expose one transaction-scoped operation that ingests inline payloads and re-syncs an owner's references. Serve Images by hash with permanent caching.
-- [ ] Add the optional Portrait (hash and focal point) to Definitions, carried inline in Definition create and update. Copy it on seeding, Save as Character, and duplication. Drop it with a Participant Tombstone, and never capture it in Author Stamps or a Prompt Plan.
-- [ ] Add Portrait upload and a focal point picker to the Character and Participant editors. Show Portraits in DESIGN.md squircle frames wherever identity is rendered, using the focal point as the object position and falling back to initials.
-- [ ] Test spec Testing Decisions 2, 3, and 7 through the store and the existing Character Library and Conversation contracts. Verify Portrait UI manually with playwright-cli.
-- [ ] Run focused tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Add the `image` table keyed by SHA-256 (bytes, media type, byte size, width, height). Add a reference index with cascading deletes from every owner kind: Variant, Character and Participant Prompt, Character and Participant Opening, Definition Portrait, Macro State value, and Active Generation record. Add a trigger that deletes an Image when its last reference row goes.
+- [x] Implement ingest. Accept PNG, JPEG, WebP, and GIF by magic bytes up to 20 MB, and reject anything else with a typed error. Strip metadata with `@uwx/exif-be-gone-web`, read dimensions from the header, then hash. Never resize, transcode, or decode.
+- [x] Expose one transaction-scoped operation that ingests inline payloads and re-syncs an owner's references. Serve Images by hash with permanent caching.
+- [x] Add the optional Portrait (hash and focal point) to Definitions, carried inline in Definition create and update. Copy it on seeding, Save as Character, and duplication. Drop it with a Participant Tombstone, and never capture it in Author Stamps or a Prompt Plan.
+- [x] Add Portrait upload and a focal point picker to the Character and Participant editors. Show Portraits in DESIGN.md squircle frames wherever identity is rendered, using the focal point as the object position and falling back to initials.
+- [x] Test spec Testing Decisions 2, 3 (Portrait owners; text, Variant, and Macro State owners arrive with ticket 02), and 7 through the store and the existing Character Library and Conversation contracts. Verify Portrait UI manually with playwright-cli.
+- [x] Run focused tests, typechecking, and the full test suite.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 

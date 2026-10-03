@@ -4,8 +4,10 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
+import type { ImagePool } from "../image";
 import { createCharacter } from "./create";
 import { deleteCharacter } from "./delete-character";
 import {
@@ -17,6 +19,7 @@ import {
 	requireActiveCharacter,
 	requireCommandName,
 	requireCommandOpenings,
+	syncPortrait,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type {
@@ -35,9 +38,10 @@ import type {
 export function executeCharacterCommand(
 	database: Database,
 	command: CharacterLibraryCommand,
+	images: ImagePool,
 ): CharacterSnapshot | CharacterDeletionResult {
 	if (command.type === "create") {
-		return createCharacter(database, command.definition);
+		return createCharacter(database, command.definition, images);
 	}
 
 	const db = connectCharacterLibraryDatabase(database);
@@ -67,9 +71,10 @@ export function executeCharacterCommand(
 				const name = requireCommandName(command.definition.name);
 				const openings = requireCommandOpenings(command.definition.openings);
 				db.update(characterTable).set({ name }).where(eq(characterTable.id, character.id)).run();
-				const promptRow = toPromptChannelRow(command.definition.prompt);
+				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...toPortraitColumns(command.definition.portrait) };
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
+				syncPortrait(db, character.id, command.definition.portrait, images);
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
 				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
 				break;

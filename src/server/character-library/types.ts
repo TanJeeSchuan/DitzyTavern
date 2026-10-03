@@ -7,6 +7,7 @@ import type {
 	CharacterLibrarySummary,
 	CharacterSnapshot,
 } from "../../shared/contract/character-library";
+import type { ImagePool } from "../image";
 
 // Public contract of the deep Character Library seam. The module owns
 // Character lifecycle, Definitions, revisions, and ordering; callers see
@@ -53,8 +54,10 @@ export interface CharacterLibraryModule {
 	execute(command: Extract<CharacterCommand, { type: "delete" }>): CharacterDeletionResult;
 	execute(
 		command: Exclude<CharacterCommand, { type: "delete" }>,
+		images?: ImagePool,
 	): CharacterSnapshot;
 	execute(
 		command: CharacterCommand,
+		images?: ImagePool,
 	): CharacterSnapshot | CharacterDeletionResult;
 }

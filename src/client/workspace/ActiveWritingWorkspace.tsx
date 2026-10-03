@@ -328,6 +328,7 @@ export function ActiveWritingWorkspace({
 							<StoryMessageView
 								key={message.id}
 								message={message}
+								portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 								isLatest={latestStoryMessage?.id === message.id}
 								generationActive={generation.activeGenerationTargets.some((target) =>
 									target.messageId === message.id &&

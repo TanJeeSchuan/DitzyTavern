@@ -8,6 +8,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
+import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import { type ReactNode, useEffect, useState } from "react";
 import {
 	type StoryMessage,
@@ -32,6 +33,7 @@ export function StoryMessageView({
 	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
+	portrait,
 	onMoveSwipe,
 	onEdit,
 	canContinue = false,
@@ -45,6 +47,7 @@ export function StoryMessageView({
 	generationControls,
 }: {
 	message: StoryMessage;
+	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
 	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
@@ -145,7 +148,7 @@ export function StoryMessageView({
 			}}
 		>
 			<header className="message-header">
-				<Portrait name={authorName} size="medium" />
+				<Portrait name={authorName} portrait={portrait} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
 					{generationActive && <GenerationSphere authorName={authorName} />}

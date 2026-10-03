@@ -3,11 +3,14 @@ import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
+	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
+import type { ImagePool } from "../image";
 import {
 	connectCharacterLibraryDatabase,
 	requireDefinition,
+	syncPortrait,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type { CharacterDefinition, CharacterSnapshot } from "./types";
@@ -18,6 +21,7 @@ import type { CharacterDefinition, CharacterSnapshot } from "./types";
 export function createCharacter(
 	database: Database,
 	definition: CharacterDefinition,
+	images: ImagePool = new Map(),
 ): CharacterSnapshot {
 	const db = connectCharacterLibraryDatabase(database);
 	const { name, openings } = requireDefinition(
@@ -39,8 +43,10 @@ export function createCharacter(
 			.values({
 				character_id: inserted.id,
 				...toPromptChannelRow(definition.prompt),
+				...toPortraitColumns(definition.portrait),
 			})
 			.run();
+		syncPortrait(db, inserted.id, definition.portrait, images);
 
 		if (openings.length > 0) {
 			db.insert(characterOpeningTable)

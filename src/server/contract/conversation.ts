@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { InvalidImageError, ingestUploads } from "../image";
 import { Elysia, status, t } from "elysia";
 import { Type } from "@sinclair/typebox";
 import {
@@ -577,8 +578,9 @@ export const createConversationRoutes = (
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
-			({ params, body, status }) => {
+			async ({ params, body, status }) => {
 				try {
+					const images = await ingestUploads(body.images);
 					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
@@ -587,6 +589,7 @@ export const createConversationRoutes = (
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
+							images,
 						});
 					return {
 						outcome: "applied" as const,
@@ -611,7 +614,10 @@ export const createConversationRoutes = (
 							reason: error.reason,
 						});
 					}
-					if (error instanceof InvalidConversationCommandError) {
+					if (
+						error instanceof InvalidConversationCommandError ||
+						error instanceof InvalidImageError
+					) {
 						return invalidResponse(error.message);
 					}
 					throw error;

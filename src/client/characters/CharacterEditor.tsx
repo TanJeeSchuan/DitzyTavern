@@ -14,7 +14,7 @@ import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
-import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition, type Definition } from "./DefinitionEditor";
+import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition, submittableImages, type Definition } from "./DefinitionEditor";
 
 export function CharacterEditor({
 	characterId,
@@ -87,7 +87,7 @@ export function CharacterEditor({
 	}, [onChanged, onClosed]);
 
 	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
-	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft) });
+	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft), images: submittableImages(draft) });
 	useSaveGuard({ dirty, saving: pendingAction === "save", save, discard: () => undefined });
 
 	if (snapshot === null || draft === null) return <p className="panel-body text-sm text-muted-foreground" role="status">Loading the Character…</p>;

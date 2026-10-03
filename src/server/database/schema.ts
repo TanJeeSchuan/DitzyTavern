@@ -17,7 +17,42 @@ import {
 	DEFAULT_CONTINUATION_STRATEGY,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
+import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+
+export const imageTable = sqliteTable("image", {
+	hash: text().primaryKey(),
+	bytes: blob({ mode: "buffer" }).notNull(),
+	media_type: text().notNull(),
+	byte_size: int().notNull(),
+	width: int().notNull(),
+	height: int().notNull(),
+});
+
+function portraitColumns() {
+	return {
+		portrait_hash: text(),
+		portrait_focal_x: real(),
+		portrait_focal_y: real(),
+	};
+}
+
+export interface PortraitColumnRow {
+	portrait_hash: string | null;
+	portrait_focal_x: number | null;
+	portrait_focal_y: number | null;
+}
+
+export const toPortraitColumns = (portrait: Portrait | undefined): PortraitColumnRow => ({
+	portrait_hash: portrait?.hash ?? null,
+	portrait_focal_x: portrait?.focalX ?? null,
+	portrait_focal_y: portrait?.focalY ?? null,
+});
+
+export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
+	row?.portrait_hash == null || row.portrait_focal_x === null || row.portrait_focal_y === null
+		? undefined
+		: { hash: row.portrait_hash, focalX: row.portrait_focal_x, focalY: row.portrait_focal_y };
 
 // ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
@@ -395,6 +430,7 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
+	...portraitColumns(),
 });
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows. Empty lists and duplicate
@@ -472,6 +508,7 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
+	...portraitColumns(),
 });
 
 // ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
@@ -492,6 +529,14 @@ export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => 
 	scenario: prompt.scenario,
 	example_dialogue: prompt.exampleDialogue,
 	post_history_instruction: prompt.postHistoryInstruction,
+});
+
+export const toPromptChannels = (row: PromptChannelRow): PromptChannels => ({
+	systemInstruction: row.system_instruction,
+	identity: row.identity,
+	scenario: row.scenario,
+	exampleDialogue: row.example_dialogue,
+	postHistoryInstruction: row.post_history_instruction,
 });
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows owned by the Participant.
@@ -849,5 +894,37 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 	},
 	(table) => [
 		primaryKey({ columns: [table.profile_id, table.model_id] }),
+	],
+);
+
+export const imageReferenceTable = sqliteTable(
+	"image_reference",
+	{
+		id: int().primaryKey({ autoIncrement: true }),
+		image_hash: text()
+			.notNull()
+			.references(() => imageTable.hash),
+		kind: text({
+			enum: ["variant", "prompt", "opening", "portrait", "macro-state", "active-generation"],
+		}).notNull(),
+		variant_id: int().references(() => messageVariantTable.id, { onDelete: "cascade" }),
+		character_id: int().references(() => characterTable.id, { onDelete: "cascade" }),
+		participant_id: int().references(() => participantTable.id, { onDelete: "cascade" }),
+		variant_data_id: int().references(() => messageVariantDataTable.id, { onDelete: "cascade" }),
+		conversation_data_id: int().references(() => conversationDataTable.id, { onDelete: "cascade" }),
+		active_generation_id: int().references(() => activeGenerationTable.id, { onDelete: "cascade" }),
+	},
+	(table) => [
+		index("image_reference_image_hash_index").on(table.image_hash),
+		index("image_reference_variant_index").on(table.variant_id),
+		index("image_reference_character_index").on(table.character_id),
+		index("image_reference_participant_index").on(table.participant_id),
+		index("image_reference_variant_data_index").on(table.variant_data_id),
+		index("image_reference_conversation_data_index").on(table.conversation_data_id),
+		index("image_reference_active_generation_index").on(table.active_generation_id),
+		check(
+			"image_reference_one_owner_check",
+			sql`(${table.variant_id} IS NOT NULL) + (${table.character_id} IS NOT NULL) + (${table.participant_id} IS NOT NULL) + (${table.variant_data_id} IS NOT NULL) + (${table.conversation_data_id} IS NOT NULL) + (${table.active_generation_id} IS NOT NULL) = 1`,
+		),
 	],
 );
