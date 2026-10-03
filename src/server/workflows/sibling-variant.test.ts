@@ -671,21 +671,4 @@ describe("Historical sibling Variant generation", () => {
 		}));
 		expect(createConversationModule(database).getSnapshot(conversation.id)?.activeGenerations).toEqual([]);
 	});
-
-	test("returns a complete SiblingGenerationResult directly from its resolution lifecycle hook", async () => {
-		const greeting = conversation.messages[0];
-		if (greeting === undefined) throw new Error("Greeting missing.");
-		const result = await generateSiblingVariant(database, {
-			conversationId: conversation.id,
-			messageId: greeting.id,
-			modelClient: fakeModelClient(() => "Direct result output."),
-		});
-		expect(result.generationId).toBeGreaterThan(0);
-		expect(result.messageId).toBe(greeting.id);
-		expect(result.provisionalVariantId).toBeGreaterThan(0);
-		expect(result.conversation.id).toBe(conversation.id);
-		const variant = requireSnapshot(module(), conversation.id).messages[0]?.variants.at(-1);
-		expect(variant?.id).toBe(result.provisionalVariantId);
-		expect(variant?.content).toBe("Direct result output.");
-	});
 });

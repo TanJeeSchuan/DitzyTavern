@@ -3,7 +3,6 @@ import {
 	compileOpening,
 	compilePrompt,
 	type CompilePromptInput,
-	type PromptPlan,
 } from ".";
 import {
 	createMacroAttemptState,
@@ -667,12 +666,6 @@ describe("expandMacroText", () => {
 		expect(result.warnings).toEqual([
 			{ block: "example-dialogue", macro: "{{unknown}}" },
 		]);
-	});
-
-	test("produces an empty plan for fully empty Definitions", () => {
-		const plan: PromptPlan = compilePrompt(source());
-		expect(plan.blocks).toEqual([]);
-		expect(plan.warnings).toEqual([]);
 	});
 });
 describe("Authored instruction blocks", () => {

@@ -131,10 +131,4 @@ describe("controlChangeDescription", () => {
 		const description = controlChangeDescription(conversation(1, 2), "human", 1);
 		expect(description.kind).toBe("no-change");
 	});
-
-	test("a two-person Cast swap is described the same way as a larger Cast", () => {
-		const twoPerson = conversation(1, 2);
-		expect(controlChangeDescription(twoPerson, "model", 1).kind).toBe("swap");
-		expect(controlChangeDescription(twoPerson, "human", 2).kind).toBe("swap");
-	});
 });

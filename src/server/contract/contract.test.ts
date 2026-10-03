@@ -54,16 +54,16 @@ describe("Character Library transport adapters", () => {
 	});
 
 	test("lists Characters in library order", async () => {
-		await post({ type: "create", definition: definition({ name: "Zebra" }) });
-		const alpha = await post({
+		await post({
 			type: "create",
 			definition: definition({ name: "Alpha" }),
 		});
-		const alphaCharacter = (await alpha.json()).character;
+		const zebra = await post({ type: "create", definition: definition({ name: "Zebra" }) });
+		const zebraCharacter = (await zebra.json()).character;
 
 		await post({
 			type: "set-pinned",
-			characterId: alphaCharacter.id,
+			characterId: zebraCharacter.id,
 			expectedRevision: 0,
 			pinned: true,
 		});
@@ -71,7 +71,7 @@ describe("Character Library transport adapters", () => {
 		const response = await app.handle(new Request("http://localhost/api/characters"));
 		expect(response.status).toBe(200);
 		const { characters } = await response.json();
-		expect(characters).toHaveLength(2);
+		expect(characters.map((character: { name: string }) => character.name)).toEqual(["Zebra", "Alpha"]);
 	});
 
 	test("returns a Character detail and a typed not-found outcome", async () => {

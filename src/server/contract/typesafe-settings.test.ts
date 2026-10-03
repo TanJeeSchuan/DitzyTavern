@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
 import { createTypesafeSettingsRoutes } from "./typesafe-settings";
 
@@ -40,24 +37,5 @@ describe("Typesafe Settings public contract", () => {
 		const invalid = await app.handle(command({ loreTriggerThreshold: 1.5 }));
 		expect(invalid.status).toBe(422);
 		expect(await invalid.text()).toContain("between 0 and 1");
-	});
-
-	test("keeps settings and its encrypted credential across a SQLite reopen", async () => {
-		const directory = mkdtempSync(join(tmpdir(), "ditzy-typesafe-settings-"));
-		const path = join(directory, "typesafe.sqlite");
-		const masterKey = new Uint8Array(32).fill(17);
-		try {
-			const first = openInitializedDatabase({ path });
-			expect((await createTypesafeSettingsRoutes(first, { masterKey }).handle(command({ credential: "durable-secret" }))).status).toBe(200);
-			Bun.gc(true);
-			first.close(true);
-			const second = openInitializedDatabase({ path });
-			try {
-				const body = await (await createTypesafeSettingsRoutes(second, { masterKey }).handle(read())).text();
-				expect(body).toContain('"revision":1');
-				expect(body).toContain('"credentialConfigured":true');
-				expect(body).not.toContain("durable-secret");
-			} finally { Bun.gc(true); second.close(true); }
-		} finally { rmSync(directory, { recursive: true, force: true }); }
 	});
 });

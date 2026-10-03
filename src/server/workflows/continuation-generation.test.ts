@@ -49,7 +49,7 @@ describe("Continuation Generation", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

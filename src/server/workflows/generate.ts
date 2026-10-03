@@ -39,6 +39,7 @@ import type {
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
+import { generationRuntimeFor } from "./generation-runtime";
 import {
 	runAcceptedGeneration,
 	generationOutcomeData,
@@ -153,10 +154,11 @@ async function runGenerationLifecycle<
 		throw new StaleConversationRevisionError(input.expectedRevision, revision);
 	}
 	const capture = await policy.capture(database, input.conversationId, input);
+	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	const accepted = policy.accept(conversation, input, capture, timestamp);
-	if (input.preview !== undefined) consumeGenerationPreview(input.preview.record);
+	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	await notifyAccepted<Accepted>({ onAccepted }, accepted);
 	return runAcceptedGeneration(input, policy.request(capture, input), {
 		remove: () => {

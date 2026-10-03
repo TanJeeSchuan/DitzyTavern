@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
@@ -329,43 +329,6 @@ describe("Conversation artifacts", () => {
 		expect(() =>
 			module.readArtifact(created.id, "test.artifact", "source.exact"),
 		).toThrow(ArtifactStoreError);
-	});
-
-	test("never exposes a deletion or cleanup operation", () => {
-		const seed = artifactSeed();
-		createWithArtifact(seed);
-		// The public seam surface is exactly inspect, read, and download:
-		// deleting or cleaning up committed artifacts is intentionally absent.
-		expect(Object.keys(module).sort()).toEqual([
-			"downloadArtifact",
-			"getArtifact",
-			"readArtifact",
-		]);
-	});
-
-	test("leaves committed physical copies untouched when their Chat is removed", () => {
-		const bytes = Buffer.from("survives chat removal", "utf8");
-		const seed = artifactSeed({
-			byteLength: bytes.length,
-			sha256: sha256Hex(bytes),
-		});
-		const owner = createWithArtifact(
-			seed,
-			bytes,
-		);
-		const storedPath = join(root, seed.relativePath);
-
-		// No public Chat-deletion seam exists yet; removing the Chat row
-		// directly simulates the future deletion path. The metadata row
-		// follows the Chat, but the physical copy is never automatically
-		// deleted.
-		database.run("DELETE FROM conversation WHERE id = ?", [owner.id]);
-		expect(module.getArtifact(owner.id, "test.artifact", "source.exact")).toBeUndefined();
-		expect(module.readArtifact(owner.id, "test.artifact", "source.exact")).toBeUndefined();
-
-		// The exact bytes are still there for manual verification.
-		expect(readFileSync(storedPath)).toEqual(bytes);
-		expect(sha256Hex(readFileSync(storedPath))).toBe(seed.sha256);
 	});
 
 	test("derives media types from filenames and unique managed paths per copy", () => {

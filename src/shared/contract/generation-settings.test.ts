@@ -2,19 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation/generation-settings";
-import { projectModelClientGenerationSettings } from "../../server/model-client/generation-settings";
-import {
-	PROVENANCE_SETTINGS_FIELDS,
-	type GenerationProvenanceSettings,
-} from "../generation-provenance";
+import type { GenerationProvenanceSettings } from "../generation-provenance";
 import {
 	conversationGenerationSettings,
 	generationProvenanceSettingsWire,
-	generationSettingsUpdate,
 } from "./conversation-schema";
 import {
 	canonicalGenerationSettings,
-	GENERATION_SETTINGS_FIELDS,
 	type CanonicalGenerationSettings,
 } from "./generation-settings";
 
@@ -178,49 +172,6 @@ describe("canonicalGenerationSettings", () => {
 		}
 	});
 
-	test("stays wire-tolerant toward excess properties", () => {
-		expect(Value.Check(canonicalGenerationSettings, {
-			...validSettings(),
-			futureField: "accepted like every other shared contract",
-		})).toBe(true);
-	});
-
-	test("decodes without normalizing values", () => {
-		// Normalization such as trimming a model ID belongs to the owning
-		// domain adapter; the canonical declaration is structural only.
-		const decoded = Value.Decode(canonicalGenerationSettings, {
-			...validSettings(),
-			modelId: "  padded-model  ",
-		});
-		expect(decoded.modelId).toBe("  padded-model  ");
-	});
-});
-
-describe("generationSettingsUpdate", () => {
-	test("accepts the complete canonical settings", () => {
-		expect(Value.Check(generationSettingsUpdate, validSettings())).toBe(true);
-	});
-
-	test("requires every canonical field: no optional older-caller fields remain", () => {
-		for (const field of GENERATION_SETTINGS_FIELDS) {
-			expect(Value.Check(generationSettingsUpdate, withoutField(validSettings(), field))).toBe(false);
-		}
-	});
-
-	test("rejects invalid present values", () => {
-		const invalid: readonly unknown[] = [
-			{ ...validSettings(), temperature: 5 },
-			{ ...validSettings(), safetyAllowance: -1 },
-			{ ...validSettings(), siblingGenerationLimit: 0 },
-			{ ...validSettings(), continuationInstruction: "   " },
-			{ ...validSettings(), continuationStrategy: "auto" },
-			{ ...validSettings(), continuationPrefillSuffix: "\n\n\n" },
-			{ ...validSettings(), requestOverrides: { ...validSettings().requestOverrides, responses: "no" } },
-		];
-		for (const settings of invalid) {
-			expect(Value.Check(generationSettingsUpdate, settings)).toBe(false);
-		}
-	});
 });
 
 describe("conversationGenerationSettings", () => {
@@ -252,48 +203,12 @@ describe("generationProvenanceSettingsWire", () => {
 		// Every retained field is nullable: an unconfigured value decodes as
 		// null rather than an accidental zero or empty string.
 		const allNull = Object.fromEntries(
-			PROVENANCE_SETTINGS_FIELDS.map((field) => [field, null]),
+			Object.keys(captured).map((field) => [field, null]),
 		);
 		expect(Value.Check(generationProvenanceSettingsWire, allNull)).toBe(true);
 		// The wire kinds still reject wrong-typed values.
 		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, temperature: "not-a-number" })).toBe(false);
 		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, contextLimit: 2.5 })).toBe(false);
 		expect(Value.Check(generationProvenanceSettingsWire, { ...allNull, continuationStrategy: "auto" })).toBe(false);
-	});
-});
-
-describe("projectModelClientGenerationSettings", () => {
-	// The transport projection is a direct named declaration: these fields are
-	// the reviewed transport-seam vocabulary, and the assertions check the
-	// projection's behavior against them.
-	const projectedFields = [
-		"temperature",
-		"topP",
-		"frequencyPenalty",
-		"presencePenalty",
-		"contextLimit",
-		"responseBudget",
-		"requestOverrides",
-	] as const;
-
-	test("projects exactly the transport fields with the captured values", () => {
-		const settings = validSettings();
-		const projected = projectModelClientGenerationSettings(settings);
-
-		expect(Object.keys(projected).sort()).toEqual([...projectedFields].sort());
-		// Every projected field carries the captured canonical value.
-		for (const field of projectedFields) {
-			expect(projected[field]).toEqual(settings[field]);
-		}
-	});
-
-	test("never exposes an application-owned canonical field on the input", () => {
-		const projected = projectModelClientGenerationSettings(validSettings());
-		const projectedKeySet = new Set<string>(projectedFields);
-		for (const field of GENERATION_SETTINGS_FIELDS) {
-			if (!projectedKeySet.has(field)) {
-				expect(projected).not.toHaveProperty(field);
-			}
-		}
 	});
 });

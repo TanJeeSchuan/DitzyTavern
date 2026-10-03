@@ -22,7 +22,7 @@ import {
 	createGenerationCoordinator,
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
-import { withDatabase } from "../database/database";
+
 import { conversationPromptPreset } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
@@ -92,19 +92,11 @@ import {
 import { LoreActivationRecordParseError } from "../../shared/contract/lore-activation";
 import { MemoryActivationRecordParseError } from "../../shared/contract/memory-recall";
 
-const withConversationModule = <T>(
-	database: Database | undefined,
-	operation: (conversationModule: ConversationModule) => T,
-): T =>
-	withDatabase(database, (connection) =>
-		operation(createConversationModule(connection)),
-	);
-
 const readConversationOr404 = <T>(
-	database: Database | undefined,
+	database: Database,
 	read: (conversationModule: ConversationModule) => T | undefined,
 ): T | ReturnType<typeof notFoundResponse> => {
-	const value = withConversationModule(database, read);
+	const value = read(createConversationModule(database));
 	return value === undefined ? notFoundResponse() : value;
 };
 
@@ -114,7 +106,7 @@ const readConversationOr404 = <T>(
 // meantime. One helper keeps error mapping from drifting between the
 // command, fork, and save-as-Character workflow routes.
 const staleConversationConflict = (
-	database: Database | undefined,
+	database: Database,
 	conversationId: number,
 	error: StaleConversationRevisionError,
 ):
@@ -125,9 +117,7 @@ const staleConversationConflict = (
 			actualRevision: number;
 			currentConversation: ReturnType<typeof toConversationSummary>;
 	  } => {
-	const current = withConversationModule(database, (conversationModule) =>
-		conversationModule.getSummary(conversationId),
-	);
+	const current = createConversationModule(database).getSummary(conversationId);
 	if (current === undefined) {
 		// ==[HUMAN APPROVED]== The Conversation disappeared between the conflict and the recovery
 		// read; never fabricate authoritative state.
@@ -145,7 +135,7 @@ const staleConversationConflict = (
 // authoritative summary rides inside the 409, or a 404 when the Conversation
 // disappeared between the conflict and the recovery read.
 const staleConversationResponse = (
-	database: Database | undefined,
+	database: Database,
 	conversationId: number,
 	error: StaleConversationRevisionError,
 ) => {
@@ -164,6 +154,7 @@ const generationStartRouteResponse = {
 };
 
 const previewUseFor = <K extends GenerationPreviewKind>(
+	database: Database,
 	conversationId: number,
 	kind: K,
 	previewId: string | undefined,
@@ -175,7 +166,7 @@ const previewUseFor = <K extends GenerationPreviewKind>(
 		}
 		return undefined;
 	}
-	const record = previewRecordFor(previewId, conversationId, kind);
+	const record = previewRecordFor(database, previewId, conversationId, kind);
 	return {
 		kind,
 		record,
@@ -184,12 +175,10 @@ const previewUseFor = <K extends GenerationPreviewKind>(
 };
 
 const currentConversationRevision = (
-	database: Database | undefined,
+	database: Database,
 	conversationId: number,
 ): number => {
-	const revision = withConversationModule(database, (conversationModule) =>
-		conversationModule.getRevision(conversationId),
-	);
+	const revision = createConversationModule(database).getRevision(conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(conversationId);
 	return revision;
 };
@@ -200,7 +189,7 @@ const currentConversationRevision = (
 export interface ConversationRouteOptions extends GenerationCoordinatorOptions {}
 
 export const createConversationRoutes = (
-	database: Database | undefined,
+	database: Database,
 	options: ConversationRouteOptions = {},
 ) => {
 	const generationCoordinator = createGenerationCoordinator(database, options);
@@ -210,7 +199,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id",
 			({ params }) => {
 				try {
-					withDatabase(database, (connection) => deleteConversation(connection, params.id));
+					deleteConversation(database, params.id);
 					return { outcome: "deleted" as const };
 				} catch (error) {
 					if (error instanceof ConversationNotFoundError) return notFoundResponse();
@@ -280,7 +269,7 @@ export const createConversationRoutes = (
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
 					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(params.id, "continuation", body.previewId, body.promptPlan),
+					preview: previewUseFor(database, params.id, "continuation", body.previewId, body.promptPlan),
 				}),
 			),
 			{
@@ -304,12 +293,10 @@ export const createConversationRoutes = (
 						: body.kind === "sibling"
 							? { ...common, kind: body.kind, messageId: body.messageId }
 							: { ...common, kind: body.kind };
-					const preview = await withDatabase(database, (connection) =>
-						createGenerationPreviewAsync(connection, input));
+					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture.capture;
 					const memoryActivation = capture.plan.memoryActivation;
-					const memorySources = withDatabase(database, (connection) =>
-						readMemorySourceAvailability(connection, params.id, memoryActivation));
+					const memorySources = readMemorySourceAvailability(database, params.id, memoryActivation);
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
@@ -412,9 +399,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/prompt-preset",
 			({ params }) => {
-				const preset = withDatabase(database, (connection) =>
-					createConversationModule(connection).getPromptPreset(params.id),
-				);
+				const preset = createConversationModule(database).getPromptPreset(params.id);
 				return preset ?? notFoundResponse();
 			},
 			{
@@ -429,12 +414,10 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/macro-variables",
 			({ params, query, status }) => {
 				try {
-					const variables = withConversationModule(database, (conversationModule) =>
-						conversationModule.readMacroVariables(params.id, {
+					const variables = createConversationModule(database).readMacroVariables(params.id, {
 							position: query.position,
 							promptPresetId: query.promptPresetId,
-						}),
-					);
+						});
 					return variables ?? status(404, { outcome: "not-found" as const });
 				} catch (error) {
 					if (error instanceof InvalidConversationCommandError) {
@@ -457,8 +440,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/macro-variables",
 			({ params, body, status }) => {
 				try {
-					const edited = withDatabase(database, (connection) =>
-						createConversationModule(connection).editMacroVariables({
+					const edited = createConversationModule(database).editMacroVariables({
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							promptPresetId: body.promptPresetId,
@@ -466,8 +448,7 @@ export const createConversationRoutes = (
 							operation: body.operation,
 							name: body.name,
 							value: body.operation === "set" ? body.value : undefined,
-						}),
-					);
+						});
 					return { outcome: "applied" as const, ...edited };
 				} catch (error) {
 					if (error instanceof StaleConversationRevisionError) {
@@ -512,9 +493,7 @@ export const createConversationRoutes = (
 		.get(
 			"/api/conversations/:id/generation-settings",
 			({ params, status }) => {
-				const settings = withConversationModule(database, (conversationModule) =>
-					conversationModule.getGenerationSettings(params.id),
-				);
+				const settings = createConversationModule(database).getGenerationSettings(params.id);
 				if (settings === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
@@ -542,7 +521,7 @@ export const createConversationRoutes = (
 						: currentConversationRevision(database, params.id),
 					content: body.content,
 					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(params.id, "send", body.previewId, body.promptPlan),
+					preview: previewUseFor(database, params.id, "send", body.previewId, body.promptPlan),
 				}),
 			),
 			{
@@ -580,7 +559,7 @@ export const createConversationRoutes = (
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },
 						preview: body?.previewId === undefined
 							? undefined
-							: previewUseFor(params.id, "sibling", body.previewId, body.promptPlan),
+							: previewUseFor(database, params.id, "sibling", body.previewId, body.promptPlan),
 					}),
 				),
 				{
@@ -604,13 +583,11 @@ export const createConversationRoutes = (
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
 					const action = body.action as ConversationAction;
-					const conversation = withConversationModule(database, (conversationModule) =>
-						conversationModule.execute({
+					const conversation = createConversationModule(database).execute({
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
-						}),
-					);
+						});
 					return {
 						outcome: "applied" as const,
 						conversation: toConversationSummary(conversation),
@@ -655,14 +632,12 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/cast/characters",
 			({ params, body }) => {
 				try {
-					const conversation = withDatabase(database, (connection) =>
-						addCharacterToCast(connection, {
+					const conversation = addCharacterToCast(database, {
 							conversationId: params.id,
 							expectedConversationRevision: body.expectedConversationRevision,
 							characterId: body.characterId,
 							expectedCharacterRevision: body.expectedCharacterRevision,
-						}),
-					);
+						});
 					return {
 						outcome: "applied" as const,
 						conversation: toConversationSummary(conversation),
@@ -701,14 +676,12 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/cast/participants/:participantId/characters",
 			({ params, body }) => {
 				try {
-					const { character } = withDatabase(database, (connection) =>
-						saveParticipantAsCharacter(connection, {
+					const { character } = saveParticipantAsCharacter(database, {
 							conversationId: params.id,
 							expectedConversationRevision:
 								body.expectedConversationRevision,
 							participantId: params.participantId,
-						}),
-					);
+						});
 					return {
 						outcome: "applied" as const,
 						character: toCharacterPayload(character),

@@ -1,9 +1,10 @@
 import { staticPlugin } from "@elysiajs/static";
 import { registerWireFormats } from "../shared/contract/wire-formats";
-import { contract } from "./contract";
+import { createContract } from "./contract";
+import { shutdownApplication } from "./application/shutdown";
 import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
-import { gracefullyShutdownGenerations, recoverActiveGenerations } from "./workflows/generation-recovery";
+import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
 
 registerWireFormats();
@@ -30,7 +31,7 @@ const staticAssets = await staticPlugin({
 	alwaysStatic: true,
 });
 
-const app = contract
+const app = createContract(database)
 	.get("/", serveIndex)
 	.use(staticAssets)
 	.onError(({ code, path }) => {
@@ -44,17 +45,10 @@ const app = contract
 	})
 	.listen({ hostname: "127.0.0.1", port: 3000 });
 
-const shutdown = async () => {
-	app.stop();
-	await stopMemoryWorker();
-	const shutdownRecovery = gracefullyShutdownGenerations(database);
-	if (shutdownRecovery.failed > 0) {
-		console.error(
-			`[generation-recovery] Shutdown recovery left ${shutdownRecovery.failed} ` +
-			`generation(s) unresolved.`,
-		);
-	}
-	database.close();
+const shutdown = () => {
+	process.off("SIGINT", shutdown);
+	process.off("SIGTERM", shutdown);
+	void shutdownApplication(database, async () => { await app.stop(); }, stopMemoryWorker);
 };
 
 process.once("SIGINT", shutdown);

@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { and, eq } from "drizzle-orm";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationModule } from "../conversation";
+import { createConversationModule, deleteConversation } from "../conversation";
 import {
 	artifactTable,
 	conversationDataTable,
@@ -330,16 +330,12 @@ describe("SillyTavern import artifacts", () => {
 		});
 	});
 
-	test("never automatically deletes committed artifact copies when the Chat is removed", () => {
+	test("never automatically deletes committed artifact copies when the Chat is deleted", () => {
 		const path = writeSource([header, first]);
 		const { conversation, artifact } = importChat(path);
 		const storedPath = join(artifactDirectory, artifact.relativePath);
 
-		// No public Chat-deletion seam exists; removing the Chat row directly
-		// simulates the future deletion path. The metadata row follows the
-		// Chat, but the committed physical copy is never automatically
-		// deleted and no cleanup subsystem touches it.
-		database.run("DELETE FROM conversation WHERE id = ?", [conversation.id]);
+		deleteConversation(database, conversation.id);
 		expect(exactArtifact(conversation.id)).toBeUndefined();
 		expect(
 			artifacts.readArtifact(
@@ -365,5 +361,5 @@ describe("SillyTavern import artifacts", () => {
 			'attachment; filename="archive-2026-08-08.jsonl"',
 		);
 		expect(download.bytes).toEqual(readFileSync(path));
-	});
+	});
 });

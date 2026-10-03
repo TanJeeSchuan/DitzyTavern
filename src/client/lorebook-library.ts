@@ -29,8 +29,8 @@ export type { LorebookAttachmentImpact };
 export type { LorebookOwnerAttachmentState };
 export type LoreMatchTest = LoreMatchTestResponse;
 
-export async function getLorebookAttachmentState(conversationId: number): Promise<LoreAttachmentState | null> {
-	const { data, error } = await api.api.lorebooks.attachments.get({ query: { conversationId } });
+export async function getLorebookAttachmentState(conversationId: number, signal?: AbortSignal): Promise<LoreAttachmentState | null> {
+	const { data, error } = await api.api.lorebooks.attachments.get({ query: { conversationId }, fetch: { signal } });
 	if (error) {
 		if (error.status === 404) return null;
 		throw new Error("Unable to load Lorebook attachments");
@@ -96,16 +96,16 @@ export async function getParticipantLorebookAttachments(participantId: number): 
 	return decodeWirePayload(lorebookOwnerAttachmentState, data);
 }
 
-export async function listLorebooks(): Promise<LorebookListResponse["books"]> {
-	const { data, error } = await api.api.lorebooks.get();
+export async function listLorebooks(signal?: AbortSignal): Promise<LorebookListResponse["books"]> {
+	const { data, error } = await api.api.lorebooks.get({ fetch: { signal } });
 	if (error || !data) throw new Error("Unable to list Lorebooks");
 	const decoded = decodeWirePayload(lorebookListResponse, data);
 	if (decoded === null) throw new Error("Unable to list Lorebooks");
 	return decoded.books;
 }
 
-export async function getLorebook(bookId: number): Promise<LorebookValue | null> {
-	const { data, error } = await api.api.lorebooks({ bookId }).get();
+export async function getLorebook(bookId: number, signal?: AbortSignal): Promise<LorebookValue | null> {
+	const { data, error } = await api.api.lorebooks({ bookId }).get({ fetch: { signal } });
 	if (error) {
 		if (error.status === 404) return null;
 		throw new Error("Unable to load Lorebook");

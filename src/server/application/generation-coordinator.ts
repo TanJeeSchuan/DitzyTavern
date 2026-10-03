@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { openDatabase, withDatabase } from "../database/database";
 import {
 	checkpointConversationGeneration,
 	ConversationNotFoundError,
@@ -204,16 +203,6 @@ interface ServerOwnedGenerationHandle<TAccepted, TResult> {
 	readonly result: Promise<TResult>;
 }
 
-/**
- * ==[HUMAN APPROVED]== A connection plus the release its holder owes it. A configured connection
- * releases to a no-op; one opened for a single detached Generation closes on
- * the first release and ignores later ones.
- */
-interface AcquiredDatabase {
-	readonly database: Database;
-	release(): void;
-}
-
 interface ResolvedGenerationTransport {
 	readonly modelClient: ModelClient;
 	readonly connection: ModelClientConnectionSnapshot;
@@ -225,12 +214,11 @@ interface ResolvedGenerationTransport {
  * The workflow module owns prompt capture and Conversation lifecycle rules;
  * this seam owns the concerns specific to an HTTP-started attempt: resolving
  * the Conversation-selected Profile, constructing its Model Client, attaching the process
- * runtime, checkpointing output, retaining inspection state, and closing a
- * short-lived request database after terminal work.
+ * runtime, checkpointing output, retaining inspection state, and tracking work through application shutdown.
  */
 export class GenerationCoordinator {
 	constructor(
-		private readonly configuredDatabase: Database | undefined,
+		private readonly database: Database,
 		private readonly options: GenerationCoordinatorOptions = {},
 	) {}
 
@@ -292,37 +280,36 @@ export class GenerationCoordinator {
 	 * result; transports map it onto their own response vocabulary.
 	 */
 	async stopGeneration(conversationId: number, generationId: number): Promise<GenerationStopOutcome> {
-		return this.withLifecycleConnection((database) => {
-			const runtimes = this.runtimeLifecycle();
-			const runtime = runtimes.get(generationId);
-			// ==[HUMAN APPROVED]== The runtime registry knows which Conversation owns this Generation.
-			// A mismatch means the addressed Conversation has no such Generation;
-			// durable state is never consulted under another Conversation's name.
-			if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
+		const database = this.database;
+		const runtimes = this.runtimeLifecycle();
+		const runtime = runtimes.get(generationId);
+		// ==[HUMAN APPROVED]== The runtime registry knows which Conversation owns this Generation.
+		// A mismatch means the addressed Conversation has no such Generation;
+		// durable state is never consulted under another Conversation's name.
+		if (runtime !== undefined && runtime.state.conversationId !== conversationId) {
+			return { outcome: "not-stoppable", generationId } as const;
+		}
+		// ==[HUMAN APPROVED]== A failed checkpoint must prevent a Stop from using stale output.
+		runtime?.stop();
+		const conversation = this.conversationLifecycle(database);
+		try {
+			const snapshot = conversation.stopGeneration({ conversationId, generationId });
+			return this.settleStoppedGeneration(generationId, runtime, snapshot);
+		} catch (error) {
+			runtime?.releaseStopRequest();
+			if (
+				error instanceof InvalidConversationCommandError ||
+				error instanceof ConversationNotFoundError
+			) {
+				// ==[HUMAN APPROVED]== Nothing durable was stopped: the Active Generation vanished
+				// while this Stop was in flight (the natural-completion race),
+				// or the Conversation is gone and the provider attempt cannot
+				// durably commit either. Release the Stop request so the
+				// runtime still settles through its own terminal path.
 				return { outcome: "not-stoppable", generationId } as const;
 			}
-			// ==[HUMAN APPROVED]== A failed checkpoint must prevent a Stop from using stale output.
-			runtime?.stop();
-			const conversation = this.conversationLifecycle(database);
-			try {
-				const snapshot = conversation.stopGeneration({ conversationId, generationId });
-				return this.settleStoppedGeneration(generationId, runtime, snapshot);
-			} catch (error) {
-				runtime?.releaseStopRequest();
-				if (
-					error instanceof InvalidConversationCommandError ||
-					error instanceof ConversationNotFoundError
-				) {
-					// ==[HUMAN APPROVED]== Nothing durable was stopped: the Active Generation vanished
-					// while this Stop was in flight (the natural-completion race),
-					// or the Conversation is gone and the provider attempt cannot
-					// durably commit either. Release the Stop request so the
-					// runtime still settles through its own terminal path.
-					return { outcome: "not-stoppable", generationId } as const;
-				}
-				throw error;
-			}
-		});
+			throw error;
+		}
 	}
 
 	/**
@@ -333,47 +320,46 @@ export class GenerationCoordinator {
 	 * exclusively for targets the durable transition actually committed.
 	 */
 	async stopAllGenerations(conversationId: number): Promise<GenerationStopAllOutcome> {
-		return this.withLifecycleConnection((database) => {
-			const runtimes = this.runtimeLifecycle();
-			// ==[HUMAN APPROVED]== Forced checkpoints without aborting first. The durable transition
-			// below owns the complete target set; runtimes are settled only after
-			// its commit succeeds.
-			runtimes.flushAll(conversationId);
-			const conversation = this.conversationLifecycle(database);
-			try {
-				const stopped = conversation.stopGenerations({ conversationId });
-				const unsettled: number[] = [];
-				let unsettledReason: string | null = null;
-				for (const generationId of stopped.generationIds) {
-					const runtime = runtimes.get(generationId);
-					if (runtime?.state.conversationId !== conversationId) continue;
-					try {
-						runtime.stop();
-						runtime.markStopped();
-					} catch (error) {
-						unsettled.push(generationId);
-						unsettledReason ??= error instanceof Error
-							? error.message
-							: "The Generation runtime could not be settled.";
-					}
+		const database = this.database;
+		const runtimes = this.runtimeLifecycle();
+		// ==[HUMAN APPROVED]== Forced checkpoints without aborting first. The durable transition
+		// below owns the complete target set; runtimes are settled only after
+		// its commit succeeds.
+		runtimes.flushAll(conversationId);
+		const conversation = this.conversationLifecycle(database);
+		try {
+			const stopped = conversation.stopGenerations({ conversationId });
+			const unsettled: number[] = [];
+			let unsettledReason: string | null = null;
+			for (const generationId of stopped.generationIds) {
+				const runtime = runtimes.get(generationId);
+				if (runtime?.state.conversationId !== conversationId) continue;
+				try {
+					runtime.stop();
+					runtime.markStopped();
+				} catch (error) {
+					unsettled.push(generationId);
+					unsettledReason ??= error instanceof Error
+						? error.message
+						: "The Generation runtime could not be settled.";
 				}
-				return {
-					outcome: "stopped",
-					generationIds: stopped.generationIds,
-					conversation: stopped.conversation,
-					unsettled,
-					unsettledReason,
-				} as const;
-			} catch (error) {
-				if (
-					error instanceof ConversationNotFoundError ||
-					error instanceof InvalidConversationCommandError
-				) {
-					return { outcome: "not-stoppable" } as const;
-				}
-				throw error;
 			}
-		});
+			return {
+				outcome: "stopped",
+				generationIds: stopped.generationIds,
+				conversation: stopped.conversation,
+				unsettled,
+				unsettledReason,
+			} as const;
+		} catch (error) {
+			if (
+				error instanceof ConversationNotFoundError ||
+				error instanceof InvalidConversationCommandError
+			) {
+				return { outcome: "not-stoppable" } as const;
+			}
+			throw error;
+		}
 	}
 
 	private settleStoppedGeneration(
@@ -396,31 +382,18 @@ export class GenerationCoordinator {
 
 	/**
 	 * ==[HUMAN APPROVED]== Resolves the durable Conversation stop adapter: the composed seam when
-	 * provided, otherwise the deep Conversation module over the request or
-	 * configured database.
+	 * provided, otherwise constructs the deep Conversation module with the
+	 * Coordinator's database.
 	 */
-	private conversationLifecycle(database: Database | undefined): GenerationConversationLifecycle {
+	private conversationLifecycle(database: Database): GenerationConversationLifecycle {
 		if (this.options.conversationLifecycle !== undefined) return this.options.conversationLifecycle;
-		if (database === undefined) {
-			throw new Error("Generation lifecycle operations require a Conversation adapter or database.");
-		}
 		return createConversationModule(database);
-	}
-
-	/**
-	 * ==[HUMAN APPROVED]== Runs a scoped lifecycle operation. A composed Conversation adapter needs
-	 * no connection at all; otherwise the canonical `withDatabase` helper
-	 * supplies the configured connection or opens and closes one of its own.
-	 */
-	private withLifecycleConnection<T>(run: (database: Database | undefined) => T): T {
-		if (this.options.conversationLifecycle !== undefined) return run(undefined);
-		return withDatabase(this.configuredDatabase, run);
 	}
 
 	/** ==[HUMAN APPROVED]== The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
 	private runtimeLifecycle(): GenerationRuntimeLifecycle {
 		if (this.options.runtimeLifecycle !== undefined) return this.options.runtimeLifecycle;
-		return generationRuntimeFor(this.configuredDatabase);
+		return generationRuntimeFor(this.database);
 	}
 
 	private async startGeneration<
@@ -429,98 +402,73 @@ export class GenerationCoordinator {
 	>(
 		input: ManagedGenerationInput<TAccepted, TResult>,
 	): Promise<CoordinatedGeneration<TAccepted, TResult>> {
-		const { database, release } = this.acquireDatabase();
-
-		try {
-			if (!createConversationModule(database).exists(input.conversationId)) {
-				throw new ConversationNotFoundError(input.conversationId);
-			}
-			const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
-			if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
-			const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
-			const runtimeRegistry = generationRuntimeFor(this.configuredDatabase);
-			let runtime: GenerationRuntime | undefined;
-			const started = input.start({
-				database,
-				modelClient: transport.modelClient,
-				connection: transport.connection,
-				onBeforeTerminal: () => runtime?.flushCheckpoint(),
-				callbacks: {
-					onAccepted: (accepted, control) => {
-						runtime = runtimeRegistry.start({
-							generationId: accepted.generationId,
-							conversationId: input.conversationId,
-							messageId: accepted.messageId,
-							variantId: accepted.provisionalVariantId,
-							startedAt: new Date().toISOString(),
-							onStop: control.stop,
-							onRetentionExpired: retainedInspectionCleanup(
-								this.configuredDatabase,
-								accepted.generationId,
-							),
-							onCheckpoint: (output) => withDatabase(this.configuredDatabase, (checkpointDatabase) =>
-								checkpointConversationGeneration(checkpointDatabase, {
-									conversationId: input.conversationId,
-									generationId: accepted.generationId,
-									...output,
-								})),
-						});
-					},
-					onEvent: (event) => { runtime?.publish(event); },
-				},
-			});
-			const accepted = await started.accepted;
-			if (runtime === undefined) throw new Error("Generation runtime could not be started.");
-			const activeRuntime = runtime;
-			const result = started.result
-				.then((value) => {
-					activeRuntime.complete();
-					return value;
-				})
-				.catch((error) => {
-					try {
-						activeRuntime.fail(
-							error instanceof Error ? error.message : "Generation failed.",
-							error instanceof ModelClientGenerationError ? error.kind : "transport",
-							error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						);
-					} catch {
-						// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
-					}
-					throw error;
-				})
-				.finally(release);
-			// ==[HUMAN APPROVED]== The HTTP adapter intentionally returns after acceptance. Consume the
-			// detached rejection here while exposing the terminal Promise to tests
-			// and non-HTTP callers that want to await it.
-			void result.catch(() => undefined);
-			return { accepted, runtime: activeRuntime, result };
-		} catch (error) {
-			release();
-			throw error;
+		const database = this.database;
+		const runtimeRegistry = generationRuntimeFor(database);
+		runtimeRegistry.assertAccepting();
+		if (!createConversationModule(database).exists(input.conversationId)) {
+			throw new ConversationNotFoundError(input.conversationId);
 		}
-	}
-
-	/**
-	 * ==[HUMAN APPROVED]== Acquires the connection one detached Generation works on. Its lifetime
-	 * outlives the call that starts it, so it cannot use the scoped helper:
-	 * the caller releases it when terminal work settles. A configured
-	 * connection is never closed here, and releasing twice is a no-op.
-	 */
-	private acquireDatabase(): AcquiredDatabase {
-		if (this.configuredDatabase !== undefined) {
-			return { database: this.configuredDatabase, release: () => undefined };
-		}
-		const database = openDatabase();
-		let released = false;
-		return {
+		const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
+		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
+		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
+		let runtime: GenerationRuntime | undefined;
+		const started = input.start({
 			database,
-			release: () => {
-				if (released) return;
-				released = true;
-				database.close();
+			modelClient: transport.modelClient,
+			connection: transport.connection,
+			onBeforeTerminal: () => {
+				if (runtime?.isTerminal) throw new ModelClientGenerationError("cancelled", "Generation has already stopped.");
+				runtime?.flushCheckpoint();
 			},
-		};
+			callbacks: {
+				onAccepted: (accepted, control) => {
+					runtime = runtimeRegistry.start({
+						generationId: accepted.generationId,
+						conversationId: input.conversationId,
+						messageId: accepted.messageId,
+						variantId: accepted.provisionalVariantId,
+						startedAt: new Date().toISOString(),
+						onStop: control.stop,
+						onRetentionExpired: retainedInspectionCleanup(
+							this.database,
+							accepted.generationId,
+						),
+						onCheckpoint: (output) => checkpointConversationGeneration(database, {
+								conversationId: input.conversationId,
+								generationId: accepted.generationId,
+								...output,
+							}),
+					});
+				},
+				onEvent: (event) => { runtime?.publish(event); },
+			},
+		});
+		runtimeRegistry.track(started.result);
+		const accepted = await started.accepted;
+		if (runtime === undefined) throw new Error("Generation runtime could not be started.");
+		const activeRuntime = runtime;
+		const result = started.result
+			.then((value) => {
+				activeRuntime.complete();
+				return value;
+			})
+			.catch((error) => {
+				try {
+					activeRuntime.fail(
+						error instanceof Error ? error.message : "Generation failed.",
+						error instanceof ModelClientGenerationError ? error.kind : "transport",
+						error instanceof ModelClientGenerationError ? error.responseBody : undefined,
+					);
+				} catch {
+					// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
+				}
+				throw error;
+			});
+		// ==[HUMAN APPROVED]== The HTTP adapter intentionally returns after acceptance. Consume the
+		// detached rejection here while exposing the terminal Promise to tests
+		// and non-HTTP callers that want to await it.
+		runtimeRegistry.track(result);
+		return { accepted, runtime: activeRuntime, result };
 	}
 
 	private resolveTransport(database: Database, profileId: number | null): ResolvedGenerationTransport {
@@ -545,14 +493,13 @@ export class GenerationCoordinator {
 }
 
 export function createGenerationCoordinator(
-	database: Database | undefined,
+	database: Database,
 	options: GenerationCoordinatorOptions = {},
 ): GenerationCoordinator {
 	return new GenerationCoordinator(database, options);
 }
 
 const retainedInspectionCleanup = (
-	configuredDatabase: Database | undefined,
+	database: Database,
 	generationId: number,
-) => () => withDatabase(configuredDatabase, (database) =>
-	removeRetainedGenerationInspection(database, generationId));
+) => () => removeRetainedGenerationInspection(database, generationId);

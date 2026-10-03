@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Download, Plus, Search, Settings2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,9 +73,24 @@ type LeaveIntent =
 type LoreAttachment = LoreAttachmentState["attachments"][number];
 
 export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled = false }: { conversationId: number; cast: readonly { id: number; duplicateLabel: string }[]; onClose: () => void; mutationsDisabled?: boolean }) {
-	const [books, setBooks] = useState<Awaited<ReturnType<typeof listLorebooks>>>([]);
-	const [booksLoading, setBooksLoading] = useState(true);
-	const [book, setBook] = useState<Lorebook | null>(null);
+	const client = useQueryClient();
+	const library = useQuery({ queryKey: ["lorebooks"], queryFn: ({ signal }) => listLorebooks(signal) });
+	const books = library.data ?? [];
+	const booksLoading = library.isPending;
+	const [bookId, setBookId] = useState<number | null>(null);
+	const detail = useQuery({ queryKey: ["lorebook", bookId], queryFn: ({ signal }) => bookId === null ? null : getLorebook(bookId, signal), enabled: bookId !== null, staleTime: Infinity });
+	const book = detail.data ?? null;
+	const setBook = (next: Lorebook | null) => {
+		if (next !== null) {
+			void client.cancelQueries({ queryKey: ["lorebook", next.id] });
+			client.setQueryData(["lorebook", next.id], next);
+		}
+		setBookId(next?.id ?? null);
+	};
+	const attachments = useQuery({ queryKey: ["lorebook-attachments", conversationId], queryFn: ({ signal }) => getLorebookAttachmentState(conversationId, signal) });
+	const attachmentState = attachments.data ?? null;
+	const preset = useQuery({ queryKey: ["conversation-preset", conversationId], queryFn: ({ signal }) => loadConversationPromptPreset(conversationId, signal) });
+	const selectedPreset = preset.data ?? null;
 	const [entryId, setEntryId] = useState<number | null>(null);
 	const [entryDraft, setEntryDraft] = useState<LoreEntryFields>(blankEntry());
 	const [name, setName] = useState("");
@@ -86,9 +102,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 	const [testResult, setTestResult] = useState<LoreMatchTest | null>(null);
 	const [testPending, setTestPending] = useState(false);
 	const [testError, setTestError] = useState<string | null>(null);
-	const [attachmentState, setAttachmentState] = useState<LoreAttachmentState | null>(null);
 	const [attachmentPending, setAttachmentPending] = useState(false);
-	const [selectedPreset, setSelectedPreset] = useState<Awaited<ReturnType<typeof loadConversationPromptPreset>>>(null);
 	const [leaveIntent, setLeaveIntent] = useState<LeaveIntent | null>(null);
 	const [bookDeleteConfirmation, setBookDeleteConfirmation] = useState<{ name: string; detail: string } | null>(null);
 	const [entryDeleteConfirmation, setEntryDeleteConfirmation] = useState(false);
@@ -96,7 +110,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 	const nameInput = useRef<HTMLInputElement>(null);
 	const selectNameOnOpen = useRef(false);
 	const viewTokenRef = useRef(0);
-	const libraryRequestRef = useRef(0);
+	const importRequestRef = useRef(0);
 	const matchRequestRef = useRef(0);
 	const attachmentRequestRef = useRef(0);
 	const presetRequestRef = useRef(0);
@@ -106,7 +120,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 	const entryDraftVersionRef = useRef(0);
 	const currentBookIdRef = useRef<number | null>(null);
 	const currentConversationIdRef = useRef(conversationId);
-	currentBookIdRef.current = book?.id ?? null;
+	currentBookIdRef.current = bookId;
 	currentConversationIdRef.current = conversationId;
 
 	const invalidateView = () => {
@@ -117,42 +131,19 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 	const isCurrentView = (token: number, bookId: number | null): boolean =>
 		token === viewTokenRef.current && currentBookIdRef.current === bookId;
 
-	const refresh = useCallback(async () => {
-		const request = ++libraryRequestRef.current;
-		setBooksLoading(true);
-		try {
-			const loaded = await listLorebooks();
-			if (request !== libraryRequestRef.current) return;
-			setBooks(loaded);
-			if (book !== null) {
-				const current = await getLorebook(book.id);
-				if (request === libraryRequestRef.current && current !== null && currentBookIdRef.current === book.id) {
-					setBook(current);
-					setName(current.name);
-					setDescription(current.description);
-				}
-			}
-		} catch { if (request === libraryRequestRef.current) setNotice("The Lorebook library could not be loaded."); }
-		finally { if (request === libraryRequestRef.current) setBooksLoading(false); }
-	}, [book]);
-
-	// ==[HUMAN APPROVED]== The first load is intentionally initial-only; mutations update local state.
-	useEffect(() => { void refresh(); }, []);
 	useEffect(() => {
 		invalidateView();
 		matchRequestRef.current += 1;
+		attachmentRequestRef.current += 1;
+		presetRequestRef.current += 1;
 		setTestResult(null);
 		setTestError(null);
-		const attachmentRequest = ++attachmentRequestRef.current;
-		const presetRequest = ++presetRequestRef.current;
 		setAttachmentPending(false);
-		void getLorebookAttachmentState(conversationId).then((state) => {
-			if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setAttachmentState(state);
-		}).catch(() => { if (attachmentRequest === attachmentRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("Lorebook attachment settings could not be loaded."); });
-		void loadConversationPromptPreset(conversationId).then((preset) => {
-			if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setSelectedPreset(preset);
-		}).catch(() => { if (presetRequest === presetRequestRef.current && currentConversationIdRef.current === conversationId) setNotice("The selected Prompt Preset could not be loaded."); });
 	}, [conversationId]);
+	useEffect(() => {
+		const error = library.error ?? detail.error ?? attachments.error ?? preset.error;
+		if (error) setNotice(error.message);
+	}, [library.error, detail.error, attachments.error, preset.error]);
 
 	const selectFirstEntry = (target: Lorebook) => {
 		const first = target.entries[0];
@@ -167,7 +158,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		setTestPending(false);
 		setPending(true);
 		try {
-			const loaded = await getLorebook(id);
+			const loaded = await client.fetchQuery({ queryKey: ["lorebook", id], queryFn: ({ signal }) => getLorebook(id, signal) });
 			if (token !== viewTokenRef.current) return;
 			if (loaded === null) { setNotice("That Lorebook no longer exists."); return; }
 			setBook(loaded); setName(loaded.name); setDescription(loaded.description); selectFirstEntry(loaded); entryDraftVersionRef.current += 1; setNotice(null);
@@ -216,10 +207,15 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		if (intent !== null) performLeave(intent);
 	};
 
-	const upsertBookSummary = (saved: Lorebook) => setBooks((items) => {
-		const summary = { id: saved.id, name: saved.name, description: saved.description, revision: saved.revision, entryCount: saved.entries.length };
-		return items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? summary : item) : [...items, summary];
-	});
+	const refreshLibrary = () => {
+		void client.cancelQueries({ queryKey: ["lorebooks"] });
+		void client.invalidateQueries({ queryKey: ["lorebooks"] });
+	};
+	const refreshBookCaches = (saved: Lorebook) => {
+		void client.cancelQueries({ queryKey: ["lorebook", saved.id] });
+		client.setQueryData(["lorebook", saved.id], saved);
+		refreshLibrary();
+	};
 
 	const saveDirty = async (): Promise<boolean> => {
 		if (book === null) return true;
@@ -239,7 +235,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				}
 				return false;
 			}
-			upsertBookSummary(result.book);
+			refreshBookCaches(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			current = result.book;
 			setBook(current);
@@ -257,7 +253,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				if (result.status === "conflict") setBook(result.currentBook);
 				return false;
 			}
-			upsertBookSummary(result.book);
+			refreshBookCaches(result.book);
 			if (!isCurrentView(token, initialBookId)) return false;
 			setBook(result.book);
 			if (entryId === null && entryDraftVersionRef.current === initialEntryDraftVersion) {
@@ -295,9 +291,11 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
-			if (result.status === "applied") upsertBookSummary(result.book);
+			if (result.status === "applied") refreshBookCaches(result.book);
 			else if (result.status === "deleted") {
-				setBooks((items) => items.filter((item) => item.id !== result.bookId));
+				refreshLibrary();
+				client.removeQueries({ queryKey: ["lorebook", result.bookId] });
+				void client.invalidateQueries({ queryKey: ["lorebook-attachments"] });
 			}
 			if (!isCurrentView(token, commandBookId)) return;
 			if (result.status === "applied") {
@@ -367,10 +365,10 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		setAttachmentPending(true);
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
-			if (result.status === "conflict" && "conversationId" in result.currentState && isCurrentRequest()) setAttachmentState(result.currentState);
+			await client.cancelQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
+			if (result.status === "conflict" && "conversationId" in result.currentState) client.setQueryData(["lorebook-attachments", requestConversationId], result.currentState);
 			if (result.status !== "applied") throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
-			const state = await getLorebookAttachmentState(requestConversationId);
-			if (isCurrentRequest()) setAttachmentState(state);
+			await client.invalidateQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
 			return true;
 		} catch (error) { if (isCurrentRequest()) setNotice(error instanceof Error ? error.message : "Lorebook attachment settings could not be saved."); return false; }
 		finally { if (isCurrentRequest()) setAttachmentPending(false); }
@@ -388,9 +386,8 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 				: await setPromptPresetBlockEnabled(selectedPreset.id, lore.id, true);
 			if (outcome.status !== "applied") throw new Error("The Prompt Preset rejected the Lore block change.");
 			if (!isCurrentRequest()) return;
-			const preset = await loadConversationPromptPreset(requestConversationId);
+			await client.invalidateQueries({ queryKey: ["conversation-preset", requestConversationId] });
 			if (!isCurrentRequest()) return;
-			setSelectedPreset(preset);
 			setNotice(lore === undefined ? "Lore block added to the selected Prompt Preset." : "Lore block enabled in the selected Prompt Preset.");
 		} catch (error) {
 			if (isCurrentRequest()) setNotice(error instanceof Error ? error.message : "The Lore block could not be updated.");
@@ -423,21 +420,21 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 	const updateList = (key: EntryListKey, value: string) => { entryDraftVersionRef.current += 1; setEntryDraft((draft) => ({ ...draft, [key]: splitList(value) })); };
 	const importFile = async (file: File) => {
 		const token = viewTokenRef.current;
-		const request = ++libraryRequestRef.current;
+		const request = ++importRequestRef.current;
 		setPending(true);
 		try {
 			const parsed: unknown = JSON.parse(await file.text());
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
-			if (result.status === "applied") upsertBookSummary(result.book);
-			if (request !== libraryRequestRef.current || token !== viewTokenRef.current) return;
+			if (result.status === "applied") refreshBookCaches(result.book);
+			if (request !== importRequestRef.current || token !== viewTokenRef.current) return;
 			if (result.status === "applied") {
 				invalidateView();
 				setBook(result.book); setName(result.book.name); setDescription(result.book.description); selectFirstEntry(result.book); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
 			}
 			else setNotice(result.status === "invalid" ? result.reason : "The Lorebook import failed.");
-		} catch { if (request === libraryRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === libraryRequestRef.current && token === viewTokenRef.current) setPending(false); }
+		} catch { if (request === importRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === importRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 
 	const loreBlockMissing = selectedPreset !== null && !hasEnabledLoreSlot(selectedPreset.slots);

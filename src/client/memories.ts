@@ -8,8 +8,8 @@ export async function mergeMemoryLabels(conversationId: number, command: MemoryL
 	return error === null ? data : domainOutcome(error.value, "Labels could not be merged.");
 }
 
-export async function loadConversationMemories(conversationId: number): Promise<ConversationMemories> {
-	const { data, error } = await conversation(conversationId).memories.get();
+export async function loadConversationMemories(conversationId: number, signal?: AbortSignal): Promise<ConversationMemories> {
+	const { data, error } = await conversation(conversationId).memories.get({ fetch: { signal } });
 	if (error || data === undefined) throw new Error("Memories could not be loaded.");
 	return data;
 }
@@ -20,14 +20,14 @@ export async function loadMemoryTrace(conversationId: number, variantId: number)
 	return data.steps;
 }
 
-export async function loadMemoryCatchup(conversationId: number): Promise<MemoryCatchup | null> {
-	const { data, error } = await conversation(conversationId).memories.catchup.get();
+export async function loadMemoryCatchup(conversationId: number, signal?: AbortSignal): Promise<MemoryCatchup | null> {
+	const { data, error } = await conversation(conversationId).memories.catchup.get({ fetch: { signal } });
 	if (error || data === undefined) throw new Error("History catch-up status could not be loaded.");
 	return data.run;
 }
 
-export async function loadMemoryAllowance(conversationId: number): Promise<ConversationMemoryAllowance> {
-	const { data, error } = await conversation(conversationId)["memory-allowance"].get();
+export async function loadMemoryAllowance(conversationId: number, signal?: AbortSignal): Promise<ConversationMemoryAllowance> {
+	const { data, error } = await conversation(conversationId)["memory-allowance"].get({ fetch: { signal } });
 	if (error || data === undefined) throw new Error("Memory Allowance could not be loaded.");
 	return data;
 }

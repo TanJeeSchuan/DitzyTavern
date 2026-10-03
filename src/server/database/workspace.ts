@@ -1,20 +1,16 @@
 import type { Database } from "bun:sqlite";
-import { withCharacterLibrary } from "../character-library";
+import { createCharacterLibraryModule } from "../character-library";
 import { listChatSummaries } from "./chat";
-import { withDatabase } from "./database";
 
-export const getWorkspace = (database?: Database) =>
-	withDatabase(database, (connection) => {
-		const chats = listChatSummaries(connection);
+export const getWorkspace = (database: Database) => {
+	const chats = listChatSummaries(database);
 
-		return {
-			activeChatId: chats[0]?.id ?? null,
-			chats,
-			characters: withCharacterLibrary(connection, (library) =>
-				library.list().map((character) => ({
-					id: character.id,
-					name: character.name,
-				})),
-			),
-		};
-	});
+	return {
+		activeChatId: chats[0]?.id ?? null,
+		chats,
+		characters: createCharacterLibraryModule(database).list().map((character) => ({
+				id: character.id,
+				name: character.name,
+			})),
+	};
+};

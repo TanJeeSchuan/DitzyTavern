@@ -18,7 +18,6 @@ describe("model selection state", () => {
 		expect(commitModelId("  local/model  ")).toBe("local/model");
 		expect(commitModelId("   ")).toBeNull();
 		expect(togglePinnedModel(["first", "second"], "second")).toEqual(["first"]);
-		expect(togglePinnedModel(["first", "second"], "second")).toEqual(["first"]);
 		expect(togglePinnedModel(["first"], "second")).toEqual(["first", "second"]);
 		expect(togglePinnedModel(["second"], "first")).toEqual(["second", "first"]);
 	});

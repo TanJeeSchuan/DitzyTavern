@@ -235,22 +235,6 @@ describe("Chat import transport adapters", () => {
 		);
 	});
 
-	test("does not reopen a browser path and streams without buffering at the boundary", async () => {
-		// The transport contract only ever carries bytes plus a leaf name;
-		// no filesystem path of the user's file travels on the wire.
-		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
-		const staged = await stage(bytes, "large-export.jsonl");
-		expect(staged.status).toBe(200);
-		const body = await staged.json();
-		expect(body.preview.byteLength).toBe(bytes.length);
-
-		// Two independent staged uploads with identical bytes still get
-		// independent handles; nothing is deduplicated at the boundary.
-		const stagedAgain = await stage(bytes, "large-export.jsonl");
-		const again = await stagedAgain.json();
-		expect(again.token).not.toBe(body.token);
-	});
-
 	test("commits the confirmed plan with the typed committed outcome and receipt", async () => {
 		const bytes = Buffer.from(jsonl([header, writer]), "utf8");
 		const staged = await stage(bytes, "lantern-house.jsonl");

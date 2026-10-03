@@ -100,7 +100,7 @@ describe("Memory recall in Generation preparation", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

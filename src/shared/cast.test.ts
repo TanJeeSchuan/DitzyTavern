@@ -33,8 +33,6 @@ describe("resolveControlChange", () => {
 	test("reports a swap when the assigned Participant is the opposite seat's occupant", () => {
 		expect(resolveControlChange(control(1, 2), "human", 2)).toBe("swap");
 		expect(resolveControlChange(control(1, 2), "model", 1)).toBe("swap");
-		// Two-person Casts can always swap.
-		expect(resolveControlChange(control(1, 2), "model", 1)).toBe("swap");
 	});
 
 	test("reports a replace when an unseated Participant takes over a seat", () => {

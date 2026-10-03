@@ -403,7 +403,7 @@ describe("Conversation creation", () => {
 				position: 1,
 				name: "Clash",
 			}).run(),
-		).toThrow();
+		).toThrow("UNIQUE constraint failed");
 
 		// Opening order is unique per Participant; the model seat owns the
 		// seeded openings in this fixture.
@@ -413,7 +413,7 @@ describe("Conversation creation", () => {
 				position: 1,
 				content: "Clash",
 			}).run(),
-		).toThrow();
+		).toThrow("UNIQUE constraint failed");
 
 		// Each Control seat exists once; one Participant cannot hold both.
 		expect(() =>
@@ -421,19 +421,19 @@ describe("Conversation creation", () => {
 				.insert(conversationControlTable)
 				.values({ conversation_id: snapshot.id, seat: "human", participant_id: modelId })
 				.run(),
-		).toThrow();
+		).toThrow("UNIQUE constraint failed");
 		expect(() =>
 			db
 				.insert(conversationControlTable)
 				.values({ conversation_id: snapshot.id, seat: "model", participant_id: humanId })
 				.run(),
-		).toThrow();
+		).toThrow("UNIQUE constraint failed");
 		expect(() =>
 			db
 				.insert(conversationControlTable)
 				.values({ conversation_id: snapshot.id, seat: "audience", participant_id: modelId })
 				.run(),
-		).toThrow();
+		).toThrow("CHECK constraint failed");
 
 		// Foreign keys are enforced on provenance and authorship references.
 		expect(() =>
@@ -446,22 +446,8 @@ describe("Conversation creation", () => {
 					source_character_id: 987654,
 				})
 				.run(),
-		).toThrow();
+		).toThrow("FOREIGN KEY constraint failed");
 
-		expect(() =>
-			db
-				.insert(messageTable)
-				.values({
-					conversation_id: snapshot.id,
-					position: 1,
-					timestamp: "2026-08-21T09:00:00Z",
-					author_participant_id: 987654,
-					author_name: "Ghost",
-				})
-				.run(),
-		).toThrow();
-
-		// The historical Control pair columns are set together or not at all.
 		expect(() =>
 			db
 				.insert(messageTable)
@@ -469,10 +455,24 @@ describe("Conversation creation", () => {
 					conversation_id: snapshot.id,
 					position: 2,
 					timestamp: "2026-08-21T09:00:00Z",
+					author_participant_id: 987654,
+					author_name: "Ghost",
+				})
+				.run(),
+		).toThrow("FOREIGN KEY constraint failed");
+
+		// The historical Control pair columns are set together or not at all.
+		expect(() =>
+			db
+				.insert(messageTable)
+				.values({
+					conversation_id: snapshot.id,
+					position: 3,
+					timestamp: "2026-08-21T09:00:00Z",
 					context_human_participant_id: humanId,
 				})
 				.run(),
-		).toThrow();
+		).toThrow("CHECK constraint failed");
 
 		expect(countRows(characterTable)).toBe(0);
 		expect(countRows(characterPromptTable)).toBe(0);

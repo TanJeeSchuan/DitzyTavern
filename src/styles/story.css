@@ -1,3 +1,16 @@
+@theme {
+	--animate-wipe-in: wipe-in linear backwards;
+
+	@keyframes wipe-in {
+		from {
+			mask-position: 100% 0;
+		}
+		to {
+			mask-position: 0 0;
+		}
+	}
+}
+
 .story-stage {
 	display: grid;
 	grid-column: 3;
@@ -224,6 +237,7 @@
 .generation-sphere {
 	display: inline-flex;
 	flex: 0 0 auto;
+	align-self: center;
 	align-items: center;
 	gap: 0.32rem;
 	color: var(--text-muted);
@@ -236,10 +250,7 @@
 	overflow: visible;
 	width: 1.75rem;
 	height: 1.75rem;
-}
-
-.prose-block + .generation-sphere {
-	margin-top: 0.8rem;
+	margin-block: -0.5rem;
 }
 
 .message-meta {
@@ -851,11 +862,7 @@
 }
 
 .generation-controls {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: 0.55rem;
-	margin: 0.5rem 0 2.4rem;
+	display: contents;
 }
 
 .generation-controls .secondary-button {

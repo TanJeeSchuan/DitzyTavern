@@ -69,28 +69,11 @@ export const canonicalGenerationSettings = Type.Object({
 // API Format. Keep this beside the canonical declaration so the preview
 // response validates the same shape the Generation Plan produces.
 export const effectiveGenerationSettings = Type.Object({
-	modelId: Type.String({ pattern: "\\S" }),
-	temperature: samplingValue,
-	topP: samplingValue,
-	frequencyPenalty: samplingValue,
-	presencePenalty: samplingValue,
-	contextLimit: Type.Integer({ minimum: 1 }),
-	responseBudget: Type.Integer({ minimum: 1 }),
-	safetyAllowance: Type.Integer({ minimum: 0 }),
-	siblingGenerationLimit: Type.Union([Type.Null(), Type.Integer({ minimum: 1 })]),
-	continuationStrategy: Type.Union([
-		Type.Null(),
-		Type.Literal("instruction"),
-		Type.Literal("assistant-prefill"),
-	]),
-	continuationInstruction: Type.Union([Type.Null(), Type.String({ pattern: "\\S" })]),
-	continuationPrefillSuffix: Type.Union([
-		Type.Null(),
-		Type.Literal(""),
-		Type.Literal(" "),
-		Type.Literal("\n"),
-		Type.Literal("\n\n"),
-	]),
+	...Type.Omit(canonicalGenerationSettings, ["siblingGenerationLimit", "continuationStrategy", "continuationInstruction", "continuationPrefillSuffix", "requestOverrides"]).properties,
+	siblingGenerationLimit: Type.Union([Type.Null(), canonicalGenerationSettings.properties.siblingGenerationLimit]),
+	continuationStrategy: Type.Union([Type.Null(), canonicalGenerationSettings.properties.continuationStrategy]),
+	continuationInstruction: Type.Union([Type.Null(), canonicalGenerationSettings.properties.continuationInstruction]),
+	continuationPrefillSuffix: Type.Union([Type.Null(), canonicalGenerationSettings.properties.continuationPrefillSuffix]),
 	requestOverrides: generationJsonObject,
 });
 

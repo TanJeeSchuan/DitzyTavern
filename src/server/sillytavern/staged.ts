@@ -36,7 +36,7 @@ import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../
 import { createCharacterLibraryModule } from "../character-library";
 import type { ParticipantDefinition } from "../conversation/types";
 import { createConversationModule } from "../conversation";
-import { withDatabase } from "../database/database";
+
 import { createImportedConversation } from "../workflows";
 import {
 	EXACT_SOURCE_ARTIFACT_KEY,
@@ -548,17 +548,4 @@ export function createChatImportModule(
 			rmSync(session.record.stagedPath, { force: true });
 		},
 	};
-}
-
-// ==[HUMAN APPROVED]== Runs one staged-import operation against a request-scoped module instance.
-// Instances share the process-level staging registry, so handles survive
-// across requests but never across a server restart.
-export function withChatImport<T>(
-	database: Database | undefined,
-	artifactId: string,
-	run: (chatImport: ChatImportModule) => T,
-): T {
-	return withDatabase(database, (connection) =>
-		run(createChatImportModule(connection, { artifactDirectory: artifactId })),
-	);
 }

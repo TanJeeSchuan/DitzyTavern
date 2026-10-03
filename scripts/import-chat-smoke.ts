@@ -309,6 +309,10 @@ const runImportScenario = async (
 		throw new Error(`${scenario.title}: resolved Author Stamp "Rulership" not rendered`);
 	}
 
+	const loadMore = page.getByRole("button", { name: "Load more Messages", exact: true });
+	await loadMore.click();
+	await page.getByText("Guidance 1: the lantern house waits.", { exact: true }).waitFor();
+
 	// The source-selected Swipe initialized the native selection: the swipe
 	// record shows "Second alternative, still saved" first (swipe_id 1).
 	// Once the active Variant changes, the message's text changes, so the
@@ -341,19 +345,6 @@ const runImportScenario = async (
 		.getByRole("button", { name: "Previous Swipe", exact: true })
 		.click();
 	await swipeMessage.getByText("2 of 3", { exact: true }).waitFor();
-
-	// 6. Pagination: the fixture exceeds one default history page, so the
-	//    story offers Load more Messages and appends the next page.
-	const loadMore = page.getByRole("button", {
-		name: "Load more Messages",
-		exact: true,
-	});
-	if (await loadMore.isVisible().catch(() => false)) {
-		await loadMore.click();
-		// Message 60 is the final record, only present after the next page
-		// appends; partial match because the paragraph carries the sentence.
-		await page.getByText("Rulership answers 60").waitFor();
-	}
 
 	// 7. Chat information conditionally exposes Import Details.
 	await page

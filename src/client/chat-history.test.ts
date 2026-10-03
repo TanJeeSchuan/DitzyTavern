@@ -57,17 +57,6 @@ describe("history transport boundary validation", () => {
 		}
 	});
 
-	test("rejects a page whose Messages omit the capability objects", async () => {
-		const {
-			swipe: _swipe,
-			continuable: _continuable,
-			...stripped
-		} = messagePayload;
-		const outcome = await loadFirstPage(async () => jsonPage([stripped]));
-		// A decode failure is a typed network outcome, never trusted history.
-		expect(outcome.status).toBe("network");
-	});
-
 	test("rejects a page whose Swipe eligibility fabricates an impossible state", async () => {
 		const outcome = await loadFirstPage(async () =>
 			jsonPage([

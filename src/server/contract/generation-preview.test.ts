@@ -76,7 +76,7 @@ describe("Prompt Plan inspection", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => {
 		setSystemTime();
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 
@@ -276,7 +276,7 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		const started = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{

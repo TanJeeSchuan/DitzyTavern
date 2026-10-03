@@ -1,0 +1,76 @@
+# Complexity reduction draft handoff
+
+## Branch quality fixes, 2026-10-02
+
+- Application shutdown owns one five-second deadline for HTTP handlers, Memory workers, and detached Generations. It starts their shutdown together and closes SQLite only after they finish. At the deadline it terminates the process, leaving connection release to process teardown so pending tasks cannot resume against a closed database.
+- Generation preparation forwards the database-scoped shutdown signal through semantic Lore matching and Memory recall. Suspended preparation rejects before acceptance when shutdown starts. The runtime drain no longer owns a separate timeout.
+- The model selector and Generation Settings draft share the same Query cache. The selection callback chain is removed. Successful model selection cancels stale reads and refetches authoritative settings, including when the cache is empty.
+- Lorebook writes update the detail cache and restart the authoritative library read. They never construct a complete library from a single book response, and saving does not wait for the list refresh.
+- Connection routes call their shared settings module directly; the obsolete callback wrapper and temporary projections are removed.
+- Focused runtime checks pass, including suspended preparation cancellation, joining providers before database close, and a subprocess with unfinished HTTP, worker, and generation work terminated by the single deadline. QueryObserver probes cover empty and populated settings caches, two subscribers, and creation during an initial library read. No UI tests were added.
+- Final validation passed: 1,170 application tests, 50 lint-rule tests, both typechecks, lint, contract audit, production build, and `git diff --check`. Existing comment warnings, nine contract-audit advisories, and the bundle-size warning remain.
+
+Status: RHF pilot reviewed; keep the scoped pilot with the refresh corrections below. Ready for PR review.
+Base: `bcc736d` (`docs: document client and server complexity reduction opportunities`).
+Source recommendations: `complexity-reduction.md` and `complexity-reduction-packages.md` in this directory.
+
+## Implemented
+
+- Require one shared server database across routes, memory work, generation runtimes, and imports. Remove implicit database ownership and obsolete wrappers. Drain detached generation work during coordinated shutdown before closing the database. Scope generation previews to their database.
+- Derive generation settings schemas, draft fields, and conversions from existing declarations; remove redundant identity projections.
+- Use `eventsource-parser` for client SSE framing and server activity monitoring. An unterminated final event is ignored, leaving the stream interrupted.
+- Introduce TanStack Query for memory polling and lorebook reads, with abort signals and mutation cache updates. Conversation history and stream reconciliation remain deferred.
+- Implement the React Hook Form pilot last, limited to `src/client/workspace/useGenerationSettingsDraft.ts`. Query owns authoritative settings; RHF owns draft values, dirty state, and resets. Keep lexical parsing and fresh-base save/conflict handling. No resolver package or XState adoption.
+
+## Validation completed
+
+- Full `bun run check` before the RHF pilot: 1,161 tests passed.
+- Additional focused checks: 32 tests passed; SSE/model-client suite: 57 tests passed.
+- Generation settings helper tests after RHF: 19 tests passed. These do not verify the hook's browser behavior.
+- Production build with RHF passed, with a large bundle warning (approximately 1.26 MB minified).
+- Lint after RHF passed with comment-approval warnings. Cast rationale comments were not falsely marked as human-approved.
+- Manual browser checks: lorebook create, rename, save, and close; memory panel coverage/data loading.
+- `git diff --check` passed before this handoff.
+
+## RHF review and corrections
+
+The user requested an agent review and summary, not a separate manual acceptance step. The review recommends keeping this pilot scoped and deferring broader form migration.
+
+- Clean forms now adopt fresh server settings when revisiting a cached chat. Actual unsaved edits still preserve the entire local draft; there is no field-level merge.
+- Failed background reads retain an editable draft when authoritative data is already cached. Initial reads without data still show a load error. Saving retries through the existing fresh-base read and revisioned command.
+- A successful save rebases defaults while preserving edits made during the request, including edits that return a field to its old saved value.
+- Focused validation after the corrections: 22 generation-settings tests passed; library-level probes passed for clean refresh, whole-draft preservation, in-flight reversion, and failed background refresh. Lint and `git diff --check` passed with the existing comment warnings. A follow-up scoped review found no issues.
+- The final corrections have not had another full check/build or browser pass on this machine because of its memory pressure. The Windows results below apply before these corrections. No UI tests were added.
+
+## Follow-up validation, 2026-10-01
+
+- Installed the locked dependencies with `bun install --frozen-lockfile`.
+- Removed the obsolete `unavailable` namespace branch in `GenerationSettingsEditors.tsx`, which caused TS2367 after the hook stopped returning that state.
+- Final `bun run check` exited successfully: 1,165 application tests and 50 lint-rule tests passed, including both typechecks. Comment-approval warnings and the contract audit's nine advisory matches remain.
+- `bun run build` passed. The approximately 1.26 MB minified JavaScript bundle still triggers the size warning.
+- Browser checks confirmed dirty state clears when an edit returns to its saved value; remote updates and revision conflicts preserve the entire local draft; retrying a conflicted save succeeds; edits made during a delayed save response remain dirty; discard restores the latest saved values; exponent text in a budget field blocks saving.
+- A delayed lorebook list read was aborted by a successful rename. Releasing its stale response did not overwrite the saved cache. Reopening the book fetched an external rename. Closing Memories aborted all three pending reads.
+- Reviewed shutdown ordering and database-scoped runtime ownership. The passing runtime tests cover checkpoint flushing, aborting active work, and waiting for detached work before releasing retained state.
+- Standards and scoped-spec reviews found no remaining issues. `git diff --check` passed.
+
+## Local environment notes
+
+The original machine's development database failed startup migration because `conversation_memory_settings` already exists. No existing user data was deleted or migrated. Its browser checks used an isolated seeded database under `/tmp/ditzy-complexity-preview`.
+
+The Windows follow-up used `%TEMP%/ditzy-complexity-review/data/ditzytavern.sqlite`, seeded from the existing seed module. Validation output is in `%TEMP%/ditzy-complexity-check.log`. These files are machine-local. The isolated API on port 3000 and Vite on port 5173 were left running for user review, with Generation Settings open in the collaborative preview. Browser request-delay instrumentation was removed.
+
+## PR #9 review fixes, 2026-10-02
+
+- Verified all nine findings against the original PR code. The workflow predicate accepted quoted commands, both lorebook IIFEs remained, draft resets were duplicated, and the four documentation findings described superseded ownership or omitted per-database behavior.
+- Reproduced the missing shutdown deadline with a failing runtime test before fixing it. Drain now races detached work against one five-second grace period, releases retained state, and cancels its timer. Late output cannot change a stopped runtime. Existing tests still cover waiting for work that settles normally.
+- Anchored all five comment commands at the beginning of the comment. A predicate probe rejected quoted `/review` and `/ask` text while accepting the supported commands. Pinned the review container to the registry-verified v2.11.0 linux/amd64 digest; the pinned action passes that image reference directly to Docker.
+- Removed both route wrappers and shared the generation form's authoritative reset sequence, retaining the distinct refresh and save preservation predicates. Updated the research document to distinguish implemented changes, scoped pilots, and deferred work; all local document links exist.
+- Validation passed: 1,166 application tests, both typechecks, lint, production build, and `git diff --check`. Comment-approval warnings, the contract audit's nine advisory matches, and the build's approximately 1.26 MB bundle warning remain. No UI tests were added.
+
+## PR #9 shutdown follow-up, 2026-10-02
+
+- Reproduced a provider settling after the five-second drain deadline and attempting a transaction after database close. The coordinator now rejects terminal writes when its runtime is already terminal.
+- Reproduced suspended prompt preparation accepting a generation after drain completed. The registry now rejects new starts during shutdown, and the workflow checks acceptance again after asynchronous preparation.
+- Added regression coverage through the real coordinator for both races. Existing Stop, Stop All, and successful-generation coverage still passes.
+- Corrected the remaining database-lifetime and activity-observer comments. Set the review job timeout to 45 minutes; recent successful reviews took about 32–34 minutes.
+- Validation passed: 1,168 application tests, 50 lint-rule tests, both typechecks, lint, the contract audit, production build, and `git diff --check`. The existing comment warnings, nine contract-audit advisories, and bundle-size warning remain. No UI tests were added.

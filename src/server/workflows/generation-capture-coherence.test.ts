@@ -22,6 +22,9 @@ import {
 	previewRecordFor,
 } from "./generation-preview";
 import type { PromptPlan } from "../prompt-compiler";
+import { createConnectionSettingsModule } from "../connection-settings";
+import { createGenerationCoordinator } from "../application/generation-coordinator";
+import { gracefullyShutdownGenerations } from "./generation-recovery";
 
 const prompt = {
 	systemInstruction: "",
@@ -83,9 +86,8 @@ const loreText = (plan: PromptPlan): string =>
 describe("generation capture coherence", () => {
 	let databases: Database[] = [];
 	afterEach(() => {
-		for (const database of databases) database.close();
+		for (const database of databases) { clearGenerationPreviewRegistry(database); database.close(); }
 		databases = [];
-		clearGenerationPreviewRegistry();
 	});
 
 	for (const kind of ["send", "continuation", "sibling"] as const) {
@@ -144,6 +146,45 @@ describe("generation capture coherence", () => {
 		});
 	}
 
+	test("shutdown cancels suspended preparation before acceptance", async () => {
+		const state = setup();
+		databases.push(state.database);
+		const masterKey = new Uint8Array(32).fill(5);
+		createConnectionSettingsModule(state.database, { masterKey }).createProfile({
+			expectedRevision: 0,
+			profile: {
+				displayName: "Shutdown", apiFormat: "chat-completions", requestUrl: "http://127.0.0.1:43127/v1/",
+				modelsUrl: "", modelBackend: "automatic", adapter: "deepseek", outputTokenRepresentation: "automatic",
+				timeoutMs: null, pinnedModels: [],
+			},
+			credential: "shutdown-test-secret",
+		});
+		const requested = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		let preparationSignal: AbortSignal | null | undefined;
+		const coordinator = createGenerationCoordinator(state.database, {
+			masterKey,
+			fetch: async (_input, init) => {
+				preparationSignal = init?.signal;
+				requested.resolve();
+				await release.promise;
+				return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
+			},
+		});
+		const snapshot = createConversationModule(state.database).getSnapshot(state.conversationId)!;
+		const pending = coordinator.startSendGeneration({
+			conversationId: state.conversationId, expectedRevision: snapshot.revision, content: "signal",
+		});
+		await requested.promise;
+		const rejected = pending.catch((error: Error) => error);
+		await gracefullyShutdownGenerations(state.database);
+		expect(preparationSignal?.aborted).toBe(true);
+		expect(await rejected).toBeInstanceOf(Error);
+		await expect(pending).rejects.toThrow("shutting down");
+		release.resolve();
+		expect(createConversationModule(state.database).getSnapshot(state.conversationId)?.messages).toEqual(snapshot.messages);
+	}, 3_000);
+
 	test("a slower preview cannot replace a newer preview for the same Conversation", async () => {
 		const state = setup();
 		databases.push(state.database);
@@ -166,6 +207,17 @@ describe("generation capture coherence", () => {
 		const newer = await createGenerationPreviewAsync(state.database, { ...input, kind: "send", content: "newer" });
 		releaseFirst();
 		await older;
-		expect(previewRecordFor(newer.id, state.conversationId, "send").id).toBe(newer.id);
+		expect(previewRecordFor(state.database, newer.id, state.conversationId, "send").id).toBe(newer.id);
 	});
+	test("independent databases retain previews for identical Conversation IDs", async () => {
+		const first = setup();
+		const second = setup();
+		databases.push(first.database, second.database);
+		expect(first.conversationId).toBe(second.conversationId);
+		const left = await createGenerationPreviewAsync(first.database, { conversationId: first.conversationId, kind: "send", content: "First application." });
+		const right = await createGenerationPreviewAsync(second.database, { conversationId: second.conversationId, kind: "send", content: "Second application." });
+		expect(previewRecordFor(first.database, left.id, first.conversationId, "send").id).toBe(left.id);
+		expect(previewRecordFor(second.database, right.id, second.conversationId, "send").id).toBe(right.id);
+	});
+
 });

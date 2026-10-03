@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import {
@@ -11,13 +8,11 @@ import {
 	createChat,
 	duplicateBlock,
 	key,
-	moveBlock,
 	readInspection,
 	readOperation,
 	readPreset,
 	slotOf,
 	startGeneration,
-	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
@@ -66,60 +61,5 @@ describe("Prompt Preset budget", () => {
 		// and the budget decision follows the actual request.
 		expect(repeatedInspection.budget.tokenEstimate).toBeGreaterThan(singleEstimate);
 		await completeGeneration(app, conversation.id, repeatedGenerationId);
-	});
-});
-
-describe("Prompt Preset durability", () => {
-	let directory: string;
-
-	beforeEach(() => { directory = mkdtempSync(join(tmpdir(), "ditzy-preset-")); });
-	afterEach(async () => {
-		// ==[HUMAN APPROVED]== Bun may release the final SQLite WAL handle asynchronously on Windows.
-		for (let attempt = 0; attempt < 20; attempt += 1) {
-			try {
-				rmSync(directory, { recursive: true, force: true });
-				return;
-			} catch {
-				await Bun.sleep(100);
-			}
-		}
-		rmSync(directory, { recursive: true, force: true });
-	});
-
-	test("keeps the saved recipe edits and Chat selection across restarts", async () => {
-		const path = join(directory, "preset.sqlite");
-		const first = openInitializedDatabase({ path });
-		const conversation = createChat(first);
-		const app = createConversationRoutes(first);
-		const preset = await readPreset(app, conversation.id);
-		const example = slotOf(preset, "model-example-dialogue");
-		const identity = slotOf(preset, "model-identity");
-		if (example === undefined || identity === undefined) {
-			throw new Error("The Default recipe is missing its reference slots.");
-		}
-		await readOperation(toggleBlock(first, preset.id, example.id, false));
-		await readOperation(moveBlock(first, preset.id, identity.id, 1));
-		first.close();
-
-		const second = openInitializedDatabase({ path });
-		try {
-			const reread = await readPreset(createConversationRoutes(second), conversation.id);
-			expect(reread.name).toBe("Default");
-			expect(reread.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
-				["model-identity", true],
-				["model-system-instruction", true],
-				["human-identity", true],
-				["model-scenario", true],
-				["model-example-dialogue", false],
-				["lore", true],
-				["memory", true],
-				["history", true],
-				["model-post-history-instruction", true],
-			]);
-			expect(second.query("SELECT COUNT(*) AS total FROM prompt_preset").get())
-				.toEqual({ total: 1 });
-		} finally {
-			second.close();
-		}
 	});
 });

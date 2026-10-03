@@ -1,19 +1,21 @@
 import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
-import { loadConversationGenerationSettings, type ConversationSummary } from "./conversation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { loadConversationGenerationSettings, type ConversationGenerationSettings, type ConversationSummary } from "./conversation";
 import { commitConversationModel, MODEL_SELECTION_UNAVAILABLE_NOTICE } from "./model-selection-command";
 import { loadConnectionSettings, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { useAsyncEffect } from "./lib/use-async";
 import { ProfileModelPicker, type ProfileModelChoice } from "./ProfileModelPicker";
 
-export function ModelSelector({ conversation, disabled = false, disabledReason, onConversationChange, onSelectionChange }: {
+export function ModelSelector({ conversation, disabled = false, disabledReason, onConversationChange }: {
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	disabledReason?: string;
 	onConversationChange: (conversation: ConversationSummary) => void;
-	onSelectionChange: (connectionProfileId: number, modelId: string) => void;
 }) {
-	const [selected, setSelected] = useState<ProfileModelChoice | null>(null);
+	const client = useQueryClient();
+	const generation = useQuery({ queryKey: ["generation-settings", conversation.id], queryFn: ({ signal }) => loadConversationGenerationSettings(conversation.id, signal) });
+	const selected: ProfileModelChoice | null = generation.data === undefined ? null : { connectionProfileId: generation.data.connectionProfileId, modelId: generation.data.modelId };
 	const [settings, setSettings] = useState<ConnectionSettings | null>(null);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -21,15 +23,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 	const reasonId = useId();
 
 	useAsyncEffect((isCancelled) => {
-		void Promise.all([loadConversationGenerationSettings(conversation.id), loadConnectionSettings()])
-			.then(([generation, connections]) => {
-				if (isCancelled()) return;
-				setSelected({ connectionProfileId: generation.connectionProfileId, modelId: generation.modelId });
-				setSettings(connections);
-			})
-			.catch(() => {
-				if (!isCancelled()) setError("Model settings could not be loaded.");
-			});
+		void loadConnectionSettings().then((connections) => { if (!isCancelled()) setSettings(connections); }).catch(() => { if (!isCancelled()) setError("Model settings could not be loaded."); });
 	}, [conversation.id]);
 
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
@@ -45,8 +39,10 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 				modelId,
 				reconciliation: { adoptSnapshot: onConversationChange, showNotice: setError },
 				onCommitted: () => {
-					setSelected({ connectionProfileId: profile.id, modelId });
-					onSelectionChange(profile.id, modelId);
+					const queryKey = ["generation-settings", conversation.id];
+					void client.cancelQueries({ queryKey });
+					client.setQueryData<ConversationGenerationSettings>(queryKey, (current) => current && { ...current, connectionProfileId: profile.id, modelId });
+					void client.invalidateQueries({ queryKey });
 					setNotice(`Model set to ${profile.displayName} / ${modelId}.`);
 				},
 				onUnavailable: () => setError(MODEL_SELECTION_UNAVAILABLE_NOTICE),
@@ -68,7 +64,7 @@ export function ModelSelector({ conversation, disabled = false, disabledReason, 
 				</button>
 			</ProfileModelPicker>
 			{disabledReason && <small id={reasonId} className="model-selector-note">{disabledReason}</small>}
-			{error !== null && <small className="model-selector-note is-error" role="alert">{error}</small>}
+			{(error !== null || generation.isError) && <small className="model-selector-note is-error" role="alert">{error ?? "Model settings could not be loaded."}</small>}
 			{notice !== null && <span className="sr-only" role="status">{notice}</span>}
 		</div>
 	);

@@ -27,7 +27,7 @@ export { createMemorySettingsRoutes } from "./memory-settings";
 export { createTypesafeSettingsRoutes } from "./typesafe-settings";
 export { createMemoryRoutes } from "./memory";
 
-export const createContract = (database?: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory()) => new Elysia()
+export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory()) => new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
 	.use(createCharacterLibraryRoutes(database))
@@ -41,6 +41,4 @@ export const createContract = (database?: Database, options: ConversationRouteOp
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));
 
-export const contract = createContract();
-
-export type Contract = typeof contract;
+export type Contract = ReturnType<typeof createContract>;

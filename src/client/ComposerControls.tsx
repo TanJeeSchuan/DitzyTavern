@@ -21,7 +21,6 @@ interface ComposerControlSelectorsProps {
 	disabled?: boolean;
 	disabledReason?: string;
 	onConversationChange: (conversation: ConversationSummary) => void;
-	onModelSelectionChange: (connectionProfileId: number, modelId: string) => void;
 	onControlChange: (notice: string) => void;
 }
 
@@ -30,7 +29,6 @@ export function ComposerControlSelectors({
 	disabled = false,
 	disabledReason,
 	onConversationChange,
-	onModelSelectionChange,
 	onControlChange,
 }: ComposerControlSelectorsProps) {
 	const [pending, setPending] = useState(false);
@@ -121,7 +119,6 @@ export function ComposerControlSelectors({
 				disabled={disabled}
 				disabledReason={disabledReason}
 				onConversationChange={onConversationChange}
-				onSelectionChange={onModelSelectionChange}
 			/>
 			{seatSelect("model", "Responding as", <Sparkles aria-hidden="true" />, "replies")}
 			{notice !== null && <p className="composer-control-note is-error" role="alert">{notice}</p>}

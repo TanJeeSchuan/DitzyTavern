@@ -98,53 +98,41 @@ const buildPreviewCaptureAsync = async (
 	}
 };
 
-// ==[HUMAN APPROVED]== One process-local inspected-plan session per Conversation. Replacing a
-// preview abandons the previous plan immediately, so the store is bounded by
-// Conversations rather than inspection requests. The expiry is a leak guard
-// for abandoned Conversations; it is not part of fingerprint staleness.
-const previews = new Map<number, GenerationPreviewRecord>();
-// ==[HUMAN APPROVED]== A preview request reserves ownership before any semantic embedding work can suspend. The
-// completion of an older request may still be returned to its caller, but it must never replace
-// the inspected plan currently owned by this Conversation.
-const previewRequestVersions = new Map<number, number>();
 export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
-const GENERATION_PREVIEW_SWEEP_INTERVAL_MS = 60 * 1000;
+const stores = new WeakMap<Database, ReturnType<typeof createPreviewStore>>();
 
-const beginPreviewRequest = (conversationId: number): number => {
-	const version = (previewRequestVersions.get(conversationId) ?? 0) + 1;
-	previewRequestVersions.set(conversationId, version);
-	return version;
+const createPreviewStore = () => {
+	const previews = new Map<number, GenerationPreviewRecord>();
+	const versions = new Map<number, number>();
+	const sweep = () => {
+		for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
+	};
+	const timer = setInterval(sweep, 60_000);
+	timer.unref();
+	return {
+		previews,
+		versions,
+		sweep,
+		dispose: () => { clearInterval(timer); previews.clear(); versions.clear(); },
+	};
 };
 
-const ownsPreviewRequest = (conversationId: number, version: number): boolean =>
-	previewRequestVersions.get(conversationId) === version;
-
-export const sweepExpiredGenerationPreviews = (now: number = Date.now()): void => {
-	for (const [conversationId, preview] of previews) {
-		if (preview.expiresAt <= now) previews.delete(conversationId);
-	}
+const previewStore = (database: Database) => {
+	let store = stores.get(database);
+	if (store === undefined) { store = createPreviewStore(); stores.set(database, store); }
+	return store;
 };
 
-let previewSweepTimer: ReturnType<typeof setInterval> | undefined;
-const ensureScheduledPreviewSweep = (): void => {
-	if (previewSweepTimer !== undefined) return;
-	previewSweepTimer = setInterval(
-		sweepExpiredGenerationPreviews,
-		GENERATION_PREVIEW_SWEEP_INTERVAL_MS,
-	);
-	previewSweepTimer.unref();
+/** Dispose and forget this database's preview store; no-op if it never created one. */
+export const clearGenerationPreviewRegistry = (database: Database): void => {
+	stores.get(database)?.dispose();
+	stores.delete(database);
 };
 
-// ==[HUMAN APPROVED]== Simulates a server restart: inspected plans are process-local and therefore
-// cannot be resumed by a new process. The next send must refresh the plan.
-export const clearGenerationPreviewRegistry = (): void => {
-	previews.clear();
-	previewRequestVersions.clear();
-};
-
-const ensureRecord = (id: string, conversationId: number): GenerationPreviewRecord => {
-	sweepExpiredGenerationPreviews();
-	const record = previews.get(conversationId);
+const ensureRecord = (database: Database, id: string, conversationId: number): GenerationPreviewRecord => {
+	const store = previewStore(database);
+	store.sweep();
+	const record = store.previews.get(conversationId);
 	if (record === undefined || record.id !== id) {
 		throw new InvalidConversationCommandError(
 			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
@@ -159,11 +147,12 @@ const isPreviewRecordFor = <K extends GenerationPreviewKind>(
 ): record is GenerationPreviewRecordFor<K> => record.capture.kind === kind;
 
 export const previewRecordFor = <K extends GenerationPreviewKind>(
+	database: Database,
 	id: string,
 	conversationId: number,
 	kind: K,
 ): GenerationPreviewRecordFor<K> => {
-	const record = ensureRecord(id, conversationId);
+	const record = ensureRecord(database, id, conversationId);
 	if (!isPreviewRecordFor(record, kind)) {
 		throw new InvalidConversationCommandError("The Prompt Plan preview intent does not match this Generation.");
 	}
@@ -171,8 +160,10 @@ export const previewRecordFor = <K extends GenerationPreviewKind>(
 };
 
 export const consumeGenerationPreview = (
+	database: Database,
 	record: Pick<GenerationPreviewRecord, "id" | "conversationId">,
 ): void => {
+	const { previews } = previewStore(database);
 	const current = previews.get(record.conversationId);
 	if (current?.id !== record.id) {
 		throw new InvalidConversationCommandError(
@@ -206,9 +197,10 @@ export const createGenerationPreviewAsync = async (
 	database: Database,
 	input: GenerationPreviewRequest,
 ): Promise<GenerationPreviewRecord> => {
-	ensureScheduledPreviewSweep();
-	sweepExpiredGenerationPreviews();
-	const requestVersion = beginPreviewRequest(input.conversationId);
+	const store = previewStore(database);
+	store.sweep();
+	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
+	store.versions.set(input.conversationId, requestVersion);
 	const capture = await buildPreviewCaptureAsync(database, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
@@ -219,7 +211,7 @@ export const createGenerationPreviewAsync = async (
 		createdAt: now,
 		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
 	};
-	if (ownsPreviewRequest(record.conversationId, requestVersion)) previews.set(record.conversationId, record);
+	if (store.versions.get(record.conversationId) === requestVersion) store.previews.set(record.conversationId, record);
 	return record;
 };
 
@@ -316,7 +308,7 @@ export const captureSendGenerationPreview = (
 	},
 ): SendGenerationCapture => {
 	const { preview, content } = context;
-	ensureRecord(preview.record.id, context.conversationId);
+	ensureRecord(context.database, preview.record.id, context.conversationId);
 	if (content !== preview.record.capture.content) {
 		throw new InvalidConversationCommandError("The submitted Human text changed. Refresh the Prompt Plan before sending.");
 	}
@@ -331,7 +323,7 @@ export const captureContinuationGenerationPreview = (
 	},
 ): ContinuationGenerationCapture => {
 	const { preview } = context;
-	ensureRecord(preview.record.id, context.conversationId);
+	ensureRecord(context.database, preview.record.id, context.conversationId);
 	assertPreviewCurrent(context, preview.record, { kind: "continuation" });
 	const recorded = preview.record.capture.capture;
 	const assistantPrefill = recorded.assistantPrefill === undefined
@@ -356,7 +348,7 @@ export const captureSiblingGenerationPreview = (
 	},
 ): CapturedGeneration => {
 	const { preview, messageId } = context;
-	ensureRecord(preview.record.id, context.conversationId);
+	ensureRecord(context.database, preview.record.id, context.conversationId);
 	if (messageId !== preview.record.capture.messageId) {
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}

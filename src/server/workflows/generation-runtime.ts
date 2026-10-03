@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { ModelClientGenerationError } from "../model-client";
 import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
@@ -103,6 +104,8 @@ export class GenerationRuntimeRegistry {
 	private readonly now: () => number;
 	private readonly schedule: (callback: () => void, delayMs: number) => GenerationRuntimeScheduleHandle;
 	private readonly cancel: (handle: GenerationRuntimeScheduleHandle) => void;
+	private readonly pending = new Set<Promise<unknown>>();
+	private readonly shutdown = new AbortController();
 	private cleanupHandle: GenerationRuntimeScheduleHandle | undefined;
 
 	constructor(scheduler: GenerationRuntimeScheduler = {}) {
@@ -115,7 +118,20 @@ export class GenerationRuntimeRegistry {
 		this.cancel = scheduler.cancel ?? ((handle) => handle.cancel());
 	}
 
+	assertAccepting(): void {
+		this.shutdownSignal.throwIfAborted();
+	}
+
+	get shutdownSignal(): AbortSignal {
+		return this.shutdown.signal;
+	}
+
+	beginShutdown(): void {
+		this.shutdown.abort(new ModelClientGenerationError("cancelled", "Generation runtime is shutting down."));
+	}
+
 	start(input: StartGenerationRuntimeInput): GenerationRuntime {
+		this.assertAccepting();
 		this.cleanup();
 		const existing = this.runtimes.get(input.generationId);
 		if (existing !== undefined) {
@@ -126,6 +142,23 @@ export class GenerationRuntimeRegistry {
 		const runtime = new GenerationRuntime(input, () => this.scheduleCleanup());
 		this.runtimes.set(input.generationId, runtime);
 		return runtime;
+	}
+
+	track<T>(task: Promise<T>): Promise<T> {
+		this.pending.add(task);
+		void task.then(() => this.pending.delete(task), () => this.pending.delete(task));
+		return task;
+	}
+
+	/** Join detached work before releasing replay state. The application owns the shutdown deadline. */
+	async drain(): Promise<void> {
+		this.beginShutdown();
+		this.stopAll();
+		while (this.pending.size > 0) await Promise.allSettled(this.pending);
+		if (this.cleanupHandle !== undefined) this.cancel(this.cleanupHandle);
+		this.cleanupHandle = undefined;
+		for (const runtime of this.runtimes.values()) { runtime.markStopped(); runtime.expireRetention(); }
+		this.runtimes.clear();
 	}
 
 	get(generationId: number): GenerationRuntime | undefined {
@@ -165,6 +198,7 @@ export class GenerationRuntimeRegistry {
 			this.cancel(this.cleanupHandle);
 			this.cleanupHandle = undefined;
 		}
+		if (this.shutdownSignal.aborted) return;
 		let nextExpiry: number | undefined;
 		for (const runtime of this.runtimes.values()) {
 			if (runtime.terminalTime === null) continue;
@@ -446,24 +480,16 @@ export class GenerationRuntime {
 }
 
 const registries = new WeakMap<Database, GenerationRuntimeRegistry>();
-const defaultRegistry = new GenerationRuntimeRegistry();
+
 
 /**
  * ==[HUMAN APPROVED]== Resolve the process-owned runtime registry for one database scope. HTTP
- * callers without an injected database use the process default and therefore
- * do not need to open a SQLite connection just to select a registry.
+ * callers and background work share the application database.
  */
-export function generationRuntimeFor(database: Database | undefined): GenerationRuntimeRegistry {
-	if (database === undefined) return defaultRegistry;
+export function generationRuntimeFor(database: Database): GenerationRuntimeRegistry {
 	const existing = registries.get(database);
 	if (existing !== undefined) return existing;
 	const created = new GenerationRuntimeRegistry();
 	registries.set(database, created);
 	return created;
-}
-
-// ==[HUMAN APPROVED]== The default registry is retained as the explicit process-lifecycle seam used
-// by startup recovery and graceful shutdown.
-export function defaultGenerationRuntime(): GenerationRuntimeRegistry {
-	return defaultRegistry;
 }

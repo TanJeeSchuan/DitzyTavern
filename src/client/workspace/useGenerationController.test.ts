@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { GenerationStreamResult, GenerationStreamSubscription } from "../conversation-stream";
 import { createGenerationSessionRunner } from "../generation-session-runner";
-import type {
-	GenerationSessionStoryEffect,
-	GenerationSessionTarget,
-} from "../generation-sessions";
+import type { GenerationSessionTarget } from "../generation-sessions";
 import type { StoryAction } from "../story";
 
 const originalFetch = globalThis.fetch;
@@ -20,21 +17,9 @@ afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-// Thin wiring tests: the mapping from session-machine story effects onto the
-// story reducer, and one pass of the runner plus that mapping against the
-// real story reducer. Full rendering stays with the browser smoke checks;
-// the wiring is the seam under test here.
-
-const contentEffect = (
-	text: string,
-): Extract<GenerationSessionStoryEffect, { kind: "story-content-delta" }> => ({
-	kind: "story-content-delta",
-	messageId: 10,
-	variantId: 100,
-	text,
-	generationId: 7,
-	eventId: 1,
-});
+// Thin wiring test: one pass of the runner plus the story-effect mapping
+// against the real story reducer. Full rendering stays with the browser
+// smoke checks; the wiring is the seam under test here.
 
 const observe = (generationIds: readonly number[]) =>
 	({
@@ -48,49 +33,6 @@ const observe = (generationIds: readonly number[]) =>
 	}) as const;
 
 describe("Generation session wiring", () => {
-	test("maps Content and Reasoning Content effects onto separate story actions", () => {
-		expect(generationSessionStoryAction(contentEffect("Hello"))).toEqual({
-			type: "generation-content-delta",
-			messageId: 10,
-			variantId: 100,
-			text: "Hello",
-			generationId: 7,
-			eventId: 1,
-		});
-		expect(generationSessionStoryAction({
-			kind: "story-state",
-			messageId: 10,
-			variantId: 100,
-			content: "Authoritative",
-			reasoning: "Authoritative plan",
-			generationId: 7,
-			eventId: 2,
-		})).toEqual({
-			type: "generation-state",
-			messageId: 10,
-			variantId: 100,
-			content: "Authoritative",
-			reasoning: "Authoritative plan",
-			generationId: 7,
-			eventId: 2,
-		});
-		expect(generationSessionStoryAction({
-			kind: "story-reasoning-delta",
-			messageId: 10,
-			variantId: 100,
-			text: "Plan",
-			generationId: 7,
-			eventId: 3,
-		})).toEqual({
-			type: "generation-reasoning-delta",
-			messageId: 10,
-			variantId: 100,
-			text: "Plan",
-			generationId: 7,
-			eventId: 3,
-		});
-	});
-
 	test("the runner, the mapping, and the story reducer compose into visible streaming text", () => {
 		const stream = oneShotStream();
 		const storyActions: StoryAction[] = [];

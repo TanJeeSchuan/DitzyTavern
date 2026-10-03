@@ -5,7 +5,7 @@ import {
 	InvalidCharacterCommandError,
 	InvalidCharacterDefinitionError,
 	StaleCharacterRevisionError,
-	withCharacterLibrary,
+	createCharacterLibraryModule,
 } from "../character-library";
 import {
 	characterCommandApplied,
@@ -26,22 +26,20 @@ export { toCharacterPayload };
 
 // ==[HUMAN APPROVED]== Thin typed adapters over the Character Library seam. The database is
 // injected so tests can mount the same routes against a temporary store;
-// production passes undefined to use the default connection per request.
-export const createCharacterLibraryRoutes = (database: Database | undefined) =>
+// production provides the server-owned database connection.
+export const createCharacterLibraryRoutes = (database: Database) =>
 	new Elysia()
 		.get(
 			"/api/characters",
 			() => ({
-				characters: withCharacterLibrary(database, (library) => library.list()),
+				characters: createCharacterLibraryModule(database).list(),
 			}),
 			{ response: characterListResponse },
 		)
 		.get(
 			"/api/characters/:id",
 			({ params, status }) => {
-				const character = withCharacterLibrary(database, (library) =>
-					library.get(params.id),
-				);
+				const character = createCharacterLibraryModule(database).get(params.id);
 				if (character === undefined) {
 					return status(404, { outcome: "not-found" as const });
 				}
@@ -59,9 +57,7 @@ export const createCharacterLibraryRoutes = (database: Database | undefined) =>
 			"/api/characters/commands",
 			({ body }) => {
 				try {
-					const outcome = withCharacterLibrary(database, (library) =>
-						library.execute(body),
-					);
+					const outcome = createCharacterLibraryModule(database).execute(body);
 					if ("deletionMode" in outcome) {
 						return {
 							outcome: "applied" as const,

@@ -185,8 +185,9 @@ export async function saveParticipantAsCharacter(input: {
 
 export async function loadConversationGenerationSettings(
 	conversationId: number,
+	signal?: AbortSignal,
 ): Promise<ConversationGenerationSettings> {
-	const { data, error } = await api.api.conversations({ id: conversationId })["generation-settings"].get();
+	const { data, error } = await api.api.conversations({ id: conversationId })["generation-settings"].get({ fetch: { signal } });
 	if (error || data === undefined) throw new Error("Unable to load Conversation Generation Settings.");
 	const settings = decodeWirePayload(conversationGenerationSettings, data);
 	if (settings === null) throw new Error("Unable to load Conversation Generation Settings.");
@@ -195,9 +196,10 @@ export async function loadConversationGenerationSettings(
 
 export async function loadConversationPromptPreset(
 	conversationId: number,
+	signal?: AbortSignal,
 ): Promise<ConversationPromptPreset | null> {
 	const { data, error } = await api.api
-		.conversations({ id: conversationId })["prompt-preset"].get();
+		.conversations({ id: conversationId })["prompt-preset"].get({ fetch: { signal } });
 	if (error !== null && error !== undefined) {
 		if (error.status === 404) return null;
 		throw new Error("Unable to load the selected Prompt Preset.");

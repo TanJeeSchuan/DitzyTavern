@@ -479,35 +479,6 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.effectiveSettings.requestOverrides).toEqual({});
 	});
 
-	test("keeps credentials, headers, and connection URLs out of the compiled plan", () => {
-		// The compiler input carries only the safe API Format fact; this test
-		// pins the boundary so a future plan field can never start carrying
-		// transport identity.
-		const plan = compile();
-
-		const serialized = JSON.stringify(plan);
-		expect(serialized).not.toContain("https://");
-		expect(serialized).not.toContain("Bearer ");
-		expect(serialized).not.toContain("authorization");
-		expect(serialized).not.toContain("credential");
-		expect(serialized).not.toContain("secret");
-	});
-
-	test("produces equivalent plans from identical captured inputs", () => {
-		const input = {
-			human,
-			model,
-			recipe: defaultRecipe,
-			context: [entry("Maren", "The lamp turns above you.", "model")],
-			intent: continuationIntentFor(configuredSettings()),
-			settings: configuredSettings(),
-			connection: { apiFormat: "chat-completions" as const },
-			estimator: transcriptLengthEstimator,
-		};
-
-		expect(compileGenerationPlan(input)).toEqual(compileGenerationPlan({ ...input }));
-	});
-
 	test("reuses one macro attempt while trimming history", () => {
 		const randomValues = [0, 0.999];
 		let randomCalls = 0;

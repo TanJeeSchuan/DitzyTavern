@@ -23,6 +23,7 @@ import { readSelectedHistoryFromConnection } from "../conversation/selected-hist
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
+import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createTypesafeSettingsModule } from "../typesafe";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
@@ -493,6 +494,8 @@ export function prepareGenerationInputsSnapshot(
 export async function prepareGenerationInputsAsync(
 	input: PrepareGenerationInputs,
 ): Promise<GenerationPreparation> {
+	const signal = generationRuntimeFor(input.database).shutdownSignal;
+	signal.throwIfAborted();
 	// ==[HUMAN APPROVED]== The snapshot is captured before semantic work can suspend, so books,
 	// attachments, history, settings, and participant data remain the exact values observed at
 	// generation start.
@@ -507,12 +510,15 @@ export async function prepareGenerationInputsAsync(
 			messages: preparation.participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: preparation.kind === "send" ? preparation.content : undefined,
 			fetch: input.preparationFetch,
+			signal,
 		}, preparation.lore.sources)
 		: Promise.resolve(preparation.lore);
-	const memoryPromise = evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch }).catch((error) => {
+	const memoryPromise = evaluateMemoryRecallSnapshot({ database: input.database, snapshot: memorySnapshot, fetch: input.preparationFetch, signal }).catch((error) => {
+		signal.throwIfAborted();
 		throw new InvalidConversationCommandError(`Memory recall failed: ${error instanceof Error ? error.message : "Retry preparation or disable Memory."}`);
 	});
 	const [lore, memory] = await Promise.all([lorePromise, memoryPromise]);
+	signal.throwIfAborted();
 	return { ...preparation, lore, memory, fingerprint: generationPreparationFingerprint(snapshot) };
 }
 
@@ -705,13 +711,6 @@ export const promptContextJson = (
 // ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
 // provider-neutral captures. These explicit projections keep provider and
 // class instances out of the Conversation domain boundary.
-// ==[HUMAN APPROVED]== Active Generation persistence stores the attempt's Effective Generation
-// Settings for inspection. The projection is compile-locked to the canonical
-// vocabulary: adding a canonical field fails typecheck until persistence
-// states what it stores — the completeness gap that previously let the
-// Safety allowance silently disappear from active inspection. The stored
-// values describe the attempt: an intent-inapplicable Continuation operand
-// is stored as null, never as the configured-but-unused value.
 export type PersistedGenerationSettings = {
 	readonly [K in GenerationSettingsField]: ConversationJsonValue;
 };
@@ -719,21 +718,7 @@ export type PersistedGenerationSettings = {
 export function generationSettingsJson(
 	effective: EffectiveGenerationSettings,
 ): PersistedGenerationSettings {
-	return {
-		modelId: effective.modelId,
-		siblingGenerationLimit: effective.siblingGenerationLimit,
-		temperature: effective.temperature,
-		topP: effective.topP,
-		frequencyPenalty: effective.frequencyPenalty,
-		presencePenalty: effective.presencePenalty,
-		contextLimit: effective.contextLimit,
-		responseBudget: effective.responseBudget,
-		safetyAllowance: effective.safetyAllowance,
-		continuationStrategy: effective.continuationStrategy,
-		continuationInstruction: effective.continuationInstruction,
-		continuationPrefillSuffix: effective.continuationPrefillSuffix,
-		requestOverrides: effective.requestOverrides,
-	};
+	return effective;
 }
 
 export const connectionJson = (

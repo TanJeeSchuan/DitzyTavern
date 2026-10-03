@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { executeCharacterCommand } from "./execute";
-import { withDatabase } from "../database/database";
+
 import { connectCharacterLibraryDatabase } from "./internal";
 import { listCharacters, readCharacterSnapshot } from "./snapshot";
 import type {
@@ -56,16 +56,4 @@ export function createCharacterLibraryModule(
 			readCharacterSnapshot(connectCharacterLibraryDatabase(database), characterId),
 		execute,
 	};
-}
-
-// ==[HUMAN APPROVED]== Runs one operation against a short-lived connection, mirroring how the
-// other deep modules serve request-scoped callers. The default database is
-// opened when no connection is supplied.
-export function withCharacterLibrary<T>(
-	database: Database | undefined,
-	run: (library: CharacterLibraryModule) => T,
-): T {
-	return withDatabase(database, (connection) =>
-		run(createCharacterLibraryModule(connection)),
-	);
 }

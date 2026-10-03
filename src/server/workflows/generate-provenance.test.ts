@@ -62,7 +62,7 @@ describe("Generation capture and provenance", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry();
+		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

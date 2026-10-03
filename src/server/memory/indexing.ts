@@ -44,8 +44,8 @@ export const embedMemoryTexts = (database: Database, fetch?: ModelFetch): Memory
 	return requestEmbeddings(texts, { endpoint: configuration.endpoint, model: configuration.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: configuration.deadlineMs, fetch, signal });
 };
 
-export const embedMemoryQuery = (database: Database, text: string, configuration: MemoryEmbeddingConfiguration, fetch?: ModelFetch) =>
-	requestEmbeddings([text], { endpoint: configuration.endpoint, model: configuration.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: configuration.deadlineMs, fetch });
+export const embedMemoryQuery = (database: Database, text: string, configuration: MemoryEmbeddingConfiguration, fetch?: ModelFetch, signal?: AbortSignal) =>
+	requestEmbeddings([text], { endpoint: configuration.endpoint, model: configuration.model, secrets: readMemoryEmbeddingSecrets(database), timeoutMs: configuration.deadlineMs, fetch, signal });
 
 const encodeVector = (vector: readonly number[]) => Buffer.from(new Float32Array(vector).buffer);
 const decodeVector = (bytes: Uint8Array): number[] => [...new Float32Array(new Uint8Array(bytes).buffer)];

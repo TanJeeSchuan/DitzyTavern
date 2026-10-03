@@ -363,6 +363,15 @@ export function ActiveWritingWorkspace({
 									generation.regenerateResponse(messageId);
 								}}
 								onInspect={openVariantDetails}
+								generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
+									<GenerationControls
+										showStopAll={generation.activeGenerationTargets.length > 1}
+										pending={generation.stopPending}
+										onStop={() => void generation.stopGeneration(generation.selectedGenerationTarget!.generationId)}
+										onStopAll={() => void generation.stopAllGenerations()}
+										onInspect={openActiveGenerationDetails}
+									/>
+								)}
 								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
 								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
 								onDelete={!assemblyActive && !generation.isGenerating
@@ -375,15 +384,6 @@ export function ActiveWritingWorkspace({
 							<p className="history-error" role="alert">
 								The Chat history could not be loaded. Try opening the Chat again.
 							</p>
-						)}
-						{generation.isGenerating && generation.activeGenerationTargets.length > 0 && generation.selectedGenerationTarget !== undefined && (
-							<GenerationControls
-								showStopAll={generation.activeGenerationTargets.length > 1}
-								pending={generation.stopPending}
-								onStop={() => void generation.stopGeneration(generation.selectedGenerationTarget!.generationId)}
-								onStopAll={() => void generation.stopAllGenerations()}
-								onInspect={openActiveGenerationDetails}
-							/>
 						)}
 					</div>
 				</div>
@@ -406,7 +406,6 @@ export function ActiveWritingWorkspace({
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
 							onControlChange={(text) => setControlChangeToast({ text, id: ++controlToastId.current })}
-							onModelSelectionChange={generationSettings.adoptModelSelection}
 						/>
 					) : null}
 				/>

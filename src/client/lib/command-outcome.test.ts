@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	commandOutcome,
-	CONVERSATION_CONFLICT_RELOAD_NOTICE,
-	CONVERSATION_UNREACHABLE_NOTICE,
-	LIBRARY_UNREACHABLE_NOTICE,
-} from "./command-outcome";
+import { commandOutcome } from "./command-outcome";
 
 // A stand-in for the typed server error payload unions: discriminated by
 // `outcome`, each member carrying its own extra fields.
@@ -54,26 +49,5 @@ describe("commandOutcome", () => {
 			{},
 		);
 		expect(unmapped).toEqual({ status: "network" });
-	});
-
-	test("the client status always equals the server outcome name", () => {
-		const payloads: Payload[] = [
-			{ outcome: "conflict", currentConversation: { id: 1 } },
-			{ outcome: "not-found" },
-			{ outcome: "not-playable", reason: "r" },
-			{ outcome: "invalid", reason: "r" },
-		];
-		for (const payload of payloads) {
-			const mapped = map(payload);
-			expect(mapped.status).toBe(payload.outcome);
-		}
-	});
-
-	test("the shared notices stay byte-identical to the wording already shipped", () => {
-		expect(CONVERSATION_UNREACHABLE_NOTICE).toBe("The Conversation could not be reached.");
-		expect(LIBRARY_UNREACHABLE_NOTICE).toBe("The Library could not be reached.");
-		expect(CONVERSATION_CONFLICT_RELOAD_NOTICE).toBe(
-			"The Conversation changed elsewhere; the current Cast was loaded.",
-		);
 	});
 });

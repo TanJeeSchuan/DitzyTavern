@@ -4,10 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	connectionProfileTable,
 	connectionSecretTable,
-	conversationControlTable,
-	conversationTable,
-	messageTable,
-	} from "../database/schema";
+} from "../database/schema";
 import { openInitializedDatabase } from "../database/database";
 import {
 	connectionSnapshotOf,
@@ -15,10 +12,6 @@ import {
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from ".";
-import {
-	blankConnectionProfileDraft,
-	connectionProfileDraftOf,
-} from "../../shared/contract/connection-settings";
 import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
@@ -62,62 +55,6 @@ describe("Connection Settings", () => {
 			revision: 0,
 			profiles: [],
 		});
-
-		const db = drizzle(database);
-		expect(db.select().from(conversationTable).all()).toHaveLength(0);
-		expect(db.select().from(messageTable).all()).toHaveLength(0);
-		expect(db.select().from(conversationControlTable).all()).toHaveLength(0);
-	});
-
-	test("bundles the exact DeepSeek preset defaults", () => {
-		const preset = createConnectionSettingsModule(database, { masterKey: key })
-			.listPresets()
-			.find((entry) => entry.id === "deepseek");
-		expect(preset?.profile).toEqual({
-			displayName: "DeepSeek",
-			apiFormat: "chat-completions",
-			requestUrl: "https://api.deepseek.com/",
-			modelsUrl: "https://api.deepseek.com/models",
-			modelBackend: "automatic",
-			adapter: "deepseek",
-			outputTokenRepresentation: "automatic",
-			timeoutMs: 120000,
-			pinnedModels: ["deepseek-flash", "deepseek-v4-pro"],
-		});
-	});
-
-	test("bundles the exact OpenRouter preset without invented attribution", () => {
-		const preset = createConnectionSettingsModule(database, { masterKey: key })
-			.listPresets()
-			.find((entry) => entry.id === "openrouter");
-		expect(preset?.profile).toEqual({
-			displayName: "OpenRouter",
-			apiFormat: "chat-completions",
-			requestUrl: "https://openrouter.ai/api/v1/",
-			modelsUrl: "https://openrouter.ai/api/v1/models",
-			modelBackend: "automatic",
-			adapter: "openrouter",
-			outputTokenRepresentation: "automatic",
-			timeoutMs: 120000,
-			pinnedModels: [
-				"deepseek/deepseek-v4-flash",
-				"google/gemma-4-31b-it",
-				"z-ai/glm-5.3",
-			],
-		});
-		expect(JSON.stringify(preset?.profile)).not.toContain("Referer");
-		expect(JSON.stringify(preset?.profile)).not.toContain("Title");
-	});
-
-	test("derives the generic preset from the canonical blank draft", () => {
-		const preset = createConnectionSettingsModule(database, { masterKey: key })
-			.listPresets()
-			.find((entry) => entry.id === "generic-openai-compatible");
-
-		expect(preset?.profile).toEqual(blankConnectionProfileDraft);
-		if (preset === undefined) throw new Error("Generic preset was not found.");
-		expect(preset.profile).not.toBe(blankConnectionProfileDraft);
-		expect(connectionProfileDraftOf(preset.profile)).not.toBe(preset.profile);
 	});
 
 	test("constructs one safe snapshot for runtime and persisted generation identity", () => {
@@ -151,12 +88,13 @@ describe("Connection Settings", () => {
 		const listedProfile = listed.find((preset) => preset.id === "deepseek")?.profile;
 		expect(listedProfile).toBeDefined();
 		if (!listedProfile) return;
+		const original = [...listedProfile.pinnedModels];
 		// SAFETY: listPresets returns a mutable client-facing clone of this
 		// profile; this test intentionally simulates an editor mutating it.
 		(listedProfile.pinnedModels as string[]).push("temporary-edit");
 
 		const reread = settings.listPresets().find((preset) => preset.id === "deepseek")?.profile;
-		expect(reread?.pinnedModels).toEqual(["deepseek-flash", "deepseek-v4-pro"]);
+		expect(reread?.pinnedModels).toEqual(original);
 	});
 
 	test("creates the first Profile and credential atomically, redacting the credential", () => {

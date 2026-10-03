@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { openingsFromText, openingsToText } from "./openings";
+import { openingsFromText } from "./openings";
 
 // Characterizes the single openings conversion shared by New Chat, Cast,
 // and Character Library editors. The trimming variant is the deliberate one
@@ -19,13 +19,5 @@ describe("openingsFromText", () => {
 
 	test("keeps an empty textarea as no openings", () => {
 		expect(openingsFromText("")).toEqual([]);
-	});
-});
-
-describe("openingsToText", () => {
-	test("joins openings with textarea line breaks", () => {
-		expect(openingsToText(["Dawn shift", "", "Night watch"])).toBe(
-			"Dawn shift\n\nNight watch",
-		);
 	});
 });

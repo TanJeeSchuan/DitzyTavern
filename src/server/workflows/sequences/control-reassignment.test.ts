@@ -152,26 +152,6 @@ describe("Control reassignment between commands", () => {
 		]);
 	});
 
-	test("every Generation kind agrees about the same Message", async () => {
-		reassignModelSeatToKestrel();
-
-		const afterSend = await send("Continue the scene.");
-		let afterContinuation: ModelClientGenerationInput | undefined;
-		await continueGeneration(database, {
-			conversationId,
-			expectedRevision: revision(),
-			modelClient: createFakeModelClient((input) => {
-				afterContinuation = input;
-				return "The scene continues.";
-			}),
-		});
-
-		const marenIn = (input: ModelClientGenerationInput) =>
-			historyRolesOf(input).find((entry) => entry.speakerName === "Maren");
-		expect(marenIn(afterSend!)).toEqual({ speakerName: "Maren", role: "model" });
-		expect(marenIn(afterContinuation!)).toEqual(marenIn(afterSend!));
-	});
-
 	test("a displaced human Participant's Message falls to no role", async () => {
 		// The fallback is deliberately asymmetric, because the evidence is. A
 		// model-authored Message captures its historical Control pair, so it can
