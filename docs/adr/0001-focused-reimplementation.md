@@ -1,5 +1,7 @@
 # Build a clean-slate, focused reimplementation
 
+> Superseded in part by [ADR-0046](0046-admit-images-natively.md) (admit Images natively). Image input in Messages and Definitions is now supported; image generation, speech, file attachments other than Images, and tool calls remain excluded.
+
 This project will be a clean-slate, focused reimplementation inspired by selected SillyTavern capabilities, not a refactor, drop-in replacement, or compatibility fork. The upstream checkout is behavioral reference material only: its architecture, module boundaries, data flow, APIs, and frontend/server split carry no presumption of survival, and the new product will re-derive its own shape around the chosen subset.
 
 The first product boundary is a local, single-user, text-first application for persistent roleplay with a Conversation-local Cast and one human-controlled and one model-controlled Participant at a time, initially through one OpenAI-style streaming protocol. Additional features must tighten this main flow rather than introduce a separate product loop.

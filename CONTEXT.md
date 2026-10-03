@@ -5,6 +5,28 @@ DitzyTavern is a chat-writing tool. A Conversation is the primary object people 
 **Chat**:
 The everyday word for a Conversation, used in the workspace list, the active-chat header, and UI copy; no Chat subtype exists.
 
+## Characters
+
+**Definition**:
+The complete authored identity of a Character or Participant: a nonblank name, a typed Prompt, ordered openings, and an optional Portrait. Seeding a Participant copies the whole Definition; no part of it stays linked to its source.
+_Avoid_: card fields, character data
+
+**Character**:
+An optional, reusable library source owning one Definition. Editing or deleting a Character never changes the Participants it seeded.
+_Avoid_: card, persona
+
+**Participant**:
+A Conversation-local identity owning its own copied Definition and, optionally, the provenance of the Character that seeded it. Message authorship and Control seats refer to Participants.
+_Avoid_: Character when referring to the Chat-local copy
+
+**Cast**:
+The ordered roster of a Chat's active Participants. A Participant stays in the Cast whether or not it occupies a Control seat.
+_Avoid_: party, members
+
+**Portrait**:
+The Image that visually represents a Definition, together with the focal point that stays visible whatever the shape of the frame showing it. A Portrait never enters a Prompt Plan; showing it to a model takes an Image Reference.
+_Avoid_: avatar, profile picture
+
 ## Generation
 
 **Generation**:
@@ -142,6 +164,28 @@ _Avoid_: guidance record, instruction message
 **Message authorship**:
 The Participant responsible for producing a Message, independent of any fictional speakers or actions represented inside its content.
 _Avoid_: detected speaker, character attribution
+
+## Images
+
+**Image**:
+A picture stored once by its content, so the same picture is one Image wherever it appears. Portraits and Image References name it, and it exists only while something does.
+_Avoid_: attachment (reserved for Lorebook Attachment), upload, file
+
+**Image Reference**:
+The inline mention of an Image, carrying a writer-visible name, inside Message, Prompt channel, Opening, or Macro Variable text. Its position in the text is the Image's position in the writing. A Reference produced by a Prompt Macro counts the same as one the writer typed.
+_Avoid_: attachment, embed, inline image
+
+**Repeated Image Placement**:
+The Generation Setting that decides which References to an Image appearing more than once in a Generation send the Image: the first, the last, or every one. The rest send only their Image Anchor.
+_Avoid_: image dedupe, image cache
+
+**Image Anchor**:
+The text form of an Image Reference, naming the Image without its identity. Everything that reads writing as text sees the Image Anchor in place of the Image; a model receiving the Image sees the Image Anchor immediately before it.
+_Avoid_: alt text, caption, image description
+
+**Text-only Model**:
+A model that a Connection Profile marks as unable to receive Images. Generations using it send each Image Anchor without its Image. The writer applies the mark, usually after a Generation containing Images fails; it is never inferred from a provider error.
+_Avoid_: non-vision model, image fallback
 
 ## Memory
 
