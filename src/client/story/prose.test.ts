@@ -59,11 +59,20 @@ describe("revealedLength", () => {
 		expect(revealedLength("Done.\n\nStill writing.\n\nN")).toBe("Done.\n\nStill writing.\n\n".length);
 	});
 
-	test("releases a long paragraph at the first sentence end past each chunk", () => {
+	test("reveals the opening sentence as soon as it ends", () => {
+		expect(revealedLength(`${sentence}She`)).toBe(sentence.length - 1);
+	});
+
+	test("releases a long paragraph at the latest sentence end each time a chunk has streamed", () => {
 		const text = sentence.repeat(8);
-		const released = revealedLength(text);
-		expect(released % sentence.length).toBe(sentence.length - 1);
-		expect(released).toBeGreaterThanOrEqual(300);
-		expect(text.length - released).toBeLessThan(300 + sentence.length);
+		expect(revealedLength(text.slice(0, sentence.length + 298))).toBe(sentence.length - 1);
+		expect(revealedLength(text.slice(0, sentence.length + 300))).toBe(sentence.length * 4 - 1);
+		expect(revealedLength(text)).toBe(sentence.length * 7 - 1);
+	});
+
+	test("never takes back revealed text as the stream grows", () => {
+		const text = `${sentence.repeat(5)}\n\n"Short." ${sentence.repeat(9)}\n\nEnd.`;
+		const lengths = [...text].map((_, index) => revealedLength(text.slice(0, index + 1)));
+		expect(lengths).toEqual(lengths.toSorted((a, b) => a - b));
 	});
 });

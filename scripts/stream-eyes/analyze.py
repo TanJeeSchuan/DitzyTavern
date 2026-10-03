@@ -1,4 +1,4 @@
-"""Needs numpy and Pillow. Reads trace.json: prints the fade timeline and every fade that was removed before finishing (a visible snap)."""
+"""Needs numpy and Pillow. Reads trace.json: prints the reveal timeline and every reveal that was removed before finishing (a visible snap)."""
 import json, sys
 
 trace = json.load(open(sys.argv[1] + "/trace.json"))
@@ -14,8 +14,7 @@ for e in events:
     elif e["type"] == "add":
         print(f"{t:7.0f}  + {e['kind']:5} #{e['id']:<3} {e['chars']:4} chars  {e['text']!r}")
     else:
-        snap = e["age"] < 450 and e["lastOpacity"] < 0.99
-        flag = f"  SNAP: opacity {e['lastOpacity']:.2f} -> 1.00" if snap else ""
+        flag = f"  SNAP: progress {e['lastProgress']:.2f} -> 1.00" if e["lastProgress"] < 0.99 else ""
         print(f"{t:7.0f}  - {e['kind']:5} #{e['id']:<3} age {e['age']:4.0f}ms{flag}")
 
 sse = [e for e in events if e["type"] == "sse"]
@@ -26,9 +25,9 @@ if sse:
         print(f"  {e['t']-t0:7.0f}ms  read {e['bytes']}B  +{e['contentChars']} events")
 events = [e for e in events if e["type"] not in ("mutation", "sse")]
 removed = [e for e in events if e["type"] == "remove"]
-snaps = [e for e in removed if e["age"] < 450 and e["lastOpacity"] < 0.99]
+snaps = [e for e in removed if e["lastProgress"] < 0.99]
 gaps = [b["t"] - a["t"] for a, b in zip(list(adds.values()), list(adds.values())[1:])]
-print(f"\nfades: {len(adds)}   removed mid-fade (snaps): {len(snaps)}   reveal gaps ms: min {min(gaps):.0f} median {sorted(gaps)[len(gaps)//2]:.0f}")
+print(f"\nreveals: {len(adds)}   removed mid-reveal (snaps): {len(snaps)}   reveal gaps ms: min {min(gaps):.0f} median {sorted(gaps)[len(gaps)//2]:.0f}")
 frames = trace["frames"]
 dts = [b["t"] - a["t"] for a, b in zip(frames, frames[1:])]
 long = [d for d in dts if d > 34]

@@ -73,8 +73,13 @@ export function renderBlocks(text: string): string[] {
 	return blocks.map((block) => md.renderer.render(block, md.options, env));
 }
 
+const FIRST = 80;
 const CHUNK = 300;
-const FADE = "animate-in fade-in-0 duration-450";
+// A soft edge 6em wide wipes each span from left to right. An inline span's mask runs along
+// its lines laid end to end, so the edge travels in reading order, line after line.
+const WIPE = "animate-wipe-in mask-no-repeat mask-size-[calc(200%+6em)_100%] mask-r-from-[calc(50%-3em)] mask-r-to-[calc(50%+3em)]";
+const MS_PER_CHAR = 2.5;
+const EDGE_CHARS = 12;
 const sentenceEnd = /[.!?…]+["”')\]*_~]*(?=\s)/g;
 
 const lineStart = (text: string, line: number) => {
@@ -84,20 +89,24 @@ const lineStart = (text: string, line: number) => {
 };
 
 // How much of a streaming text to show: every block before the last in full, and the
-// last block only up to the latest sentence end that completes a chunk of at least
-// CHUNK characters.
+// last block up to a sentence end. A reveal falls due each time CHUNK more characters
+// have streamed (FIRST for the opening one, so the first ink lands quickly) and shows up
+// to the latest sentence end before that point, or the next one if none came, so reveals
+// keep a steady pace however the sentences run.
 export function revealedLength(text: string): number {
 	const last = md.parse(text, {}).findLast((token) => token.level === 0 && token.nesting !== -1);
 	const start = lineStart(text, last?.map?.[0] ?? 0);
+	const ends = [...text.slice(start).matchAll(sentenceEnd)].map((match) => start + match.index + match[0].length);
 	let revealed = start;
-	for (const match of text.slice(start).matchAll(sentenceEnd)) {
-		const end = start + match.index + match[0].length;
-		if (end - revealed >= CHUNK) revealed = end;
+	for (let due = revealed + (revealed === 0 ? FIRST : CHUNK); due <= text.length; due = revealed + CHUNK) {
+		const next = ends.findLast((end) => end > revealed && end < due) ?? ends.find((end) => end > revealed);
+		if (next === undefined) break;
+		revealed = next;
 	}
 	return revealed;
 }
 
-function fadeTextAfter(root: HTMLElement, offset: number) {
+function wipeTextAfter(root: HTMLElement, offset: number) {
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	const nodes: Text[] = [];
 	for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) if (node instanceof Text) nodes.push(node);
@@ -106,7 +115,11 @@ function fadeTextAfter(root: HTMLElement, offset: number) {
 		const length = node.length;
 		if (seen + length > offset) {
 			const fresh = offset > seen ? node.splitText(offset - seen) : node;
-			const span = Object.assign(document.createElement("span"), { className: FADE });
+			const span = Object.assign(document.createElement("span"), { className: WIPE });
+			// Each span starts when the edge reaches its first character, so spans split by
+			// markup read as one continuous wipe.
+			span.style.animationDelay = `${(Math.max(seen, offset) - offset) * MS_PER_CHAR}ms`;
+			span.style.animationDuration = `${(fresh.length + EDGE_CHARS) * MS_PER_CHAR}ms`;
 			fresh.replaceWith(span);
 			span.append(fresh);
 		}
@@ -114,21 +127,20 @@ function fadeTextAfter(root: HTMLElement, offset: number) {
 	}
 }
 
-// Once a Prose has streamed, blocks it mounts fade in whole and text added to a mounted
-// block fades in from where it previously ended. History that never streamed stays still.
-// Memoized because React rewrites dangerouslySetInnerHTML on every render, which would wipe
-// the fade spans of a block whose html did not change.
+// Once a Prose has streamed, blocks it mounts wipe in whole and text added to a mounted
+// block wipes in from where it previously ended. History that never streamed stays still.
+// Memoized because React rewrites dangerouslySetInnerHTML on every render, which would drop
+// the wipe spans of a block whose html did not change.
 const ProseBlock = memo(function ProseBlock({ html, fade }: { html: string; fade: boolean }) {
 	const ref = useRef<HTMLDivElement>(null);
-	const [entering] = useState(fade);
-	const shownLength = useRef<number>(undefined);
+	const shownLength = useRef(fade ? 0 : undefined);
 	useLayoutEffect(() => {
 		const element = ref.current;
 		if (element === null) return;
-		if (fade && shownLength.current !== undefined) fadeTextAfter(element, shownLength.current);
+		if (fade && shownLength.current !== undefined) wipeTextAfter(element, shownLength.current);
 		shownLength.current = element.textContent.length;
 	}, [html, fade]);
-	return <div ref={ref} className={entering ? `prose-block ${FADE}` : "prose-block"} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div ref={ref} className="prose-block" dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 export function Prose({ text, streaming }: { text: string; streaming: boolean }) {

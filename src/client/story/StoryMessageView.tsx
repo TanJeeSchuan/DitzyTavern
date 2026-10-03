@@ -8,7 +8,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
 	type StoryMessage,
 	displayedVariantId as getDisplayedVariantId,
@@ -42,6 +42,7 @@ export function StoryMessageView({
 	onSibling,
 	onInspect,
 	onDelete,
+	generationControls,
 }: {
 	message: StoryMessage;
 	isLatest?: boolean;
@@ -68,6 +69,9 @@ export function StoryMessageView({
 	onSibling?: (messageId: number) => void;
 	onInspect?: (messageId: number, variantId: number) => void;
 	onDelete?: (messageId: number) => void;
+	// Inspect and Stop for the Generation writing this Message. They hold the slot Continue
+	// takes when it ends, so the story does not jump.
+	generationControls?: ReactNode;
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
@@ -144,6 +148,7 @@ export function StoryMessageView({
 				<Portrait name={authorName} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
+					{generationActive && <GenerationSphere authorName={authorName} />}
 					<div className="message-meta">
 						<time>{formatTimestamp(message.timestamp)}</time>
 						{!message.inCast && <span className="not-in-cast">not in Cast</span>}
@@ -239,7 +244,6 @@ export function StoryMessageView({
 						{active !== undefined && !(generationActive && active.empty)
 							? <Prose text={visibleVariantContent(active)} streaming={generationActive} />
 							: null}
-						{generationActive && <GenerationSphere authorName={authorName} />}
 					</div>
 				</div>
 			)}
@@ -254,6 +258,7 @@ export function StoryMessageView({
 					>
 						<Edit3 aria-hidden="true" /> Edit
 					</button>
+					{generationControls}
 					{canRegenerate && onRegenerate !== undefined && (
 						<button
 							className="secondary-button continue-action"

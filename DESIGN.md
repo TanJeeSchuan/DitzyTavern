@@ -255,10 +255,11 @@ No ambient loops are required. No motion should compete with prose. Reduced-moti
 
 ### Live generation
 
-- Each paragraph appears once it is complete and fades in whole. A paragraph longer than a few sentences is released in sentence-aligned chunks that each fade in, so long paragraphs still show progress.
+- Each paragraph appears once it is complete and wipes in whole, a soft edge sweeping through it in reading order. A paragraph longer than a few sentences is released in sentence-aligned chunks that each wipe in at a steady pace, so long paragraphs still show progress. The opening sentence appears as soon as it ends.
 - While the user is at the bottom, the view follows new content with a smooth scroll. A new Swipe or Regenerate on the latest Message returns the view to the bottom.
 - Keep line wrapping and paragraph positions stable.
 - Place a restrained generation-state indicator near the author header.
+- Inspect and Stop sit in the Message's action row, the slot Continue takes when the Generation ends, so finishing does not shift the story.
 - Avoid blinking cursors, fake keystroke timing, or other theatrical effects.
 
 ### Panels and details

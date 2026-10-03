@@ -1,8 +1,8 @@
 // Drives one generation against a fresh paced fixture server (server.ts) and records what the eye would see.
 // Needs a built client (`bun run build`). Run with Node; VH sets the viewport height (default 900).
-//   node scripts/stream-eyes/eyes.mjs trace <cps> <out>   → trace.json (fade spans, DOM mutations, SSE reads,
-//                                                          per-frame opacity and geometry) + screencast frames
-//   node scripts/stream-eyes/eyes.mjs scrub <cps> <out>   → freezes the second paragraph's fade and screenshots it
+//   node scripts/stream-eyes/eyes.mjs trace <cps> <out>   → trace.json (reveal spans, DOM mutations, SSE reads,
+//                                                          per-frame animation progress and geometry) + screencast frames
+//   node scripts/stream-eyes/eyes.mjs scrub <cps> <out>   → freezes the second paragraph's reveal and screenshots it
 //                                                          at fixed animation times, plus its keyframes
 // Then: python scripts/stream-eyes/analyze.py <out>   and   VH=<same> python scripts/stream-eyes/viz.py <out>
 import { chromium } from "playwright";
@@ -40,43 +40,45 @@ await page.addInitScript(() => {
 		})();
 		return new Response(theirs, response);
 	};
-	const live = new Map(); // fade element → { id, t, kind, chars, last }
+	const live = new Map(); // reveal element → { id, t, kind, chars, last }
 	let nextId = 0;
 	const now = () => performance.now();
-	const fadeOf = (node) => node instanceof HTMLElement && node.classList.contains("animate-in") && node.closest(".prose-block") ? node : null;
+	const revealOf = (node) => node instanceof HTMLElement && [...node.classList].some((name) => name.startsWith("animate-")) && node.closest(".prose-block") ? node : null;
+	// 0 while waiting out its delay, 1 once finished.
+	const progress = (element) => element.getAnimations()[0]?.effect.getComputedTiming().progress ?? 1;
 	new MutationObserver((records) => {
 		const t = now();
 		for (const record of records) {
 			const block = record.target instanceof Element ? record.target.closest(".prose-block") : null;
 			if (block) trace.events.push({ type: "mutation", t, block: [...block.parentElement.children].indexOf(block), target: record.target.nodeName, added: [...record.addedNodes].map((n) => n.nodeName + ":" + n.textContent.length), removed: [...record.removedNodes].map((n) => n.nodeName + ":" + n.textContent.length), html: block.innerHTML.length });
 			for (const node of record.addedNodes) {
-				const element = fadeOf(node);
+				const element = revealOf(node);
 				if (!element) continue;
 				const entry = { id: nextId++, t, kind: element.tagName === "SPAN" ? "span" : "block", chars: element.textContent.length, text: element.textContent.slice(0, 40), last: 0 };
 				live.set(element, entry);
 				trace.events.push({ type: "add", ...entry });
 			}
 			for (const node of record.removedNodes) {
-				const fades = node instanceof HTMLElement ? [fadeOf(node), ...node.querySelectorAll(".animate-in")].filter(Boolean) : [];
-				for (const element of fades) {
+				const reveals = node instanceof HTMLElement ? [node, ...node.querySelectorAll("*")].map(revealOf).filter(Boolean) : [];
+				for (const element of reveals) {
 					const entry = live.get(element);
 					if (!entry) continue;
 					live.delete(element);
-					trace.events.push({ type: "remove", id: entry.id, kind: entry.kind, t, age: t - entry.t, lastOpacity: entry.last });
+					trace.events.push({ type: "remove", id: entry.id, kind: entry.kind, t, age: t - entry.t, lastProgress: entry.last });
 				}
 			}
 		}
 	}).observe(document, { childList: true, subtree: true });
 	const sample = () => {
-		const opacities = [];
+		const progresses = [];
 		for (const [element, entry] of live) {
-			entry.last = Number(getComputedStyle(element).opacity);
-			opacities.push([entry.id, entry.last]);
+			entry.last = progress(element);
+			progresses.push([entry.id, entry.last]);
 		}
 		const article = [...document.querySelectorAll("article")].at(-1);
 		const blocks = [...(article?.querySelectorAll(".prose-block") ?? [])].map((block) => { const r = block.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
 		const box = article?.getBoundingClientRect();
-		trace.frames.push({ t: now(), chars: article?.querySelector(".prose-block")?.parentElement?.textContent.length ?? 0, opacities, blocks, article: box && [box.left, box.top, box.right, box.bottom] });
+		trace.frames.push({ t: now(), chars: article?.querySelector(".prose-block")?.parentElement?.textContent.length ?? 0, progresses, blocks, article: box && [box.left, box.top, box.right, box.bottom] });
 		requestAnimationFrame(sample);
 	};
 	requestAnimationFrame(sample);
@@ -104,14 +106,14 @@ const exact = page.getByRole("button", { name: "Send exact plan" });
 if (await exact.waitFor({ timeout: 3000 }).then(() => true, () => false)) await exact.click();
 
 if (mode === "scrub") {
-	// Freeze the second paragraph's entering fade, then scrub its animation.
-	const handle = await page.waitForFunction(() => document.querySelector(".prose-block.animate-in ~ .prose-block.animate-in"), null, { timeout: 60_000, polling: "raf" });
+	// Freeze the second paragraph's reveal, then scrub its animations.
+	const handle = await page.waitForFunction(() => [...document.querySelectorAll("article")].at(-1)?.querySelectorAll(".prose-block")[1], null, { timeout: 60_000, polling: "raf" });
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.pause()));
 	const block = handle.asElement();
-	const info = await block.evaluate((element) => element.getAnimations().map((a) => ({ name: a.animationName, timing: a.effect.getComputedTiming(), keyframes: a.effect.getKeyframes() })));
+	const info = await block.evaluate((element) => element.getAnimations({ subtree: true }).map((a) => ({ name: a.animationName, timing: a.effect.getComputedTiming(), keyframes: a.effect.getKeyframes() })));
 	writeFileSync(join(out, "animations.json"), JSON.stringify(info, null, 1));
-	for (const t of [0, 75, 150, 225, 300, 375, 449]) {
-		await block.evaluate((element, t) => element.getAnimations().forEach((animation) => { animation.currentTime = t; }), t);
+	for (const t of [0, 100, 200, 300, 400, 500, 600]) {
+		await block.evaluate((element, t) => element.getAnimations({ subtree: true }).forEach((animation) => { animation.currentTime = t; }), t);
 		await block.screenshot({ path: join(out, "frames", `scrub-${String(t).padStart(3, "0")}.png`), animations: "allow" });
 	}
 } else {
