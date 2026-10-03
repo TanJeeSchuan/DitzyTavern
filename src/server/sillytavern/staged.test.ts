@@ -344,29 +344,10 @@ describe("staged SillyTavern chat import", () => {
 
 		const stagedPath = join(artifactDirectory, stagedFiles()[0] ?? "");
 		writeFileSync(stagedPath, Buffer.from("different bytes", "utf8"));
-		expect(() => module.preview(token)).toThrow(
-			StagedChatImportUnavailableError,
-		);
-		try {
-			module.preview(token);
-		} catch (error) {
-			expect(error).toBeInstanceOf(StagedChatImportUnavailableError);
-			// SAFETY: the instanceof check immediately above guarantees this
-			// catch only narrows the typed unavailable error before reading
-			// its reason.
-			expect((error as StagedChatImportUnavailableError).reason).toBe("corrupt");
-		}
+		expect(() => module.preview(token)).toThrow(new StagedChatImportUnavailableError("corrupt"));
 
 		rmSync(stagedPath);
-		try {
-			module.preview(token);
-		} catch (error) {
-			expect(error).toBeInstanceOf(StagedChatImportUnavailableError);
-			// SAFETY: the instanceof check immediately above guarantees this
-			// catch only narrows the typed unavailable error before reading
-			// its reason.
-			expect((error as StagedChatImportUnavailableError).reason).toBe("missing");
-		}
+		expect(() => module.preview(token)).toThrow(new StagedChatImportUnavailableError("missing"));
 	});
 
 	test("cancellation removes only the uncommitted temporary staging data of that flow", async () => {

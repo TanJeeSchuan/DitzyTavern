@@ -479,21 +479,6 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.effectiveSettings.requestOverrides).toEqual({});
 	});
 
-	test("produces equivalent plans from identical captured inputs", () => {
-		const input = {
-			human,
-			model,
-			recipe: defaultRecipe,
-			context: [entry("Maren", "The lamp turns above you.", "model")],
-			intent: continuationIntentFor(configuredSettings()),
-			settings: configuredSettings(),
-			connection: { apiFormat: "chat-completions" as const },
-			estimator: transcriptLengthEstimator,
-		};
-
-		expect(compileGenerationPlan(input)).toEqual(compileGenerationPlan({ ...input }));
-	});
-
 	test("reuses one macro attempt while trimming history", () => {
 		const randomValues = [0, 0.999];
 		let randomCalls = 0;

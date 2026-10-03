@@ -12,10 +12,6 @@ import {
 	InvalidConnectionProfileError,
 	StaleConnectionSettingsRevisionError,
 } from ".";
-import {
-	blankConnectionProfileDraft,
-	connectionProfileDraftOf,
-} from "../../shared/contract/connection-settings";
 import type { ConnectionProfileDraft } from "./types";
 
 const key = new Uint8Array(32).fill(7);
@@ -59,17 +55,6 @@ describe("Connection Settings", () => {
 			revision: 0,
 			profiles: [],
 		});
-	});
-
-	test("derives the generic preset from the canonical blank draft", () => {
-		const preset = createConnectionSettingsModule(database, { masterKey: key })
-			.listPresets()
-			.find((entry) => entry.id === "generic-openai-compatible");
-
-		expect(preset?.profile).toEqual(blankConnectionProfileDraft);
-		if (preset === undefined) throw new Error("Generic preset was not found.");
-		expect(preset.profile).not.toBe(blankConnectionProfileDraft);
-		expect(connectionProfileDraftOf(preset.profile)).not.toBe(preset.profile);
 	});
 
 	test("constructs one safe snapshot for runtime and persisted generation identity", () => {

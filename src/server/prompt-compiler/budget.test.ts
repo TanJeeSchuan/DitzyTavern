@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PromptContextEntry, PromptPlan } from ".";
 import {
-	PromptBudgetExceededError,
 	budgetPromptPlan,
 	budgetEditedPromptPlan,
 	toEstimationTranscript,
@@ -105,9 +104,6 @@ describe("Prompt Plan budget", () => {
 			contextLimit: 30,
 			totalRequiredTokens: 32,
 		});
-		expect(() => {
-			throw new PromptBudgetExceededError(result);
-		}).toThrow("Prompt Plan exceeds the Conversation context limit");
 	});
 
 	test("finds the oldest-first history cutoff with logarithmic estimator work", () => {

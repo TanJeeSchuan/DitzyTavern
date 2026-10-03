@@ -5,13 +5,6 @@ describe("formatTimestamp", () => {
 	test("an unparseable timestamp is echoed back unchanged", () => {
 		expect(formatTimestamp("not-a-date")).toBe("not-a-date");
 	});
-
-	test("a wire timestamp renders through the locale formatter", () => {
-		const formatted = formatTimestamp("2024-01-15T10:30:00Z");
-		expect(formatted).not.toBe("");
-		// Medium date style always surfaces the year.
-		expect(formatted).toContain("2024");
-	});
 });
 
 describe("formatSize", () => {

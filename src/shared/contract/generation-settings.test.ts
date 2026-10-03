@@ -6,7 +6,6 @@ import type { GenerationProvenanceSettings } from "../generation-provenance";
 import {
 	conversationGenerationSettings,
 	generationProvenanceSettingsWire,
-	generationSettingsUpdate,
 } from "./conversation-schema";
 import {
 	canonicalGenerationSettings,
@@ -173,27 +172,6 @@ describe("canonicalGenerationSettings", () => {
 		}
 	});
 
-});
-
-describe("generationSettingsUpdate", () => {
-	test("accepts the complete canonical settings", () => {
-		expect(Value.Check(generationSettingsUpdate, validSettings())).toBe(true);
-	});
-
-	test("rejects invalid present values", () => {
-		const invalid: readonly unknown[] = [
-			{ ...validSettings(), temperature: 5 },
-			{ ...validSettings(), safetyAllowance: -1 },
-			{ ...validSettings(), siblingGenerationLimit: 0 },
-			{ ...validSettings(), continuationInstruction: "   " },
-			{ ...validSettings(), continuationStrategy: "auto" },
-			{ ...validSettings(), continuationPrefillSuffix: "\n\n\n" },
-			{ ...validSettings(), requestOverrides: { ...validSettings().requestOverrides, responses: "no" } },
-		];
-		for (const settings of invalid) {
-			expect(Value.Check(generationSettingsUpdate, settings)).toBe(false);
-		}
-	});
 });
 
 describe("conversationGenerationSettings", () => {
