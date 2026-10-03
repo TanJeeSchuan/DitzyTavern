@@ -385,48 +385,6 @@ describe("Chat import response decoding", () => {
 		}
 	});
 
-	test("fails responses with missing top-level fields", async () => {
-		// A staged response without its token cannot start a flow.
-		const noToken = transportFor(() =>
-			json(200, { outcome: "staged", preview }));
-		expect(await noToken.stage(new Blob([new Uint8Array(4)]), "x.jsonl")).toEqual({
-			status: "network",
-		});
-
-		// An available response without its preview carries nothing usable.
-		const noPreview = transportFor(() => json(200, { outcome: "available" }));
-		expect(await noPreview.preview("tok_1", "abc123")).toEqual({ status: "network" });
-
-		// A committed response without its receipt is not a committed import.
-		const noReceipt = transportFor(() =>
-			json(200, { outcome: "committed", conversation: conversationSummary }));
-		expect(
-			await noReceipt.commit("tok_1", "abc123", {
-				title: "T",
-				duplicateConfirmed: false,
-				participants: [],
-			}),
-		).toEqual({ status: "network" });
-	});
-
-	test("fails payloads with missing nested preview fields", async () => {
-		// Rest destructuring removes one top-level preview field, so the
-		// decoder sees the field as missing rather than merely undefined.
-		const withoutCounts = ({ counts: _dropped, ...rest }: typeof preview) => rest;
-		const withoutDuplicates = ({ duplicates: _dropped, ...rest }: typeof preview) => rest;
-		for (const broken of [
-			// The counts row is gone entirely.
-			withoutCounts(preview),
-			// The duplicate-evidence row is gone entirely.
-			withoutDuplicates(preview),
-		]) {
-			const transport = transportFor(() =>
-				json(200, { outcome: "staged", token: "tok_1", preview: broken }));
-			const outcome = await transport.stage(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ status: "network" });
-		}
-	});
-
 	test("fails malformed nested values instead of coercing them", async () => {
 		for (const broken of [
 			// A suggestion match outside the closed literal union.

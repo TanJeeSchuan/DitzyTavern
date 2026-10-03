@@ -4,6 +4,3 @@
 // Windows carriage returns while leading indentation survives verbatim.
 export const openingsFromText = (text: string) =>
 	text === "" ? [] : text.split("\n").map((line) => line.trimEnd());
-
-export const openingsToText = (openings: readonly string[]) =>
-	openings.join("\n");

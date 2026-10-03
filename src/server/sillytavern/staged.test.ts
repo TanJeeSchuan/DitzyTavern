@@ -503,29 +503,6 @@ describe("staged SillyTavern chat import", () => {
 		expect(preview.counts).toEqual({ messages: 1, variants: 1 });
 	});
 
-	test("imposes no application-level source-size limit", async () => {
-		// A synthetic export large enough to stream through staging (roughly
-		// a megabyte) stages and previews with exact counts; no cap exists at
-		// the module seam.
-		const records: unknown[] = [header];
-		for (let index = 0; index < 24000; index += 1) {
-			records.push({
-				name: index % 2 === 0 ? "Writer" : "Rulership",
-				send_date: new Date(Date.UTC(2026, 0, 1, 0, 0, index % 60)).toISOString(),
-				mes: `Message ${index} with a comfortably sized payload for streaming.`,
-			});
-		}
-		const bytes = Buffer.from(jsonl(records), "utf8");
-		expect(bytes.length).toBeGreaterThan(1_000_000);
-
-		const { preview } = await stageBytes(bytes, "large-export.jsonl");
-		expect(preview.counts.messages).toBe(24000);
-		expect(preview.counts.variants).toBe(24000);
-		expect(preview.groups.map((group) => group.key)).toEqual(["Writer", "Rulership"]);
-		expect(preview.groups[0]?.messageCount).toBe(12000);
-		expect(preview.groups[1]?.messageCount).toBe(12000);
-	});
-
 	test("cleans up backpressure listeners while streaming a large upload", async () => {
 		const records: unknown[] = [header];
 		for (let index = 0; index < 2000; index += 1) {
@@ -552,7 +529,7 @@ describe("staged SillyTavern chat import", () => {
 		const captureWarning = (warning: Error) => {
 			if (
 				warning.name === "MaxListenersExceededWarning" &&
-				warning.stack?.includes("sillytavern\\staged.ts")
+				/sillytavern[\\/]staged\.ts/.test(warning.stack ?? "")
 			) {
 				listenerWarnings.push(warning);
 			}

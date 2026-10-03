@@ -414,7 +414,7 @@ describe("Character Library", () => {
 				.insert(characterOpeningTable)
 				.values({ character_id: created.id, position: 2, content: "Clash" })
 				.run(),
-		).toThrow();
+		).toThrow("UNIQUE constraint failed");
 
 		expect(() =>
 			db
@@ -428,7 +428,7 @@ describe("Character Library", () => {
 					post_history_instruction: "",
 				})
 				.run(),
-		).toThrow();
+		).toThrow("FOREIGN KEY constraint failed");
 	});
 });
 

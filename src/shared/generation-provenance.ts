@@ -4,10 +4,9 @@
 // never provider payloads, URLs, headers, credentials, or request overrides.
 
 import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
-import {
-	GENERATION_SETTINGS_FIELDS,
-	type CanonicalGenerationSettings,
-	type GenerationSettingsField,
+import type {
+	CanonicalGenerationSettings,
+	GenerationSettingsField,
 } from "./contract/generation-settings";
 
 // ==[HUMAN APPROVED]== The generation-owned JSON vocabulary is declared in the shared leaf module
@@ -40,16 +39,6 @@ export type GenerationContinuationStrategy = NonNullable<
 export type GenerationContinuationPrefillSuffix = NonNullable<
 	GenerationProvenanceSettings["continuationPrefillSuffix"]
 >;
-
-// ==[HUMAN APPROVED]== The canonical field vocabulary retained in provenance is projected from
-// the canonical Generation Settings declaration. Keeping the runtime list
-// derived means adding or removing a canonical field updates this vocabulary
-// automatically; the typed decoders and wire schemas below still require an
-// explicit per-field decision for every retained field.
-export const PROVENANCE_SETTINGS_FIELDS = GENERATION_SETTINGS_FIELDS.filter(
-	(field): field is ProvenanceSettingsField =>
-		field !== "modelId" && field !== "requestOverrides",
-);
 
 export type GenerationUsage = Record<string, number>;
 

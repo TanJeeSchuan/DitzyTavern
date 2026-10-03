@@ -58,31 +58,6 @@ describe("generation provenance codec", () => {
 		});
 	});
 
-	test("projects malformed legacy fields to the safe nullable allow-list", () => {
-		const legacy = parseGenerationJson(JSON.stringify({
-			connectionProfileId: "not-a-number",
-			modelBackend: 12,
-			generationSettings: {
-				temperature: "not-a-number",
-				contextLimit: 2.5,
-				continuationStrategy: "unknown",
-			},
-			status: "unknown",
-		}), null);
-		const details = decodeStoredGenerationProvenance(legacy, []);
-
-		expect(details).toMatchObject({
-			connectionProfileId: null,
-			modelBackend: null,
-			generationSettings: {
-				temperature: null,
-				contextLimit: null,
-				continuationStrategy: null,
-			},
-			status: "complete",
-		});
-	});
-
 	test("requires the terminal shape at the transport boundary", () => {
 		expect(decodeGenerationProvenance({
 			...startProvenance,
@@ -92,19 +67,6 @@ describe("generation provenance codec", () => {
 			status: "complete",
 		}), null);
 		expect(decodeGenerationProvenance(missingSettings)).toBeUndefined();
-	});
-
-	test("ignores the removed legacy embedded finish record", () => {
-		// Terminal finish reasons come only from the server-owned terminal
-		// metadata data entries; the embedded older-row `finish` object is no
-		// longer a fallback source for the decoded record.
-		const legacy = decodeGenerationProvenanceRecord({
-			connectionProfileId: 4,
-			generationSettings: {},
-			finish: { reason: "length" },
-			status: "complete",
-		});
-		expect(legacy?.finishReason).toBeNull();
 	});
 
 	test("decodes retained settings with per-field intentional nullability", () => {

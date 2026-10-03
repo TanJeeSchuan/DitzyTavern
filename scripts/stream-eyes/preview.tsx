@@ -79,7 +79,7 @@ function Preview() {
 					</div>
 					<div className="field">
 						<label htmlFor="theme">Theme</label>
-						<select id="theme" className="field-input" value={theme} onChange={(event) => setTheme(event.target.value as typeof theme)}>
+						<select id="theme" className="field-input" value={theme} onChange={(event) => setTheme(event.target.value === "evening" ? "evening" : "daylight")}>
 							<option value="daylight">Daylight</option>
 							<option value="evening">Evening</option>
 						</select>

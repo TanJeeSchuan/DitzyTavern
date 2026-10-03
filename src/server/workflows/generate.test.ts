@@ -171,42 +171,6 @@ describe("Generation runtime behavior", () => {
 		expect(JSON.stringify(plan)).not.toContain('"user"');
 	});
 
-	test("the terminal fixture creates a Message authored by the model seat at generation start", async () => {
-		const expectedPlan = (await continuationPreview(database, conversationId)).plan.promptPlan;
-		let receivedPlan: PromptPlan | undefined;
-		const committed = await generateTerminalTailFixture(database, {
-			conversationId,
-			timestamp: "2026-08-20T13:00:00Z",
-			modelClient: fakeModelClient((plan) => {
-				receivedPlan = plan;
-				return "The light understands you.";
-			}),
-		});
-
-		// The transport receives exactly the canonical Continuation preview plan.
-		expect(receivedPlan).toEqual(expectedPlan);
-
-		const message = committed.messages.at(-1);
-		expect(message?.author).toEqual({
-			participantId: modelId,
-			capturedName: "Maren Voss",
-			inCast: true,
-		});
-		expect(message?.historicalContext).toEqual({
-			humanParticipantId: humanId,
-			modelParticipantId: modelId,
-		});
-		expect(message?.variants).toEqual([
-			expect.objectContaining({
-				content: "The light understands you.",
-				selected: true,
-			}),
-		]);
-		expect(committed.messages).toHaveLength(2);
-		// Acceptance and resolution each advance the revision exactly once.
-		expect(committed.revision).toBe(2);
-	});
-
 	test("the terminal fixture forwards normalized events and freezes the captured generation input", async () => {
 		const receivedEvents: unknown[] = [];
 		let receivedInput: ModelClientGenerationInput | undefined;

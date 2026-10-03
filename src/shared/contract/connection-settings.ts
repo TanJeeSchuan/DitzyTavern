@@ -163,8 +163,6 @@ const discoveryResult = Type.Union([
 	}),
 ]);
 
-export { profileDraft as connectionProfileDraftSchema };
-
 // Route boundary schemas referenced by the Connection Settings adapter.
 
 export const connectionSettingsResponse = settings;

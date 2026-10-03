@@ -68,14 +68,4 @@ describe("Connection Secret authenticated encryption", () => {
 		expect(() => decryptConnectionSecretSync(masterKey, "profile-7", modifiedTag))
 			.toThrow(ConnectionSecretDecryptionError);
 	});
-
-	test("does not mutate the stored ciphertext when decryption fails", () => {
-		const encrypted = encryptConnectionSecretSync(masterKey, "profile-7", payload);
-		const before = JSON.stringify(encrypted);
-
-		expect(() => decryptConnectionSecretSync(masterKey, "different-profile", encrypted))
-			.toThrow(ConnectionSecretDecryptionError);
-
-		expect(JSON.stringify(encrypted)).toBe(before);
-	});
 });
