@@ -112,7 +112,16 @@ jobs:
           NITPI_SECRET_STORAGE_AUTH_KEY: ${{ secrets.NITPI_STORAGE_AUTH_KEY }}
           NITPI_SECRET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NITPI_REVIEW_INSTRUCTIONS_FILE: ${{ github.workspace }}/subject/.nitpi/review-instructions.md
-        run: ../nitpi/node_modules/.bin/tsx ../nitpi/actions/entry.mts
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = '../nitpi/actions/entry.mts';
+          const source = readFileSync(path, 'utf8').replace('const waited: string[] = [];', `
+          console.log('[DEBUG-nitpi-state]', JSON.stringify({ outcome, runs: (await host.runHistory().allRuns(TODO_CONTEXT)).map(({ runId, phase, checkStatus, checkDetail, pipelineTaskId, subject }) => ({ runId, phase, checkStatus, checkDetail, pipelineTaskId, headSha: subject.headSha })) }));
+          const waited: string[] = [];`);
+          writeFileSync(path, source);
+          NODE
+          ../nitpi/node_modules/.bin/tsx ../nitpi/actions/entry.mts
 
       - name: Leave the tailnet
         if: always()
