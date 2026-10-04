@@ -11,7 +11,7 @@ The local setup replaces lgtmaybe with `.github/workflows/nitpi-review.yml` and 
 - Re-review: `gpt-6.1-sol(high)`.
 - Tailscale: ephemeral, preauthorized runner with `tag:ci-nitpi-reviewer`; the tailnet policy must allow this tag to reach `100.100.175.73` on `tcp:51733`.
 
-The runner installs Node 24 and NitPi's dependencies in a separate checkout pinned to [`6704c388`](https://github.com/TanJeeSchuan/NitPi/tree/6704c388e67bc76070aa18dfaa113781b7a36236). DitzyTavern's default branch provides trusted instructions; PR commits are fetched as git objects. The entry runs with DitzyTavern as its working directory because `headCheckoutSource` is `process.cwd()`. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/actions/entry.mts))
+The runner installs Node 24 and NitPi's dependencies in a separate checkout pinned to [`c485c1f6`](https://github.com/TanJeeSchuan/NitPi/tree/c485c1f65352929b379b6d5174b6a412ff4129b9). This includes the Actions publishing-identity fix. DitzyTavern's default branch provides trusted instructions; PR commits are fetched as git objects. The entry runs with DitzyTavern as its working directory because `headCheckoutSource` is `process.cwd()`. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/c485c1f65352929b379b6d5174b6a412ff4129b9/actions/entry.mts))
 
 ## Credentials
 
@@ -34,4 +34,4 @@ The workflow passes inputs directly to the entry, removing upstream's routing jo
 
 Per-PR concurrency follows upstream with `cancel-in-progress: false`. It serializes jobs, so cancel and stop deliveries wait behind an active review. Immediate cancellation remains an upstream integration limitation; concurrent entry processes cannot both hold the storage lease. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/actions/entry.mts))
 
-Actionlint validates the workflow. The storage health endpoint returned `{"ok":true}` from this workstation. Runner networking, model tool calls, publication, and interrupted-run recovery still need a real PR check after the workflow reaches `master`.
+Actionlint validates the workflow. The real runner successfully checked out NitPi, joined Tailscale, opened the storage partition, and published check runs. The first full attempt failed at bot identification because REST `/user` rejects installation tokens. [NitPi PR #2](https://github.com/TanJeeSchuan/NitPi/pull/2) replaces that lookup with GraphQL `viewer`, verified on the runner with the same token and covered by a failing-then-passing publication test. Full publication is being verified with the corrected engine pin.
