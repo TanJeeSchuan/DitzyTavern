@@ -1,7 +1,7 @@
-import { ArrowLeft, Plus, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { ArrowLeft, ImageUp, Plus, X } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import { Portrait } from "../story/Portrait";
 import { PortraitDialog } from "./PortraitDialog";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
@@ -11,18 +11,14 @@ import { promptChannelLabels } from "../../shared/definition";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveNavigation } from "../SaveGuard";
 
-export type Definition = ParticipantDefinition & { upload?: string | undefined };
-
-export const definitionOf = ({ name, prompt, openings, portrait }: { name: string; prompt: PromptChannels; openings: readonly string[]; portrait?: PortraitImage | undefined }): Definition =>
+export const definitionOf = ({ name, prompt, openings, portrait }: { name: string; prompt: PromptChannels; openings: readonly string[]; portrait?: PortraitImage | undefined }): ParticipantDefinition =>
 	({ name, prompt, openings: [...openings], portrait });
 
-export const sameDefinition = (a: Definition, b: Definition) => JSON.stringify(a) === JSON.stringify(b);
+export const sameDefinition = (a: ParticipantDefinition, b: ParticipantDefinition) => JSON.stringify(a) === JSON.stringify(b);
 
 // ==[HUMAN APPROVED]== Blank Opening cards are editor scratch space; the server rejects blank Openings.
-export const submittableDefinition = (draft: Definition): ParticipantDefinition =>
+export const submittableDefinition = (draft: ParticipantDefinition): ParticipantDefinition =>
 	({ name: draft.name, prompt: draft.prompt, openings: draft.openings.filter((opening) => opening.trim() !== ""), portrait: draft.portrait });
-
-export const submittableImages = (draft: Definition) => draft.upload === undefined ? undefined : [draft.upload];
 
 const primaryChannels = [
 	["identity", "Appearance, personality, voice…"],
@@ -45,8 +41,8 @@ export function DefinitionEditor({
 	onSave,
 	onBack,
 }: {
-	draft: Definition;
-	onDraftChange: (draft: Definition) => void;
+	draft: ParticipantDefinition;
+	onDraftChange: (draft: ParticipantDefinition) => void;
 	subtitle: ReactNode;
 	actions?: ReactNode;
 	banner?: ReactNode;
@@ -62,15 +58,22 @@ export function DefinitionEditor({
 	const navigate = useSaveNavigation();
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
+	const identity = useRef<ProseEditorHandle>(null);
 	const setChannel = (key: keyof PromptChannels, value: string) => onDraftChange({ ...draft, prompt: { ...draft.prompt, [key]: value } });
-	const setPortrait = (portrait: PortraitImage | undefined, upload?: string) =>
-		onDraftChange({ ...draft, portrait, upload: portrait === undefined ? undefined : upload ?? draft.upload });
+	const setPortrait = (portrait: PortraitImage | undefined) => onDraftChange({ ...draft, portrait });
 	const setOpenings = (openings: string[]) => onDraftChange({ ...draft, openings });
 	const channel = (key: keyof PromptChannels, placeholder?: string) => (
-		<label key={key} className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-			{promptChannelLabels[key]}
-			<Textarea className="min-h-16 bg-(--surface-muted) text-sm text-foreground" value={draft.prompt[key]} placeholder={placeholder} onChange={(event) => setChannel(key, event.target.value)} />
-		</label>
+		<div key={key} className="flex flex-col gap-1.5">
+			<div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+				<span>{promptChannelLabels[key]}</span>
+				{key === "identity" && (
+					<Button type="button" size="xs" variant="ghost" disabled={draft.portrait === undefined} onClick={() => draft.portrait !== undefined && identity.current?.insertReference(draft.name || "Portrait", draft.portrait.hash)}>
+						<ImageUp aria-hidden="true" /> Insert Portrait
+					</Button>
+				)}
+			</div>
+			<ProseEditor ref={key === "identity" ? identity : undefined} className="prose-editor-field" ariaLabel={promptChannelLabels[key]} value={draft.prompt[key]} placeholder={placeholder} onChange={(value) => setChannel(key, value)} />
+		</div>
 	);
 
 	return (
@@ -115,8 +118,8 @@ export function DefinitionEditor({
 					{draft.openings.length === 0 && <p className="text-xs text-muted-foreground">No Openings.</p>}
 					{draft.openings.map((opening, index) => (
 						<div key={index} className="group/opening relative">
-							<Textarea className="min-h-20 bg-(--surface-muted) pr-8 text-sm" value={opening} aria-label={`Opening ${index + 1}`} placeholder="The first Message…" onChange={(event) => setOpenings(draft.openings.map((item, at) => at === index ? event.target.value : item))} />
-							<Button type="button" size="icon-xs" variant="ghost" className="absolute top-1.5 right-1.5 opacity-0 group-hover/opening:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100" aria-label={`Remove Opening ${index + 1}`} onClick={() => setOpenings(draft.openings.filter((_, at) => at !== index))}><X aria-hidden="true" /></Button>
+							<ProseEditor className="prose-editor-field min-h-20" ariaLabel={`Opening ${index + 1}`} value={opening} placeholder="The first Message…" onChange={(value) => setOpenings(draft.openings.map((item, at) => at === index ? value : item))} />
+							<Button type="button" size="icon-xs" variant="ghost" className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover/opening:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100" aria-label={`Remove Opening ${index + 1}`} onClick={() => setOpenings(draft.openings.filter((_, at) => at !== index))}><X aria-hidden="true" /></Button>
 						</div>
 					))}
 				</section>

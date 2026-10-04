@@ -11,6 +11,8 @@ import {
 import { isMacroValue } from "../shared/contract/macro-variables";
 import type { MacroValue } from "../shared/contract/macro-variables";
 import { useAsyncEffect } from "./lib/use-async";
+import { ProseEditor } from "./editor/ProseEditor";
+import { projectImageAnchors } from "../shared/image-reference";
 import { PanelHeader } from "./PanelHeader";
 
 type PanelState =
@@ -246,7 +248,7 @@ export function MacroVariablesReadyView({
 							<strong>{variable.name}</strong>
 							<span>{sourceLabel(variable)}</span>
 						</div>
-						<pre>{displayValue(variable.value)}</pre>
+						<pre>{projectImageAnchors(displayValue(variable.value))}</pre>
 						<div className="macro-variable-actions">
 							<button className="edit-action" type="button" onClick={() => beginEdit(variable)} disabled={saving}><Save aria-hidden="true" /> Edit</button>
 							<button className="edit-action" type="button" onClick={() => void remove(variable)} disabled={saving}><Trash2 aria-hidden="true" /> Delete</button>
@@ -260,7 +262,7 @@ export function MacroVariablesReadyView({
 					{editing !== null && <button className="edit-action" type="button" onClick={beginAdd} disabled={saving}>Cancel</button>}
 				</div>
 				<label><span>Name</span><input value={draftName} onChange={(event) => { setDraftName(event.target.value); setNameError(false); }} aria-invalid={nameError} aria-describedby={nameError ? "macro-name-error" : undefined} disabled={saving} readOnly={editing !== null} placeholder="variableName" />{nameError && <small id="macro-name-error" className="field-error" role="alert">Enter a Macro Variable name.</small>}</label>
-				<label><span>Value</span><textarea value={draftValue} onChange={(event) => setDraftValue(event.target.value)} disabled={saving} rows={5} placeholder="A long multiline value is supported." /></label>
+				<div className="macro-value-field"><span>Value</span><ProseEditor className="macro-value-editor" ariaLabel="Value" value={draftValue} onChange={setDraftValue} disabled={saving} placeholder="A long multiline value is supported." /></div>
 				<button className="primary-button" type="submit" disabled={saving}><Plus aria-hidden="true" /> {saving ? "Saving…" : editing === null ? "Add Variable" : "Save Variable"}</button>
 			</form>
 			<p className="panel-note macro-variables-help">

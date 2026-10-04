@@ -1,3 +1,10 @@
 export { InvalidImageError } from "./errors";
 export { ingestUploads } from "./ingest";
-export { dropImageReferences, readImage, syncPortraitReference, type ImagePool } from "./store";
+export {
+	dropImageReferences,
+	readImage,
+	syncJsonReferences,
+	syncPortraitReference,
+	syncTextReferences,
+	type ImagePool,
+} from "./store";

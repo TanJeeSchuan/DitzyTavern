@@ -13,6 +13,8 @@ import {
 	requireParticipantName,
 	requireParticipantOpenings,
 	syncParticipantPortrait,
+	syncParticipantOpeningReferences,
+	syncParticipantPromptReferences,
 } from "../internal";
 import type { Portrait } from "../../../shared/contract/image";
 import type { PromptChannels } from "../../../shared/contract/prompt-schema";
@@ -27,12 +29,14 @@ export interface ReplaceParticipantPromptInput {
 	conversationId: number;
 	participantId: number;
 	prompt: PromptChannels;
+	images?: ImagePool | undefined;
 }
 
 export interface ReplaceParticipantOpeningsInput {
 	conversationId: number;
 	participantId: number;
 	openings: string[];
+	images?: ImagePool | undefined;
 }
 
 // ==[HUMAN APPROVED]== Separate semantic Apply actions for Participant Definition editing. Each
@@ -71,6 +75,7 @@ export function replaceParticipantPrompt(
 			set: promptRow,
 		})
 		.run();
+	syncParticipantPromptReferences(db, input.participantId, input.prompt, input.images);
 }
 
 export function replaceParticipantOpenings(
@@ -93,6 +98,7 @@ export function replaceParticipantOpenings(
 			)
 			.run();
 	}
+	syncParticipantOpeningReferences(db, input.participantId, openings, input.images);
 }
 
 export function updateParticipantDefinition(db: ConversationDatabase, input: {
@@ -109,6 +115,8 @@ export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
 	syncParticipantPortrait(db, participant.id, input.definition.portrait, input.images ?? new Map());
+	syncParticipantPromptReferences(db, participant.id, input.definition.prompt, input.images);
+	syncParticipantOpeningReferences(db, participant.id, openings, input.images);
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
 	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
 }

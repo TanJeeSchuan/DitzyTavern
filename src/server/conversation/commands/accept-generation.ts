@@ -24,6 +24,7 @@ import {
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
+	syncVariantReferences,
 	type ConversationDatabase,
 } from "../internal";
 import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-defaults";
@@ -52,6 +53,7 @@ import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variabl
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
 import { syncSelectedMemorySource } from "../../memory";
+import { syncJsonReferences } from "../../image";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -121,6 +123,10 @@ const persistActiveGeneration = (
 	if (memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
 		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
 	}
+	const macroWritesJson = jsonText(
+		(input.macroWrites ?? []).map(encodeMacroVariableWrite),
+		"Macro writes",
+	);
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -146,10 +152,7 @@ const persistActiveGeneration = (
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
-			macro_writes_json: jsonText(
-				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
-				"Macro writes",
-			),
+			macro_writes_json: macroWritesJson,
 		})
 		.returning({ id: activeGenerationTable.id })
 		.get();
@@ -158,6 +161,7 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
+	syncJsonReferences(db, { kind: "active-generation", column: "active_generation_id", id: active.id }, macroWritesJson);
 	return active.id;
 };
 
@@ -430,13 +434,14 @@ export function acceptConversationTailGeneration(
 				author: { participantId: human.id, name: human.name },
 				context: null,
 			});
-			insertVariant(db, {
+			const humanVariantId = insertVariant(db, {
 				messageId: humanMessageId,
 				position: 1,
 				content: input.humanContent,
 				timestamp: input.timestamp,
 				selected: true,
 			});
+			syncVariantReferences(db, humanVariantId, input.humanContent, input.images);
 			return { humanMessageId };
 		},
 	});

@@ -18,6 +18,7 @@ import {
 import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
+import { ProseEditor } from "../editor/ProseEditor";
 import { Prose } from "./prose";
 
 // ==[HUMAN APPROVED]== The story renders one native Message from the paginated read model: the
@@ -194,13 +195,8 @@ export function StoryMessageView({
 			</header>
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
-					<label htmlFor={`edit-${message.id}`}>Edit Message</label>
-					<textarea
-						id={`edit-${message.id}`}
-						value={editText}
-						onChange={(event) => setEditText(event.target.value)}
-						autoFocus
-					/>
+					<span>Edit Message</span>
+					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus />
 					<div>
 						<button
 							className="secondary-button"

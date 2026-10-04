@@ -12,7 +12,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
-import type { ConversationDatabase } from "../internal";
+import { syncMacroStateReferences, syncVariantReferences, type ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
@@ -251,14 +251,19 @@ export const persistTerminalVariantData = (
 		...suppliedData,
 	];
 	if (data.length > 0) {
-		db.insert(messageVariantDataTable)
-			.values(data.map((entry) => ({
-				message_variant_id: variantId,
-				namespace: entry.namespace,
-				key: entry.key,
-				value: entry.value,
-			})))
-			.run();
+		syncMacroStateReferences(
+			db,
+			"variant_data_id",
+			db.insert(messageVariantDataTable)
+				.values(data.map((entry) => ({
+					message_variant_id: variantId,
+					namespace: entry.namespace,
+					key: entry.key,
+					value: entry.value,
+				})))
+				.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
+				.all(),
+		);
 	}
 };
 
@@ -295,6 +300,7 @@ function commitDurableTerminalGenerationInTransaction(
 		.set({ content: input.content, timestamp: input.timestamp })
 		.where(eq(messageVariantTable.id, variant.id))
 		.run();
+	syncVariantReferences(db, variant.id, input.content);
 	persistTerminalVariantData(db, variant.id, {
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,

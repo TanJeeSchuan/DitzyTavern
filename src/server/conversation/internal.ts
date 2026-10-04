@@ -16,7 +16,8 @@ import {
 	toPromptChannelRow,
 } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
-import { syncPortraitReference, type ImagePool } from "../image";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import { syncJsonReferences, syncPortraitReference, syncTextReferences, type ImagePool } from "../image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
@@ -384,6 +385,38 @@ export const syncParticipantPortrait = (
 	}
 };
 
+export const syncVariantReferences = (
+	db: ConversationDatabase,
+	variantId: number,
+	content: string,
+	images?: ImagePool | undefined,
+) => syncTextReferences(db, { kind: "variant", column: "variant_id", id: variantId }, [content], images);
+
+export const syncMacroStateReferences = (
+	db: ConversationDatabase,
+	column: "variant_data_id" | "conversation_data_id",
+	rows: readonly { id: number; namespace: string; value: string }[],
+	images?: ImagePool | undefined,
+) => {
+	for (const row of rows) {
+		if (isMacroDataNamespace(row.namespace)) syncJsonReferences(db, { kind: "macro-state", column, id: row.id }, row.value, images);
+	}
+};
+
+export const syncParticipantPromptReferences = (
+	db: ConversationDatabase,
+	participantId: number,
+	prompt: PromptChannels,
+	images?: ImagePool | undefined,
+) => syncTextReferences(db, { kind: "prompt", column: "participant_id", id: participantId }, Object.values(prompt), images);
+
+export const syncParticipantOpeningReferences = (
+	db: ConversationDatabase,
+	participantId: number,
+	openings: readonly string[],
+	images?: ImagePool | undefined,
+) => syncTextReferences(db, { kind: "opening", column: "participant_id", id: participantId }, openings, images);
+
 export interface InsertedParticipant {
 	id: number;
 	name: string;
@@ -429,6 +462,8 @@ export const insertParticipant = (
 		})
 		.run();
 	syncParticipantPortrait(db, inserted.id, definition.portrait, images);
+	syncParticipantPromptReferences(db, inserted.id, definition.prompt, images);
+	syncParticipantOpeningReferences(db, inserted.id, definition.openings, images);
 
 	const openings = [...definition.openings];
 	if (openings.length > 0) {

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { imageReferenceTable, imageTable } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
+import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { IngestedImage } from "./ingest";
 
 export type ImagePool = ReadonlyMap<string, IngestedImage>;
@@ -94,3 +95,21 @@ export const syncPortraitReference = (
 	pool: ImagePool,
 ): boolean =>
 	syncImageReferences(db, { kind: "portrait", column, id }, portrait === undefined ? [] : [portrait.hash], pool).length === 0;
+
+export const syncTextReferences = (
+	db: ImageDatabase,
+	owner: ImageOwner,
+	texts: readonly string[],
+	pool: ImagePool = new Map(),
+) => {
+	syncImageReferences(db, owner, texts.flatMap(imageHashes), pool);
+};
+
+export const syncJsonReferences = (
+	db: ImageDatabase,
+	owner: ImageOwner,
+	json: string,
+	pool: ImagePool = new Map(),
+) => {
+	syncImageReferences(db, owner, jsonImageHashes(json), pool);
+};

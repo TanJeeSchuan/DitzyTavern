@@ -272,7 +272,8 @@
 }
 
 .macro-position-field,
-.macro-variable-editor label {
+.macro-variable-editor label,
+.macro-value-field {
 	display: grid;
 	gap: 0.35rem;
 	color: var(--text-muted);
@@ -305,6 +306,19 @@
 	resize: vertical;
 }
 
+.macro-value-editor {
+	min-height: 7rem;
+	max-height: 18rem;
+	padding: 0.65rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.75rem;
+	background: var(--surface-muted);
+	color: var(--foreground);
+	font-weight: 450;
+	line-height: 1.48;
+}
+
+.macro-value-editor:focus-within,
 .macro-variable-editor input:focus-visible,
 .macro-variable-editor textarea:focus-visible {
 	outline: 0;

@@ -439,9 +439,10 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/macro-variables",
-			({ params, body, status }) => {
+			async ({ params, body, status }) => {
 				try {
 					const edited = createConversationModule(database).editMacroVariables({
+							images: await ingestUploads(body.images),
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							promptPresetId: body.promptPresetId,
@@ -456,7 +457,7 @@ export const createConversationRoutes = (
 						return staleConversationResponse(database, params.id, error);
 					}
 					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError) {
+					if (error instanceof InvalidConversationCommandError || error instanceof InvalidImageError) {
 						return status(422, { outcome: "invalid" as const, reason: error.message });
 					}
 					throw error;
@@ -515,8 +516,9 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				() => generationCoordinator.startSendGeneration({
+				async () => generationCoordinator.startSendGeneration({
 					conversationId: params.id,
+					images: await ingestUploads(body.images),
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),

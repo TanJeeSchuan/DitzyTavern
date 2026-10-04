@@ -3,7 +3,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { Portrait } from "../../shared/contract/image";
 import { characterTable } from "../database/schema";
-import { syncPortraitReference, type ImagePool } from "../image";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import { syncPortraitReference, syncTextReferences, type ImagePool } from "../image";
 import {
 	CharacterNotFoundError,
 	InvalidCharacterCommandError,
@@ -84,6 +85,20 @@ export const syncPortrait = (
 		throw new InvalidCharacterCommandError("The Portrait image was not provided.");
 	}
 };
+
+export const syncPromptReferences = (
+	db: CharacterDatabase,
+	characterId: number,
+	prompt: PromptChannels,
+	images?: ImagePool,
+) => syncTextReferences(db, { kind: "prompt", column: "character_id", id: characterId }, Object.values(prompt), images);
+
+export const syncOpeningReferences = (
+	db: CharacterDatabase,
+	characterId: number,
+	openings: readonly string[],
+	images?: ImagePool,
+) => syncTextReferences(db, { kind: "opening", column: "character_id", id: characterId }, openings, images);
 
 export interface CharacterRowState {
 	id: number;

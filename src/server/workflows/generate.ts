@@ -31,6 +31,7 @@ import {
 	type AcceptedSiblingGeneration,
 } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
+import type { ImagePool } from "../image";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
@@ -194,6 +195,7 @@ export interface SendThroughProvisionalTailGenerationInput extends GenerationAtt
 	// included in Prompt preflight before the server writes either Message.
 	expectedRevision: number;
 	content: string;
+	images?: ImagePool | undefined;
 	/** ==[HUMAN APPROVED]== A server-owned pre-send capture with an optional direct plan edit. */
 	preview?: GenerationPreviewAcceptanceFor<"send">;
 	// ==[HUMAN APPROVED]== Fired immediately after the accepted human/provisional target
@@ -269,6 +271,7 @@ export async function sendThroughProvisionalTailGeneration(
 			}),
 			expectedRevision: current.expectedRevision,
 			humanContent: capture.humanContent,
+			images: current.images,
 			reuseHumanMessageId: capture.reuseHumanMessageId,
 		}),
 		request: modelRequestFor,

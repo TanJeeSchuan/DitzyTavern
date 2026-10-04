@@ -19,6 +19,8 @@ import {
 	insertMessage,
 	insertParticipant,
 	insertVariants,
+	syncMacroStateReferences,
+	syncVariantReferences,
 	normalizeParticipantName,
 	writeControlAssignment,
 	type ConversationDatabase,
@@ -513,8 +515,17 @@ export function createConversation(
 				}));
 			});
 			if (variantData.length > 0) {
-				db.insert(messageVariantDataTable).values(variantData).run();
+				syncMacroStateReferences(
+					db,
+					"variant_data_id",
+					db.insert(messageVariantDataTable).values(variantData)
+						.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
+						.all(),
+					input.images,
+				);
 			}
+			variantIds.forEach((variantId, variantIndex) =>
+				syncVariantReferences(db, variantId, message.variants[variantIndex]!.content, input.images));
 		}
 
 		const snapshot = readConversationSnapshotFromConnection(db, conversation.id);

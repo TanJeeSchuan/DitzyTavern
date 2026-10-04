@@ -2,13 +2,15 @@ import { eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
 import { syncMemorySources } from "../../memory";
 import type { ConversationDatabase } from "../internal";
-import { requireVariant } from "../internal";
+import { requireVariant, syncVariantReferences } from "../internal";
+import type { ImagePool } from "../../image";
 
 export interface EditVariantInput {
 	conversationId: number;
 	messageId: number;
 	variantId: number;
 	content: string;
+	images?: ImagePool | undefined;
 }
 
 export function editVariant(db: ConversationDatabase, input: EditVariantInput) {
@@ -18,5 +20,6 @@ export function editVariant(db: ConversationDatabase, input: EditVariantInput) {
 		.set({ content: input.content })
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
+	syncVariantReferences(db, input.variantId, input.content, input.images);
 	syncMemorySources(db.$client, input.conversationId, [input.variantId]);
 }

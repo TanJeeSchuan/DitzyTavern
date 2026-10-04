@@ -10,7 +10,9 @@ import type { ImagePool } from "../image";
 import {
 	connectCharacterLibraryDatabase,
 	requireDefinition,
+	syncOpeningReferences,
 	syncPortrait,
+	syncPromptReferences,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type { CharacterDefinition, CharacterSnapshot } from "./types";
@@ -47,6 +49,8 @@ export function createCharacter(
 			})
 			.run();
 		syncPortrait(db, inserted.id, definition.portrait, images);
+		syncPromptReferences(db, inserted.id, definition.prompt, images);
+		syncOpeningReferences(db, inserted.id, openings, images);
 
 		if (openings.length > 0) {
 			db.insert(characterOpeningTable)

@@ -19,7 +19,9 @@ import {
 	requireActiveCharacter,
 	requireCommandName,
 	requireCommandOpenings,
+	syncOpeningReferences,
 	syncPortrait,
+	syncPromptReferences,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type {
@@ -75,8 +77,10 @@ export function executeCharacterCommand(
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
 				syncPortrait(db, character.id, command.definition.portrait, images);
+				syncPromptReferences(db, character.id, command.definition.prompt, images);
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
 				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
+				syncOpeningReferences(db, character.id, openings, images);
 				break;
 			}
 			case "rename": {
@@ -99,6 +103,7 @@ export function executeCharacterCommand(
 						set: promptRow,
 					})
 					.run();
+				syncPromptReferences(db, character.id, command.prompt, images);
 				break;
 			}
 			case "replace-openings": {
@@ -117,6 +122,7 @@ export function executeCharacterCommand(
 						)
 						.run();
 				}
+				syncOpeningReferences(db, character.id, openings, images);
 				break;
 			}
 			case "set-pinned": {

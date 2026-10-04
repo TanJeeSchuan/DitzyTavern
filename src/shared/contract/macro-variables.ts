@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { inlineImages } from "./image";
 import { conversationSummary } from "./conversation-schema";
 import { numericWire } from "./wire";
 import {
@@ -53,6 +54,7 @@ const macroVariableEditFields = Type.Object({
 	expectedRevision: Type.Integer(),
 	promptPresetId: Type.Integer(),
 	position: Type.Integer({ minimum: 0 }),
+	images: inlineImages,
 });
 
 export const macroVariablesEditBody = Type.Union([

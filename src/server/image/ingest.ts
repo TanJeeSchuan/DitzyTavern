@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { transformExif } from "@uwx/exif-be-gone-web";
+import { MAX_IMAGE_BYTES } from "../../shared/contract/image";
 import { InvalidImageError } from "./errors";
-
-export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 export type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 

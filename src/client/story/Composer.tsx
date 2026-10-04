@@ -1,5 +1,6 @@
 import { PenLine, Send, Square } from "lucide-react";
 import { useRef, type FormEvent, type ReactNode } from "react";
+import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 
 export function Composer({
 	draft,
@@ -26,7 +27,7 @@ export function Composer({
 	stopPending?: boolean;
 	writerName?: string;
 }) {
-	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const editorRef = useRef<ProseEditorHandle>(null);
 
 	return (
 		<>
@@ -38,7 +39,7 @@ export function Composer({
 			aria-hidden={!isReceded}
 			onClick={() => {
 				onFocusChange(true);
-				requestAnimationFrame(() => textareaRef.current?.focus());
+				requestAnimationFrame(() => editorRef.current?.focus());
 			}}
 		>
 			<PenLine aria-hidden="true" />
@@ -60,17 +61,13 @@ export function Composer({
 			{controlSelectors !== undefined && (
 				<div className="composer-controls-row">{controlSelectors}</div>
 			)}
-			<label htmlFor="writer-message" className="sr-only">
-				Message draft
-			</label>
-			<textarea
-				id="writer-message"
-				ref={textareaRef}
+			<ProseEditor
+				ref={editorRef}
 				value={draft}
-				onChange={(event) => onDraftChange(event.target.value)}
+				onChange={onDraftChange}
+				ariaLabel="Message draft"
 				placeholder={writerName !== undefined ? `What does ${writerName} do next?` : "Write the next part of the story…"}
 				disabled={!canWrite}
-				rows={1}
 			/>
 			{isGenerating ? (
 				<button className="send-button" type="button" onClick={onCancel} disabled={stopPending} aria-label="Stop Generation">

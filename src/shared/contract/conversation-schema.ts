@@ -674,6 +674,7 @@ const inspectedPlanFields = {
 export const generationBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
+	images: inlineImages,
 	// A preview token carries the server-captured macro clock, random draws,
 	// and pending writes. The optional plan is the user's direct edit of that
 	// capture; it is never treated as provider JSON.

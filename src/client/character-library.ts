@@ -1,5 +1,6 @@
 import { api } from "./lib/eden";
 import { commandOutcome } from "./lib/command-outcome";
+import { withInlineImages } from "./lib/image";
 import type {
 	CharacterCommand,
 	CharacterDeletionImpact,
@@ -58,7 +59,9 @@ export async function getCharacter(
 export async function applyCommand(
 	command: CharacterCommand,
 ): Promise<CommandOutcome> {
-	const { data, error } = await api.api.characters.commands.post(command);
+	const { data, error } = await withInlineImages(JSON.stringify(command), (images) =>
+		api.api.characters.commands.post(command.type === "create" || command.type === "update-definition" ? { ...command, images } : command),
+	);
 	if (error) {
 		return commandOutcome(error.value, {
 			conflict: (payload) => ({ status: "conflict", currentCharacter: payload.currentCharacter }),

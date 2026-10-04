@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { InvalidImageError } from "./errors";
 import { gifFixture, jpegFixture, pngFixture, webpFixture } from "./image-fixtures";
-import { ingestImage, MAX_IMAGE_BYTES } from "./ingest";
+import { MAX_IMAGE_BYTES } from "../../shared/contract/image";
+import { ingestImage } from "./ingest";
 
 const includes = (haystack: Uint8Array, needle: string) => Buffer.from(haystack).includes(Buffer.from(needle, "latin1"));
 

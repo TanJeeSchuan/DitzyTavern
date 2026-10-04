@@ -9,6 +9,7 @@ import {
 	StaleConversationRevisionError,
 } from "../conversation";
 import { GenerationConfigurationError } from "../application/generation-coordinator";
+import { InvalidImageError } from "../image";
 import { PromptBudgetExceededError } from "../prompt-compiler";
 import { generationAccepted } from "../../shared/contract/conversation-schema";
 
@@ -56,6 +57,7 @@ export const classifyGenerationFailure = (error: Error): GenerationStartFailure 
 		error instanceof ContinuationUnavailableError ||
 		error instanceof GenerationConfigurationError ||
 		error instanceof InvalidConversationCommandError ||
+		error instanceof InvalidImageError ||
 		error instanceof PromptBudgetExceededError ||
 		error instanceof SiblingVariantUnavailableError
 	) {

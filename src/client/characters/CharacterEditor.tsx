@@ -14,7 +14,8 @@ import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
-import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition, submittableImages, type Definition } from "./DefinitionEditor";
+import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
+import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
 export function CharacterEditor({
 	characterId,
@@ -32,7 +33,7 @@ export function CharacterEditor({
 	onClosed: (notice: string | null) => void;
 }) {
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
-	const [draft, setDraft] = useState<Definition | null>(null);
+	const [draft, setDraft] = useState<ParticipantDefinition | null>(null);
 	const [conflict, setConflict] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | null>(null);
@@ -87,7 +88,7 @@ export function CharacterEditor({
 	}, [onChanged, onClosed]);
 
 	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
-	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft), images: submittableImages(draft) });
+	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft) });
 	useSaveGuard({ dirty, saving: pendingAction === "save", save, discard: () => undefined });
 
 	if (snapshot === null || draft === null) return <p className="panel-body text-sm text-muted-foreground" role="status">Loading the Character…</p>;

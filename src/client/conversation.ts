@@ -2,6 +2,7 @@ import { api } from "./lib/eden";
 import type { Static } from "@sinclair/typebox";
 import type { CharacterSnapshot } from "./character-library";
 import { commandOutcome } from "./lib/command-outcome";
+import { withInlineImages } from "./lib/image";
 import type { EdenResponse } from "./lib/eden";
 import type {
 	ActiveGenerationDetails,
@@ -103,13 +104,10 @@ export async function applyConversationCommand(
 	conversationId: number,
 	expectedRevision: number,
 	action: ConversationAction,
-	images?: string[],
 ): Promise<CommandOutcome> {
-	const { data, error } = await api.api.conversations({ id: conversationId }).commands.post({
-		expectedRevision,
-		action,
-		images,
-	});
+	const { data, error } = await withInlineImages(JSON.stringify(action), (images) =>
+		api.api.conversations({ id: conversationId }).commands.post({ expectedRevision, action, images }),
+	);
 	if (error) {
 		return commandOutcome(error.value, {
 			conflict: (payload) => ({ status: "conflict", currentConversation: payload.currentConversation }),
@@ -256,9 +254,9 @@ export async function editMacroVariable(
 	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
 ): Promise<EditMacroVariablesOutcome> {
 	try {
-		const { data, error } = await api.api
-			.conversations({ id: conversationId })["macro-variables"]
-			.post(input);
+		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
+			api.api.conversations({ id: conversationId })["macro-variables"].post({ ...input, images }),
+		);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
 			if (error.status === 409 && "currentConversation" in error.value) {
@@ -409,7 +407,9 @@ export function startConversationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
+		withInlineImages(content, (images) =>
+			api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, images, ...formatting, ...preview }),
+		),
 		"",
 	);
 }

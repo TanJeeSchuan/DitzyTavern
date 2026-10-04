@@ -450,6 +450,7 @@ export interface GenerationAcceptanceCapture {
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
 	humanContent: string;
+	images?: ImagePool | undefined;
 	// A retry may point at the already accepted trailing human Message. When
 	// omitted, acceptance creates one in the same transaction.
 	reuseHumanMessageId?: number | undefined;

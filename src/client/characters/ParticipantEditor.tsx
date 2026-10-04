@@ -7,7 +7,8 @@ import { runConversationCommand } from "../conversation-command-runner";
 import { emptyPromptChannels } from "../../shared/definition";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
-import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition, submittableImages, type Definition } from "./DefinitionEditor";
+import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
+import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
 // ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -35,7 +36,7 @@ export function ParticipantEditor({
 	onBack: () => void;
 }) {
 	const participant = conversation.cast.find((candidate) => candidate.id === participantId);
-	const [draft, setDraft] = useState<Definition>(() => definitionOf(participant ?? { name: "", prompt: emptyPromptChannels(), openings: [] }));
+	const [draft, setDraft] = useState<ParticipantDefinition>(() => definitionOf(participant ?? { name: "", prompt: emptyPromptChannels(), openings: [] }));
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const draftRef = useRef(draft);
@@ -51,7 +52,7 @@ export function ParticipantEditor({
 			await runConversationCommand({
 				revision: () => conversation.revision,
 				send: (expectedRevision) =>
-					applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }, submittableImages(submitted)),
+					applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }),
 				reconciliation: {
 					adoptSnapshot: onConversationChange,
 					showNotice: setNotice,
