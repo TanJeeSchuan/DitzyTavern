@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: TanJeeSchuan/NitPi
-          ref: c485c1f65352929b379b6d5174b6a412ff4129b9
+          ref: 59e16acdf97b4c8ba6a0a49f5cbc5e441cb0e6b1
           path: nitpi
           persist-credentials: false
 
@@ -112,16 +112,7 @@ jobs:
           NITPI_SECRET_STORAGE_AUTH_KEY: ${{ secrets.NITPI_STORAGE_AUTH_KEY }}
           NITPI_SECRET_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NITPI_REVIEW_INSTRUCTIONS_FILE: ${{ github.workspace }}/subject/.nitpi/review-instructions.md
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          const path = '../nitpi/actions/entry.mts';
-          const source = readFileSync(path, 'utf8').replace('const waited: string[] = [];', `
-          console.log('[DEBUG-nitpi-state]', JSON.stringify({ outcome, runs: await Promise.all((await host.runHistory().allRuns(TODO_CONTEXT)).map(async ({ runId, phase, checkStatus, checkDetail, pipelineTaskId, subject }) => { const task = await host.runHistory().harness.getTask(pipelineTaskId, TODO_CONTEXT); return { runId, phase, checkStatus, checkDetail, pipelineTaskId, headSha: subject.headSha, taskState: task?.state, taskOutcome: task?.outcome }; })) }));
-          const waited: string[] = [];`);
-          writeFileSync(path, source);
-          NODE
-          ../nitpi/node_modules/.bin/tsx ../nitpi/actions/entry.mts
+        run: ../nitpi/node_modules/.bin/tsx ../nitpi/actions/entry.mts
 
       - name: Leave the tailnet
         if: always()
