@@ -28,6 +28,8 @@ The job's built-in `GITHUB_TOKEN` publishes reviews and checks with `contents: r
 
 ## Integration decisions and verification
 
+To start a review from the CLI, run `gh workflow run nitpi-review.yml --repo TanJeeSchuan/DitzyTavern --ref master -f pr_number=<PR-number> -f command=review`. Use `review-clean` for a fresh review and `review-cancel` to stop an active attempt.
+
 The workflow passes inputs directly to the entry, removing upstream's routing job. This avoids its missing job-output mappings, `NITPI_COMMAND`/`NITPI_INPUT_COMMAND` mismatch, and stop-event outputs written only to stdout. ([Upstream workflow](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/.github/workflows/tailscale-review.yml))
 
 Per-PR concurrency follows upstream with `cancel-in-progress: false`. It serializes jobs, so cancel and stop deliveries wait behind an active review. Immediate cancellation remains an upstream integration limitation; concurrent entry processes cannot both hold the storage lease. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/actions/entry.mts))
