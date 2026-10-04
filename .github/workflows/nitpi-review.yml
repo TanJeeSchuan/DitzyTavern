@@ -117,7 +117,7 @@ jobs:
           import { readFileSync, writeFileSync } from 'node:fs';
           const path = '../nitpi/actions/entry.mts';
           const source = readFileSync(path, 'utf8').replace('const waited: string[] = [];', `
-          console.log('[DEBUG-nitpi-state]', JSON.stringify({ outcome, runs: (await host.runHistory().allRuns(TODO_CONTEXT)).map(({ runId, phase, checkStatus, checkDetail, pipelineTaskId, subject }) => ({ runId, phase, checkStatus, checkDetail, pipelineTaskId, headSha: subject.headSha })) }));
+          console.log('[DEBUG-nitpi-state]', JSON.stringify({ outcome, runs: await Promise.all((await host.runHistory().allRuns(TODO_CONTEXT)).map(async ({ runId, phase, checkStatus, checkDetail, pipelineTaskId, subject }) => { const task = await host.runHistory().harness.getTask(pipelineTaskId, TODO_CONTEXT); return { runId, phase, checkStatus, checkDetail, pipelineTaskId, headSha: subject.headSha, taskState: task?.state, taskOutcome: task?.outcome }; })) }));
           const waited: string[] = [];`);
           writeFileSync(path, source);
           NODE
