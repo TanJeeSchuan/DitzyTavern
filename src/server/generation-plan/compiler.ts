@@ -93,7 +93,7 @@ const continuationOperands = (
 export const effectiveGenerationSettingsFor = (
 	settings: CanonicalGenerationSettings,
 	intent: GenerationIntent | undefined,
-	connection: Pick<GenerationConnectionFacts, "apiFormat"> | null,
+	connection: GenerationConnectionFacts | null,
 ): EffectiveGenerationSettings => ({
 	modelId: settings.modelId,
 	temperature: settings.temperature,
@@ -108,10 +108,10 @@ export const effectiveGenerationSettingsFor = (
 	// this attempt and must not appear as an effective value.
 	siblingGenerationLimit: null,
 	...continuationOperands(intent),
+	repeatedImagePlacement: settings.repeatedImagePlacement,
 	// ==[HUMAN APPROVED]== Only the namespace matching the selected Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never
 	// transmitted. Without a selected Profile no namespace applies.
-	repeatedImagePlacement: settings.repeatedImagePlacement,
 	requestOverrides: connection === null
 		? {}
 		: settings.requestOverrides[connection.apiFormat],
@@ -146,7 +146,6 @@ export const compileGenerationPlan = (
 	if (!Number.isInteger(memoryAllowance) || memoryAllowance < 0) {
 		throw new Error("Memory allowance must be a non-negative whole number.");
 	}
-	const sendImages = input.connection?.sendImages ?? true;
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
@@ -160,7 +159,7 @@ export const compileGenerationPlan = (
 			lore,
 			memory,
 			attempt,
-			images: { lookup: input.imageLookup, placement: input.settings.repeatedImagePlacement, sendImages },
+			images: input.images,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};

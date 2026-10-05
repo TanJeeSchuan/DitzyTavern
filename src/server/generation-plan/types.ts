@@ -18,7 +18,7 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	GenerationIntent,
-	ImageLookup,
+	PromptImageResolution,
 	PromptBudgetResult,
 	PromptContextEntry,
 	PromptPlan,
@@ -58,7 +58,6 @@ export interface GenerationPlan {
  */
 export interface GenerationConnectionFacts {
 	readonly apiFormat: ChatApiFormat;
-	readonly sendImages: boolean;
 }
 
 /** The captured inputs one compilation consumes. */
@@ -95,5 +94,5 @@ export interface CompileGenerationPlanInput {
 	readonly estimator?: TokenEstimator | undefined;
 	// Where a Reference's Image is stored, and how large it is. Resolution runs
 	// after macro expansion, so any hash the text holds may be asked about.
-	readonly imageLookup: ImageLookup;
+	readonly images: PromptImageResolution;
 }

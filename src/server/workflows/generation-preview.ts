@@ -7,9 +7,9 @@ import {
 	type PromptPlan,
 	type TokenEstimator,
 } from "../prompt-compiler";
-import { imageLookup } from "../image";
+import { promptImageResolutionFor } from "./prompt-image-resolution";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import { shouldSendImages, type ModelClientConnectionSnapshot } from "../model-client";
+import type { ModelClientConnectionSnapshot } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
 import {
 	captureContinuationGenerationAsync,
@@ -227,11 +227,7 @@ const acceptedEditedPlan = (
 	}
 	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, submittedPlan);
 	const settings = record.capture.capture.plan.effectiveSettings;
-	const editedPlan = resolvePromptImages(submittedPlan, {
-		lookup: imageLookup(database),
-		placement: settings.repeatedImagePlacement,
-		sendImages: shouldSendImages(record.capture.capture.connection, settings.modelId),
-	});
+	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.capture.connection, settings));
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
