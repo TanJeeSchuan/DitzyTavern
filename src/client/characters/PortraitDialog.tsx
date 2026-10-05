@@ -17,13 +17,11 @@ const frames = [
 export function PortraitDialog({
 	open,
 	portrait,
-
 	onOpenChange,
 	onChange,
 }: {
 	open: boolean;
 	portrait: PortraitImage | undefined;
-
 	onOpenChange: (open: boolean) => void;
 	onChange: (portrait: PortraitImage | undefined) => void;
 }) {

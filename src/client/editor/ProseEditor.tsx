@@ -93,7 +93,6 @@ export function ProseEditor({
 	const host = useRef<HTMLDivElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const view = useRef<EditorView | null>(null);
-
 	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
 	const onChangeRef = useRef(onChange);
 	const [error, setError] = useState<string | null>(null);
@@ -102,7 +101,6 @@ export function ProseEditor({
 
 	const insert = async (files: readonly File[], at?: number) => {
 		const editor = view.current;
-
 		if (editor === null || !editor.state.facet(EditorView.editable) || files.length === 0) return;
 		const selection = editor.state.selection.main;
 		const pending = { range: at === undefined ? selection : EditorSelection.cursor(at) };

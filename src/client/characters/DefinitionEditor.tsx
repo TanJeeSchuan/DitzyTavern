@@ -56,7 +56,6 @@ export function DefinitionEditor({
 	onBack: () => void;
 }) {
 	const navigate = useSaveNavigation();
-
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const identity = useRef<ProseEditorHandle>(null);
