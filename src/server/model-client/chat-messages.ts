@@ -73,17 +73,11 @@ const followingImages = (segments: readonly Segment[]): UserPart[] =>
 	segments.flatMap((segment): UserPart[] =>
 		"image" in segment ? [{ type: "text", text: segment.anchor }, imagePart(segment.image)] : []);
 
-export interface ChatMessages {
-	readonly messages: ChatMessage[];
-	readonly sentImages: boolean;
-}
-
 export function toMessages(
 	input: ModelClientGenerationInput,
 	images: { readonly load: ImageLoader },
-): ChatMessages {
+): ChatMessage[] {
 	const messages: ChatMessage[] = [];
-	let sentImages = false;
 	const loaded = new Map<string, LoadedImage | undefined>();
 	const loadImage = (hash: string) => {
 		if (!loaded.has(hash)) loaded.set(hash, images.load(hash));
@@ -98,7 +92,6 @@ export function toMessages(
 	const renderBlock = (blockIndex: number, content: string) =>
 		renderContent(content, imagesByBlock.get(blockIndex) ?? new Map(), loadImage);
 	const push = (role: "system" | "user" | "assistant", rendered: RenderedContent, speakerName: string | null = null) => {
-		sentImages ||= rendered.sent;
 		if (role === "user") {
 			messages.push({ role, content: rendered.sent ? userParts(rendered.segments, speakerName) : `${speakerPrefix(speakerName)}${rendered.text}` });
 			return;
@@ -184,7 +177,7 @@ export function toMessages(
 			content: `${projectImageAnchors(prefix)}${continuationIntent.suffix}`,
 		});
 	}
-	return { messages, sentImages };
+	return messages;
 }
 
 function isPrefillSuffix(value: string): value is "" | " " | "\n" | "\n\n" {

@@ -1,11 +1,8 @@
-import type { GenerationImageModel } from "../../shared/contract/generation-events";
 import type { ModelClientFailureKind } from "./types";
 
 export class ModelClientTransportError extends Error {
 	readonly kind: ModelClientFailureKind;
 	readonly responseBody?: string;
-	// Set when the request carried Images, so the writer can mark the model text-only.
-	imageModel?: GenerationImageModel;
 
 	constructor(
 		message: string,

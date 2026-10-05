@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
+import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { createConversationRoutes } from "./conversation";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import { pngFixture } from "../image/image-fixtures";
@@ -147,6 +148,35 @@ describe("Text-only Models", () => {
 		const plain = await failures(chat("vision-model"), "Just words");
 		expect(plain).toContain("event: error");
 		expect(plain).not.toContain("imageModel");
+		const missing = await failures(chat("vision-model"), formatImageReference("missing", "f".repeat(64)));
+		expect(missing).not.toContain("imageModel");
+		await mark(created.id, "vision-model", true);
+		const textOnly = await failures(chat("vision-model"), formatImageReference("map", art.hash));
+		expect(textOnly).not.toContain("imageModel");
+	});
+
+	test("a cancelled image request offers no model when Stop releases terminal ownership", async () => {
+		createProfile();
+		const conversationId = chat("vision-model");
+		const art = await picture();
+		const requested = Promise.withResolvers<void>();
+		const response = Promise.withResolvers<Response>();
+		const coordinator = createGenerationCoordinator(database, {
+			masterKey: key,
+			fetch: () => { requested.resolve(); return response.promise; },
+		});
+		const started = await coordinator.startSendGeneration({
+			conversationId,
+			expectedRevision: createConversationModule(database).getRevision(conversationId)!,
+			content: formatImageReference("map", art.hash),
+		});
+		await requested.promise;
+		started.runtime.stop();
+		started.runtime.releaseStopRequest();
+		response.resolve(stream());
+		await expect(started.result).rejects.toMatchObject({ kind: "cancelled" });
+		expect(started.runtime.state.status).toBe("failed");
+		expect(started.runtime.state.imageModel).toBeUndefined();
 	});
 
 	test("a mark never advances the settings revision and survives Profile edits", async () => {

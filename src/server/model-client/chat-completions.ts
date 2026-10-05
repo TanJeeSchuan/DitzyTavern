@@ -126,7 +126,6 @@ async function* generateOpenAICompatibleStream(options: {
 		throw new ModelClientTransportError("A model ID is required for Generation.");
 	}
 	const settings = options.input.generationSettings;
-	let sentImages = false;
 	const controller = new AbortController();
 	let cancellation: "cancelled" | "inactivity" | null = null;
 	let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
@@ -194,11 +193,9 @@ async function* generateOpenAICompatibleStream(options: {
 			headers: options.customHeaders,
 			fetch: fetchAtResolvedDestination,
 		});
-		const chat = toMessages(options.input, { load: options.loadImage });
-		sentImages = chat.sentImages;
 		const streamOptions = {
 			model,
-			messages: chat.messages,
+			messages: toMessages(options.input, { load: options.loadImage }),
 			maxRetries: 0,
 			abortSignal: controller.signal,
 			allowSystemInMessages: true,
@@ -266,12 +263,8 @@ async function* generateOpenAICompatibleStream(options: {
 		const normalizedFinishReason = normalizeFinishReason(resolvedFinishReason);
 		yield { type: "finished", finishReason: normalizedFinishReason };
 	} catch (error) {
-		const failure = cancellationFailure(cancellation)
+		throw cancellationFailure(cancellation)
 			?? (error instanceof ModelClientTransportError ? error : toModelClientTransportError(error));
-		if (sentImages && failure.kind !== "cancelled") {
-			failure.imageModel = { connectionProfileId: options.profile.id, modelId };
-		}
-		throw failure;
 	} finally {
 		if (inactivityTimer !== undefined) clearTimeout(inactivityTimer);
 		options.input.signal?.removeEventListener("abort", onCallerAbort);

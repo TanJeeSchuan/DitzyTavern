@@ -90,9 +90,16 @@ interface MutableRuntimeState {
 	imageModel?: GenerationImageModel;
 }
 
+interface GenerationRuntimeFailure {
+	readonly reason: string;
+	readonly kind?: ModelClientFailureKind;
+	readonly responseBody?: string;
+	readonly imageModel?: GenerationImageModel;
+}
+
 type PendingProviderTerminal =
 	| { readonly status: "complete" }
-	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind; readonly responseBody?: string; readonly imageModel?: GenerationImageModel };
+	| { readonly status: "failed"; readonly failure: GenerationRuntimeFailure };
 
 /**
  * ==[HUMAN APPROVED]== Process-local fan-out for one database. Event history is deliberately
@@ -338,10 +345,11 @@ export class GenerationRuntime {
 		this.onTerminal?.();
 	}
 
-	fail(reason: string, kind: ModelClientFailureKind = "transport", responseBody?: string, imageModel?: GenerationImageModel): void {
+	fail(failure: GenerationRuntimeFailure): void {
+		const { reason, kind = "transport", responseBody, imageModel } = failure;
 		if (this.stateValue.status !== "active") return;
 		if (this.stopRequested) {
-			this.pendingProviderTerminal ??= { status: "failed", reason, kind, responseBody, imageModel };
+			this.pendingProviderTerminal ??= { status: "failed", failure };
 			return;
 		}
 		// ==[HUMAN APPROVED]== A failure event is part of the same ordered stream. If the provider
@@ -412,7 +420,7 @@ export class GenerationRuntime {
 		const pending = this.pendingProviderTerminal;
 		this.pendingProviderTerminal = null;
 		if (pending?.status === "complete") this.complete();
-		if (pending?.status === "failed") this.fail(pending.reason, pending.kind, pending.responseBody, pending.imageModel);
+		if (pending?.status === "failed") this.fail(pending.failure);
 	}
 
 	/** ==[HUMAN APPROVED]== Mark the runtime terminal after the durable Conversation transition. */

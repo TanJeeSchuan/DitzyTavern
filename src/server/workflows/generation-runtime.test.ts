@@ -191,7 +191,7 @@ describe("Generation runtime", () => {
 			});
 			runtime.publish({ type: "reasoning", text: "final thought" });
 			if (terminal === "complete") runtime.complete();
-			else runtime.fail("provider disconnected");
+			else runtime.fail({ reason: "provider disconnected" });
 
 			expect(checkpoints).toEqual([{
 				reasoning: "final thought",
@@ -223,7 +223,7 @@ describe("Generation runtime", () => {
 		// Provider frames and terminal callbacks can arrive after AbortSignal is
 		// observed. They must not append output or replace the explicit Stop.
 		runtime.publish({ type: "content", text: "late" });
-		runtime.fail("late provider failure");
+		runtime.fail({ reason: "late provider failure" });
 		runtime.complete();
 		runtime.markStopped();
 		runtime.markStopped();

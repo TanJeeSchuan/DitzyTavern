@@ -5,7 +5,6 @@ import { formatImageReference } from "../../shared/image-reference";
 import {
 	collectModelClientGeneration,
 	createOpenAICompatibleModelClient,
-	ModelClientGenerationError,
 	type ModelClientGenerationInput,
 } from ".";
 
@@ -101,16 +100,6 @@ const history = (content: string, role: "human" | "model" = "human", speakerName
 
 const textOf = (messages: ReadonlyArray<{ content: string | string[] }>) =>
 	messages.flatMap(({ content }) => Array.isArray(content) ? content.filter((part) => !part.startsWith("<")) : [content]).join("\n");
-
-const failureOf = async (run: Promise<unknown>): Promise<ModelClientGenerationError> => {
-	try {
-		await run;
-	} catch (error) {
-		if (error instanceof ModelClientGenerationError) return error;
-		throw error;
-	}
-	throw new Error("The Generation was expected to fail.");
-};
 
 describe("Model Client Image transport", () => {
 	test("sends each Image after its anchor at its position inside a user message", async () => {
@@ -254,48 +243,4 @@ describe("Model Client Image transport", () => {
 		expect(text).toContain("[Image: mug]");
 	});
 
-	test("a failed request that carried Images names the model it sent them to", async () => {
-		const client = createOpenAICompatibleModelClient({
-			profile,
-			secrets: null,
-			loadImage: (hash) => stored.get(hash),
-			fetch: async () => new Response(JSON.stringify({ error: { message: "images unsupported" } }), { status: 400 }),
-		});
-		await expect(collectModelClientGeneration(client, {
-			promptPlan: planOf([history(map)]),
-			modelId: "vision-model",
-			generationSettings: settings,
-		})).rejects.toMatchObject({ kind: "provider", imageModel: { connectionProfileId: 3, modelId: "vision-model" } });
-	});
-
-	test("a failed request without Images offers no model", async () => {
-		const client = createOpenAICompatibleModelClient({
-			profile,
-			secrets: null,
-			loadImage: (hash) => stored.get(hash),
-			fetch: async () => new Response(JSON.stringify({ error: { message: "nope" } }), { status: 400 }),
-		});
-		const failure = await failureOf(collectModelClientGeneration(client, {
-			promptPlan: planOf([history("Plain")]),
-			modelId: "vision-model",
-			generationSettings: settings,
-		}));
-		expect(failure.kind).toBe("provider");
-		expect(failure.imageModel).toBeUndefined();
-	});
-
-	test("a Text-only Model's failure offers no mark because nothing was sent", async () => {
-		const client = createOpenAICompatibleModelClient({
-			profile: { ...profile, textOnlyModels: ["vision-model"] },
-			secrets: null,
-			loadImage: (hash) => stored.get(hash),
-			fetch: async () => new Response(JSON.stringify({ error: { message: "nope" } }), { status: 400 }),
-		});
-		const failure = await failureOf(collectModelClientGeneration(client, {
-			promptPlan: planOf([history(map)], { sendImages: false }),
-			modelId: "vision-model",
-			generationSettings: settings,
-		}));
-		expect(failure.imageModel).toBeUndefined();
-	});
 });

@@ -23,7 +23,8 @@ import {
 	createModelClient,
 	ModelClientGenerationError,
 	type ModelClient,
-	type ModelClientConnectionSnapshot,
+		type ModelClientConnectionSnapshot,
+		type ModelClientGenerationInput,
 	type ModelClientEvent,
 	type ModelFetch,
 } from "../model-client";
@@ -413,9 +414,13 @@ export class GenerationCoordinator {
 		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);
 		let runtime: GenerationRuntime | undefined;
+		let capturedRequest: ModelClientGenerationInput | undefined;
 		const started = input.start({
 			database,
-			modelClient: transport.modelClient,
+			modelClient: { generate: (request) => {
+				capturedRequest = request;
+				return transport.modelClient.generate(request);
+			} },
 			connection: transport.connection,
 			onBeforeTerminal: () => {
 				if (runtime?.isTerminal) throw new ModelClientGenerationError("cancelled", "Generation has already stopped.");
@@ -454,13 +459,16 @@ export class GenerationCoordinator {
 				return value;
 			})
 			.catch((error) => {
+				const kind = error instanceof ModelClientGenerationError ? error.kind : "transport";
 				try {
-					activeRuntime.fail(
-						error instanceof Error ? error.message : "Generation failed.",
-						error instanceof ModelClientGenerationError ? error.kind : "transport",
-						error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						error instanceof ModelClientGenerationError ? error.imageModel : undefined,
-					);
+					activeRuntime.fail({
+						reason: error instanceof Error ? error.message : "Generation failed.",
+						kind,
+						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
+						imageModel: kind !== "cancelled" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
+							? { connectionProfileId: transport.connection.profileId, modelId: capturedRequest.modelId }
+							: undefined,
+					});
 				} catch {
 					// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
 				}
