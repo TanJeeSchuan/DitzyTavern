@@ -74,13 +74,18 @@ export const prepareImage = async (file: File, draft: ImageDraft): Promise<Prepa
 
 const hashesIn = (payloadJson: string) => new Set(payloadJson.match(/[0-9a-f]{64}/g) ?? []);
 
+export const waitForImageLoads = async (payloadJson: string) => {
+	const hashes = [...hashesIn(payloadJson)];
+	await Promise.all(hashes.map((hash) => loads.get(hash)));
+	for (const hash of hashes) if (loadErrors.has(hash)) throw loadErrors.get(hash);
+};
+
 export const withInlineImages = async <Result extends { error: unknown }>(
 	payloadJson: string,
 	send: (images: string[] | undefined) => Promise<Result>,
 ): Promise<Result> => {
 	const hashes = [...hashesIn(payloadJson)];
-	await Promise.all(hashes.map((hash) => loads.get(hash)));
-	for (const hash of hashes) if (loadErrors.has(hash)) throw loadErrors.get(hash);
+	await waitForImageLoads(payloadJson);
 	const images = hashes.flatMap((hash) => localImages.has(hash) ? [localImages.get(hash)!.data] : []);
 	return send(images.length === 0 ? undefined : images);
 };

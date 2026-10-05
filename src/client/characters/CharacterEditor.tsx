@@ -16,6 +16,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
+import { waitForImageLoads } from "../lib/image";
 
 export function CharacterEditor({
 	characterId,
@@ -54,6 +55,7 @@ export function CharacterEditor({
 		const submitted = draftRef.current;
 		setPendingAction(action);
 		try {
+			if ((command.type === "update-definition" || command.type === "delete") && snapshot !== null) await waitForImageLoads(JSON.stringify(definitionOf(snapshot)));
 			const outcome = await applyCommand(command);
 			switch (outcome.status) {
 				case "applied":
@@ -82,10 +84,13 @@ export function CharacterEditor({
 					setNotice(LIBRARY_UNREACHABLE_NOTICE);
 					return false;
 			}
+		} catch (cause) {
+			setNotice(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
+			return false;
 		} finally {
 			setPendingAction(null);
 		}
-	}, [onChanged, onClosed]);
+	}, [onChanged, onClosed, snapshot]);
 
 	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
 	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft) });

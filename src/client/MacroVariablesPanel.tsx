@@ -213,7 +213,7 @@ export function MacroVariablesReadyView({
 			operation: "set",
 			name,
 			value,
-		});
+		}, variables.variables.find((variable) => variable.name === name)?.value);
 		setSaving(false);
 		if (settle(outcome)) beginAdd();
 	};
@@ -228,7 +228,7 @@ export function MacroVariablesReadyView({
 			position,
 			operation: "delete",
 			name: variable.name,
-		});
+		}, variable.value);
 		setSaving(false);
 		if (settle(outcome) && editing?.name === variable.name) beginAdd();
 	};

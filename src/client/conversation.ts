@@ -2,7 +2,7 @@ import { api } from "./lib/eden";
 import type { Static } from "@sinclair/typebox";
 import type { CharacterSnapshot } from "./character-library";
 import { commandOutcome } from "./lib/command-outcome";
-import { withInlineImages } from "./lib/image";
+import { waitForImageLoads, withInlineImages } from "./lib/image";
 import type { EdenResponse } from "./lib/eden";
 import type {
 	ActiveGenerationDetails,
@@ -252,8 +252,10 @@ export async function editMacroVariable(
 		promptPresetId: number;
 		position: number;
 	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
+	previousValue: MacroValue | undefined,
 ): Promise<EditMacroVariablesOutcome> {
 	try {
+		await waitForImageLoads(JSON.stringify(previousValue ?? null));
 		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
 			api.api.conversations({ id: conversationId })["macro-variables"].post({ ...input, images }),
 		);

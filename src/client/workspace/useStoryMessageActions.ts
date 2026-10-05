@@ -5,6 +5,7 @@ import {
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
+import { waitForImageLoads } from "../lib/image";
 import {
 	classifyVariantSelection,
 	type StoryAction,
@@ -133,19 +134,21 @@ export function useStoryMessageActions({
 		if (story.preview !== null) return;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
+		const variant = storyMessage.swipes[storyMessage.activeSwipe];
 		const conversationId = story.conversationId;
-		if (variantId === undefined || conversationId === null) return;
+		if (variant === undefined || conversationId === null) return;
 
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
-			send: (expectedRevision) =>
-				applyConversationCommand(conversationId, expectedRevision, {
+			send: async (expectedRevision) => {
+				await waitForImageLoads(JSON.stringify(variant.content));
+				return applyConversationCommand(conversationId, expectedRevision, {
 					type: "edit-variant",
 					messageId,
-					variantId,
+					variantId: variant.id,
 					content,
-				}),
+				});
+			},
 			reconciliation: {
 				adoptSnapshot: setConversation,
 				showNotice: noPresentation,
@@ -172,15 +175,18 @@ export function useStoryMessageActions({
 	const deleteStoryMessage = async (messageId: number) => {
 		if (story.preview !== null) return;
 		const conversationId = story.conversationId;
-		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
+		const message = story.messages.find((entry) => entry.id === messageId);
+		if (message === undefined || conversationId === null) return;
 
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
-			send: (expectedRevision) =>
-				applyConversationCommand(conversationId, expectedRevision, {
+			send: async (expectedRevision) => {
+				await waitForImageLoads(JSON.stringify(message.swipes.map((variant) => variant.content)));
+				return applyConversationCommand(conversationId, expectedRevision, {
 					type: "delete-message",
 					messageId,
-				}),
+				});
+			},
 			reconciliation: {
 				adoptSnapshot: setConversation,
 				showNotice: noPresentation,
