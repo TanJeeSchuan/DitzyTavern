@@ -1,4 +1,5 @@
 import { scheduler } from "node:timers/promises";
+import type { GenerationImageModel } from "../../shared/contract/generation-events";
 import type {
 	ModelClient,
 	ModelClientEvent,
@@ -18,12 +19,14 @@ export class ModelClientGenerationError extends Error {
 	readonly kind: ModelClientFailureKind;
 	readonly partial: Partial<CollectedModelClientGeneration>;
 	readonly responseBody?: string;
+	readonly imageModel?: GenerationImageModel;
 
 	constructor(
 		kind: ModelClientFailureKind,
 		message: string,
 		partial: Partial<CollectedModelClientGeneration> = {},
 		responseBody?: string,
+		imageModel?: GenerationImageModel,
 	) {
 		super(sanitizeGenerationMessage(message));
 		this.name = "ModelClientGenerationError";
@@ -32,6 +35,7 @@ export class ModelClientGenerationError extends Error {
 		if (responseBody !== undefined) {
 			Object.defineProperty(this, "responseBody", { value: responseBody });
 		}
+		if (imageModel !== undefined) this.imageModel = imageModel;
 	}
 }
 
@@ -109,10 +113,10 @@ export async function collectModelClientGeneration(
 			partial.finishReason = finished.finishReason;
 		}
 		if (error instanceof ModelClientGenerationError) {
-			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody);
+			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody, error.imageModel);
 		}
 		if (error instanceof Error && isModelClientFailure(error)) {
-			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody);
+			throw new ModelClientGenerationError(error.kind, error.message, partial, error.responseBody, error.imageModel);
 		}
 		throw error;
 	}
@@ -133,7 +137,7 @@ export async function collectModelClientGeneration(
 
 function isModelClientFailure(
 	error: Error,
-): error is Error & { kind: ModelClientFailureKind; responseBody?: string } {
+): error is Error & { kind: ModelClientFailureKind; responseBody?: string; imageModel?: GenerationImageModel } {
 	// ==[HUMAN APPROVED]== SAFETY: Model Client transport errors extend Error and carry one of the
 	// closed failure kinds before this predicate is called.
 	const candidate = error as Error & { kind?: ModelClientFailureKind };

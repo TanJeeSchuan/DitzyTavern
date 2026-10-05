@@ -27,6 +27,7 @@ import {
 import {
 	formatProviderError,
 } from "./provider-errors";
+import { toMessages, type ImageLoader } from "./chat-messages";
 import { monitorSseActivity } from "./sse-activity";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
 import { snapshotProviderResponse } from "./provider-errors";
@@ -35,6 +36,8 @@ export interface ChatCompletionsModelClientOptions {
 	readonly profile: ConnectionProfile;
 	readonly secrets: ConnectionProfileSecretSnapshot | null;
 	readonly fetch?: ModelFetch;
+	// Reads the bytes of an Image the plan sends. Without it, Images send only their anchors.
+	readonly loadImage?: ImageLoader;
 }
 
 export { ModelClientTransportError } from "./errors";
@@ -92,6 +95,7 @@ function createConfiguredModelClient(
 	const credential = options.secrets?.credential ?? "";
 	const customHeaders = { ...options.secrets?.headers };
 	const actualFetch = options.fetch ?? fetch;
+	const loadImage = options.loadImage ?? (() => undefined);
 
 	return {
 		generate: (input) => generateOpenAICompatibleStream({
@@ -102,6 +106,7 @@ function createConfiguredModelClient(
 			customHeaders,
 			requestUrl,
 			actualFetch,
+			loadImage,
 		}),
 	};
 }
@@ -114,12 +119,14 @@ async function* generateOpenAICompatibleStream(options: {
 	customHeaders: Readonly<Record<string, string>>;
 	requestUrl: string;
 	actualFetch: ModelFetch;
+	loadImage: ImageLoader;
 }): AsyncIterable<ModelClientEvent> {
 	const modelId = options.input.modelId.trim();
 	if (modelId.length === 0) {
 		throw new ModelClientTransportError("A model ID is required for Generation.");
 	}
 	const settings = options.input.generationSettings;
+	let sentImages = false;
 	const controller = new AbortController();
 	let cancellation: "cancelled" | "inactivity" | null = null;
 	let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
@@ -187,9 +194,14 @@ async function* generateOpenAICompatibleStream(options: {
 			headers: options.customHeaders,
 			fetch: fetchAtResolvedDestination,
 		});
+		const chat = toMessages(options.input, {
+			load: options.loadImage,
+			textOnly: options.profile.textOnlyModels.includes(modelId),
+		});
+		sentImages = chat.sentImages;
 		const streamOptions = {
 			model,
-			messages: toMessages(options.input),
+			messages: chat.messages,
 			maxRetries: 0,
 			abortSignal: controller.signal,
 			allowSystemInMessages: true,
@@ -257,24 +269,31 @@ async function* generateOpenAICompatibleStream(options: {
 		const normalizedFinishReason = normalizeFinishReason(resolvedFinishReason);
 		yield { type: "finished", finishReason: normalizedFinishReason };
 	} catch (error) {
-		if (cancellation === "inactivity") {
-			throw new ModelClientTransportError(
-				"The provider stream became inactive before completion.",
-				"inactivity",
-			);
+		const failure = cancellationFailure(cancellation)
+			?? (error instanceof ModelClientTransportError ? error : toModelClientTransportError(error));
+		if (sentImages && failure.kind !== "cancelled") {
+			failure.imageModel = { connectionProfileId: options.profile.id, modelId };
 		}
-		if (cancellation === "cancelled") {
-			throw new ModelClientTransportError(
-				"Generation was cancelled.",
-				"cancelled",
-			);
-		}
-		if (error instanceof ModelClientTransportError) throw error;
-		throw toModelClientTransportError(error);
+		throw failure;
 	} finally {
 		if (inactivityTimer !== undefined) clearTimeout(inactivityTimer);
 		options.input.signal?.removeEventListener("abort", onCallerAbort);
 	}
+}
+
+function cancellationFailure(
+	cancellation: "cancelled" | "inactivity" | null,
+): ModelClientTransportError | undefined {
+	if (cancellation === "inactivity") {
+		return new ModelClientTransportError(
+			"The provider stream became inactive before completion.",
+			"inactivity",
+		);
+	}
+	if (cancellation === "cancelled") {
+		return new ModelClientTransportError("Generation was cancelled.", "cancelled");
+	}
+	return undefined;
 }
 
 async function rejectProviderResponse(
@@ -289,104 +308,6 @@ async function rejectProviderResponse(
 		"provider",
 		{ responseBody },
 	);
-}
-
-// ==[HUMAN APPROVED]== The plan keeps provider-neutral presentation roles; this adapter owns the
-// translation into provider vocabulary, exactly as it does for history
-// authorship.
-const providerRoleFor = {
-	system: "system",
-	human: "user",
-	model: "assistant",
-} as const satisfies Record<"system" | "human" | "model", "system" | "user" | "assistant">;
-
-function toMessages(input: ModelClientGenerationInput) {
-	type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-	const messages: ChatMessage[] = [];
-	const continuationIntent = input.promptPlan.intent?.type === "continuation"
-		? input.promptPlan.intent
-		: undefined;
-	const assistantPrefill = continuationIntent?.strategy === "assistant-prefill";
-	if (assistantPrefill && !isPrefillSuffix(continuationIntent.suffix)) {
-		throw new ModelClientTransportError(
-			"The selected Assistant prefill suffix is unsupported by this adapter.",
-			"protocol",
-		);
-	}
-	if (
-		assistantPrefill &&
-		input.assistantPrefill !== undefined &&
-		input.assistantPrefill.suffix !== continuationIntent.suffix
-	) {
-		throw new ModelClientTransportError(
-			"Assistant prefill metadata does not match the selected suffix.",
-			"protocol",
-		);
-	}
-	const lastModelHistoryIndex = input.promptPlan.blocks.reduce(
-		(last, block, index) => block.kind === "history" && block.role === "model"
-			? index
-			: last,
-		-1,
-	);
-	let lastModelHistoryContent: string | undefined;
-	for (const [blockIndex, block] of input.promptPlan.blocks.entries()) {
-		if (block.kind === "history") {
-			const role = block.role;
-			if (role === "model") {
-				lastModelHistoryContent = block.content;
-			}
-			// ==[HUMAN APPROVED]== The selected preceding model text is moved to the final assistant
-			// message below when prefill is active. Leaving the history copy in
-			// place would send the prefix twice and would not be a true prefill.
-			if (assistantPrefill && blockIndex === lastModelHistoryIndex) {
-				continue;
-			}
-			if (block.content.length > 0) {
-				messages.push({
-					role: role === "model" ? "assistant" : "user",
-					content: block.speakerName === null
-						? block.content
-						: `${block.speakerName}: ${block.content}`,
-				});
-			}
-			continue;
-		}
-		if (block.content.length === 0) continue;
-		// ==[HUMAN APPROVED]== The compiled presentation role is presentation truth: the recipe
-		// slot chose it and the plan kept it provider-neutral, so the adapter
-		// owns the same translation it applies to history authorship.
-		messages.push({
-			role: providerRoleFor[block.role],
-			content: block.content,
-		});
-	}
-	// ==[HUMAN APPROVED]== Continuation instructions are request intent, not Conversation history.
-	// Keep them as an adapter-owned system message so no synthetic user turn
-	// is persisted or inferred by the provider-neutral workflow.
-	if (continuationIntent?.strategy === "instruction") {
-		if (continuationIntent.instruction.length > 0) {
-			messages.push({ role: "system", content: continuationIntent.instruction });
-		}
-	}
-	if (continuationIntent?.strategy === "assistant-prefill") {
-		const prefix = input.assistantPrefill?.prefix ?? lastModelHistoryContent;
-		if (lastModelHistoryIndex < 0 || prefix === undefined || prefix.length === 0) {
-			throw new ModelClientTransportError(
-				"Assistant prefill requires a visible preceding model message.",
-				"protocol",
-			);
-		}
-		messages.push({
-			role: "assistant",
-			content: `${prefix}${continuationIntent.suffix}`,
-		});
-	}
-	return messages;
-}
-
-function isPrefillSuffix(value: string): value is "" | " " | "\n" | "\n\n" {
-	return value === "" || value === " " || value === "\n" || value === "\n\n";
 }
 
 const STRUCTURAL_CHAT_COMPLETIONS_FIELDS = new Set<string>(

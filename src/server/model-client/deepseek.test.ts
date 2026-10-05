@@ -14,6 +14,7 @@ const profile: ConnectionProfile = {
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
+	textOnlyModels: [],
 	credentialConfigured: true,
 	headers: [],
 };

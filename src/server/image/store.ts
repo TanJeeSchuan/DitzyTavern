@@ -125,3 +125,8 @@ export const imageLookup = (database: Database, pool: ImagePool = new Map()): Im
 		.where(eq(imageTable.hash, hash))
 		.get();
 };
+
+export const imageLoader = (database: Database) => (hash: string) => {
+	const row = readImage(drizzle(database), hash);
+	return row === undefined ? undefined : { bytes: row.bytes, mediaType: row.media_type };
+};

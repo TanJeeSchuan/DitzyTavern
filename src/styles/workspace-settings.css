@@ -284,6 +284,13 @@
 	line-height: 1.45;
 }
 
+.workspace-toast-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+	margin-top: 0.2rem;
+}
+
 @media (max-width: 720px) {
 	.toast-viewport { top: 4.75rem; }
 }

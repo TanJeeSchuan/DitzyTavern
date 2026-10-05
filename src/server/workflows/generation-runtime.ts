@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { ModelClientGenerationError } from "../model-client";
+import type { GenerationImageModel } from "../../shared/contract/generation-events";
 import type {
 	ModelClientEvent,
 	ModelClientFailureKind,
@@ -28,6 +29,8 @@ export interface GenerationRuntimeState {
 	readonly latestEventId: number;
 	readonly status: "active" | "complete" | "stopped" | "failed";
 	readonly terminalReason: string | null;
+	/** Set on a failure whose request carried Images. */
+	readonly imageModel?: GenerationImageModel;
 }
 
 export interface GenerationRuntimeSubscription {
@@ -84,11 +87,12 @@ interface MutableRuntimeState {
 	latestEventId: number;
 	status: GenerationRuntimeState["status"];
 	terminalReason: string | null;
+	imageModel?: GenerationImageModel;
 }
 
 type PendingProviderTerminal =
 	| { readonly status: "complete" }
-	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind; readonly responseBody?: string };
+	| { readonly status: "failed"; readonly reason: string; readonly kind: ModelClientFailureKind; readonly responseBody?: string; readonly imageModel?: GenerationImageModel };
 
 /**
  * ==[HUMAN APPROVED]== Process-local fan-out for one database. Event history is deliberately
@@ -334,10 +338,10 @@ export class GenerationRuntime {
 		this.onTerminal?.();
 	}
 
-	fail(reason: string, kind: ModelClientFailureKind = "transport", responseBody?: string): void {
+	fail(reason: string, kind: ModelClientFailureKind = "transport", responseBody?: string, imageModel?: GenerationImageModel): void {
 		if (this.stateValue.status !== "active") return;
 		if (this.stopRequested) {
-			this.pendingProviderTerminal ??= { status: "failed", reason, kind, responseBody };
+			this.pendingProviderTerminal ??= { status: "failed", reason, kind, responseBody, imageModel };
 			return;
 		}
 		// ==[HUMAN APPROVED]== A failure event is part of the same ordered stream. If the provider
@@ -351,6 +355,7 @@ export class GenerationRuntime {
 		this.flushCheckpoint();
 		this.stateValue.status = "failed";
 		this.stateValue.terminalReason = reason;
+		if (imageModel !== undefined) this.stateValue.imageModel = imageModel;
 		this.terminalAt = this.checkpointNow();
 		this.notifyState();
 		this.onTerminal?.();
@@ -407,7 +412,7 @@ export class GenerationRuntime {
 		const pending = this.pendingProviderTerminal;
 		this.pendingProviderTerminal = null;
 		if (pending?.status === "complete") this.complete();
-		if (pending?.status === "failed") this.fail(pending.reason, pending.kind, pending.responseBody);
+		if (pending?.status === "failed") this.fail(pending.reason, pending.kind, pending.responseBody, pending.imageModel);
 	}
 
 	/** ==[HUMAN APPROVED]== Mark the runtime terminal after the durable Conversation transition. */

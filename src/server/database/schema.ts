@@ -898,6 +898,21 @@ export const connectionProfileDiscoveryModelTable = sqliteTable(
 	],
 );
 
+// Model IDs the writer marked as unable to receive Images. Like the Discovery
+// Catalog, the marks live outside the editable settings revision.
+export const connectionProfileTextOnlyModelTable = sqliteTable(
+	"connection_profile_text_only_model",
+	{
+		profile_id: int()
+			.notNull()
+			.references(() => connectionProfileTable.id, { onDelete: "cascade" }),
+		model_id: text().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.profile_id, table.model_id] }),
+	],
+);
+
 export const imageReferenceTable = sqliteTable(
 	"image_reference",
 	{

@@ -1,6 +1,6 @@
 # Image transport and Text-only Models
 
-Status: TODO
+Status: DONE
 
 Blocked By: 03-prompt-planning-with-images
 
@@ -18,14 +18,14 @@ Translate a plan's Images into AI SDK image parts at their inline positions, and
 
 ## Work
 
-- [ ] In the Model Client, load bytes and emit the anchor text then an AI SDK image part at each Reference the plan marks as sent.
-- [ ] Move Images out of `system` and `assistant` messages into a following `user` message, including Human-authored Messages sent as model writing after a seat moves. Refuse an assistant prefill containing an Image before any request. Keep rejecting image, file, modality, audio, and tool Request Overrides.
-- [ ] Store text-only model IDs per Connection Profile beside the Discovery Catalog, outside the editable settings revision, and send anchors only to marked models.
-- [ ] When a Generation fails before output with Images in its plan, offer Mark text-only and Mark text-only and retry beside the provider message. Show and toggle the mark in the model picker.
-- [ ] Test the outgoing request shapes from spec Testing Decision 4 with the captured-request pattern, and that a mark applies across Chats using the Profile. Verify the failure actions and picker manually with playwright-cli.
-- [ ] Run focused tests, typechecking, and the full test suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] In the Model Client, load bytes and emit the anchor text then an AI SDK image part at each Reference the plan marks as sent.
+- [x] Move Images out of `system` and `assistant` messages into a following `user` message, including Human-authored Messages sent as model writing after a seat moves. Refuse an assistant prefill containing an Image before any request. Keep rejecting image, file, modality, audio, and tool Request Overrides.
+- [x] Store text-only model IDs per Connection Profile beside the Discovery Catalog, outside the editable settings revision, and send anchors only to marked models.
+- [x] When a Generation fails before output with Images in its plan, offer Mark text-only and Mark text-only and retry beside the provider message. Show and toggle the mark in the model picker.
+- [x] Test the outgoing request shapes from spec Testing Decision 4 with the captured-request pattern, and that a mark applies across Chats using the Profile. Verify the failure actions and picker manually with playwright-cli.
+- [x] Run focused tests, typechecking, and the full test suite.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 

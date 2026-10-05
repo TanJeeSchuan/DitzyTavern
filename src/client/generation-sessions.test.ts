@@ -4,6 +4,7 @@ import type { GenerationStreamResult } from "./conversation-stream";
 import {
 	createGenerationSessions,
 	firstActiveGenerationSessionError,
+	firstActiveGenerationSessionImageModel,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
 	MAX_SESSION_RECONNECTS,
@@ -272,6 +273,43 @@ describe("the Generation session collection", () => {
 			);
 			expect(settled.effects).toEqual([{ kind: "refresh-conversation", conversationId: 42 }]);
 		}
+	});
+
+	test("offers the model a failed Generation sent Images to until the failure is acknowledged", () => {
+		const imageModel = { connectionProfileId: 3, modelId: "vision-model" };
+		const viaFrame = run(sessionOf(42, targetsFor(7)), {
+			type: "subscription-settled",
+			generationId: 7,
+			result: { outcome: "failed", reason: "Images unsupported.", imageModel },
+		}).state;
+		const viaSnapshot = run(sessionOf(42, targetsFor(7)), {
+			type: "state-observed",
+			generationId: 7,
+			state: {
+				outcome: "active-state",
+				generationId: 7,
+				conversationId: 42,
+				messageId: 907,
+				variantId: 9_007,
+				content: "",
+				reasoning: "",
+				latestEventId: 1,
+				status: "failed",
+				terminalReason: "Images unsupported.",
+				imageModel,
+			},
+		}).state;
+
+		for (const state of [viaFrame, viaSnapshot]) {
+			expect(firstActiveGenerationSessionImageModel(state)).toEqual(imageModel);
+			expect(firstActiveGenerationSessionImageModel(run(state, { type: "errors-acknowledged" }).state)).toBeNull();
+		}
+		const plain = run(sessionOf(42, targetsFor(7)), {
+			type: "subscription-settled",
+			generationId: 7,
+			result: { outcome: "failed", reason: "Provider broke." },
+		}).state;
+		expect(firstActiveGenerationSessionImageModel(plain)).toBeNull();
 	});
 
 	test("a terminal frame wins an in-flight Stop and retires stale Stop state", () => {

@@ -76,6 +76,12 @@ export interface SetPinnedModelsInput {
 	readonly pinnedModels: readonly string[];
 }
 
+export interface SetTextOnlyModelInput {
+	readonly profileId: number;
+	readonly modelId: string;
+	readonly textOnly: boolean;
+}
+
 export interface ConnectionSettingsModule {
 	get(): ConnectionSettingsSnapshot;
 	getProfileSecrets(profileId: number): ConnectionProfileSecretSnapshot | null;
@@ -90,6 +96,7 @@ export interface ConnectionSettingsModule {
 		expectedRevision: number,
 		expectedModelsUrl: string,
 	): ConnectionProfile;
+	setTextOnlyModel(input: SetTextOnlyModelInput): ConnectionSettingsSnapshot;
 	setCredential(input: SetConnectionCredentialInput): ConnectionSettingsSnapshot;
 	resetCredential(input: ResetConnectionCredentialInput): ConnectionSettingsSnapshot;
 }

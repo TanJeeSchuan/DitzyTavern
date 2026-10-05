@@ -14,6 +14,7 @@
 import type {
 	GenerationAttemptTarget,
 	GenerationEvent,
+	GenerationImageModel,
 	GenerationStatePayload,
 	GenerationStreamStatus,
 } from "../shared/contract/generation-events";
@@ -40,7 +41,7 @@ export type GenerationSessionTerminal =
 	| { outcome: "applied" }
 	| { outcome: "stopped" }
 	| { outcome: "not-found" }
-	| { outcome: "failed"; reason: string };
+	| { outcome: "failed"; reason: string; imageModel?: GenerationImageModel };
 
 export interface GenerationSession {
 	readonly conversationId: number;
@@ -151,11 +152,12 @@ const unchanged = (state: GenerationSessionsState): GenerationSessionsTransition
 const terminalFromStatus = (
 	status: GenerationStreamStatus,
 	terminalReason: string | null,
+	imageModel: GenerationImageModel | undefined,
 ): GenerationSessionTerminal | null => {
 	if (status === "active") return null;
 	if (status === "complete") return { outcome: "applied" };
 	if (status === "stopped") return { outcome: "stopped" };
-	return { outcome: "failed", reason: terminalReason ?? "Generation failed." };
+	return { outcome: "failed", reason: terminalReason ?? "Generation failed.", imageModel };
 };
 
 const livePhases: ReadonlySet<GenerationSessionPhase> = new Set(["subscribing", "observing"]);
@@ -378,7 +380,7 @@ const observeState = (
 	) {
 		return unchanged(state);
 	}
-	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason);
+	const terminal = terminalFromStatus(action.state.status, action.state.terminalReason, action.state.imageModel);
 	const effects: GenerationSessionEffect[] = [
 		{
 			kind: "story-state",
@@ -446,7 +448,7 @@ const settleSubscription = (
 			phase: "terminal",
 			stopPending: false,
 			error: action.result.reason,
-			terminal: { outcome: "failed", reason: action.result.reason },
+			terminal: { outcome: "failed", reason: action.result.reason, imageModel: action.result.imageModel },
 		};
 	}
 	effects.push({ kind: "refresh-conversation", conversationId: session.conversationId });
@@ -592,6 +594,23 @@ export const firstActiveGenerationSessionError = (
 			session.error !== null
 		) {
 			return session.error;
+		}
+	}
+	return null;
+};
+
+// ==[HUMAN APPROVED]== The model an unacknowledged failure sent Images to, which the failure
+// notice offers to mark as a Text-only Model.
+export const firstActiveGenerationSessionImageModel = (
+	state: GenerationSessionsState,
+): GenerationImageModel | null => {
+	for (const session of state.sessions.values()) {
+		if (
+			session.conversationId === state.activeConversationId &&
+			session.error !== null &&
+			session.terminal?.outcome === "failed"
+		) {
+			return session.terminal.imageModel ?? null;
 		}
 	}
 	return null;

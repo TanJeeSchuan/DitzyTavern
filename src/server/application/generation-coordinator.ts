@@ -18,6 +18,7 @@ import {
 	createConnectionSettingsModule,
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
+import { imageLoader } from "../image";
 import {
 	createModelClient,
 	ModelClientGenerationError,
@@ -458,6 +459,7 @@ export class GenerationCoordinator {
 						error instanceof Error ? error.message : "Generation failed.",
 						error instanceof ModelClientGenerationError ? error.kind : "transport",
 						error instanceof ModelClientGenerationError ? error.responseBody : undefined,
+						error instanceof ModelClientGenerationError ? error.imageModel : undefined,
 					);
 				} catch {
 					// ==[HUMAN APPROVED]== Keep uncheckpointed output in the active runtime for a later Stop.
@@ -486,6 +488,7 @@ export class GenerationCoordinator {
 				profile,
 				secrets: settingsModule.getProfileSecrets(profile.id),
 				fetch: this.options.fetch,
+				loadImage: imageLoader(database),
 			}),
 			connection: connectionSnapshotOf(settings, profile),
 		};

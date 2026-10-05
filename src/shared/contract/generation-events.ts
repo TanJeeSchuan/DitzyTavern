@@ -41,6 +41,15 @@ export const generationFailureKind = Type.Union([
 
 export type GenerationFailureKind = Static<typeof generationFailureKind>;
 
+// The model a failed Generation sent Images to, so the writer can mark it as a
+// Text-only Model from the failure.
+export const generationImageModel = Type.Object({
+	connectionProfileId: Type.Integer(),
+	modelId: Type.String(),
+});
+
+export type GenerationImageModel = Static<typeof generationImageModel>;
+
 // The exhaustive normalized Generation event union. `failed` is part of the
 // ordered stream like any other event; terminal ownership still travels in
 // the separate complete/stopped/error frames.
@@ -102,6 +111,7 @@ export const generationStatePayload = Type.Composite([
 		latestEventId: Type.Integer(),
 		status: generationStreamStatus,
 		terminalReason: Type.Union([Type.Null(), Type.String()]),
+		imageModel: Type.Optional(generationImageModel),
 	}),
 ]);
 
@@ -135,6 +145,7 @@ export type GenerationStoppedPayload = Static<typeof generationStoppedPayload>;
 const failedGenerationOutcome = Type.Object({
 	outcome: Type.Literal("failed"),
 	reason: Type.String(),
+	imageModel: Type.Optional(generationImageModel),
 });
 
 export const generationSubscriptionFailurePayload = Type.Union([

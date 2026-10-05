@@ -52,6 +52,7 @@ const profile = Type.Object({
 	timeoutMs: Type.Union([Type.Null(), Type.Integer()]),
 	pinnedModels: Type.Array(Type.String()),
 	discoveryCatalog: Type.Array(Type.String()),
+	textOnlyModels: Type.Array(Type.String()),
 	credentialConfigured: Type.Boolean(),
 	headers: Type.Array(redactedHeader),
 });
@@ -174,6 +175,12 @@ export const connectionPresetsResponse = Type.Object({
 export const connectionDiscoveryBody = Type.Object({ profileId: Type.Integer() });
 
 export const connectionDiscoveryResponse = discoveryResult;
+
+export const connectionTextOnlyBody = Type.Object({
+	profileId: Type.Integer(),
+	modelId: Type.String(),
+	textOnly: Type.Boolean(),
+});
 
 export const connectionTestBody = testConnectionBody;
 

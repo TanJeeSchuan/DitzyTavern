@@ -5,6 +5,7 @@ import {
 	connectionProfileDiscoveryModelTable,
 	connectionProfilePinnedModelTable,
 	connectionProfileTable,
+	connectionProfileTextOnlyModelTable,
 	connectionSecretTable,
 	connectionSettingsTable,
 } from "../database/schema";
@@ -65,6 +66,12 @@ export function readProfile(
 		.where(eq(connectionProfileDiscoveryModelTable.profile_id, row.id))
 		.all()
 		.map((model) => model.modelId);
+	const textOnlyModels = db
+		.select({ modelId: connectionProfileTextOnlyModelTable.model_id })
+		.from(connectionProfileTextOnlyModelTable)
+		.where(eq(connectionProfileTextOnlyModelTable.profile_id, row.id))
+		.all()
+		.map((model) => model.modelId);
 	let credentialConfigured = false;
 	const headers: Array<{ name: string; configured: boolean }> = [];
 	const payload = readSecret(db, row.id, masterKey);
@@ -96,6 +103,7 @@ export function readProfile(
 		timeoutMs: row.timeout_ms,
 		pinnedModels: pins,
 		discoveryCatalog: normalizeDiscoveryCatalog(discoveryCatalog),
+		textOnlyModels: normalizeDiscoveryCatalog(textOnlyModels),
 		credentialConfigured,
 		headers,
 	};

@@ -26,6 +26,7 @@ import {
 	connectionSettingsConflict,
 	connectionSettingsResponse,
 	connectionTestBody,
+	connectionTextOnlyBody,
 	connectionTestResponse,
 } from "../../shared/contract/connection-settings";
 
@@ -113,6 +114,30 @@ export const createConnectionSettingsRoutes = (
 					404: connectionNotFoundResponse,
 					422: connectionInvalidResponse,
 					409: connectionSettingsConflict,
+				},
+			},
+		)
+		.post(
+			"/api/connection-settings/text-only-model",
+			({ body, status }) => {
+				try {
+					return { outcome: "applied" as const, settings: toSettingsPayload(settings.setTextOnlyModel(body)) };
+				} catch (error) {
+					if (error instanceof ConnectionProfileNotFoundError) {
+						return status(404, { outcome: "not-found" as const });
+					}
+					if (error instanceof InvalidConnectionProfileError) {
+						return status(422, { outcome: "invalid" as const, reason: error.message });
+					}
+					throw error;
+				}
+			},
+			{
+				body: connectionTextOnlyBody,
+				response: {
+					200: connectionSettingsApplied,
+					404: connectionNotFoundResponse,
+					422: connectionInvalidResponse,
 				},
 			},
 		)
@@ -222,6 +247,7 @@ function toProfilePayload(entry: ConnectionSettingsSnapshot["profiles"][number])
 		...connectionProfileDraftOf(entry),
 		id: entry.id,
 		discoveryCatalog: [...entry.discoveryCatalog],
+		textOnlyModels: [...entry.textOnlyModels],
 		credentialConfigured: entry.credentialConfigured,
 		headers: [...entry.headers],
 	};

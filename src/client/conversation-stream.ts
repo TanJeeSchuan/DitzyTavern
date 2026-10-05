@@ -19,6 +19,7 @@ import {
 	matchesGenerationAttemptTarget,
 	type GenerationAttemptTarget,
 	type GenerationEvent,
+	type GenerationImageModel,
 	type GenerationStatePayload,
 } from "../shared/contract/generation-events";
 import type { JsonValue } from "./lib/json-guards";
@@ -30,7 +31,7 @@ export type GenerationStreamResult =
 	| { outcome: "not-found" }
 	// A server-declared terminal failure: the error frame or typed error
 	// ==[HUMAN APPROVED]== response carries the authoritative reason and the Generation is over.
-	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string }
+	| { outcome: "not-playable" | "failed" | "invalid" | "conflict"; reason: string; imageModel?: GenerationImageModel }
 	// The subscription itself was interrupted (network drop, stream ended
 	// ==[HUMAN APPROVED]== without a terminal frame, undecodable status response). The Generation
 	// may still be server-active; observers reconnect from their cursor.
@@ -184,9 +185,9 @@ async function consumeGenerationStream(
 		if (eventType === "error") {
 			const failure = decodeWirePayload(generationFailurePayload, payload);
 			if (failure === null || !matchesGenerationAttemptTarget(input.target, failure)) return;
-			result = failure.outcome === "not-found"
-				? { outcome: "not-found" }
-				: { outcome: failure.outcome, reason: failure.reason };
+			if (failure.outcome === "not-found") result = { outcome: "not-found" };
+			else if (failure.outcome === "failed") result = { outcome: "failed", reason: failure.reason, imageModel: failure.imageModel };
+			else result = { outcome: failure.outcome, reason: failure.reason };
 		}
 	} });
 	try {

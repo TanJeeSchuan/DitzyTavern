@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import {
 	connectionProfileDiscoveryModelTable,
 	connectionProfileTable,
+	connectionProfileTextOnlyModelTable,
 	conversationGenerationSettingsTable,
 } from "../database/schema";
 import {
@@ -54,6 +55,7 @@ import type {
 	CreateConnectionProfileInput,
 	DeleteConnectionProfileInput,
 	SetPinnedModelsInput,
+	SetTextOnlyModelInput,
 	ResetConnectionCredentialInput,
 	SetConnectionCredentialInput,
 } from "./types";
@@ -322,6 +324,32 @@ export function createConnectionSettingsModule(
 		return replace.immediate();
 	};
 
+	// The writer's mark is a per-model fact about the provider, not an edit to the
+	// Profile, so it never advances the Connection Settings revision.
+	const setTextOnlyModel = (input: SetTextOnlyModelInput) => {
+		const modelId = input.modelId.trim();
+		if (modelId.length === 0) throw new InvalidConnectionProfileError("A model ID is required.");
+		const write = database.transaction(() => {
+			const db = connect(database);
+			const profile = requireProfile(db, input.profileId);
+			if (input.textOnly) {
+				db.insert(connectionProfileTextOnlyModelTable)
+					.values({ profile_id: profile.id, model_id: modelId })
+					.onConflictDoNothing()
+					.run();
+			} else {
+				db.delete(connectionProfileTextOnlyModelTable)
+					.where(and(
+						eq(connectionProfileTextOnlyModelTable.profile_id, profile.id),
+						eq(connectionProfileTextOnlyModelTable.model_id, modelId),
+					))
+					.run();
+			}
+			return read();
+		});
+		return write.immediate();
+	};
+
 	const resetCredential = (input: ResetConnectionCredentialInput) => {
 		if (!input.confirmed) throw new ConnectionCredentialConfirmationError();
 		return revisionedProfileWrite({
@@ -346,6 +374,7 @@ export function createConnectionSettingsModule(
 		deleteProfile,
 		setPinnedModels,
 		replaceDiscoveryCatalog,
+		setTextOnlyModel,
 		setCredential,
 		resetCredential,
 	};

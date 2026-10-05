@@ -300,6 +300,19 @@ describe("server-owned Generation client", () => {
 			expect(result).toEqual({ outcome: "failed", reason: "The provider went quiet." });
 		});
 
+		test("carries the model a failed Generation sent Images to", async () => {
+			const imageModel = { connectionProfileId: 3, modelId: "vision-model" };
+			installFetch(async () => new Response(
+				`event: error
+data: ${terminalPayload({ outcome: "failed", reason: "Images unsupported.", imageModel })}
+
+`,
+				{ status: 200, headers: { "content-type": "text/event-stream" } },
+			));
+			const result = await subscribeConversationGeneration(42, 7, { messageId: 9, variantId: 10, onDelta: () => undefined });
+			expect(result).toEqual({ outcome: "failed", reason: "Images unsupported.", imageModel });
+		});
+
 		test("drops generation frames that fail the shared event schema", async () => {
 			const stream = [
 				"event: generation\ndata: {\"type\":\"content\"}\n\n",

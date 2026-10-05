@@ -37,6 +37,7 @@ const activeGenerationPayload = (state: GenerationRuntimeState): GenerationState
 	latestEventId: state.latestEventId,
 	status: state.status,
 	terminalReason: state.terminalReason,
+	imageModel: state.imageModel,
 });
 
 type GenerationTerminalFrame =
@@ -65,6 +66,7 @@ const terminalGenerationFrame = (state: GenerationRuntimeState): GenerationTermi
 					...generationAttemptTarget(state),
 					outcome: "failed" as const,
 					reason: state.terminalReason ?? "Generation failed.",
+					imageModel: state.imageModel,
 				},
 			};
 
