@@ -101,10 +101,8 @@ describe("Prompt Plan Images", () => {
 		expect(plan.budget.tokenEstimate).toBe(0);
 	});
 
-	test("text-only inspection retains missing warnings and captures policy without occurrences", () => {
+	test("text-only inspection retains missing warnings", () => {
 		const connection = { apiFormat: "chat-completions" as const, sendImages: false };
-		const empty = compile([entry("go", "human")], {}, { connection });
-		expect(empty.promptPlan.sendImages).toBe(false);
 		const missing = compile([entry(ref("ghost", GONE), "human")], {}, { connection });
 		expect(missing.promptPlan.images[0]?.disposition).toBe("missing");
 	});

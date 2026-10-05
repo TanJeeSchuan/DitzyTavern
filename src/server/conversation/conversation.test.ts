@@ -811,7 +811,7 @@ describe("Conversation module", () => {
 				modelParticipantId: modelId,
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
-				promptPlan: { blocks: [], warnings: [], sendImages: true, images: [] },
+				promptPlan: { blocks: [], warnings: [], images: [] },
 				promptContext: [],
 				generationSettings: {},
 				connection: {},

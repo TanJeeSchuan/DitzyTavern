@@ -343,10 +343,8 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch((request) => { captured = request; }),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content });
-		expect(plan.promptPlan.sendImages).toBe(false);
 		const edited = {
 			...plan.promptPlan,
-			sendImages: true,
 			blocks: plan.promptPlan.blocks.map((block) => block.kind === "history" ? { ...block, content: `${block.content} ${reference}` } : block),
 		};
 

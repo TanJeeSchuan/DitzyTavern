@@ -256,7 +256,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		);
 	}
 
-	return resolvePromptImages({ blocks, warnings }, input.images, input.sendImages);
+	return resolvePromptImages({ blocks, warnings }, input.images);
 }
 
 const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>

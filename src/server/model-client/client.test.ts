@@ -14,7 +14,7 @@ const plan: PromptPlan = {
 			content: "Keep this plan opaque to the transport.",
 		},
 	],
-	warnings: [], sendImages: true, images: [],
+	warnings: [], images: [],
 };
 
 const testGenerationSettings = {

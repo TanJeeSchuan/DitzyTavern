@@ -5,8 +5,8 @@ import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
-import { uploadedImages } from "./lib/image";
-import { resolveImageReferences } from "../shared/prompt-images";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "./lib/eden";
 import { memoryActivationWithFinalText } from "../shared/contract/memory-recall";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
@@ -31,6 +31,21 @@ export function PromptPlanPreviewPanel({
 	onClose: () => void;
 }) {
 	const preview = assembly.preview;
+	const imagesEdited = preview !== null && preview.promptPlan.blocks !== assembly.assembledPlan?.blocks;
+	const images = useQuery({
+		queryKey: ["preview-images", preview?.previewId, preview?.promptPlan.blocks],
+		enabled: imagesEdited,
+		retry: false,
+		queryFn: async () => {
+			if (preview === null) throw new Error("Prompt Plan preview unavailable.");
+			const { data, error } = await api.api.conversations({ id: preview.conversationId }).generations.preview.images.post({
+				previewId: preview.previewId, promptPlan: preview.promptPlan,
+			});
+			if (error) throw new Error(error.value.reason);
+			return data.images;
+		},
+	});
+	const resolvedImages = imagesEdited ? images.data : preview?.promptPlan.images;
 	const pending = isAssemblyPending(assembly);
 	const editable = preview !== null && !pending;
 	const canSend = preview !== null && (assembly.phase === "ready" || assembly.phase === "failed");
@@ -61,7 +76,9 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
-				{preview !== null && <PromptImageList images={currentImages(preview)} />}
+				{preview !== null && (resolvedImages !== undefined
+					? <PromptImageList images={resolvedImages} />
+					: <p className="panel-note">{images.isError ? images.error.message : "Checking Images…"}</p>)}
 				{preview !== null && preview.pendingWrites.length > 0 && (
 					<section className="generation-detail-section">
 						<h3>Pending variable writes</h3>
@@ -101,28 +118,9 @@ export function PromptPlanPreviewPanel({
 			<footer className="panel-action-footer prompt-plan-preview-actions">
 					<button className="secondary-button" type="button" onClick={onClose} disabled={assembly.phase === "accepting"}><X aria-hidden="true" /> Cancel</button>
 					<button className="secondary-button" type="button" onClick={onRefresh} disabled={pending}><RefreshCw aria-hidden="true" /> {preview === null ? "Retry" : "Refresh"}</button>
-					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
+					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits || (imagesEdited && images.data === undefined)}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
 			</footer>
 		</aside>
-	);
-}
-
-// A hash the stored resolution never saw is present only if this session uploaded it.
-const storedCost = (preview: GenerationPreview) => {
-	const stored = new Map(preview.promptPlan.images.map((image) => [image.hash, image]));
-	return (hash: string) => {
-		const image = stored.get(hash);
-		if (image === undefined) return uploadedImages.has(hash) ? { tokens: undefined } : undefined;
-		return image.disposition === "missing" ? undefined : { tokens: image.tokens };
-	};
-};
-
-function currentImages(preview: GenerationPreview) {
-	return resolveImageReferences(
-		preview.promptPlan.blocks.map((block) => block.content),
-		storedCost(preview),
-		preview.effectiveSettings.repeatedImagePlacement,
-		preview.promptPlan.sendImages,
 	);
 }
 

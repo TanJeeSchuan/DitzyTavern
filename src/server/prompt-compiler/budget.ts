@@ -1,6 +1,6 @@
 import { estimateTokenCount } from "tokenx";
 import { projectImageAnchors } from "../../shared/image-reference";
-import { sentImageTokens } from "../../shared/prompt-images";
+import { sentImageTokens } from "./images";
 import type { PromptContextEntry, PromptPlan } from "./types";
 
 // ==[HUMAN APPROVED]== The application owns this small synchronous boundary. The heuristic library

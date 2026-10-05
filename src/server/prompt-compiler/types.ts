@@ -84,6 +84,4 @@ export interface CompilePromptInput {
 	/** How References are resolved once Prompt Macros have expanded, mapped to
 	 * the attempt's effective sending policy. */
 	images: PromptImageResolution;
-	/** The attempt's effective sending policy: false for a text-only model. */
-	sendImages: boolean;
 }

@@ -195,7 +195,7 @@ async function* generateOpenAICompatibleStream(options: {
 		});
 		const streamOptions = {
 			model,
-			messages: toMessages(options.input, { load: options.loadImage }),
+			messages: toMessages(options.input, options.loadImage),
 			maxRetries: 0,
 			abortSignal: controller.signal,
 			allowSystemInMessages: true,

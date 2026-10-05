@@ -389,7 +389,7 @@ describe("Resumable generation transport", () => {
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], sendImages: true, images: [] },
+		promptPlan: { blocks: [], warnings: [], images: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},
