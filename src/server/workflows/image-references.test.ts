@@ -7,6 +7,8 @@ import { createConversationRoutes } from "../contract/conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { base64, pngFixture } from "../image/image-fixtures";
 import { ingestUploads, type ImagePool } from "../image";
+import { Value } from "@sinclair/typebox/value";
+import { activeGenerationDetails, generationAccepted, generationPreview, type GenerationBody, type GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
 import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
 import { resolveConversationGeneration } from "../conversation/commands/active-generation";
@@ -305,5 +307,77 @@ describe("Image Reference lifetime", () => {
 		const accepted = await send(art.token, [base64(pngFixture({ width: 4 }))]);
 		expect(accepted.status).toBe(200);
 		expect(stored()).toEqual([art.hash]);
+	});
+
+	test("an Active Generation holds the Images its plan references until it settles", async () => {
+		const target = chat();
+		const art = await picture(4);
+		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
+		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const accepted = acceptConversationTailGeneration(database, {
+			...fields,
+			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
+			images: art.pool,
+			expectedRevision: target.revision,
+			humanContent: "Hello",
+		});
+		expect(stored()).toEqual([art.hash]);
+
+		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
+		expect(stored()).toEqual([]);
+	});
+
+	test("an inspected plan edited to add an Image is resolved over the edit and shown in Generation Details", async () => {
+		const target = chat();
+		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(9) }).createProfile({
+			expectedRevision: 0,
+			profile: {
+				displayName: "Profile",
+				apiFormat: "chat-completions",
+				requestUrl: "http://127.0.0.1:43127/v1/",
+				modelsUrl: "",
+				modelBackend: "automatic",
+				adapter: "deepseek",
+				outputTokenRepresentation: "automatic",
+				timeoutMs: 120_000,
+				pinnedModels: [],
+			},
+			credential: "secret",
+		});
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(9),
+			fetch: async () => new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
+		});
+		const post = (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${target.id}${path}`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		}));
+		const art = await picture(4);
+		const ghost = formatImageReference("ghost", "f".repeat(64));
+
+		const preview = Value.Parse(generationPreview, await (await post("/generations/preview", { kind: "send", content: "Hello" })).json());
+		expect(preview.promptPlan.images).toEqual([]);
+		const last = preview.promptPlan.blocks.length - 1;
+		const edited = {
+			...preview.promptPlan,
+			blocks: preview.promptPlan.blocks.map((block, index) => index === last ? { ...block, content: `${block.content} ${art.token} ${ghost}` } : block),
+		};
+		const sent = await post("/generations", {
+			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			content: "Hello",
+			previewId: preview.previewId,
+			promptPlan: edited,
+			images: [base64(pngFixture({ width: 4 }))],
+		});
+		expect(sent.status).toBe(200);
+		const { generationId } = Value.Parse(generationAccepted, await sent.json());
+
+		const details = Value.Parse(activeGenerationDetails, await (await app.handle(new Request(`http://localhost/api/conversations/${target.id}/generations/${generationId}/inspection`))).json());
+		expect(details.promptPlan.images.map(({ hash, name, disposition }) => ({ hash, name, disposition }))).toEqual([
+			{ hash: art.hash, name: "map", disposition: "send" },
+			{ hash: "f".repeat(64), name: "ghost", disposition: "missing" },
+		]);
+		expect(details.promptPlan.images[0]?.tokens).toBeGreaterThan(0);
 	});
 });

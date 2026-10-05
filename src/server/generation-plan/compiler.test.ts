@@ -56,6 +56,7 @@ const configuredSettings = (
 	continuationStrategy: "instruction",
 	continuationInstruction: "Carry the scene forward.",
 	continuationPrefillSuffix: "",
+	repeatedImagePlacement: "last",
 	requestOverrides: {
 		"chat-completions": { logit_bias: { "50256": -100 } },
 		responses: { metadata: { workspace: "responses-only" } },
@@ -145,6 +146,7 @@ const compile = (
 	settings: configuredSettings(),
 	connection: { apiFormat: "chat-completions" },
 	estimator: transcriptLengthEstimator,
+	imageLookup: () => undefined,
 	...overrides,
 });
 
@@ -373,6 +375,7 @@ describe("Generation Plan Compiler", () => {
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,
+			repeatedImagePlacement: "last",
 			requestOverrides: { logit_bias: { "50256": -100 } },
 		});
 		expect(plan.budget.fits).toBe(true);
@@ -404,6 +407,7 @@ describe("Generation Plan Compiler", () => {
 			continuationStrategy: "instruction",
 			continuationInstruction: "Carry the scene forward.",
 			continuationPrefillSuffix: "\n\n",
+			repeatedImagePlacement: "last",
 		});
 		const intent = continuationIntentFor(settings);
 		const plan = compile({ intent, context: [
@@ -429,6 +433,7 @@ describe("Generation Plan Compiler", () => {
 			continuationStrategy: "assistant-prefill",
 			continuationInstruction: "This instruction is not applicable.",
 			continuationPrefillSuffix: "\n",
+			repeatedImagePlacement: "last",
 		});
 		const intent = continuationIntentFor(settings);
 		const plan = compile({ intent, context: [
@@ -519,6 +524,7 @@ describe("Generation Plan Compiler", () => {
 			safetyAllowance: 0,
 			continuationStrategy: "assistant-prefill",
 			continuationPrefillSuffix: " ",
+			repeatedImagePlacement: "last",
 		});
 		const plan = compile({
 			settings,
@@ -542,6 +548,7 @@ describe("Generation Plan Compiler", () => {
 			safetyAllowance: 0,
 			continuationStrategy: "assistant-prefill",
 			continuationPrefillSuffix: " ",
+			repeatedImagePlacement: "last",
 		});
 		const plan = compile({
 			settings,
@@ -603,6 +610,7 @@ describe("Generation Plan Compiler", () => {
 		const settings = configuredSettings({
 			continuationStrategy: "assistant-prefill",
 			continuationPrefillSuffix: " ",
+			repeatedImagePlacement: "last",
 		});
 		expect(() => compile({
 			intent: continuationIntentFor(settings),
@@ -641,6 +649,7 @@ describe("Generation Plan Compiler", () => {
 		expect(continuationIntentFor(configuredSettings({
 			continuationStrategy: "assistant-prefill",
 			continuationPrefillSuffix: "\n\n",
+			repeatedImagePlacement: "last",
 		}))).toEqual({
 			type: "continuation",
 			strategy: "assistant-prefill",

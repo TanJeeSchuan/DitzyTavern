@@ -1,8 +1,10 @@
+import type { Database } from "bun:sqlite";
 import { and, eq } from "drizzle-orm";
-import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { imageReferenceTable, imageTable } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
 import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
+import type { ImageLookup } from "../prompt-compiler";
 import type { IngestedImage } from "./ingest";
 
 export type ImagePool = ReadonlyMap<string, IngestedImage>;
@@ -108,8 +110,18 @@ export const syncTextReferences = (
 export const syncJsonReferences = (
 	db: ImageDatabase,
 	owner: ImageOwner,
-	json: string,
+	jsons: readonly string[],
 	pool: ImagePool = new Map(),
 ) => {
-	syncImageReferences(db, owner, jsonImageHashes(json), pool);
+	syncImageReferences(db, owner, jsons.flatMap(jsonImageHashes), pool);
+};
+
+export const imageLookup = (database: Database, pool: ImagePool = new Map()): ImageLookup => (hash) => {
+	const carried = pool.get(hash);
+	if (carried !== undefined) return { width: carried.width, height: carried.height };
+	return drizzle(database)
+		.select({ width: imageTable.width, height: imageTable.height })
+		.from(imageTable)
+		.where(eq(imageTable.hash, hash))
+		.get();
 };

@@ -12,6 +12,8 @@ import {
 	generationJsonString,
 } from "../shared/generation-provenance";
 import type { GenerationJsonValue } from "../shared/generation-json";
+import type { PromptImage } from "../shared/contract/conversation-schema";
+import { projectImageAnchors } from "../shared/image-reference";
 import type { LoreActivationRecord } from "../shared/contract/lore-activation";
 import type { MemoryActivationRecord } from "../shared/contract/memory-recall";
 import { useAsyncEffect } from "./lib/use-async";
@@ -118,8 +120,34 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 			)}
 			{details.loreActivation != null && <LoreActivationDetails record={details.loreActivation} />}
 			{details.memoryActivation != null && <MemoryActivationDetails record={details.memoryActivation} memorySources={details.memorySources} onNavigateSource={onNavigateSource} />}
+			<PromptImageList images={details.promptPlan.images} />
 			<PromptPlan plan={details.promptPlan} />
 		</>
+	);
+}
+
+const imageDispositionLabel = (image: PromptImage): string =>
+	image.disposition === "send"
+		? `Sent${image.tokens > 0 ? ` · ~${image.tokens.toLocaleString()} tokens` : ""}`
+		: image.disposition === "anchor"
+			? "Name only (another copy is sent)"
+			: "Missing · name only";
+
+export function PromptImageList({ images }: { images: readonly PromptImage[] }) {
+	if (images.length === 0) return null;
+	const missing = images.filter((image) => image.disposition === "missing");
+	return (
+		<section className="generation-detail-section">
+			<h3>Images</h3>
+			{missing.length > 0 && (
+				<p className="panel-note" role="alert">
+					{missing.length === 1 ? "An Image is missing and sends only its name" : `${missing.length} Images are missing and send only their names`}: {missing.map((image) => image.name).join(", ")}.
+				</p>
+			)}
+			<ul>
+				{images.map((image, index) => <li key={`${image.block}-${image.start}-${index}`}>{image.name} · {imageDispositionLabel(image)}</li>)}
+			</ul>
+		</section>
 	);
 }
 
@@ -135,7 +163,7 @@ function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 						const item = generationJsonObject(block);
 						const kind = generationJsonString(item?.kind);
 						const content = generationJsonString(item?.content);
-						return <li key={index}><span>{kind ?? "block"}</span><p>{content ?? ""}</p></li>;
+						return <li key={index}><span>{kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
 					})}
 				</ol>
 			)}

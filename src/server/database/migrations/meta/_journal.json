@@ -85,6 +85,13 @@
       "when": 1791043622824,
       "tag": "0011_image_store",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791165455731,
+      "tag": "0012_repeated_image_placement",
+      "breakpoints": true
     }
   ]
 }

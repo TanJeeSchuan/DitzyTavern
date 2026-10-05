@@ -133,6 +133,7 @@ describe("Generation transport contract", () => {
 							continuationInstruction:
 								"Continue the narrative naturally without repeating the previous text.",
 							continuationPrefillSuffix: "",
+							repeatedImagePlacement: "first",
 							requestOverrides: {
 								"chat-completions": {},
 								responses: {},
@@ -223,6 +224,7 @@ describe("Generation transport contract", () => {
 							continuationStrategy: "assistant-prefill",
 							continuationInstruction: "Continue the scene.",
 							continuationPrefillSuffix: "\n",
+							repeatedImagePlacement: "every",
 							requestOverrides: {
 								"chat-completions": {},
 								responses: {},
@@ -250,6 +252,7 @@ describe("Generation transport contract", () => {
 			continuationStrategy: "assistant-prefill",
 			continuationInstruction: "Continue the scene.",
 			continuationPrefillSuffix: "\n",
+			repeatedImagePlacement: "every",
 		});
 	});
 

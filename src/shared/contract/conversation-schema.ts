@@ -95,6 +95,19 @@ const generationIntent = Type.Union([
 	}),
 ]);
 
+// One entry per Image Reference occurrence in block text, in reading order.
+// `send` carries the Image to the model, `anchor` sends only its Image Anchor
+// because Repeated Image Placement chose another copy, and `missing` has no
+// stored Image. `tokens` is the estimated cost of a sent Image and 0 otherwise.
+const promptImage = Type.Object({
+	block: Type.Integer(),
+	start: Type.Integer(),
+	hash: Type.String(),
+	name: Type.String(),
+	disposition: Type.Union([Type.Literal("send"), Type.Literal("anchor"), Type.Literal("missing")]),
+	tokens: Type.Integer(),
+});
+
 // The persisted capture is the provider-neutral PromptPlan, kept typed at
 // the storage and transport boundary so inspection cannot silently discard
 // authorship or continuation intent.
@@ -104,12 +117,14 @@ export const promptPlan = Type.Object({
 		block: Type.String(),
 		macro: Type.String(),
 	})),
+	images: Type.Array(promptImage),
 	intent: Type.Optional(generationIntent),
 });
 
 export type PromptPlan = Static<typeof promptPlan>;
 export type PromptBlock = PromptPlan["blocks"][number];
 export type PromptWarning = PromptPlan["warnings"][number];
+export type PromptImage = PromptPlan["images"][number];
 export type GenerationIntent = NonNullable<PromptPlan["intent"]>;
 export type PromptHistoryRole = Extract<
 	PromptBlock,
@@ -277,6 +292,12 @@ const provenanceSettingsWireSchemas = {
 		Type.Literal(" "),
 		Type.Literal("\n"),
 		Type.Literal("\n\n"),
+	]),
+	repeatedImagePlacement: Type.Union([
+		Type.Null(),
+		Type.Literal("first"),
+		Type.Literal("last"),
+		Type.Literal("every"),
 	]),
 } as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
 
@@ -665,6 +686,8 @@ export type GenerationFormattingContext = Static<typeof generationFormattingCont
 const inspectedPlanFields = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
+	// Bytes of Images first referenced by the Send text or the edited plan.
+	images: inlineImages,
 	...generationFormattingContext.properties,
 };
 
@@ -674,7 +697,6 @@ const inspectedPlanFields = {
 export const generationBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	content: Type.String(),
-	images: inlineImages,
 	// A preview token carries the server-captured macro clock, random draws,
 	// and pending writes. The optional plan is the user's direct edit of that
 	// capture; it is never treated as provider JSON.
@@ -706,6 +728,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("send"),
 		content: Type.String(),
+		images: inlineImages,
 		...generationFormattingContext.properties,
 	}),
 	Type.Object({

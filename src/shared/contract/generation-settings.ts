@@ -53,6 +53,13 @@ export const canonicalGenerationSettings = Type.Object({
 		Type.Literal("\n"),
 		Type.Literal("\n\n"),
 	]),
+	// Which occurrences of an Image appearing more than once in a Generation
+	// send it; the others send only their Image Anchor.
+	repeatedImagePlacement: Type.Union([
+		Type.Literal("first"),
+		Type.Literal("last"),
+		Type.Literal("every"),
+	]),
 	// Every API Format namespace is required so a switch between global
 	// Connection Profiles can never transmit settings authored for another
 	// wire format; each namespace keeps the open Generation JSON vocabulary.

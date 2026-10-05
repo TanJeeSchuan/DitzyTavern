@@ -26,6 +26,7 @@ const startProvenance = {
 		continuationStrategy: "instruction" as const,
 		continuationInstruction: "Continue.",
 		continuationPrefillSuffix: "" as const,
+		repeatedImagePlacement: "last" as const,
 	},
 	usage: null,
 	finishReason: null,
@@ -81,6 +82,7 @@ describe("generation provenance codec", () => {
 				continuationStrategy: "auto",
 				continuationInstruction: "Keep the voice.",
 				continuationPrefillSuffix: " ",
+				repeatedImagePlacement: "last",
 				futureField: "ignored like every unknown wire field",
 			},
 		});
@@ -99,6 +101,7 @@ describe("generation provenance codec", () => {
 			continuationStrategy: null,
 			continuationInstruction: "Keep the voice.",
 			continuationPrefillSuffix: " ",
+			repeatedImagePlacement: "last",
 		});
 
 		// A wholly absent settings object decodes as the all-null projection —
@@ -116,6 +119,7 @@ describe("generation provenance codec", () => {
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,
+			repeatedImagePlacement: null,
 		});
 	});
 });

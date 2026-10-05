@@ -96,7 +96,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites"
+	"provenance" | "macroPresetId" | "macroWrites" | "images"
 >;
 
 interface PersistActiveGenerationInput
@@ -127,6 +127,9 @@ const persistActiveGeneration = (
 		(input.macroWrites ?? []).map(encodeMacroVariableWrite),
 		"Macro writes",
 	);
+	const promptPlanJson = jsonText(input.promptPlan, "Prompt Plan");
+	const promptInspectionJson = jsonText(input.promptInspection ?? {}, "Prompt inspection");
+	const promptContextJson = jsonText(input.promptContext, "Prompt context");
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -140,9 +143,9 @@ const persistActiveGeneration = (
 			captured_human_name: input.capturedHumanName,
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
-			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
-			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
-			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
+			prompt_plan_json: promptPlanJson,
+			prompt_inspection_json: promptInspectionJson,
+			prompt_context_json: promptContextJson,
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
@@ -161,7 +164,12 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
-	syncJsonReferences(db, { kind: "active-generation", column: "active_generation_id", id: active.id }, macroWritesJson);
+	syncJsonReferences(
+		db,
+		{ kind: "active-generation", column: "active_generation_id", id: active.id },
+		[macroWritesJson, promptPlanJson, promptContextJson, promptInspectionJson],
+		input.images,
+	);
 	return active.id;
 };
 

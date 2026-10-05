@@ -10,6 +10,7 @@ import { isMemoryEnabledForConversation } from "./settings";
 import { memoryCandidates, memoryTraceSteps, memoryWorkSnapshot, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryCatchup, type MemoryCollectionView, type MemoryCorrectionCommand, type MemoryIndexReadiness, type MemoryTraceStep } from "../../shared/contract/memory";
 import { abortMemoryWork, registerMemoryWork } from "./work";
 import { sha256 } from "./hash";
+import { projectImageAnchors } from "../../shared/image-reference";
 import { applyMemoryLabelMerges, readMemoryLabelState } from "./labels";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
@@ -27,7 +28,8 @@ type CapturedMemorySource = { source: CapturedMemoryMessage; context: readonly C
 
 const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[]): CapturedMemorySource => {
 	if (source.content.trim().length === 0) throw new InvalidMemorySourceError("Empty sources are not processed. Save nonempty story content first.");
-	return { source, context, sourceHash: sha256(source.content) };
+	const anchored = (message: CapturedMemoryMessage): CapturedMemoryMessage => ({ ...message, content: projectImageAnchors(message.content) });
+	return { source: anchored(source), context: context.map(anchored), sourceHash: sha256(source.content) };
 };
 
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {

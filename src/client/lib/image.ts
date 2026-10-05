@@ -12,6 +12,8 @@ const localUrls = new Map<string, string>();
 export const missingImages = new Set<string>();
 const pendingBytes = new Map<string, string>();
 
+export const hasLocalImage = (hash: string) => localUrls.has(hash);
+
 export const imageSrc = (hash: string) => localUrls.get(hash) ?? `/api/images/${hash}`;
 
 const toHex = (buffer: ArrayBuffer) => [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -38,10 +40,11 @@ const hashesIn = (payloadJson: string) => new Set(payloadJson.match(/[0-9a-f]{64
 export const withInlineImages = async <Result extends { error: unknown }>(
 	payloadJson: string,
 	send: (images: string[] | undefined) => Promise<Result>,
+	{ consume = true }: { consume?: boolean } = {},
 ): Promise<Result> => {
 	const hashes = [...hashesIn(payloadJson)].filter((hash) => pendingBytes.has(hash));
 	const images = hashes.map((hash) => pendingBytes.get(hash)!);
 	const result = await send(images.length === 0 ? undefined : images);
-	if (!result.error) for (const hash of hashes) pendingBytes.delete(hash);
+	if (consume && !result.error) for (const hash of hashes) pendingBytes.delete(hash);
 	return result;
 };

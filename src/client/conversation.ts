@@ -345,7 +345,10 @@ export async function previewConversationGeneration(
 	input: GenerationPreviewBody,
 ): Promise<GenerationPreviewOutcome> {
 	try {
-		const { data, error } = await api.api.conversations({ id: conversationId }).generations.preview.post(input);
+		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
+			api.api.conversations({ id: conversationId }).generations.preview.post(input.kind === "send" ? { ...input, images } : input),
+			{ consume: false },
+		);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
 			if (error.status === 409) return { status: "not-playable", reason: error.value.reason };
@@ -407,7 +410,7 @@ export function startConversationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		withInlineImages(content, (images) =>
+		withInlineImages(JSON.stringify({ content, plan: preview?.promptPlan }), (images) =>
 			api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, images, ...formatting, ...preview }),
 		),
 		"",
@@ -421,10 +424,13 @@ export function startConversationSiblingGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
-			...formatting,
-			...preview,
-		}),
+		withInlineImages(JSON.stringify(preview?.promptPlan ?? null), (images) =>
+			api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+				images,
+				...formatting,
+				...preview,
+			}),
+		),
 		"Sibling",
 	);
 }
@@ -436,7 +442,9 @@ export function startConversationContinuationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
+		withInlineImages(JSON.stringify(preview?.promptPlan ?? null), (images) =>
+			api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, images, ...formatting, ...preview }),
+		),
 		"Continuation",
 	);
 }

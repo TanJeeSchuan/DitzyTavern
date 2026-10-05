@@ -49,6 +49,7 @@ export interface GenerationSettingsDraftValues {
 	strategy: ConversationGenerationSettings["continuationStrategy"];
 	instruction: string;
 	prefillSuffix: ContinuationPrefillSuffix;
+	imagePlacement: ConversationGenerationSettings["repeatedImagePlacement"];
 }
 
 export interface SaveGenerationSettingsDraftOptions {
@@ -104,6 +105,7 @@ function applyDraftsToGenerationSettings(
 		continuationStrategy: drafts.strategy,
 		continuationInstruction: drafts.instruction,
 		continuationPrefillSuffix: drafts.prefillSuffix,
+		repeatedImagePlacement: drafts.imagePlacement,
 		requestOverrides: drafts.overrides,
 	};
 }
@@ -112,6 +114,7 @@ interface GenerationSettingsFields {
 	instruction: string;
 	strategy: ConversationGenerationSettings["continuationStrategy"];
 	prefillSuffix: ContinuationPrefillSuffix;
+	imagePlacement: ConversationGenerationSettings["repeatedImagePlacement"];
 	samplingDrafts: SamplingDrafts;
 	budgetDrafts: BudgetDrafts;
 	overridesDrafts: OverridesDrafts;
@@ -121,6 +124,7 @@ const fieldsFromSettings = (settings: ConversationGenerationSettings): Generatio
 	instruction: settings.continuationInstruction,
 	strategy: settings.continuationStrategy,
 	prefillSuffix: settings.continuationPrefillSuffix,
+	imagePlacement: settings.repeatedImagePlacement,
 	samplingDrafts: samplingDraftsFromSettings(settings),
 	budgetDrafts: budgetDraftsFromSettings(settings),
 	overridesDrafts: overridesDraftsFromSettings(settings),
@@ -153,11 +157,11 @@ export function useGenerationSettingsDraft({
 	});
 	const settings = query.data ?? null;
 	const form = useForm<GenerationSettingsFields>({ defaultValues: {
-		instruction: "", strategy: "instruction", prefillSuffix: "",
+		instruction: "", strategy: "instruction", prefillSuffix: "", imagePlacement: "last",
 		samplingDrafts: makeEmptySamplingDrafts(), budgetDrafts: makeEmptyBudgetDrafts(), overridesDrafts: makeEmptyOverridesDrafts(),
 	} });
 	const { reset, getValues, setValue, watch, formState: { isDirty } } = form;
-	const { instruction, strategy, prefillSuffix, samplingDrafts, budgetDrafts, overridesDrafts } = watch();
+	const { instruction, strategy, prefillSuffix, imagePlacement, samplingDrafts, budgetDrafts, overridesDrafts } = watch();
 	const [saving, setSaving] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
 	const conversationIdRef = useRef(conversationId);
@@ -203,6 +207,7 @@ export function useGenerationSettingsDraft({
 	const updateInstruction = (value: string) => { edited(); setValue("instruction", value, { shouldDirty: true }); };
 	const updateStrategy = (value: GenerationSettingsFields["strategy"]) => { edited(); setValue("strategy", value, { shouldDirty: true }); };
 	const updatePrefillSuffix = (value: ContinuationPrefillSuffix) => { edited(); setValue("prefillSuffix", value, { shouldDirty: true }); };
+	const updateImagePlacement = (value: GenerationSettingsFields["imagePlacement"]) => { edited(); setValue("imagePlacement", value, { shouldDirty: true }); };
 
 	const save = async () => {
 		if (
@@ -231,6 +236,7 @@ export function useGenerationSettingsDraft({
 					strategy,
 					instruction,
 					prefillSuffix,
+					imagePlacement,
 				},
 				reconciliation: {
 					adoptSnapshot: (snapshot) => {
@@ -278,6 +284,8 @@ export function useGenerationSettingsDraft({
 		setStrategy: updateStrategy,
 		prefillSuffix,
 		setPrefillSuffix: updatePrefillSuffix,
+		imagePlacement,
+		setImagePlacement: updateImagePlacement,
 		samplingDrafts,
 		updateSampling,
 		budgetDrafts,

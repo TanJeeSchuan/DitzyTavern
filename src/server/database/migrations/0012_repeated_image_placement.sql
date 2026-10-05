@@ -1,0 +1,1 @@
+ALTER TABLE `conversation_generation_settings` ADD `repeated_image_placement` text DEFAULT 'last' NOT NULL;

@@ -3,9 +3,11 @@ import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,
 	PromptBudgetExceededError,
+	resolvePromptImages,
 	type PromptPlan,
 	type TokenEstimator,
 } from "../prompt-compiler";
+import { imageLookup, type ImagePool } from "../image";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
@@ -64,7 +66,7 @@ export type GenerationPreviewAcceptance =
 	| GenerationPreviewAcceptanceFor<"continuation">
 	| GenerationPreviewAcceptanceFor<"sibling">;
 
-type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale"> : never;
+type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale" | "images"> : never;
 
 export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> & {
 	readonly conversationId: number;
@@ -73,6 +75,7 @@ export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> 
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly preparationFetch?: ModelFetch;
 	readonly tokenEstimator?: TokenEstimator;
+	readonly images?: ImagePool | undefined;
 };
 
 const buildPreviewCaptureAsync = async (
@@ -87,6 +90,7 @@ const buildPreviewCaptureAsync = async (
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
 		preparationFetch: request.preparationFetch,
+		images: request.images,
 	};
 	switch (request.kind) {
 		case "send":
@@ -216,17 +220,23 @@ export const createGenerationPreviewAsync = async (
 };
 
 const acceptedEditedPlan = (
+	database: Database,
 	record: GenerationPreviewRecord,
-	editedPlan: PromptPlan,
+	submittedPlan: PromptPlan,
+	images: ImagePool | undefined,
 ) => {
-	if (!Value.Check(promptPlan, editedPlan)) {
+	if (!Value.Check(promptPlan, submittedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
 	}
-	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, editedPlan);
+	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, submittedPlan);
+	const settings = record.capture.capture.plan.effectiveSettings;
+	const editedPlan = resolvePromptImages(submittedPlan, {
+		lookup: imageLookup(database, images),
+		placement: settings.repeatedImagePlacement,
+	});
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	const settings = record.capture.capture.plan.effectiveSettings;
 	const budget = budgetEditedPromptPlan({
 		plan: editedPlan,
 		contextLimit: settings.contextLimit,
@@ -276,6 +286,7 @@ interface PreviewAcceptanceContext {
 	readonly connection: ModelClientConnectionSnapshot | null | undefined;
 	readonly connectionSettings: ConnectionSettingsModuleOptions | undefined;
 	readonly formatting: GenerationFormattingContext | undefined;
+	readonly images: ImagePool | undefined;
 }
 
 type PreviewSnapshotKind =
@@ -314,7 +325,7 @@ export const captureSendGenerationPreview = (
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "send", content });
 	const recorded = preview.record.capture.capture;
-	return { ...recorded, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
+	return { ...recorded, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images) };
 };
 
 export const captureContinuationGenerationPreview = (
@@ -336,7 +347,7 @@ export const captureContinuationGenerationPreview = (
 		};
 	return {
 		...recorded,
-		plan: acceptedEditedPlan(preview.record, preview.editedPlan),
+		plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images),
 		assistantPrefill,
 	};
 };
@@ -353,5 +364,5 @@ export const captureSiblingGenerationPreview = (
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "sibling", messageId });
-	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
+	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images) };
 };

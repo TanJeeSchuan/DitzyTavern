@@ -104,6 +104,7 @@ describe("Generation capture and provenance", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": { response_format: { type: "text" } },
 						responses: {},
@@ -218,6 +219,7 @@ describe("Generation capture and provenance", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": { logit_bias: { "50256": -100 } },
 						responses: { metadata: { workspace: "responses-only" } },
@@ -307,6 +309,7 @@ describe("Generation capture and provenance", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -339,6 +342,7 @@ describe("Generation capture and provenance", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},

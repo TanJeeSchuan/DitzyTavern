@@ -179,6 +179,8 @@ const decodeProvenanceSettingsField: ProvenanceSettingsDecoder = {
 	continuationInstruction: (source) => provenanceString(source.continuationInstruction),
 	continuationPrefillSuffix: (source) =>
 		closedProvenanceLiteral(source.continuationPrefillSuffix, ["", " ", "\n", "\n\n"] as const),
+	repeatedImagePlacement: (source) =>
+		closedProvenanceLiteral(source.repeatedImagePlacement, ["first", "last", "every"] as const),
 };
 
 const provenanceSettings = (
@@ -199,6 +201,7 @@ const provenanceSettings = (
 		continuationStrategy: decodeProvenanceSettingsField.continuationStrategy(source),
 		continuationInstruction: decodeProvenanceSettingsField.continuationInstruction(source),
 		continuationPrefillSuffix: decodeProvenanceSettingsField.continuationPrefillSuffix(source),
+		repeatedImagePlacement: decodeProvenanceSettingsField.repeatedImagePlacement(source),
 	};
 };
 

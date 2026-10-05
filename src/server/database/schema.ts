@@ -813,6 +813,7 @@ export const conversationGenerationSettingsTable = sqliteTable(
 			.notNull()
 			.default("Continue the narrative naturally without repeating the previous text."),
 		continuation_prefill_suffix: text().notNull().default(""),
+		repeated_image_placement: text().notNull().default("last"),
 		request_overrides_json: text().notNull().default("{}"),
 	},
 );

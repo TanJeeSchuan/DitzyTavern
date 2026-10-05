@@ -49,6 +49,8 @@ function GenerationSettings({
 		setStrategy,
 		prefillSuffix,
 		setPrefillSuffix,
+		imagePlacement,
+		setImagePlacement,
 		updateInstruction,
 		canSave,
 		dirty,
@@ -114,6 +116,17 @@ function GenerationSettings({
 								/>
 							</Field>
 						)}
+					</section>
+
+					<section aria-labelledby="image-placement-title">
+						<h3 id="image-placement-title">Repeated Images</h3>
+						<p>When the same Image appears more than once in a Generation, which copy is sent. The others send only their name.</p>
+						<SegmentedControl value={imagePlacement} onValueChange={setImagePlacement} label="Repeated Image placement" options={[{ value: "first", label: "First" }, { value: "last", label: "Last" }, { value: "every", label: "Every" }]} />
+						<ul className="grid gap-1 text-xs text-muted-foreground">
+							<li><strong>First</strong> keeps the start of the prompt unchanged between Generations, so provider prompt caching keeps working.</li>
+							<li><strong>Last</strong> shows the model the Image at its most recent mention, but changes the prompt from the earlier position onward and discards that cache.</li>
+							<li><strong>Every</strong> sends and pays for every copy.</li>
+						</ul>
 					</section>
 
 					<SiblingGenerationEditor draft={budgetDrafts.siblingGenerationLimit} onChange={(value) => updateBudget("siblingGenerationLimit", value)} />

@@ -3,7 +3,10 @@ import type { GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
-import { LoreActivationDetails, MemoryActivationDetails } from "./GenerationDetailsPanel";
+import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
+import { ProseEditor } from "./editor/ProseEditor";
+import { hasLocalImage } from "./lib/image";
+import { resolveImageReferences } from "../shared/prompt-images";
 import { memoryActivationWithFinalText } from "../shared/contract/memory-recall";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
@@ -58,6 +61,7 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
+				{preview !== null && <PromptImageList images={currentImages(preview)} />}
 				{preview !== null && preview.pendingWrites.length > 0 && (
 					<section className="generation-detail-section">
 						<h3>Pending variable writes</h3>
@@ -75,15 +79,16 @@ export function PromptPlanPreviewPanel({
 					{preview.promptPlan.blocks.length === 0 && <p className="panel-note">No Prompt Plan blocks are available.</p>}
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const fields = run.map(({ block, index }) => (
-							<label key={index}>
+							<div key={index} className="prompt-plan-block">
 								<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
-								<textarea
+								<ProseEditor
+									className="prose-editor-field"
+									ariaLabel={`${block.kind} block ${index + 1}`}
 									value={block.content}
 									disabled={!editable}
-									onChange={(event) => onPlanChange(updateBlock(preview.promptPlan, index, event.target.value))}
-									rows={Math.min(12, Math.max(2, block.content.split("\n").length))}
+									onChange={(content) => onPlanChange(updateBlock(preview.promptPlan, index, content))}
 								/>
-							</label>
+							</div>
 						));
 						return run[0].block.kind === "history"
 							? <details key={run[0].index} className="prompt-plan-history"><summary>History · {run.length} {run.length === 1 ? "message" : "messages"}</summary>{fields}</details>
@@ -99,6 +104,15 @@ export function PromptPlanPreviewPanel({
 					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
 			</footer>
 		</aside>
+	);
+}
+
+function currentImages(preview: GenerationPreview) {
+	const stored = new Map(preview.promptPlan.images.filter((image) => image.disposition !== "missing").map((image) => [image.hash, { tokens: image.tokens }]));
+	return resolveImageReferences(
+		preview.promptPlan.blocks.map((block) => block.content),
+		(hash) => stored.get(hash) ?? (hasLocalImage(hash) ? { tokens: 0 } : undefined),
+		preview.effectiveSettings.repeatedImagePlacement,
 	);
 }
 

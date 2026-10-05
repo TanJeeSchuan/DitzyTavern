@@ -811,7 +811,7 @@ describe("Conversation module", () => {
 				modelParticipantId: modelId,
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
-				promptPlan: { blocks: [], warnings: [] },
+				promptPlan: { blocks: [], warnings: [], images: [] },
 				promptContext: [],
 				generationSettings: {},
 				connection: {},

@@ -1,4 +1,6 @@
 import { estimateTokenCount } from "tokenx";
+import { projectImageAnchors } from "../../shared/image-reference";
+import { sentImageTokens } from "../../shared/prompt-images";
 import type { PromptContextEntry, PromptPlan } from "./types";
 
 // ==[HUMAN APPROVED]== The application owns this small synchronous boundary. The heuristic library
@@ -116,7 +118,7 @@ export function toEstimationTranscript(plan: PromptPlan): string {
 					"\u001eSUFFIX\u001f",
 					plan.intent.suffix,
 				];
-	return ["ditzytavern-estimation-transcript-v2", ...blocks, ...intent].join("\n");
+	return projectImageAnchors(["ditzytavern-estimation-transcript-v2", ...blocks, ...intent].join("\n"));
 }
 
 export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
@@ -296,7 +298,7 @@ function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan): number 
 	if (!Number.isFinite(estimate) || estimate < 0) {
 		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
 	}
-	return Math.ceil(estimate);
+	return Math.ceil(estimate) + sentImageTokens(plan.images);
 }
 
 function createBreakdown(

@@ -48,6 +48,7 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	continuationStrategy: DEFAULT_CONTINUATION_STRATEGY,
 	continuationInstruction: DEFAULT_CONTINUATION_INSTRUCTION,
 	continuationPrefillSuffix: "",
+	repeatedImagePlacement: "last",
 	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
 };
 
@@ -74,6 +75,7 @@ const settingsColumn = {
 	continuationStrategy: "continuation_strategy",
 	continuationInstruction: "continuation_instruction",
 	continuationPrefillSuffix: "continuation_prefill_suffix",
+	repeatedImagePlacement: "repeated_image_placement",
 	requestOverrides: "request_overrides_json",
 } as const satisfies Record<GenerationSettingsField, keyof SettingsRow>;
 
@@ -96,6 +98,7 @@ const settingsRowValues = (settings: CanonicalGenerationSettings): SettingsRowVa
 	continuation_strategy: settings.continuationStrategy,
 	continuation_instruction: settings.continuationInstruction,
 	continuation_prefill_suffix: settings.continuationPrefillSuffix,
+	repeated_image_placement: settings.repeatedImagePlacement,
 	request_overrides_json: JSON.stringify(settings.requestOverrides),
 });
 
@@ -203,6 +206,12 @@ const normalizeSettingsField: SettingsFieldNormalizer = {
 		return value;
 	},
 	continuationPrefillSuffix: (value) => validateContinuationPrefillSuffix(value),
+	repeatedImagePlacement: (value) => {
+		if (value !== "first" && value !== "last" && value !== "every") {
+			throw new InvalidConversationCommandError("Repeated Image Placement must be first, last, or every.");
+		}
+		return value;
+	},
 	requestOverrides: (value) => cloneRequestOverrides(value),
 };
 
@@ -237,6 +246,7 @@ const normalizeGenerationSettings = (
 	continuationStrategy: normalizeSettingsField.continuationStrategy(draft.continuationStrategy),
 	continuationInstruction: normalizeSettingsField.continuationInstruction(draft.continuationInstruction),
 	continuationPrefillSuffix: normalizeSettingsField.continuationPrefillSuffix(draft.continuationPrefillSuffix),
+	repeatedImagePlacement: normalizeSettingsField.repeatedImagePlacement(draft.repeatedImagePlacement),
 	requestOverrides: normalizeSettingsField.requestOverrides(draft.requestOverrides),
 });
 
@@ -262,6 +272,7 @@ const readSettingsFieldValue: SettingsFieldRowReader = {
 	continuationInstruction: (row) => row[settingsColumn.continuationInstruction],
 	continuationPrefillSuffix: (row) =>
 		parseContinuationPrefillSuffix(row[settingsColumn.continuationPrefillSuffix]),
+	repeatedImagePlacement: (row) => parseRepeatedImagePlacement(row[settingsColumn.repeatedImagePlacement]),
 	requestOverrides: (row) => parseRequestOverrides(row[settingsColumn.requestOverrides]),
 };
 
@@ -279,6 +290,7 @@ const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSett
 	continuationStrategy: readSettingsFieldValue.continuationStrategy(row),
 	continuationInstruction: readSettingsFieldValue.continuationInstruction(row),
 	continuationPrefillSuffix: readSettingsFieldValue.continuationPrefillSuffix(row),
+	repeatedImagePlacement: readSettingsFieldValue.repeatedImagePlacement(row),
 	requestOverrides: readSettingsFieldValue.requestOverrides(row),
 });
 
@@ -300,6 +312,13 @@ export function updateConversationModelSelection(
 function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffix {
 	if (value === "" || value === " " || value === "\n" || value === "\n\n") return value;
 	throw new Error("Conversation Continuation prefill suffix is corrupt.");
+}
+
+function parseRepeatedImagePlacement(
+	value: string,
+): ConversationGenerationSettings["repeatedImagePlacement"] {
+	if (value === "first" || value === "last" || value === "every") return value;
+	throw new Error("Conversation Repeated Image Placement is corrupt.");
 }
 
 function parseContinuationStrategy(

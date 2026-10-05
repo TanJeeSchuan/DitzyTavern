@@ -264,8 +264,9 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/continue/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				() => generationCoordinator.startContinuationGeneration({
+				async () => generationCoordinator.startContinuationGeneration({
 					conversationId: params.id,
+					images: await ingestUploads(body.images),
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
@@ -288,6 +289,7 @@ export const createConversationRoutes = (
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
 						preparationFetch: options.fetch,
+						images: await ingestUploads(body.kind === "send" ? body.images : undefined),
 					};
 					const input = body.kind === "send"
 						? { ...common, kind: body.kind, content: body.content }
@@ -556,9 +558,10 @@ export const createConversationRoutes = (
 			async ({ params, body }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
-					() => generationCoordinator.startSiblingGeneration({
+					async () => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
+						images: await ingestUploads(body?.images),
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },
 						preview: body?.previewId === undefined
 							? undefined

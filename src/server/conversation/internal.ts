@@ -399,7 +399,7 @@ export const syncMacroStateReferences = (
 	images?: ImagePool | undefined,
 ) => {
 	for (const row of rows) {
-		if (isMacroDataNamespace(row.namespace)) syncJsonReferences(db, { kind: "macro-state", column, id: row.id }, row.value, images);
+		if (isMacroDataNamespace(row.namespace)) syncJsonReferences(db, { kind: "macro-state", column, id: row.id }, [row.value], images);
 	}
 };
 

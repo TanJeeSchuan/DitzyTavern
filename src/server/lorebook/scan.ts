@@ -1,3 +1,5 @@
+import { projectImageAnchors } from "../../shared/image-reference";
+
 /** ==[HUMAN APPROVED]== The scan source is selected narrative text only. Definitions,
  * instructions, and reasoning are excluded before this seam is called. */
 export interface LoreScanSourceMessage {
@@ -36,10 +38,10 @@ export const captureLoreScanWindow = (
 	const boundedMessages = targetIndex < 0 ? input.messages : input.messages.slice(0, targetIndex);
 	const pending = input.beforeMessageId !== undefined || input.pendingHumanText === undefined || input.pendingHumanText.length === 0
 		? []
-		: [{ id: null, content: input.pendingHumanText, pending: true } satisfies LoreScanWindowMessage];
+		: [{ id: null, content: projectImageAnchors(input.pendingHumanText), pending: true } satisfies LoreScanWindowMessage];
 	return [...boundedMessages.map((message) => ({
 		id: message.id,
-		content: message.content,
+		content: projectImageAnchors(message.content),
 		pending: false,
 	})), ...pending].slice(-depth);
 };

@@ -445,12 +445,14 @@ export interface GenerationAcceptanceCapture {
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
 	macroPresetId?: number | undefined;
 	macroWrites?: readonly MacroVariableWrite[] | undefined;
+	// Bytes of Images first referenced by this Generation's Send text or an
+	// edited inspected plan; ingested in the acceptance transaction.
+	images?: ImagePool | undefined;
 }
 
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
 	expectedRevision: number;
 	humanContent: string;
-	images?: ImagePool | undefined;
 	// A retry may point at the already accepted trailing human Message. When
 	// omitted, acceptance creates one in the same transaction.
 	reuseHumanMessageId?: number | undefined;

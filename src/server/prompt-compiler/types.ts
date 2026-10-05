@@ -5,6 +5,7 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import type { AttemptEnvironment } from "../../shared/prompt-macro-engine";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import type { PromptImageResolution } from "./images";
 
 export type {
 	AttemptEnvironment,
@@ -15,6 +16,7 @@ export type {
 	GenerationIntent,
 	PromptBlock,
 	PromptHistoryRole,
+	PromptImage,
 	PromptPlan,
 	PromptWarning,
 } from "../../shared/contract/conversation-schema";
@@ -79,4 +81,6 @@ export interface CompilePromptInput {
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
 	attempt?: AttemptEnvironment;
+	/** How References are resolved once Prompt Macros have expanded. */
+	images: PromptImageResolution;
 }

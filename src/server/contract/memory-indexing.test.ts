@@ -10,6 +10,7 @@ import { captureMemoryRecallSnapshot } from "../memory/recall";
 import { startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import type { ModelFetch } from "../model-client";
+import { formatImageReference } from "../../shared/image-reference";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { conversationMemories, memoryCorrectionApplied } from "../../shared/contract/memory";
 import { createConversationRoutes } from "./conversation";
@@ -536,5 +537,43 @@ describe("Memory indexing public lifecycle", () => {
 		try {
 			expect(await waitFor(async () => (await readSources(memories, conversation.id)).every((source) => source.indexing.status === "ready"))).toBe(true);
 		} finally { await recovered(); }
+	});
+
+	test("extraction and recall read Images only as Image Anchors, never their hash", async () => {
+		const conversation = createChat(database);
+		await enableMemory(database, conversation.id);
+		const hash = "d".repeat(64);
+		const token = formatImageReference("the map", hash);
+		const earlier = insertSource(database, conversation.id, 1, `Writer unrolled ${token}.`);
+		const source = insertSource(database, conversation.id, 2, `Maren studied ${token} closely.`);
+		await queueSource(memories, conversation.id, source.messageId);
+		const seen: string[] = [];
+		const stop = startMemoryWorker(database, {
+			concurrency: 1,
+			process: async (captured, context) => {
+				seen.push(captured.content, ...context.map((message) => message.content));
+				return [candidate(captured.messageId, "Maren studied [Image: the map] closely.")];
+			},
+			embed: async (texts) => texts.map(() => [1, 0]),
+		});
+		try {
+			expect(await waitFor(async () => (await readSources(memories, conversation.id)).find((item) => item.messageId === source.messageId)?.status === "complete")).toBe(true);
+		} finally { await stop(); }
+		expect(seen).toEqual(["Maren studied [Image: the map] closely.", "Writer unrolled [Image: the map]."]);
+
+		const snapshot = captureMemoryRecallSnapshot({
+			database,
+			conversationId: conversation.id,
+			enabled: true,
+			humanName: "Writer",
+			pendingHumanText: `Next ${token}`,
+			messages: [
+				{ messageId: earlier.messageId, variantId: earlier.variantId, position: 1, speakerName: "Writer", role: "human", content: `Writer unrolled ${token}.` },
+				{ messageId: source.messageId, variantId: source.variantId, position: 2, speakerName: "Maren", role: "model", content: `Maren studied ${token} closely.` },
+			],
+		});
+		expect(snapshot.activation.scene).toBe(
+			"Writer: Writer unrolled [Image: the map].\n\nMaren: Maren studied [Image: the map] closely.\n\nWriter: Next [Image: the map]",
+		);
 	});
 });
