@@ -2,7 +2,6 @@ import { api } from "./lib/eden";
 import type { Static } from "@sinclair/typebox";
 import type { CharacterSnapshot } from "./character-library";
 import { commandOutcome } from "./lib/command-outcome";
-import { waitForRetainedImages, withInlineImages } from "./lib/image";
 import type { EdenResponse } from "./lib/eden";
 import type {
 	ActiveGenerationDetails,
@@ -105,9 +104,7 @@ export async function applyConversationCommand(
 	expectedRevision: number,
 	action: ConversationAction,
 ): Promise<CommandOutcome> {
-	const { data, error } = await withInlineImages(JSON.stringify(action), (images) =>
-		api.api.conversations({ id: conversationId }).commands.post({ expectedRevision, action, images }),
-	);
+	const { data, error } = await api.api.conversations({ id: conversationId }).commands.post({ expectedRevision, action });
 	if (error) {
 		return commandOutcome(error.value, {
 			conflict: (payload) => ({ status: "conflict", currentConversation: payload.currentConversation }),
@@ -252,13 +249,9 @@ export async function editMacroVariable(
 		promptPresetId: number;
 		position: number;
 	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
-	previousValue: MacroValue | undefined,
 ): Promise<EditMacroVariablesOutcome> {
 	try {
-		await waitForRetainedImages(JSON.stringify(previousValue ?? null));
-		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
-			api.api.conversations({ id: conversationId })["macro-variables"].post({ ...input, images }),
-		);
+		const { data, error } = await api.api.conversations({ id: conversationId })["macro-variables"].post(input);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
 			if (error.status === 409 && "currentConversation" in error.value) {
@@ -347,9 +340,7 @@ export async function previewConversationGeneration(
 	input: GenerationPreviewBody,
 ): Promise<GenerationPreviewOutcome> {
 	try {
-		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
-			api.api.conversations({ id: conversationId }).generations.preview.post(input.kind === "send" ? { ...input, images } : input),
-		);
+		const { data, error } = await api.api.conversations({ id: conversationId }).generations.preview.post(input);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
 			if (error.status === 409) return { status: "not-playable", reason: error.value.reason };
@@ -411,9 +402,7 @@ export function startConversationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		withInlineImages(JSON.stringify({ content, plan: preview?.promptPlan }), (images) =>
-			api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, images, ...formatting, ...preview }),
-		),
+		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
 		"",
 	);
 }
@@ -425,13 +414,7 @@ export function startConversationSiblingGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		withInlineImages(JSON.stringify(preview?.promptPlan ?? null), (images) =>
-			api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
-				images,
-				...formatting,
-				...preview,
-			}),
-		),
+		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({ ...formatting, ...preview }),
 		"Sibling",
 	);
 }
@@ -443,9 +426,7 @@ export function startConversationContinuationGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		withInlineImages(JSON.stringify(preview?.promptPlan ?? null), (images) =>
-			api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, images, ...formatting, ...preview }),
-		),
+		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
 		"Continuation",
 	);
 }

@@ -15,7 +15,7 @@ import {
 	characterSnapshot,
 	commandBodySchema,
 } from "../../shared/contract/character-library";
-import { InvalidImageError, ingestUploads } from "../image";
+import { InvalidImageError } from "../image";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toCharacterPayload } from "./projections";
@@ -58,8 +58,7 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 			"/api/characters/commands",
 			async ({ body }) => {
 				try {
-					const images = await ingestUploads("images" in body ? body.images : undefined);
-					const outcome = createCharacterLibraryModule(database).execute(body, images);
+					const outcome = createCharacterLibraryModule(database).execute(body);
 					if ("deletionMode" in outcome) {
 						return {
 							outcome: "applied" as const,

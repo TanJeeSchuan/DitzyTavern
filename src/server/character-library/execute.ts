@@ -7,12 +7,11 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
-import { syncDefinitionReferences, type ImagePool } from "../image";
+import { syncDefinitionReferences } from "../image";
 import { createCharacter } from "./create";
 import { deleteCharacter } from "./delete-character";
 import {
 	CharacterNotFoundError,
-	InvalidCharacterCommandError,
 	StaleCharacterRevisionError,
 } from "./errors";
 import {
@@ -20,8 +19,6 @@ import {
 	requireActiveCharacter,
 	requireCommandName,
 	requireCommandOpenings,
-	syncOpeningReferences,
-	syncPromptReferences,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type {
@@ -40,10 +37,9 @@ import type {
 export function executeCharacterCommand(
 	database: Database,
 	command: CharacterLibraryCommand,
-	images: ImagePool,
 ): CharacterSnapshot | CharacterDeletionResult {
 	if (command.type === "create") {
-		return createCharacter(database, command.definition, images);
+		return createCharacter(database, command.definition);
 	}
 
 	const db = connectCharacterLibraryDatabase(database);
@@ -76,9 +72,7 @@ export function executeCharacterCommand(
 				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...toPortraitColumns(command.definition.portrait) };
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
-				if (!syncDefinitionReferences(db, "character_id", character.id, command.definition, images)) {
-					throw new InvalidCharacterCommandError("The Portrait image was not provided.");
-				}
+				syncDefinitionReferences(db, "character_id", character.id, { ...command.definition, portrait: command.definition.portrait });
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
 				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
 				break;
@@ -103,7 +97,7 @@ export function executeCharacterCommand(
 						set: promptRow,
 					})
 					.run();
-				syncPromptReferences(db, character.id, command.prompt, images);
+				syncDefinitionReferences(db, "character_id", character.id, { prompt: command.prompt });
 				break;
 			}
 			case "replace-openings": {
@@ -122,7 +116,7 @@ export function executeCharacterCommand(
 						)
 						.run();
 				}
-				syncOpeningReferences(db, character.id, openings, images);
+				syncDefinitionReferences(db, "character_id", character.id, { openings });
 				break;
 			}
 			case "set-pinned": {

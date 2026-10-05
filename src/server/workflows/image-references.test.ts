@@ -5,14 +5,14 @@ import { createCharacterLibraryModule } from "../character-library";
 import { createConversationModule, deleteConversation, InvalidConversationCommandError } from "../conversation";
 import { createConversationRoutes } from "../contract/conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { base64, pngFixture } from "../image/image-fixtures";
-import { ingestUploads, type ImagePool } from "../image";
+import { pngFixture } from "../image/image-fixtures";
+import { uploadImage, sweepOrphanedImages } from "../image";
 import { Value } from "@sinclair/typebox/value";
 import { activeGenerationDetails, generationAccepted, generationPreview, type GenerationBody, type GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
-import { resolveConversationGeneration } from "../conversation/commands/active-generation";
+import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation/commands/active-generation";
 import { createNativeConversation } from ".";
 import { captureSendGenerationAsync, capturedAcceptanceFields } from "./generate-capture";
 
@@ -20,19 +20,18 @@ const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialo
 const writer = { name: "Writer", prompt, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
 
-const picture = async (width: number): Promise<{ hash: string; pool: ImagePool; token: string }> => {
-	const pool = await ingestUploads([base64(pngFixture({ width }))]);
-	const [hash] = [...pool.keys()];
-	if (hash === undefined) throw new Error("fixture produced no image");
-	return { hash, pool, token: formatImageReference("map", hash) };
-};
-
 describe("Image Reference lifetime", () => {
 	let database: Database;
 
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => { database.close(); });
 
+	const picture = async (width: number) => {
+		const { hash } = await uploadImage(database, pngFixture({ width }));
+		return { hash, token: formatImageReference("map", hash) };
+	};
+	const referenced = () => database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash);
+	const orphanedAt = (hash: string) => database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at;
 	const stored = () => database.query<{ hash: string }, []>("SELECT hash FROM image").all().map((row) => row.hash);
 	const conversations = () => createConversationModule(database);
 	const library = () => createCharacterLibraryModule(database);
@@ -43,12 +42,11 @@ describe("Image Reference lifetime", () => {
 		control: { human: 0, model: 1 },
 	});
 
-	const writeMessage = (target: ReturnType<typeof chat>, variantContents: string[], images?: ImagePool) =>
+	const writeMessage = (target: ReturnType<typeof chat>, variantContents: string[]) =>
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "create-message", timestamp, variantContents, authorParticipantId: target.cast[0]!.id },
-			images,
 		});
 
 	const lastMessage = (target: ReturnType<typeof chat>) => {
@@ -57,11 +55,11 @@ describe("Image Reference lifetime", () => {
 		return message;
 	};
 
-	test("a Variant's Image exists once its command commits and goes with the last edit that removes it", async () => {
+	test("a Variant's Image exists once its command commits and becomes orphaned after its last edit", async () => {
 		const target = chat();
 		const art = await picture(4);
-		writeMessage(target, [`Look: ${art.token}`], art.pool);
-		expect(stored()).toEqual([art.hash]);
+		writeMessage(target, [`Look: ${art.token}`]);
+		expect(referenced()).toEqual([art.hash]);
 
 		const message = lastMessage(target);
 		conversations().execute({
@@ -69,30 +67,37 @@ describe("Image Reference lifetime", () => {
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: "Nothing now." },
 		});
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
+		expect(stored()).toEqual([art.hash]);
+		expect(orphanedAt(art.hash)).toBeNumber();
+		conversations().execute({
+			conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!,
+			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: art.token },
+		});
+		expect(orphanedAt(art.hash)).toBeNull();
 	});
 
 	test("a pasted token needs no bytes and keeps the Image alive after its original goes", async () => {
 		const target = chat();
 		const art = await picture(4);
-		writeMessage(target, [art.token], art.pool);
+		writeMessage(target, [art.token]);
 		const original = lastMessage(target);
 		writeMessage(target, [`Again ${art.token}`]);
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "delete-message", messageId: original.id },
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "delete-message", messageId: lastMessage(target).id },
 		});
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("a Reference to an Image that is nowhere stores the text as written and creates nothing", () => {
@@ -100,19 +105,18 @@ describe("Image Reference lifetime", () => {
 		const text = formatImageReference("ghost", "c".repeat(64));
 		writeMessage(target, [text]);
 		expect(lastMessage(target).variants[0]?.content).toBe(text);
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
-	test("a rejected command leaves neither the Image nor a reference", async () => {
+	test("a rejected command leaves its upload orphaned without a reference", async () => {
 		const target = chat();
 		const art = await picture(4);
 		expect(() => conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "create-message", timestamp, variantContents: [art.token], authorParticipantId: 9999 },
-			images: art.pool,
 		})).toThrow(InvalidConversationCommandError);
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 		expect(database.query("SELECT id FROM image_reference").all()).toEqual([]);
 	});
 
@@ -125,16 +129,15 @@ describe("Image Reference lifetime", () => {
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "create-variant", messageId: message.id, content: art.token },
-			images: art.pool,
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 		const added = lastMessage(target).variants.find((variant) => variant.content === art.token);
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "delete-variant", messageId: message.id, variantId: added!.id },
 		});
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("Definition Prompt channels and Openings hold Images, and a seeded Participant keeps its own copy", async () => {
@@ -142,8 +145,8 @@ describe("Image Reference lifetime", () => {
 		const character = library().execute({
 			type: "create",
 			definition: { name: "Maren", prompt: { ...prompt, identity: `Looks like ${art.token}` }, openings: [`Hello ${opening.token}`] },
-		}, new Map([...art.pool, ...opening.pool]));
-		expect(stored().sort()).toEqual([art.hash, opening.hash].sort());
+		});
+		expect(referenced().sort()).toEqual([art.hash, opening.hash].sort());
 
 		const seeded = createNativeConversation(database, {
 			name: "Chat",
@@ -151,10 +154,10 @@ describe("Image Reference lifetime", () => {
 			modelSeat: { type: "character", characterId: character.id, expectedRevision: character.revision },
 		});
 		library().execute({ type: "delete", characterId: character.id, expectedRevision: character.revision });
-		expect(stored().sort()).toEqual([art.hash, opening.hash].sort());
+		expect(referenced().sort()).toEqual([art.hash, opening.hash].sort());
 
 		deleteConversation(database, seeded.id);
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("editing a Participant's Definition re-syncs its Images", async () => {
@@ -165,15 +168,14 @@ describe("Image Reference lifetime", () => {
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt: { ...prompt, scenario: art.token }, openings: [] } },
-			images: art.pool,
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
 		});
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	for (const owner of ["Character", "Participant"] as const) {
@@ -189,14 +191,14 @@ describe("Image Reference lifetime", () => {
 						portrait: kind === "portrait" ? { hash: art.hash, focalX: 0.5, focalY: 0.5 } : undefined,
 					});
 					if (owner === "Character") {
-						const character = library().execute({ type: "create", definition: definition(from) }, art.pool);
+						const character = library().execute({ type: "create", definition: definition(from) });
 						library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: definition(to) });
 					} else {
 						const target = chat();
-						conversations().execute({ conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) }, images: art.pool });
+						conversations().execute({ conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) } });
 						conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
 					}
-					expect(stored()).toEqual([art.hash]);
+					expect(referenced()).toEqual([art.hash]);
 					expect(database.query("SELECT kind FROM image_reference").all()).toEqual([{ kind: to }]);
 				});
 			}
@@ -220,23 +222,22 @@ describe("Image Reference lifetime", () => {
 			operation: "set",
 			name: "outfit",
 			value: art.token,
-			images: art.pool,
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "select-variant", messageId: message.id, variantId: secondVariant!.id },
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		conversations().execute({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "delete-variant", messageId: message.id, variantId: firstVariant!.id },
 		});
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("an initial Macro Variable holds its Image until the variable is deleted", async () => {
@@ -244,7 +245,7 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const edit = (body: { operation: "set"; value: string; images?: ImagePool } | { operation: "delete" }) => conversations().editMacroVariables({
+		const edit = (body: { operation: "set"; value: string } | { operation: "delete" }) => conversations().editMacroVariables({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			promptPresetId: presetId,
@@ -252,10 +253,10 @@ describe("Image Reference lifetime", () => {
 			name: "outfit",
 			...body,
 		});
-		edit({ operation: "set", value: art.token, images: art.pool });
-		expect(stored()).toEqual([art.hash]);
+		edit({ operation: "set", value: art.token });
+		expect(referenced()).toEqual([art.hash]);
 		edit({ operation: "set", value: "plain" });
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("an initial Macro Variable keeps its Image when its replacement label needs JSON escaping", async () => {
@@ -263,7 +264,7 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const set = (value: MacroValue, images?: ImagePool) => conversations().editMacroVariables({
+		const set = (value: MacroValue) => conversations().editMacroVariables({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			promptPresetId: presetId,
@@ -271,12 +272,11 @@ describe("Image Reference lifetime", () => {
 			operation: "set",
 			name: "outfit",
 			value,
-			images,
 		});
-		set(formatImageReference("a b", art.hash), art.pool);
-		expect(stored()).toEqual([art.hash]);
+		set(formatImageReference("a b", art.hash));
+		expect(referenced()).toEqual([art.hash]);
 		set(`![a\tb](image:${art.hash})`);
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 	});
 
 	test("a nested Macro Value holds its Image and releases it with the last reference", async () => {
@@ -284,7 +284,7 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
 		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
-		const set = (value: MacroValue, images?: ImagePool) => conversations().editMacroVariables({
+		const set = (value: MacroValue) => conversations().editMacroVariables({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			promptPresetId: presetId,
@@ -292,19 +292,17 @@ describe("Image Reference lifetime", () => {
 			operation: "set",
 			name: "outfit",
 			value,
-			images,
 		});
-		set(["plain", [art.token]], art.pool);
-		expect(stored()).toEqual([art.hash]);
+		set(["plain", [art.token]]);
+		expect(referenced()).toEqual([art.hash]);
 		set(["plain", ["gone"]]);
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("Macro State written by setvar during a Generation holds its Image after the Definition lets go", async () => {
 		const art = await picture(4);
 		const target = conversations().create({
 			name: "Chat",
-			images: art.pool,
 			participants: [
 				{ definition: writer },
 				{ definition: { name: "Maren", prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` }, openings: [] } },
@@ -323,7 +321,7 @@ describe("Image Reference lifetime", () => {
 			timestamp,
 			content: "Done",
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		const maren = conversations().getSummary(target.id)!.cast[1]!;
 		conversations().execute({
@@ -331,54 +329,10 @@ describe("Image Reference lifetime", () => {
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		deleteConversation(database, target.id);
-		expect(stored()).toEqual([]);
-	});
-
-	test("Send carries inline bytes and keeps the Image only once accepted", async () => {
-		const target = chat();
-		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(9) }).createProfile({
-			expectedRevision: 0,
-			profile: {
-				displayName: "Profile",
-				apiFormat: "chat-completions",
-				requestUrl: "http://127.0.0.1:43127/v1/",
-				modelsUrl: "",
-				modelBackend: "automatic",
-				adapter: "deepseek",
-				outputTokenRepresentation: "automatic",
-				timeoutMs: 120_000,
-				pinnedModels: [],
-			},
-			credential: "secret",
-		});
-		const app = createConversationRoutes(database, {
-			masterKey: new Uint8Array(32).fill(9),
-			fetch: async () => new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
-		});
-		const art = await picture(4);
-		const send = (content: string, images: string[]) => app.handle(new Request(
-			`http://localhost/api/conversations/${target.id}/generations`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: conversations().getRevision(target.id), content, images }),
-			},
-		));
-
-		const rejected = await send("  ", [base64(pngFixture({ width: 4 }))]);
-		expect(rejected.status).toBe(422);
-		expect(stored()).toEqual([]);
-
-		const unsupported = await send(art.token, [base64(Buffer.from("not an image"))]);
-		expect(unsupported.status).toBe(422);
-		expect(stored()).toEqual([]);
-
-		const accepted = await send(art.token, [base64(pngFixture({ width: 4 }))]);
-		expect(accepted.status).toBe(200);
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("an Active Generation holds the Images its plan references until it settles", async () => {
@@ -389,14 +343,13 @@ describe("Image Reference lifetime", () => {
 		const accepted = acceptConversationTailGeneration(database, {
 			...fields,
 			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
-			images: art.pool,
 			expectedRevision: target.revision,
 			humanContent: "Hello",
 		});
-		expect(stored()).toEqual([art.hash]);
+		expect(referenced()).toEqual([art.hash]);
 
 		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
-		expect(stored()).toEqual([]);
+		expect(referenced()).toEqual([]);
 	});
 
 	test("an inspected plan edited to add an Image is resolved over the edit and shown in Generation Details", async () => {
@@ -440,7 +393,6 @@ describe("Image Reference lifetime", () => {
 			content: "Hello",
 			previewId: preview.previewId,
 			promptPlan: edited,
-			images: [base64(pngFixture({ width: 4 }))],
 		});
 		expect(sent.status).toBe(200);
 		const { generationId } = Value.Parse(generationAccepted, await sent.json());
@@ -452,4 +404,55 @@ describe("Image Reference lifetime", () => {
 		]);
 		expect(details.promptPlan.images[0]?.tokens).toBeGreaterThan(0);
 	});
+
+	test("startup sweep expires only Images orphaned longer than 24 hours", async () => {
+		const now = Date.now();
+		const [old, boundary, recent, held] = await Promise.all([picture(1), picture(2), picture(3), picture(4)]);
+		const target = chat();
+		writeMessage(target, [held.token]);
+		const age = (hash: string, at: number) => database.query("UPDATE image SET orphaned_at = ? WHERE hash = ?").run(at, hash);
+		age(old.hash, now - 24 * 60 * 60 * 1000 - 1);
+		age(boundary.hash, now - 24 * 60 * 60 * 1000);
+		age(recent.hash, now - 1000);
+		sweepOrphanedImages(database, now);
+		expect(stored().sort()).toEqual([boundary.hash, recent.hash, held.hash].sort());
+		expect(orphanedAt(held.hash)).toBeNull();
+	});
+
+	test("a checkpointed Variant adopts References and releases them when checkpoint text changes", async () => {
+		const target = chat();
+		const art = await picture(4);
+		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
+		const accepted = acceptConversationTailGeneration(database, {
+			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
+			expectedRevision: target.revision, humanContent: "Hello",
+		});
+		checkpointConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token, latestEventId: 1 });
+		expect(orphanedAt(art.hash)).toBeNull();
+		expect(lastMessage(target).variants[0]?.content).toBe(art.token);
+		checkpointConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, content: "Plain", latestEventId: 2 });
+		expect(orphanedAt(art.hash)).toBeNumber();
+		expect(stored()).toEqual([art.hash]);
+	});
+
+	for (const owner of ["Character", "Participant"] as const) {
+		test(`${owner} partial Definition writes keep the untouched Portrait and Openings`, async () => {
+			const art = await picture(4);
+			const definition = { ...writer, portrait: { hash: art.hash, focalX: 0.5, focalY: 0.5 }, prompt: { ...prompt, identity: art.token }, openings: [art.token] };
+			if (owner === "Character") {
+				const character = library().execute({ type: "create", definition });
+				const updated = library().execute({ type: "replace-prompt", characterId: character.id, expectedRevision: character.revision, prompt });
+				library().execute({ type: "replace-openings", characterId: character.id, expectedRevision: updated.revision, openings: [] });
+			} else {
+				const target = chat();
+				const participantId = target.cast[1]!.id;
+				const execute = (action: Parameters<ReturnType<typeof conversations>["execute"]>[0]["action"]) => conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action });
+				execute({ type: "update-participant-definition", participantId, definition });
+				execute({ type: "replace-participant-prompt", participantId, prompt });
+				execute({ type: "replace-participant-openings", participantId, openings: [] });
+			}
+			expect(database.query("SELECT kind FROM image_reference").all()).toEqual([{ kind: "portrait" }]);
+			expect(orphanedAt(art.hash)).toBeNull();
+		});
+	}
 });

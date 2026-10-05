@@ -12,8 +12,7 @@ import { isMacroValue } from "../shared/contract/macro-variables";
 import type { MacroValue } from "../shared/contract/macro-variables";
 import { useAsyncEffect } from "./lib/use-async";
 import { ProseEditor } from "./editor/ProseEditor";
-import { imageHashes, projectImageAnchors } from "../shared/image-reference";
-import { useImageDraft } from "./lib/use-image-draft";
+import { projectImageAnchors } from "../shared/image-reference";
 import { PanelHeader } from "./PanelHeader";
 
 type PanelState =
@@ -148,7 +147,7 @@ export function MacroVariablesReadyView({
 	const [draftName, setDraftName] = useState("");
 	const [nameError, setNameError] = useState(false);
 	const [draftValue, setDraftValue] = useState("");
-	useImageDraft(imageHashes(draftValue));
+
 	const [editing, setEditing] = useState<MacroVariable | null>(null);
 	const [saving, setSaving] = useState(false);
 
@@ -213,7 +212,7 @@ export function MacroVariablesReadyView({
 			operation: "set",
 			name,
 			value,
-		}, variables.variables.find((variable) => variable.name === name)?.value);
+		});
 		setSaving(false);
 		if (settle(outcome)) beginAdd();
 	};
@@ -228,7 +227,7 @@ export function MacroVariablesReadyView({
 			position,
 			operation: "delete",
 			name: variable.name,
-		}, variable.value);
+		});
 		setSaving(false);
 		if (settle(outcome) && editing?.name === variable.name) beginAdd();
 	};

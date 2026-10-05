@@ -82,12 +82,3 @@ export const ingestImage = async (original: Uint8Array): Promise<IngestedImage> 
 	const bytes = Buffer.from(stripped);
 	return { hash: createHash("sha256").update(bytes).digest("hex"), bytes, mediaType, ...size };
 };
-
-export const ingestUploads = async (uploads: readonly string[] | undefined): Promise<Map<string, IngestedImage>> => {
-	const pool = new Map<string, IngestedImage>();
-	for (const upload of uploads ?? []) {
-		const image = await ingestImage(Buffer.from(upload, "base64"));
-		pool.set(image.hash, image);
-	}
-	return pool;
-};

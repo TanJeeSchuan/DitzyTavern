@@ -1,4 +1,3 @@
-import type { ImagePool } from "../image";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -305,7 +304,6 @@ export interface ConversationCommand {
 	conversationId: number;
 	expectedRevision: number;
 	action: ConversationAction;
-	images?: ImagePool | undefined;
 }
 
 export interface ConversationModule {
@@ -445,9 +443,6 @@ export interface GenerationAcceptanceCapture {
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
 	macroPresetId?: number | undefined;
 	macroWrites?: readonly MacroVariableWrite[] | undefined;
-	// Bytes of Images first referenced by this Generation's Send text or an
-	// edited inspected plan; ingested in the acceptance transaction.
-	images?: ImagePool | undefined;
 }
 
 export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
@@ -598,5 +593,4 @@ export interface ConversationCreationInput {
 	// Native creation captures the initiating client's formatting context for
 	// the one opening assembly; imported/preservation records leave it unset.
 	formatting?: GenerationFormattingContext | undefined;
-	images?: ImagePool | undefined;
 }

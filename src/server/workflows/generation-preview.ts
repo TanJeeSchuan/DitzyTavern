@@ -7,7 +7,7 @@ import {
 	type PromptPlan,
 	type TokenEstimator,
 } from "../prompt-compiler";
-import { imageLookup, type ImagePool } from "../image";
+import { imageLookup } from "../image";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
@@ -75,7 +75,6 @@ export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> 
 	readonly connectionSettings?: ConnectionSettingsModuleOptions;
 	readonly preparationFetch?: ModelFetch;
 	readonly tokenEstimator?: TokenEstimator;
-	readonly images?: ImagePool | undefined;
 };
 
 const buildPreviewCaptureAsync = async (
@@ -90,7 +89,6 @@ const buildPreviewCaptureAsync = async (
 		tokenEstimator: request.tokenEstimator,
 		formatting: request.formatting,
 		preparationFetch: request.preparationFetch,
-		images: request.images,
 	};
 	switch (request.kind) {
 		case "send":
@@ -223,7 +221,6 @@ const acceptedEditedPlan = (
 	database: Database,
 	record: GenerationPreviewRecord,
 	submittedPlan: PromptPlan,
-	images: ImagePool | undefined,
 ) => {
 	if (!Value.Check(promptPlan, submittedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
@@ -231,7 +228,7 @@ const acceptedEditedPlan = (
 	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, submittedPlan);
 	const settings = record.capture.capture.plan.effectiveSettings;
 	const editedPlan = resolvePromptImages(submittedPlan, {
-		lookup: imageLookup(database, images),
+		lookup: imageLookup(database),
 		placement: settings.repeatedImagePlacement,
 	}, record.capture.capture.connection?.textOnlyModels.includes(settings.modelId) !== true);
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
@@ -286,7 +283,6 @@ interface PreviewAcceptanceContext {
 	readonly connection: ModelClientConnectionSnapshot | null | undefined;
 	readonly connectionSettings: ConnectionSettingsModuleOptions | undefined;
 	readonly formatting: GenerationFormattingContext | undefined;
-	readonly images: ImagePool | undefined;
 }
 
 type PreviewSnapshotKind =
@@ -325,7 +321,7 @@ export const captureSendGenerationPreview = (
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "send", content });
 	const recorded = preview.record.capture.capture;
-	return { ...recorded, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images) };
+	return { ...recorded, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
 };
 
 export const captureContinuationGenerationPreview = (
@@ -347,7 +343,7 @@ export const captureContinuationGenerationPreview = (
 		};
 	return {
 		...recorded,
-		plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images),
+		plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan),
 		assistantPrefill,
 	};
 };
@@ -364,5 +360,5 @@ export const captureSiblingGenerationPreview = (
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "sibling", messageId });
-	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan, context.images) };
+	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
 };

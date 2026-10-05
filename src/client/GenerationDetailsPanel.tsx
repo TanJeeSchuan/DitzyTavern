@@ -126,16 +126,17 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 	);
 }
 
-const imageDispositionLabel = (image: PromptImage): string =>
+type DisplayImage = Omit<PromptImage, "tokens"> & { tokens: number | undefined };
+const imageDispositionLabel = (image: DisplayImage): string =>
 	image.disposition === "send"
-		? `Sent${image.tokens > 0 ? ` · ~${image.tokens.toLocaleString()} tokens` : ""}`
+		? `Sent${image.tokens !== undefined && image.tokens > 0 ? ` · ~${image.tokens.toLocaleString()} tokens` : ""}`
 		: image.disposition === "text-only"
 			? "Name only (text-only model)"
 			: image.disposition === "anchor"
 				? "Name only (another copy is sent)"
 				: "Missing · name only";
 
-export function PromptImageList({ images }: { images: readonly PromptImage[] }) {
+export function PromptImageList({ images }: { images: readonly DisplayImage[] }) {
 	if (images.length === 0) return null;
 	const missing = images.filter((image) => image.disposition === "missing");
 	return (

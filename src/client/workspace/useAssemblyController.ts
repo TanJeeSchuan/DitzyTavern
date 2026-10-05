@@ -15,9 +15,6 @@ import {
 	type AssemblySession,
 } from "../assembly-session";
 import { transferRetainedEdits } from "./retry-plan-merge";
-import { ImageDraft } from "../lib/image";
-import { jsonImageHashes } from "../../shared/image-reference";
-import { useImageDraft } from "../lib/use-image-draft";
 
 type GenerationStartLifecycle = {
 	begin: () => number;
@@ -47,7 +44,7 @@ export function useAssemblyController({
 	clearDraft,
 }: AssemblyControllerOptions) {
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
-	useImageDraft(jsonImageHashes(assembly?.preview?.promptPlan ?? null));
+
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
@@ -56,7 +53,7 @@ export function useAssemblyController({
 		request: GenerationPreviewBody;
 		plan?: { assembled: PromptPlan; edited: PromptPlan };
 	} | null>(null);
-	const [retryImages] = useState(() => new ImageDraft());
+
 	const retryAvailableRef = useRef(false);
 	retryAvailableRef.current = assembly === null && !variantPreviewActive && !isGenerating;
 
@@ -75,10 +72,9 @@ export function useAssemblyController({
 
 	useEffect(() => {
 		assemblyMountedRef.current = true;
-		retryImages.activate();
+
 		return () => {
 			assemblyMountedRef.current = false;
-			retryImages.dispose();
 		};
 	}, []);
 
@@ -231,7 +227,7 @@ export function useAssemblyController({
 			request,
 			plan: { assembled: currentAssembly.assembledPlan, edited: preview.promptPlan },
 		};
-		retryImages.setHashes(jsonImageHashes([request, preview.promptPlan]));
+
 		void startGeneration(
 			startId,
 			conversationId,
@@ -250,7 +246,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		setDirectStartError(null);
 		lastGenerationRef.current = { conversationId, request };
-		retryImages.setHashes(jsonImageHashes(request));
+
 		void startGeneration(
 			startId,
 			conversationId,
@@ -330,7 +326,7 @@ export function useAssemblyController({
 
 	const conversationSwitched = () => {
 		lastGenerationRef.current = null;
-		retryImages.setHashes([]);
+
 		invalidateAssemblyRequests();
 		setDirectStartError(null);
 		dispatchAssembly({ type: "conversation-switched" });

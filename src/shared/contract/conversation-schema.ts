@@ -6,7 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
-import { inlineImages, portrait } from "./image";
+import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -667,7 +667,6 @@ export type ConversationAction = Static<typeof conversationCommandAction>;
 export const conversationCommandBody = Type.Object({
 	expectedRevision: Type.Integer(),
 	action: conversationCommandAction,
-	images: inlineImages,
 });
 
 export const generationFormattingContext = Type.Object({
@@ -683,8 +682,7 @@ export type GenerationFormattingContext = Static<typeof generationFormattingCont
 const inspectedPlanFields = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
-	// Bytes of Images first referenced by the Send text or the edited plan.
-	images: inlineImages,
+
 	...generationFormattingContext.properties,
 };
 
@@ -725,7 +723,7 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("send"),
 		content: Type.String(),
-		images: inlineImages,
+
 		...generationFormattingContext.properties,
 	}),
 	Type.Object({

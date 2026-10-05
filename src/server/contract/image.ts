@@ -1,12 +1,19 @@
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { readImage } from "../image";
-import { imageParams } from "../../shared/contract/image";
-import { notFoundOutcome } from "../../shared/contract/outcomes";
+import { InvalidImageError, readImage, uploadImage } from "../image";
+import { imageParams, imageUploadBody, imageUploadResponse } from "../../shared/contract/image";
+import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
 export const createImageRoutes = (database: Database) =>
-	new Elysia().get(
+	new Elysia().post("/api/images", async ({ body, status }) => {
+		try {
+			return await uploadImage(database, Buffer.from(body.data, "base64"));
+		} catch (error) {
+			if (error instanceof InvalidImageError) return status(422, { outcome: "invalid" as const, reason: error.message });
+			throw error;
+		}
+	}, { body: imageUploadBody, response: { 200: imageUploadResponse, 422: invalidOutcome } }).get(
 		"/api/images/:hash",
 		({ params, status }) => {
 			const image = readImage(drizzle(database), params.hash);

@@ -10,8 +10,6 @@ import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { promptChannelLabels } from "../../shared/definition";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveNavigation } from "../SaveGuard";
-import { imageHashes } from "../../shared/image-reference";
-import { useImageDraft } from "../lib/use-image-draft";
 
 export const definitionOf = ({ name, prompt, openings, portrait }: { name: string; prompt: PromptChannels; openings: readonly string[]; portrait?: PortraitImage | undefined }): ParticipantDefinition =>
 	({ name, prompt, openings: [...openings], portrait });
@@ -58,7 +56,7 @@ export function DefinitionEditor({
 	onBack: () => void;
 }) {
 	const navigate = useSaveNavigation();
-	const imageDraft = useImageDraft([...Object.values(draft.prompt).flatMap(imageHashes), ...draft.openings.flatMap(imageHashes), ...(draft.portrait === undefined ? [] : [draft.portrait.hash])], false);
+
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const identity = useRef<ProseEditorHandle>(null);
@@ -104,7 +102,7 @@ export function DefinitionEditor({
 					<p className="text-xs text-muted-foreground">{subtitle}</p>
 					</div>
 				</div>
-				<PortraitDialog open={editingPortrait} portrait={draft.portrait} imageDraft={imageDraft} onOpenChange={setEditingPortrait} onChange={setPortrait} />
+				<PortraitDialog open={editingPortrait} portrait={draft.portrait} onOpenChange={setEditingPortrait} onChange={setPortrait} />
 				{banner}
 				<section className="flex flex-col gap-4" aria-label="Prompt">
 					{primaryChannels.map(([key, placeholder]) => channel(key, placeholder))}

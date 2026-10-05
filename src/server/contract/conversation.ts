@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { InvalidImageError, ingestUploads } from "../image";
+import { InvalidImageError } from "../image";
 import { Elysia, status, t } from "elysia";
 import { Type } from "@sinclair/typebox";
 import {
@@ -266,7 +266,6 @@ export const createConversationRoutes = (
 				params.id,
 				async () => generationCoordinator.startContinuationGeneration({
 					conversationId: params.id,
-					images: await ingestUploads(body.images),
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
@@ -289,7 +288,6 @@ export const createConversationRoutes = (
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
 						preparationFetch: options.fetch,
-						images: await ingestUploads(body.kind === "send" ? body.images : undefined),
 					};
 					const input = body.kind === "send"
 						? { ...common, kind: body.kind, content: body.content }
@@ -444,7 +442,6 @@ export const createConversationRoutes = (
 			async ({ params, body, status }) => {
 				try {
 					const edited = createConversationModule(database).editMacroVariables({
-							images: await ingestUploads(body.images),
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							promptPresetId: body.promptPresetId,
@@ -520,7 +517,6 @@ export const createConversationRoutes = (
 				params.id,
 				async () => generationCoordinator.startSendGeneration({
 					conversationId: params.id,
-					images: await ingestUploads(body.images),
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
 						: currentConversationRevision(database, params.id),
@@ -561,7 +557,6 @@ export const createConversationRoutes = (
 					async () => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
-						images: await ingestUploads(body?.images),
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },
 						preview: body?.previewId === undefined
 							? undefined
@@ -585,7 +580,6 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/commands",
 			async ({ params, body, status }) => {
 				try {
-					const images = await ingestUploads(body.images);
 					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values
 					// before persistence and keeps the action vocabulary closed.
@@ -594,7 +588,6 @@ export const createConversationRoutes = (
 							conversationId: params.id,
 							expectedRevision: body.expectedRevision,
 							action,
-							images,
 						});
 					return {
 						outcome: "applied" as const,

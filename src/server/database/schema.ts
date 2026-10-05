@@ -27,6 +27,7 @@ export const imageTable = sqliteTable("image", {
 	byte_size: int().notNull(),
 	width: int().notNull(),
 	height: int().notNull(),
+	orphaned_at: int(),
 });
 
 function portraitColumns() {

@@ -20,7 +20,6 @@ import {
 	insertParticipant,
 	insertVariants,
 	syncMacroStateReferences,
-	syncVariantReferences,
 	normalizeParticipantName,
 	writeControlAssignment,
 	type ConversationDatabase,
@@ -424,7 +423,6 @@ export function createConversation(
 					index + 1,
 					seed.definition,
 					seed.sourceCharacterId ?? null,
-					input.images,
 				),
 			),
 		);
@@ -521,11 +519,8 @@ export function createConversation(
 					db.insert(messageVariantDataTable).values(variantData)
 						.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
 						.all(),
-					input.images,
 				);
 			}
-			variantIds.forEach((variantId, variantIndex) =>
-				syncVariantReferences(db, variantId, message.variants[variantIndex]!.content, input.images));
 		}
 
 		const snapshot = readConversationSnapshotFromConnection(db, conversation.id);

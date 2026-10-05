@@ -2,8 +2,7 @@ import { eq, max } from "drizzle-orm";
 import { messageTable } from "../../database/schema";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
-import { insertMessage, insertVariants, readControlAssignment, requireParticipant, syncVariantReferences } from "../internal";
-import type { ImagePool } from "../../image";
+import { insertMessage, insertVariants, readControlAssignment, requireParticipant } from "../internal";
 import { syncSelectedMemorySource } from "../../memory";
 
 export interface CreateMessageInput {
@@ -12,7 +11,6 @@ export interface CreateMessageInput {
 	variantContents: readonly string[];
 	selectedVariantIndex?: number;
 	authorParticipantId: number;
-	images?: ImagePool | undefined;
 }
 
 export function createMessage(db: ConversationDatabase, input: CreateMessageInput) {
@@ -53,7 +51,7 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 		context: null,
 	});
 
-	const variantIds = insertVariants(
+	insertVariants(
 		db,
 		input.variantContents.map((content, index) => ({
 			messageId,
@@ -63,6 +61,6 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 			selected: index === selectedVariantIndex,
 		})),
 	);
-	variantIds.forEach((variantId, index) => syncVariantReferences(db, variantId, input.variantContents[index]!, input.images));
+
 	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) syncSelectedMemorySource(db.$client, input.conversationId, messageId);
 }

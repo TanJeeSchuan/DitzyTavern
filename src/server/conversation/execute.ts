@@ -22,7 +22,6 @@ import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
-import type { ImagePool } from "../image";
 import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
@@ -62,7 +61,6 @@ export interface ConversationCommandPolicy<K extends ConversationAction["type"]>
 
 type ConversationCommandInput<K extends ConversationAction["type"]> = {
 	conversationId: number;
-	images?: ImagePool | undefined;
 } & Extract<ConversationAction, { type: K }>;
 
 export const conversationCommandPolicy = {
@@ -206,7 +204,7 @@ function executeConversationCommandWithResult<T>(
 			throw new ConversationNotPlayableError(command.conversationId);
 		}
 
-		const input = { conversationId: command.conversationId, images: command.images, ...command.action };
+		const input = { conversationId: command.conversationId, ...command.action };
 		// ==[HUMAN APPROVED]== SAFETY: the `satisfies` clause on conversationCommandPolicy
 		// guarantees each entry's handler accepts exactly its own command's
 		// input shape, so indexing the table by input.type is sound; the cast

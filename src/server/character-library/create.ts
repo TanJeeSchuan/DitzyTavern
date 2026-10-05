@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { syncDefinitionReferences } from "../image";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -6,13 +7,9 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
-import type { ImagePool } from "../image";
 import {
 	connectCharacterLibraryDatabase,
 	requireDefinition,
-	syncOpeningReferences,
-	syncPortrait,
-	syncPromptReferences,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
 import type { CharacterDefinition, CharacterSnapshot } from "./types";
@@ -23,7 +20,6 @@ import type { CharacterDefinition, CharacterSnapshot } from "./types";
 export function createCharacter(
 	database: Database,
 	definition: CharacterDefinition,
-	images: ImagePool = new Map(),
 ): CharacterSnapshot {
 	const db = connectCharacterLibraryDatabase(database);
 	const { name, openings } = requireDefinition(
@@ -48,9 +44,7 @@ export function createCharacter(
 				...toPortraitColumns(definition.portrait),
 			})
 			.run();
-		syncPortrait(db, inserted.id, definition.portrait, images);
-		syncPromptReferences(db, inserted.id, definition.prompt, images);
-		syncOpeningReferences(db, inserted.id, openings, images);
+		syncDefinitionReferences(db, "character_id", inserted.id, { ...definition, portrait: definition.portrait });
 
 		if (openings.length > 0) {
 			db.insert(characterOpeningTable)

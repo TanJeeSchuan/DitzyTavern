@@ -9,7 +9,6 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
-import { waitForRetainedImages } from "../lib/image";
 
 // ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -52,10 +51,7 @@ export function ParticipantEditor({
 		try {
 			await runConversationCommand({
 				revision: () => conversation.revision,
-				send: async (expectedRevision) => {
-					await waitForRetainedImages(JSON.stringify(definitionOf(participant)));
-					return applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) });
-				},
+				send: (expectedRevision) => applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }),
 				reconciliation: {
 					adoptSnapshot: onConversationChange,
 					showNotice: setNotice,

@@ -6,8 +6,8 @@ import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
 import { createTypesafeSettingsModule } from "../typesafe";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { base64, pngFixture } from "../image/image-fixtures";
-import { ingestUploads } from "../image";
+import { pngFixture } from "../image/image-fixtures";
+import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 import {
 	clearGenerationPreviewRegistry,
@@ -333,15 +333,14 @@ describe("Prompt Plan inspection", () => {
 				safetyAllowance: 0,
 			} },
 		});
-		const upload = base64(pngFixture({ width: 1568, height: 1568 }));
-		const image = [...(await ingestUploads([upload])).values()][0];
+		const image = await uploadImage(database, pngFixture({ width: 1568, height: 1568 }));
 		if (image === undefined) throw new Error("Image fixture missing.");
 		const content = `Look ${formatImageReference("map", image.hash)}`;
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(11),
 			fetch: captureModelFetch(() => {}),
 		});
-		const plan = await preview(app, conversation.id, { kind: "send", content, images: [upload] });
+		const plan = await preview(app, conversation.id, { kind: "send", content });
 		expect(plan.promptPlan.images).toHaveLength(1);
 		expect(plan.promptPlan.images[0]?.disposition).toBe("text-only");
 		expect(plan.promptPlan.images[0]?.tokens).toBe(0);
@@ -354,7 +353,7 @@ describe("Prompt Plan inspection", () => {
 				body: JSON.stringify({
 					expectedRevision: module.getSummary(conversation.id)!.revision,
 					content,
-					images: [upload],
+
 					previewId: plan.previewId,
 					promptPlan: plan.promptPlan,
 				}),

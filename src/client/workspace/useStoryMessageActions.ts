@@ -5,7 +5,6 @@ import {
 	type ConversationSummary,
 } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
-import { waitForRetainedImages } from "../lib/image";
 import {
 	classifyVariantSelection,
 	type StoryAction,
@@ -141,7 +140,6 @@ export function useStoryMessageActions({
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
 			send: async (expectedRevision) => {
-				await waitForRetainedImages(JSON.stringify(variant.content));
 				return applyConversationCommand(conversationId, expectedRevision, {
 					type: "edit-variant",
 					messageId,
@@ -181,7 +179,6 @@ export function useStoryMessageActions({
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
 			send: async (expectedRevision) => {
-				await waitForRetainedImages(JSON.stringify(message.swipes.map((variant) => variant.content)));
 				return applyConversationCommand(conversationId, expectedRevision, {
 					type: "delete-message",
 					messageId,

@@ -10,7 +10,6 @@
 import type { Database } from "bun:sqlite";
 import type { Static } from "@sinclair/typebox";
 import { forkCharacter } from "../character-library";
-import type { ImagePool } from "../image";
 import { createConversationModule } from "../conversation";
 import type {
 	ConversationSnapshot,
@@ -34,7 +33,6 @@ export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
 // never submits it — the server defaults it to the creation time.
 export type CreateNativeConversationInput = Omit<Static<typeof nativeConversationBody>, "images"> & {
 	createdAt?: string | undefined;
-	images?: ImagePool | undefined;
 };
 
 interface ResolvedSeat {
@@ -65,7 +63,6 @@ export function createNativeConversation(
 			participants: [human, model],
 			control: { human: 0, model: 1 },
 			createdAt: input.createdAt,
-			images: input.images,
 			formatting: { timeZone: input.timeZone, locale: input.locale },
 		});
 	});

@@ -5,8 +5,8 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createConnectionSettingsRoutes } from "./connection-settings";
-import { base64, pngFixture } from "../image/image-fixtures";
-import { ingestUploads } from "../image";
+import { pngFixture } from "../image/image-fixtures";
+import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 
 const key = new Uint8Array(32).fill(29);
@@ -68,7 +68,7 @@ describe("Text-only Models", () => {
 		return conversation.id;
 	};
 
-	const sendPicture = async (conversationId: number, hash: string, upload: string) => {
+	const sendPicture = async (conversationId: number, hash: string) => {
 		const requests: Wire[] = [];
 		const app = createConversationRoutes(database, {
 			masterKey: key,
@@ -82,7 +82,7 @@ describe("Text-only Models", () => {
 		const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ expectedRevision: revision, content: `Look ${formatImageReference("map", hash)}`, images: [upload] }),
+			body: JSON.stringify({ expectedRevision: revision, content: `Look ${formatImageReference("map", hash)}` }),
 		}));
 		expect(response.status).toBe(200);
 		// SAFETY: the route's accepted response is this typed shape.
@@ -92,9 +92,8 @@ describe("Text-only Models", () => {
 	};
 
 	const picture = async () => {
-		const upload = base64(pngFixture({ width: 4 }));
-		const [hash] = [...(await ingestUploads([upload])).keys()];
-		return { hash: hash!, upload };
+		const { hash } = await uploadImage(database, pngFixture({ width: 4 }));
+		return { hash };
 	};
 
 	const imageParts = (requests: Wire[]) =>
@@ -107,26 +106,26 @@ describe("Text-only Models", () => {
 		const other = chat("other-model");
 		const art = await picture();
 
-		expect(imageParts(await sendPicture(first, art.hash, art.upload))).toHaveLength(1);
+		expect(imageParts(await sendPicture(first, art.hash))).toHaveLength(1);
 
 		const marked = await mark(created.id, "vision-model", true);
 		expect(marked.status).toBe(200);
 		expect((await marked.json()).settings.profiles[0].textOnlyModels).toEqual(["vision-model"]);
 
-		const afterMark = await sendPicture(second, art.hash, art.upload);
+		const afterMark = await sendPicture(second, art.hash);
 		expect(imageParts(afterMark)).toHaveLength(0);
 		expect(JSON.stringify(afterMark)).toContain("[Image: map]");
-		expect(imageParts(await sendPicture(other, art.hash, art.upload))).toHaveLength(1);
+		expect(imageParts(await sendPicture(other, art.hash))).toHaveLength(1);
 
 		await mark(created.id, "vision-model", false);
-		expect(imageParts(await sendPicture(first, art.hash, art.upload))).toHaveLength(1);
+		expect(imageParts(await sendPicture(first, art.hash))).toHaveLength(1);
 	});
 
 	test("a Generation that fails before output with Images offers the model it sent them to", async () => {
 		const created = createProfile();
 		const conversationId = chat("vision-model");
 		const art = await picture();
-		const failures = async (conversationId: number, upload: string, content: string) => {
+		const failures = async (conversationId: number, content: string) => {
 			const app = createConversationRoutes(database, {
 				masterKey: key,
 				fetch: async () => new Response(JSON.stringify({ error: { message: "no vision" } }), { status: 400 }),
@@ -135,17 +134,17 @@ describe("Text-only Models", () => {
 			const response = await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ expectedRevision: revision, content, images: upload === "" ? [] : [upload] }),
+				body: JSON.stringify({ expectedRevision: revision, content }),
 			}));
 			// SAFETY: the route's accepted response is this typed shape.
 			const accepted = await response.json() as { generationId: number };
 			return (await app.handle(new Request(`http://localhost/api/conversations/${conversationId}/generations/${accepted.generationId}/events`))).text();
 		};
 
-		const withImage = await failures(conversationId, art.upload, `Look ${formatImageReference("map", art.hash)}`);
+		const withImage = await failures(conversationId, `Look ${formatImageReference("map", art.hash)}`);
 		expect(withImage).toContain(`"imageModel":{"connectionProfileId":${created.id},"modelId":"vision-model"}`);
 
-		const plain = await failures(chat("vision-model"), "", "Just words");
+		const plain = await failures(chat("vision-model"), "Just words");
 		expect(plain).toContain("event: error");
 		expect(plain).not.toContain("imageModel");
 	});

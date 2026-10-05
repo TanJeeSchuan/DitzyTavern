@@ -16,7 +16,6 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
-import { waitForRetainedImages } from "../lib/image";
 
 export function CharacterEditor({
 	characterId,
@@ -55,7 +54,6 @@ export function CharacterEditor({
 		const submitted = draftRef.current;
 		setPendingAction(action);
 		try {
-			if ((command.type === "update-definition" || command.type === "delete") && snapshot !== null) await waitForRetainedImages(JSON.stringify(definitionOf(snapshot)));
 			const outcome = await applyCommand(command);
 			switch (outcome.status) {
 				case "applied":

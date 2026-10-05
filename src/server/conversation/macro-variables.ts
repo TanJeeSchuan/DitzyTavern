@@ -27,7 +27,6 @@ import {
 import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
 import { syncMacroStateReferences, type ConversationDatabase } from "./internal";
-import type { ImagePool } from "../image";
 import { readSelectedHistoryFromConnection } from "./selected-history";
 import {
 	advanceConversationRevisionGuarded,
@@ -54,7 +53,6 @@ export interface EditMacroVariablesInput {
 	operation: "set" | "delete";
 	name: string;
 	value?: MacroValue;
-	images?: ImagePool | undefined;
 }
 
 export interface EditedMacroVariables {
@@ -207,7 +205,7 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 					})
 					.returning({ id: conversationDataTable.id })
 					.get();
-				syncMacroStateReferences(db, "conversation_data_id", [{ id: row.id, namespace: MACRO_DATA_NAMESPACE, value }], input.images);
+				syncMacroStateReferences(db, "conversation_data_id", [{ id: row.id, namespace: MACRO_DATA_NAMESPACE, value }]);
 			} else {
 				db.delete(conversationDataTable)
 					.where(and(
@@ -261,7 +259,6 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 					})
 					.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
 					.all(),
-				input.images,
 			);
 		}
 		advanceConversationRevisionGuarded(db, input.conversationId, input.expectedRevision, conversation.revision);

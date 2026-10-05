@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { inlineImages, portrait } from "./image";
+import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
 
@@ -60,7 +60,6 @@ const createCommand = Type.Object({
 		openings: Type.Array(Type.String()),
 		portrait: Type.Optional(portrait),
 	}),
-	images: inlineImages,
 });
 
 const renameCommand = Type.Object({
@@ -75,7 +74,6 @@ const updateDefinitionCommand = Type.Object({
 	characterId: Type.Integer(),
 	expectedRevision: Type.Integer(),
 	definition: createCommand.properties.definition,
-	images: inlineImages,
 });
 
 const replacePromptCommand = Type.Object({

@@ -15,8 +15,6 @@ import {
 	type StopConversationGenerationResult,
 } from "../conversation";
 import { generationStreamAdapter } from "../conversation-stream";
-import { imageHashes } from "../../shared/image-reference";
-import { useImageDraft } from "../lib/use-image-draft";
 import {
 	createGenerationSessionRunner,
 	type GenerationSessionRunner,
@@ -116,7 +114,7 @@ export function useGenerationController({
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
-	useImageDraft(imageHashes(draft));
+
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,

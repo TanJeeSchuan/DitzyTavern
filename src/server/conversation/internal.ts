@@ -15,9 +15,7 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
-import type { Portrait } from "../../shared/contract/image";
-import type { PromptChannels } from "../../shared/contract/prompt-schema";
-import { syncJsonValueReferences, syncPortraitReference, syncTextReferences, type ImagePool } from "../image";
+import { syncDefinitionReferences, syncJsonValueReferences, syncTextReferences } from "../image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
@@ -375,51 +373,24 @@ export const requireVariant = (
 	return variant;
 };
 
-export const syncParticipantPortrait = (
-	db: ConversationDatabase,
-	participantId: number,
-	portrait: Portrait | undefined,
-	images: ImagePool,
-) => {
-	if (!syncPortraitReference(db, "participant_id", participantId, portrait, images)) {
-		throw new InvalidConversationCommandError("The Portrait image was not provided.");
-	}
-};
-
-export const syncVariantReferences = (
+const syncVariantReferences = (
 	db: ConversationDatabase,
 	variantId: number,
 	content: string,
-	images?: ImagePool | undefined,
-) => syncTextReferences(db, { kind: "variant", column: "variant_id", id: variantId }, [content], images);
+) => syncTextReferences(db, { kind: "variant", column: "variant_id", id: variantId }, [content]);
 
 export const syncMacroStateReferences = (
 	db: ConversationDatabase,
 	column: "variant_data_id" | "conversation_data_id",
 	rows: readonly { id: number; namespace: string; value: string }[],
-	images?: ImagePool | undefined,
 ) => {
 	for (const row of rows) {
 		if (isMacroDataNamespace(row.namespace)) {
 			const value: GenerationJsonValue = JSON.parse(row.value);
-			syncJsonValueReferences(db, { kind: "macro-state", column, id: row.id }, [value], images);
+			syncJsonValueReferences(db, { kind: "macro-state", column, id: row.id }, [value]);
 		}
 	}
 };
-
-export const syncParticipantPromptReferences = (
-	db: ConversationDatabase,
-	participantId: number,
-	prompt: PromptChannels,
-	images?: ImagePool | undefined,
-) => syncTextReferences(db, { kind: "prompt", column: "participant_id", id: participantId }, Object.values(prompt), images);
-
-export const syncParticipantOpeningReferences = (
-	db: ConversationDatabase,
-	participantId: number,
-	openings: readonly string[],
-	images?: ImagePool | undefined,
-) => syncTextReferences(db, { kind: "opening", column: "participant_id", id: participantId }, openings, images);
 
 export interface InsertedParticipant {
 	id: number;
@@ -439,7 +410,6 @@ export const insertParticipant = (
 	position: number,
 	definition: ParticipantDefinition,
 	sourceCharacterId: number | null,
-	images: ImagePool = new Map(),
 ): InsertedParticipant => {
 	const name = normalizeParticipantName(definition.name);
 	const inserted = db
@@ -465,9 +435,7 @@ export const insertParticipant = (
 			...toPortraitColumns(definition.portrait),
 		})
 		.run();
-	syncParticipantPortrait(db, inserted.id, definition.portrait, images);
-	syncParticipantPromptReferences(db, inserted.id, definition.prompt, images);
-	syncParticipantOpeningReferences(db, inserted.id, definition.openings, images);
+	syncDefinitionReferences(db, "participant_id", inserted.id, { ...definition, portrait: definition.portrait });
 
 	const openings = [...definition.openings];
 	if (openings.length > 0) {
@@ -576,6 +544,7 @@ export const insertVariant = (
 			"The Variant could not be persisted.",
 		);
 	}
+	syncVariantReferences(db, inserted.id, values.content);
 	return inserted.id;
 };
 
@@ -586,7 +555,7 @@ export const insertVariants = (
 	values: readonly VariantInsertValues[],
 ): number[] => {
 	if (values.length === 0) return [];
-	return db
+	const inserted = db
 		.insert(messageVariantTable)
 		.values(
 			values.map((value) => ({
@@ -600,6 +569,8 @@ export const insertVariants = (
 		.returning({ id: messageVariantTable.id })
 		.all()
 		.map((row) => row.id);
+	inserted.forEach((id, index) => syncVariantReferences(db, id, values[index]!.content));
+	return inserted;
 };
 
 // ==[HUMAN APPROVED]== Appending one selected Variant displaces the Message's current
@@ -629,4 +600,9 @@ export const appendSelectedVariant = (
 		timestamp: values.timestamp,
 		selected: true,
 	});
+};
+
+export const writeVariantContent = (db: ConversationDatabase, id: number, content: string, timestamp?: string) => {
+	db.update(messageVariantTable).set({ content, timestamp }).where(eq(messageVariantTable.id, id)).run();
+	syncVariantReferences(db, id, content);
 };

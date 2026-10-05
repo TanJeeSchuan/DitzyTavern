@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import type { ImagePool } from "../image";
 import { executeCharacterCommand } from "./execute";
 
 import { connectCharacterLibraryDatabase } from "./internal";
@@ -45,13 +44,11 @@ export function createCharacterLibraryModule(
 	): CharacterDeletionResult;
 	function execute(
 		command: Exclude<CharacterLibraryCommand, { type: "delete" }>,
-		images?: ImagePool,
 	): CharacterSnapshot;
 	function execute(
 		command: CharacterLibraryCommand,
-		images: ImagePool = new Map(),
 	): CharacterSnapshot | CharacterDeletionResult {
-		return executeCharacterCommand(database, command, images);
+		return executeCharacterCommand(database, command);
 	}
 	return {
 		list: () => listCharacters(connectCharacterLibraryDatabase(database)),

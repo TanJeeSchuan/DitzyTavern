@@ -24,7 +24,6 @@ import {
 	readControlAssignment,
 	requireMessage,
 	requireParticipant,
-	syncVariantReferences,
 	type ConversationDatabase,
 } from "../internal";
 import { DEFAULT_SIBLING_GENERATION_LIMIT } from "../generation-defaults";
@@ -96,7 +95,7 @@ type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
 	"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 	"capturedHumanName" | "capturedModelName" | "promptPlan" | "promptInspection" |
 	"promptContext" | "generationSettings" | "connection" | "loreActivation" | "memoryActivation" | "generationIntent" |
-	"provenance" | "macroPresetId" | "macroWrites" | "images"
+	"provenance" | "macroPresetId" | "macroWrites"
 >;
 
 interface PersistActiveGenerationInput
@@ -168,7 +167,6 @@ const persistActiveGeneration = (
 		db,
 		{ kind: "active-generation", column: "active_generation_id", id: active.id },
 		[(input.macroWrites ?? []).map(encodeMacroVariableWrite), input.promptPlan, input.promptContext, input.promptInspection ?? {}],
-		input.images,
 	);
 	return active.id;
 };
@@ -442,14 +440,14 @@ export function acceptConversationTailGeneration(
 				author: { participantId: human.id, name: human.name },
 				context: null,
 			});
-			const humanVariantId = insertVariant(db, {
+			insertVariant(db, {
 				messageId: humanMessageId,
 				position: 1,
 				content: input.humanContent,
 				timestamp: input.timestamp,
 				selected: true,
 			});
-			syncVariantReferences(db, humanVariantId, input.humanContent, input.images);
+
 			return { humanMessageId };
 		},
 	});

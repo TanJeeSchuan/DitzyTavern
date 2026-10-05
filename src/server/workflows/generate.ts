@@ -31,7 +31,6 @@ import {
 	type AcceptedSiblingGeneration,
 } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
-import type { ImagePool } from "../image";
 import type {
 	ModelClient,
 	ModelClientConnectionSnapshot,
@@ -250,14 +249,12 @@ export async function sendThroughProvisionalTailGeneration(
 					connection: current.connection,
 					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					images: current.images,
 				}));
 			}
 			return captureSendGenerationAsync({
 				database: currentDatabase,
 				conversationId,
 				content: current.content,
-				images: current.images,
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
@@ -272,7 +269,6 @@ export async function sendThroughProvisionalTailGeneration(
 			}),
 			expectedRevision: current.expectedRevision,
 			humanContent: capture.humanContent,
-			images: current.images,
 			reuseHumanMessageId: capture.reuseHumanMessageId,
 		}),
 		request: modelRequestFor,
@@ -309,13 +305,12 @@ export async function continueGeneration(
 					connection: current.connection,
 					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					images: current.images,
 				}));
 			}
 			return captureContinuationGenerationAsync({
 				database: currentDatabase,
 				conversationId,
-				images: current.images,
+
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
@@ -331,7 +326,6 @@ export async function continueGeneration(
 			expectedRevision: current.expectedRevision,
 			precedingMessageId: capture.precedingMessageId,
 			precedingVariantId: capture.precedingVariantId,
-			images: current.images,
 			generationIntent: capture.intent,
 		}),
 		request: (capture, current) => ({
@@ -376,7 +370,7 @@ export interface GenerateSiblingVariantInput {
 	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
-	images?: ImagePool | undefined;
+
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.
@@ -409,7 +403,6 @@ export async function generateSiblingVariant(
 					connection: current.connection,
 					connectionSettings: current.connectionSettings,
 					formatting: current.formatting,
-					images: current.images,
 				}));
 			}
 			return captureSiblingGenerationAsync({
@@ -423,7 +416,6 @@ export async function generateSiblingVariant(
 				timestamp,
 			}),
 			messageId: current.messageId,
-			images: current.images,
 			generationIntent: { type: "sibling" },
 		}),
 		request: modelRequestFor,

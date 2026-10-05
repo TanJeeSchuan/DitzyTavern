@@ -6,15 +6,12 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../../database/schema";
-import { syncDefinitionReferences, type ImagePool } from "../../image";
-import { InvalidConversationCommandError } from "../errors";
+import { syncDefinitionReferences } from "../../image";
 import {
 	type ConversationDatabase,
 	requireParticipant,
 	requireParticipantName,
 	requireParticipantOpenings,
-	syncParticipantOpeningReferences,
-	syncParticipantPromptReferences,
 } from "../internal";
 import type { Portrait } from "../../../shared/contract/image";
 import type { PromptChannels } from "../../../shared/contract/prompt-schema";
@@ -29,14 +26,12 @@ export interface ReplaceParticipantPromptInput {
 	conversationId: number;
 	participantId: number;
 	prompt: PromptChannels;
-	images?: ImagePool | undefined;
 }
 
 export interface ReplaceParticipantOpeningsInput {
 	conversationId: number;
 	participantId: number;
 	openings: string[];
-	images?: ImagePool | undefined;
 }
 
 // ==[HUMAN APPROVED]== Separate semantic Apply actions for Participant Definition editing. Each
@@ -75,7 +70,7 @@ export function replaceParticipantPrompt(
 			set: promptRow,
 		})
 		.run();
-	syncParticipantPromptReferences(db, input.participantId, input.prompt, input.images);
+	syncDefinitionReferences(db, "participant_id", input.participantId, { prompt: input.prompt });
 }
 
 export function replaceParticipantOpenings(
@@ -98,14 +93,13 @@ export function replaceParticipantOpenings(
 			)
 			.run();
 	}
-	syncParticipantOpeningReferences(db, input.participantId, openings, input.images);
+	syncDefinitionReferences(db, "participant_id", input.participantId, { openings });
 }
 
 export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	conversationId: number;
 	participantId: number;
 	definition: { name: string; prompt: PromptChannels; openings: string[]; portrait?: Portrait | undefined };
-	images?: ImagePool | undefined;
 }) {
 	const name = requireParticipantName(input.definition.name);
 	const openings = requireParticipantOpenings(input.definition.openings);
@@ -114,9 +108,7 @@ export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...toPortraitColumns(input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
-	if (!syncDefinitionReferences(db, "participant_id", participant.id, input.definition, input.images)) {
-		throw new InvalidConversationCommandError("The Portrait image was not provided.");
-	}
+	syncDefinitionReferences(db, "participant_id", participant.id, { ...input.definition, portrait: input.definition.portrait });
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
 	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
 }

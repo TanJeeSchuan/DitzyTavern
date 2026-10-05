@@ -7,7 +7,7 @@ import {
 } from "../character-library";
 import { InvalidConversationCreationError } from "../conversation";
 
-import { InvalidImageError, ingestUploads } from "../image";
+import { InvalidImageError } from "../image";
 import { createNativeConversation } from "../workflows";
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toConversationSummary } from "./projections";
@@ -23,9 +23,7 @@ export const createNativeConversationRoutes = (database: Database) =>
 		"/api/conversations/native",
 		async ({ body }) => {
 			try {
-				const images = await ingestUploads(body.images);
 				const conversation = createNativeConversation(database, {
-						images,
 						name: body.name,
 						humanSeat: body.humanSeat,
 						modelSeat: body.modelSeat,

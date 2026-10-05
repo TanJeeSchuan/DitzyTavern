@@ -1,4 +1,4 @@
-export type InvalidImageReason = "unsupported-type" | "too-large" | "malformed";
+export type InvalidImageReason = "unsupported-type" | "too-large" | "malformed" | "missing";
 
 export class InvalidImageError extends Error {
 	readonly reason: InvalidImageReason;

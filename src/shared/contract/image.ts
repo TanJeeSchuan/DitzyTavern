@@ -11,7 +11,7 @@ export const portrait = Type.Object({
 });
 
 export const imageParams = Type.Object({ hash: imageHash });
-
-export const inlineImages = Type.Optional(Type.Array(Type.String()));
+export const imageUploadBody = Type.Object({ data: Type.String() });
+export const imageUploadResponse = Type.Object({ hash: imageHash });
 
 export type Portrait = Static<typeof portrait>;
