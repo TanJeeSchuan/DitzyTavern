@@ -43,18 +43,15 @@ export function useAssemblyController({
 	clearDraft,
 }: AssemblyControllerOptions) {
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
-
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
 	const lastGenerationRef = useRef<{
 		conversationId: number;
 		request: GenerationPreviewBody;
-		inspected: boolean;
 	} | null>(null);
 
-	const retryAvailableRef = useRef(false);
-	retryAvailableRef.current = conversation !== null && lastGenerationRef.current?.conversationId === conversation.id &&
+	const canRetry = conversation !== null && lastGenerationRef.current?.conversationId === conversation.id &&
 		assembly === null && !variantPreviewActive && !isGenerating;
 
 	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
@@ -72,7 +69,6 @@ export function useAssemblyController({
 
 	useEffect(() => {
 		assemblyMountedRef.current = true;
-
 		return () => {
 			assemblyMountedRef.current = false;
 		};
@@ -88,7 +84,6 @@ export function useAssemblyController({
 		preservedPreview: AssemblySession["preview"] = null,
 	) => {
 		if (conversation === null) return;
-		retryAvailableRef.current = false;
 		const conversationId = conversation.id;
 		const requestId = issueAssemblyRequestId();
 		dispatchAssembly({
@@ -214,7 +209,6 @@ export function useAssemblyController({
 			conversation === null ||
 			currentAssembly === null ||
 			currentAssembly.preview === null ||
-			currentAssembly.assembledPlan === null ||
 			(currentAssembly.phase !== "ready" && currentAssembly.phase !== "failed")
 		) return;
 		const conversationId = conversation.id;
@@ -222,12 +216,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
-		lastGenerationRef.current = {
-			conversationId,
-			request,
-			inspected: true,
-		};
-
+		lastGenerationRef.current = { conversationId, request };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -245,9 +234,7 @@ export function useAssemblyController({
 		const requestId = issueAssemblyRequestId();
 		const startId = generationStart.begin();
 		setDirectStartError(null);
-		retryAvailableRef.current = false;
-		lastGenerationRef.current = { conversationId, request, inspected: false };
-
+		lastGenerationRef.current = { conversationId, request };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -260,12 +247,10 @@ export function useAssemblyController({
 	};
 
 	const retryLastGeneration = () => {
-		if (!retryAvailableRef.current) return;
+		if (!canRetry) return;
 		const lastGeneration = lastGenerationRef.current;
 		if (conversation === null || lastGeneration === null || lastGeneration.conversationId !== conversation.id) return;
-		setDirectStartError(null);
-		if (lastGeneration.inspected) openPromptPlanPreview(lastGeneration.request);
-		else startWithoutPreview(lastGeneration.request);
+		requestGeneration(lastGeneration.request);
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody) => {
@@ -276,7 +261,6 @@ export function useAssemblyController({
 
 	const conversationSwitched = () => {
 		lastGenerationRef.current = null;
-
 		invalidateAssemblyRequests();
 		setDirectStartError(null);
 		dispatchAssembly({ type: "conversation-switched" });
@@ -299,7 +283,7 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
-		retryGeneration: retryAvailableRef.current ? retryLastGeneration : null,
+		retryGeneration: canRetry ? retryLastGeneration : null,
 		conversationSwitched,
 	};
 }
