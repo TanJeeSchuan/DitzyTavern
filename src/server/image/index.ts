@@ -6,6 +6,7 @@ export {
 	imageLookup,
 	readImage,
 	syncJsonReferences,
+	syncDefinitionReferences,
 	syncPortraitReference,
 	syncTextReferences,
 	type ImagePool,

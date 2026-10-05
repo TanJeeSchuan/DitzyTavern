@@ -52,7 +52,7 @@ const compile = (
 	recipe: [{ reference: "history", enabled: true }],
 	context,
 	settings: settings(overrides),
-	connection: { apiFormat: "chat-completions" },
+	connection: { apiFormat: "chat-completions", supportsImages: true },
 	estimator: () => 0,
 	imageLookup: lookup,
 	...extra,
@@ -75,6 +75,23 @@ describe("Prompt Plan Images", () => {
 		const last = compile(context, { repeatedImagePlacement: "last" });
 		expect(last.budget.tokenEstimate).toBe(COST_A + COST_B);
 		expect(last.promptPlan.images.map((image) => [image.disposition, image.tokens])).toEqual([["anchor", COST_A], ["send", COST_A], ["send", COST_B]]);
+	});
+
+	test("does not charge image tokens when the selected model is text-only", () => {
+		const plan = compile(
+			[entry("usable prior history", "model"), entry(`${ref("map", A)}`, "human")],
+			{ contextLimit: 3_000 },
+			{ connection: { apiFormat: "chat-completions", supportsImages: false } },
+		);
+
+		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "send", tokens: COST_A }]);
+		expect(plan.budget.tokenEstimate).toBe(0);
+		expect(plan.budget.fits).toBe(true);
+		expect(plan.budget.retainedContext.map(({ content }) => content)).toEqual([
+			"usable prior history",
+			ref("map", A),
+		]);
+		expect(plan.budget.omittedContext).toEqual([]);
 	});
 
 	test("a Reference whose Image is not stored stays an anchor-only missing entry", () => {

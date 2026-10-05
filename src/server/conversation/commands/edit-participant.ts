@@ -6,13 +6,13 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../../database/schema";
-import type { ImagePool } from "../../image";
+import { syncDefinitionReferences, type ImagePool } from "../../image";
+import { InvalidConversationCommandError } from "../errors";
 import {
 	type ConversationDatabase,
 	requireParticipant,
 	requireParticipantName,
 	requireParticipantOpenings,
-	syncParticipantPortrait,
 	syncParticipantOpeningReferences,
 	syncParticipantPromptReferences,
 } from "../internal";
@@ -114,9 +114,9 @@ export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...toPortraitColumns(input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
-	syncParticipantPortrait(db, participant.id, input.definition.portrait, input.images ?? new Map());
-	syncParticipantPromptReferences(db, participant.id, input.definition.prompt, input.images);
-	syncParticipantOpeningReferences(db, participant.id, openings, input.images);
+	if (!syncDefinitionReferences(db, "participant_id", participant.id, input.definition, input.images)) {
+		throw new InvalidConversationCommandError("The Portrait image was not provided.");
+	}
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
 	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
 }

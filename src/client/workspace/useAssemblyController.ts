@@ -46,6 +46,11 @@ export function useAssemblyController({
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
+	const lastGenerationRef = useRef<{
+		conversationId: number;
+		request: GenerationPreviewBody;
+		promptPlan?: PromptPlan;
+	} | null>(null);
 
 	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
 	// current until a newer request, a cancellation, or a Chat switch advances it.
@@ -209,6 +214,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
+		lastGenerationRef.current = { conversationId, request, promptPlan: preview.promptPlan };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -226,6 +232,7 @@ export function useAssemblyController({
 		const requestId = issueAssemblyRequestId();
 		const startId = generationStart.begin();
 		setDirectStartError(null);
+		lastGenerationRef.current = { conversationId, request };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -235,6 +242,74 @@ export function useAssemblyController({
 			setDirectStartError,
 			() => undefined,
 		);
+	};
+
+	const retryLastGeneration = () => {
+		const lastGeneration = lastGenerationRef.current;
+		if (conversation === null || lastGeneration === null || lastGeneration.conversationId !== conversation.id) return;
+		const conversationId = conversation.id;
+		const { promptPlan } = lastGeneration;
+		const requestId = issueAssemblyRequestId();
+		const startId = generationStart.begin();
+		setDirectStartError(null);
+		if (promptPlan === undefined) {
+			void startGeneration(
+				startId,
+				conversationId,
+				requestId,
+				generationRequest(conversationId, lastGeneration.request),
+				lastGeneration.request.kind === "send",
+				setDirectStartError,
+				() => undefined,
+			);
+			return;
+		}
+
+		void previewConversationGeneration(conversationId, lastGeneration.request)
+			.then((outcome) => {
+				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
+				if (outcome.status !== "available") {
+					generationStart.settle(startId);
+					setDirectStartError(outcome.status === "invalid" || outcome.status === "not-playable"
+						? outcome.reason
+						: outcome.status === "not-found"
+							? "The Conversation no longer exists."
+							: "The Prompt Plan could not be assembled.");
+					return;
+				}
+				let retainedIndex = promptPlan.blocks.length - 1;
+				const blocks = [...outcome.preview.promptPlan.blocks];
+				for (let index = blocks.length - 1; index >= 0 && retainedIndex >= 0; index -= 1) {
+					const fresh = blocks[index]!;
+					const retained = promptPlan.blocks[retainedIndex]!;
+					if (fresh.kind !== retained.kind || fresh.role !== retained.role ||
+						(fresh.kind === "history" && retained.kind === "history" && fresh.speakerName !== retained.speakerName)) continue;
+					blocks[index] = { ...fresh, content: retained.content };
+					retainedIndex -= 1;
+				}
+				if (retainedIndex >= 0) {
+					generationStart.settle(startId);
+					setDirectStartError("The Prompt Plan changed. Inspect it before retrying.");
+					return;
+				}
+				void startGeneration(
+					startId,
+					conversationId,
+					requestId,
+					generationRequest(conversationId, lastGeneration.request, {
+						previewId: outcome.preview.previewId,
+						promptPlan: { ...outcome.preview.promptPlan, blocks },
+					}),
+					lastGeneration.request.kind === "send",
+					setDirectStartError,
+					() => undefined,
+				);
+			})
+			.catch(() => {
+				if (!canApplyAssemblyEffect(requestId, conversationId)) return;
+				generationStart.settle(startId);
+				setDirectStartError("The Prompt Plan could not be assembled.");
+			});
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody) => {
@@ -266,6 +341,9 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
+		retryGeneration: lastGenerationRef.current?.conversationId === conversation?.id
+			? retryLastGeneration
+			: null,
 		conversationSwitched,
 	};
 }

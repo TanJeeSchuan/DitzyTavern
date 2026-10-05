@@ -38,6 +38,7 @@ export interface PromptBudgetInput {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
+	includeImageTokens?: boolean;
 	// ==[HUMAN APPROVED]== When omitted, the latest human entry is protected. Callers may pass the
 	// candidate human Message's original index explicitly.
 	protectedHistoryIndex?: number | undefined;
@@ -63,6 +64,7 @@ export interface PromptBudgetMeasurementInput {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
+	includeImageTokens?: boolean;
 	// ==[HUMAN APPROVED]== The failure reason distinguishes an over-large protected history
 	// from an otherwise fixed prompt that cannot fit.
 	protectedHistory?: boolean;
@@ -150,6 +152,7 @@ export function budgetPromptPlan(input: PromptBudgetInput): PromptBudgetResult {
 				responseBudget: input.responseBudget,
 				safetyAllowance: input.safetyAllowance,
 				estimator,
+				includeImageTokens: input.includeImageTokens,
 				protectedHistory: protectedHistoryIndex !== undefined,
 				protectedHistoryCharacters: protectedHistoryIndex === undefined
 					? 0
@@ -199,6 +202,7 @@ export function budgetEditedPromptPlan(input: {
 	responseBudget: number;
 	safetyAllowance: number;
 	estimator?: TokenEstimator;
+	includeImageTokens?: boolean;
 }): PromptBudgetResult {
 	const measurement = measurePromptPlan({
 		plan: input.plan,
@@ -206,6 +210,7 @@ export function budgetEditedPromptPlan(input: {
 		responseBudget: input.responseBudget,
 		safetyAllowance: input.safetyAllowance,
 		estimator: input.estimator,
+		includeImageTokens: input.includeImageTokens,
 	});
 	return {
 		fits: measurement.fits,
@@ -229,7 +234,7 @@ export function budgetEditedPromptPlan(input: {
  */
 export function measurePromptPlan(input: PromptBudgetMeasurementInput): PromptBudgetMeasurement {
 	validateBudgetFields(input.contextLimit, input.responseBudget, input.safetyAllowance);
-	const tokenEstimate = estimateCandidate(input.estimator ?? tokenxEstimator, input.plan);
+	const tokenEstimate = estimateCandidate(input.estimator ?? tokenxEstimator, input.plan, input.includeImageTokens ?? true);
 	const breakdown = createBreakdown({
 		contextLimit: input.contextLimit,
 		responseBudget: input.responseBudget,
@@ -293,12 +298,12 @@ function findLatestHumanIndex(
 	return undefined;
 }
 
-function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan): number {
+function estimateCandidate(estimator: TokenEstimator, plan: PromptPlan, includeImageTokens: boolean): number {
 	const estimate = estimator(toEstimationTranscript(plan));
 	if (!Number.isFinite(estimate) || estimate < 0) {
 		throw new Error("The Prompt Token Estimator returned an invalid estimate.");
 	}
-	return Math.ceil(estimate) + sentImageTokens(plan.images);
+	return Math.ceil(estimate) + (includeImageTokens ? sentImageTokens(plan.images) : 0);
 }
 
 function createBreakdown(

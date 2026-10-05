@@ -62,13 +62,17 @@ describe("Connection Settings", () => {
 		const created = settings.createProfile({ expectedRevision: 0, profile: deepSeekDraft() });
 		const profile = created.profiles[0];
 		if (profile === undefined) throw new Error("Connection Profile was not created.");
+		const marked = settings.setTextOnlyModel({ profileId: profile.id, modelId: "text-model", textOnly: true });
+		const markedProfile = marked.profiles[0];
+		if (markedProfile === undefined) throw new Error("Connection Profile was not returned.");
 
-		expect(connectionSnapshotOf(created, profile)).toEqual({
-			profileId: profile.id,
-			settingsRevision: created.revision,
+		expect(connectionSnapshotOf(marked, markedProfile)).toEqual({
+			profileId: markedProfile.id,
+			settingsRevision: marked.revision,
 			backend: "ai-sdk",
-			adapter: profile.adapter,
+			adapter: markedProfile.adapter,
 			apiFormat: "chat-completions",
+			textOnlyModels: ["text-model"],
 		});
 	});
 

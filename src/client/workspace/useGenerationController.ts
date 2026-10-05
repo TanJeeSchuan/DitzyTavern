@@ -12,7 +12,6 @@ import {
 	stopAllConversationGenerations,
 	stopConversationGeneration,
 	type ConversationSummary,
-	type GenerationPreviewBody,
 	type StopConversationGenerationResult,
 } from "../conversation";
 import { generationStreamAdapter } from "../conversation-stream";
@@ -223,21 +222,11 @@ export function useGenerationController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
+		retryGeneration,
 		directStartError,
 		acknowledgeDirectStartError,
 	} = assemblyController;
-	// The last request is what "retry" repeats; Send reuses its unanswered Human Message.
-	const lastRequestRef = useRef<{ conversationId: number; request: GenerationPreviewBody } | null>(null);
-	const startRequest = (request: GenerationPreviewBody) => {
-		if (conversation !== null) lastRequestRef.current = { conversationId: conversation.id, request };
-		requestGeneration(request);
-	};
-	const retryable = lastRequestRef.current !== null && lastRequestRef.current.conversationId === conversation?.id
-		? lastRequestRef.current.request
-		: null;
-	const retryGeneration = () => {
-		if (retryable !== null) requestGeneration(retryable);
-	};
+	const startRequest = requestGeneration;
 	const generationError = directStartError ?? sessionError;
 	const acknowledgeGenerationError = () => {
 		acknowledgeDirectStartError();
@@ -348,7 +337,7 @@ export function useGenerationController({
 		stopPending,
 		generationError,
 		generationImageModel: directStartError === null ? failedImageModel : null,
-		retryGeneration: retryable === null ? null : retryGeneration,
+		retryGeneration,
 		acknowledgeGenerationError,
 		assembly,
 		editPromptPlanPreview,

@@ -7,11 +7,12 @@ import {
 	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
-import type { ImagePool } from "../image";
+import { syncDefinitionReferences, type ImagePool } from "../image";
 import { createCharacter } from "./create";
 import { deleteCharacter } from "./delete-character";
 import {
 	CharacterNotFoundError,
+	InvalidCharacterCommandError,
 	StaleCharacterRevisionError,
 } from "./errors";
 import {
@@ -20,7 +21,6 @@ import {
 	requireCommandName,
 	requireCommandOpenings,
 	syncOpeningReferences,
-	syncPortrait,
 	syncPromptReferences,
 } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
@@ -76,11 +76,11 @@ export function executeCharacterCommand(
 				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...toPortraitColumns(command.definition.portrait) };
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
-				syncPortrait(db, character.id, command.definition.portrait, images);
-				syncPromptReferences(db, character.id, command.definition.prompt, images);
+				if (!syncDefinitionReferences(db, "character_id", character.id, command.definition, images)) {
+					throw new InvalidCharacterCommandError("The Portrait image was not provided.");
+				}
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
 				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
-				syncOpeningReferences(db, character.id, openings, images);
 				break;
 			}
 			case "rename": {

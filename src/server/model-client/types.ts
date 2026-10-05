@@ -68,6 +68,7 @@ export interface ModelClientConnectionSnapshot {
 	backend: string;
 	adapter: string;
 	apiFormat: ChatApiFormat;
+	textOnlyModels: readonly string[];
 }
 
 export interface ModelClient {

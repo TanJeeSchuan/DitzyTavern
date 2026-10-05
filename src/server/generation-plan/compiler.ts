@@ -93,7 +93,7 @@ const continuationOperands = (
 export const effectiveGenerationSettingsFor = (
 	settings: CanonicalGenerationSettings,
 	intent: GenerationIntent | undefined,
-	connection: GenerationConnectionFacts | null,
+	connection: Pick<GenerationConnectionFacts, "apiFormat"> | null,
 ): EffectiveGenerationSettings => ({
 	modelId: settings.modelId,
 	temperature: settings.temperature,
@@ -206,6 +206,7 @@ export const compileGenerationPlan = (
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
+		includeImageTokens: input.connection?.supportsImages ?? true,
 		estimator: input.estimator,
 		protectedHistoryIndex,
 	});

@@ -1,5 +1,5 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { Compartment, EditorSelection, EditorState, type Range } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap, placeholder as placeholderExtension, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -93,6 +93,7 @@ export function ProseEditor({
 	const host = useRef<HTMLDivElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const view = useRef<EditorView | null>(null);
+	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
 	const onChangeRef = useRef(onChange);
 	const [error, setError] = useState<string | null>(null);
 	const [settings] = useState(() => ({ placeholder: new Compartment(), editable: new Compartment(), label: new Compartment() }));
@@ -100,21 +101,28 @@ export function ProseEditor({
 
 	const insert = async (files: readonly File[], at?: number) => {
 		const editor = view.current;
-		if (editor === null) return;
+		if (editor === null || !editor.state.facet(EditorView.editable) || files.length === 0) return;
+		const selection = editor.state.selection.main;
+		const pending = { range: at === undefined ? selection : EditorSelection.cursor(at) };
+		pendingInsertions.current.add(pending);
 		try {
 			const prepared = await Promise.all(files.map(async (file) => formatImageReference(baseName(file.name), (await prepareImage(file)).hash)));
-			const { from, to } = editor.state.selection.main;
-			const position = at ?? from;
+			if (view.current !== editor || !editor.state.facet(EditorView.editable)) return;
+			const { from, to } = pending.range;
+			const selectionUnchanged = editor.state.selection.main.eq(pending.range);
 			const text = prepared.join(" ");
-			editor.dispatch({
-				changes: { from: position, to: at === undefined ? to : position, insert: text },
-				selection: EditorSelection.cursor(position + text.length),
+			const transaction: TransactionSpec = {
+				changes: { from, to, insert: text },
 				userEvent: "input.paste",
-			});
-			editor.focus();
+			};
+			if (selectionUnchanged) transaction.selection = EditorSelection.cursor(from + text.length);
+			editor.dispatch(transaction);
+			if (selectionUnchanged) editor.focus();
 			setError(null);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : "That file could not be read as an image.");
+		} finally {
+			pendingInsertions.current.delete(pending);
 		}
 	};
 	const insertRef = useRef(insert);
@@ -124,7 +132,7 @@ export function ProseEditor({
 		focus: () => view.current?.focus(),
 		insertReference: (name, hash) => {
 			const editor = view.current;
-			if (editor === null) return;
+			if (editor === null || !editor.state.facet(EditorView.editable)) return;
 			const { from, to } = editor.state.selection.main;
 			const text = formatImageReference(name, hash);
 			editor.dispatch({ changes: { from, to, insert: text }, selection: EditorSelection.cursor(from + text.length) });
@@ -150,12 +158,15 @@ export function ProseEditor({
 					settings.editable.of(EditorView.editable.of(!disabled)),
 					settings.label.of(EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "true" })),
 					EditorView.updateListener.of((update) => {
-						if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+						if (update.docChanged) {
+							for (const pending of pendingInsertions.current) pending.range = pending.range.map(update.changes, 1);
+							onChangeRef.current(update.state.doc.toString());
+						}
 					}),
 					EditorView.domEventHandlers({
-						paste: (event) => {
+						paste: (event, target) => {
 							const files = imageFiles(event.clipboardData?.files);
-							if (files.length === 0) return false;
+							if (files.length === 0 || !target.state.facet(EditorView.editable)) return false;
 							event.preventDefault();
 							void insertRef.current(files);
 							return true;

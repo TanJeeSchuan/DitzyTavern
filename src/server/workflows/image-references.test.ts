@@ -175,6 +175,33 @@ describe("Image Reference lifetime", () => {
 		expect(stored()).toEqual([]);
 	});
 
+	for (const owner of ["Character", "Participant"] as const) {
+		for (const from of ["portrait", "prompt", "opening"] as const) {
+			for (const to of ["portrait", "prompt", "opening"] as const) {
+				if (from === to) continue;
+				test(`${owner} Definition moves its only Image from ${from} to ${to} without uploading it again`, async () => {
+					const art = await picture(4);
+					const definition = (kind: typeof from) => ({
+						name: "Maren",
+						prompt: { ...prompt, identity: kind === "prompt" ? art.token : "" },
+						openings: kind === "opening" ? [art.token] : [],
+						portrait: kind === "portrait" ? { hash: art.hash, focalX: 0.5, focalY: 0.5 } : undefined,
+					});
+					if (owner === "Character") {
+						const character = library().execute({ type: "create", definition: definition(from) }, art.pool);
+						library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: definition(to) });
+					} else {
+						const target = chat();
+						conversations().execute({ conversationId: target.id, expectedRevision: target.revision, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(from) }, images: art.pool });
+						conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
+					}
+					expect(stored()).toEqual([art.hash]);
+					expect(database.query("SELECT kind FROM image_reference").all()).toEqual([{ kind: to }]);
+				});
+			}
+		}
+	}
+
 	test("an Image held only by a non-selected Variant's Macro State survives until that Variant goes", async () => {
 		const target = chat();
 		writeMessage(target, ["first", "second"]);

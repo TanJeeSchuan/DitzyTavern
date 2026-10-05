@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { imageReferenceTable, imageTable } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
+import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { ImageLookup } from "../prompt-compiler";
 import type { IngestedImage } from "./ingest";
@@ -33,15 +34,14 @@ const ownerFilter = (owner: ImageOwner) =>
 		eq(imageReferenceTable[owner.column], owner.id),
 	);
 
-export const syncImageReferences = (
+const syncImageReferences = (
 	db: ImageDatabase,
-	owner: ImageOwner,
-	hashes: Iterable<string>,
+	references: readonly { owner: ImageOwner; hashes: readonly string[] }[],
 	pool: ImagePool,
 ): string[] => {
-	const wanted = new Set(hashes);
+	const wantedHashes = new Set(references.flatMap(({ hashes }) => [...hashes]));
 	const missing: string[] = [];
-	for (const hash of wanted) {
+	for (const hash of wantedHashes) {
 		const carried = pool.get(hash);
 		if (carried !== undefined) {
 			db.insert(imageTable)
@@ -56,27 +56,30 @@ export const syncImageReferences = (
 				.onConflictDoNothing()
 				.run();
 		} else if (db.select({ hash: imageTable.hash }).from(imageTable).where(eq(imageTable.hash, hash)).get() === undefined) {
-			wanted.delete(hash);
+			wantedHashes.delete(hash);
 			missing.push(hash);
 		}
 	}
 
-	const current = db
-		.select({ id: imageReferenceTable.id, hash: imageReferenceTable.image_hash })
-		.from(imageReferenceTable)
-		.where(ownerFilter(owner))
-		.all();
-	const kept = new Set<string>();
 	const stale: number[] = [];
-	for (const row of current) {
-		if (wanted.has(row.hash) && !kept.has(row.hash)) kept.add(row.hash);
-		else stale.push(row.id);
-	}
-	const fresh = [...wanted].filter((hash) => !kept.has(hash));
-	if (fresh.length > 0) {
-		db.insert(imageReferenceTable)
-			.values(fresh.map((hash) => ({ image_hash: hash, kind: owner.kind, [owner.column]: owner.id })))
-			.run();
+	for (const { owner, hashes } of references) {
+		const wanted = new Set([...hashes].filter((hash) => wantedHashes.has(hash)));
+		const current = db
+			.select({ id: imageReferenceTable.id, hash: imageReferenceTable.image_hash })
+			.from(imageReferenceTable)
+			.where(ownerFilter(owner))
+			.all();
+		const kept = new Set<string>();
+		for (const row of current) {
+			if (wanted.has(row.hash) && !kept.has(row.hash)) kept.add(row.hash);
+			else stale.push(row.id);
+		}
+		const fresh = [...wanted].filter((hash) => !kept.has(hash));
+		if (fresh.length > 0) {
+			db.insert(imageReferenceTable)
+				.values(fresh.map((hash) => ({ image_hash: hash, kind: owner.kind, [owner.column]: owner.id })))
+				.run();
+		}
 	}
 	for (const id of stale) db.delete(imageReferenceTable).where(eq(imageReferenceTable.id, id)).run();
 	return missing;
@@ -96,7 +99,22 @@ export const syncPortraitReference = (
 	portrait: Portrait | undefined,
 	pool: ImagePool,
 ): boolean =>
-	syncImageReferences(db, { kind: "portrait", column, id }, portrait === undefined ? [] : [portrait.hash], pool).length === 0;
+	syncImageReferences(db, [{ owner: { kind: "portrait", column, id }, hashes: portrait === undefined ? [] : [portrait.hash] }], pool).length === 0;
+
+export const syncDefinitionReferences = (
+	db: ImageDatabase,
+	column: "character_id" | "participant_id",
+	id: number,
+	definition: { portrait?: Portrait | undefined; prompt: PromptChannels; openings: readonly string[] },
+	pool: ImagePool = new Map(),
+): boolean => {
+	const missing = syncImageReferences(db, [
+		{ owner: { kind: "portrait", column, id }, hashes: definition.portrait === undefined ? [] : [definition.portrait.hash] },
+		{ owner: { kind: "prompt", column, id }, hashes: Object.values(definition.prompt).flatMap(imageHashes) },
+		{ owner: { kind: "opening", column, id }, hashes: definition.openings.flatMap(imageHashes) },
+	], pool);
+	return definition.portrait === undefined || !missing.includes(definition.portrait.hash);
+};
 
 export const syncTextReferences = (
 	db: ImageDatabase,
@@ -104,7 +122,7 @@ export const syncTextReferences = (
 	texts: readonly string[],
 	pool: ImagePool = new Map(),
 ) => {
-	syncImageReferences(db, owner, texts.flatMap(imageHashes), pool);
+	syncImageReferences(db, [{ owner, hashes: texts.flatMap(imageHashes) }], pool);
 };
 
 export const syncJsonReferences = (
@@ -113,7 +131,7 @@ export const syncJsonReferences = (
 	jsons: readonly string[],
 	pool: ImagePool = new Map(),
 ) => {
-	syncImageReferences(db, owner, jsons.flatMap(jsonImageHashes), pool);
+	syncImageReferences(db, [{ owner, hashes: jsons.flatMap(jsonImageHashes) }], pool);
 };
 
 export const imageLookup = (database: Database, pool: ImagePool = new Map()): ImageLookup => (hash) => {

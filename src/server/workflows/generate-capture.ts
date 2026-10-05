@@ -33,7 +33,6 @@ import {
 	continuationIntentFor,
 	effectiveGenerationSettingsFor,
 	type EffectiveGenerationSettings,
-	type GenerationConnectionFacts,
 	type GenerationPlan,
 } from "../generation-plan";
 import type {
@@ -184,7 +183,7 @@ export const compilePlanFrom = (
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
-		connection: GenerationConnectionFacts | null;
+		connection: ModelClientConnectionSnapshot | null;
 		lore: ScopedLoreEvaluation;
 		memory: MemoryActivationRecord;
 	},
@@ -206,7 +205,10 @@ export const compilePlanFrom = (
 		attempt: configuration.attempt,
 		intent: options.intent,
 		settings: configuration.settings,
-		connection: configuration.connection,
+		connection: configuration.connection === null ? null : {
+			apiFormat: configuration.connection.apiFormat,
+			supportsImages: !configuration.connection.textOnlyModels.includes(configuration.settings.modelId),
+		},
 		estimator: options.estimator,
 		imageLookup: options.imageLookup,
 	});

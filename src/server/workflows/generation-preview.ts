@@ -242,6 +242,7 @@ const acceptedEditedPlan = (
 		contextLimit: settings.contextLimit,
 		responseBudget: settings.responseBudget,
 		safetyAllowance: settings.safetyAllowance,
+		includeImageTokens: record.capture.capture.connection?.textOnlyModels.includes(settings.modelId) !== true,
 	});
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
 	const sourceLore = record.capture.capture.plan.loreActivation;
