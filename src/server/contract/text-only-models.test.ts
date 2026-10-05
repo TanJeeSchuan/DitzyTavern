@@ -179,6 +179,40 @@ describe("Text-only Models", () => {
 		expect(started.runtime.state.imageModel).toBeUndefined();
 	});
 
+	test("a prefill refused for its Image offers no model, since no request was sent", async () => {
+		createProfile();
+		const conversationId = chat("vision-model");
+		const art = await picture();
+		const conversations = createConversationModule(database);
+		const snapshot = conversations.getSnapshot(conversationId)!;
+		const withMessage = conversations.execute({
+			conversationId,
+			expectedRevision: snapshot.revision,
+			action: {
+				type: "create-message",
+				timestamp: "2026-10-05T00:00:00Z",
+				variantContents: [`Here ${formatImageReference("map", art.hash)}`],
+				authorParticipantId: snapshot.cast[1]!.id,
+			},
+		});
+		const configured = conversations.execute({
+			conversationId,
+			expectedRevision: withMessage.revision,
+			action: {
+				type: "update-generation-settings",
+				settings: { ...conversations.getGenerationSettings(conversationId)!, continuationStrategy: "assistant-prefill" },
+			},
+		});
+		let requests = 0;
+		const started = await createGenerationCoordinator(database, {
+			masterKey: key,
+			fetch: async () => { requests += 1; return stream(); },
+		}).startContinuationGeneration({ conversationId, expectedRevision: configured.revision });
+		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
+		expect(requests).toBe(0);
+		expect(started.runtime.state.imageModel).toBeUndefined();
+	});
+
 	test("a mark never advances the settings revision and survives Profile edits", async () => {
 		const created = createProfile();
 		const revision = settings().get().revision;

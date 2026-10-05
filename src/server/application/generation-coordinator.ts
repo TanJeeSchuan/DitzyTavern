@@ -465,7 +465,8 @@ export class GenerationCoordinator {
 						reason: error instanceof Error ? error.message : "Generation failed.",
 						kind,
 						responseBody: error instanceof ModelClientGenerationError ? error.responseBody : undefined,
-						imageModel: kind !== "cancelled" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
+						// Protocol failures are local refusals raised before any request reaches the provider.
+						imageModel: kind !== "cancelled" && kind !== "protocol" && capturedRequest?.promptPlan.images.some((image) => image.disposition === "send")
 							? { connectionProfileId: transport.connection.profileId, modelId: capturedRequest.modelId }
 							: undefined,
 					});
