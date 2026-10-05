@@ -9,7 +9,7 @@ import {
 } from "../prompt-compiler";
 import { imageLookup } from "../image";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import type { ModelClientConnectionSnapshot } from "../model-client";
+import { shouldSendImages, type ModelClientConnectionSnapshot } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
 import {
 	captureContinuationGenerationAsync,
@@ -230,7 +230,7 @@ const acceptedEditedPlan = (
 	const editedPlan = resolvePromptImages(submittedPlan, {
 		lookup: imageLookup(database),
 		placement: settings.repeatedImagePlacement,
-	}, record.capture.capture.connection?.textOnlyModels.includes(settings.modelId) !== true);
+	}, shouldSendImages(record.capture.capture.connection, settings.modelId));
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}

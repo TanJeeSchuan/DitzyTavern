@@ -58,7 +58,7 @@ export interface GenerationPlan {
  */
 export interface GenerationConnectionFacts {
 	readonly apiFormat: ChatApiFormat;
-	readonly supportsImages: boolean;
+	readonly sendImages: boolean;
 }
 
 /** The captured inputs one compilation consumes. */

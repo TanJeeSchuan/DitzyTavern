@@ -49,6 +49,7 @@ import {
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
 import {
+	shouldSendImages,
 	type AssistantPrefill,
 	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
@@ -207,7 +208,7 @@ export const compilePlanFrom = (
 		settings: configuration.settings,
 		connection: configuration.connection === null ? null : {
 			apiFormat: configuration.connection.apiFormat,
-			supportsImages: !configuration.connection.textOnlyModels.includes(configuration.settings.modelId),
+			sendImages: shouldSendImages(configuration.connection, configuration.settings.modelId),
 		},
 		estimator: options.estimator,
 		imageLookup: options.imageLookup,

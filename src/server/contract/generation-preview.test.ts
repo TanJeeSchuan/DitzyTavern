@@ -313,7 +313,7 @@ describe("Prompt Plan inspection", () => {
 		expect(rejected.status).toBe(422);
 	});
 
-	test("accepts an edited text-only preview without charging stripped image tokens", async () => {
+	test.each(["plain", "missing", "stored"])("accepts an Image added to a %s text-only preview without charging image tokens", async (initial) => {
 		const conversation = createChat(database);
 		const connections = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(11) });
 		const profile = withProfile(database).profiles[0];
@@ -335,15 +335,20 @@ describe("Prompt Plan inspection", () => {
 		});
 		const image = await uploadImage(database, pngFixture({ width: 1568, height: 1568 }));
 		if (image === undefined) throw new Error("Image fixture missing.");
-		const content = `Look ${formatImageReference("map", image.hash)}`;
+		const reference = formatImageReference("map", image.hash);
+		const content = initial === "plain" ? "Look" : `Look ${initial === "missing" ? formatImageReference("ghost", "f".repeat(64)) : reference}`;
+		let captured: { messages: { role: string; content: string }[] } | undefined;
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(11),
-			fetch: captureModelFetch(() => {}),
+			fetch: captureModelFetch((request) => { captured = request; }),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content });
-		expect(plan.promptPlan.images).toHaveLength(1);
-		expect(plan.promptPlan.images[0]?.disposition).toBe("text-only");
-		expect(plan.promptPlan.images[0]?.tokens).toBe(0);
+		expect(plan.promptPlan.sendImages).toBe(false);
+		const edited = {
+			...plan.promptPlan,
+			sendImages: true,
+			blocks: plan.promptPlan.blocks.map((block) => block.kind === "history" ? { ...block, content: `${block.content} ${reference}` } : block),
+		};
 
 		const accepted = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -355,11 +360,15 @@ describe("Prompt Plan inspection", () => {
 					content,
 
 					previewId: plan.previewId,
-					promptPlan: plan.promptPlan,
+					promptPlan: edited,
 				}),
 			},
 		));
 		expect(accepted.status).toBe(200);
+		// SAFETY: the successful generation route validates this accepted response shape.
+		const { generationId } = await accepted.json() as { generationId: number };
+		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
+		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`Writer: ${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
 	});
 
 	test("keeps an inspected plan past the old quarter-hour window", async () => {

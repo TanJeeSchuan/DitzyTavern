@@ -52,7 +52,7 @@ const compile = (
 	recipe: [{ reference: "history", enabled: true }],
 	context,
 	settings: settings(overrides),
-	connection: { apiFormat: "chat-completions", supportsImages: true },
+	connection: { apiFormat: "chat-completions", sendImages: true },
 	estimator: () => 0,
 	imageLookup: lookup,
 	...extra,
@@ -81,7 +81,7 @@ describe("Prompt Plan Images", () => {
 		const plan = compile(
 			[entry("usable prior history", "model"), entry(`${ref("map", A)}`, "human")],
 			{ contextLimit: 3_000 },
-			{ connection: { apiFormat: "chat-completions", supportsImages: false } },
+			{ connection: { apiFormat: "chat-completions", sendImages: false } },
 		);
 
 		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "text-only", tokens: 0 }]);
@@ -102,7 +102,7 @@ describe("Prompt Plan Images", () => {
 	});
 
 	test("text-only inspection retains missing warnings and captures policy without occurrences", () => {
-		const connection = { apiFormat: "chat-completions" as const, supportsImages: false };
+		const connection = { apiFormat: "chat-completions" as const, sendImages: false };
 		const empty = compile([entry("go", "human")], {}, { connection });
 		expect(empty.promptPlan.sendImages).toBe(false);
 		const missing = compile([entry(ref("ghost", GONE), "human")], {}, { connection });

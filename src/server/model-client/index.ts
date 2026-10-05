@@ -8,6 +8,7 @@ export {
 } from "./client";
 export type { CollectedModelClientGeneration } from "./client";
 export { createFakeModelClient } from "./fake";
+export { shouldSendImages } from "./types";
 export type { FakeModelClientReply } from "./fake";
 export {
 	projectModelClientGenerationSettings,

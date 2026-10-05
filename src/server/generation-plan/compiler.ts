@@ -146,7 +146,7 @@ export const compileGenerationPlan = (
 	if (!Number.isInteger(memoryAllowance) || memoryAllowance < 0) {
 		throw new Error("Memory allowance must be a non-negative whole number.");
 	}
-	const sendImages = input.connection?.supportsImages ?? true;
+	const sendImages = input.connection?.sendImages ?? true;
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
