@@ -18,7 +18,7 @@ export const sameDefinition = (a: ParticipantDefinition, b: ParticipantDefinitio
 
 // ==[HUMAN APPROVED]== Blank Opening cards are editor scratch space; the server rejects blank Openings.
 export const submittableDefinition = (draft: ParticipantDefinition): ParticipantDefinition =>
-	({ name: draft.name, prompt: draft.prompt, openings: draft.openings.filter((opening) => opening.trim() !== ""), portrait: draft.portrait });
+	({ ...draft, openings: draft.openings.filter((opening) => opening.trim() !== "") });
 
 const primaryChannels = [
 	["identity", "Appearance, personality, voice…"],

@@ -147,7 +147,6 @@ export function MacroVariablesReadyView({
 	const [draftName, setDraftName] = useState("");
 	const [nameError, setNameError] = useState(false);
 	const [draftValue, setDraftValue] = useState("");
-
 	const [editing, setEditing] = useState<MacroVariable | null>(null);
 	const [saving, setSaving] = useState(false);
 
