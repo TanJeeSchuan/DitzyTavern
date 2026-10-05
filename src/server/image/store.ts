@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { eq, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { imageTable } from "../database/schema";
+import { imageTable, type PortraitColumnRow } from "../database/schema";
 import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { ImageLookup } from "../prompt-compiler";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -63,8 +63,13 @@ export const sweepOrphanedImages = (database: Database, now = Date.now()) => dat
 
 export const readImage = (db: ImageDatabase, hash: string) =>
 	db.select().from(imageTable).where(eq(imageTable.hash, hash)).get();
-export const requirePortraitImage = (db: ImageDatabase, portrait: Portrait | undefined) => {
+export const portraitRow = (db: ImageDatabase, portrait: Portrait | undefined): PortraitColumnRow => {
 	if (portrait !== undefined && readImage(db, portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
+	return {
+		portrait_hash: portrait?.hash ?? null,
+		portrait_focal_x: portrait?.focalX ?? null,
+		portrait_focal_y: portrait?.focalY ?? null,
+	};
 };
 export const imageLookup = (database: Database): ImageLookup => (hash) =>
 	drizzle(database).select({ width: imageTable.width, height: imageTable.height }).from(imageTable).where(eq(imageTable.hash, hash)).get();

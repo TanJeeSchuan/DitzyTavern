@@ -1,11 +1,10 @@
-import { requirePortraitImage } from "../image";
+import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
 import { createCharacter } from "./create";
@@ -69,11 +68,9 @@ export function executeCharacterCommand(
 				const name = requireCommandName(command.definition.name);
 				const openings = requireCommandOpenings(command.definition.openings);
 				db.update(characterTable).set({ name }).where(eq(characterTable.id, character.id)).run();
-				requirePortraitImage(db, command.definition.portrait);
-				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...toPortraitColumns(command.definition.portrait) };
+				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...portraitRow(db, command.definition.portrait) };
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
-
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();
 				if (openings.length > 0) db.insert(characterOpeningTable).values(openings.map((content, index) => ({ character_id: character.id, position: index + 1, content }))).run();
 				break;
@@ -98,7 +95,6 @@ export function executeCharacterCommand(
 						set: promptRow,
 					})
 					.run();
-
 				break;
 			}
 			case "replace-openings": {
@@ -117,7 +113,6 @@ export function executeCharacterCommand(
 						)
 						.run();
 				}
-
 				break;
 			}
 			case "set-pinned": {
