@@ -1,4 +1,8 @@
-import { resolveImageReferences, type RepeatedImagePlacement } from "../../shared/prompt-images";
+import {
+	resolveImageReferences,
+	type ImageCostLookup,
+	type RepeatedImagePlacement,
+} from "../../shared/prompt-images";
 import type { PromptPlan } from "./types";
 
 export interface ImageDimensions {
@@ -21,13 +25,24 @@ export const imageTokenCost = ({ width, height }: ImageDimensions): number => {
 	return Math.ceil((width * scale * height * scale) / PIXELS_PER_TOKEN);
 };
 
+export const promptImageCostLookup = (
+	lookup: PromptImageResolution["lookup"],
+): ImageCostLookup => (hash) => {
+	const dimensions = lookup(hash);
+	return dimensions === undefined ? undefined : { tokens: imageTokenCost(dimensions) };
+};
+
 export const resolvePromptImages = (
-	plan: Omit<PromptPlan, "images">,
+	plan: Omit<PromptPlan, "images" | "sendImages">,
 	{ lookup, placement }: PromptImageResolution,
+	sendImages: boolean,
 ): PromptPlan => ({
 	...plan,
-	images: resolveImageReferences(plan.blocks.map((block) => block.content), (hash) => {
-		const dimensions = lookup(hash);
-		return dimensions === undefined ? undefined : { tokens: imageTokenCost(dimensions) };
-	}, placement),
+	sendImages,
+	images: resolveImageReferences(
+		plan.blocks.map((block) => block.content),
+		promptImageCostLookup(lookup),
+		placement,
+		sendImages,
+	),
 });

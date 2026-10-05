@@ -233,7 +233,7 @@ const acceptedEditedPlan = (
 	const editedPlan = resolvePromptImages(submittedPlan, {
 		lookup: imageLookup(database, images),
 		placement: settings.repeatedImagePlacement,
-	});
+	}, record.capture.capture.connection?.textOnlyModels.includes(settings.modelId) !== true);
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
@@ -242,7 +242,6 @@ const acceptedEditedPlan = (
 		contextLimit: settings.contextLimit,
 		responseBudget: settings.responseBudget,
 		safetyAllowance: settings.safetyAllowance,
-		includeImageTokens: record.capture.capture.connection?.textOnlyModels.includes(settings.modelId) !== true,
 	});
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
 	const sourceLore = record.capture.capture.plan.loreActivation;

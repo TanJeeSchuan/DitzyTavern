@@ -48,7 +48,7 @@ describe("Generation detail transport", () => {
 					content: "Guide the scene.",
 					role: "human",
 				}],
-				warnings: [], images: [],
+				warnings: [], sendImages: true, images: [],
 			},
 			promptInspection: {
 				tokenEstimate: 19,

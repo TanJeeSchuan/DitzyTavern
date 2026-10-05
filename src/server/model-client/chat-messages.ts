@@ -27,19 +27,14 @@ const providerRoleFor = {
 	model: "assistant",
 } as const satisfies Record<"system" | "human" | "model", "system" | "user" | "assistant">;
 
-// A piece of writing: plain text, or a sent Image together with its anchor.
 type Segment = { text: string } | { anchor: string; image: LoadedImage };
 
 interface RenderedContent {
-	// The writing with every Reference read as its anchor.
 	readonly text: string;
 	readonly segments: Segment[];
 	readonly sent: boolean;
 }
 
-// Every Reference becomes its anchor in the text; each one the plan marks as
-// sent also emits its Image right after the anchor, unless the model is
-// text-only or the store no longer holds the bytes.
 const renderContent = (
 	content: string,
 	images: ReadonlyMap<number, PromptImage>,
@@ -66,8 +61,6 @@ const imagePart = ({ bytes, mediaType }: LoadedImage): UserPart => ({ type: "fil
 
 const speakerPrefix = (speakerName: string | null): string => speakerName === null ? "" : `${speakerName}: `;
 
-// A segment list with a sent Image always opens with the text up to its anchor,
-// so the speaker prefix joins that first text.
 const userParts = (segments: readonly Segment[], speakerName: string | null): UserPart[] =>
 	segments.map((segment, index): UserPart => "image" in segment
 		? imagePart(segment.image)
@@ -87,13 +80,12 @@ export interface ChatMessages {
 
 export function toMessages(
 	input: ModelClientGenerationInput,
-	images: { readonly load: ImageLoader; readonly textOnly: boolean },
+	images: { readonly load: ImageLoader },
 ): ChatMessages {
 	const messages: ChatMessage[] = [];
 	let sentImages = false;
 	const loaded = new Map<string, LoadedImage | undefined>();
 	const loadImage = (hash: string) => {
-		if (images.textOnly) return undefined;
 		if (!loaded.has(hash)) loaded.set(hash, images.load(hash));
 		return loaded.get(hash);
 	};
@@ -181,7 +173,7 @@ export function toMessages(
 				"protocol",
 			);
 		}
-		if (!images.textOnly && parseImageReferences(prefix).length > 0) {
+		if (input.promptPlan.sendImages && parseImageReferences(prefix).length > 0) {
 			throw new ModelClientTransportError(
 				"Assistant prefill cannot continue text that contains an Image. Continue with an instruction instead.",
 				"protocol",

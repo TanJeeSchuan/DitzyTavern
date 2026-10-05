@@ -5,7 +5,7 @@ export {
 	imageLoader,
 	imageLookup,
 	readImage,
-	syncJsonReferences,
+	syncJsonValueReferences,
 	syncDefinitionReferences,
 	syncPortraitReference,
 	syncTextReferences,

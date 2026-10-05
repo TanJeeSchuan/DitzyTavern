@@ -3,7 +3,7 @@ import { useRef, useState, type PointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
-import { imageAccept, imageSrc, prepareImage } from "../lib/image";
+import { imageAccept, imageSrc, prepareImage, type ImageDraft } from "../lib/image";
 import { focalPosition } from "../story/Portrait";
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -17,11 +17,13 @@ const frames = [
 export function PortraitDialog({
 	open,
 	portrait,
+	imageDraft,
 	onOpenChange,
 	onChange,
 }: {
 	open: boolean;
 	portrait: PortraitImage | undefined;
+	imageDraft: ImageDraft;
 	onOpenChange: (open: boolean) => void;
 	onChange: (portrait: PortraitImage | undefined) => void;
 }) {
@@ -31,7 +33,7 @@ export function PortraitDialog({
 	const pick = async (file: File | undefined) => {
 		if (file === undefined) return;
 		try {
-			const { hash } = await prepareImage(file);
+			const { hash } = await prepareImage(file, imageDraft);
 			setError(null);
 			onChange({ hash, focalX: 0.5, focalY: 0.5 });
 		} catch (cause) {

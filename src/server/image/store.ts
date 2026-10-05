@@ -7,6 +7,7 @@ import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { ImageLookup } from "../prompt-compiler";
 import type { IngestedImage } from "./ingest";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 
 export type ImagePool = ReadonlyMap<string, IngestedImage>;
 
@@ -125,13 +126,13 @@ export const syncTextReferences = (
 	syncImageReferences(db, [{ owner, hashes: texts.flatMap(imageHashes) }], pool);
 };
 
-export const syncJsonReferences = (
+export const syncJsonValueReferences = (
 	db: ImageDatabase,
 	owner: ImageOwner,
-	jsons: readonly string[],
+	values: readonly GenerationJsonValue[],
 	pool: ImagePool = new Map(),
 ) => {
-	syncImageReferences(db, [{ owner, hashes: jsons.flatMap(jsonImageHashes) }], pool);
+	syncImageReferences(db, [{ owner, hashes: values.flatMap(jsonImageHashes) }], pool);
 };
 
 export const imageLookup = (database: Database, pool: ImagePool = new Map()): ImageLookup => (hash) => {

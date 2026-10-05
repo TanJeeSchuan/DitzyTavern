@@ -51,7 +51,7 @@ describe("generation recovery diagnostics", () => {
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
 			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptPlan: { blocks: [], warnings: [], sendImages: true, images: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: {},

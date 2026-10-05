@@ -50,12 +50,20 @@ describe("imageReferenceAt", () => {
 });
 
 describe("JSON-held References", () => {
-	test("finds hashes through JSON escaping, including names with quotes", () => {
-		const json = JSON.stringify([{ name: "outfit", operation: "set", value: `a "quoted" ![the "red" coat](image:${hash})` }]);
-		expect(jsonImageHashes(json)).toEqual([hash]);
+	test("finds hashes in every string a decoded value holds, however nested", () => {
+		const value = [{ name: "outfit", operation: "set", value: [`a "quoted" ![the "red" coat](image:${hash})`, { deep: `![nested](image:${other})` }] }];
+		expect(jsonImageHashes(value)).toEqual([hash, other]);
 	});
 
-	test("ignores a label the text parser would not accept", () => {
-		expect(jsonImageHashes(JSON.stringify(`![a[b](image:${hash})`))).toEqual([]);
+	test("reads a decoded label that serialization would escape, by the one text grammar", () => {
+		const reference = `![a\tb](image:${hash})`;
+		expect(imageHashes(reference)).toEqual([hash]);
+		expect(jsonImageHashes(JSON.parse(JSON.stringify({ value: reference })))).toEqual([hash]);
+	});
+
+	test("ignores labels the text parser rejects and non-string leaves", () => {
+		expect(jsonImageHashes({ value: `![a[b](image:${hash})` })).toEqual([]);
+		expect(jsonImageHashes(7)).toEqual([]);
+		expect(jsonImageHashes(null)).toEqual([]);
 	});
 });

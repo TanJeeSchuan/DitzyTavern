@@ -10,6 +10,7 @@ import { ingestUploads, type ImagePool } from "../image";
 import { Value } from "@sinclair/typebox/value";
 import { activeGenerationDetails, generationAccepted, generationPreview, type GenerationBody, type GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
+import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
 import { resolveConversationGeneration } from "../conversation/commands/active-generation";
 import { createNativeConversation } from ".";
@@ -208,7 +209,8 @@ describe("Image Reference lifetime", () => {
 		const message = lastMessage(target);
 		const [firstVariant, secondVariant] = message.variants;
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId ?? 1;
+		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
 
 		conversations().editMacroVariables({
 			conversationId: target.id,
@@ -240,7 +242,8 @@ describe("Image Reference lifetime", () => {
 	test("an initial Macro Variable holds its Image until the variable is deleted", async () => {
 		const target = chat();
 		const art = await picture(4);
-		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId ?? 1;
+		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
 		const edit = (body: { operation: "set"; value: string; images?: ImagePool } | { operation: "delete" }) => conversations().editMacroVariables({
 			conversationId: target.id,
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
@@ -252,6 +255,48 @@ describe("Image Reference lifetime", () => {
 		edit({ operation: "set", value: art.token, images: art.pool });
 		expect(stored()).toEqual([art.hash]);
 		edit({ operation: "set", value: "plain" });
+		expect(stored()).toEqual([]);
+	});
+
+	test("an initial Macro Variable keeps its Image when its replacement label needs JSON escaping", async () => {
+		const target = chat();
+		const art = await picture(4);
+		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
+		const set = (value: MacroValue, images?: ImagePool) => conversations().editMacroVariables({
+			conversationId: target.id,
+			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			promptPresetId: presetId,
+			position: 0,
+			operation: "set",
+			name: "outfit",
+			value,
+			images,
+		});
+		set(formatImageReference("a b", art.hash), art.pool);
+		expect(stored()).toEqual([art.hash]);
+		set(`![a\tb](image:${art.hash})`);
+		expect(stored()).toEqual([art.hash]);
+	});
+
+	test("a nested Macro Value holds its Image and releases it with the last reference", async () => {
+		const target = chat();
+		const art = await picture(4);
+		const presetId = conversations().readMacroVariables(target.id)?.promptPresetId;
+		if (presetId === undefined || presetId === null) throw new Error("Prompt Preset missing.");
+		const set = (value: MacroValue, images?: ImagePool) => conversations().editMacroVariables({
+			conversationId: target.id,
+			expectedRevision: conversations().getRevision(target.id) ?? 0,
+			promptPresetId: presetId,
+			position: 0,
+			operation: "set",
+			name: "outfit",
+			value,
+			images,
+		});
+		set(["plain", [art.token]], art.pool);
+		expect(stored()).toEqual([art.hash]);
+		set(["plain", ["gone"]]);
 		expect(stored()).toEqual([]);
 	});
 

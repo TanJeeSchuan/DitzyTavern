@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
 import { InvalidImageError, ingestUploads } from "../image";
 import { Elysia, status, t } from "elysia";
 import { Type } from "@sinclair/typebox";
@@ -299,18 +298,11 @@ export const createConversationRoutes = (
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture.capture;
-					const reusableHumanId = preview.capture.kind === "send" ? preview.capture.capture.reuseHumanMessageId : undefined;
-					const contextIdentity = createHash("sha256").update(JSON.stringify({
-						messages: capture.preparation.participation.messages.filter((message) => message.id !== reusableHumanId),
-						control: capture.preparation.participation.control,
-						recipe: capture.preparation.recipe,
-					})).digest("hex");
 					const memoryActivation = capture.plan.memoryActivation;
 					const memorySources = readMemorySourceAvailability(database, params.id, memoryActivation);
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
-						contextIdentity,
 						conversationId: preview.conversationId,
 						kind: preview.capture.kind,
 						promptPlan: capture.plan.promptPlan,

@@ -81,6 +81,9 @@ export interface CompilePromptInput {
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
 	attempt?: AttemptEnvironment;
-	/** How References are resolved once Prompt Macros have expanded. */
+	/** How References are resolved once Prompt Macros have expanded, mapped to
+	 * the attempt's effective sending policy. */
 	images: PromptImageResolution;
+	/** The attempt's effective sending policy: false for a text-only model. */
+	sendImages: boolean;
 }

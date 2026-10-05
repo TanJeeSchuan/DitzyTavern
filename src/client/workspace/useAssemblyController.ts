@@ -14,6 +14,10 @@ import {
 	reduceAssemblySession,
 	type AssemblySession,
 } from "../assembly-session";
+import { transferRetainedEdits } from "./retry-plan-merge";
+import { ImageDraft } from "../lib/image";
+import { jsonImageHashes } from "../../shared/image-reference";
+import { useImageDraft } from "../lib/use-image-draft";
 
 type GenerationStartLifecycle = {
 	begin: () => number;
@@ -43,15 +47,18 @@ export function useAssemblyController({
 	clearDraft,
 }: AssemblyControllerOptions) {
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
+	useImageDraft(jsonImageHashes(assembly?.preview?.promptPlan ?? null));
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
 	const lastGenerationRef = useRef<{
 		conversationId: number;
 		request: GenerationPreviewBody;
-		promptPlan?: PromptPlan;
-		contextIdentity?: string;
+		plan?: { assembled: PromptPlan; edited: PromptPlan };
 	} | null>(null);
+	const [retryImages] = useState(() => new ImageDraft());
+	const retryAvailableRef = useRef(false);
+	retryAvailableRef.current = assembly === null && !variantPreviewActive && !isGenerating;
 
 	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
 	// current until a newer request, a cancellation, or a Chat switch advances it.
@@ -68,8 +75,10 @@ export function useAssemblyController({
 
 	useEffect(() => {
 		assemblyMountedRef.current = true;
+		retryImages.activate();
 		return () => {
 			assemblyMountedRef.current = false;
+			retryImages.dispose();
 		};
 	}, []);
 
@@ -83,6 +92,7 @@ export function useAssemblyController({
 		preservedPreview: AssemblySession["preview"] = null,
 	) => {
 		if (conversation === null) return;
+		retryAvailableRef.current = false;
 		const conversationId = conversation.id;
 		const requestId = issueAssemblyRequestId();
 		dispatchAssembly({
@@ -208,6 +218,7 @@ export function useAssemblyController({
 			conversation === null ||
 			currentAssembly === null ||
 			currentAssembly.preview === null ||
+			currentAssembly.assembledPlan === null ||
 			(currentAssembly.phase !== "ready" && currentAssembly.phase !== "failed")
 		) return;
 		const conversationId = conversation.id;
@@ -215,7 +226,12 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
-		lastGenerationRef.current = { conversationId, request, promptPlan: preview.promptPlan, contextIdentity: preview.contextIdentity };
+		lastGenerationRef.current = {
+			conversationId,
+			request,
+			plan: { assembled: currentAssembly.assembledPlan, edited: preview.promptPlan },
+		};
+		retryImages.setHashes(jsonImageHashes([request, preview.promptPlan]));
 		void startGeneration(
 			startId,
 			conversationId,
@@ -234,6 +250,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		setDirectStartError(null);
 		lastGenerationRef.current = { conversationId, request };
+		retryImages.setHashes(jsonImageHashes(request));
 		void startGeneration(
 			startId,
 			conversationId,
@@ -246,14 +263,15 @@ export function useAssemblyController({
 	};
 
 	const retryLastGeneration = () => {
+		if (!retryAvailableRef.current) return;
 		const lastGeneration = lastGenerationRef.current;
 		if (conversation === null || lastGeneration === null || lastGeneration.conversationId !== conversation.id) return;
 		const conversationId = conversation.id;
-		const { promptPlan } = lastGeneration;
+		const plan = lastGeneration.plan;
 		const requestId = issueAssemblyRequestId();
 		const startId = generationStart.begin();
 		setDirectStartError(null);
-		if (promptPlan === undefined) {
+		if (plan === undefined) {
 			void startGeneration(
 				startId,
 				conversationId,
@@ -278,24 +296,10 @@ export function useAssemblyController({
 							: "The Prompt Plan could not be assembled.");
 					return;
 				}
-				if (lastGeneration.contextIdentity !== outcome.preview.contextIdentity) {
+				const promptPlan = transferRetainedEdits(plan.assembled, plan.edited, outcome.preview.promptPlan);
+				if (promptPlan === null) {
 					generationStart.settle(startId);
 					setDirectStartError("The Chat context changed. Inspect the Prompt Plan before retrying.");
-					return;
-				}
-				let retainedIndex = promptPlan.blocks.length - 1;
-				const blocks = [...outcome.preview.promptPlan.blocks];
-				for (let index = blocks.length - 1; index >= 0 && retainedIndex >= 0; index -= 1) {
-					const fresh = blocks[index]!;
-					const retained = promptPlan.blocks[retainedIndex]!;
-					if (fresh.kind !== retained.kind || fresh.role !== retained.role ||
-						(fresh.kind === "history" && retained.kind === "history" && fresh.speakerName !== retained.speakerName)) continue;
-					blocks[index] = { ...fresh, content: retained.content };
-					retainedIndex -= 1;
-				}
-				if (retainedIndex >= 0) {
-					generationStart.settle(startId);
-					setDirectStartError("The Prompt Plan changed. Inspect it before retrying.");
 					return;
 				}
 				void startGeneration(
@@ -304,7 +308,7 @@ export function useAssemblyController({
 					requestId,
 					generationRequest(conversationId, lastGeneration.request, {
 						previewId: outcome.preview.previewId,
-						promptPlan: { ...outcome.preview.promptPlan, blocks },
+						promptPlan,
 					}),
 					lastGeneration.request.kind === "send",
 					setDirectStartError,
@@ -325,6 +329,8 @@ export function useAssemblyController({
 	};
 
 	const conversationSwitched = () => {
+		lastGenerationRef.current = null;
+		retryImages.setHashes([]);
 		invalidateAssemblyRequests();
 		setDirectStartError(null);
 		dispatchAssembly({ type: "conversation-switched" });
@@ -347,7 +353,8 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
-		retryGeneration: lastGenerationRef.current?.conversationId === conversation?.id
+		retryGeneration: lastGenerationRef.current?.conversationId === conversation?.id &&
+			assembly === null && !variantPreviewActive
 			? retryLastGeneration
 			: null,
 		conversationSwitched,

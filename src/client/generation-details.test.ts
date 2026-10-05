@@ -38,7 +38,7 @@ const retainedInspection = (status: ActiveGenerationDetails["status"]): ActiveGe
 			content: "Retained context.",
 			role: "model",
 		}],
-		warnings: [], images: [],
+		warnings: [], sendImages: true, images: [],
 	},
 	promptContext: [{ kind: "message", speakerName: "Writer", content: "Hello", role: "human" }],
 	generationSettings: { modelId: "test-model" },

@@ -1,11 +1,11 @@
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyField, historyKeymap } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap, placeholder as placeholderExtension, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { formatImageReference, parseImageReferences } from "../../shared/image-reference";
-import { imageAccept, imageSrc, prepareImage } from "../lib/image";
+import { formatImageReference, jsonImageHashes, parseImageReferences } from "../../shared/image-reference";
+import { ImageDraft, imageAccept, imageSrc, prepareImage } from "../lib/image";
 
 export interface ProseEditorHandle {
 	focus: () => void;
@@ -93,6 +93,7 @@ export function ProseEditor({
 	const host = useRef<HTMLDivElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const view = useRef<EditorView | null>(null);
+	const imageDraft = useRef<ImageDraft | null>(null);
 	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
 	const onChangeRef = useRef(onChange);
 	const [error, setError] = useState<string | null>(null);
@@ -101,12 +102,18 @@ export function ProseEditor({
 
 	const insert = async (files: readonly File[], at?: number) => {
 		const editor = view.current;
-		if (editor === null || !editor.state.facet(EditorView.editable) || files.length === 0) return;
+		const draft = imageDraft.current;
+		if (editor === null || draft === null || !editor.state.facet(EditorView.editable) || files.length === 0) return;
 		const selection = editor.state.selection.main;
 		const pending = { range: at === undefined ? selection : EditorSelection.cursor(at) };
+		const insertionDraft = new ImageDraft();
 		pendingInsertions.current.add(pending);
 		try {
-			const prepared = await Promise.all(files.map(async (file) => formatImageReference(baseName(file.name), (await prepareImage(file)).hash)));
+			const prepared: string[] = [];
+			for (const file of files) {
+				prepared.push(formatImageReference(baseName(file.name), (await prepareImage(file, insertionDraft)).hash));
+				if (view.current !== editor) return;
+			}
 			if (view.current !== editor || !editor.state.facet(EditorView.editable)) return;
 			if (!pendingInsertions.current.has(pending)) {
 				setError("The selected text changed while the image was being prepared. Paste the image again.");
@@ -127,6 +134,8 @@ export function ProseEditor({
 			setError(cause instanceof Error ? cause.message : "That file could not be read as an image.");
 		} finally {
 			pendingInsertions.current.delete(pending);
+			if (view.current === editor) draft.setHashes(jsonImageHashes(editor.state.toJSON({ history: historyField })));
+			insertionDraft.dispose();
 		}
 	};
 	const insertRef = useRef(insert);
@@ -146,6 +155,9 @@ export function ProseEditor({
 
 	useEffect(() => {
 		if (host.current === null) return;
+		const draft = new ImageDraft();
+		imageDraft.current = draft;
+		draft.setHashes(jsonImageHashes(value));
 		const imageFiles = (files: FileList | null | undefined) => [...(files ?? [])].filter((file) => file.type.startsWith("image/"));
 		const editor = new EditorView({
 			parent: host.current,
@@ -163,6 +175,7 @@ export function ProseEditor({
 					settings.label.of(EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "true" })),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
+							draft.setHashes(jsonImageHashes(update.state.toJSON({ history: historyField })));
 							for (const pending of pendingInsertions.current) {
 								update.changes.iterChangedRanges((from, to) => {
 									if (!pending.range.empty && from <= pending.range.to && to >= pending.range.from) pendingInsertions.current.delete(pending);
@@ -197,6 +210,8 @@ export function ProseEditor({
 			editor.focus();
 		}
 		return () => {
+			draft.dispose();
+			imageDraft.current = null;
 			editor.destroy();
 			view.current = null;
 		};

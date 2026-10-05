@@ -11,6 +11,7 @@ export type AssemblySession = {
 	requestId: number;
 	request: GenerationPreviewBody;
 	preview: GenerationPreview | null;
+	assembledPlan: PromptPlan | null;
 	error: string | null;
 };
 
@@ -44,11 +45,12 @@ export function reduceAssemblySession(
 				requestId: action.requestId,
 				request: action.request,
 				preview: action.preview ?? null,
+				assembledPlan: null,
 				error: null,
 			};
 		case "preview-available":
 			return ownsRequest(session, action.requestId) && session.phase === "assembling"
-				? { ...session, phase: "ready", preview: action.preview, error: null }
+				? { ...session, phase: "ready", preview: action.preview, assembledPlan: action.preview.promptPlan, error: null }
 				: session;
 		case "preview-failed":
 			return ownsRequest(session, action.requestId) && session.phase === "assembling"

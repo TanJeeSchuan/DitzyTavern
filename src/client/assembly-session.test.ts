@@ -9,12 +9,11 @@ import type { PromptPlan } from "../shared/contract/conversation-schema";
 const request: GenerationPreviewBody = { kind: "send", content: "Draft" };
 const plan = (content: string): PromptPlan => ({
 	blocks: [{ kind: "instruction", role: "system", content }],
-	warnings: [], images: [],
+	warnings: [], sendImages: true, images: [],
 });
 const preview = (content = "Expanded"): GenerationPreview => ({
 	outcome: "available",
 	previewId: "preview-1",
-	contextIdentity: "context-1",
 	conversationId: 7,
 	kind: "send",
 	promptPlan: plan(content),

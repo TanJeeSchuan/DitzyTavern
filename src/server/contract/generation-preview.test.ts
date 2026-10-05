@@ -210,6 +210,7 @@ describe("Prompt Plan inspection", () => {
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(11),
 			fetch: async (_url, init) => {
+				// SAFETY: the controlled provider receives this test's Chat Completions request.
 				requests.push(JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[] });
 				if (requests.length === 1) {
 					return new Response(JSON.stringify({ error: { message: "unsupported image input" } }), { status: 400 });
@@ -244,6 +245,7 @@ describe("Prompt Plan inspection", () => {
 		));
 		const failed = await start(firstPreview.previewId, editedPlan);
 		expect(failed.status).toBe(200);
+		// SAFETY: the accepted start response carries the generation identifier.
 		const failedGeneration = await failed.json() as { generationId: number };
 		const failedEvents = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${failedGeneration.generationId}/events`,
@@ -255,6 +257,7 @@ describe("Prompt Plan inspection", () => {
 		expect(retryPreview.promptPlan.blocks).toHaveLength(firstPreview.promptPlan.blocks.length);
 		const retried = await start(retryPreview.previewId, editedPlan);
 		expect(retried.status).toBe(200);
+		// SAFETY: the accepted start response carries the generation identifier.
 		const retriedGeneration = await retried.json() as { generationId: number };
 		await (await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${retriedGeneration.generationId}/events`,
@@ -340,8 +343,8 @@ describe("Prompt Plan inspection", () => {
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content, images: [upload] });
 		expect(plan.promptPlan.images).toHaveLength(1);
-		expect(plan.promptPlan.images[0]?.disposition).toBe("send");
-		expect(plan.promptPlan.images[0]?.tokens).toBeGreaterThan(2_000);
+		expect(plan.promptPlan.images[0]?.disposition).toBe("text-only");
+		expect(plan.promptPlan.images[0]?.tokens).toBe(0);
 
 		const accepted = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,

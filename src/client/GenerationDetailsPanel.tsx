@@ -129,9 +129,11 @@ function GenerationInspectionDetails({ details, onNavigateSource }: { details: A
 const imageDispositionLabel = (image: PromptImage): string =>
 	image.disposition === "send"
 		? `Sent${image.tokens > 0 ? ` · ~${image.tokens.toLocaleString()} tokens` : ""}`
-		: image.disposition === "anchor"
-			? "Name only (another copy is sent)"
-			: "Missing · name only";
+		: image.disposition === "text-only"
+			? "Name only (text-only model)"
+			: image.disposition === "anchor"
+				? "Name only (another copy is sent)"
+				: "Missing · name only";
 
 export function PromptImageList({ images }: { images: readonly PromptImage[] }) {
 	if (images.length === 0) return null;

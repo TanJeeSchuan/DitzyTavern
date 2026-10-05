@@ -69,7 +69,7 @@ describe("Memory source lifecycle public operations", () => {
 			modelParticipantId: snapshot.control.modelParticipantId,
 			capturedHumanName: "Writer",
 			capturedModelName: "Maren",
-			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptPlan: { blocks: [], warnings: [], sendImages: true, images: [] },
 			promptContext: [],
 			generationSettings: {},
 			connection: null,

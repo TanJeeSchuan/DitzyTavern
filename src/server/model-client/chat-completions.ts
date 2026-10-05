@@ -194,10 +194,7 @@ async function* generateOpenAICompatibleStream(options: {
 			headers: options.customHeaders,
 			fetch: fetchAtResolvedDestination,
 		});
-		const chat = toMessages(options.input, {
-			load: options.loadImage,
-			textOnly: options.profile.textOnlyModels.includes(modelId),
-		});
+		const chat = toMessages(options.input, { load: options.loadImage });
 		sentImages = chat.sentImages;
 		const streamOptions = {
 			model,

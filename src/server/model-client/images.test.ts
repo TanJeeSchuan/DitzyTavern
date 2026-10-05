@@ -48,12 +48,13 @@ const stored = new Map([
 
 const planOf = (
 	blocks: PromptBlock[],
-	options: { intent?: PromptPlan["intent"]; placement?: "first" | "last" | "every"; known?: readonly string[] } = {},
+	options: { intent?: PromptPlan["intent"]; placement?: "first" | "last" | "every"; known?: readonly string[]; sendImages?: boolean } = {},
 ): PromptPlan => {
 	const known = options.known ?? [mapHash, mugHash];
 	return resolvePromptImages(
 		{ blocks, warnings: [], intent: options.intent },
 		{ lookup: (hash) => known.includes(hash) ? { width: 20, height: 20 } : undefined, placement: options.placement ?? "every" },
+		options.sendImages ?? true,
 	);
 };
 
@@ -188,9 +189,21 @@ describe("Model Client Image transport", () => {
 		expect(sent.messages()).toEqual([{ role: "assistant", content: "Earlier" }]);
 	});
 
+	test("text-only prefill receives anchors even for a missing Reference", async () => {
+		const sent = await sentTo({
+			promptPlan: planOf([history(`Earlier ${map}`, "model", "Maren")], {
+				intent: { type: "continuation", strategy: "assistant-prefill", suffix: " " },
+				known: [],
+				sendImages: false,
+			}),
+		}, { textOnlyModels: ["vision-model"] });
+		await sent.result;
+		expect(sent.messages()).toEqual([{ role: "assistant", content: "Earlier [Image: map] " }]);
+	});
+
 	test("a Text-only Model receives anchors in place of every Image", async () => {
 		const sent = await sentTo(
-			{ promptPlan: planOf([{ kind: "scenario", role: "system", content: map }, history(`See ${mug}`)]) },
+			{ promptPlan: planOf([{ kind: "scenario", role: "system", content: map }, history(`See ${mug}`)], { sendImages: false }) },
 			{ textOnlyModels: ["vision-model"] },
 		);
 		await sent.result;
@@ -279,7 +292,7 @@ describe("Model Client Image transport", () => {
 			fetch: async () => new Response(JSON.stringify({ error: { message: "nope" } }), { status: 400 }),
 		});
 		const failure = await failureOf(collectModelClientGeneration(client, {
-			promptPlan: planOf([history(map)]),
+			promptPlan: planOf([history(map)], { sendImages: false }),
 			modelId: "vision-model",
 			generationSettings: settings,
 		}));

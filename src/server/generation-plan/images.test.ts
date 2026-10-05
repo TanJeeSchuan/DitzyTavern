@@ -84,7 +84,7 @@ describe("Prompt Plan Images", () => {
 			{ connection: { apiFormat: "chat-completions", supportsImages: false } },
 		);
 
-		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "send", tokens: COST_A }]);
+		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "text-only", tokens: 0 }]);
 		expect(plan.budget.tokenEstimate).toBe(0);
 		expect(plan.budget.fits).toBe(true);
 		expect(plan.budget.retainedContext.map(({ content }) => content)).toEqual([
@@ -99,6 +99,14 @@ describe("Prompt Plan Images", () => {
 		const plan = compile([entry(text, "model"), entry("go", "human")]);
 		expect(plan.promptPlan.images).toEqual([{ block: 0, start: 5, hash: GONE, name: "ghost", disposition: "missing", tokens: 0 }]);
 		expect(plan.budget.tokenEstimate).toBe(0);
+	});
+
+	test("text-only inspection retains missing warnings and captures policy without occurrences", () => {
+		const connection = { apiFormat: "chat-completions" as const, supportsImages: false };
+		const empty = compile([entry("go", "human")], {}, { connection });
+		expect(empty.promptPlan.sendImages).toBe(false);
+		const missing = compile([entry(ref("ghost", GONE), "human")], {}, { connection });
+		expect(missing.promptPlan.images[0]?.disposition).toBe("missing");
 	});
 
 	test("a missing copy never takes a placement slot from a stored one", () => {

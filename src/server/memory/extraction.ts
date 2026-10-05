@@ -51,7 +51,7 @@ export function validateMemoryCandidates(
 const promptPlanOf = (system: string): PromptPlan => ({
 	blocks: [{ kind: "instruction", role: "system", content: system }],
 	warnings: [],
-	images: [],
+	sendImages: true, images: [],
 });
 
 const generatedContent = async (database: Database, memory: MemorySettingsPayload, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace) => {

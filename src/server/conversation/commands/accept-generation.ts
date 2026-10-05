@@ -53,7 +53,7 @@ import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variabl
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
 import { syncSelectedMemorySource } from "../../memory";
-import { syncJsonReferences } from "../../image";
+import { syncJsonValueReferences } from "../../image";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -164,10 +164,10 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
-	syncJsonReferences(
+	syncJsonValueReferences(
 		db,
 		{ kind: "active-generation", column: "active_generation_id", id: active.id },
-		[macroWritesJson, promptPlanJson, promptContextJson, promptInspectionJson],
+		[(input.macroWrites ?? []).map(encodeMacroVariableWrite), input.promptPlan, input.promptContext, input.promptInspection ?? {}],
 		input.images,
 	);
 	return active.id;

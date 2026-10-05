@@ -10,6 +10,7 @@ export const resolveImageReferences = (
 	texts: readonly string[],
 	lookup: ImageCostLookup,
 	placement: RepeatedImagePlacement,
+	sendImages: boolean,
 ): PromptImage[] => {
 	const occurrences = texts.flatMap((text, block) =>
 		parseImageReferences(text).map(({ start, hash, name }) => ({ block, start, hash, name, cost: lookup(hash) })));
@@ -19,6 +20,7 @@ export const resolveImageReferences = (
 	});
 	return occurrences.map(({ cost, ...occurrence }, index): PromptImage => {
 		if (cost === undefined) return { ...occurrence, disposition: "missing", tokens: 0 };
+		if (!sendImages) return { ...occurrence, disposition: "text-only", tokens: 0 };
 		return { ...occurrence, disposition: placement === "every" || chosen.get(occurrence.hash) === index ? "send" : "anchor", tokens: cost.tokens };
 	});
 };

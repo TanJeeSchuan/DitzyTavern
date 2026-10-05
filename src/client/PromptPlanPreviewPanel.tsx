@@ -5,8 +5,8 @@ import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
-import { hasLocalImage } from "./lib/image";
 import { resolveImageReferences } from "../shared/prompt-images";
+import { hasLocalImage } from "./lib/image";
 import { memoryActivationWithFinalText } from "../shared/contract/memory-recall";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
@@ -107,12 +107,17 @@ export function PromptPlanPreviewPanel({
 	);
 }
 
+const storedCost = (preview: GenerationPreview) => {
+	const stored = new Map(preview.promptPlan.images.filter((image) => image.disposition !== "missing").map((image) => [image.hash, image.tokens]));
+	return (hash: string) => stored.has(hash) ? { tokens: stored.get(hash)! } : hasLocalImage(hash) ? { tokens: 0 } : undefined;
+};
+
 function currentImages(preview: GenerationPreview) {
-	const stored = new Map(preview.promptPlan.images.filter((image) => image.disposition !== "missing").map((image) => [image.hash, { tokens: image.tokens }]));
 	return resolveImageReferences(
 		preview.promptPlan.blocks.map((block) => block.content),
-		(hash) => stored.get(hash) ?? (hasLocalImage(hash) ? { tokens: 0 } : undefined),
+		storedCost(preview),
 		preview.effectiveSettings.repeatedImagePlacement,
+		preview.promptPlan.sendImages,
 	);
 }
 

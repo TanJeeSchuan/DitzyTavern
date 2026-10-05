@@ -146,6 +146,7 @@ export const compileGenerationPlan = (
 	if (!Number.isInteger(memoryAllowance) || memoryAllowance < 0) {
 		throw new Error("Memory allowance must be a non-negative whole number.");
 	}
+	const sendImages = input.connection?.supportsImages ?? true;
 	const compileWith = (
 		context: readonly PromptContextEntry[],
 		lore: readonly PromptLoreEntry[],
@@ -160,6 +161,7 @@ export const compileGenerationPlan = (
 			memory,
 			attempt,
 			images: { lookup: input.imageLookup, placement: input.settings.repeatedImagePlacement },
+			sendImages,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
@@ -206,7 +208,6 @@ export const compileGenerationPlan = (
 		contextLimit: input.settings.contextLimit,
 		responseBudget: input.settings.responseBudget,
 		safetyAllowance: input.settings.safetyAllowance,
-		includeImageTokens: input.connection?.supportsImages ?? true,
 		estimator: input.estimator,
 		protectedHistoryIndex,
 	});
@@ -234,7 +235,7 @@ export const estimateDynamicBlockTokens = (
 	estimator: (transcript: string) => number = tokenxEstimator,
 ): number => content.length === 0
 	? 0
-	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
+	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], sendImages: true, images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], sendImages: true, images: [] }))));
 
 const withMemoryBudgetEvidence = (
 	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,

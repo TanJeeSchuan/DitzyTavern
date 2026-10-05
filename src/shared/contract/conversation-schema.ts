@@ -95,16 +95,12 @@ const generationIntent = Type.Union([
 	}),
 ]);
 
-// One entry per Image Reference occurrence in block text, in reading order.
-// `send` carries the Image to the model, `anchor` sends only its Image Anchor
-// because Repeated Image Placement chose another copy, and `missing` has no
-// stored Image. `tokens` is the estimated cost of a sent Image and 0 otherwise.
 const promptImage = Type.Object({
 	block: Type.Integer(),
 	start: Type.Integer(),
 	hash: Type.String(),
 	name: Type.String(),
-	disposition: Type.Union([Type.Literal("send"), Type.Literal("anchor"), Type.Literal("missing")]),
+	disposition: Type.Union([Type.Literal("send"), Type.Literal("anchor"), Type.Literal("text-only"), Type.Literal("missing")]),
 	tokens: Type.Integer(),
 });
 
@@ -112,6 +108,7 @@ const promptImage = Type.Object({
 // the storage and transport boundary so inspection cannot silently discard
 // authorship or continuation intent.
 export const promptPlan = Type.Object({
+	sendImages: Type.Boolean(),
 	blocks: Type.Array(promptBlock),
 	warnings: Type.Array(Type.Object({
 		block: Type.String(),
@@ -754,7 +751,6 @@ const generationPreviewBudget = Type.Object({
 export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
-	contextIdentity: Type.String(),
 	conversationId: Type.Integer(),
 	kind: generationPreviewKind,
 	promptPlan,

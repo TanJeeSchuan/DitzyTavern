@@ -347,7 +347,6 @@ export async function previewConversationGeneration(
 	try {
 		const { data, error } = await withInlineImages(JSON.stringify(input), (images) =>
 			api.api.conversations({ id: conversationId }).generations.preview.post(input.kind === "send" ? { ...input, images } : input),
-			{ consume: false },
 		);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };

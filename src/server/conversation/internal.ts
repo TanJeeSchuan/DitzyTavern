@@ -17,10 +17,11 @@ import {
 } from "../database/schema";
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
-import { syncJsonReferences, syncPortraitReference, syncTextReferences, type ImagePool } from "../image";
+import { syncJsonValueReferences, syncPortraitReference, syncTextReferences, type ImagePool } from "../image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	InvalidConversationCommandError,
@@ -399,7 +400,10 @@ export const syncMacroStateReferences = (
 	images?: ImagePool | undefined,
 ) => {
 	for (const row of rows) {
-		if (isMacroDataNamespace(row.namespace)) syncJsonReferences(db, { kind: "macro-state", column, id: row.id }, [row.value], images);
+		if (isMacroDataNamespace(row.namespace)) {
+			const value: GenerationJsonValue = JSON.parse(row.value);
+			syncJsonValueReferences(db, { kind: "macro-state", column, id: row.id }, [value], images);
+		}
 	}
 };
 
