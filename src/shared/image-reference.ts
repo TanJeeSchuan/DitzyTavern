@@ -1,6 +1,3 @@
-import type { GenerationJsonValue } from "./generation-json";
-import { generationJsonObject, generationJsonString } from "./generation-provenance";
-
 const MAX_NAME_LENGTH = 80;
 const REFERENCE = /!\[([^[\]\\\r\n]+)\]\(image:([0-9a-f]{64})\)/g;
 const REFERENCE_HERE = new RegExp(REFERENCE.source, "y");
@@ -35,14 +32,3 @@ export const imageAnchor = (name: string): string => `[Image: ${name}]`;
 
 export const projectImageAnchors = (text: string): string =>
 	text.replace(REFERENCE, (_match, name: string) => imageAnchor(name));
-
-export const imageHashes = (text: string): string[] => parseImageReferences(text).map((reference) => reference.hash);
-
-export const jsonImageHashes = (value: GenerationJsonValue): string[] => {
-	const text = generationJsonString(value);
-	if (text !== null) return imageHashes(text);
-	if (Array.isArray(value)) return value.flatMap(jsonImageHashes);
-	const object = generationJsonObject(value);
-	if (object !== null) return Object.values(object).flatMap(jsonImageHashes);
-	return [];
-};
