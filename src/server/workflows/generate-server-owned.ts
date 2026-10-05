@@ -7,7 +7,6 @@ import {
 	type ModelClientConnectionSnapshot,
 	type ModelClientEvent,
 	type ModelClientFailureKind,
-	type ModelClientGenerationInput,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConversationDataEntry } from "../conversation";
@@ -33,7 +32,6 @@ export interface GenerationAttemptInput {
 	// returns normalized asynchronous events. The workflow never calls a
 	// provider or interprets a provider request shape directly.
 	modelClient: ModelClient;
-	onRequest?: (request: ModelClientGenerationInput) => void;
 	// ==[HUMAN APPROVED]== HTTP adapters provide the same start-time capture used to construct the
 	// client. Direct workflow callers may omit it; the workflow resolves the
 	// current safe Profile identity itself, preserving the original fake-client
@@ -71,8 +69,6 @@ export interface ServerOwnedGeneration<Accepted, Result> {
 	readonly accepted: Promise<Accepted>;
 	/** ==[HUMAN APPROVED]== Resolves/rejects when the provider attempt and terminal commit finish. */
 	readonly result: Promise<Result>;
-	/** The provider request, or null if the workflow ends before attempting one. */
-	readonly request: Promise<ModelClientGenerationInput | null>;
 	/** ==[HUMAN APPROVED]== Cancellation owned by the generation, never by an observing request. */
 	readonly signal: AbortSignal;
 }
@@ -99,7 +95,6 @@ export function startServerOwnedGenerationFrom<
 		signal?: AbortSignal;
 		onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 		onAccepted?: (accepted: Accepted) => void | Promise<void>;
-		onRequest?: (request: ModelClientGenerationInput) => void;
 	},
 >(
 	database: Database,
@@ -108,7 +103,6 @@ export function startServerOwnedGenerationFrom<
 	callbacks: ServerOwnedGenerationCallbacks<Accepted> = {},
 ): ServerOwnedGeneration<Accepted, Result> {
 	const controller = new AbortController();
-	const request = Promise.withResolvers<ModelClientGenerationInput | null>();
 	let accepted = false;
 	let resolveAccepted!: (value: Accepted) => void;
 	let rejectAccepted!: (reason: Error) => void;
@@ -119,7 +113,6 @@ export function startServerOwnedGenerationFrom<
 	const result = start(database, {
 		...input,
 		signal: controller.signal,
-		onRequest: request.resolve,
 		onAccepted: async (value) => {
 			await input.onAccepted?.(value);
 			accepted = true;
@@ -134,13 +127,12 @@ export function startServerOwnedGenerationFrom<
 			await callbacks.onEvent?.(event);
 		},
 	});
-	void result.then(() => request.resolve(null), () => request.resolve(null));
 	void result.catch((error) => {
 		if (!accepted) {
 			rejectAccepted(error instanceof Error ? error : new Error("Generation could not be accepted."));
 		}
 	});
-	return { accepted: acceptedPromise, result, request: request.promise, signal: controller.signal };
+	return { accepted: acceptedPromise, result, signal: controller.signal };
 }
 
 type GenerationOutcomeStatus = "complete" | "interrupted" | "length-limited";
@@ -218,7 +210,6 @@ export async function runAcceptedGeneration<TResult>(
 ): Promise<TResult> {
 	let outcome: GenerationOutcome;
 	try {
-		input.onRequest?.(request);
 		outcome = await runGeneration(input.modelClient, request, input.onEvent);
 	} catch (error) {
 		// ==[HUMAN APPROVED]== Only a provider failure reaches this path: resolution runs
