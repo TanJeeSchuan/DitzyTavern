@@ -58,7 +58,7 @@ export function DefinitionEditor({
 	onBack: () => void;
 }) {
 	const navigate = useSaveNavigation();
-	const imageDraft = useImageDraft([...Object.values(draft.prompt).flatMap(imageHashes), ...draft.openings.flatMap(imageHashes), ...(draft.portrait === undefined ? [] : [draft.portrait.hash])]);
+	const imageDraft = useImageDraft([...Object.values(draft.prompt).flatMap(imageHashes), ...draft.openings.flatMap(imageHashes), ...(draft.portrait === undefined ? [] : [draft.portrait.hash])], false);
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const identity = useRef<ProseEditorHandle>(null);

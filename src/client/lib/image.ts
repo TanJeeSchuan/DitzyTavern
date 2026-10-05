@@ -29,6 +29,7 @@ const releaseUnused = () => {
 export class ImageDraft {
 	readonly hashes = new Set<string>();
 	private disposed = false;
+	constructor(readonly retainBeforeRemoval = true) {}
 	activate() { this.disposed = false; drafts.add(this); }
 	setHashes(hashes: Iterable<string>) {
 		if (this.disposed) return;
@@ -74,11 +75,15 @@ export const prepareImage = async (file: File, draft: ImageDraft): Promise<Prepa
 
 const hashesIn = (payloadJson: string) => new Set(payloadJson.match(/[0-9a-f]{64}/g) ?? []);
 
-export const waitForImageLoads = async (payloadJson: string) => {
+const waitForImageLoads = async (payloadJson: string) => {
 	const hashes = [...hashesIn(payloadJson)];
 	await Promise.all(hashes.map((hash) => loads.get(hash)));
 	for (const hash of hashes) if (loadErrors.has(hash)) throw loadErrors.get(hash);
 };
+
+export const waitForRetainedImages = (payloadJson: string) => waitForImageLoads(JSON.stringify(
+	[...hashesIn(payloadJson)].filter((hash) => [...drafts].some((draft) => draft.retainBeforeRemoval && draft.hashes.has(hash))),
+));
 
 export const withInlineImages = async <Result extends { error: unknown }>(
 	payloadJson: string,
