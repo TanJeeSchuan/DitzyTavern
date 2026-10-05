@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "447c2a0c-d358-4790-8600-edf41894df02",
+  "id": "c3b207b0-8837-4f4d-b756-6e0e102ecb45",
   "prevId": "0d125ab9-3ac2-43b4-9f4a-6bdb1ea27b5f",
   "tables": {
     "active_generation": {
@@ -643,7 +643,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "character_prompt_portrait_complete": {
+          "name": "character_prompt_portrait_complete",
+          "value": "(\"character_prompt\".\"portrait_hash\" IS NULL AND \"character_prompt\".\"portrait_focal_x\" IS NULL AND \"character_prompt\".\"portrait_focal_y\" IS NULL) OR (\"character_prompt\".\"portrait_hash\" IS NOT NULL AND \"character_prompt\".\"portrait_focal_x\" IS NOT NULL AND \"character_prompt\".\"portrait_focal_y\" IS NOT NULL)"
+        }
+      }
     },
     "character": {
       "name": "character",
@@ -888,6 +893,52 @@
           "value": "\"connection_profile\".\"timeout_ms\" IS NULL OR \"connection_profile\".\"timeout_ms\" >= 0"
         }
       }
+    },
+    "connection_profile_text_only_model": {
+      "name": "connection_profile_text_only_model",
+      "columns": {
+        "profile_id": {
+          "name": "profile_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "connection_profile_text_only_model_profile_id_connection_profile_id_fk": {
+          "name": "connection_profile_text_only_model_profile_id_connection_profile_id_fk",
+          "tableFrom": "connection_profile_text_only_model",
+          "tableTo": "connection_profile",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "connection_profile_text_only_model_profile_id_model_id_pk": {
+          "columns": [
+            "profile_id",
+            "model_id"
+          ],
+          "name": "connection_profile_text_only_model_profile_id_model_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "connection_secret": {
       "name": "connection_secret",
@@ -1236,6 +1287,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "''"
+        },
+        "repeated_image_placement": {
+          "name": "repeated_image_placement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'last'"
         },
         "request_overrides_json": {
           "name": "request_overrides_json",
@@ -1789,226 +1848,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "image_reference": {
-      "name": "image_reference",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "image_hash": {
-          "name": "image_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "character_id": {
-          "name": "character_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "participant_id": {
-          "name": "participant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "variant_data_id": {
-          "name": "variant_data_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "conversation_data_id": {
-          "name": "conversation_data_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "active_generation_id": {
-          "name": "active_generation_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "image_reference_image_hash_index": {
-          "name": "image_reference_image_hash_index",
-          "columns": [
-            "image_hash"
-          ],
-          "isUnique": false
-        },
-        "image_reference_variant_index": {
-          "name": "image_reference_variant_index",
-          "columns": [
-            "variant_id"
-          ],
-          "isUnique": false
-        },
-        "image_reference_character_index": {
-          "name": "image_reference_character_index",
-          "columns": [
-            "character_id"
-          ],
-          "isUnique": false
-        },
-        "image_reference_participant_index": {
-          "name": "image_reference_participant_index",
-          "columns": [
-            "participant_id"
-          ],
-          "isUnique": false
-        },
-        "image_reference_variant_data_index": {
-          "name": "image_reference_variant_data_index",
-          "columns": [
-            "variant_data_id"
-          ],
-          "isUnique": false
-        },
-        "image_reference_conversation_data_index": {
-          "name": "image_reference_conversation_data_index",
-          "columns": [
-            "conversation_data_id"
-          ],
-          "isUnique": false
-        },
-        "image_reference_active_generation_index": {
-          "name": "image_reference_active_generation_index",
-          "columns": [
-            "active_generation_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "image_reference_image_hash_image_hash_fk": {
-          "name": "image_reference_image_hash_image_hash_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "image",
-          "columnsFrom": [
-            "image_hash"
-          ],
-          "columnsTo": [
-            "hash"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "image_reference_variant_id_message_variant_id_fk": {
-          "name": "image_reference_variant_id_message_variant_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "message_variant",
-          "columnsFrom": [
-            "variant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "image_reference_character_id_character_id_fk": {
-          "name": "image_reference_character_id_character_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "character",
-          "columnsFrom": [
-            "character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "image_reference_participant_id_participant_id_fk": {
-          "name": "image_reference_participant_id_participant_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "participant",
-          "columnsFrom": [
-            "participant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "image_reference_variant_data_id_message_variant_data_id_fk": {
-          "name": "image_reference_variant_data_id_message_variant_data_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "message_variant_data",
-          "columnsFrom": [
-            "variant_data_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "image_reference_conversation_data_id_conversation_data_id_fk": {
-          "name": "image_reference_conversation_data_id_conversation_data_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "conversation_data",
-          "columnsFrom": [
-            "conversation_data_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "image_reference_active_generation_id_active_generation_id_fk": {
-          "name": "image_reference_active_generation_id_active_generation_id_fk",
-          "tableFrom": "image_reference",
-          "tableTo": "active_generation",
-          "columnsFrom": [
-            "active_generation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "image_reference_one_owner_check": {
-          "name": "image_reference_one_owner_check",
-          "value": "(\"image_reference\".\"variant_id\" IS NOT NULL) + (\"image_reference\".\"character_id\" IS NOT NULL) + (\"image_reference\".\"participant_id\" IS NOT NULL) + (\"image_reference\".\"variant_data_id\" IS NOT NULL) + (\"image_reference\".\"conversation_data_id\" IS NOT NULL) + (\"image_reference\".\"active_generation_id\" IS NOT NULL) = 1"
-        }
-      }
-    },
     "image": {
       "name": "image",
       "columns": {
@@ -2052,6 +1891,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "orphaned_at": {
+          "name": "orphaned_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -3280,7 +3126,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "participant_prompt_portrait_complete": {
+          "name": "participant_prompt_portrait_complete",
+          "value": "(\"participant_prompt\".\"portrait_hash\" IS NULL AND \"participant_prompt\".\"portrait_focal_x\" IS NULL AND \"participant_prompt\".\"portrait_focal_y\" IS NULL) OR (\"participant_prompt\".\"portrait_hash\" IS NOT NULL AND \"participant_prompt\".\"portrait_focal_x\" IS NOT NULL AND \"participant_prompt\".\"portrait_focal_y\" IS NOT NULL)"
+        }
+      }
     },
     "participant": {
       "name": "participant",
