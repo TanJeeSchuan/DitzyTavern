@@ -11,7 +11,7 @@ The local setup replaces lgtmaybe with `.github/workflows/nitpi-review.yml` and 
 - Re-review: `gpt-6.1-sol(high)`.
 - Tailscale: ephemeral, preauthorized runner with `tag:ci-nitpi-reviewer`; the tailnet policy must allow this tag to reach `100.100.175.73` on `tcp:51733`.
 
-The runner installs Node 24 and NitPi's dependencies in a separate checkout pinned to [`6704c388`](https://github.com/TanJeeSchuan/NitPi/tree/6704c388e67bc76070aa18dfaa113781b7a36236). DitzyTavern's default branch provides trusted instructions; PR commits are fetched as git objects. The entry runs with DitzyTavern as its working directory because `headCheckoutSource` is `process.cwd()`. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/actions/entry.mts))
+The runner installs Node 24 and NitPi's dependencies in a separate checkout pinned to [`0b834ade`](https://github.com/TanJeeSchuan/NitPi/tree/0b834adef5f2cd32ae61e939e8ea84add8c30cef). This includes the Actions identity, queued-recovery, review-response status, and review-update method fixes. DitzyTavern's default branch provides trusted instructions; PR commits are fetched as git objects. The entry runs with DitzyTavern as its working directory because `headCheckoutSource` is `process.cwd()`. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/0b834adef5f2cd32ae61e939e8ea84add8c30cef/actions/entry.mts))
 
 ## Credentials
 
@@ -28,8 +28,16 @@ The job's built-in `GITHUB_TOKEN` publishes reviews and checks with `contents: r
 
 ## Integration decisions and verification
 
+To start a review from the CLI, run `gh workflow run nitpi-review.yml --repo TanJeeSchuan/DitzyTavern --ref master -f pr_number=11 -f command=review`. Replace `11` with your PR number. Use `review-clean` for a fresh review and `review-cancel` to queue a cancellation request; it cannot stop a running review immediately.
+
 The workflow passes inputs directly to the entry, removing upstream's routing job. This avoids its missing job-output mappings, `NITPI_COMMAND`/`NITPI_INPUT_COMMAND` mismatch, and stop-event outputs written only to stdout. ([Upstream workflow](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/.github/workflows/tailscale-review.yml))
 
 Per-PR concurrency follows upstream with `cancel-in-progress: false`. It serializes jobs, so cancel and stop deliveries wait behind an active review. Immediate cancellation remains an upstream integration limitation; concurrent entry processes cannot both hold the storage lease. ([Entry](https://github.com/TanJeeSchuan/NitPi/blob/6704c388e67bc76070aa18dfaa113781b7a36236/actions/entry.mts))
 
-Actionlint validates the workflow. The storage health endpoint returned `{"ok":true}` from this workstation. Runner networking, model tool calls, publication, and interrupted-run recovery still need a real PR check after the workflow reaches `master`.
+Actionlint validates the workflow. The real runner successfully checked out NitPi, joined Tailscale, opened the storage partition, and published check runs. The first full attempt failed at bot identification because REST `/user` rejects installation tokens. [NitPi PR #2](https://github.com/TanJeeSchuan/NitPi/pull/2) replaces that lookup with GraphQL `viewer`, verified on the runner with the same token and covered by a failing-then-passing publication test.
+
+Subsequent jobs exited green without a review because a new-head request queued behind an interrupted attempt, then the entry closed the resumed work. [NitPi PR #3](https://github.com/TanJeeSchuan/NitPi/pull/3) waits for resumed tasks and joins the queue drain. A real entry-process regression reproduced the empty green result before the fix and now publishes the new head; 51 related tests and typecheck pass.
+
+[The next run](https://github.com/TanJeeSchuan/DitzyTavern/actions/runs/37175607946) published [a complete review](https://github.com/TanJeeSchuan/DitzyTavern/pull/11#pullrequestreview-5404314911), but failed because NitPi expected HTTP 201 instead of GitHub's HTTP 200. [NitPi PR #4](https://github.com/TanJeeSchuan/NitPi/pull/4) corrects that endpoint's expected status and its test fixture; typecheck and 20 publication, retry, rerun, and identity tests pass.
+
+[The subsequent run](https://github.com/TanJeeSchuan/DitzyTavern/actions/runs/37177675570) failed while updating the existing review with HTTP 404. [NitPi PR #5](https://github.com/TanJeeSchuan/NitPi/pull/5) changes that request from PATCH to GitHub's required PUT. Seven existing rerun scenarios reproduced the failure with a corrected fixture; typecheck and all 19 publication, retry, and rerun tests pass after the fix. The updated pin is being verified on GitHub.
