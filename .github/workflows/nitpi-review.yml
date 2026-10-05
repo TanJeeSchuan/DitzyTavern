@@ -28,6 +28,7 @@ env:
   NITPI_INPUT_MODE: manual
   NITPI_INPUT_PRIMARY_BASE_URL: https://api.tanjs.dev/v1/
   NITPI_INPUT_PRIMARY_MODEL_ID: opencode-go/deepseek-v4.1-flash(max)
+  NITPI_INPUT_PRIMARY_DEADLINE_MS: "1800000"
   NITPI_INPUT_RE_REVIEW_BASE_URL: https://api.tanjs.dev/v1/
   NITPI_INPUT_RE_REVIEW_MODEL_ID: gpt-6.1-sol(high)
   NITPI_INPUT_STORAGE_BASE_URL: http://100.100.175.73:51733
