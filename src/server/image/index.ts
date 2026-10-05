@@ -1,2 +1,2 @@
 export { InvalidImageError } from "./errors";
-export { imageLoader, imageLookup, readImage, uploadImage, sweepOrphanedImages } from "./store";
+export { imageLoader, imageLookup, readImage, requirePortraitImage, uploadImage, sweepOrphanedImages } from "./store";

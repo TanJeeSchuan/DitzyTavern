@@ -1,4 +1,4 @@
-import { InvalidImageError, readImage } from "../image";
+import { requirePortraitImage } from "../image";
 import type { Database } from "bun:sqlite";
 import {
 	characterOpeningTable,
@@ -37,7 +37,7 @@ export function createCharacter(
 			throw new Error("Character creation did not return an identifier.");
 		}
 
-		if (definition.portrait !== undefined && readImage(db, definition.portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
+		requirePortraitImage(db, definition.portrait);
 		db.insert(characterPromptTable)
 			.values({
 				character_id: inserted.id,

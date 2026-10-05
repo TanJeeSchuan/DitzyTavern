@@ -6,7 +6,9 @@ import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { ImageLookup } from "../prompt-compiler";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { MACRO_DATA_NAMESPACE } from "../prompt-macros";
+import type { Portrait } from "../../shared/contract/image";
 import { ingestImage } from "./ingest";
+import { InvalidImageError } from "./errors";
 
 type ImageDatabase = BunSQLiteDatabase<Record<string, never>>;
 
@@ -61,6 +63,9 @@ export const sweepOrphanedImages = (database: Database, now = Date.now()) => dat
 
 export const readImage = (db: ImageDatabase, hash: string) =>
 	db.select().from(imageTable).where(eq(imageTable.hash, hash)).get();
+export const requirePortraitImage = (db: ImageDatabase, portrait: Portrait | undefined) => {
+	if (portrait !== undefined && readImage(db, portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
+};
 export const imageLookup = (database: Database): ImageLookup => (hash) =>
 	drizzle(database).select({ width: imageTable.width, height: imageTable.height }).from(imageTable).where(eq(imageTable.hash, hash)).get();
 export const imageLoader = (database: Database) => (hash: string) => {

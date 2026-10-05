@@ -1,4 +1,4 @@
-import { InvalidImageError, readImage } from "../../image";
+import { requirePortraitImage } from "../../image";
 import { eq } from "drizzle-orm";
 import {
 	participantOpeningTable,
@@ -105,7 +105,7 @@ export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	const openings = requireParticipantOpenings(input.definition.openings);
 	const participant = requireParticipant(db, input.conversationId, input.participantId);
 	db.update(participantTable).set({ name }).where(eq(participantTable.id, participant.id)).run();
-	if (input.definition.portrait !== undefined && readImage(db, input.definition.portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
+	requirePortraitImage(db, input.definition.portrait);
 	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...toPortraitColumns(input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();

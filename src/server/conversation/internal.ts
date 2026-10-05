@@ -1,4 +1,4 @@
-import { InvalidImageError, readImage } from "../image";
+import { requirePortraitImage } from "../image";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -409,7 +409,7 @@ export const insertParticipant = (
 		);
 	}
 
-	if (definition.portrait !== undefined && readImage(db, definition.portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
+	requirePortraitImage(db, definition.portrait);
 	db.insert(participantPromptTable)
 		.values({
 			participant_id: inserted.id,
