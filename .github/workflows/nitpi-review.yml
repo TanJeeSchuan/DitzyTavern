@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: TanJeeSchuan/NitPi
-          ref: 1b1b67cde8c8c971100c4625bda0e0353b4d15cf
+          ref: 0b834adef5f2cd32ae61e939e8ea84add8c30cef
           path: nitpi
           persist-credentials: false
 
