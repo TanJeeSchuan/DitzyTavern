@@ -168,7 +168,7 @@ _Avoid_: detected speaker, character attribution
 ## Images
 
 **Image**:
-A picture stored once by its content, so the same picture is one Image wherever it appears. Portraits and Image References name it, and it exists only while something does.
+A picture stored once by its content, so the same picture is one Image wherever it appears. Portraits and Image References name it. Images are uploaded through one endpoint, become orphaned when their last reference goes, and are deleted at startup after more than 24 hours orphaned.
 _Avoid_: attachment (reserved for Lorebook Attachment), upload, file
 
 **Image Reference**:
