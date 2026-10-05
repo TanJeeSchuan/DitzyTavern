@@ -78,8 +78,9 @@ export const withInlineImages = async <Result extends { error: unknown }>(
 	payloadJson: string,
 	send: (images: string[] | undefined) => Promise<Result>,
 ): Promise<Result> => {
-	await Promise.all(loads.values());
-	if (loadErrors.size > 0) throw loadErrors.values().next().value;
-	const images = [...hashesIn(payloadJson)].flatMap((hash) => localImages.has(hash) ? [localImages.get(hash)!.data] : []);
+	const hashes = [...hashesIn(payloadJson)];
+	await Promise.all(hashes.map((hash) => loads.get(hash)));
+	for (const hash of hashes) if (loadErrors.has(hash)) throw loadErrors.get(hash);
+	const images = hashes.flatMap((hash) => localImages.has(hash) ? [localImages.get(hash)!.data] : []);
 	return send(images.length === 0 ? undefined : images);
 };

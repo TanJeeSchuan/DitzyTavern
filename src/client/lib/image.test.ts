@@ -51,7 +51,7 @@ test("cancelled uploads release previews only after their last draft owner close
 		expect(hasLocalImage(hash)).toBe(false);
 });
 
-test("a write waits for existing draft bytes before it can remove the persisted reference", async () => {
+test("a write waits for its referenced draft bytes", async () => {
 	const originalFetch = globalThis.fetch;
 	const hash = "f".repeat(64);
 	let finish: ((response: Response) => void) | undefined;
@@ -60,7 +60,7 @@ test("a write waits for existing draft bytes before it can remove the persisted 
 		const draft = owner();
 		draft.setHashes([hash]);
 		let sent = false;
-		const write = withInlineImages("Removed", async () => { sent = true; return { error: null }; });
+		const write = withInlineImages(formatImageReference("map", hash), async () => { sent = true; return { error: null }; });
 		await Promise.resolve();
 		expect(sent).toBe(false);
 		finish!(new Response(pngFixture()));
