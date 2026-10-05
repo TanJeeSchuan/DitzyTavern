@@ -754,6 +754,7 @@ const generationPreviewBudget = Type.Object({
 export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
+	contextIdentity: Type.String(),
 	conversationId: Type.Integer(),
 	kind: generationPreviewKind,
 	promptPlan,

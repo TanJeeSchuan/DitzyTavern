@@ -50,6 +50,7 @@ export function useAssemblyController({
 		conversationId: number;
 		request: GenerationPreviewBody;
 		promptPlan?: PromptPlan;
+		contextIdentity?: string;
 	} | null>(null);
 
 	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
@@ -214,7 +215,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
-		lastGenerationRef.current = { conversationId, request, promptPlan: preview.promptPlan };
+		lastGenerationRef.current = { conversationId, request, promptPlan: preview.promptPlan, contextIdentity: preview.contextIdentity };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -275,6 +276,11 @@ export function useAssemblyController({
 						: outcome.status === "not-found"
 							? "The Conversation no longer exists."
 							: "The Prompt Plan could not be assembled.");
+					return;
+				}
+				if (lastGeneration.contextIdentity !== outcome.preview.contextIdentity) {
+					generationStart.settle(startId);
+					setDirectStartError("The Chat context changed. Inspect the Prompt Plan before retrying.");
 					return;
 				}
 				let retainedIndex = promptPlan.blocks.length - 1;

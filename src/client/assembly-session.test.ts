@@ -14,6 +14,7 @@ const plan = (content: string): PromptPlan => ({
 const preview = (content = "Expanded"): GenerationPreview => ({
 	outcome: "available",
 	previewId: "preview-1",
+	contextIdentity: "context-1",
 	conversationId: 7,
 	kind: "send",
 	promptPlan: plan(content),

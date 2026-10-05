@@ -108,6 +108,10 @@ export function ProseEditor({
 		try {
 			const prepared = await Promise.all(files.map(async (file) => formatImageReference(baseName(file.name), (await prepareImage(file)).hash)));
 			if (view.current !== editor || !editor.state.facet(EditorView.editable)) return;
+			if (!pendingInsertions.current.has(pending)) {
+				setError("The selected text changed while the image was being prepared. Paste the image again.");
+				return;
+			}
 			const { from, to } = pending.range;
 			const selectionUnchanged = editor.state.selection.main.eq(pending.range);
 			const text = prepared.join(" ");
@@ -159,7 +163,12 @@ export function ProseEditor({
 					settings.label.of(EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-multiline": "true", spellcheck: "true" })),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
-							for (const pending of pendingInsertions.current) pending.range = pending.range.map(update.changes, 1);
+							for (const pending of pendingInsertions.current) {
+								update.changes.iterChangedRanges((from, to) => {
+									if (!pending.range.empty && from <= pending.range.to && to >= pending.range.from) pendingInsertions.current.delete(pending);
+								});
+								pending.range = pending.range.map(update.changes, 1);
+							}
 							onChangeRef.current(update.state.doc.toString());
 						}
 					}),
