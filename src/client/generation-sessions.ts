@@ -583,37 +583,21 @@ export const hasActiveGenerationSessions = (state: GenerationSessionsState): boo
 	return false;
 };
 
-// ==[HUMAN APPROVED]== The first session error of the active Conversation in insertion order, for
-// surfaces that show a single Generation notice.
-export const firstActiveGenerationSessionError = (
+// ==[HUMAN APPROVED]== The first active Conversation error and the first unacknowledged
+// terminal failure's Image Model in insertion order. Subscription and Stop errors can
+// precede a terminal failure, so the notice's reason and Image Model are selected independently.
+export const firstActiveGenerationSessionFailure = (
 	state: GenerationSessionsState,
-): string | null => {
+): { reason: string; imageModel: GenerationImageModel | null } | null => {
+	let reason: string | null = null;
 	for (const session of state.sessions.values()) {
-		if (
-			session.conversationId === state.activeConversationId &&
-			session.error !== null
-		) {
-			return session.error;
+		if (session.conversationId !== state.activeConversationId || session.error === null) continue;
+		reason ??= session.error;
+		if (session.terminal?.outcome === "failed") {
+			return { reason, imageModel: session.terminal.imageModel ?? null };
 		}
 	}
-	return null;
-};
-
-// ==[HUMAN APPROVED]== The model an unacknowledged failure sent Images to, which the failure
-// notice offers to mark as a Text-only Model.
-export const firstActiveGenerationSessionImageModel = (
-	state: GenerationSessionsState,
-): GenerationImageModel | null => {
-	for (const session of state.sessions.values()) {
-		if (
-			session.conversationId === state.activeConversationId &&
-			session.error !== null &&
-			session.terminal?.outcome === "failed"
-		) {
-			return session.terminal.imageModel ?? null;
-		}
-	}
-	return null;
+	return reason === null ? null : { reason, imageModel: null };
 };
 
 export const hasPendingGenerationStop = (state: GenerationSessionsState): boolean => {
