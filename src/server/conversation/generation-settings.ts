@@ -11,6 +11,7 @@ import {
 import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
 import { DEFAULT_CONTINUATION_STRATEGY, DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-defaults";
 import {
+	isRepeatedImagePlacement,
 	type CanonicalGenerationSettings,
 	type GenerationSettingsField,
 } from "../../shared/contract/generation-settings";
@@ -207,7 +208,7 @@ const normalizeSettingsField: SettingsFieldNormalizer = {
 	},
 	continuationPrefillSuffix: (value) => validateContinuationPrefillSuffix(value),
 	repeatedImagePlacement: (value) => {
-		if (value !== "first" && value !== "last" && value !== "every") {
+		if (!isRepeatedImagePlacement(value)) {
 			throw new InvalidConversationCommandError("Repeated Image Placement must be first, last, or every.");
 		}
 		return value;
@@ -317,7 +318,7 @@ function parseContinuationPrefillSuffix(value: string): ContinuationPrefillSuffi
 function parseRepeatedImagePlacement(
 	value: string,
 ): ConversationGenerationSettings["repeatedImagePlacement"] {
-	if (value === "first" || value === "last" || value === "every") return value;
+	if (isRepeatedImagePlacement(value)) return value;
 	throw new Error("Conversation Repeated Image Placement is corrupt.");
 }
 

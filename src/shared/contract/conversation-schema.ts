@@ -292,9 +292,7 @@ const provenanceSettingsWireSchemas = {
 	]),
 	repeatedImagePlacement: Type.Union([
 		Type.Null(),
-		Type.Literal("first"),
-		Type.Literal("last"),
-		Type.Literal("every"),
+		canonicalGenerationSettings.properties.repeatedImagePlacement,
 	]),
 } as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
 

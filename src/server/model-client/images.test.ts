@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile } from "../connection-settings/types";
 import { resolvePromptImages, type PromptBlock, type PromptPlan } from "../prompt-compiler";
 import { formatImageReference } from "../../shared/image-reference";
+import type { RepeatedImagePlacement } from "../../shared/prompt-images";
 import {
 	collectModelClientGeneration,
 	createOpenAICompatibleModelClient,
@@ -47,7 +48,7 @@ const stored = new Map([
 
 const planOf = (
 	blocks: PromptBlock[],
-	options: { intent?: PromptPlan["intent"]; placement?: "first" | "last" | "every"; known?: readonly string[]; sendImages?: boolean } = {},
+	options: { intent?: PromptPlan["intent"]; placement?: RepeatedImagePlacement; known?: readonly string[]; sendImages?: boolean } = {},
 ): PromptPlan => {
 	const known = options.known ?? [mapHash, mugHash];
 	return resolvePromptImages(

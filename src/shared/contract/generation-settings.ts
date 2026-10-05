@@ -1,4 +1,4 @@
-import { Kind, Type, type Static } from "@sinclair/typebox";
+import { Kind, Type, type Static, type TLiteral } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../generation-json";
 
 // The one canonical runtime declaration of the Generation Settings
@@ -25,6 +25,14 @@ const generationJsonObject = Type.Record(Type.String(), generationJsonValue);
 // Sampling values: null means the provider default; otherwise a finite
 // value between -2 and 2.
 const samplingValue = Type.Union([Type.Null(), Type.Number({ minimum: -2, maximum: 2 })]);
+
+export const REPEATED_IMAGE_PLACEMENTS = ["first", "last", "every"] as const;
+export const isRepeatedImagePlacement = (value: unknown): value is (typeof REPEATED_IMAGE_PLACEMENTS)[number] =>
+	REPEATED_IMAGE_PLACEMENTS.some((placement) => placement === value);
+
+type LiteralSchemas<Values extends readonly string[]> = { -readonly [K in keyof Values]: TLiteral<Values[K]> };
+// SAFETY: mapping each tuple value to its literal schema preserves its position and value type.
+const repeatedImagePlacementSchemas = REPEATED_IMAGE_PLACEMENTS.map((placement) => Type.Literal(placement)) as LiteralSchemas<typeof REPEATED_IMAGE_PLACEMENTS>;
 
 export const canonicalGenerationSettings = Type.Object({
 	// A model ID must contain non-whitespace content; surrounding
@@ -55,11 +63,7 @@ export const canonicalGenerationSettings = Type.Object({
 	]),
 	// Which occurrences of an Image appearing more than once in a Generation
 	// send it; the others send only their Image Anchor.
-	repeatedImagePlacement: Type.Union([
-		Type.Literal("first"),
-		Type.Literal("last"),
-		Type.Literal("every"),
-	]),
+	repeatedImagePlacement: Type.Union(repeatedImagePlacementSchemas),
 	// Every API Format namespace is required so a switch between global
 	// Connection Profiles can never transmit settings authored for another
 	// wire format; each namespace keeps the open Generation JSON vocabulary.
