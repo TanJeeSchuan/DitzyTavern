@@ -29,17 +29,12 @@ const providerRoleFor = {
 
 type Segment = { text: string } | { anchor: string; image: LoadedImage };
 
-interface RenderedContent {
-	readonly text: string;
-	readonly segments: Segment[];
-	readonly sent: boolean;
-}
-
 const renderContent = (
+	block: number,
 	content: string,
-	images: ReadonlyMap<number, PromptImage>,
+	images: ReadonlyMap<string, PromptImage>,
 	loadImage: ImageLoader,
-): RenderedContent => {
+): Segment[] => {
 	const segments: Segment[] = [];
 	let pending = "";
 	let cursor = 0;
@@ -47,14 +42,14 @@ const renderContent = (
 		const anchor = imageAnchor(name);
 		pending += content.slice(cursor, start) + anchor;
 		cursor = end;
-		const image = images.get(start)?.disposition === "send" ? loadImage(hash) : undefined;
+		const image = images.get(`${block}:${start}`)?.disposition === "send" ? loadImage(hash) : undefined;
 		if (image === undefined) continue;
 		segments.push({ text: pending }, { anchor, image });
 		pending = "";
 	}
 	pending += content.slice(cursor);
 	if (pending.length > 0) segments.push({ text: pending });
-	return { text: projectImageAnchors(content), segments, sent: segments.some((segment) => "image" in segment) };
+	return segments;
 };
 
 const imagePart = ({ bytes, mediaType }: LoadedImage): UserPart => ({ type: "file", data: bytes, mediaType });
@@ -83,21 +78,18 @@ export function toMessages(
 		if (!loaded.has(hash)) loaded.set(hash, load(hash));
 		return loaded.get(hash);
 	};
-	const imagesByBlock = new Map<number, Map<number, PromptImage>>();
-	for (const image of input.promptPlan.images) {
-		const block = imagesByBlock.get(image.block) ?? new Map<number, PromptImage>();
-		block.set(image.start, image);
-		imagesByBlock.set(image.block, block);
-	}
+	const images = new Map(input.promptPlan.images.map((image) => [`${image.block}:${image.start}`, image]));
 	const renderBlock = (blockIndex: number, content: string) =>
-		renderContent(content, imagesByBlock.get(blockIndex) ?? new Map(), loadImage);
-	const push = (role: "system" | "user" | "assistant", rendered: RenderedContent, speakerName: string | null = null) => {
+		renderContent(blockIndex, content, images, loadImage);
+	const push = (role: "system" | "user" | "assistant", segments: readonly Segment[], speakerName: string | null = null) => {
+		const sent = segments.some((segment) => "image" in segment);
+		const text = `${speakerPrefix(speakerName)}${segments.map((segment) => "text" in segment ? segment.text : "").join("")}`;
 		if (role === "user") {
-			messages.push({ role, content: rendered.sent ? userParts(rendered.segments, speakerName) : `${speakerPrefix(speakerName)}${rendered.text}` });
+			messages.push({ role, content: sent ? userParts(segments, speakerName) : text });
 			return;
 		}
-		messages.push({ role, content: `${speakerPrefix(speakerName)}${rendered.text}` });
-		if (rendered.sent) messages.push({ role: "user", content: followingImages(rendered.segments) });
+		messages.push({ role, content: text });
+		if (sent) messages.push({ role: "user", content: followingImages(segments) });
 	};
 
 	const continuationIntent = input.promptPlan.intent?.type === "continuation"
