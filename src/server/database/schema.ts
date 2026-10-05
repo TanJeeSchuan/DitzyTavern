@@ -51,9 +51,9 @@ export const toPortraitColumns = (portrait: Portrait | undefined): PortraitColum
 });
 
 export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
-	row?.portrait_hash == null || row.portrait_focal_x === null || row.portrait_focal_y === null
+	row?.portrait_hash == null
 		? undefined
-		: { hash: row.portrait_hash, focalX: row.portrait_focal_x, focalY: row.portrait_focal_y };
+		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! };
 
 // ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
@@ -432,7 +432,7 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
 	...portraitColumns(),
-});
+}, (table) => [check("character_prompt_portrait_complete", sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`)]);
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows. Empty lists and duplicate
 // contents are allowed; the (character, position) pair is unique.
@@ -510,7 +510,7 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
 	...portraitColumns(),
-});
+}, (table) => [check("participant_prompt_portrait_complete", sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`)]);
 
 // ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
 // character_prompt and participant_prompt tables.

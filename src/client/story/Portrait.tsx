@@ -3,7 +3,7 @@ import { imageSrc } from "../lib/image";
 
 export const focalPosition = (portrait: PortraitImage) => `${portrait.focalX * 100}% ${portrait.focalY * 100}%`;
 
-export function Portrait({ name, size, portrait }: { name?: string; size: "small" | "medium" | "large"; portrait?: PortraitImage | null | undefined }) {
+export function Portrait({ name, size, portrait }: { name?: string; size: "small" | "medium" | "large"; portrait?: PortraitImage }) {
 	const initial = name?.trim().charAt(0).toLocaleUpperCase() ?? "?";
 	return (
 		<span className="portrait" data-size={size} aria-hidden="true">

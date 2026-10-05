@@ -11,8 +11,7 @@ export const chatSummary = Type.Object({
 	name: Type.String(),
 	creationTime: Type.String(),
 	lastMessageTime: Type.String(),
-	castNames: Type.Array(Type.String()),
-	castPortraits: Type.Array(Type.Union([Type.Null(), portrait])),
+	cast: Type.Array(Type.Object({ name: Type.String(), portrait: Type.Union([Type.Null(), portrait]) })),
 	excerpt: Type.String(),
 });
 

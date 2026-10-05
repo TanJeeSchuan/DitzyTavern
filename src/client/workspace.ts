@@ -8,8 +8,7 @@ export type ChatSummary = {
 	id: string;
 	title: string;
 	updatedAt: string;
-	castNames: string[];
-	castPortraits: (Portrait | null)[];
+	cast: { name: string; portrait: Portrait | null }[];
 	excerpt: string;
 };
 
@@ -47,8 +46,7 @@ const fetchWorkspace = async () => {
 			id: String(chat.id),
 			title: chat.name,
 			updatedAt: chat.lastMessageTime,
-			castNames: chat.castNames,
-			castPortraits: chat.castPortraits,
+			cast: chat.cast,
 			excerpt: chat.excerpt,
 		})),
 	};

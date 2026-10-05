@@ -113,6 +113,13 @@
       "when": 1791213932138,
       "tag": "0015_smiling_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1791214413333,
+      "tag": "0016_strong_solo",
+      "breakpoints": true
     }
   ]
 }

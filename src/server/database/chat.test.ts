@@ -47,7 +47,13 @@ describe("Chat list summaries", () => {
 		});
 		expect(removed.messages[0]?.author?.inCast).toBe(false);
 
-		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.castNames).toEqual(["Writer", "Maren"]);
+		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([{ name: "Writer", portrait: null }, { name: "Maren", portrait: null }]);
+	});
+
+	test("a Participant name containing the old Cast separator stays paired with its Portrait", () => {
+		const name = "Maren\u001fVoss";
+		const chat = createChat("Name", ["Writer", name]);
+		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([{ name: "Writer", portrait: null }, { name, portrait: null }]);
 	});
 
 	test("excerpts the last Message's selected Variant with whitespace collapsed and a 160-character cap", () => {
@@ -76,7 +82,7 @@ describe("Chat list summaries", () => {
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[0]!.id);
 		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[2]!.id);
 		setPortrait.run(nox.hash, nox.focalX, nox.focalY, chat.cast[3]!.id);
-		setPortrait.run(writer.hash, null, writer.focalY, chat.cast[4]!.id);
+		expect(() => setPortrait.run(writer.hash, null, writer.focalY, chat.cast[4]!.id)).toThrow("CHECK constraint failed");
 		applyCommand(module, {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
@@ -85,12 +91,11 @@ describe("Chat list summaries", () => {
 		database.query("UPDATE participant SET position = position + 10 WHERE conversation_id = ?").run(chat.id);
 		[3, 0, 1, 4].forEach((index, position) => database.query("UPDATE participant SET position = ? WHERE id = ?").run(position, chat.cast[index]!.id));
 		const summary = listChatSummaries(database).find((candidate) => candidate.id === chat.id);
-		expect(summary?.castNames).toEqual(["Nox", "Writer", "Maren", "Iris"]);
-		expect(summary?.castPortraits).toEqual([nox, writer, null, null]);
+		expect(summary?.cast).toEqual([{ name: "Nox", portrait: nox }, { name: "Writer", portrait: writer }, { name: "Maren", portrait: null }, { name: "Iris", portrait: null }]);
 	});
 
 	test("a Chat without Participants has no Portraits", () => {
 		const chat = module.create({ name: "No Cast" });
-		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.castPortraits).toEqual([]);
+		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });
