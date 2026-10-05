@@ -734,9 +734,6 @@ export const generationPreviewBody = Type.Union([
 	}),
 ]);
 
-export const generationPreviewImagesBody = Type.Object({ previewId: Type.String(), promptPlan });
-export const generationPreviewImages = Type.Pick(promptPlan, ["images"]);
-
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
 	responseBudget: Type.Integer(),

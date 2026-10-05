@@ -217,7 +217,7 @@ export const createGenerationPreviewAsync = async (
 	return record;
 };
 
-const resolveEditedPlanImages = (
+const acceptedEditedPlan = (
 	database: Database,
 	record: GenerationPreviewRecord,
 	submittedPlan: PromptPlan,
@@ -235,23 +235,6 @@ const resolveEditedPlanImages = (
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	return editedPlan;
-};
-
-export const resolveGenerationPreviewImages = (
-	database: Database,
-	conversationId: number,
-	previewId: string,
-	submittedPlan: PromptPlan,
-) => resolveEditedPlanImages(database, ensureRecord(database, previewId, conversationId), submittedPlan).images;
-
-const acceptedEditedPlan = (
-	database: Database,
-	record: GenerationPreviewRecord,
-	submittedPlan: PromptPlan,
-) => {
-	const settings = record.capture.capture.plan.effectiveSettings;
-	const editedPlan = resolveEditedPlanImages(database, record, submittedPlan);
 	const budget = budgetEditedPromptPlan({
 		plan: editedPlan,
 		contextLimit: settings.contextLimit,
