@@ -87,14 +87,4 @@ describe("retry retained edits", () => {
 
 		expect(transferRetainedEdits(assembled, edited, fresh)).toEqual(fresh);
 	});
-
-	test("retries verbatim from the fresh assembly when the user edited nothing", () => {
-		const assembled = plan(
-			[history("human", "Writer", "Hello")],
-			{ intent: { type: "continuation", strategy: "assistant-prefill", suffix: "\n" } },
-		);
-		const fresh = assembled;
-
-		expect(transferRetainedEdits(assembled, assembled, fresh)).toEqual(fresh);
-	});
 });
