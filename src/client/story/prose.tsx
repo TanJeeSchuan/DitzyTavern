@@ -1,5 +1,5 @@
 import MarkdownIt, { type Delimiter, type StateInline, type Token } from "markdown-it";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { imageAnchor, imageReferenceAt } from "../../shared/image-reference";
 import { imageSrc } from "../lib/image";
@@ -189,15 +189,13 @@ interface OpenedImage {
 	name: string;
 }
 
-export function Prose({ text, streaming }: { text: string; streaming: boolean }) {
-	const [streamed, setStreamed] = useState(streaming);
-	if (streaming && !streamed) setStreamed(true);
-	const shown = streaming ? text.slice(0, revealedLength(text)) : text;
+const ProseImageContext = createContext<((image: OpenedImage) => void) | null>(null);
+
+export function ProseImageProvider({ children }: { children: ReactNode }) {
 	const [opened, setOpened] = useState<OpenedImage | null>(null);
-	const blocks = useMemo(() => renderBlocks(shown), [shown]);
 	return (
-		<>
-			{blocks.map((html, index) => <ProseBlock key={index} html={html} fade={streamed} onOpenImage={setOpened} />)}
+		<ProseImageContext value={setOpened}>
+			{children}
 			<Dialog open={opened !== null} onOpenChange={(open) => { if (!open) setOpened(null); }}>
 				<DialogContent className="w-fit max-w-[calc(100%-2rem)] gap-2 sm:max-w-[min(56rem,calc(100%-2rem))]">
 					<DialogTitle className="truncate pr-8">{opened?.name}</DialogTitle>
@@ -205,6 +203,15 @@ export function Prose({ text, streaming }: { text: string; streaming: boolean })
 					{opened !== null && <img src={imageSrc(opened.hash)} alt={opened.name} className="max-h-[78vh] max-w-full rounded-lg object-contain" />}
 				</DialogContent>
 			</Dialog>
-		</>
+		</ProseImageContext>
 	);
+}
+
+export function Prose({ text, streaming }: { text: string; streaming: boolean }) {
+	const openImage = useContext(ProseImageContext)!;
+	const [streamed, setStreamed] = useState(streaming);
+	if (streaming && !streamed) setStreamed(true);
+	const shown = streaming ? text.slice(0, revealedLength(text)) : text;
+	const blocks = useMemo(() => renderBlocks(shown), [shown]);
+	return blocks.map((html, index) => <ProseBlock key={index} html={html} fade={streamed} onOpenImage={openImage} />);
 }
