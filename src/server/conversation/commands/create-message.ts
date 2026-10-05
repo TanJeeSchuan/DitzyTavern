@@ -61,6 +61,5 @@ export function createMessage(db: ConversationDatabase, input: CreateMessageInpu
 			selected: index === selectedVariantIndex,
 		})),
 	);
-
 	if (author.id === readControlAssignment(db, input.conversationId).humanParticipantId) syncSelectedMemorySource(db.$client, input.conversationId, messageId);
 }

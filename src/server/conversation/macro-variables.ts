@@ -26,7 +26,7 @@ import {
 } from "../../shared/contract/macro-variable-write";
 import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
-import { syncMacroStateReferences, type ConversationDatabase } from "./internal";
+import type { ConversationDatabase } from "./internal";
 import { readSelectedHistoryFromConnection } from "./selected-history";
 import {
 	advanceConversationRevisionGuarded,
@@ -192,7 +192,7 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 			const key = macroInitialValueKey(input.promptPresetId, input.name);
 			if (write.operation === "set") {
 				const value = JSON.stringify(requireMacroValue(write.value));
-				const row = db.insert(conversationDataTable)
+				db.insert(conversationDataTable)
 					.values({
 						conversation_id: input.conversationId,
 						namespace: MACRO_DATA_NAMESPACE,
@@ -203,9 +203,7 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 						target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key],
 						set: { value },
 					})
-					.returning({ id: conversationDataTable.id })
-					.get();
-				syncMacroStateReferences(db, "conversation_data_id", [{ id: row.id, namespace: MACRO_DATA_NAMESPACE, value }]);
+					.run();
 			} else {
 				db.delete(conversationDataTable)
 					.where(and(
@@ -244,22 +242,17 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 				input.promptPresetId,
 				[...readMacroWrites(row === undefined ? [] : [row], input.promptPresetId), write],
 			);
-			syncMacroStateReferences(
-				db,
-				"variant_data_id",
-				db.insert(messageVariantDataTable)
-					.values(entries.map((entry) => ({ message_variant_id: variant.id, ...entry })))
-					.onConflictDoUpdate({
-						target: [
-							messageVariantDataTable.message_variant_id,
-							messageVariantDataTable.namespace,
-							messageVariantDataTable.key,
-						],
-						set: { value: entries[0]!.value },
-					})
-					.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
-					.all(),
-			);
+			db.insert(messageVariantDataTable)
+				.values(entries.map((entry) => ({ message_variant_id: variant.id, ...entry })))
+				.onConflictDoUpdate({
+					target: [
+						messageVariantDataTable.message_variant_id,
+						messageVariantDataTable.namespace,
+						messageVariantDataTable.key,
+					],
+					set: { value: entries[0]!.value },
+				})
+				.run();
 		}
 		advanceConversationRevisionGuarded(db, input.conversationId, input.expectedRevision, conversation.revision);
 		const variables = readMacroVariablesFromConnection(db, input.conversationId, {

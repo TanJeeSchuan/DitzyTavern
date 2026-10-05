@@ -5,7 +5,6 @@ import {
 	participantPromptTable,
 	participantTable,
 } from "../../database/schema";
-import { dropImageReferences } from "../../image";
 import { ParticipantNotRemovableError } from "../errors";
 import {
 	type ConversationDatabase,
@@ -89,7 +88,6 @@ export function removeParticipant(
 		db.delete(participantPromptTable)
 			.where(eq(participantPromptTable.participant_id, participant.id))
 			.run();
-		dropImageReferences(db, "participant_id", participant.id);
 		db.delete(participantOpeningTable)
 			.where(eq(participantOpeningTable.participant_id, participant.id))
 			.run();

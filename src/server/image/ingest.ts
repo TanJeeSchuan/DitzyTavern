@@ -66,18 +66,18 @@ const readSize = (bytes: Uint8Array, mediaType: ImageMediaType): Size | undefine
 
 export const ingestImage = async (original: Uint8Array): Promise<IngestedImage> => {
 	if (original.byteLength > MAX_IMAGE_BYTES) {
-		throw new InvalidImageError("too-large", "Images may be at most 20 MB.");
+		throw new InvalidImageError("Images may be at most 20 MB.");
 	}
 	const mediaType = sniff(original);
 	if (mediaType === undefined) {
-		throw new InvalidImageError("unsupported-type", "Only PNG, JPEG, WebP, and GIF images are accepted.");
+		throw new InvalidImageError("Only PNG, JPEG, WebP, and GIF images are accepted.");
 	}
 	const stripped = await transformExif(original).catch(() => {
-		throw new InvalidImageError("malformed", "The image could not be read.");
+		throw new InvalidImageError("The image could not be read.");
 	});
 	const size = readSize(stripped, mediaType);
 	if (size === undefined || size.width < 1 || size.height < 1) {
-		throw new InvalidImageError("malformed", "The image dimensions could not be read.");
+		throw new InvalidImageError("The image dimensions could not be read.");
 	}
 	const bytes = Buffer.from(stripped);
 	return { hash: createHash("sha256").update(bytes).digest("hex"), bytes, mediaType, ...size };

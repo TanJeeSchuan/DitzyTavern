@@ -30,8 +30,8 @@ describe("Image Reference lifetime", () => {
 		const { hash } = await uploadImage(database, pngFixture({ width }));
 		return { hash, token: formatImageReference("map", hash) };
 	};
-	const referenced = () => database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash);
-	const orphanedAt = (hash: string) => database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at;
+	const referenced = () => { sweepOrphanedImages(database); return database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash); };
+	const orphanedAt = (hash: string) => { sweepOrphanedImages(database); return database.query<{ orphaned_at: number | null }, [string]>("SELECT orphaned_at FROM image WHERE hash = ?").get(hash)?.orphaned_at; };
 	const stored = () => database.query<{ hash: string }, []>("SELECT hash FROM image").all().map((row) => row.hash);
 	const conversations = () => createConversationModule(database);
 	const library = () => createCharacterLibraryModule(database);
@@ -77,6 +77,70 @@ describe("Image Reference lifetime", () => {
 		expect(orphanedAt(art.hash)).toBeNull();
 	});
 
+	test("removing and restoring the last Reference restarts its grace period at the sweep", async () => {
+		const target = chat();
+		const art = await picture(4);
+		writeMessage(target, [art.token]);
+		const message = lastMessage(target);
+		const edit = (content: string) => conversations().execute({
+			conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!,
+			action: { type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content },
+		});
+		const now = Date.now();
+		const day = 24 * 60 * 60 * 1000;
+		sweepOrphanedImages(database, now);
+		edit("Gone");
+		sweepOrphanedImages(database, now + day);
+		expect(database.query("SELECT orphaned_at FROM image WHERE hash = ?").get(art.hash)).toEqual({ orphaned_at: now + day });
+		edit(art.token);
+		sweepOrphanedImages(database, now + 3 * day);
+		expect(database.query("SELECT orphaned_at FROM image WHERE hash = ?").get(art.hash)).toEqual({ orphaned_at: null });
+		edit("Gone again");
+		sweepOrphanedImages(database, now + 4 * day);
+		sweepOrphanedImages(database, now + 5 * day);
+		expect(stored()).toEqual([art.hash]);
+		sweepOrphanedImages(database, now + 5 * day + 1);
+		expect(stored()).toEqual([]);
+	});
+
+	test("a Reference saved while its Image is missing protects the re-upload past its grace period", async () => {
+		const target = chat();
+		const art = await picture(4);
+		const day = 24 * 60 * 60 * 1000;
+		sweepOrphanedImages(database, Date.now() + day + 1);
+		expect(stored()).toEqual([]);
+		writeMessage(target, [art.token]);
+		expect(lastMessage(target).variants[0]?.content).toBe(art.token);
+		expect(await uploadImage(database, pngFixture({ width: 4 }))).toEqual({ hash: art.hash });
+		sweepOrphanedImages(database, Date.now() + 2 * day);
+		expect(stored()).toEqual([art.hash]);
+		expect(orphanedAt(art.hash)).toBeNull();
+	});
+
+	for (const owner of ["Character", "Participant"] as const) {
+		test(`${owner} Portrait, every Prompt channel, and Opening survive overdue uploads and release after deletion`, async () => {
+			const pictures = await Promise.all([11, 12, 13, 14, 15, 16, 17].map(picture));
+			const [portrait, system, identity, scenario, dialogue, postHistory, opening] = pictures;
+			const definition = {
+				name: "Maren",
+				portrait: { hash: portrait!.hash, focalX: 0.5, focalY: 0.5 },
+				prompt: { systemInstruction: system!.token, identity: identity!.token, scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
+				openings: [opening!.token],
+			};
+			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
+			const target = owner === "Participant" ? conversations().create({ name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
+			sweepOrphanedImages(database, now);
+			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
+			if (character !== undefined) library().execute({ type: "delete", characterId: character.id, expectedRevision: character.revision });
+			if (target !== undefined) deleteConversation(database, target.id);
+			sweepOrphanedImages(database, now);
+			expect(stored()).toHaveLength(7);
+			sweepOrphanedImages(database, now + 24 * 60 * 60 * 1000 + 1);
+			expect(stored()).toEqual([]);
+		});
+	}
+
 	test("a pasted token needs no bytes and keeps the Image alive after its original goes", async () => {
 		const target = chat();
 		const art = await picture(4);
@@ -117,7 +181,6 @@ describe("Image Reference lifetime", () => {
 			action: { type: "create-message", timestamp, variantContents: [art.token], authorParticipantId: 9999 },
 		})).toThrow(InvalidConversationCommandError);
 		expect(referenced()).toEqual([]);
-		expect(database.query("SELECT id FROM image_reference").all()).toEqual([]);
 	});
 
 	test("a new Variant's Image is held by that Variant alone", async () => {
@@ -160,7 +223,7 @@ describe("Image Reference lifetime", () => {
 		expect(referenced()).toEqual([]);
 	});
 
-	test("editing a Participant's Definition re-syncs its Images", async () => {
+	test("editing a Participant's Definition changes the Images held at startup", async () => {
 		const target = chat();
 		const art = await picture(4);
 		const maren = target.cast[1]!;
@@ -199,7 +262,6 @@ describe("Image Reference lifetime", () => {
 						conversations().execute({ conversationId: target.id, expectedRevision: conversations().getRevision(target.id)!, action: { type: "update-participant-definition", participantId: target.cast[1]!.id, definition: definition(to) } });
 					}
 					expect(referenced()).toEqual([art.hash]);
-					expect(database.query("SELECT kind FROM image_reference").all()).toEqual([{ kind: to }]);
 				});
 			}
 		}
@@ -230,6 +292,8 @@ describe("Image Reference lifetime", () => {
 			expectedRevision: conversations().getRevision(target.id) ?? 0,
 			action: { type: "select-variant", messageId: message.id, variantId: secondVariant!.id },
 		});
+		sweepOrphanedImages(database, Date.now() + 48 * 60 * 60 * 1000);
+		expect(stored()).toEqual([art.hash]);
 		expect(referenced()).toEqual([art.hash]);
 
 		conversations().execute({
@@ -451,7 +515,6 @@ describe("Image Reference lifetime", () => {
 				execute({ type: "replace-participant-prompt", participantId, prompt });
 				execute({ type: "replace-participant-openings", participantId, openings: [] });
 			}
-			expect(database.query("SELECT kind FROM image_reference").all()).toEqual([{ kind: "portrait" }]);
 			expect(orphanedAt(art.hash)).toBeNull();
 		});
 	}

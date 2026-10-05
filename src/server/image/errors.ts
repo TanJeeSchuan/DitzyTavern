@@ -1,11 +1,6 @@
-export type InvalidImageReason = "unsupported-type" | "too-large" | "malformed" | "missing";
-
 export class InvalidImageError extends Error {
-	readonly reason: InvalidImageReason;
-
-	constructor(reason: InvalidImageReason, message: string) {
+	constructor(message: string) {
 		super(message);
 		this.name = "InvalidImageError";
-		this.reason = reason;
 	}
 }

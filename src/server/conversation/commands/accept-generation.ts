@@ -52,7 +52,6 @@ import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variabl
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { isMemoryActivationRecord } from "../../../shared/contract/memory-recall";
 import { syncSelectedMemorySource } from "../../memory";
-import { syncJsonValueReferences } from "../../image";
 
 // ==[HUMAN APPROVED]== Acceptance seams for the server-owned Generation lifecycles. Every accept
 // commits its lifecycle's target and the Active Generation row in one
@@ -122,13 +121,6 @@ const persistActiveGeneration = (
 	if (memoryActivation !== null && !isMemoryActivationRecord(memoryActivation)) {
 		throw new InvalidConversationCommandError("The Memory Activation Record does not match the canonical schema.");
 	}
-	const macroWritesJson = jsonText(
-		(input.macroWrites ?? []).map(encodeMacroVariableWrite),
-		"Macro writes",
-	);
-	const promptPlanJson = jsonText(input.promptPlan, "Prompt Plan");
-	const promptInspectionJson = jsonText(input.promptInspection ?? {}, "Prompt inspection");
-	const promptContextJson = jsonText(input.promptContext, "Prompt context");
 	const active = db
 		.insert(activeGenerationTable)
 		.values({
@@ -142,9 +134,9 @@ const persistActiveGeneration = (
 			captured_human_name: input.capturedHumanName,
 			captured_model_name: input.capturedModelName,
 			started_at: input.timestamp,
-			prompt_plan_json: promptPlanJson,
-			prompt_inspection_json: promptInspectionJson,
-			prompt_context_json: promptContextJson,
+			prompt_plan_json: jsonText(input.promptPlan, "Prompt Plan"),
+			prompt_inspection_json: jsonText(input.promptInspection ?? {}, "Prompt inspection"),
+			prompt_context_json: jsonText(input.promptContext, "Prompt context"),
 			generation_settings_json: jsonText(input.generationSettings, "Generation Settings"),
 			connection_json: jsonText(input.connection, "Connection identity"),
 			lore_activation_json: jsonText(loreActivation, "Lore activation evidence"),
@@ -154,7 +146,7 @@ const persistActiveGeneration = (
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
-			macro_writes_json: macroWritesJson,
+			macro_writes_json: jsonText((input.macroWrites ?? []).map(encodeMacroVariableWrite), "Macro writes"),
 		})
 		.returning({ id: activeGenerationTable.id })
 		.get();
@@ -163,11 +155,6 @@ const persistActiveGeneration = (
 			"The Active Generation could not be persisted.",
 		);
 	}
-	syncJsonValueReferences(
-		db,
-		{ kind: "active-generation", column: "active_generation_id", id: active.id },
-		[(input.macroWrites ?? []).map(encodeMacroVariableWrite), input.promptPlan, input.promptContext, input.promptInspection ?? {}],
-	);
 	return active.id;
 };
 

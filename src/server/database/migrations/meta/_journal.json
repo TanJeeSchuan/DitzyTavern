@@ -106,6 +106,13 @@
       "when": 1791206305948,
       "tag": "0014_smiling_leech",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1791213932138,
+      "tag": "0015_smiling_thing",
+      "breakpoints": true
     }
   ]
 }

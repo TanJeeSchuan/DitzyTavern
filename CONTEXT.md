@@ -168,7 +168,7 @@ _Avoid_: detected speaker, character attribution
 ## Images
 
 **Image**:
-A picture stored once by its content, so the same picture is one Image wherever it appears. Portraits and Image References name it. Images are uploaded through one endpoint, become orphaned when their last reference goes, and are deleted at startup after more than 24 hours orphaned.
+A picture stored once by its content, so the same picture is one Image wherever it appears. Portraits and Image References name it. Images are uploaded through one endpoint and start orphaned. Startup scans all persisted owners to clear or set orphan timestamps, then deletes Images orphaned for more than 24 hours.
 _Avoid_: attachment (reserved for Lorebook Attachment), upload, file
 
 **Image Reference**:

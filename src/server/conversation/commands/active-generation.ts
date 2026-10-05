@@ -12,7 +12,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "../errors";
-import { syncMacroStateReferences, writeVariantContent, type ConversationDatabase } from "../internal";
+import type { ConversationDatabase } from "../internal";
 import { advanceConversationRevision, runConversationTransaction } from "./transaction";
 import type {
 	ConversationDataEntry,
@@ -249,19 +249,14 @@ export const persistTerminalVariantData = (
 		...suppliedData,
 	];
 	if (data.length > 0) {
-		syncMacroStateReferences(
-			db,
-			"variant_data_id",
-			db.insert(messageVariantDataTable)
-				.values(data.map((entry) => ({
-					message_variant_id: variantId,
-					namespace: entry.namespace,
-					key: entry.key,
-					value: entry.value,
-				})))
-				.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
-				.all(),
-		);
+		db.insert(messageVariantDataTable)
+			.values(data.map((entry) => ({
+				message_variant_id: variantId,
+				namespace: entry.namespace,
+				key: entry.key,
+				value: entry.value,
+			})))
+			.run();
 	}
 };
 
@@ -294,7 +289,7 @@ function commitDurableTerminalGenerationInTransaction(
 	if (variant === undefined) {
 		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
 	}
-	writeVariantContent(db, variant.id, input.content, input.timestamp);
+	db.update(messageVariantTable).set({ content: input.content, timestamp: input.timestamp }).where(eq(messageVariantTable.id, variant.id)).run();
 	persistTerminalVariantData(db, variant.id, {
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
@@ -408,7 +403,7 @@ function writeCheckpointInTransaction(
 	const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
 		? currentEventId
 		: Math.max(currentEventId, input.latestEventId);
-	writeVariantContent(db, active.variant_id, input.content, input.timestamp);
+	db.update(messageVariantTable).set({ content: input.content, timestamp: input.timestamp }).where(eq(messageVariantTable.id, active.variant_id)).run();
 	db.update(activeGenerationTable)
 		.set({
 			checkpoint_content: input.content,

@@ -1,2 +1,2 @@
 export { InvalidImageError } from "./errors";
-export { dropImageReferences, imageLoader, imageLookup, readImage, syncJsonValueReferences, syncDefinitionReferences, syncTextReferences, uploadImage, sweepOrphanedImages } from "./store";
+export { imageLoader, imageLookup, readImage, uploadImage, sweepOrphanedImages } from "./store";

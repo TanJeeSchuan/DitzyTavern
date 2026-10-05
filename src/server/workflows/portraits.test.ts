@@ -5,7 +5,7 @@ import { createCharacterLibraryModule } from "../character-library";
 import { createConversationModule, deleteConversation } from "../conversation";
 import { createConversationRoutes } from "../contract/conversation";
 import { pngFixture } from "../image/image-fixtures";
-import { uploadImage, InvalidImageError } from "../image";
+import { uploadImage, sweepOrphanedImages, InvalidImageError } from "../image";
 import type { Portrait } from "../../shared/contract/image";
 import { addCharacterToCast, createNativeConversation, saveParticipantAsCharacter } from ".";
 
@@ -27,7 +27,7 @@ describe("Portraits", () => {
 		const { hash } = await uploadImage(database, pngFixture({ width }));
 		return { portrait: { hash, focalX: 0.25, focalY: 0.75 } };
 	};
-	const referenced = () => database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash);
+	const referenced = () => { sweepOrphanedImages(database); return database.query<{ hash: string }, []>("SELECT hash FROM image WHERE orphaned_at IS NULL").all().map((row) => row.hash); };
 	const library = () => createCharacterLibraryModule(database);
 	const conversations = () => createConversationModule(database);
 

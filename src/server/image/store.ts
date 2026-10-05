@@ -1,35 +1,14 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { imageReferenceTable, imageTable } from "../database/schema";
-import type { Portrait } from "../../shared/contract/image";
-import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import { imageTable } from "../database/schema";
 import { imageHashes, jsonImageHashes } from "../../shared/image-reference";
 import type { ImageLookup } from "../prompt-compiler";
 import type { GenerationJsonValue } from "../../shared/generation-json";
+import { MACRO_DATA_NAMESPACE } from "../prompt-macros";
 import { ingestImage } from "./ingest";
-import { InvalidImageError } from "./errors";
 
-type ImageReferenceKind = (typeof imageReferenceTable.kind.enumValues)[number];
-type OwnerColumn = "variant_id" | "character_id" | "participant_id" | "variant_data_id" | "conversation_data_id" | "active_generation_id";
-export interface ImageOwner { kind: ImageReferenceKind; column: OwnerColumn; id: number }
 type ImageDatabase = BunSQLiteDatabase<Record<string, never>>;
-const ownerFilter = (owner: ImageOwner) => and(eq(imageReferenceTable.kind, owner.kind), eq(imageReferenceTable[owner.column], owner.id));
-
-const syncImageReferences = (
-	db: ImageDatabase,
-	references: readonly { owner: ImageOwner; hashes: readonly string[] }[],
-) => {
-	const hashes = [...new Set(references.flatMap((reference) => reference.hashes))];
-	const present = new Set(hashes.length === 0 ? [] : db.select({ hash: imageTable.hash }).from(imageTable).where(inArray(imageTable.hash, hashes)).all().map((row) => row.hash));
-	const previousIds: number[] = [];
-	for (const { owner, hashes } of references) {
-		previousIds.push(...db.select({ id: imageReferenceTable.id }).from(imageReferenceTable).where(ownerFilter(owner)).all().map((row) => row.id));
-		const wanted = [...new Set(hashes)].filter((hash) => present.has(hash));
-		if (wanted.length > 0) db.insert(imageReferenceTable).values(wanted.map((hash) => ({ image_hash: hash, kind: owner.kind, [owner.column]: owner.id }))).run();
-	}
-	if (previousIds.length > 0) db.delete(imageReferenceTable).where(inArray(imageReferenceTable.id, previousIds)).run();
-};
 
 export const uploadImage = async (database: Database, bytes: Uint8Array) => {
 	const image = await ingestImage(bytes);
@@ -39,32 +18,49 @@ export const uploadImage = async (database: Database, bytes: Uint8Array) => {
 	}).onConflictDoUpdate({ target: imageTable.hash, set: { orphaned_at: sql`CASE WHEN ${imageTable.orphaned_at} IS NULL THEN NULL ELSE ${Date.now()} END` } }).run();
 	return { hash: image.hash };
 };
-export const sweepOrphanedImages = (database: Database, now = Date.now()) =>
-	drizzle(database).delete(imageTable).where(lt(imageTable.orphaned_at, now - 24 * 60 * 60 * 1000)).run();
+
+export const sweepOrphanedImages = (database: Database, now = Date.now()) => database.transaction(() => {
+	const referenced = new Set<string>();
+	const mark = (hashes: readonly string[]) => hashes.forEach((hash) => referenced.add(hash));
+	const textColumns = [
+		["message_variant", ["content"]],
+		["character_prompt", ["system_instruction", "identity", "scenario", "example_dialogue", "post_history_instruction"]],
+		["participant_prompt", ["system_instruction", "identity", "scenario", "example_dialogue", "post_history_instruction"]],
+		["character_opening", ["content"]],
+		["participant_opening", ["content"]],
+		["active_generation", ["checkpoint_content", "checkpoint_reasoning", "provenance_value"]],
+	] as const;
+	for (const [table, columns] of textColumns) {
+		for (const column of columns) {
+			for (const { value } of database.query<{ value: string }, []>(`SELECT ${column} AS value FROM ${table} WHERE ${column} LIKE '%](image:%'`).all()) mark(imageHashes(value));
+		}
+	}
+	for (const table of ["character_prompt", "participant_prompt"]) {
+		for (const { hash } of database.query<{ hash: string }, []>(`SELECT portrait_hash AS hash FROM ${table} WHERE portrait_hash IS NOT NULL`).all()) referenced.add(hash);
+	}
+	for (const table of ["message_variant_data", "conversation_data"]) {
+		for (const { value } of database.query<{ value: string }, [string]>(`SELECT value FROM ${table} WHERE namespace = ? AND value LIKE '%](image:%'`).all(MACRO_DATA_NAMESPACE)) {
+			const parsed: GenerationJsonValue = JSON.parse(value);
+			mark(jsonImageHashes(parsed));
+		}
+	}
+	for (const column of ["prompt_plan_json", "prompt_context_json", "prompt_inspection_json", "macro_writes_json", "generation_settings_json", "generation_intent_json", "lore_activation_json", "memory_activation_json", "connection_json"]) {
+		for (const { value } of database.query<{ value: string }, []>(`SELECT ${column} AS value FROM active_generation WHERE ${column} LIKE '%](image:%'`).all()) {
+			const parsed: GenerationJsonValue = JSON.parse(value);
+			mark(jsonImageHashes(parsed));
+		}
+	}
+	const update = database.query("UPDATE image SET orphaned_at = ? WHERE hash = ?");
+	for (const image of database.query<{ hash: string; orphaned_at: number | null }, []>("SELECT hash, orphaned_at FROM image").all()) {
+		if (referenced.has(image.hash)) {
+			if (image.orphaned_at !== null) update.run(null, image.hash);
+		} else if (image.orphaned_at === null) update.run(now, image.hash);
+	}
+	return database.query("DELETE FROM image WHERE orphaned_at < ?").run(now - 24 * 60 * 60 * 1000);
+}).immediate();
+
 export const readImage = (db: ImageDatabase, hash: string) =>
 	db.select().from(imageTable).where(eq(imageTable.hash, hash)).get();
-export const dropImageReferences = (db: ImageDatabase, column: OwnerColumn, id: number) => {
-	db.delete(imageReferenceTable).where(eq(imageReferenceTable[column], id)).run();
-};
-export const syncDefinitionReferences = (
-	db: ImageDatabase,
-	column: "character_id" | "participant_id",
-	id: number,
-	parts: { portrait?: Portrait | undefined; prompt?: PromptChannels; openings?: readonly string[] },
-) => {
-	if (parts.portrait !== undefined && readImage(db, parts.portrait.hash) === undefined) throw new InvalidImageError("missing", "The Portrait image is missing.");
-	const references: { owner: ImageOwner; hashes: readonly string[] }[] = [];
-	if ("portrait" in parts) references.push({ owner: { kind: "portrait", column, id }, hashes: parts.portrait === undefined ? [] : [parts.portrait.hash] });
-	if (parts.prompt !== undefined) references.push({ owner: { kind: "prompt", column, id }, hashes: Object.values(parts.prompt).flatMap(imageHashes) });
-	if (parts.openings !== undefined) references.push({ owner: { kind: "opening", column, id }, hashes: parts.openings.flatMap(imageHashes) });
-	syncImageReferences(db, references);
-};
-export const syncTextReferences = (db: ImageDatabase, owner: ImageOwner, texts: readonly string[]) => {
-	syncImageReferences(db, [{ owner, hashes: texts.flatMap(imageHashes) }]);
-};
-export const syncJsonValueReferences = (db: ImageDatabase, owner: ImageOwner, values: readonly GenerationJsonValue[]) => {
-	syncImageReferences(db, [{ owner, hashes: values.flatMap(jsonImageHashes) }]);
-};
 export const imageLookup = (database: Database): ImageLookup => (hash) =>
 	drizzle(database).select({ width: imageTable.width, height: imageTable.height }).from(imageTable).where(eq(imageTable.hash, hash)).get();
 export const imageLoader = (database: Database) => (hash: string) => {

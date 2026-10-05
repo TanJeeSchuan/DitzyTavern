@@ -913,35 +913,3 @@ export const connectionProfileTextOnlyModelTable = sqliteTable(
 		primaryKey({ columns: [table.profile_id, table.model_id] }),
 	],
 );
-
-export const imageReferenceTable = sqliteTable(
-	"image_reference",
-	{
-		id: int().primaryKey({ autoIncrement: true }),
-		image_hash: text()
-			.notNull()
-			.references(() => imageTable.hash),
-		kind: text({
-			enum: ["variant", "prompt", "opening", "portrait", "macro-state", "active-generation"],
-		}).notNull(),
-		variant_id: int().references(() => messageVariantTable.id, { onDelete: "cascade" }),
-		character_id: int().references(() => characterTable.id, { onDelete: "cascade" }),
-		participant_id: int().references(() => participantTable.id, { onDelete: "cascade" }),
-		variant_data_id: int().references(() => messageVariantDataTable.id, { onDelete: "cascade" }),
-		conversation_data_id: int().references(() => conversationDataTable.id, { onDelete: "cascade" }),
-		active_generation_id: int().references(() => activeGenerationTable.id, { onDelete: "cascade" }),
-	},
-	(table) => [
-		index("image_reference_image_hash_index").on(table.image_hash),
-		index("image_reference_variant_index").on(table.variant_id),
-		index("image_reference_character_index").on(table.character_id),
-		index("image_reference_participant_index").on(table.participant_id),
-		index("image_reference_variant_data_index").on(table.variant_data_id),
-		index("image_reference_conversation_data_index").on(table.conversation_data_id),
-		index("image_reference_active_generation_index").on(table.active_generation_id),
-		check(
-			"image_reference_one_owner_check",
-			sql`(${table.variant_id} IS NOT NULL) + (${table.character_id} IS NOT NULL) + (${table.participant_id} IS NOT NULL) + (${table.variant_data_id} IS NOT NULL) + (${table.conversation_data_id} IS NOT NULL) + (${table.active_generation_id} IS NOT NULL) = 1`,
-		),
-	],
-);

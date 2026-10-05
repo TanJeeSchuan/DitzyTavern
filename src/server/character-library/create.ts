@@ -1,5 +1,5 @@
+import { InvalidImageError, readImage } from "../image";
 import type { Database } from "bun:sqlite";
-import { syncDefinitionReferences } from "../image";
 import {
 	characterOpeningTable,
 	characterPromptTable,
@@ -37,6 +37,7 @@ export function createCharacter(
 			throw new Error("Character creation did not return an identifier.");
 		}
 
+		if (definition.portrait !== undefined && readImage(db, definition.portrait.hash) === undefined) throw new InvalidImageError("The Portrait image is missing.");
 		db.insert(characterPromptTable)
 			.values({
 				character_id: inserted.id,
@@ -44,7 +45,6 @@ export function createCharacter(
 				...toPortraitColumns(definition.portrait),
 			})
 			.run();
-		syncDefinitionReferences(db, "character_id", inserted.id, { ...definition, portrait: definition.portrait });
 
 		if (openings.length > 0) {
 			db.insert(characterOpeningTable)

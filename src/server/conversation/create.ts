@@ -19,7 +19,6 @@ import {
 	insertMessage,
 	insertParticipant,
 	insertVariants,
-	syncMacroStateReferences,
 	normalizeParticipantName,
 	writeControlAssignment,
 	type ConversationDatabase,
@@ -513,13 +512,7 @@ export function createConversation(
 				}));
 			});
 			if (variantData.length > 0) {
-				syncMacroStateReferences(
-					db,
-					"variant_data_id",
-					db.insert(messageVariantDataTable).values(variantData)
-						.returning({ id: messageVariantDataTable.id, namespace: messageVariantDataTable.namespace, value: messageVariantDataTable.value })
-						.all(),
-				);
+				db.insert(messageVariantDataTable).values(variantData).run();
 			}
 		}
 

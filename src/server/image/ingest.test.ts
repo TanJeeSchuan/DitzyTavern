@@ -44,7 +44,7 @@ describe("Image ingest", () => {
 	test("rejects unsupported content and oversized files", async () => {
 		const unsupported = ingestImage(Buffer.from("BM not an accepted image"));
 		await expect(unsupported).rejects.toBeInstanceOf(InvalidImageError);
-		await expect(unsupported).rejects.toMatchObject({ reason: "unsupported-type" });
-		await expect(ingestImage(Buffer.alloc(MAX_IMAGE_BYTES + 1))).rejects.toMatchObject({ reason: "too-large" });
+		await expect(unsupported).rejects.toThrow("Only PNG, JPEG, WebP, and GIF images are accepted.");
+		await expect(ingestImage(Buffer.alloc(MAX_IMAGE_BYTES + 1))).rejects.toThrow("Images may be at most 20 MB.");
 	});
 });

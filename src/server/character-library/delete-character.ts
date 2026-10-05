@@ -4,7 +4,6 @@ import {
 	characterPromptTable,
 	characterTable,
 } from "../database/schema";
-import { dropImageReferences } from "../image";
 import type { CharacterDatabase } from "./internal";
 import { readDeletionImpact } from "./snapshot";
 import type { CharacterDeletionResult } from "./types";
@@ -38,7 +37,6 @@ export function deleteCharacter(
 	db.delete(characterPromptTable)
 		.where(eq(characterPromptTable.character_id, characterId))
 		.run();
-	dropImageReferences(db, "character_id", characterId);
 	db.delete(characterOpeningTable)
 		.where(eq(characterOpeningTable.character_id, characterId))
 		.run();

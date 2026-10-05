@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { openInitializedDatabase } from "../database/database";
+import { sweepOrphanedImages } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { createContract } from ".";
 
@@ -34,6 +35,7 @@ describe("Image routes", () => {
 		expect(database.query<{ orphaned_at: number }, []>("SELECT orphaned_at FROM image").get()?.orphaned_at).toBeGreaterThanOrEqual(reuploadedAt);
 		const created = await createPortrait(hash);
 		expect(created.status).toBe(200);
+		sweepOrphanedImages(database);
 		expect((await upload(original)).status).toBe(200);
 		expect(database.query("SELECT orphaned_at FROM image").get()).toEqual({ orphaned_at: null });
 

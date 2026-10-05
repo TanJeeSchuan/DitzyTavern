@@ -15,6 +15,5 @@ export function createVariant(db: ConversationDatabase, input: CreateVariantInpu
 		content: input.content,
 		timestamp: message.timestamp,
 	});
-
 	syncMemorySources(db.$client, input.conversationId, [variantId]);
 }
