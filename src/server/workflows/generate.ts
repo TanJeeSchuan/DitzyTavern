@@ -310,7 +310,6 @@ export async function continueGeneration(
 			return captureContinuationGenerationAsync({
 				database: currentDatabase,
 				conversationId,
-
 				connection: current.connection,
 				connectionSettings: current.connectionSettings,
 				tokenEstimator: current.tokenEstimator,
@@ -370,7 +369,6 @@ export interface GenerateSiblingVariantInput {
 	onBeforeTerminal?: () => void | Promise<void>;
 	onAccepted?: (accepted: AcceptedSiblingGeneration) => void | Promise<void>;
 	tokenEstimator?: TokenEstimator;
-
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context is captured once with the sibling attempt.

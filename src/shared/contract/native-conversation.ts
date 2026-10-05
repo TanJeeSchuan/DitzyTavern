@@ -26,7 +26,6 @@ export const nativeConversationBody = Type.Object({
 	name: Type.String(),
 	humanSeat: newChatSeatSchema,
 	modelSeat: newChatSeatSchema,
-
 	// The initiating client owns the formatting context used to compile model
 	// openings. Both values are optional so the evaluator can apply its
 	// deterministic UTC/en-US defaults when a caller has no locale hint.

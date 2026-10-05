@@ -66,7 +66,7 @@ export type GenerationPreviewAcceptance =
 	| GenerationPreviewAcceptanceFor<"continuation">
 	| GenerationPreviewAcceptanceFor<"sibling">;
 
-type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale" | "images"> : never;
+type WithoutFormatting<T> = T extends unknown ? Omit<T, "timeZone" | "locale"> : never;
 
 export type GenerationPreviewRequest = WithoutFormatting<GenerationPreviewBody> & {
 	readonly conversationId: number;

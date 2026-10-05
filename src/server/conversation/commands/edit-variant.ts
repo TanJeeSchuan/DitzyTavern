@@ -14,6 +14,9 @@ export interface EditVariantInput {
 export function editVariant(db: ConversationDatabase, input: EditVariantInput) {
 	const current = requireVariant(db, input.conversationId, input.messageId, input.variantId);
 	if (current.content === input.content) return;
-	db.update(messageVariantTable).set({ content: input.content }).where(eq(messageVariantTable.id, input.variantId)).run();
+	db.update(messageVariantTable)
+		.set({ content: input.content })
+		.where(eq(messageVariantTable.id, input.variantId))
+		.run();
 	syncMemorySources(db.$client, input.conversationId, [input.variantId]);
 }

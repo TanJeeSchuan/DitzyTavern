@@ -47,7 +47,6 @@ export interface GenerationAttemptInput {
 	// ==[HUMAN APPROVED]== Tests and future calibration work may replace the default project-owned
 	// estimator without allowing a provider to influence budgeting policy.
 	tokenEstimator?: TokenEstimator;
-
 	// ==[HUMAN APPROVED]== Optional explicit write time; defaults to the current wall clock.
 	timestamp?: string | undefined;
 	// ==[HUMAN APPROVED]== Initiating-client formatting context. The capture

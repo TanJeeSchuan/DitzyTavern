@@ -146,7 +146,10 @@ const persistActiveGeneration = (
 			provenance_key: input.provenance?.key ?? null,
 			provenance_value: input.provenance?.value ?? null,
 			macro_preset_id: input.macroPresetId ?? null,
-			macro_writes_json: jsonText((input.macroWrites ?? []).map(encodeMacroVariableWrite), "Macro writes"),
+			macro_writes_json: jsonText(
+				(input.macroWrites ?? []).map(encodeMacroVariableWrite),
+				"Macro writes",
+			),
 		})
 		.returning({ id: activeGenerationTable.id })
 		.get();
@@ -434,7 +437,6 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
-
 			return { humanMessageId };
 		},
 	});
