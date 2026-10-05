@@ -264,7 +264,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/continue/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				async () => generationCoordinator.startContinuationGeneration({
+				() => generationCoordinator.startContinuationGeneration({
 					conversationId: params.id,
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
@@ -439,7 +439,7 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/macro-variables",
-			async ({ params, body, status }) => {
+			({ params, body, status }) => {
 				try {
 					const edited = createConversationModule(database).editMacroVariables({
 							conversationId: params.id,
@@ -456,7 +456,7 @@ export const createConversationRoutes = (
 						return staleConversationResponse(database, params.id, error);
 					}
 					if (error instanceof ConversationNotFoundError) return notFoundResponse();
-					if (error instanceof InvalidConversationCommandError || error instanceof InvalidImageError) {
+					if (error instanceof InvalidConversationCommandError) {
 						return status(422, { outcome: "invalid" as const, reason: error.message });
 					}
 					throw error;
@@ -515,7 +515,7 @@ export const createConversationRoutes = (
 			"/api/conversations/:id/generations",
 			async ({ params, body }) => generationAcceptanceResponse(
 				params.id,
-				async () => generationCoordinator.startSendGeneration({
+				() => generationCoordinator.startSendGeneration({
 					conversationId: params.id,
 					expectedRevision: body.previewId === undefined
 						? body.expectedRevision
@@ -554,7 +554,7 @@ export const createConversationRoutes = (
 			async ({ params, body }) =>
 				siblingGenerationAcceptanceResponse(
 					params.id,
-					async () => generationCoordinator.startSiblingGeneration({
+					() => generationCoordinator.startSiblingGeneration({
 						conversationId: params.id,
 						messageId: params.messageId,
 						formatting: { timeZone: body?.timeZone, locale: body?.locale },
@@ -578,7 +578,7 @@ export const createConversationRoutes = (
 		// server-owned Generation acceptance and event routes above.
 		.post(
 			"/api/conversations/:id/commands",
-			async ({ params, body, status }) => {
+			({ params, body, status }) => {
 				try {
 					// ==[HUMAN APPROVED]== SAFETY: Elysia validates the discriminated command shape at this
 					// boundary; the Conversation domain then validates generation values

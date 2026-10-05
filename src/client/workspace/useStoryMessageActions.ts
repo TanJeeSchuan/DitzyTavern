@@ -133,20 +133,19 @@ export function useStoryMessageActions({
 		if (story.preview !== null) return;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const variant = storyMessage.swipes[storyMessage.activeSwipe];
+		const variantId = storyMessage.swipes[storyMessage.activeSwipe]?.id;
 		const conversationId = story.conversationId;
-		if (variant === undefined || conversationId === null) return;
+		if (variantId === undefined || conversationId === null) return;
 
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
-			send: async (expectedRevision) => {
-				return applyConversationCommand(conversationId, expectedRevision, {
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
 					type: "edit-variant",
 					messageId,
-					variantId: variant.id,
+					variantId,
 					content,
-				});
-			},
+				}),
 			reconciliation: {
 				adoptSnapshot: setConversation,
 				showNotice: noPresentation,
@@ -173,17 +172,15 @@ export function useStoryMessageActions({
 	const deleteStoryMessage = async (messageId: number) => {
 		if (story.preview !== null) return;
 		const conversationId = story.conversationId;
-		const message = story.messages.find((entry) => entry.id === messageId);
-		if (message === undefined || conversationId === null) return;
+		if (!story.messages.some((entry) => entry.id === messageId) || conversationId === null) return;
 
 		await runConversationCommand({
 			revision: () => conversation?.revision ?? story.revision,
-			send: async (expectedRevision) => {
-				return applyConversationCommand(conversationId, expectedRevision, {
+			send: (expectedRevision) =>
+				applyConversationCommand(conversationId, expectedRevision, {
 					type: "delete-message",
 					messageId,
-				});
-			},
+				}),
 			reconciliation: {
 				adoptSnapshot: setConversation,
 				showNotice: noPresentation,

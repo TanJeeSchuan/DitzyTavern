@@ -23,8 +23,8 @@ import {
 	createModelClient,
 	ModelClientGenerationError,
 	type ModelClient,
-		type ModelClientConnectionSnapshot,
-		type ModelClientGenerationInput,
+	type ModelClientConnectionSnapshot,
+	type ModelClientGenerationInput,
 	type ModelClientEvent,
 	type ModelFetch,
 } from "../model-client";

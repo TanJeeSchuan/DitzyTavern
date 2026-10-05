@@ -56,7 +56,7 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/characters/commands",
-			async ({ body }) => {
+			({ body }) => {
 				try {
 					const outcome = createCharacterLibraryModule(database).execute(body);
 					if ("deletionMode" in outcome) {
