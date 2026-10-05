@@ -53,7 +53,7 @@ export function ParticipantEditor({
 			await runConversationCommand({
 				revision: () => conversation.revision,
 				send: async (expectedRevision) => {
-					await waitForImageLoads(JSON.stringify(definitionOf(participant)));
+					await waitForImageLoads(JSON.stringify([participant.prompt, participant.openings]));
 					return applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) });
 				},
 				reconciliation: {

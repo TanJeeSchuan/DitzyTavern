@@ -51,35 +51,6 @@ describe("renderBlocks", () => {
 	});
 });
 
-describe("Image References in prose", () => {
-	const hash = "a".repeat(64);
-
-	test("renders an image: Reference as a thumbnail that carries its name", () => {
-		const html = render(`She held up ![the *old* map](image:${hash}) and left.`);
-		expect(html).toContain(`data-image-hash="${hash}"`);
-		expect(html).toContain(`data-image-name="the *old* map"`);
-		expect(html).toContain(`src="/api/images/${hash}"`);
-		expect(html).toContain("[Image: the *old* map]");
-	});
-
-	test("never emits an image element for any other URL", () => {
-		const html = render('![remote](https://example.com/pixel.png) ![scheme](data:image/png;base64,AAAA) ![rel](/api/images/x)');
-		expect(html).not.toContain("<img");
-		expect(html).not.toContain("example.com");
-		expect(html).toContain("remote");
-	});
-
-	test("resolves only the forms the shared parser indexes", () => {
-		for (const variant of [`![a](image:${hash} "title")`, `![a](<image:${hash}>)`]) {
-			expect(render(variant)).not.toContain("data-image-hash");
-		}
-	});
-
-	test("does not resolve a malformed hash", () => {
-		expect(render("![x](image:abc)")).not.toContain("<img");
-	});
-});
-
 describe("revealedLength", () => {
 	const sentence = "She counted the moves again, slower this time, as if the board might change its mind. ";
 

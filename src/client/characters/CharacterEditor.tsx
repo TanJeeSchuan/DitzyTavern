@@ -55,7 +55,7 @@ export function CharacterEditor({
 		const submitted = draftRef.current;
 		setPendingAction(action);
 		try {
-			if ((command.type === "update-definition" || command.type === "delete") && snapshot !== null) await waitForImageLoads(JSON.stringify(definitionOf(snapshot)));
+			if (command.type === "update-definition" && snapshot !== null) await waitForImageLoads(JSON.stringify([snapshot.prompt, snapshot.openings]));
 			const outcome = await applyCommand(command);
 			switch (outcome.status) {
 				case "applied":
