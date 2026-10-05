@@ -230,7 +230,8 @@ const acceptedEditedPlan = (
 	const editedPlan = resolvePromptImages(submittedPlan, {
 		lookup: imageLookup(database),
 		placement: settings.repeatedImagePlacement,
-	}, shouldSendImages(record.capture.capture.connection, settings.modelId));
+		sendImages: shouldSendImages(record.capture.capture.connection, settings.modelId),
+	});
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}

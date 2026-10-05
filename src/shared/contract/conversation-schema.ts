@@ -108,7 +108,6 @@ const promptImage = Type.Object({
 // the storage and transport boundary so inspection cannot silently discard
 // authorship or continuation intent.
 export const promptPlan = Type.Object({
-	sendImages: Type.Boolean(),
 	blocks: Type.Array(promptBlock),
 	warnings: Type.Array(Type.Object({
 		block: Type.String(),

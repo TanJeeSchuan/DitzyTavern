@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile } from "../connection-settings/types";
 import { resolvePromptImages, type PromptBlock, type PromptPlan } from "../prompt-compiler";
 import { formatImageReference } from "../../shared/image-reference";
-import type { RepeatedImagePlacement } from "../../shared/prompt-images";
+import type { RepeatedImagePlacement } from "../prompt-compiler/images";
 import {
 	collectModelClientGeneration,
 	createOpenAICompatibleModelClient,
@@ -53,8 +53,7 @@ const planOf = (
 	const known = options.known ?? [mapHash, mugHash];
 	return resolvePromptImages(
 		{ blocks, warnings: [], intent: options.intent },
-		{ lookup: (hash) => known.includes(hash) ? { width: 20, height: 20 } : undefined, placement: options.placement ?? "every" },
-		options.sendImages ?? true,
+		{ lookup: (hash) => known.includes(hash) ? { width: 20, height: 20 } : undefined, placement: options.placement ?? "every", sendImages: options.sendImages ?? true },
 	);
 };
 
@@ -158,15 +157,34 @@ describe("Model Client Image transport", () => {
 		expect(sent.calls()).toBe(0);
 	});
 
-	test("refuses an assistant prefill whose Reference is missing from the store too", async () => {
+	test("prefills a missing Image as its anchor", async () => {
 		const sent = await sentTo({
 			promptPlan: planOf([history(`Earlier ${map}`, "model", "Maren")], {
 				intent: { type: "continuation", strategy: "assistant-prefill", suffix: "" },
 				known: [],
 			}),
 		});
-		await expect(sent.result).rejects.toMatchObject({ kind: "protocol" });
-		expect(sent.calls()).toBe(0);
+		await sent.result;
+		expect(sent.messages()).toEqual([{ role: "assistant", content: "Earlier [Image: map]" }]);
+	});
+
+	test.each(["first", "last", "every"] as const)("prefill refuses only the repeated Image selected by %s placement", async (placement) => {
+		const sent = await sentTo({
+			promptPlan: planOf([history(`First ${map}`), history(`Earlier ${map}`, "model", "Maren")], {
+				intent: { type: "continuation", strategy: "assistant-prefill", suffix: " " },
+				placement,
+			}),
+		});
+		if (placement === "first") {
+			await sent.result;
+			expect(sent.messages()).toEqual([
+				{ role: "user", content: ["Writer: First [Image: map]", "<image/png:AQID>"] },
+				{ role: "assistant", content: "Earlier [Image: map] " },
+			]);
+		} else {
+			await expect(sent.result).rejects.toMatchObject({ kind: "protocol", message: expect.stringContaining("Image") });
+			expect(sent.calls()).toBe(0);
+		}
 	});
 
 	test("prefills text without Images unchanged and never writes a hash into it", async () => {

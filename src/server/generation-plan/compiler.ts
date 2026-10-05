@@ -160,8 +160,7 @@ export const compileGenerationPlan = (
 			lore,
 			memory,
 			attempt,
-			images: { lookup: input.imageLookup, placement: input.settings.repeatedImagePlacement },
-			sendImages,
+			images: { lookup: input.imageLookup, placement: input.settings.repeatedImagePlacement, sendImages },
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
@@ -235,7 +234,7 @@ export const estimateDynamicBlockTokens = (
 	estimator: (transcript: string) => number = tokenxEstimator,
 ): number => content.length === 0
 	? 0
-	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], sendImages: true, images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], sendImages: true, images: [] }))));
+	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
 
 const withMemoryBudgetEvidence = (
 	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,

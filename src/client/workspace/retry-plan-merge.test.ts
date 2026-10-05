@@ -12,7 +12,7 @@ const definition = (kind: Exclude<PromptBlock["kind"], "history">, role: "system
 const history = (role: "human" | "model", speakerName: string, content: string): PromptBlock =>
 	({ kind: "history", role, speakerName, content });
 const plan = (blocks: PromptBlock[], overrides: Partial<PromptPlan> = {}): PromptPlan =>
-	({ blocks, warnings: [], sendImages: true, images: [], ...overrides });
+	({ blocks, warnings: [], images: [], ...overrides });
 const instructionIntent = (instruction: string): GenerationIntent =>
 	({ type: "continuation", strategy: "instruction", instruction });
 const image = (disposition: PromptImage["disposition"], tokens: number): PromptImage =>
@@ -37,7 +37,6 @@ describe("retry retained edits", () => {
 		);
 
 		expect(transferRetainedEdits(assembled, edited, fresh)).toEqual({
-			sendImages: true,
 			blocks: edited.blocks,
 			warnings: [],
 			images: [image("anchor", 0)],

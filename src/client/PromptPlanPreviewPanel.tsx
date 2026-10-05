@@ -5,8 +5,6 @@ import { PanelHeader } from "./PanelHeader";
 import { isAssemblyPending, type AssemblySession } from "./assembly-session";
 import { LoreActivationDetails, MemoryActivationDetails, PromptImageList } from "./GenerationDetailsPanel";
 import { ProseEditor } from "./editor/ProseEditor";
-import { uploadedImages } from "./lib/image";
-import { resolveImageReferences } from "../shared/prompt-images";
 import { memoryActivationWithFinalText } from "../shared/contract/memory-recall";
 
 const kindLabel = (kind: GenerationPreview["kind"]): string => {
@@ -61,7 +59,7 @@ export function PromptPlanPreviewPanel({
 						</ul>
 					</section>
 				)}
-				{preview !== null && <PromptImageList images={currentImages(preview)} />}
+				{preview !== null && <PromptImageList images={preview.promptPlan.images} />}
 				{preview !== null && preview.pendingWrites.length > 0 && (
 					<section className="generation-detail-section">
 						<h3>Pending variable writes</h3>
@@ -104,25 +102,6 @@ export function PromptPlanPreviewPanel({
 					<button className="primary-button" type="button" onClick={onSend} disabled={!canSend || !preview.budget.budgetFits}><Send aria-hidden="true" /> {assembly.phase === "accepting" ? "Sending…" : "Send exact plan"}</button>
 			</footer>
 		</aside>
-	);
-}
-
-// A hash the stored resolution never saw is present only if this session uploaded it.
-const storedCost = (preview: GenerationPreview) => {
-	const stored = new Map(preview.promptPlan.images.map((image) => [image.hash, image]));
-	return (hash: string) => {
-		const image = stored.get(hash);
-		if (image === undefined) return uploadedImages.has(hash) ? { tokens: undefined } : undefined;
-		return image.disposition === "missing" ? undefined : { tokens: image.tokens };
-	};
-};
-
-function currentImages(preview: GenerationPreview) {
-	return resolveImageReferences(
-		preview.promptPlan.blocks.map((block) => block.content),
-		storedCost(preview),
-		preview.effectiveSettings.repeatedImagePlacement,
-		preview.promptPlan.sendImages,
 	);
 }
 

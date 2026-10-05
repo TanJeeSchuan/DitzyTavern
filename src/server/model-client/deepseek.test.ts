@@ -86,7 +86,7 @@ describe("DeepSeek production Model Client", () => {
 		for await (const event of client.generate({
 			promptPlan: {
 				blocks: [{ kind: "system-instruction", role: "system", content: "Stay concise." }],
-				warnings: [], sendImages: true, images: [],
+				warnings: [], images: [],
 			},
 			modelId: "custom-model",
 			generationSettings,
@@ -119,7 +119,7 @@ describe("DeepSeek production Model Client", () => {
 
 		try {
 			for await (const _event of client.generate({
-				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Wait." }], warnings: [], sendImages: true, images: [] },
+				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Wait." }], warnings: [], images: [] },
 				modelId: "custom-model",
 				generationSettings,
 			})) {
@@ -163,7 +163,7 @@ describe("DeepSeek production Model Client", () => {
 
 		const events = [];
 		for await (const event of client.generate({
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], sendImages: true, images: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], images: [] },
 			modelId: "custom-model",
 			generationSettings,
 		})) {
@@ -198,7 +198,7 @@ describe("DeepSeek production Model Client", () => {
 
 		try {
 			for await (const _event of client.generate({
-				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], sendImages: true, images: [] },
+				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], images: [] },
 				modelId: "custom-model",
 				generationSettings,
 			})) {

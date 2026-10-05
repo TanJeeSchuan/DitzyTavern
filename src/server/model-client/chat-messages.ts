@@ -75,12 +75,12 @@ const followingImages = (segments: readonly Segment[]): UserPart[] =>
 
 export function toMessages(
 	input: ModelClientGenerationInput,
-	images: { readonly load: ImageLoader },
+	load: ImageLoader,
 ): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 	const loaded = new Map<string, LoadedImage | undefined>();
 	const loadImage = (hash: string) => {
-		if (!loaded.has(hash)) loaded.set(hash, images.load(hash));
+		if (!loaded.has(hash)) loaded.set(hash, load(hash));
 		return loaded.get(hash);
 	};
 	const imagesByBlock = new Map<number, Map<number, PromptImage>>();
@@ -166,7 +166,7 @@ export function toMessages(
 				"protocol",
 			);
 		}
-		if (input.promptPlan.sendImages && parseImageReferences(prefix).length > 0) {
+		if (input.promptPlan.images.some((image) => image.block === lastModelHistoryIndex && image.disposition === "send")) {
 			throw new ModelClientTransportError(
 				"Assistant prefill cannot continue text that contains an Image. Continue with an instruction instead.",
 				"protocol",
