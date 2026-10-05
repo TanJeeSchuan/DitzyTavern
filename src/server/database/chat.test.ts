@@ -67,4 +67,30 @@ describe("Chat list summaries", () => {
 
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.excerpt).toBe("");
 	});
+
+	test("returns Portraits and nulls in Cast order without removed Participants or invented focal points", () => {
+		const chat = createChat("Portrait Order", ["Writer", "Maren", "Juno", "Nox", "Iris"]);
+		const writer = { hash: "a".repeat(64), focalX: 0.25, focalY: 0.75 };
+		const nox = { hash: "b".repeat(64), focalX: 0, focalY: 1 };
+		const setPortrait = database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = ?, portrait_focal_y = ? WHERE participant_id = ?");
+		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[0]!.id);
+		setPortrait.run(writer.hash, writer.focalX, writer.focalY, chat.cast[2]!.id);
+		setPortrait.run(nox.hash, nox.focalX, nox.focalY, chat.cast[3]!.id);
+		setPortrait.run(writer.hash, null, writer.focalY, chat.cast[4]!.id);
+		applyCommand(module, {
+			conversationId: chat.id,
+			expectedRevision: chat.revision,
+			action: { type: "remove-participant", participantId: chat.cast[2]!.id },
+		});
+		database.query("UPDATE participant SET position = position + 10 WHERE conversation_id = ?").run(chat.id);
+		[3, 0, 1, 4].forEach((index, position) => database.query("UPDATE participant SET position = ? WHERE id = ?").run(position, chat.cast[index]!.id));
+		const summary = listChatSummaries(database).find((candidate) => candidate.id === chat.id);
+		expect(summary?.castNames).toEqual(["Nox", "Writer", "Maren", "Iris"]);
+		expect(summary?.castPortraits).toEqual([nox, writer, null, null]);
+	});
+
+	test("a Chat without Participants has no Portraits", () => {
+		const chat = module.create({ name: "No Cast" });
+		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.castPortraits).toEqual([]);
+	});
 });
