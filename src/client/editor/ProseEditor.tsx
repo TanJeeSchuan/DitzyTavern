@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, keymap, placeholder as placeholderExtension, ViewPlugin, WidgetType } from "@codemirror/view";
+import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, placeholder as placeholderExtension, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,9 @@ const theme = EditorView.theme({
 	"&": { backgroundColor: "transparent", color: "inherit" },
 	"&.cm-focused": { outline: "none" },
 	".cm-scroller": { fontFamily: "inherit", lineHeight: "inherit", overflow: "visible" },
-	".cm-content": { padding: "0", caretColor: "currentColor" },
+	".cm-content": { padding: "0" },
+	".cm-cursor": { borderLeftColor: "currentColor" },
+	"&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground": { background: "color-mix(in oklch, var(--accent) 28%, transparent)" },
 	".cm-line": { padding: "0" },
 	".cm-placeholder": { color: "var(--text-muted)" },
 });
@@ -156,6 +158,7 @@ export function ProseEditor({
 				extensions: [
 					EditorState.lineSeparator.of("\n"),
 					history(),
+					drawSelection(),
 					keymap.of([...defaultKeymap, ...historyKeymap]),
 					EditorView.lineWrapping,
 					chipPlugin,

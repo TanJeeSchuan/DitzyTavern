@@ -1165,7 +1165,7 @@
 
 .prose-image img {
 	display: block;
-	max-width: min(100%, 14rem);
+	max-width: 14rem;
 	max-height: 6rem;
 	object-fit: cover;
 }
