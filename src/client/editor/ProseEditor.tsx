@@ -5,6 +5,7 @@ import { ImagePlus } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatImageReference, parseImageReferences } from "../../shared/image-reference";
+import { useOpenImageAt } from "../ImageDialog";
 import { imageAccept, imageSrc, uploadImage } from "../lib/image";
 
 export interface ProseEditorHandle {
@@ -25,6 +26,8 @@ class ImageChip extends WidgetType {
 		const chip = document.createElement("span");
 		chip.className = "image-chip";
 		chip.title = this.name;
+		chip.dataset.imageHash = this.hash;
+		chip.dataset.imageName = this.name;
 		const thumbnail = document.createElement("img");
 		thumbnail.src = imageSrc(this.hash);
 		thumbnail.alt = "";
@@ -99,6 +102,7 @@ export function ProseEditor({
 	const view = useRef<EditorView | null>(null);
 	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
 	const onChangeRef = useRef(onChange);
+	const openImageAt = useOpenImageAt();
 	const [error, setError] = useState<string | null>(null);
 	const [settings] = useState(() => ({ placeholder: new Compartment(), editable: new Compartment(), label: new Compartment() }));
 	onChangeRef.current = onChange;
@@ -226,7 +230,7 @@ export function ProseEditor({
 	}, [placeholder, disabled, ariaLabel]);
 
 	return (
-		<div className={cn("prose-editor", className)} data-disabled={disabled}>
+		<div className={cn("prose-editor", className)} data-disabled={disabled} onClick={(event) => openImageAt(event.target)}>
 			<div ref={host} className="prose-editor-host" />
 			<button type="button" className="prose-editor-add" aria-label="Add an image" title="Add an image" disabled={disabled} onClick={() => picker.current?.click()}>
 				<ImagePlus aria-hidden="true" />

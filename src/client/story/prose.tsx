@@ -1,8 +1,8 @@
 import MarkdownIt, { type Delimiter, type StateInline, type Token } from "markdown-it";
-import { createContext, memo, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imageAnchor, imageReferenceAt } from "../../shared/image-reference";
 import { imageSrc } from "../lib/image";
+import { useOpenImageAt } from "../ImageDialog";
 
 const QUOTE = 0x22;
 // markdown-it's own text terminators plus the dialogue quotes, so the text rule stops at them.
@@ -154,7 +154,7 @@ function wipeTextAfter(root: HTMLElement, offset: number) {
 // block wipes in from where it previously ended. History that never streamed stays still.
 // Memoized because React rewrites dangerouslySetInnerHTML on every render, which would drop
 // the wipe spans of a block whose html did not change.
-const ProseBlock = memo(function ProseBlock({ html, fade, onOpenImage }: { html: string; fade: boolean; onOpenImage: (image: OpenedImage) => void }) {
+const ProseBlock = memo(function ProseBlock({ html, fade, openImageAt }: { html: string; fade: boolean; openImageAt: (target: EventTarget) => void }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const shownLength = useRef(fade ? 0 : undefined);
 	useLayoutEffect(() => {
@@ -174,44 +174,16 @@ const ProseBlock = memo(function ProseBlock({ html, fade, onOpenImage }: { html:
 				button.dataset.missing = "true";
 				button.setAttribute("disabled", "");
 			}}
-			onClick={(event) => {
-				const button = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-image-hash]") : null;
-				if (button?.dataset.imageHash !== undefined && button.dataset.missing === undefined) {
-					onOpenImage({ hash: button.dataset.imageHash, name: button.dataset.imageName ?? "" });
-				}
-			}}
+			onClick={(event) => openImageAt(event.target)}
 		/>
 	);
 });
 
-interface OpenedImage {
-	hash: string;
-	name: string;
-}
-
-const ProseImageContext = createContext<((image: OpenedImage) => void) | null>(null);
-
-export function ProseImageProvider({ children }: { children: ReactNode }) {
-	const [opened, setOpened] = useState<OpenedImage | null>(null);
-	return (
-		<ProseImageContext value={setOpened}>
-			{children}
-			<Dialog open={opened !== null} onOpenChange={(open) => { if (!open) setOpened(null); }}>
-				<DialogContent className="w-fit max-w-[calc(100%-2rem)] gap-2 sm:max-w-[min(56rem,calc(100%-2rem))]">
-					<DialogTitle className="truncate pr-8">{opened?.name}</DialogTitle>
-					<DialogDescription className="sr-only">Full size image</DialogDescription>
-					{opened !== null && <img src={imageSrc(opened.hash)} alt={opened.name} className="max-h-[78vh] max-w-full rounded-lg object-contain" />}
-				</DialogContent>
-			</Dialog>
-		</ProseImageContext>
-	);
-}
-
 export function Prose({ text, streaming }: { text: string; streaming: boolean }) {
-	const openImage = useContext(ProseImageContext)!;
+	const openImageAt = useOpenImageAt();
 	const [streamed, setStreamed] = useState(streaming);
 	if (streaming && !streamed) setStreamed(true);
 	const shown = streaming ? text.slice(0, revealedLength(text)) : text;
 	const blocks = useMemo(() => renderBlocks(shown), [shown]);
-	return blocks.map((html, index) => <ProseBlock key={index} html={html} fade={streamed} onOpenImage={openImage} />);
+	return blocks.map((html, index) => <ProseBlock key={index} html={html} fade={streamed} openImageAt={openImageAt} />);
 }

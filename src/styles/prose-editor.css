@@ -53,8 +53,9 @@
 	height: 1rem;
 }
 
+/* The 1px start keeps a caret at the start of a line inside the host's clip. */
 .prose-editor .cm-content {
-	padding-right: 1.9rem;
+	padding: 0 1.9rem 0 1px;
 }
 
 .prose-editor-error {
@@ -63,30 +64,33 @@
 	font-size: 0.74rem;
 }
 
+/* The chip keeps the line's font so its zero-width ::before strut, centered like every
+   item, gives the chip the line's baseline. That centers the chip on the text box, which is
+   where the caret beside it is drawn. */
 .image-chip {
 	display: inline-flex;
 	max-width: 14rem;
 	align-items: center;
-	gap: 0.35rem;
-	margin: 0 0.1rem;
+	margin: 0 0.2rem;
 	padding: 0.1rem 0.5rem 0.1rem 0.1rem;
 	overflow: hidden;
 	border: 1px solid var(--border-strong);
 	border-radius: 0.55rem;
 	background: color-mix(in oklch, var(--foreground) 6%, transparent);
 	color: var(--foreground);
-	font-family: var(--font-control);
-	font-size: 0.78rem;
-	font-weight: 560;
-	line-height: 1.3;
-	vertical-align: middle;
 	white-space: nowrap;
+	cursor: zoom-in;
+}
+
+.image-chip::before {
+	content: "\200b";
 }
 
 .image-chip img {
 	width: 1.5rem;
 	height: 1.5rem;
 	flex: 0 0 auto;
+	margin-right: 0.35rem;
 	border-radius: 0.4rem;
 	outline: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
 	outline-offset: -1px;
@@ -95,11 +99,16 @@
 
 .image-chip span {
 	overflow: hidden;
+	font-family: var(--font-control);
+	font-size: 0.78rem;
+	font-weight: 560;
+	line-height: 1.3;
 	text-overflow: ellipsis;
 }
 
 .image-chip[data-missing] {
 	color: var(--text-muted);
+	cursor: default;
 	border-style: dashed;
 }
 
