@@ -3,7 +3,12 @@ Follow YAGNI principles, and prefer one-liner solutions.
 
 There is `playwright-cli` installed
 
-For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS
+For UI work, remember to refer to DESIGN.MD, AND NO UI TESTS (component/snapshot tests for UI tweaks; user-flow e2e below is fine)
+
+## E2E
+- `bun run test:e2e` runs Playwright (`e2e/*.spec.ts`) against `e2e/server.ts`: one Bun server per worker, a fresh seeded SQLite database per test, memory off by default.
+- Every provider call (chat, Jev, embeddings, models, memory extraction) hits a scripted fake through the `llm` fixture; an unscripted call fails the test.
+- After each test the fixture also fails if any captured Prompt Plan (from generation inspection) doesn't match a request the fake actually received. `llm.restart("SIGKILL" | "SIGHUP")` relaunches the server on the same database for crash and restart tests.
 
 When user asks for UI iterration / rapid iterration, keep the playwright-cli session running to keep the screenshots fast
 

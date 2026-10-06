@@ -69,7 +69,7 @@ const followingImages = (segments: readonly Segment[]): UserPart[] =>
 		"image" in segment ? [{ type: "text", text: segment.anchor }, imagePart(segment.image)] : []);
 
 export function toMessages(
-	input: ModelClientGenerationInput,
+	input: Pick<ModelClientGenerationInput, "promptPlan" | "assistantPrefill">,
 	load: ImageLoader,
 ): ChatMessage[] {
 	const messages: ChatMessage[] = [];
