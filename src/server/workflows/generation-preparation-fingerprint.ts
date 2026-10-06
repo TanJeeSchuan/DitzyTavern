@@ -8,7 +8,7 @@ const loreFingerprintOf = (snapshot: GenerationPreparationSnapshot) => ({
 		? null
 		: {
 				decisionProfileId: snapshot.lore.sources.semanticSettings.decisionProfileId,
-				threshold: snapshot.lore.sources.semanticSettings.threshold,
+				threshold: snapshot.lore.sources.semanticSettings.triggerThreshold,
 				decisionModel: snapshot.lore.sources.semanticSettings.decisionModel,
 				decisionStateTokenLimit: snapshot.lore.sources.semanticSettings.decisionStateTokenLimit,
 			},

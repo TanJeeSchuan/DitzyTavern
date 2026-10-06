@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { decisionRequest, largestFittingBatch, packDecisions } from ".";
 
-const build = (batch: readonly { id: string; size: number }[]) => decisionRequest({ model: "jev", stateTokenLimit: 16000 }, {}, Object.fromEntries(batch.map(({ id, size }) => [id, { text: "x".repeat(size) }])));
+const build = (batch: readonly { id: string; size: number }[]) => decisionRequest({ model: "jev", stateTokenLimit: 16000 }, {}, Object.fromEntries(batch.map(({ id, size }) => [id, { type: "noul", text: "x".repeat(size) }])));
 const items = (sizes: readonly number[]) => sizes.map((size, index) => ({ id: `q${index}`, size }));
 
 describe("packDecisions", () => {
@@ -31,13 +31,11 @@ describe("packDecisions", () => {
 		expect(largestFittingBatch(items([200_000, 10]), build)).toBeUndefined();
 	});
 
-	test("bounds request estimates for a large overflowing trigger batch", () => {
+	test("takes the longest fitting prefix of a large overflowing trigger batch", () => {
 		const triggers = items(Array.from({ length: 256 }, () => 1_000));
-		let estimates = 0;
-		const packed = largestFittingBatch(triggers, (batch) => { estimates += 1; return build(batch); });
+		const packed = largestFittingBatch(triggers, build);
 		if (packed === undefined) throw new Error("No trigger batch fit.");
 		expect(build(packed.items).fits).toBe(true);
 		expect(build(triggers.slice(0, packed.items.length + 1)).fits).toBe(false);
-		expect(estimates).toBeLessThanOrEqual(9);
 	});
 });

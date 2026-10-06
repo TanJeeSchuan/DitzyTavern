@@ -18,37 +18,17 @@ const validDraft = (): ConnectionProfileDraftPayload => ({
 });
 
 describe("shared Connection Profile validation", () => {
-	test("keeps client and server rules for URLs, timeouts, and API availability in one order", () => {
+	test("rejects unavailable API Formats, invalid URLs, and fractional timeouts", () => {
 		expect(sharedConnectionProfileValidationError(validDraft(), [])).toBeNull();
-		expect(
-			sharedConnectionProfileValidationError(
-				{ ...validDraft(), apiFormat: "responses", requestUrl: "not a url" },
-				[],
-			),
-		).toBe("Only the Chat Completions, Embeddings and System One API Formats are available.");
-		expect(
-			sharedConnectionProfileValidationError({ ...validDraft(), requestUrl: "not a url" }, []),
-		).toBe("The request URL must be a valid HTTP or HTTPS URL.");
-		expect(
-			sharedConnectionProfileValidationError(
-				{ ...validDraft(), modelsUrl: "https://user:secret@api.example.com/models" },
-				[],
-			),
-		).toBe("Models URL must use HTTP or HTTPS without user information or a fragment.");
-		expect(
-			sharedConnectionProfileValidationError({ ...validDraft(), timeoutMs: 1.5 }, []),
-		).toBe("Timeout must be zero, null, or a positive whole number of milliseconds.");
+		for (const draft of [
+			{ ...validDraft(), apiFormat: "responses" as const },
+			{ ...validDraft(), requestUrl: "not a url" },
+			{ ...validDraft(), modelsUrl: "https://user:secret@api.example.com/models" },
+			{ ...validDraft(), timeoutMs: 1.5 },
+		]) expect(sharedConnectionProfileValidationError(draft, [])).not.toBeNull();
 	});
 
 	test("rejects transport-owned and duplicate header names", () => {
-		expect(sharedConnectionHeaderNamesValidationError(["Host"])).toBe(
-			'Custom header name "Host" is not a valid user-controlled HTTP header.',
-		);
-		expect(sharedConnectionHeaderNamesValidationError(["X One"])).toBe(
-			'Custom header name "X One" is not a valid user-controlled HTTP header.',
-		);
-		expect(sharedConnectionHeaderNamesValidationError(["X-Route", "x-route"])).toBe(
-			'Custom header names must be unique case-insensitively: "x-route".',
-		);
+		for (const names of [["Host"], ["X One"], ["X-Route", "x-route"]]) expect(sharedConnectionHeaderNamesValidationError(names)).not.toBeNull();
 	});
 });

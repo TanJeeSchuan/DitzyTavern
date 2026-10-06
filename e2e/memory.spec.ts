@@ -1,6 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, enableJev, send, story } from "./fixtures";
-import type { JevRule } from "./protocol";
+import { test, expect, enableDecisionModels, send, story } from "./fixtures";
+import type { DecisionRule } from "./protocol";
 
 const enableMemory = async (request: APIRequestContext) => {
 	const { profiles } = await (await request.get("/api/connection-settings")).json();
@@ -18,20 +18,20 @@ const choice = (selected: string, labels: string[]) => ({
 	probabilities: Object.fromEntries(labels.map((label) => [label, label === selected ? 0.9 : 0.1 / (labels.length - 1)])),
 });
 
-const judge = (claim: string, verdict: { support: string; attribution: string; usefulness: string }): JevRule[] => [
+const judge = (claim: string, verdict: { support: string; attribution: string; usefulness: string }): DecisionRule[] => [
 	{ match: [claim, "How does `source` relate to `memory.claim`?"], answer: choice(verdict.support, ["supported", "contradicted", "not_established"]) },
 	{ match: [claim, "is `memory.attribution` the one who"], answer: choice(verdict.attribution, ["correct", "misattributed", "unclear"]) },
 	{ match: [claim, "still matter to the story"], answer: choice(verdict.usefulness, ["retain", "omit"]) },
 ];
 
 test("a reply becomes an attributed Memory that the next Generation recalls", async ({ page, request, llm }) => {
-	await enableJev(request);
+	await enableDecisionModels(request);
 	await llm.embeddings("brass key", "Where is the key?", "Show me.");
 	await llm.memories(
 		{ claim: "Theodora hid the brass key under the third map.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "I hid the brass key under the third map." },
 		{ claim: "Theodora fears the dark.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "The dark presses against the dome." },
 	);
-	await llm.jev(
+	await llm.decisions(
 		...judge("brass key", { support: "supported", attribution: "correct", usefulness: "retain" }),
 		...judge("fears the dark", { support: "not_established", attribution: "correct", usefulness: "retain" }),
 		{ match: ["brass key", "How much does `memory` help"], answer: { type: "score", score: 3, legend: {}, probabilities: { 0: 0.02, 1: 0.03, 2: 0.05, 3: 0.9 }, confidence: 0.9 } },

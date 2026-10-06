@@ -2,7 +2,7 @@ import { ChevronLeft } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
-import { ProfileModelPicker } from "../ProfileModelPicker";
+import { DecisionModelPicker } from "../DecisionModelPicker";
 import { loadConnectionSettings, type ConnectionSettings } from "../connection-settings";
 import { Slider } from "@/components/ui/slider";
 import { loadSemanticTriggerSettings, saveSemanticTriggerSettings, type SemanticTriggerSettings, type SemanticTriggerSettingsResult } from "../semantic-trigger-settings";
@@ -76,8 +76,7 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 					) : (
 						<div className="grid gap-4">
 							<Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
-								<ProfileModelPicker settings={connections} onSettingsChange={setConnections} decisions selected={{ connectionProfileId: draft.decisionProfileId, modelId: draft.decisionModel }} onSelect={(profile, decisionModel) => semanticTriggers.update({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label="Semantic Trigger Decision Model" />
-								{draft.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => semanticTriggers.update({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
+								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
 							</Field>
 							<Field htmlFor="semantic-state-limit" label="State token limit" helper="Long scenes are split so the model reads the whole Lore Scan Window.">
 								<input id="semantic-state-limit" className="field-input" type="number" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={event => semanticTriggers.update({ decisionStateTokenLimit: Number(event.target.value) })} />

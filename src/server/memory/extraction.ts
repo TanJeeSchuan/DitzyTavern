@@ -137,8 +137,8 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 	const output: MemoryCandidateJudgment[] = [];
 	const state = { source, context };
 	const batches = packDecisions(candidates.map((candidate, id) => ({ candidate, id })), (batch) => decisionRequest(selection, state, Object.fromEntries(batch.flatMap(({ candidate, id }) => Object.entries(candidateQuestions(candidate)).map(([name, question]) => [`candidate_${id}_${name}`, question])))), "Required Memory evidence exceeds the bounded Decision Model request. No partial collection was saved.", 16);
-	for (const { request, items } of batches) {
-		const answers = await requestDecisions({ request, selection, fetch, signal, trace });
+	for (const { request, questions, items } of batches) {
+		const answers = await requestDecisions({ request, questions, selection, fetch, signal, trace });
 		for (const { candidate, id } of items) {
 			const support = parseChoice(answers.get(`candidate_${id}_support`), ["supported", "contradicted", "not_established"] as const);
 			const attribution = parseChoice(answers.get(`candidate_${id}_attribution`), ["correct", "misattributed", "unclear"] as const);

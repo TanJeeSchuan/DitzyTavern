@@ -17,6 +17,7 @@ import {
 	DEFAULT_CONTINUATION_STRATEGY,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
+import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 
@@ -254,7 +255,7 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	retain_probability_minimum: real().notNull().default(0.6),
 	decision_profile_id: int(),
 	decision_model: text().notNull().default(""),
-	decision_state_token_limit: int().notNull().default(16000),
+	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
 	recall_relevance_minimum: real().notNull().default(1.5),
 	embedding_profile_id: int(),
 	embedding_model: text().notNull().default(""),
@@ -265,7 +266,7 @@ export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settin
 	revision: int().notNull().default(0),
 	decision_profile_id: int(),
 	decision_model: text().notNull().default(""),
-	decision_state_token_limit: int().notNull().default(16000),
+	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
 	trigger_threshold: real().notNull().default(0.5),
 });
 

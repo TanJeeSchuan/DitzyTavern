@@ -8,6 +8,7 @@ import { loadConnectionSettings, type ConnectionSettings } from "../connection-s
 import { loadMemorySettings, saveMemorySettings, type MemorySettings } from "../memory-settings";
 import type { MemorySettingsCommand } from "../../shared/contract/memory-settings";
 import { useAsyncEffect } from "../lib/use-async";
+import { DecisionModelPicker } from "../DecisionModelPicker";
 import { ProfileModelPicker } from "../ProfileModelPicker";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard } from "../SaveGuard";
@@ -70,11 +71,10 @@ export function MemorySettingsEditor() {
 						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }} onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })} emptyLabel="Add a chat connection in Connections to choose a model." label="Extraction model" />
 					</Field>
 					<Field label="Decision Model" helper="Judges proposed Memories and scores saved Memories during recall. System One connections only.">
-						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} decisions selected={{ connectionProfileId: draft.decisionProfileId, modelId: draft.decisionModel }} onSelect={(profile, decisionModel) => update({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label="Memory Decision Model" />
-						{draft.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => update({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
+						<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={update} label="Memory Decision Model" />
 					</Field>
 					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
-						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} embeddings selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }} onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })} emptyLabel="Add an Embeddings connection in Connections to choose a model." label="Embedding model" />
+						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} apiFormat="embeddings" selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }} onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })} emptyLabel="Add an Embeddings connection in Connections to choose a model." label="Embedding model" />
 					</Field>
 				</div>
 				<NumberGroup title={<>Extraction budget <Popover>

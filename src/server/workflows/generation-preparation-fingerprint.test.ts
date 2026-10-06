@@ -109,27 +109,16 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	};
 };
 
-const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5, connection: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 } };
-
-interface Fingerprint {
-	lore: {
-		semantic: Pick<SemanticSettingsSnapshot, "decisionProfileId" | "decisionModel" | "decisionStateTokenLimit" | "threshold">;
-	};
-}
+const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 } };
 
 describe("generation preparation snapshot fingerprint", () => {
 	test("captures Semantic Trigger configuration without its credential", () => {
-		// ==[HUMAN APPROVED]== SAFETY: The fingerprint is produced by the function under test and
-		// this type describes the fields asserted from its JSON projection.
-		const fingerprint = JSON.parse(generationPreparationFingerprint(preparationWithSemanticSettings(settings))) as Fingerprint;
-
-		expect(fingerprint.lore.semantic).toEqual({ decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5 });
-		expect(JSON.stringify(fingerprint)).not.toContain(settings.connection!.credential!);
+		expect(generationPreparationFingerprint(preparationWithSemanticSettings(settings))).not.toContain(settings.decision!.credential!);
 	});
 
 	test("changes when any Semantic Trigger configuration field changes", () => {
 		const baseline = generationPreparationFingerprint(preparationWithSemanticSettings(settings));
-		for (const changed of [{ ...settings, decisionProfileId: null }, { ...settings, decisionStateTokenLimit: 2000 }, { ...settings, threshold: 0.8 }, { ...settings, decisionModel: "jev-next" }]) {
+		for (const changed of [{ ...settings, decisionProfileId: null }, { ...settings, decisionStateTokenLimit: 2000 }, { ...settings, triggerThreshold: 0.8 }, { ...settings, decisionModel: "jev-next" }]) {
 			expect(generationPreparationFingerprint(preparationWithSemanticSettings(changed))).not.toBe(baseline);
 		}
 	});

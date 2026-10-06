@@ -24,19 +24,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 			<section aria-labelledby="connections-title">
 				<div className="flex items-center justify-between gap-3">
 					<h3 id="connections-title">Chat models</h3>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button type="button" size="sm" variant="outline" aria-label="Add chat connection"><Plus aria-hidden="true" /> Add</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-64">
-							{controller.presets.filter((preset) => preset.profile.apiFormat === "chat-completions").map((preset) => (
-								<DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}>
-									<span className="font-medium">{preset.label}</span>
-									<span className="text-xs text-muted-foreground">{preset.description}</span>
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<PresetMenu controller={controller} apiFormat="chat-completions" label="Add chat connection" />
 				</div>
 				<p>Write Messages and extract Memories.</p>
 				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "chat-completions")} controller={controller}
@@ -61,12 +49,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 			<section aria-labelledby="decisions-title">
 				<div className="flex items-center justify-between gap-3">
 					<h3 id="decisions-title">Decision Models</h3>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" aria-label="Add Decision Model connection"><Plus aria-hidden="true" /> Add</Button></DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-64">
-							{controller.presets.filter(preset => preset.profile.apiFormat === "system-one").map(preset => <DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}><span className="font-medium">{preset.label}</span><span className="text-xs text-muted-foreground">{preset.description}</span></DropdownMenuItem>)}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
 				</div>
 				<p>Judge Memory and Semantic Triggers. Each role chooses its own model.</p>
 				<ProfileRows label="Decision Model connections" profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")} controller={controller} describe={profile => hostOf(profile.requestUrl)} badge={() => null} empty={<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory or Semantic Triggers.</EmptyProfiles>} />
@@ -157,3 +140,12 @@ function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: Semant
 }
 
 const hostOf = (url: string) => URL.canParse(url) ? new URL(url).host : url;
+
+function PresetMenu({ controller, apiFormat, label }: { controller: ConnectionSettingsController; apiFormat: ConnectionProfile["apiFormat"]; label: string }) {
+	return <DropdownMenu>
+		<DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" aria-label={label}><Plus aria-hidden="true" /> Add</Button></DropdownMenuTrigger>
+		<DropdownMenuContent align="end" className="w-64">
+			{controller.presets.filter(preset => preset.profile.apiFormat === apiFormat).map(preset => <DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}><span className="font-medium">{preset.label}</span><span className="text-xs text-muted-foreground">{preset.description}</span></DropdownMenuItem>)}
+		</DropdownMenuContent>
+	</DropdownMenu>;
+}

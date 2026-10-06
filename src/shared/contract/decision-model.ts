@@ -1,5 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+export const DEFAULT_DECISION_STATE_TOKEN_LIMIT = 16_000;
+
 const probabilities = Type.Record(Type.String(), Type.Number({ minimum: 0, maximum: 1 }));
 export const decisionAnswer = Type.Union([
 	Type.Object({ type: Type.Literal("choice"), choice: Type.String(), probabilities, confidence: Type.Optional(Type.Number()) }),

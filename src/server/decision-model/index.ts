@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
+import { ValueErrorType } from "@sinclair/typebox/errors";
 import { decisionResponse, type DecisionAnswer, type DecisionSelection } from "../../shared/contract/decision-model";
 import { resolveSystemOneRequestUrl } from "../../shared/connection-url";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
@@ -31,30 +32,35 @@ export const validateDecisionSelection = (database: Database, selection: Decisio
 	const model = selection.decisionModel.trim();
 	if (selection.decisionProfileId === null) {
 		if (model) throw new InvalidSettingsError("Choose a Connection Profile before setting a Decision Model.");
-		return;
+		return null;
 	}
 	const profile = drizzle(database).select({ apiFormat: connectionProfileTable.api_format }).from(connectionProfileTable).where(eq(connectionProfileTable.id, selection.decisionProfileId)).get();
 	if (!profile) throw new InvalidSettingsError("The selected Decision Model Connection Profile no longer exists. Choose an available profile.");
 	if (profile.apiFormat !== "system-one") throw new InvalidSettingsError("Choose a System One connection for the Decision Model.");
 	if (!model) throw new InvalidSettingsError("Choose a Decision Model for the selected Connection Profile.");
+	return selection.decisionProfileId;
 };
 
 export const resolveDecisionProfile = (profile: ConnectionProfileDraft, model: string, stateTokenLimit: number, secrets: ConnectionProfileSecretSnapshot | null): ResolvedDecisionModel => {
 	if (profile.apiFormat !== "system-one") throw new Error("Choose a System One connection for the Decision Model.");
-	if (!(profile.timeoutMs !== null && profile.timeoutMs > 0)) throw new Error("A System One connection needs a positive timeout.");
-	return { profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveSystemOneRequestUrl(profile.requestUrl), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs: profile.timeoutMs };
+	return { profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveSystemOneRequestUrl(profile.requestUrl), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs: profile.timeoutMs! };
 };
 
 export const resolveDecisionSelection = (database: Database, selection: DecisionSelection, options: ConnectionSettingsModuleOptions = {}): ResolvedDecisionModel | null => {
-	if (selection.decisionProfileId === null) return null;
+	const profileId = validateDecisionSelection(database, selection);
+	if (profileId === null) return null;
 	const connections = createConnectionSettingsModule(database, options);
-	const profile = connections.get().profiles.find(profile => profile.id === selection.decisionProfileId);
-	if (!profile) throw new Error("The selected Decision Model Connection Profile is unavailable. Choose an available profile.");
-	if (!selection.decisionModel.trim()) throw new Error("Choose a Decision Model for the selected Connection Profile.");
+	const profile = connections.get().profiles.find(profile => profile.id === profileId)!;
 	return resolveDecisionProfile(profile, selection.decisionModel, selection.decisionStateTokenLimit, connections.getProfileSecrets(profile.id));
 };
 
+export const tryResolveDecisionSelection = (database: Database, selection: DecisionSelection, options?: ConnectionSettingsModuleOptions) => {
+	try { return { decision: resolveDecisionSelection(database, selection, options), unavailableReason: undefined }; }
+	catch (error) { return { decision: null, unavailableReason: error instanceof Error ? error.message : "The Decision Model is unavailable." }; }
+};
+
 export const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
+export type DecisionQuestions = Readonly<Record<string, { readonly type: string; readonly criteria?: Readonly<Record<string, DecisionJson>> | readonly DecisionJson[]; readonly [key: string]: DecisionJson | undefined }>>;
 export type DecisionJson = string | number | boolean | null | readonly DecisionJson[] | { readonly [key: string]: DecisionJson | undefined };
 
 const REQUEST_BYTE_LIMIT = 128 * 1024;
@@ -62,29 +68,29 @@ const REQUEST_TOKEN_LIMIT = 48_000;
 const STATE_AND_QUESTION_TOKEN_LIMIT = 32_000;
 const TOTAL_TOKEN_LIMIT = 64_000;
 
-export const decisionRequest = (selection: Pick<ResolvedDecisionModel, "model" | "stateTokenLimit">, state: DecisionJson, questions: Readonly<Record<string, DecisionJson>>) => {
+export const decisionRequest = (selection: Pick<ResolvedDecisionModel, "model" | "stateTokenLimit">, state: DecisionJson, questions: DecisionQuestions) => {
 	const request = JSON.stringify({ model: selection.model, state, questions });
 	const questionTokens = Object.values(questions).map(question => tokenxEstimator(JSON.stringify(question)));
 	const stateLimit = Math.min(selection.stateTokenLimit, STATE_AND_QUESTION_TOKEN_LIMIT - Math.max(0, ...questionTokens), TOTAL_TOKEN_LIMIT - questionTokens.reduce((sum, count) => sum + count, 0));
-	return { request, fits: new TextEncoder().encode(request).byteLength <= REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= REQUEST_TOKEN_LIMIT && tokenxEstimator(JSON.stringify(state)) <= stateLimit };
+	return { request, questions, fits: new TextEncoder().encode(request).byteLength <= REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= REQUEST_TOKEN_LIMIT && tokenxEstimator(JSON.stringify(state)) <= stateLimit };
 };
 
 export const largestFittingBatch = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => ReturnType<typeof decisionRequest>) => {
 	let lower = 1;
 	let upper = items.length;
-	let best: { request: string; items: readonly Item[] } | undefined;
+	let best: { request: string; questions: DecisionQuestions; items: readonly Item[] } | undefined;
 	while (lower <= upper) {
 		const size = Math.floor((lower + upper) / 2);
 		const batch = items.slice(0, size);
-		const { request, fits } = build(batch);
-		if (fits) { best = { request, items: batch }; lower = size + 1; }
+		const { request, questions, fits } = build(batch);
+		if (fits) { best = { request, questions, items: batch }; lower = size + 1; }
 		else upper = size - 1;
 	}
 	return best;
 };
 
 export const packDecisions = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => ReturnType<typeof decisionRequest>, unfittable: string, maxPerBatch = Infinity) => {
-	const packed: { readonly request: string; readonly items: readonly Item[] }[] = [];
+	const packed: { readonly request: string; readonly questions: DecisionQuestions; readonly items: readonly Item[] }[] = [];
 	for (let start = 0; start < items.length;) {
 		const batch = largestFittingBatch(items.slice(start, start + maxPerBatch), build);
 		if (batch === undefined) throw new Error(unfittable);
@@ -96,7 +102,7 @@ export const packDecisions = <Item>(items: readonly Item[], build: (batch: reado
 
 export type DecisionTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
 
-export async function requestDecisions(input: { request: string; selection: ResolvedDecisionModel; fetch?: ModelFetch; signal?: AbortSignal; trace?: DecisionTrace }): Promise<ReadonlyMap<string, DecisionAnswer>> {
+export async function requestDecisions(input: { request: string; questions: DecisionQuestions; selection: ResolvedDecisionModel; fetch?: ModelFetch; signal?: AbortSignal; trace?: DecisionTrace }): Promise<ReadonlyMap<string, DecisionAnswer>> {
 	input.trace?.("Decision Model request", { body: prettyJson(input.request) });
 	const startedAt = Date.now();
 	const { response, text } = await fetchWithTimeout(input.fetch ?? fetch, input.selection.endpoint, {
@@ -109,9 +115,16 @@ export async function requestDecisions(input: { request: string; selection: Reso
 	});
 	input.trace?.("Decision Model response", { elapsed: `${((Date.now() - startedAt) / 1000).toFixed(1)} s`, status: String(response.status), body: prettyJson(text) });
 	if (!response.ok) throw new DecisionModelError(response.status === 401 || response.status === 403 ? "authentication" : "endpoint", `Decision Model request failed with HTTP ${response.status}.`);
-	let answers: Record<string, DecisionAnswer>;
-	try { answers = Value.Parse(decisionResponse, JSON.parse(text)).answers; } catch { throw new DecisionModelError("malformed-response", "Decision Model returned malformed or invalid JSON."); }
-	const questions: Record<string, { type: string; criteria?: Record<string, DecisionJson> }> = JSON.parse(input.request).questions;
+	let decoded: unknown;
+	try { decoded = JSON.parse(text); } catch { throw new DecisionModelError("malformed-response", "Decision Model returned invalid JSON."); }
+	if (!Value.Check(decisionResponse, decoded)) {
+		let schemaError = Value.Errors(decisionResponse, decoded).First()!;
+		if (schemaError.type === ValueErrorType.Union) schemaError = schemaError.errors.map(errors => [...errors]).find(errors => !errors.some(error => error.path.endsWith("/type")))?.[0] ?? schemaError;
+		throw new DecisionModelError("malformed-response", `Decision Model returned an invalid answer at ${schemaError.path || "/"}: ${schemaError.message}.`);
+	}
+	Value.Clean(decisionResponse, decoded);
+	const { answers } = decoded;
+	const { questions } = input;
 	const ids = Object.keys(questions);
 	if (Object.keys(answers).length !== ids.length || ids.some(id => !Object.hasOwn(answers, id))) throw new DecisionModelError("malformed-response", "Decision Model omitted or added required answers.");
 	for (const [id, answer] of Object.entries(answers)) {

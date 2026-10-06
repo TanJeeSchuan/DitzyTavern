@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ModelFetch } from "../model-client";
 import { splitByTokens } from "tokenx";
-import { decisionRequest, packDecisions, requestDecisions, resolveDecisionSelection, type ResolvedDecisionModel } from "../decision-model";
+import { decisionRequest, packDecisions, requestDecisions, tryResolveDecisionSelection, type ResolvedDecisionModel } from "../decision-model";
 import { createSemanticTriggerSettingsModule } from "./semantic-settings";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import { tokenxEstimator } from "../prompt-compiler";
@@ -10,15 +10,14 @@ import type { Lorebook } from "../../shared/contract/lorebook";
 import type { DecisionSelection } from "../../shared/contract/decision-model";
 
 export interface SemanticSettingsSnapshot extends DecisionSelection {
-	readonly threshold: number;
-	readonly connection: ResolvedDecisionModel | null;
+	readonly triggerThreshold: number;
+	readonly decision: ResolvedDecisionModel | null;
 	readonly unavailableReason?: string;
 }
 
 export const captureSemanticSettings = (database: Database, options?: ConnectionSettingsModuleOptions): SemanticSettingsSnapshot => {
 	const settings = createSemanticTriggerSettingsModule(database).get();
-	try { return { ...settings, threshold: settings.triggerThreshold, connection: resolveDecisionSelection(database, settings, options) }; }
-	catch (error) { return { ...settings, threshold: settings.triggerThreshold, connection: null, unavailableReason: error instanceof Error ? error.message : "The Decision Model is unavailable." }; }
+	return { ...settings, ...tryResolveDecisionSelection(database, settings, options) };
 };
 
 const sceneFits = (selection: ResolvedDecisionModel, scene: readonly string[]) => decisionRequest(selection, { scene }, {}).fits;
@@ -56,10 +55,10 @@ export async function evaluateSemanticLore(input: {
 }): Promise<LoreSemanticEvaluation> {
 	const { settings } = input;
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
-	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
-	if (settings.connection === null) return { available: false, threshold: settings.threshold, fallbackReason: settings.unavailableReason ?? "Semantic Triggers are turned off. Choose a Decision Model under Connections." };
+	if (triggers.length === 0) return { available: true, threshold: settings.triggerThreshold, matches: [] };
+	if (settings.decision === null) return { available: false, threshold: settings.triggerThreshold, fallbackReason: settings.unavailableReason ?? "Semantic Triggers are turned off. Choose a Decision Model under Connections." };
 	const triggerItems = triggers.map((trigger, index) => ({ id: `trigger_${index}`, question: triggerQuestion(trigger) }));
-	const selection = settings.connection;
+	const selection = settings.decision;
 	const requestsFor = (scene: readonly string[]) => packDecisions(triggerItems, (batch) => decisionRequest(selection, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Decision Model request.");
 	const controller = new AbortController();
 	const signal = input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
@@ -67,17 +66,17 @@ export async function evaluateSemanticLore(input: {
 		const scores = new Map<string, number>();
 		const requests = sceneChunks(selection, input.messages).flatMap(requestsFor);
 		for (let start = 0; start < requests.length; start += 2) {
-			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request }) => requestDecisions({ request, selection, fetch: input.fetch, signal })));
+			const responses = await Promise.all(requests.slice(start, start + 2).map(({ request, questions }) => requestDecisions({ request, questions, selection, fetch: input.fetch, signal })));
 			for (const answers of responses) for (const [id, answer] of answers) {
 				if (answer.type !== "noul") throw new Error("Decision Model returned a malformed Semantic Trigger answer.");
 				scores.set(id, Math.max(scores.get(id) ?? 0, answer.noul));
 			}
 		}
 		const matches = triggers.map((trigger, index) => ({ trigger, score: scores.get(`trigger_${index}`)! }));
-		return { available: true, threshold: settings.threshold, matches };
+		return { available: true, threshold: settings.triggerThreshold, matches };
 	} catch (error) {
 		controller.abort();
 		input.signal?.throwIfAborted();
-		return { available: false, threshold: settings.threshold, fallbackReason: error instanceof Error ? error.message : "Semantic matching was unavailable." };
+		return { available: false, threshold: settings.triggerThreshold, fallbackReason: error instanceof Error ? error.message : "Semantic matching was unavailable." };
 	}
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
@@ -59,9 +60,9 @@ export async function testConnection(
 	if (input.profile.apiFormat === "embeddings") return testEmbeddings(input.profile, modelId, input.secrets ?? null, options);
 	if (input.profile.apiFormat === "system-one") {
 		try {
-			const selection = resolveDecisionProfile(input.profile, modelId, 16_000, input.secrets ?? null);
-			const { request } = decisionRequest(selection, "ping", { ping: { type: "noul", instructions: "Is the state ping?" } });
-			await requestDecisions({ request, selection, fetch: options.fetch });
+			const selection = resolveDecisionProfile(input.profile, modelId, DEFAULT_DECISION_STATE_TOKEN_LIMIT, input.secrets ?? null);
+			const { request, questions } = decisionRequest(selection, "ping", { ping: { type: "noul", instructions: "Is the state ping?" } });
+			await requestDecisions({ request, questions, selection, fetch: options.fetch });
 			return { outcome: "success", message: "Connection succeeded. The Decision Model answered the test question." };
 		} catch (error) {
 			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : error instanceof DecisionModelError ? error.kind : "endpoint", error instanceof Error ? error.message : "The Decision Model test failed.");

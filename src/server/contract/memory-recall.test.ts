@@ -154,10 +154,11 @@ describe("Memory recall in Generation preparation", () => {
 		} finally { gate.resolve(); await worker(); }
 	});
 
-	test.each(["settings", "allowance", "labels", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
+	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		withProfile(database);
+		if (change === "decision-model" || change === "decision-limit") configureDecisionModels(database, key);
 		if (change === "reset") resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 0);
 		let writingCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => { writingCalls++; }) });
@@ -166,10 +167,10 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
-		if (change === "settings") {
+		if (change === "settings" || change === "decision-model" || change === "decision-limit") {
 			const memory = createMemorySettingsModule(database);
 			const { revision, ...settings } = memory.get();
-			memory.apply({ ...settings, expectedRevision: revision, recallRelevanceMinimum: 2 });
+			memory.apply({ ...settings, expectedRevision: revision, ...(change === "settings" ? { recallRelevanceMinimum: 2 } : change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
 			setMemoryAllowance(database, conversation.id, readMemoryAllowance(database, conversation.id).revision, 1024);
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
@@ -180,6 +181,37 @@ describe("Memory recall in Generation preparation", () => {
 		expect(accepted.status).toBe(422);
 		expect(await accepted.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
 		expect(writingCalls).toBe(0);
+	});
+
+	test("changing extraction admission keeps inspected Memory without paying for recall again", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		await queueAndIndex(database, conversation.id, source.messageId, source.variantId, memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key."));
+		let recallCalls = 0;
+		const writingFetch = captureModelFetch(() => {});
+		const app = createConversationRoutes(database, { masterKey: key, fetch: async (url, init) => {
+			if (String(url).includes("embedding.test")) return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+			if (!String(url).endsWith("/systemone")) return writingFetch(url, init);
+			recallCalls++;
+			const { questions } = JSON.parse(String(init?.body));
+			return Response.json({ answers: Object.fromEntries(Object.keys(questions).map(id => [id, { type: "score", score: 2, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } }])) });
+		} });
+		const inspect = () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }) }));
+		const inspected = await inspect();
+		expect(inspected.status).toBe(200);
+		const preview = Value.Parse(generationPreview, await inspected.json());
+		expect(preview.memoryActivation?.candidates).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
+		const memory = createMemorySettingsModule(database);
+		const { revision, ...settings } = memory.get();
+		memory.apply({ ...settings, expectedRevision: revision, retainProbabilityMinimum: 0.95 });
+		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
+		expect(accepted.status).toBe(200);
+		const { generationId } = await accepted.json();
+		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
+		expect(recallCalls).toBe(1);
 	});
 
 	test("recalls indexed claims into the inspected plan and accepts its edited block without recalling again", async () => {

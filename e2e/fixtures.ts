@@ -38,7 +38,7 @@ export const send = async (page: Page, text: string) => {
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 };
 
-export const enableJev = async (request: APIRequestContext) => {
+export const enableDecisionModels = async (request: APIRequestContext) => {
 	const { revision: connectionRevision } = await (await request.get("/api/connection-settings")).json();
 	const { presets } = await (await request.get("/api/connection-settings/presets")).json();
 	const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;

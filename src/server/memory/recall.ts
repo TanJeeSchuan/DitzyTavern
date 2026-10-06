@@ -8,7 +8,7 @@ import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
-import { decisionRequest, largestFittingBatch, requestDecisions, resolveDecisionSelection, type ResolvedDecisionModel } from "../decision-model";
+import { decisionRequest, largestFittingBatch, requestDecisions, tryResolveDecisionSelection, type ResolvedDecisionModel } from "../decision-model";
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import { projectImageAnchors } from "../../shared/image-reference";
@@ -42,7 +42,7 @@ export interface MemoryRecallSnapshot {
 	readonly indexed: readonly IndexedMemoryCandidate[];
 	readonly recent: readonly IndexedMemoryCandidate[];
 	readonly decision: ResolvedDecisionModel | null;
-	readonly decisionError?: string;
+	readonly unavailableReason?: string;
 }
 
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
@@ -118,7 +118,7 @@ export async function judgeMemoryRecallCandidates({ candidates, scene, relevance
 	if (candidates.length === 0) return [];
 	const batch = largestFittingBatch(candidates, (values) => decisionRequest(selection, { scene }, Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]))));
 	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Decision Model request.");
-	const answers = await requestDecisions({ request: batch.request, selection, fetch, signal });
+	const answers = await requestDecisions({ request: batch.request, questions: batch.questions, selection, fetch, signal });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of batch.items) {
 		const relevance = parseScore(answers.get(`candidate_${candidate.identity}_relevance`));
@@ -150,10 +150,7 @@ export const captureMemoryRecallSnapshot = (input: {
 	const { allowance, revision: allowanceRevision } = readMemoryAllowance(input.database, input.conversationId);
 	const memorySettings = createMemorySettingsModule(input.database).get();
 	const { recallRelevanceMinimum } = memorySettings;
-	let decision: ResolvedDecisionModel | null = null;
-	let decisionError: string | undefined;
-	try { decision = resolveDecisionSelection(input.database, memorySettings); }
-	catch (error) { decisionError = error instanceof Error ? error.message : "The Decision Model is unavailable."; }
+	const { decision, unavailableReason } = tryResolveDecisionSelection(input.database, memorySettings);
 	const embedding = readMemoryEmbeddingConfiguration(input.database);
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, Math.min(SCENE_TOKEN_LIMIT, memorySettings.decisionStateTokenLimit));
 	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
@@ -216,14 +213,15 @@ export const captureMemoryRecallSnapshot = (input: {
 	};
 	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
 	const freshnessFingerprint = sha256(JSON.stringify({
-		settingsRevision: memorySettings.revision,
-		decisionSelection: { profileId: memorySettings.decisionProfileId, model: memorySettings.decisionModel, stateTokenLimit: memorySettings.decisionStateTokenLimit, retainProbabilityMinimum: memorySettings.retainProbabilityMinimum },
+		enabled: input.enabled,
+		recallRelevanceMinimum,
+		decisionSelection: { profileId: memorySettings.decisionProfileId, model: memorySettings.decisionModel, stateTokenLimit: memorySettings.decisionStateTokenLimit },
 		allowanceRevision,
 		labelRevision: readMemoryLabelState(input.database, input.conversationId).revision,
 		embedding,
 		collections: collections.map((collection) => ({ variantId: collection.variant_id, revision: collection.revision })),
 	}));
-	return { freshnessFingerprint, activation, embedding, indexed, recent, decision, decisionError };
+	return { freshnessFingerprint, activation, embedding, indexed, recent, decision, unavailableReason };
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
@@ -235,7 +233,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	const { activation, indexed, recent } = input.snapshot;
 	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
 	const selection = input.snapshot.decision;
-	if (selection === null) throw new Error(input.snapshot.decisionError ? `${input.snapshot.decisionError} Check Memory Settings.` : "Choose a Decision Model in Memory Settings.");
+	if (selection === null) throw new Error(input.snapshot.unavailableReason ? `${input.snapshot.unavailableReason} Check Memory Settings.` : "Choose a Decision Model in Memory Settings.");
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
 		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch, input.signal))[0];
