@@ -1,10 +1,9 @@
-import { requirePortraitImage } from "../../image";
+import { portraitRow } from "../../image";
 import { eq } from "drizzle-orm";
 import {
 	participantOpeningTable,
 	participantPromptTable,
 	participantTable,
-	toPortraitColumns,
 	toPromptChannelRow,
 } from "../../database/schema";
 import {
@@ -70,7 +69,6 @@ export function replaceParticipantPrompt(
 			set: promptRow,
 		})
 		.run();
-
 }
 
 export function replaceParticipantOpenings(
@@ -93,7 +91,6 @@ export function replaceParticipantOpenings(
 			)
 			.run();
 	}
-
 }
 
 export function updateParticipantDefinition(db: ConversationDatabase, input: {
@@ -105,11 +102,9 @@ export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	const openings = requireParticipantOpenings(input.definition.openings);
 	const participant = requireParticipant(db, input.conversationId, input.participantId);
 	db.update(participantTable).set({ name }).where(eq(participantTable.id, participant.id)).run();
-	requirePortraitImage(db, input.definition.portrait);
-	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...toPortraitColumns(input.definition.portrait) };
+	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...portraitRow(db, input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
-
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();
 	if (openings.length > 0) db.insert(participantOpeningTable).values(openings.map((content, index) => ({ participant_id: participant.id, position: index + 1, content }))).run();
 }

@@ -1,7 +1,7 @@
 // ==[HUMAN APPROVED]== Drizzle schema source of truth.
 // Domain modules add tables here; run `bun run db:generate` to produce migrations.
 
-import { sql } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 import {
 	blob,
 	check,
@@ -38,17 +38,14 @@ function portraitColumns() {
 	};
 }
 
+const portraitComplete = (name: string, table: Record<keyof PortraitColumnRow, SQLWrapper>) =>
+	check(name, sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`);
+
 export interface PortraitColumnRow {
 	portrait_hash: string | null;
 	portrait_focal_x: number | null;
 	portrait_focal_y: number | null;
 }
-
-export const toPortraitColumns = (portrait: Portrait | undefined): PortraitColumnRow => ({
-	portrait_hash: portrait?.hash ?? null,
-	portrait_focal_x: portrait?.focalX ?? null,
-	portrait_focal_y: portrait?.focalY ?? null,
-});
 
 export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
 	row?.portrait_hash == null
@@ -432,7 +429,7 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
 	...portraitColumns(),
-}, (table) => [check("character_prompt_portrait_complete", sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`)]);
+}, (table) => [portraitComplete("character_prompt_portrait_complete", table)]);
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows. Empty lists and duplicate
 // contents are allowed; the (character, position) pair is unique.
@@ -510,7 +507,7 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
 	...portraitColumns(),
-}, (table) => [check("participant_prompt_portrait_complete", sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`)]);
+}, (table) => [portraitComplete("participant_prompt_portrait_complete", table)]);
 
 // ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
 // character_prompt and participant_prompt tables.

@@ -1,10 +1,9 @@
-import { requirePortraitImage } from "../image";
+import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
 import {
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
-	toPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
 import {
@@ -37,12 +36,11 @@ export function createCharacter(
 			throw new Error("Character creation did not return an identifier.");
 		}
 
-		requirePortraitImage(db, definition.portrait);
 		db.insert(characterPromptTable)
 			.values({
 				character_id: inserted.id,
 				...toPromptChannelRow(definition.prompt),
-				...toPortraitColumns(definition.portrait),
+				...portraitRow(db, definition.portrait),
 			})
 			.run();
 

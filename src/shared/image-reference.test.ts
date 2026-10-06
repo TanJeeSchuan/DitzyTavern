@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatImageReference, imageHashes, imageReferenceAt, jsonImageHashes, parseImageReferences, projectImageAnchors, sanitizeImageName } from "./image-reference";
+import { formatImageReference, imageReferenceAt, parseImageReferences, projectImageAnchors, sanitizeImageName } from "./image-reference";
 
 const hash = "a".repeat(64);
 const other = "b".repeat(64);
@@ -35,10 +35,6 @@ describe("Image References", () => {
 		const text = `![the map](image:${hash})\n*waves* ![x](http://e/x.png) "hi"`;
 		expect(projectImageAnchors(text)).toBe('[Image: the map]\n*waves* ![x](http://e/x.png) "hi"');
 	});
-
-	test("lists the hashes a text references", () => {
-		expect(imageHashes(`![a](image:${hash}) ![b](image:${hash}) ![c](image:${other})`)).toEqual([hash, hash, other]);
-	});
 });
 
 describe("imageReferenceAt", () => {
@@ -46,24 +42,5 @@ describe("imageReferenceAt", () => {
 		const text = `ab ![map](image:${hash})`;
 		expect(imageReferenceAt(text, 3)).toMatchObject({ name: "map", hash, start: 3 });
 		expect(imageReferenceAt(text, 0)).toBeUndefined();
-	});
-});
-
-describe("JSON-held References", () => {
-	test("finds hashes in every string a decoded value holds, however nested", () => {
-		const value = [{ name: "outfit", operation: "set", value: [`a "quoted" ![the "red" coat](image:${hash})`, { deep: `![nested](image:${other})` }] }];
-		expect(jsonImageHashes(value)).toEqual([hash, other]);
-	});
-
-	test("reads a decoded label that serialization would escape, by the one text grammar", () => {
-		const reference = `![a\tb](image:${hash})`;
-		expect(imageHashes(reference)).toEqual([hash]);
-		expect(jsonImageHashes(JSON.parse(JSON.stringify({ value: reference })))).toEqual([hash]);
-	});
-
-	test("ignores labels the text parser rejects and non-string leaves", () => {
-		expect(jsonImageHashes({ value: `![a[b](image:${hash})` })).toEqual([]);
-		expect(jsonImageHashes(7)).toEqual([]);
-		expect(jsonImageHashes(null)).toEqual([]);
 	});
 });
