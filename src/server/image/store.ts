@@ -19,44 +19,20 @@ export const uploadImage = async (database: Database, bytes: Uint8Array) => {
 };
 
 export const sweepOrphanedImages = (database: Database, now = Date.now()) => database.transaction(() => {
+	// Every persisted TEXT value is a potential owner: References are found by
+	// their `image:` scheme, and bare hash columns such as Portraits by holding
+	// exactly one hash. Over-matching only keeps an Image longer.
 	const referenced = new Set<string>();
 	const reference = /image:([0-9a-f]{64})/g;
-	const ownerColumns = [
-		["message_variant", "content"],
-		["character_prompt", "system_instruction"],
-		["character_prompt", "identity"],
-		["character_prompt", "scenario"],
-		["character_prompt", "example_dialogue"],
-		["character_prompt", "post_history_instruction"],
-		["participant_prompt", "system_instruction"],
-		["participant_prompt", "identity"],
-		["participant_prompt", "scenario"],
-		["participant_prompt", "example_dialogue"],
-		["participant_prompt", "post_history_instruction"],
-		["character_opening", "content"],
-		["participant_opening", "content"],
-		["active_generation", "checkpoint_content"],
-		["active_generation", "checkpoint_reasoning"],
-		["active_generation", "provenance_value"],
-		["active_generation", "prompt_plan_json"],
-		["active_generation", "prompt_context_json"],
-		["active_generation", "prompt_inspection_json"],
-		["active_generation", "macro_writes_json"],
-		["active_generation", "generation_settings_json"],
-		["active_generation", "generation_intent_json"],
-		["active_generation", "lore_activation_json"],
-		["active_generation", "memory_activation_json"],
-		["active_generation", "connection_json"],
-		["message_variant_data", "value"],
-		["conversation_data", "value"],
-	] as const;
-	for (const [table, column] of ownerColumns) {
-		for (const { value } of database.query<{ value: string }, []>(`SELECT ${column} AS value FROM ${table} WHERE ${column} LIKE '%image:%'`).all()) {
-			for (const match of value.matchAll(reference)) referenced.add(match[1]!);
+	const bareHash = `GLOB '${"[0-9a-f]".repeat(64)}'`;
+	const textColumns = database.query<{ table: string; column: string }, []>(`
+		SELECT m.name AS "table", c.name AS "column" FROM sqlite_schema m, pragma_table_info(m.name) c
+		WHERE m.type = 'table' AND m.name <> 'image' AND m.name NOT LIKE 'sqlite_%' AND upper(c.type) = 'TEXT'`).all();
+	for (const { table, column } of textColumns) {
+		for (const { value } of database.query<{ value: string }, []>(`SELECT "${column}" AS value FROM "${table}" WHERE "${column}" LIKE '%image:%' OR "${column}" ${bareHash}`).all()) {
+			if (value.length === 64) referenced.add(value);
+			else for (const match of value.matchAll(reference)) referenced.add(match[1]!);
 		}
-	}
-	for (const table of ["character_prompt", "participant_prompt"]) {
-		for (const { hash } of database.query<{ hash: string }, []>(`SELECT portrait_hash AS hash FROM ${table} WHERE portrait_hash IS NOT NULL`).all()) referenced.add(hash);
 	}
 	const update = database.query("UPDATE image SET orphaned_at = ? WHERE hash = ?");
 	for (const image of database.query<{ hash: string; orphaned_at: number | null }, []>("SELECT hash, orphaned_at FROM image").all()) {

@@ -13,6 +13,7 @@ import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
 import { acceptConversationTailGeneration } from "../conversation/commands/accept-generation";
 import { checkpointConversationGeneration, resolveConversationGeneration } from "../conversation/commands/active-generation";
+import { removeRetainedGenerationInspection } from "../conversation/generation-retention";
 import { createNativeConversation } from ".";
 import { captureSendGenerationAsync, capturedAcceptanceFields } from "./generate-capture";
 
@@ -399,7 +400,7 @@ describe("Image Reference lifetime", () => {
 		expect(referenced()).toEqual([]);
 	});
 
-	test("an Active Generation holds the Images its plan references until it settles", async () => {
+	test("a Generation holds the Images its plan references until its retained inspection is removed", async () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureSendGenerationAsync({ database, conversationId: target.id, content: "Hello" });
@@ -413,6 +414,9 @@ describe("Image Reference lifetime", () => {
 		expect(referenced()).toEqual([art.hash]);
 
 		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
+		expect(referenced()).toEqual([art.hash]);
+
+		removeRetainedGenerationInspection(database, accepted.generationId);
 		expect(referenced()).toEqual([]);
 	});
 
