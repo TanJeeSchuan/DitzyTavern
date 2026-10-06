@@ -144,9 +144,9 @@ const compile = (
 	recipe: defaultRecipe,
 	context: [entry("Maren", "The lamp turns above you.", "model")],
 	settings: configuredSettings(),
-	connection: { apiFormat: "chat-completions", sendImages: true },
+	connection: { apiFormat: "chat-completions" },
 	estimator: transcriptLengthEstimator,
-	imageLookup: () => undefined,
+	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	...overrides,
 });
 
@@ -453,13 +453,13 @@ describe("Generation Plan Compiler", () => {
 
 	test("selects Request Overrides only from the active API Format", () => {
 		const chatCompletions = compile({
-			connection: { apiFormat: "chat-completions", sendImages: true },
+			connection: { apiFormat: "chat-completions" },
 		});
 		const responses = compile({
-			connection: { apiFormat: "responses", sendImages: true },
+			connection: { apiFormat: "responses" },
 		});
 		const anthropicMessages = compile({
-			connection: { apiFormat: "anthropic-messages", sendImages: true },
+			connection: { apiFormat: "anthropic-messages" },
 		});
 
 		expect(chatCompletions.effectiveSettings.requestOverrides).toEqual({

@@ -88,6 +88,8 @@ export const isSiblingGenerationRow = (row: { generation_intent_json: string }):
 
 type ActiveGenerationRow = NonNullable<ReturnType<typeof readActiveGeneration>>;
 
+type CheckpointVariantValues = { content: string; timestamp?: string };
+
 const terminalStatusFrom = (
 	data: readonly ConversationDataEntry[],
 ): "complete" | "length-limited" | "interrupted" => {
@@ -289,7 +291,10 @@ function commitDurableTerminalGenerationInTransaction(
 	if (variant === undefined) {
 		throw new InvalidConversationCommandError("The provisional Variant is no longer available.");
 	}
-	db.update(messageVariantTable).set({ content: input.content, timestamp: input.timestamp }).where(eq(messageVariantTable.id, variant.id)).run();
+	db.update(messageVariantTable)
+		.set({ content: input.content, timestamp: input.timestamp })
+		.where(eq(messageVariantTable.id, variant.id))
+		.run();
 	persistTerminalVariantData(db, variant.id, {
 		provenance: terminalProvenance(active, input.suppliedData),
 		reasoning: input.reasoning,
@@ -403,7 +408,19 @@ function writeCheckpointInTransaction(
 	const eventId = input.latestEventId === undefined || !Number.isInteger(input.latestEventId)
 		? currentEventId
 		: Math.max(currentEventId, input.latestEventId);
-	db.update(messageVariantTable).set({ content: input.content, timestamp: input.timestamp }).where(eq(messageVariantTable.id, active.variant_id)).run();
+	const values: CheckpointVariantValues = {
+		content: input.content,
+		...(input.timestamp === undefined ? undefined : { timestamp: input.timestamp }),
+	};
+	db.update(messageVariantTable)
+		.set(values)
+		.where(
+			and(
+				eq(messageVariantTable.id, active.variant_id),
+				eq(messageVariantTable.message_id, active.message_id),
+			),
+		)
+		.run();
 	db.update(activeGenerationTable)
 		.set({
 			checkpoint_content: input.content,

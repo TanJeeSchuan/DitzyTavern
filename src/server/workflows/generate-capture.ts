@@ -22,7 +22,7 @@ import { readConversationGenerationSettingsFromConnection } from "../conversatio
 import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
-import { imageLookup } from "../image";
+import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
@@ -37,7 +37,6 @@ import {
 } from "../generation-plan";
 import type {
 	GenerationIntent,
-	ImageLookup,
 	PromptBudgetResult,
 	PromptContextEntry,
 
@@ -49,7 +48,6 @@ import {
 	type ConnectionSettingsModuleOptions,
 } from "../connection-settings";
 import {
-	shouldSendImages,
 	type AssistantPrefill,
 	type ModelClientGenerationInput,
 	type ModelClientConnectionSnapshot,
@@ -191,7 +189,7 @@ export const compilePlanFrom = (
 	options: {
 		intent?: GenerationIntent | undefined;
 		estimator?: TokenEstimator | undefined;
-		imageLookup: ImageLookup;
+		database: Database;
 	},
 ): GenerationPlan => {
 	const compiled = compileGenerationPlan({
@@ -208,10 +206,9 @@ export const compilePlanFrom = (
 		settings: configuration.settings,
 		connection: configuration.connection === null ? null : {
 			apiFormat: configuration.connection.apiFormat,
-			sendImages: shouldSendImages(configuration.connection, configuration.settings.modelId),
 		},
 		estimator: options.estimator,
-		imageLookup: options.imageLookup,
+		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),
 	});
 	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
 	return {
@@ -802,7 +799,7 @@ export async function captureSendGenerationAsync(
 	const submitted = reuseHumanMessageId === undefined
 		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
 		: derivation;
-	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator, imageLookup: imageLookup(input.database) });
+	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator, database: input.database });
 	return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
 }
 
@@ -827,7 +824,7 @@ export async function captureContinuationGenerationAsync(
 		throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
 	}
 	const intent = continuationIntentFor(configuration.settings);
-	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator, imageLookup: imageLookup(input.database) });
+	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator, database: input.database });
 	return {
 		...toCapturedGeneration(preparation, derivation, configuration, plan),
 		precedingMessageId: latest.id,
@@ -854,6 +851,6 @@ export async function captureSiblingGenerationAsync(
 	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator, imageLookup: imageLookup(input.database) });
+	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator, database: input.database });
 	return toCapturedGeneration(preparation, derivation, configuration, plan);
 }

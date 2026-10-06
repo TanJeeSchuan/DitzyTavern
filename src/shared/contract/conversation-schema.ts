@@ -679,7 +679,6 @@ export type GenerationFormattingContext = Static<typeof generationFormattingCont
 const inspectedPlanFields = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
-
 	...generationFormattingContext.properties,
 };
 
@@ -720,7 +719,6 @@ export const generationPreviewBody = Type.Union([
 	Type.Object({
 		kind: Type.Literal("send"),
 		content: Type.String(),
-
 		...generationFormattingContext.properties,
 	}),
 	Type.Object({

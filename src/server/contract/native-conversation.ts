@@ -6,7 +6,6 @@ import {
 	StaleCharacterRevisionError,
 } from "../character-library";
 import { InvalidConversationCreationError } from "../conversation";
-
 import { InvalidImageError } from "../image";
 import { createNativeConversation } from "../workflows";
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
@@ -21,7 +20,7 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 export const createNativeConversationRoutes = (database: Database) =>
 	new Elysia().post(
 		"/api/conversations/native",
-		async ({ body }) => {
+		({ body }) => {
 			try {
 				const conversation = createNativeConversation(database, {
 						name: body.name,

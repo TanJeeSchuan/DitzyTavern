@@ -31,7 +31,7 @@ export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
 // ==[HUMAN APPROVED]== The input derives from the canonical native-conversation wire
 // schema (ADR-0032); `createdAt` stays workflow-owned because the transport
 // never submits it — the server defaults it to the creation time.
-export type CreateNativeConversationInput = Omit<Static<typeof nativeConversationBody>, "images"> & {
+export type CreateNativeConversationInput = Static<typeof nativeConversationBody> & {
 	createdAt?: string | undefined;
 };
 

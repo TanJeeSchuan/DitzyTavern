@@ -52,9 +52,9 @@ const compile = (
 	recipe: [{ reference: "history", enabled: true }],
 	context,
 	settings: settings(overrides),
-	connection: { apiFormat: "chat-completions", sendImages: true },
+	connection: { apiFormat: "chat-completions" },
 	estimator: () => 0,
-	imageLookup: lookup,
+	images: { lookup, placement: overrides.repeatedImagePlacement ?? "last", sendImages: true },
 	...extra,
 });
 
@@ -81,7 +81,7 @@ describe("Prompt Plan Images", () => {
 		const plan = compile(
 			[entry("usable prior history", "model"), entry(`${ref("map", A)}`, "human")],
 			{ contextLimit: 3_000 },
-			{ connection: { apiFormat: "chat-completions", sendImages: false } },
+			{ images: { lookup, placement: "last", sendImages: false } },
 		);
 
 		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "text-only", tokens: 0 }]);
@@ -102,14 +102,13 @@ describe("Prompt Plan Images", () => {
 	});
 
 	test("text-only inspection retains missing warnings", () => {
-		const connection = { apiFormat: "chat-completions" as const, sendImages: false };
-		const missing = compile([entry(ref("ghost", GONE), "human")], {}, { connection });
+		const missing = compile([entry(ref("ghost", GONE), "human")], {}, { images: { lookup, placement: "last", sendImages: false } });
 		expect(missing.promptPlan.images[0]?.disposition).toBe("missing");
 	});
 
 	test("a missing copy never takes a placement slot from a stored one", () => {
 		const context = [entry(`${ref("a", A)}`, "model"), entry("go", "human")];
-		const plan = compile(context, { repeatedImagePlacement: "last" }, { imageLookup: (hash) => (hash === A ? undefined : lookup(hash)) });
+		const plan = compile(context, { repeatedImagePlacement: "last" }, { images: { lookup: (hash) => (hash === A ? undefined : lookup(hash)), placement: "last", sendImages: true } });
 		expect(dispositions(plan)).toEqual(["missing"]);
 	});
 
