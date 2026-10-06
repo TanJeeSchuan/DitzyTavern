@@ -1,20 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
-import { readConversationMemories, startMemoryWorker } from "../memory";
+import { readConversationMemories, resetAndReextractMemorySource, startMemoryWorker } from "../memory";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
-import { configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
+import { captureModelFetch, configureMemoryEmbeddings, createChat, key, readOperation, readPreset, toggleBlock, withProfile } from "./prompt-preset-test-fixtures";
 import { clearGenerationPreviewRegistry } from "../workflows/generation-preview";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
-import type { PromptPlan } from "../../shared/contract/conversation-schema";
+import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
 import { createTypesafeSettingsModule } from "../typesafe";
 import { createMemorySettingsModule } from "../memory/settings";
+import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
+import { mergeMemoryLabels } from "../memory/labels";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4_000;
@@ -102,6 +105,81 @@ describe("Memory recall in Generation preparation", () => {
 	afterEach(() => {
 		clearGenerationPreviewRegistry(database);
 		database.close();
+	});
+
+	test.each(["extraction", "indexing"] as const)("accepts the exact captured Memory after background %s finishes", async (phase) => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 0);
+		const reached = Promise.withResolvers<void>();
+		const gate = Promise.withResolvers<void>();
+		const worker = startMemoryWorker(database, {
+			process: async () => {
+				if (phase === "extraction") { reached.resolve(); await gate.promise; }
+				return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")];
+			},
+			embed: async (texts) => {
+				if (phase === "indexing") { reached.resolve(); await gate.promise; }
+				return texts.map(() => [1, 0]);
+			},
+		});
+		const requests: { role: string; content: string }[][] = [];
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request.messages)) });
+		try {
+			await reached.promise;
+			const inspected = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
+				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }),
+			}));
+			expect(inspected.status).toBe(200);
+			const preview = Value.Parse(generationPreview, await inspected.json());
+			expect(preview.memoryActivation).toMatchObject({ state: "rebuilding", candidates: [], [phase === "extraction" ? "pendingSourceCount" : "pendingIndexCount"]: 1 });
+			gate.resolve();
+			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources.find((item) => item.variantId === source.variantId)?.indexing.status === "ready")).toBe(true);
+			await worker();
+			const editedText = "Keep the inspected context for this attempt.";
+			const editedPlan: PromptPlan = { ...preview.promptPlan, blocks: preview.promptPlan.blocks.map((block) => block.kind === "system-instruction" ? { ...block, content: editedText } : block) };
+			const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: editedPlan }),
+			}));
+			expect(accepted.status).toBe(200);
+			const { generationId } = await accepted.json();
+			await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
+			expect(requests).toHaveLength(1);
+			expect(requests[0]).toContainEqual({ role: "system", content: editedText });
+			expect(requests[0]).not.toContainEqual({ role: "system", content: "Maren returned Writer's key. (attribution: Narrated event)" });
+			const inspection = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/inspection`));
+			expect(await inspection.json()).toMatchObject({ memoryActivation: preview.memoryActivation });
+		} finally { gate.resolve(); await worker(); }
+	});
+
+	test.each(["settings", "allowance", "labels", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		withProfile(database);
+		if (change === "reset") resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 0);
+		let writingCalls = 0;
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => { writingCalls++; }) });
+		const inspected = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }),
+		}));
+		expect(inspected.status).toBe(200);
+		const preview = Value.Parse(generationPreview, await inspected.json());
+		if (change === "settings") {
+			const memory = createMemorySettingsModule(database);
+			const { revision, ...settings } = memory.get();
+			memory.apply({ ...settings, expectedRevision: revision, recallRelevanceMinimum: 2 });
+		} else if (change === "allowance") {
+			setMemoryAllowance(database, conversation.id, readMemoryAllowance(database, conversation.id).revision, 1024);
+		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
+		else resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 1);
+		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }),
+		}));
+		expect(accepted.status).toBe(422);
+		expect(await accepted.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
+		expect(writingCalls).toBe(0);
 	});
 
 	test("recalls indexed claims into the inspected plan and accepts its edited block without recalling again", async () => {

@@ -73,6 +73,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			},
 		},
 		memory: {
+			freshnessFingerprint: "memory",
 			activation: {
 				version: 1,
 				state: "disabled",

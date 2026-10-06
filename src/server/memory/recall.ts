@@ -15,6 +15,7 @@ import { projectImageAnchors } from "../../shared/image-reference";
 import type { ModelFetch } from "../model-client/types";
 import { embedMemoryQuery, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
 import { readMemoryAllowance } from "./collections";
+import { readMemoryLabelState } from "./labels";
 import { sha256 } from "./hash";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
 import type { JevAnswer } from "../../shared/contract/typesafe";
@@ -35,6 +36,7 @@ interface IndexedMemoryCandidate {
 }
 
 export interface MemoryRecallSnapshot {
+	readonly freshnessFingerprint: string;
 	readonly activation: MemoryActivationRecord;
 	readonly embedding: MemoryEmbeddingConfiguration;
 	readonly indexed: readonly IndexedMemoryCandidate[];
@@ -142,8 +144,9 @@ export const captureMemoryRecallSnapshot = (input: {
 	humanName: string;
 }): MemoryRecallSnapshot => {
 	const db = drizzle(input.database);
-	const { allowance } = readMemoryAllowance(input.database, input.conversationId);
-	const { recallRelevanceMinimum } = createMemorySettingsModule(input.database).get();
+	const { allowance, revision: allowanceRevision } = readMemoryAllowance(input.database, input.conversationId);
+	const memorySettings = createMemorySettingsModule(input.database).get();
+	const { recallRelevanceMinimum } = memorySettings;
 	const typesafe = createTypesafeSettingsModule(input.database).get();
 	const embedding = readMemoryEmbeddingConfiguration(input.database);
 	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName);
@@ -206,7 +209,14 @@ export const captureMemoryRecallSnapshot = (input: {
 		semanticShortlistCount: 0, recentShortlistCount: 0, candidates: [], automaticMemoryText: "", finalMemoryText: "", manuallyEdited: false,
 	};
 	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
-	return { activation, embedding, indexed, recent };
+	const freshnessFingerprint = sha256(JSON.stringify({
+		settingsRevision: memorySettings.revision,
+		allowanceRevision,
+		labelRevision: readMemoryLabelState(input.database, input.conversationId).revision,
+		embedding,
+		collections: collections.map((collection) => ({ variantId: collection.variant_id, revision: collection.revision })),
+	}));
+	return { freshnessFingerprint, activation, embedding, indexed, recent };
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
