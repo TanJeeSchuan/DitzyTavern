@@ -33,7 +33,9 @@ class ImageChip extends WidgetType {
 		const label = document.createElement("span");
 		label.textContent = this.name;
 		chip.append(thumbnail, label);
-		return chip;
+		const anchor = document.createElement("span");
+		anchor.append(chip);
+		return anchor;
 	}
 }
 
