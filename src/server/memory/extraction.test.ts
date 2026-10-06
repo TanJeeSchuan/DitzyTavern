@@ -13,7 +13,7 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createMemorySettingsModule } from "./settings";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ResolvedDecisionModel } from "../decision-model";
-const selection: ResolvedDecisionModel = { profileId: 1, profileName: "Decisions", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 };
+const selection: ResolvedDecisionModel = { profileName: "Decisions", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 };
 import { extractAndJudgeMemorySource } from "./extraction";
 
 const source = { messageId: 10, variantId: 20, speaker: "Maren", content: "Maren promised Writer the brass key." };
@@ -47,7 +47,7 @@ describe("Memory extraction validation", () => {
 });
 
 describe("Decision Model Memory judgments", () => {
-	test("captures the Jev model before extraction suspends", async () => {
+	test("captures the Decision Model before extraction suspends", async () => {
 		const database: Database = openInitializedDatabase({ path: ":memory:" });
 		const key = new Uint8Array(32).fill(11);
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
@@ -55,7 +55,7 @@ describe("Decision Model Memory judgments", () => {
 		let extractionStarted = () => {};
 		const extractionGate = new Promise<void>((resolve) => { releaseExtraction = resolve; });
 		const extractionRequest = new Promise<void>((resolve) => { extractionStarted = resolve; });
-		let jevModel = "";
+		let decisionModel = "";
 		try {
 			const connections = createConnectionSettingsModule(database, { masterKey: key });
 			const profileId = connections.createProfile({ expectedRevision: 0, profile: {
@@ -74,8 +74,8 @@ describe("Decision Model Memory judgments", () => {
 			configureDecisionModels(database, key, "jev-before");
 			const fakeFetch: ModelFetch = async (input, init) => {
 				if (String(input).endsWith("/systemone")) {
-					// SAFETY: requestJev serializes the Jev model as a string in the captured request body.
-					jevModel = (JSON.parse(String(init?.body)) as { model: string }).model;
+					// SAFETY: requestDecisions serializes the Decision Model as a string in the captured request body.
+					decisionModel = (JSON.parse(String(init?.body)) as { model: string }).model;
 					return Response.json({ answers: {
 						candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 }, confidence: 1 },
 						candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 1, misattributed: 0, unclear: 0 }, confidence: 1 },
@@ -98,7 +98,7 @@ describe("Decision Model Memory judgments", () => {
 			memory.apply({ ...settings, expectedRevision: revision, decisionModel: "jev-after" });
 			releaseExtraction();
 			await evaluation;
-			expect(jevModel).toBe("jev-before");
+			expect(decisionModel).toBe("jev-before");
 		} finally {
 			releaseExtraction();
 			database.close();

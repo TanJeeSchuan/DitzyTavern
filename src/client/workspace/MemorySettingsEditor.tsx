@@ -63,7 +63,7 @@ export function MemorySettingsEditor() {
 				<p>Extraction runs separately from writing generations.</p>
 				{draft.decisionProfileId === null && <p className="settings-feedback" role="status">Choose a Decision Model to enable Memory judgment and recall.</p>}
 				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
-				{(extractionProfile === undefined || draft.extractionModel.length === 0) && <p className="settings-feedback" role="status">Memory extraction is not ready. Choose an extraction model whose connection has an API key, and choose a Decision Model below.</p>}
+				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && <p className="settings-feedback" role="status">Memory extraction is not ready. Choose an extraction model whose connection has an API key, and choose a Decision Model below.</p>}
 				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && <p className="settings-feedback" role="status">Memory recall is not ready. Choose an embedding model so saved Memories can be recalled.</p>}
 				<div className="grid grid-cols-1 gap-4">
 					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
@@ -93,7 +93,7 @@ export function MemorySettingsEditor() {
 					<NumberRow id="memory-decision-state-limit" label="State token limit" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })} />
 				</NumberGroup>
 				<NumberGroup title="Decision thresholds" description="Retain probability controls admission. Relevance score controls recall.">
-					<NumberRow id="memory-usefulness-gate" label="Retain probability minimum (0–1)" min={0} max={1} step={0.05} value={draft.retainProbabilityMinimum} onChange={(retainProbabilityMinimum) => update({ retainProbabilityMinimum })} />
+					<NumberRow id="memory-retain-probability-minimum" label="Retain probability minimum (0–1)" min={0} max={1} step={0.05} value={draft.retainProbabilityMinimum} onChange={(retainProbabilityMinimum) => update({ retainProbabilityMinimum })} />
 					<NumberRow id="memory-relevance-minimum" label="Relevance (0–3)" min={0} max={3} step={0.25} value={draft.recallRelevanceMinimum} onChange={(recallRelevanceMinimum) => update({ recallRelevanceMinimum })} />
 				</NumberGroup>
 				{state.notice && <p className="settings-feedback" role="status">{state.notice}</p>}

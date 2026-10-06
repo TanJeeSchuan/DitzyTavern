@@ -19,14 +19,14 @@ export function ConnectionSettingsPanel({
 	activeProfileId: number | null;
 }) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const [semanticTriggersOpen, setSemanticTriggerOpen] = useState(false);
+	const [semanticTriggersOpen, setSemanticTriggersOpen] = useState(false);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
-	if (semanticTriggersOpen) return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setSemanticTriggerOpen(false)} />;
+	if (semanticTriggersOpen) return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setSemanticTriggersOpen(false)} />;
 	return (
 		<div className="panel-body settings-panel-body">
 			{controller.loading ? <p className="panel-note" role="status">Loading Connections…</p>
 				: controller.settings === null ? <p className="import-problem" role="alert">{controller.error}</p>
-				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} onOpenSemanticTrigger={() => setSemanticTriggerOpen(true)} />}
+				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} onOpenSemanticTrigger={() => setSemanticTriggersOpen(true)} />}
 		</div>
 	);
 }

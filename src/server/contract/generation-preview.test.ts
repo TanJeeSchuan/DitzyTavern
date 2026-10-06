@@ -776,8 +776,8 @@ describe("Prompt Plan inspection", () => {
 		withProfile(database);
 		const masterKey = new Uint8Array(32).fill(11);
 		const selection = configureDecisionModels(database, masterKey);
-        const connections = createConnectionSettingsModule(database, { masterKey });
-        const saveCredential = (credential: string) => credential ? connections.setCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, credential }) : connections.resetCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, confirmed: true });
+		const connections = createConnectionSettingsModule(database, { masterKey });
+		const saveCredential = (credential: string) => credential ? connections.setCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, credential }) : connections.resetCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, confirmed: true });
 		saveCredential("original-secret");
 		const app = createConversationRoutes(database, { masterKey, fetch: captureModelFetch(() => {}) });
 		for (const credential of ["replacement-secret", ""]) {

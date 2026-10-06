@@ -232,7 +232,7 @@ describe("Memory recall in Generation preparation", () => {
 		if (currentRevision === undefined) throw new Error("Edited Conversation snapshot missing.");
 
 		let embeddingCalls = 0;
-		let jevCalls = 0;
+		let decisionCalls = 0;
 		let writingMessages: { role: string; content: string }[] = [];
 		const writingRequests: { role: string; content: string }[][] = [];
 		let releaseFirstGeneration = () => {};
@@ -252,7 +252,7 @@ describe("Memory recall in Generation preparation", () => {
 				return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
 			}
 			if (url.endsWith("/systemone")) {
-				jevCalls += 1;
+				decisionCalls += 1;
 				// SAFETY: the application builds a JSON object in `questions`; the fake only uses its own question names to form the response.
 				const request = JSON.parse(String(init?.body)) as { questions: object };
 				const answers = Object.fromEntries(Object.keys(request.questions).map((name) => [name,
@@ -309,7 +309,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(preview.memorySources.messageIds).toContain(source.messageId);
 		expect(preview.memorySources.variantIds).toContain(source.variantId);
 		expect(embeddingCalls).toBe(1);
-		expect(jevCalls).toBe(1);
+		expect(decisionCalls).toBe(1);
 
 		const editedMemoryText = "Maren still has the key. The writer corrected this one attempt.";
 		const editedPlan: PromptPlan = {
@@ -344,7 +344,7 @@ describe("Memory recall in Generation preparation", () => {
 		releaseFirstGeneration();
 		await generationEvents;
 		expect(embeddingCalls).toBe(1);
-		expect(jevCalls).toBe(1);
+		expect(decisionCalls).toBe(1);
 		expect(writingMessages).toContainEqual({ role: "system", content: editedMemoryText });
 		expect(writingMessages).not.toContainEqual({ role: "system", content: memoryText });
 		const firstTarget = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
@@ -421,7 +421,7 @@ describe("Memory recall in Generation preparation", () => {
 		const siblingDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${siblingGeneration.variantId}/details`));
 		expect(await siblingDetails.json()).toMatchObject({ memoryActivation: { manuallyEdited: false, finalMemoryText: memoryText, candidates: [{ messageId: source.messageId, variantId: source.variantId }] } });
 		expect(embeddingCalls).toBe(3);
-		expect(jevCalls).toBe(3);
+		expect(decisionCalls).toBe(3);
 		const failedApp = createConversationRoutes(database, { masterKey: key, fetch: async () => new Response("provider unavailable", { status: 503 }) });
 		const failedRecall = await failedApp.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation" }),
@@ -449,7 +449,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await staleAcceptance.json()).toMatchObject({ outcome: "invalid" });
 	});
 
-	test("empty, queued, and disabled recall skip embedding and Jev calls", async () => {
+	test("empty, queued, and disabled recall skip embedding and Decision Model calls", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		configureDecisionModels(database, key);

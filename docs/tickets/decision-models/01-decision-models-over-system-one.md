@@ -36,7 +36,7 @@ Replace the Typesafe-only Jev integration with Decision Models reached through S
 - [x] Replace the Typesafe Jev entry in Connections with a Semantic Triggers entry, add the Decision Model controls to Memory Settings, and rename Jev copy that means the role.
 - [x] Delete the Typesafe module, routes, editor, client settings and hardcoded endpoint.
 - [x] Switch the E2E fake to recognise `/systemone` calls, and the Jev fixture to create and select a System One profile.
-- [ ] Add the contract tests in spec Testing Decisions 2–5. Verify the UI manually with playwright-cli.
+- [x] Add the contract tests in spec Testing Decisions 2–5. Verify the UI manually with playwright-cli.
 - [x] Update the conversation-memory and lorebooks specs, README files and AGENTS.md wording.
 - [ ] Run focused tests, typechecking, the full test suite and `bun run test:e2e`.
 - [ ] Run `/code-review` and resolve its findings.

@@ -11,7 +11,6 @@ import { useAsyncEffect } from "../lib/use-async";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
 
-
 type Draft = Omit<SemanticTriggerSettings, "revision">;
 type State = { settings: SemanticTriggerSettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null };
 
@@ -42,8 +41,7 @@ export function useSemanticTriggerSettings() {
 	const save = async () => {
 		if (settings === null || draft === null) return false;
 		setState((current) => ({ ...current, pending: true, error: null }));
-		const fields = draft;
-		const command: SemanticTriggerSettingsCommand = { type: "apply", expectedRevision: settings.revision, ...fields };
+		const command: SemanticTriggerSettingsCommand = { type: "apply", expectedRevision: settings.revision, ...draft };
 		return settle(await saveSemanticTriggerSettings(command), (current) => current !== draft);
 	};
 
@@ -77,13 +75,13 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 						</div>
 					) : (
 						<div className="grid gap-4">
-                            <Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
-                                <ProfileModelPicker settings={connections} onSettingsChange={setConnections} decisions selected={{ connectionProfileId: draft.decisionProfileId, modelId: draft.decisionModel }} onSelect={(profile, decisionModel) => semanticTriggers.update({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label="Semantic Trigger Decision Model" />
-                                {draft.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => semanticTriggers.update({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
-                            </Field>
-                            <Field htmlFor="semantic-state-limit" label="State token limit" helper="Long scenes are split so the model reads the whole Lore Scan Window.">
-                                <input id="semantic-state-limit" className="field-input" type="number" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={event => semanticTriggers.update({ decisionStateTokenLimit: Number(event.target.value) })} />
-                            </Field>
+							<Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
+								<ProfileModelPicker settings={connections} onSettingsChange={setConnections} decisions selected={{ connectionProfileId: draft.decisionProfileId, modelId: draft.decisionModel }} onSelect={(profile, decisionModel) => semanticTriggers.update({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label="Semantic Trigger Decision Model" />
+								{draft.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => semanticTriggers.update({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
+							</Field>
+							<Field htmlFor="semantic-state-limit" label="State token limit" helper="Long scenes are split so the model reads the whole Lore Scan Window.">
+								<input id="semantic-state-limit" className="field-input" type="number" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={event => semanticTriggers.update({ decisionStateTokenLimit: Number(event.target.value) })} />
+							</Field>
 							<div className="grid gap-1.5">
 								<div className="flex items-center justify-between gap-3">
 									<label htmlFor="semanticTriggers-threshold" className="text-[13px] font-medium text-muted-foreground">Trigger threshold</label>

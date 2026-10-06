@@ -204,3 +204,12 @@ test("creating a Chat never selects a Decision Model as its writing connection",
 	const conversation = createChat(database);
 	expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBeNull();
 });
+
+test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 503, kind: "endpoint" }, { status: 0, kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {
+	const app = createConnectionSettingsRoutes(database, { fetch: async () => {
+		if (status === 0) throw new TypeError("Connection refused");
+		return Response.json({ error: "Unavailable" }, { status });
+	} });
+	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
+	expect(await tested.json()).toMatchObject({ outcome: "failure", kind });
+});

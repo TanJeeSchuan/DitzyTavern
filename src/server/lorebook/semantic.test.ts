@@ -3,11 +3,11 @@ import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic"
 import { decisionRequest } from "../decision-model";
 
 const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
-const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5, connection: { profileId: 1, profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } };
-const unreachable = async (): Promise<Response> => { throw new Error("Jev must not be called."); };
+const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5, connection: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } };
+const unreachable = async (): Promise<Response> => { throw new Error("The Decision Model must not be called."); };
 
 describe("semantic Lore evaluation", () => {
-	test("asks Jev one question per distinct trigger against the scan window", async () => {
+	test("asks the Decision Model one question per distinct trigger against the scan window", async () => {
 		let body = "";
 		const result = await evaluateSemanticLore({
 			entries: [entry, { enabled: true, semanticTriggers: ["ships arrive", "a storm breaks"] }, { enabled: false, semanticTriggers: ["disabled trigger"] }],
@@ -26,14 +26,14 @@ describe("semantic Lore evaluation", () => {
 		expect(result).toEqual({ available: true, threshold: 0.5, matches: [{ trigger: "ships arrive", score: 0.9 }, { trigger: "a storm breaks", score: 0.1 }] });
 	});
 
-	test("reports why the whole pass is unavailable without calling Jev when off or unconfigured", async () => {
+	test("reports why the whole pass is unavailable without calling the Decision Model when off or unconfigured", async () => {
 		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, decisionProfileId: null, connection: null }, fetch: unreachable }))
-			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Semantic Triggers under Connections." });
+			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off. Choose a Decision Model under Connections." });
 		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, connection: null, unavailableReason: "Decision Model unavailable" }, fetch: unreachable }))
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Decision Model unavailable") });
 	});
 
-	test("covers the whole scan window within Jev limits, two requests at a time", async () => {
+	test("covers the whole scan window within Decision Model limits, two requests at a time", async () => {
 		const bodies: { model: string; state: { scene: string[] }; questions: Record<string, { type: string }> }[] = [];
 		const triggers = Array.from({ length: 120 }, (_, index) => `situation ${index} ${"detail ".repeat(300)}`);
 		let inFlight = 0;
@@ -63,7 +63,7 @@ describe("semantic Lore evaluation", () => {
 		expect(result.matches?.[0]).toEqual({ trigger: triggers[0], score: 0.9 });
 	});
 
-	test("uses one unavailable result when Jev fails", async () => {
+	test("uses one unavailable result when the Decision Model fails", async () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
 		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });
 	});

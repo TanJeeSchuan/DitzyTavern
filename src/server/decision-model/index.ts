@@ -12,8 +12,11 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { connectionProfileTable } from "../database/schema";
 
+export class DecisionModelError extends Error {
+	constructor(readonly kind: "authentication" | "endpoint" | "malformed-response", message: string) { super(message); }
+}
+
 export interface ResolvedDecisionModel {
-	readonly profileId: number | null;
 	readonly profileName: string;
 	readonly model: string;
 	readonly stateTokenLimit: number;
@@ -39,7 +42,7 @@ export const validateDecisionSelection = (database: Database, selection: Decisio
 export const resolveDecisionProfile = (profile: ConnectionProfileDraft, model: string, stateTokenLimit: number, secrets: ConnectionProfileSecretSnapshot | null): ResolvedDecisionModel => {
 	if (profile.apiFormat !== "system-one") throw new Error("Choose a System One connection for the Decision Model.");
 	if (!(profile.timeoutMs !== null && profile.timeoutMs > 0)) throw new Error("A System One connection needs a positive timeout.");
-	return { profileId: null, profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveSystemOneRequestUrl(profile.requestUrl), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs: profile.timeoutMs };
+	return { profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveSystemOneRequestUrl(profile.requestUrl), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs: profile.timeoutMs };
 };
 
 export const resolveDecisionSelection = (database: Database, selection: DecisionSelection, options: ConnectionSettingsModuleOptions = {}): ResolvedDecisionModel | null => {
@@ -48,17 +51,22 @@ export const resolveDecisionSelection = (database: Database, selection: Decision
 	const profile = connections.get().profiles.find(profile => profile.id === selection.decisionProfileId);
 	if (!profile) throw new Error("The selected Decision Model Connection Profile is unavailable. Choose an available profile.");
 	if (!selection.decisionModel.trim()) throw new Error("Choose a Decision Model for the selected Connection Profile.");
-	return { ...resolveDecisionProfile(profile, selection.decisionModel, selection.decisionStateTokenLimit, connections.getProfileSecrets(profile.id)), profileId: profile.id };
+	return resolveDecisionProfile(profile, selection.decisionModel, selection.decisionStateTokenLimit, connections.getProfileSecrets(profile.id));
 };
 
 export const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
 export type DecisionJson = string | number | boolean | null | readonly DecisionJson[] | { readonly [key: string]: DecisionJson | undefined };
 
+const REQUEST_BYTE_LIMIT = 128 * 1024;
+const REQUEST_TOKEN_LIMIT = 48_000;
+const STATE_AND_QUESTION_TOKEN_LIMIT = 32_000;
+const TOTAL_TOKEN_LIMIT = 64_000;
+
 export const decisionRequest = (selection: Pick<ResolvedDecisionModel, "model" | "stateTokenLimit">, state: DecisionJson, questions: Readonly<Record<string, DecisionJson>>) => {
 	const request = JSON.stringify({ model: selection.model, state, questions });
 	const questionTokens = Object.values(questions).map(question => tokenxEstimator(JSON.stringify(question)));
-	const stateLimit = Math.min(selection.stateTokenLimit, 32_000 - Math.max(0, ...questionTokens), 64_000 - questionTokens.reduce((sum, count) => sum + count, 0));
-	return { request, fits: new TextEncoder().encode(request).byteLength <= 128 * 1024 && tokenxEstimator(request) <= 48_000 && tokenxEstimator(JSON.stringify(state)) <= stateLimit };
+	const stateLimit = Math.min(selection.stateTokenLimit, STATE_AND_QUESTION_TOKEN_LIMIT - Math.max(0, ...questionTokens), TOTAL_TOKEN_LIMIT - questionTokens.reduce((sum, count) => sum + count, 0));
+	return { request, fits: new TextEncoder().encode(request).byteLength <= REQUEST_BYTE_LIMIT && tokenxEstimator(request) <= REQUEST_TOKEN_LIMIT && tokenxEstimator(JSON.stringify(state)) <= stateLimit };
 };
 
 export const largestFittingBatch = <Item>(items: readonly Item[], build: (batch: readonly Item[]) => ReturnType<typeof decisionRequest>) => {
@@ -92,26 +100,26 @@ export async function requestDecisions(input: { request: string; selection: Reso
 	input.trace?.("Decision Model request", { body: prettyJson(input.request) });
 	const startedAt = Date.now();
 	const { response, text } = await fetchWithTimeout(input.fetch ?? fetch, input.selection.endpoint, {
-		method: "POST", signal: input.signal, redirect: "error",
+		method: "POST", signal: input.signal,
 		headers: authenticatedHeaders({ "content-type": "application/json" }, input.selection.credential, input.selection.headers), body: input.request,
 	}, input.selection.timeoutMs, async (response, signal) => {
 		const { bytes, truncated } = await readBoundedResponse(response, 256 * 1024, signal);
-		if (truncated) throw new Error("Decision Model response exceeded 256 KiB.");
+		if (truncated) throw new DecisionModelError("malformed-response", "Decision Model response exceeded 256 KiB.");
 		return { response, text: new TextDecoder().decode(bytes) };
 	});
 	input.trace?.("Decision Model response", { elapsed: `${((Date.now() - startedAt) / 1000).toFixed(1)} s`, status: String(response.status), body: prettyJson(text) });
-	if (!response.ok) throw new Error(`Decision Model request failed with HTTP ${response.status}.`);
+	if (!response.ok) throw new DecisionModelError(response.status === 401 || response.status === 403 ? "authentication" : "endpoint", `Decision Model request failed with HTTP ${response.status}.`);
 	let answers: Record<string, DecisionAnswer>;
-	try { answers = Value.Parse(decisionResponse, JSON.parse(text)).answers; } catch { throw new Error("Decision Model returned malformed or invalid JSON."); }
+	try { answers = Value.Parse(decisionResponse, JSON.parse(text)).answers; } catch { throw new DecisionModelError("malformed-response", "Decision Model returned malformed or invalid JSON."); }
 	const questions: Record<string, { type: string; criteria?: Record<string, DecisionJson> }> = JSON.parse(input.request).questions;
 	const ids = Object.keys(questions);
-	if (Object.keys(answers).length !== ids.length || ids.some(id => !Object.hasOwn(answers, id))) throw new Error("Decision Model omitted or added required answers.");
+	if (Object.keys(answers).length !== ids.length || ids.some(id => !Object.hasOwn(answers, id))) throw new DecisionModelError("malformed-response", "Decision Model omitted or added required answers.");
 	for (const [id, answer] of Object.entries(answers)) {
 		const question = questions[id]!;
-		if (answer.type !== question.type) throw new Error("Decision Model returned the wrong answer type.");
+		if (answer.type !== question.type) throw new DecisionModelError("malformed-response", "Decision Model returned the wrong answer type.");
 		if (answer.type === "choice") {
 			const options = Object.keys(question.criteria ?? {});
-			if (!options.includes(answer.choice) || Object.keys(answer.probabilities).length !== options.length || options.some(option => !Object.hasOwn(answer.probabilities, option))) throw new Error("Decision Model returned unknown or missing choice options.");
+			if (!options.includes(answer.choice) || Object.keys(answer.probabilities).length !== options.length || options.some(option => !Object.hasOwn(answer.probabilities, option))) throw new DecisionModelError("malformed-response", "Decision Model returned unknown or missing choice options.");
 		}
 	}
 	return new Map(Object.entries(answers));

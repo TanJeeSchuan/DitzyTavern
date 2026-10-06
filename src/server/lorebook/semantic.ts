@@ -57,7 +57,7 @@ export async function evaluateSemanticLore(input: {
 	const { settings } = input;
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
 	if (triggers.length === 0) return { available: true, threshold: settings.threshold, matches: [] };
-	if (settings.connection === null) return { available: false, threshold: settings.threshold, fallbackReason: settings.unavailableReason ?? "Semantic Triggers are turned off in Semantic Triggers under Connections." };
+	if (settings.connection === null) return { available: false, threshold: settings.threshold, fallbackReason: settings.unavailableReason ?? "Semantic Triggers are turned off. Choose a Decision Model under Connections." };
 	const triggerItems = triggers.map((trigger, index) => ({ id: `trigger_${index}`, question: triggerQuestion(trigger) }));
 	const selection = settings.connection;
 	const requestsFor = (scene: readonly string[]) => packDecisions(triggerItems, (batch) => decisionRequest(selection, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Decision Model request.");

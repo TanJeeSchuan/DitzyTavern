@@ -103,14 +103,8 @@ const parseChoice = <const Labels extends readonly string[]>(answer: DecisionAns
 	if (answer?.type !== "choice") throw new Error("Decision Model returned a missing or malformed Memory judgment.");
 	const selected = answer.choice;
 	const probabilities = answer.probabilities;
-	if (!isChoiceLabel(labels, selected) || Object.keys(probabilities).length !== labels.length) throw new Error("Decision Model returned a missing or malformed Memory judgment.");
-	const normalized: Record<string, number> = {};
-	for (const label of labels) {
-		const probability = probabilities[label];
-		if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error("Decision Model returned incomplete Memory judgment probabilities.");
-		normalized[label] = probability;
-	}
-	return { label: selected, probabilities: normalized, confidence: answer.confidence };
+	if (!isChoiceLabel(labels, selected)) throw new Error("Decision Model returned a missing or malformed Memory judgment.");
+	return { label: selected, probabilities, confidence: answer.confidence };
 };
 
 const supportCriteria = {
@@ -145,7 +139,6 @@ export async function judgeMemoryCandidates({ source, context, candidates, selec
 	if (candidates.length === 0) return [];
 	const output: MemoryCandidateJudgment[] = [];
 	const state = { source, context };
-	if (tokenxEstimator(JSON.stringify(state)) > selection.stateTokenLimit) throw new Error("The Memory source and captured context exceed the Decision Model state token limit. No partial collection was saved.");
 	const batches = packDecisions(candidates.map((candidate, id) => ({ candidate, id })), (batch) => decisionRequest(selection, state, Object.fromEntries(batch.flatMap(({ candidate, id }) => Object.entries(candidateQuestions(candidate)).map(([name, question]) => [`candidate_${id}_${name}`, question])))), "Required Memory evidence exceeds the bounded Decision Model request. No partial collection was saved.", 16);
 	for (const { request, items } of batches) {
 		const answers = await requestDecisions({ request, selection, fetch, signal, trace });

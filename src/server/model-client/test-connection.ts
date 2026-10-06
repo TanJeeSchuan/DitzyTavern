@@ -3,7 +3,7 @@ import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "..
 import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
 import { EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 import { authenticatedHeaders } from "./authenticated-headers";
-import { decisionRequest, requestDecisions, resolveDecisionProfile } from "../decision-model";
+import { DecisionModelError, decisionRequest, requestDecisions, resolveDecisionProfile } from "../decision-model";
 import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
 import { ModelFetchTimeoutError } from "./model-fetch";
@@ -64,7 +64,7 @@ export async function testConnection(
 			await requestDecisions({ request, selection, fetch: options.fetch });
 			return { outcome: "success", message: "Connection succeeded. The Decision Model answered the test question." };
 		} catch (error) {
-			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : "malformed-response", error instanceof Error ? error.message : "The Decision Model test failed.");
+			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : error instanceof DecisionModelError ? error.kind : "endpoint", error instanceof Error ? error.message : "The Decision Model test failed.");
 		}
 	}
 	if (input.profile.apiFormat !== "chat-completions") {

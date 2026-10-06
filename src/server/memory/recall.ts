@@ -235,7 +235,7 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 	const { activation, indexed, recent } = input.snapshot;
 	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
 	const selection = input.snapshot.decision;
-	if (selection === null) throw new Error(`${input.snapshot.decisionError ?? "Choose a Decision Model"} in Memory Settings.`);
+	if (selection === null) throw new Error(input.snapshot.decisionError ? `${input.snapshot.decisionError} Check Memory Settings.` : "Choose a Decision Model in Memory Settings.");
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
 		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch, input.signal))[0];
