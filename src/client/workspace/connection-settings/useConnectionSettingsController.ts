@@ -25,7 +25,7 @@ import {
 } from "../../connection-settings-state";
 import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { useAsyncEffect } from "../../lib/use-async";
-import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl, resolveSystemOneRequestUrl } from "../../../shared/connection-url";
+import { resolveRequestUrl } from "../../../shared/connection-url";
 
 export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
 	return Object.entries(data).map(([name, value]) => {
@@ -155,7 +155,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 	const resolvedRequestUrl = useMemo(() => {
 		if (draft.requestUrl.trim().length === 0) return "";
 		try {
-			return (draft.apiFormat === "system-one" ? resolveSystemOneRequestUrl : draft.apiFormat === "embeddings" ? resolveEmbeddingsRequestUrl : resolveChatCompletionsRequestUrl)(draft.requestUrl);
+			return resolveRequestUrl(draft.requestUrl, draft.apiFormat);
 		} catch (error) {
 			return error instanceof Error ? `Invalid: ${error.message}` : "Invalid request URL";
 		}

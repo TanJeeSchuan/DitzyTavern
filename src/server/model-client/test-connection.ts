@@ -1,7 +1,7 @@
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
-import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
+import { resolveRequestUrl } from "../../shared/connection-url";
 import { EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 import { authenticatedHeaders } from "./authenticated-headers";
 import { DecisionModelError, decisionRequest, requestDecisions, resolveDecisionProfile } from "../decision-model";
@@ -80,7 +80,7 @@ export async function testConnection(
 
 	let requestUrl: string;
 	try {
-		requestUrl = resolveChatCompletionsRequestUrl(input.profile.requestUrl);
+		requestUrl = resolveRequestUrl(input.profile.requestUrl, input.profile.apiFormat);
 	} catch (error) {
 		return failure(
 			"endpoint",
@@ -161,7 +161,7 @@ async function testEmbeddings(
 ): Promise<TestConnectionResult> {
 	try {
 		const vectors = await requestEmbeddings(["DitzyTavern embedding test"], {
-			endpoint: resolveEmbeddingsRequestUrl(profile.requestUrl),
+			endpoint: resolveRequestUrl(profile.requestUrl, profile.apiFormat),
 			model: modelId,
 			secrets,
 			timeoutMs: Math.min(profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),

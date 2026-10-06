@@ -20,6 +20,9 @@ import { startMemoryWorker } from "../memory";
 import { createMemoryRoutes } from "./memory";
 import { readConversationMemories } from "../memory/collections";
 import { createConversationModule } from "../conversation";
+import { testConnection } from "../model-client/test-connection";
+import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
+import { generationPreparationFingerprint } from "../workflows/generation-preparation-fingerprint";
 
 let database: Database;
 const key = new Uint8Array(32).fill(7);
@@ -29,6 +32,17 @@ beforeEach(() => {
 });
 afterEach(() => database.close());
 const post = (path: string, data: GenerationJsonValue) => new Request(`http://localhost/api/connection-settings/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+
+test("Memory and Semantic Trigger settings reject state token limits below 256", () => {
+	const memory = createMemorySettingsModule(database);
+	const semantic = createSemanticTriggerSettingsModule(database);
+	const applyMemory = (decisionStateTokenLimit: number) => memory.apply({ ...memory.get(), expectedRevision: memory.get().revision, decisionStateTokenLimit });
+	const applySemantic = (decisionStateTokenLimit: number) => semantic.apply({ ...semantic.get(), type: "apply", expectedRevision: semantic.get().revision, decisionStateTokenLimit });
+	for (const apply of [applyMemory, applySemantic]) {
+		for (const limit of [1, 255]) expect(() => apply(limit)).toThrow("state token limit");
+		expect(apply(256).decisionStateTokenLimit).toBe(256);
+	}
+});
 
 test("Memory extraction reports a missing Decision Model before requesting extraction", async () => {
 	await expect(extractAndJudgeMemorySource(database, { messageId: 1, variantId: 1, speaker: "Maren", content: "Maren kept the key." }, [], async () => { throw new Error("Unexpected network request"); })).rejects.toThrow("Decision Model in Memory Settings");
@@ -73,6 +87,11 @@ test("Test Connection reports the profile deadline when a Decision Model hangs",
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => new Promise<Response>(() => {}) });
 	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Slow local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 5 }, modelId: "clef" }));
 	expect(await tested.json()).toMatchObject({ outcome: "failure", kind: "timeout", message: expect.stringContaining("timed out") });
+});
+
+test.each([null, 0, -1])("Test Connection rejects a System One timeout of %s before calling the endpoint", async timeoutMs => {
+	const result = await testConnection({ profile: { ...blankConnectionProfileDraft, displayName: "Invalid deadline", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs }, modelId: "clef" }, { fetch: async () => { throw new Error("Unexpected network request"); } });
+	expect(result).toMatchObject({ outcome: "failure", kind: "endpoint", message: expect.stringContaining("positive timeout") });
 });
 
 test.each([
@@ -211,6 +230,22 @@ test("creating a Chat never selects a Decision Model as its writing connection",
 	configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions());
 	const conversation = createChat(database);
 	expect(createConversationModule(database).getGenerationSettings(conversation.id)?.connectionProfileId).toBeNull();
+});
+
+test("the preparation fingerprint excludes both Memory and Lore Decision Model credentials", () => {
+	const memoryCredential = "memory-decision-credential";
+	const loreCredential = "lore-decision-credential";
+	const memorySelection = configureDecisionModels(database, key, "jev", { profile: { displayName: "Memory decisions" }, credential: memoryCredential });
+	configureDecisionModels(database, key, "clef", { profile: { displayName: "Lore decisions" }, credential: loreCredential });
+	const memory = createMemorySettingsModule(database);
+	memory.apply({ ...memory.get(), ...memorySelection, expectedRevision: memory.get().revision });
+	const conversation = createChat(database);
+	const snapshot = prepareGenerationInputsSnapshot({ database, conversationId: conversation.id, kind: "send", content: "A ship arrives." });
+	expect(snapshot.memory).toMatchObject({ kind: "ready", decision: { credential: memoryCredential } });
+	expect(snapshot.lore.sources?.semanticSettings).toMatchObject({ kind: "ready", decision: { credential: loreCredential } });
+	const fingerprint = generationPreparationFingerprint(snapshot);
+	expect(fingerprint).not.toContain(memoryCredential);
+	expect(fingerprint).not.toContain(loreCredential);
 });
 
 test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 503, kind: "endpoint" }, { status: 0, kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {

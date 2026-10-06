@@ -10,6 +10,8 @@ import type { SemanticTriggerSettingsCommand } from "../../shared/contract/seman
 import { useAsyncEffect } from "../lib/use-async";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard, useSaveNavigation } from "../SaveGuard";
+import { NumberGroup, NumberRow } from "./NumberControls";
+import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
 type Draft = Omit<SemanticTriggerSettings, "revision">;
 type State = { settings: SemanticTriggerSettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null };
@@ -78,9 +80,9 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 							<Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
 								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
 							</Field>
-							<Field htmlFor="semantic-state-limit" label="State token limit" helper="Long scenes are split so the model reads the whole Lore Scan Window.">
-								<input id="semantic-state-limit" className="field-input" type="number" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={event => semanticTriggers.update({ decisionStateTokenLimit: Number(event.target.value) })} />
-							</Field>
+							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
+								<NumberRow id="semantic-state-limit" label="State token limit" min={MIN_DECISION_STATE_TOKEN_LIMIT} step={1} value={draft.decisionStateTokenLimit} onChange={decisionStateTokenLimit => semanticTriggers.update({ decisionStateTokenLimit })} />
+							</NumberGroup>
 							<div className="grid gap-1.5">
 								<div className="flex items-center justify-between gap-3">
 									<label htmlFor="semanticTriggers-threshold" className="text-[13px] font-medium text-muted-foreground">Trigger threshold</label>

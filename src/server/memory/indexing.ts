@@ -6,7 +6,7 @@ import { createMemorySettingsModule } from "./settings";
 import { connectionProfileTable, connectionSecretTable, memoryCollectionTable, memoryEmbeddingCacheTable } from "../database/schema";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { requestEmbeddings } from "../model-client/embeddings";
-import { resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
+import { resolveRequestUrl } from "../../shared/connection-url";
 import type { ModelFetch } from "../model-client/types";
 import { memoryCandidates, memoryIndexAttempt } from "../../shared/contract/memory";
 import { renderMemoryClaim } from "../../shared/memory-text";
@@ -30,7 +30,7 @@ export const readMemoryEmbeddingConfiguration = (database: Database): MemoryEmbe
 	const profile = embeddingProfileId === null ? undefined : drizzle(database).select().from(connectionProfileTable).where(and(eq(connectionProfileTable.id, embeddingProfileId), eq(connectionProfileTable.api_format, "embeddings"))).get();
 	if (profile === undefined || profile.timeout_ms === null || embeddingModel.length === 0) return { spaceKey: "", endpoint: "", model: "", deadlineMs: 0 };
 	const secret = drizzle(database).select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
-	const endpoint = resolveEmbeddingsRequestUrl(profile.request_url);
+	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
 	return { spaceKey: sha256(JSON.stringify([profile.id, secret?.nonce ?? null, endpoint, embeddingModel])), endpoint, model: embeddingModel, deadlineMs: profile.timeout_ms };
 };
 

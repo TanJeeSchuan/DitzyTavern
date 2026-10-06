@@ -20,6 +20,7 @@ import {
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 
 export const imageTable = sqliteTable("image", {
 	hash: text().primaryKey(),
@@ -821,7 +822,7 @@ export const connectionProfileTable = sqliteTable(
 	{
 		id: int().primaryKey({ autoIncrement: true }),
 		display_name: text().notNull(),
-		api_format: text().notNull(),
+	api_format: text().$type<ConnectionProfileDraftPayload["apiFormat"]>().notNull(),
 		request_url: text().notNull(),
 		models_url: text().notNull().default(""),
 		model_backend: text().notNull(),

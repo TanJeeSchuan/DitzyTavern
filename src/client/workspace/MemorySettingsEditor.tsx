@@ -1,5 +1,5 @@
 import { CircleHelp } from "lucide-react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,6 +12,8 @@ import { DecisionModelPicker } from "../DecisionModelPicker";
 import { ProfileModelPicker } from "../ProfileModelPicker";
 import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard } from "../SaveGuard";
+import { NumberGroup, NumberRow } from "./NumberControls";
+import { MIN_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 
 type Draft = Omit<MemorySettings, "revision" | "enabled">;
 type State = { settings: MemorySettings | null; connections: ConnectionSettings | null; draft: Draft | null; loading: boolean; pending: boolean; error: string | null; notice: string | null };
@@ -90,7 +92,7 @@ export function MemorySettingsEditor() {
 					<NumberRow id="memory-safety-allowance" label="Safety allowance" min={0} step={1} value={draft.safetyAllowance} onChange={(safetyAllowance) => update({ safetyAllowance })} />
 				</NumberGroup>
 				<NumberGroup title="Decision Model state" description="Maximum state sent for judgment and recall. Oversized extraction sources fail visibly.">
-					<NumberRow id="memory-decision-state-limit" label="State token limit" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })} />
+					<NumberRow id="memory-decision-state-limit" label="State token limit" min={MIN_DECISION_STATE_TOKEN_LIMIT} step={1} value={draft.decisionStateTokenLimit} onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })} />
 				</NumberGroup>
 				<NumberGroup title="Decision thresholds" description="Retain probability controls admission. Relevance score controls recall.">
 					<NumberRow id="memory-retain-probability-minimum" label="Retain probability minimum (0–1)" min={0} max={1} step={0.05} value={draft.retainProbabilityMinimum} onChange={(retainProbabilityMinimum) => update({ retainProbabilityMinimum })} />
@@ -99,24 +101,5 @@ export function MemorySettingsEditor() {
 				{state.notice && <p className="settings-feedback" role="status">{state.notice}</p>}
 			</section>
 		</div><SaveFooter dirty={dirty} saving={state.pending} error={state.error} onSave={() => void submit()} /></>
-	);
-}
-
-function NumberGroup({ title, description, children }: { title: ReactNode; description: string; children: ReactNode }) {
-	return (
-		<div className="mt-6 grid gap-2">
-			<h4 className="m-0 flex items-center gap-1 text-[0.8rem] font-semibold">{title}</h4>
-			<p className="-mt-1 mb-1 text-xs leading-normal text-muted-foreground">{description}</p>
-			{children}
-		</div>
-	);
-}
-
-function NumberRow({ id, label, value, onChange, ...limits }: { id: string; label: string; value: number; min: number; max?: number; step: number; onChange: (value: number) => void }) {
-	return (
-		<div className="flex items-center justify-between gap-3">
-			<label htmlFor={id} className="whitespace-nowrap text-[13px] font-medium text-muted-foreground">{label}</label>
-			<span className="w-20"><input id={id} className="field-input text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" type="number" {...limits} value={value} onChange={(event) => onChange(Number(event.target.value))} /></span>
-		</div>
 	);
 }

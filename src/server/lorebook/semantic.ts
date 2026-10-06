@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ModelFetch } from "../model-client";
 import { splitByTokens } from "tokenx";
-import { decisionRequest, packDecisions, requestDecisions, tryResolveDecisionSelection, type ResolvedDecisionModel } from "../decision-model";
+import { decisionRequest, packDecisions, requestDecisions, tryResolveDecisionSelection, type DecisionSelectionResolution, type ResolvedDecisionModel } from "../decision-model";
 import { createSemanticTriggerSettingsModule } from "./semantic-settings";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import { tokenxEstimator } from "../prompt-compiler";
@@ -9,11 +9,9 @@ import type { LoreScanMessage, LoreSemanticEvaluation } from "./matching";
 import type { Lorebook } from "../../shared/contract/lorebook";
 import type { DecisionSelection } from "../../shared/contract/decision-model";
 
-export interface SemanticSettingsSnapshot extends DecisionSelection {
+export type SemanticSettingsSnapshot = DecisionSelection & DecisionSelectionResolution & {
 	readonly triggerThreshold: number;
-	readonly decision: ResolvedDecisionModel | null;
-	readonly unavailableReason?: string;
-}
+};
 
 export const captureSemanticSettings = (database: Database, options?: ConnectionSettingsModuleOptions): SemanticSettingsSnapshot => {
 	const settings = createSemanticTriggerSettingsModule(database).get();
@@ -56,7 +54,11 @@ export async function evaluateSemanticLore(input: {
 	const { settings } = input;
 	const triggers = [...new Set(input.entries.filter((entry) => entry.enabled).flatMap((entry) => entry.semanticTriggers).filter((text) => text.length > 0))];
 	if (triggers.length === 0) return { available: true, threshold: settings.triggerThreshold, matches: [] };
-	if (settings.decision === null) return { available: false, threshold: settings.triggerThreshold, fallbackReason: settings.unavailableReason ?? "Semantic Triggers are turned off. Choose a Decision Model under Connections." };
+	switch (settings.kind) {
+		case "off": return { available: false, threshold: settings.triggerThreshold, fallbackReason: "Semantic Triggers are turned off. Choose a Decision Model under Connections." };
+		case "unavailable": return { available: false, threshold: settings.triggerThreshold, fallbackReason: settings.reason };
+		case "ready": break;
+	}
 	const triggerItems = triggers.map((trigger, index) => ({ id: `trigger_${index}`, question: triggerQuestion(trigger) }));
 	const selection = settings.decision;
 	const requestsFor = (scene: readonly string[]) => packDecisions(triggerItems, (batch) => decisionRequest(selection, { scene }, Object.fromEntries(batch.map(({ id, question }) => [id, question]))), "A Semantic Trigger exceeds the bounded Decision Model request.");

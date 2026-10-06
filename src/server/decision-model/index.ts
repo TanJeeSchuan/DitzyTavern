@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { ValueErrorType } from "@sinclair/typebox/errors";
-import { decisionResponse, type DecisionAnswer, type DecisionSelection } from "../../shared/contract/decision-model";
-import { resolveSystemOneRequestUrl } from "../../shared/connection-url";
+import { ValueErrorType, type ValueError } from "@sinclair/typebox/errors";
+import { decisionResponse, MIN_DECISION_STATE_TOKEN_LIMIT, type DecisionAnswer, type DecisionSelection } from "../../shared/contract/decision-model";
+import { resolveRequestUrl } from "../../shared/connection-url";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { authenticatedHeaders } from "../model-client/authenticated-headers";
@@ -28,7 +28,7 @@ export interface ResolvedDecisionModel {
 }
 
 export const validateDecisionSelection = (database: Database, selection: DecisionSelection) => {
-	if (!Number.isSafeInteger(selection.decisionStateTokenLimit) || selection.decisionStateTokenLimit <= 0 || selection.decisionStateTokenLimit > 1_000_000) throw new InvalidSettingsError("The Decision Model state token limit must be a positive whole number no greater than 1,000,000.");
+	if (!Number.isSafeInteger(selection.decisionStateTokenLimit) || selection.decisionStateTokenLimit < MIN_DECISION_STATE_TOKEN_LIMIT || selection.decisionStateTokenLimit > 1_000_000) throw new InvalidSettingsError(`The Decision Model state token limit must be a whole number between ${MIN_DECISION_STATE_TOKEN_LIMIT} and 1,000,000.`);
 	const model = selection.decisionModel.trim();
 	if (selection.decisionProfileId === null) {
 		if (model) throw new InvalidSettingsError("Choose a Connection Profile before setting a Decision Model.");
@@ -43,7 +43,9 @@ export const validateDecisionSelection = (database: Database, selection: Decisio
 
 export const resolveDecisionProfile = (profile: ConnectionProfileDraft, model: string, stateTokenLimit: number, secrets: ConnectionProfileSecretSnapshot | null): ResolvedDecisionModel => {
 	if (profile.apiFormat !== "system-one") throw new Error("Choose a System One connection for the Decision Model.");
-	return { profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveSystemOneRequestUrl(profile.requestUrl), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs: profile.timeoutMs! };
+	const { timeoutMs } = profile;
+	if (timeoutMs === null || timeoutMs <= 0) throw new Error("A System One connection needs a positive timeout.");
+	return { profileName: profile.displayName, model, stateTokenLimit, endpoint: resolveRequestUrl(profile.requestUrl, profile.apiFormat), credential: secrets?.credential ?? null, headers: secrets?.headers ?? {}, timeoutMs };
 };
 
 export const resolveDecisionSelection = (database: Database, selection: DecisionSelection, options: ConnectionSettingsModuleOptions = {}): ResolvedDecisionModel | null => {
@@ -54,9 +56,14 @@ export const resolveDecisionSelection = (database: Database, selection: Decision
 	return resolveDecisionProfile(profile, selection.decisionModel, selection.decisionStateTokenLimit, connections.getProfileSecrets(profile.id));
 };
 
-export const tryResolveDecisionSelection = (database: Database, selection: DecisionSelection, options?: ConnectionSettingsModuleOptions) => {
-	try { return { decision: resolveDecisionSelection(database, selection, options), unavailableReason: undefined }; }
-	catch (error) { return { decision: null, unavailableReason: error instanceof Error ? error.message : "The Decision Model is unavailable." }; }
+export type DecisionSelectionResolution = { readonly kind: "off" } | { readonly kind: "unavailable"; readonly reason: string } | { readonly kind: "ready"; readonly decision: ResolvedDecisionModel };
+
+export const tryResolveDecisionSelection = (database: Database, selection: DecisionSelection, options?: ConnectionSettingsModuleOptions): DecisionSelectionResolution => {
+	try {
+		const decision = resolveDecisionSelection(database, selection, options);
+		return decision === null ? { kind: "off" } : { kind: "ready", decision };
+	}
+	catch (error) { return { kind: "unavailable", reason: error instanceof Error ? error.message : "The Decision Model is unavailable." }; }
 };
 
 export const prettyJson = (text: string) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } };
@@ -102,6 +109,11 @@ export const packDecisions = <Item>(items: readonly Item[], build: (batch: reado
 
 export type DecisionTrace = (label: string, fields: Readonly<Record<string, string>>) => void;
 
+// The union's discriminator is `type`; report the error from the branch that matched it.
+const matchingAnswerError = (error: ValueError): ValueError => error.type === ValueErrorType.Union
+	? error.errors.map(errors => [...errors]).find(errors => !errors.some(error => error.path.endsWith("/type")))?.[0] ?? error
+	: error;
+
 export async function requestDecisions(input: { request: string; questions: DecisionQuestions; selection: ResolvedDecisionModel; fetch?: ModelFetch; signal?: AbortSignal; trace?: DecisionTrace }): Promise<ReadonlyMap<string, DecisionAnswer>> {
 	input.trace?.("Decision Model request", { body: prettyJson(input.request) });
 	const startedAt = Date.now();
@@ -118,8 +130,7 @@ export async function requestDecisions(input: { request: string; questions: Deci
 	let decoded: unknown;
 	try { decoded = JSON.parse(text); } catch { throw new DecisionModelError("malformed-response", "Decision Model returned invalid JSON."); }
 	if (!Value.Check(decisionResponse, decoded)) {
-		let schemaError = Value.Errors(decisionResponse, decoded).First()!;
-		if (schemaError.type === ValueErrorType.Union) schemaError = schemaError.errors.map(errors => [...errors]).find(errors => !errors.some(error => error.path.endsWith("/type")))?.[0] ?? schemaError;
+		const schemaError = matchingAnswerError(Value.Errors(decisionResponse, decoded).First()!);
 		throw new DecisionModelError("malformed-response", `Decision Model returned an invalid answer at ${schemaError.path || "/"}: ${schemaError.message}.`);
 	}
 	Value.Clean(decisionResponse, decoded);

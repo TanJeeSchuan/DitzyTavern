@@ -86,9 +86,7 @@ export function readProfile(
 	return {
 		id: row.id,
 		displayName: row.display_name,
-		// ==[HUMAN APPROVED]== SAFETY: these fields are validated by validateConnectionProfileDraft before
-		// they are inserted; the assertions restore the closed domain vocabulary on read.
-		apiFormat: row.api_format as ConnectionProfile["apiFormat"],
+		apiFormat: row.api_format,
 		requestUrl: row.request_url,
 		modelsUrl: row.models_url,
 		// ==[HUMAN APPROVED]== SAFETY: validateConnectionProfileDraft rejects every Model Backend value

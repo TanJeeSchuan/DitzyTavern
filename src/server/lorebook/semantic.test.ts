@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
-import { decisionRequest } from "../decision-model";
+import { tokenxEstimator } from "../prompt-compiler";
 
 const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
-const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } };
+const settings = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, triggerThreshold: 0.5, kind: "ready", decision: { profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } } satisfies SemanticSettingsSnapshot;
 const unreachable = async (): Promise<Response> => { throw new Error("The Decision Model must not be called."); };
 
 describe("semantic Lore evaluation", () => {
@@ -27,9 +27,10 @@ describe("semantic Lore evaluation", () => {
 	});
 
 	test("reports why the whole pass is unavailable without calling the Decision Model when off or unconfigured", async () => {
-		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, decisionProfileId: null, decision: null }, fetch: unreachable }))
+		const { decision: _decision, ...selection } = settings;
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...selection, decisionProfileId: null, kind: "off" }, fetch: unreachable }))
 			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off. Choose a Decision Model under Connections." });
-		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, decision: null, unavailableReason: "Decision Model unavailable" }, fetch: unreachable }))
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...selection, kind: "unavailable", reason: "Decision Model unavailable" }, fetch: unreachable }))
 			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Decision Model unavailable") });
 	});
 
@@ -53,7 +54,7 @@ describe("semantic Lore evaluation", () => {
 				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
 			},
 		});
-		expect(bodies.every((body) => decisionRequest(settings.decision!, body.state, body.questions).fits)).toBe(true);
+		for (const body of bodies) expect(tokenxEstimator(JSON.stringify(body.state))).toBeLessThanOrEqual(settings.decisionStateTokenLimit);
 		expect(bodies.length).toBeLessThan(triggers.length);
 		expect(peakInFlight).toBe(2);
 		const scanned = bodies.flatMap((body) => body.state.scene).join("");
