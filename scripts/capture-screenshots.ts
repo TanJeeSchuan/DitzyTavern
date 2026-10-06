@@ -13,7 +13,7 @@
  * - A surface is identified by its dialogs, menus, landmarks, form-control
  *   labels and toggle states, never by text or button labels (which carry
  *   data): one character editor is one surface, whichever character is open.
- * - Each click path gets a fresh seeded SQLite database and server process.
+ * - Each click path gets a fresh seeded SQLite database on the e2e server.
  *   Writes are allowed; model and embedding providers return fixed fixtures.
  * - Each new surface is captured in all requested color schemes in place.
  *   Use --replay to recapture saved click paths without crawling again.
@@ -26,14 +26,11 @@
  * Output: .scratch/screenshots/states/{index.html,manifest.json,light/,dark/}
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
-import { createInterface } from "node:readline";
-import { once } from "node:events";
-import { chromium, type Browser, type Page, type Request } from "playwright";
+import { buildClient, startE2eServer } from "../e2e/harness.ts";
+import { chromium, type Browser, type Page, type Request } from "@playwright/test";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -286,41 +283,15 @@ const crawl = async (session: Session) => {
 
 // ── Server ─────────────────────────────────────────────────────────────
 
-const fixtureDirectory = mkdtempSync(join(tmpdir(), "ditzy-screenshots-"));
-let server: ChildProcess | undefined;
-process.once("exit", () => {
-	server?.kill("SIGKILL");
-	rmSync(fixtureDirectory, { recursive: true, force: true });
-});
+await buildClient();
+const server = await startE2eServer();
 process.once("SIGINT", () => process.exit(130));
 process.once("SIGTERM", () => process.exit(143));
 
-const stopServer = async () => {
-	if (server && server.exitCode === null && server.signalCode === null) {
-		const exited = once(server, "exit");
-		server.kill("SIGKILL");
-		await exited;
-	}
-};
-
-const resetServer = async (): Promise<string> => {
-	await stopServer();
-	rmSync(fixtureDirectory, { recursive: true, force: true });
-	mkdirSync(fixtureDirectory);
-	server = spawn("bun", ["scripts/screenshot-server.ts", fixtureDirectory], { cwd: ROOT, stdio: ["ignore", "pipe", "inherit"] });
-	const child = server;
-	return new Promise((resolve, reject) => {
-		const lines = createInterface({ input: child.stdout! });
-		const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Screenshot server did not start within 30 seconds.")); }, 30_000);
-		child.once("error", (error) => { clearTimeout(timer); reject(error); });
-		child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`Screenshot server exited ${code}`)); });
-		lines.on("line", (line) => {
-			if (!line.startsWith("CRAWLER_READY ")) return;
-			clearTimeout(timer);
-			lines.close();
-			resolve(line.slice("CRAWLER_READY ".length).replace(/\/$/, ""));
-		});
-	});
+const resetServer = async () => {
+	await server.reset();
+	await server.chat({ chunks: ["The door opened. ", "A familiar voice called from the hall."], repeat: true });
+	return server.url;
 };
 
 // ── Main ───────────────────────────────────────────────────────────────
@@ -335,11 +306,6 @@ for (const scheme of SCHEMES) {
 	mkdirSync(join(OUT_DIR, scheme), { recursive: true });
 }
 
-await new Promise<void>((resolve, reject) => {
-	spawn("bun", ["run", "build"], { cwd: ROOT, stdio: "inherit" })
-		.on("error", reject)
-		.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`Build exited ${code}`)));
-});
 const browser = await chromium.launch({
 	args: ["--force-color-profile=srgb", "--disable-lcd-text", "--font-render-hinting=none"],
 });
@@ -399,7 +365,7 @@ ${captures
 );
 
 await browser.close();
-await stopServer();
+await server.stop();
 const withProblems = captures.filter((s) => s.problems.length > 0);
 for (const s of withProblems) console.log(`⚠ ${s.path}\n    ${s.problems.join("\n    ")}`);
 console.log(`\n${captureFailed ? "Incomplete" : "Done"}. ${captures.length} surfaces × ${SCHEMES.length} schemes → ${join(OUT_DIR, "index.html")}`);
