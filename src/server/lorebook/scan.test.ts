@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { formatImageReference } from "../../shared/image-reference";
 import { captureLoreScanWindow } from "./scan";
 
 const messages = [1, 2, 3, 4, 5].map((id) => ({ id, content: `Message ${id}` }));
@@ -29,5 +30,12 @@ describe("Lore Scan Window", () => {
 
 	test("does not scan when the configured depth is zero", () => {
 		expect(captureLoreScanWindow({ messages, pendingHumanText: "Pending", depth: 0 })).toEqual([]);
+	});
+
+	test("reads Images only as Image Anchors, never their hash", () => {
+		const hash = "e".repeat(64);
+		const token = formatImageReference("the map", hash);
+		const window = captureLoreScanWindow({ messages: [{ id: 1, content: `See ${token}.` }], pendingHumanText: `Then ${token}` });
+		expect(window.map((message) => message.content)).toEqual(["See [Image: the map].", "Then [Image: the map]"]);
 	});
 });

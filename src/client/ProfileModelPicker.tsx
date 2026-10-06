@@ -1,8 +1,8 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
-import { ChevronsUpDown, Star } from "lucide-react";
+import { ChevronsUpDown, ImageOff, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { isEmbeddingsProfile, loadConnectionSettings, saveConnectionCommand, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
+import { isEmbeddingsProfile, loadConnectionSettings, saveConnectionCommand, setTextOnlyModel, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { commitModelId, modelSuggestions, togglePinnedModel } from "./model-selection";
 
 export interface ProfileModelChoice {
@@ -30,7 +30,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, embeddings = fa
 	const profiles = useMemo(() => (settings?.profiles ?? []).filter((profile) => isEmbeddingsProfile(profile) === embeddings), [settings, embeddings]);
 	const groups = useMemo(() => profiles.map((profile) => ({
 		profile,
-		models: modelSuggestions({ query, discoveryCatalog: profile.discoveryCatalog, pinnedModels: profile.pinnedModels }),
+		models: modelSuggestions({ query, discoveryCatalog: profile.discoveryCatalog, pinnedModels: profile.pinnedModels, textOnlyModels: profile.textOnlyModels }),
 	})).filter(({ models }) => models.length > 0), [profiles, query]);
 	const busy = disabled || pending;
 	const selectedProfile = settings?.profiles.find((profile) => profile.id === selected?.connectionProfileId);
@@ -72,6 +72,27 @@ export function ProfileModelPicker({ settings, onSettingsChange, embeddings = fa
 		}
 	};
 
+	const toggleTextOnly = async (profile: ConnectionProfile, modelId: string) => {
+		if (busy) return;
+		const textOnly = !profile.textOnlyModels.includes(modelId);
+		setPending(true);
+		setError(null);
+		setNotice(null);
+		try {
+			const next = await setTextOnlyModel(profile.id, modelId, textOnly);
+			if (next === null) {
+				setError("The text-only mark could not be saved.");
+			} else {
+				onSettingsChange(next);
+				setNotice(textOnly ? `${modelId} marked text-only.` : `${modelId} accepts Images again.`);
+			}
+		} catch {
+			setError("The connection could not be reached.");
+		} finally {
+			setPending(false);
+		}
+	};
+
 	return (
 		<Popover open={open} onOpenChange={(next) => {
 			setOpen(next);
@@ -92,11 +113,16 @@ export function ProfileModelPicker({ settings, onSettingsChange, embeddings = fa
 						{groups.map(({ profile, models }) => <CommandGroup heading={profile.displayName} key={profile.id}>
 							{models.map((modelId) => {
 								const isPinned = profile.pinnedModels.includes(modelId);
+								const isTextOnly = profile.textOnlyModels.includes(modelId);
 								return <div className="model-selector-option" key={modelId}>
 									<CommandItem value={`${profile.id}/${modelId}`} disabled={busy} onSelect={() => void choose(profile, modelId)}>
 										<span className="truncate" title={modelId}>{modelId}</span>
+									{isTextOnly && <span className="model-text-only-tag">text only</span>}
 										{profile.id === selected?.connectionProfileId && modelId === selected.modelId && <span className="sr-only">Current model</span>}
 									</CommandItem>
+									{!embeddings && <button type="button" className="model-pin-button" data-active={isTextOnly} aria-pressed={isTextOnly} aria-label={`${isTextOnly ? "Allow Images for" : "Mark text-only"} ${modelId} in ${profile.displayName}`} title={isTextOnly ? "Text-only: Images send as names. Click to allow Images." : "Mark as text-only: Images send as names."} disabled={busy} onClick={() => void toggleTextOnly(profile, modelId)}>
+										<ImageOff aria-hidden="true" />
+									</button>}
 									<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={busy} onClick={() => void togglePin(profile, modelId)}>
 										<Star aria-hidden="true" fill={isPinned ? "currentColor" : "none"} />
 									</button>

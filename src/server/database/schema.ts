@@ -1,7 +1,7 @@
 // ==[HUMAN APPROVED]== Drizzle schema source of truth.
 // Domain modules add tables here; run `bun run db:generate` to produce migrations.
 
-import { sql } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 import {
 	blob,
 	check,
@@ -17,7 +17,40 @@ import {
 	DEFAULT_CONTINUATION_STRATEGY,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
+import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+
+export const imageTable = sqliteTable("image", {
+	hash: text().primaryKey(),
+	bytes: blob({ mode: "buffer" }).notNull(),
+	media_type: text().notNull(),
+	byte_size: int().notNull(),
+	width: int().notNull(),
+	height: int().notNull(),
+	orphaned_at: int(),
+});
+
+function portraitColumns() {
+	return {
+		portrait_hash: text(),
+		portrait_focal_x: real(),
+		portrait_focal_y: real(),
+	};
+}
+
+const portraitComplete = (name: string, table: Record<keyof PortraitColumnRow, SQLWrapper>) =>
+	check(name, sql`(${table.portrait_hash} IS NULL AND ${table.portrait_focal_x} IS NULL AND ${table.portrait_focal_y} IS NULL) OR (${table.portrait_hash} IS NOT NULL AND ${table.portrait_focal_x} IS NOT NULL AND ${table.portrait_focal_y} IS NOT NULL)`);
+
+export interface PortraitColumnRow {
+	portrait_hash: string | null;
+	portrait_focal_x: number | null;
+	portrait_focal_y: number | null;
+}
+
+export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrait | undefined =>
+	row?.portrait_hash == null
+		? undefined
+		: { hash: row.portrait_hash, focalX: row.portrait_focal_x!, focalY: row.portrait_focal_y! };
 
 // ==[HUMAN APPROVED]== The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
@@ -395,7 +428,8 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
-});
+	...portraitColumns(),
+}, (table) => [portraitComplete("character_prompt_portrait_complete", table)]);
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows. Empty lists and duplicate
 // contents are allowed; the (character, position) pair is unique.
@@ -472,7 +506,8 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
-});
+	...portraitColumns(),
+}, (table) => [portraitComplete("participant_prompt_portrait_complete", table)]);
 
 // ==[HUMAN APPROVED]== Database column row representation for prompt channels shared by
 // character_prompt and participant_prompt tables.
@@ -492,6 +527,14 @@ export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => 
 	scenario: prompt.scenario,
 	example_dialogue: prompt.exampleDialogue,
 	post_history_instruction: prompt.postHistoryInstruction,
+});
+
+export const toPromptChannels = (row: PromptChannelRow): PromptChannels => ({
+	systemInstruction: row.system_instruction,
+	identity: row.identity,
+	scenario: row.scenario,
+	exampleDialogue: row.example_dialogue,
+	postHistoryInstruction: row.post_history_instruction,
 });
 
 // ==[HUMAN APPROVED]== Ordered, exact, nonblank Opening rows owned by the Participant.
@@ -768,6 +811,7 @@ export const conversationGenerationSettingsTable = sqliteTable(
 			.notNull()
 			.default("Continue the narrative naturally without repeating the previous text."),
 		continuation_prefill_suffix: text().notNull().default(""),
+		repeated_image_placement: text().notNull().default("last"),
 		request_overrides_json: text().notNull().default("{}"),
 	},
 );
@@ -841,6 +885,21 @@ export const connectionProfilePinnedModelTable = sqliteTable(
 // display sorting is performed by the Connection Settings domain.
 export const connectionProfileDiscoveryModelTable = sqliteTable(
 	"connection_profile_discovery_model",
+	{
+		profile_id: int()
+			.notNull()
+			.references(() => connectionProfileTable.id, { onDelete: "cascade" }),
+		model_id: text().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.profile_id, table.model_id] }),
+	],
+);
+
+// Model IDs the writer marked as unable to receive Images. Like the Discovery
+// Catalog, the marks live outside the editable settings revision.
+export const connectionProfileTextOnlyModelTable = sqliteTable(
+	"connection_profile_text_only_model",
 	{
 		profile_id: int()
 			.notNull()

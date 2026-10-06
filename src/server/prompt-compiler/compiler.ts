@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import { renderMemoryClaim } from "../../shared/memory-text";
 import type { MemoryRecallCandidateRecord } from "../../shared/contract/memory-recall";
+import { resolvePromptImages } from "./images";
 
 // ==[HUMAN APPROVED]== Everything a Definition-sourced plan block carries apart from its resolved
 // content and outgoing role: the plan kind the recipe slot compiles into. The
@@ -255,7 +256,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		);
 	}
 
-	return { blocks, warnings };
+	return resolvePromptImages({ blocks, warnings }, input.images);
 }
 
 const memoryText = (entries: readonly MemoryRecallCandidateRecord[]): string =>

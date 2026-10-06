@@ -1,3 +1,4 @@
+import { portraitRow } from "../../image";
 import { eq } from "drizzle-orm";
 import {
 	participantOpeningTable,
@@ -11,6 +12,7 @@ import {
 	requireParticipantName,
 	requireParticipantOpenings,
 } from "../internal";
+import type { Portrait } from "../../../shared/contract/image";
 import type { PromptChannels } from "../../../shared/contract/prompt-schema";
 
 export interface EditParticipantNameInput {
@@ -94,13 +96,13 @@ export function replaceParticipantOpenings(
 export function updateParticipantDefinition(db: ConversationDatabase, input: {
 	conversationId: number;
 	participantId: number;
-	definition: { name: string; prompt: PromptChannels; openings: string[] };
+	definition: { name: string; prompt: PromptChannels; openings: string[]; portrait?: Portrait | undefined };
 }) {
 	const name = requireParticipantName(input.definition.name);
 	const openings = requireParticipantOpenings(input.definition.openings);
 	const participant = requireParticipant(db, input.conversationId, input.participantId);
 	db.update(participantTable).set({ name }).where(eq(participantTable.id, participant.id)).run();
-	const promptRow = toPromptChannelRow(input.definition.prompt);
+	const promptRow = { ...toPromptChannelRow(input.definition.prompt), ...portraitRow(db, input.definition.portrait) };
 	db.insert(participantPromptTable).values({ participant_id: participant.id, ...promptRow })
 		.onConflictDoUpdate({ target: participantPromptTable.participant_id, set: promptRow }).run();
 	db.delete(participantOpeningTable).where(eq(participantOpeningTable.participant_id, participant.id)).run();

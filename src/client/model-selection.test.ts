@@ -7,11 +7,18 @@ describe("model selection state", () => {
 			query: "",
 			pinnedModels: ["custom-model", "Alpha"],
 			discoveryCatalog: ["Alpha", "beta", "custom-model", "zeta"],
+			textOnlyModels: [],
 		};
 		expect(modelSuggestions(input)).toEqual(["custom-model", "Alpha"]);
 		expect(modelSuggestions({ ...input, query: "BE" })).toEqual(["beta"]);
 		expect(modelSuggestions({ ...input, query: "custom" })).toEqual(["custom-model"]);
 		expect(modelSuggestions({ ...input, query: "  local/model  " })).toEqual(["local/model"]);
+	});
+
+	test("keeps text-only marks listed after the pins, even when discovery no longer knows them", () => {
+		const input = { query: "", pinnedModels: ["Alpha"], discoveryCatalog: ["Alpha"], textOnlyModels: ["Alpha", "gone-model"] };
+		expect(modelSuggestions(input)).toEqual(["Alpha", "gone-model"]);
+		expect(modelSuggestions({ ...input, query: "gone" })).toEqual(["gone-model"]);
 	});
 
 	test("keeps arbitrary free text separate from pinning and re-starring appends", () => {

@@ -17,6 +17,7 @@ const profile: ConnectionProfile = {
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
+	textOnlyModels: [],
 	credentialConfigured: false,
 	headers: [],
 };
@@ -83,7 +84,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 
 		const result = await collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -115,7 +116,7 @@ describe("OpenAI Compatible Model Client", () => {
 			},
 		});
 		await collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "local-model",
 			generationSettings: settings,
 		});
@@ -135,7 +136,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 
 		await expect(collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "local-model",
 			generationSettings: settings,
 		})).rejects.toMatchObject({
@@ -170,7 +171,7 @@ describe("OpenAI Compatible Model Client", () => {
 					{ kind: "history", speakerName: null, content: "Unattributed", role: null },
 					{ kind: "post-history-instruction", role: "system", content: "Continue" },
 				],
-				warnings: [],
+				warnings: [], images: [],
 			},
 			modelId: "local-model",
 			generationSettings: settings,
@@ -201,7 +202,7 @@ describe("OpenAI Compatible Model Client", () => {
 		});
 
 		await expect(collectModelClientGeneration(client, {
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "local-model",
 			generationSettings: {
 				...settings,
@@ -235,7 +236,7 @@ describe("OpenAI Compatible Model Client", () => {
 						{ kind: "system-instruction", role: "system", content: "System" },
 						{ kind: "history", speakerName: "Maren", content: "Previous model text.", role: "model" },
 					],
-					warnings: [],
+					warnings: [], images: [],
 					intent: { type: "continuation", strategy: "assistant-prefill", suffix },
 				},
 				assistantPrefill: { prefix: "Previous model text.", suffix },

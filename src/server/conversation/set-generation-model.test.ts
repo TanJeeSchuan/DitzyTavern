@@ -47,6 +47,7 @@ const configuredSettings = (): CanonicalGenerationSettings => ({
 	continuationStrategy: "assistant-prefill",
 	continuationInstruction: "Keep the voice.",
 	continuationPrefillSuffix: "\n",
+	repeatedImagePlacement: "last",
 	requestOverrides: {
 		"chat-completions": { stop: ["\n\nHuman:"] },
 		responses: { max_output_tokens: 64 },

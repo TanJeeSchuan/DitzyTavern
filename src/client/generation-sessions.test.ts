@@ -3,7 +3,7 @@ import type { GenerationEvent, GenerationStatePayload } from "../shared/contract
 import type { GenerationStreamResult } from "./conversation-stream";
 import {
 	createGenerationSessions,
-	firstActiveGenerationSessionError,
+	firstActiveGenerationSessionFailure,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
 	MAX_SESSION_RECONNECTS,
@@ -237,7 +237,7 @@ describe("the Generation session collection", () => {
 		state = settled.state;
 		expect(stateText(state, 7)?.phase).toBe("terminal");
 		expect(stateText(state, 7)?.terminal).toEqual({ outcome: "failed", reason: "The provider went quiet." });
-		expect(firstActiveGenerationSessionError(state)).toBe("The provider went quiet.");
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBe("The provider went quiet.");
 		expect(settled.effects.filter((effect) => effect.kind === "refresh-conversation")).toEqual([
 			{ kind: "refresh-conversation", conversationId: 42 },
 		]);
@@ -267,11 +267,48 @@ describe("the Generation session collection", () => {
 			state = settled.state;
 			expect(stateText(state, 7)?.terminal).toEqual(example.terminal);
 			expect(stateText(state, 7)?.phase).toBe("terminal");
-			expect(firstActiveGenerationSessionError(state)).toBe(
+			expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBe(
 				example.terminal?.outcome === "failed" ? example.terminal.reason : null,
 			);
 			expect(settled.effects).toEqual([{ kind: "refresh-conversation", conversationId: 42 }]);
 		}
+	});
+
+	test("offers the model a failed Generation sent Images to until the failure is acknowledged", () => {
+		const imageModel = { connectionProfileId: 3, modelId: "vision-model" };
+		const viaFrame = run(sessionOf(42, targetsFor(7)), {
+			type: "subscription-settled",
+			generationId: 7,
+			result: { outcome: "failed", reason: "Images unsupported.", imageModel },
+		}).state;
+		const viaSnapshot = run(sessionOf(42, targetsFor(7)), {
+			type: "state-observed",
+			generationId: 7,
+			state: {
+				outcome: "active-state",
+				generationId: 7,
+				conversationId: 42,
+				messageId: 907,
+				variantId: 9_007,
+				content: "",
+				reasoning: "",
+				latestEventId: 1,
+				status: "failed",
+				terminalReason: "Images unsupported.",
+				imageModel,
+			},
+		}).state;
+
+		for (const state of [viaFrame, viaSnapshot]) {
+			expect(firstActiveGenerationSessionFailure(state)?.imageModel ?? null).toEqual(imageModel);
+			expect(firstActiveGenerationSessionFailure(run(state, { type: "errors-acknowledged" }).state)?.imageModel ?? null).toBeNull();
+		}
+		const plain = run(sessionOf(42, targetsFor(7)), {
+			type: "subscription-settled",
+			generationId: 7,
+			result: { outcome: "failed", reason: "Provider broke." },
+		}).state;
+		expect(firstActiveGenerationSessionFailure(plain)?.imageModel ?? null).toBeNull();
 	});
 
 	test("a terminal frame wins an in-flight Stop and retires stale Stop state", () => {
@@ -287,7 +324,7 @@ describe("the Generation session collection", () => {
 		expect(stateText(state, 7)?.phase).toBe("terminal");
 		expect(stateText(state, 7)?.stopPending).toBe(false);
 		expect(hasPendingGenerationStop(state)).toBe(false);
-		expect(firstActiveGenerationSessionError(state)).toBeNull();
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBeNull();
 
 		// The asynchronous Stop response is stale after the terminal frame and
 		// must not reintroduce a Stop error on the terminal session.
@@ -298,7 +335,7 @@ describe("the Generation session collection", () => {
 		});
 		expect(lateStop.state).toBe(state);
 		expect(lateStop.effects).toEqual([]);
-		expect(firstActiveGenerationSessionError(lateStop.state)).toBeNull();
+		expect(firstActiveGenerationSessionFailure(lateStop.state)?.reason ?? null).toBeNull();
 	});
 
 	test("a terminal state snapshot also retires an in-flight Stop", () => {
@@ -350,7 +387,7 @@ describe("the Generation session collection", () => {
 		expect(stateText(state, 7)?.phase).toBe("detached");
 		expect(stateText(state, 7)?.error).toBe("The stream ended.");
 		expect(stateText(state, 7)?.lastEventId).toBe(3);
-		expect(firstActiveGenerationSessionError(state)).toBe("The stream ended.");
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBe("The stream ended.");
 		expect(failed.effects).toEqual([{ kind: "refresh-conversation", conversationId: 42 }]);
 
 		// Reconciliation while the server still lists the Generation resumes the
@@ -399,7 +436,7 @@ describe("the Generation session collection", () => {
 		state = run(state, observed([7])).state;
 		state = run(state, { type: "event-observed", generationId: 7, eventId: 1, event: contentEvent("back") }).state;
 		expect(stateText(state, 7)?.error).toBeNull();
-		expect(firstActiveGenerationSessionError(state)).toBeNull();
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBeNull();
 	});
 
 	test("Stop marks one session pending and its settled outcome keeps the stream or refreshes", () => {
@@ -478,7 +515,7 @@ describe("the Generation session collection", () => {
 		expect(stateText(state, 7)?.error).toBe("Generations could not be stopped.");
 		expect(stateText(state, 8)?.error).toBe("Generations could not be stopped.");
 		expect(stateText(state, 7)?.stopPending).toBe(false);
-		expect(firstActiveGenerationSessionError(state)).toBe("Generations could not be stopped.");
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBe("Generations could not be stopped.");
 	});
 
 	test("a Conversation switch detaches local subscriptions but keeps cursors for the return", () => {
@@ -587,7 +624,7 @@ describe("the Generation session collection", () => {
 		}).state;
 		state = run(state, { type: "errors-acknowledged" }).state;
 		expect(stateText(state, 7)?.error).toBeNull();
-		expect(firstActiveGenerationSessionError(state)).toBeNull();
+		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBeNull();
 	});
 
 	test("a duplicate settle after a switch or terminal is rejected", () => {

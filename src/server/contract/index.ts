@@ -6,6 +6,7 @@ import { getWorkspace } from "../database/workspace";
 import { createChatImportRoutes } from "./chat-import";
 import { createCharacterLibraryRoutes } from "./character-library";
 import { createConnectionSettingsRoutes } from "./connection-settings";
+import { createImageRoutes } from "./image";
 import { createConversationRoutes } from "./conversation";
 import { createNativeConversationRoutes } from "./native-conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
@@ -31,6 +32,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
 	.use(createCharacterLibraryRoutes(database))
+	.use(createImageRoutes(database))
 	.use(createNativeConversationRoutes(database))
 	.use(createConversationRoutes(database, options))
 	.use(createPromptPresetRoutes(database))

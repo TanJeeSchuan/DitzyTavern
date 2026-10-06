@@ -1,6 +1,8 @@
 import { ArrowLeftRight, CircleAlert, X } from "lucide-react";
 import { Toast } from "radix-ui";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { setTextOnlyModel } from "../connection-settings";
 import { SaveGuardContext, SaveNavigationContext, UnsavedChangesDialog, type SaveGuard } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { MemoriesPanel } from "./MemoriesPanel";
@@ -85,6 +87,8 @@ export function ActiveWritingWorkspace({
 	);
 	const [isComposerFocused, setIsComposerFocused] = useState(false);
 	const [generationToastOpen, setGenerationToastOpen] = useState(false);
+	const [marking, setMarking] = useState(false);
+	const [markError, setMarkError] = useState<string | null>(null);
 	const [controlChangeToast, setControlChangeToast] = useState<{ text: string; id: number } | null>(null);
 	const controlToastId = useRef(0);
 	const saveGuardRef = useRef<SaveGuard | null>(null);
@@ -131,7 +135,27 @@ export function ActiveWritingWorkspace({
 
 	useEffect(() => {
 		if (generation.generationError !== null) setGenerationToastOpen(true);
+		setMarkError(null);
 	}, [generation.generationError]);
+
+	const markFailedModelTextOnly = async (retry: boolean) => {
+		const model = generation.generationImageModel;
+		if (model === null || marking) return;
+		setMarking(true);
+		setMarkError(null);
+		try {
+			if (await setTextOnlyModel(model.connectionProfileId, model.modelId, true) === null) {
+				setMarkError("The text-only mark could not be saved.");
+				return;
+			}
+			generation.acknowledgeGenerationError();
+			if (retry) generation.retryGeneration?.();
+		} catch {
+			setMarkError("The connection could not be reached.");
+		} finally {
+			setMarking(false);
+		}
+	};
 
 	useEffect(() => {
 		window.localStorage.setItem(PROMPT_PLAN_INSPECTION_KEY, String(inspectPromptPlanBeforeGenerating));
@@ -328,6 +352,7 @@ export function ActiveWritingWorkspace({
 							<StoryMessageView
 								key={message.id}
 								message={message}
+								portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
 								isLatest={latestStoryMessage?.id === message.id}
 								generationActive={generation.activeGenerationTargets.some((target) =>
 									target.messageId === message.id &&
@@ -472,6 +497,7 @@ export function ActiveWritingWorkspace({
 				className="workspace-toast generation-error-toast"
 				type="foreground"
 				open={generationToastOpen}
+				duration={generation.generationImageModel === null ? undefined : Infinity}
 				onOpenChange={(open) => {
 					setGenerationToastOpen(open);
 					if (!open) generation.acknowledgeGenerationError();
@@ -480,6 +506,14 @@ export function ActiveWritingWorkspace({
 				<div className="workspace-toast-body">
 					<div className="workspace-toast-heading"><CircleAlert aria-hidden="true" /><Toast.Title>Generation failed</Toast.Title></div>
 					<Toast.Description className="workspace-toast-description">{generation.generationError}</Toast.Description>
+					{generation.generationImageModel !== null && <>
+						<p className="workspace-toast-description">This Generation sent Images to <span className="font-mono">{generation.generationImageModel.modelId}</span>. If it cannot read Images, mark it text-only to send their names instead.</p>
+						{markError !== null && <p className="workspace-toast-description text-destructive" role="alert">{markError}</p>}
+						<div className="workspace-toast-actions">
+							<Button type="button" size="xs" variant="outline" disabled={marking} onClick={() => void markFailedModelTextOnly(false)}>Mark text-only</Button>
+							{generation.retryGeneration !== null && <Button type="button" size="xs" disabled={marking} onClick={() => void markFailedModelTextOnly(true)}>Mark text-only and retry</Button>}
+						</div>
+					</>}
 				</div>
 				<Toast.Close className="icon-button" aria-label="Dismiss generation error">
 					<X aria-hidden="true" />

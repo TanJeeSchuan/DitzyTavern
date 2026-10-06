@@ -42,7 +42,7 @@ describe("Conversation selected history", () => {
 						content: `Alternative ${position}`,
 						timestamp: `2026-01-01T00:0${position}:01.000Z`,
 						selected: false,
-						data: [{ namespace: "prompt-macro", key: "write:1", value: "discarded" }],
+						data: [{ namespace: "prompt-macro", key: "write:1", value: JSON.stringify([{ name: "turn", operation: "set", value: "discarded" }]) }],
 					},
 				],
 			})),

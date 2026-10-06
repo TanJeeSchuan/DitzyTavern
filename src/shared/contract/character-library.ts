@@ -1,4 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
 
@@ -12,6 +13,7 @@ export const characterLibrarySummary = Type.Object({
 	revision: Type.Integer(),
 	pinned: Type.Boolean(),
 	preview: Type.String(),
+	portrait: Type.Optional(portrait),
 	// ==[HUMAN APPROVED]== Global provenance reference count (active or tombstoned
 	// Participants forked from this Character), so pickers and lists present
 	// deletion impact without one detail request per row.
@@ -39,6 +41,7 @@ export const characterSnapshot = Type.Object({
 	pinned: Type.Boolean(),
 	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
+	portrait: Type.Optional(portrait),
 	deletionImpact: characterDeletionImpact,
 });
 
@@ -55,6 +58,7 @@ const createCommand = Type.Object({
 		name: Type.String(),
 		prompt: promptChannels,
 		openings: Type.Array(Type.String()),
+		portrait: Type.Optional(portrait),
 	}),
 });
 

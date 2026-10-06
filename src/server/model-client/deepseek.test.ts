@@ -14,6 +14,7 @@ const profile: ConnectionProfile = {
 	timeoutMs: 120_000,
 	pinnedModels: [],
 	discoveryCatalog: [],
+	textOnlyModels: [],
 	credentialConfigured: true,
 	headers: [],
 };
@@ -85,7 +86,7 @@ describe("DeepSeek production Model Client", () => {
 		for await (const event of client.generate({
 			promptPlan: {
 				blocks: [{ kind: "system-instruction", role: "system", content: "Stay concise." }],
-				warnings: [],
+				warnings: [], images: [],
 			},
 			modelId: "custom-model",
 			generationSettings,
@@ -118,7 +119,7 @@ describe("DeepSeek production Model Client", () => {
 
 		try {
 			for await (const _event of client.generate({
-				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Wait." }], warnings: [] },
+				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Wait." }], warnings: [], images: [] },
 				modelId: "custom-model",
 				generationSettings,
 			})) {
@@ -162,7 +163,7 @@ describe("DeepSeek production Model Client", () => {
 
 		const events = [];
 		for await (const event of client.generate({
-			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [] },
+			promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], images: [] },
 			modelId: "custom-model",
 			generationSettings,
 		})) {
@@ -197,7 +198,7 @@ describe("DeepSeek production Model Client", () => {
 
 		try {
 			for await (const _event of client.generate({
-				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [] },
+				promptPlan: { blocks: [{ kind: "system-instruction", role: "system", content: "Reply." }], warnings: [], images: [] },
 				modelId: "custom-model",
 				generationSettings,
 			})) {

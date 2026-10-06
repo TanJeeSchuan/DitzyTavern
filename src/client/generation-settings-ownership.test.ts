@@ -62,6 +62,7 @@ const baseSettings = (): ConversationGenerationSettings => ({
 	continuationStrategy: "instruction",
 	continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 	continuationPrefillSuffix: "",
+	repeatedImagePlacement: "last",
 	requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
 });
 
@@ -170,6 +171,7 @@ function createSession() {
 				strategy: "instruction",
 				instruction: "Continue the narrative.",
 				prefillSuffix: "",
+				imagePlacement: "last",
 			},
 			reconciliation: { adoptSnapshot, showNotice: showError },
 			onApplied: () => {

@@ -40,6 +40,7 @@ export function forkCharacter(
 			name: character.name,
 			prompt: character.prompt,
 			openings: character.openings,
+			portrait: character.portrait,
 		},
 		sourceCharacterId: character.id,
 	};

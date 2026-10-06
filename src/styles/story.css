@@ -528,16 +528,16 @@
 	gap: 0.6rem;
 }
 
-.message-editor label {
+.message-editor > span {
 	color: var(--text-muted);
 	font-size: 0.72rem;
 	font-weight: 630;
 }
 
-.message-editor textarea {
+.message-editor .prose-editor {
 	width: 100%;
 	min-height: 10rem;
-	resize: vertical;
+	max-height: 28rem;
 	padding: 0.9rem 1rem;
 	border: 1px solid var(--border-strong);
 	border-radius: 0.9rem;
@@ -546,6 +546,11 @@
 	font-family: var(--font-reading);
 	font-size: 1rem;
 	line-height: 1.65;
+}
+
+.message-editor .prose-editor:focus-within {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
 }
 
 .message-editor > div {
@@ -631,37 +636,27 @@
 	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 15%, transparent), 0 1rem 3rem var(--shadow);
 }
 
-.composer[data-disabled="true"] > textarea {
-	cursor: not-allowed;
-	color: var(--text-muted);
-}
-
-.composer > textarea {
+.composer > .prose-editor {
 	grid-column: 1 / -1;
 	grid-row: 1;
 	width: 100%;
 	min-height: 3rem;
 	max-height: 10rem;
-	resize: none;
 	padding: 0.8rem 0.2rem 0.65rem;
-	border: 0;
-	outline: 0;
-	background: transparent;
 	color: var(--foreground);
 	font-family: var(--font-reading);
 	font-size: 0.92rem;
 	line-height: 1.5;
 }
 
+.composer > .prose-editor[data-disabled="true"] {
+	color: var(--text-muted);
+}
+
 .composer > .send-button {
 	grid-column: 2;
 	grid-row: 2;
 	justify-self: end;
-}
-
-.composer > textarea::placeholder {
-	color: var(--text-muted);
-	opacity: 1;
 }
 
 .send-button {
@@ -742,7 +737,7 @@
 	gap: 0.75rem;
 }
 
-.prompt-plan-edit-list label {
+.prompt-plan-block {
 	display: grid;
 	gap: 0.35rem;
 }
@@ -759,32 +754,12 @@
 	cursor: pointer;
 }
 
-.prompt-plan-edit-list label > span {
+.prompt-plan-block > span {
 	color: var(--text-muted);
 	font-size: 0.68rem;
 	font-weight: 680;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
-}
-
-.prompt-plan-edit-list textarea {
-	width: 100%;
-	min-height: 4rem;
-	resize: vertical;
-	padding: 0.65rem 0.7rem;
-	border: 1px solid var(--border);
-	border-radius: 0.65rem;
-	background: var(--surface-muted);
-	color: var(--foreground);
-	font: inherit;
-	font-size: 0.76rem;
-	line-height: 1.45;
-}
-
-.prompt-plan-edit-list textarea:focus {
-	border-color: var(--focus);
-	outline: 0;
-	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
 }
 
 .prompt-plan-preview-actions {
@@ -1162,4 +1137,56 @@
 		animation: skeleton-breathe 1.7s ease-in-out infinite;
 	}
 
+}
+
+.prose-image {
+	display: inline-block;
+	max-width: 100%;
+	margin: 0.15em 0.1em;
+	padding: 0;
+	overflow: hidden;
+	border: 1px solid var(--border-strong);
+	border-radius: 0.7rem;
+	background: var(--surface-muted);
+	vertical-align: bottom;
+	cursor: zoom-in;
+	transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.prose-image:hover {
+	border-color: color-mix(in oklch, var(--accent) 45%, var(--border-strong));
+}
+
+.prose-image:focus-visible {
+	outline: 0;
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}
+
+.prose-image img {
+	display: block;
+	max-width: 14rem;
+	max-height: 6rem;
+	object-fit: cover;
+}
+
+.prose-image-anchor {
+	display: none;
+}
+
+.prose-image[data-missing] {
+	padding: 0 0.1em;
+	border-color: transparent;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: default;
+}
+
+.prose-image[data-missing] img {
+	display: none;
+}
+
+.prose-image[data-missing] .prose-image-anchor {
+	display: inline;
+	font-size: 0.9em;
 }

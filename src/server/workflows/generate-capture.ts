@@ -22,6 +22,7 @@ import { readConversationGenerationSettingsFromConnection } from "../conversatio
 import { readSelectedHistoryFromConnection } from "../conversation/selected-history";
 import { captureMemoryRecallSnapshot, evaluateMemoryRecallSnapshot, type MemoryRecallSnapshot } from "../memory/recall";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
@@ -32,7 +33,6 @@ import {
 	continuationIntentFor,
 	effectiveGenerationSettingsFor,
 	type EffectiveGenerationSettings,
-	type GenerationConnectionFacts,
 	type GenerationPlan,
 } from "../generation-plan";
 import type {
@@ -182,14 +182,15 @@ export const compilePlanFrom = (
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
-		connection: GenerationConnectionFacts | null;
+		connection: ModelClientConnectionSnapshot | null;
 		lore: ScopedLoreEvaluation;
 		memory: MemoryActivationRecord;
 	},
 	options: {
 		intent?: GenerationIntent | undefined;
 		estimator?: TokenEstimator | undefined;
-	} = {},
+		database: Database;
+	},
 ): GenerationPlan => {
 	const compiled = compileGenerationPlan({
 		human: toCompilerDefinition(derivation.human),
@@ -203,8 +204,11 @@ export const compilePlanFrom = (
 		attempt: configuration.attempt,
 		intent: options.intent,
 		settings: configuration.settings,
-		connection: configuration.connection,
+		connection: configuration.connection === null ? null : {
+			apiFormat: configuration.connection.apiFormat,
+		},
 		estimator: options.estimator,
+		images: promptImageResolutionFor(options.database, configuration.connection, configuration.settings),
 	});
 	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
 	return {
@@ -567,6 +571,7 @@ const generationProvenanceEntry = (
 		continuationStrategy: plan.effectiveSettings.continuationStrategy,
 		continuationInstruction: plan.effectiveSettings.continuationInstruction,
 		continuationPrefillSuffix: plan.effectiveSettings.continuationPrefillSuffix,
+		repeatedImagePlacement: plan.effectiveSettings.repeatedImagePlacement,
 	} satisfies GenerationProvenanceSettings;
 	const provenanceRecord: GenerationProvenanceRecord = {
 		connectionProfileId: connection?.profileId ?? null,
@@ -794,7 +799,7 @@ export async function captureSendGenerationAsync(
 	const submitted = reuseHumanMessageId === undefined
 		? { ...derivation, context: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content, role: "human" as const }] }
 		: derivation;
-	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator });
+	const plan = compilePlanFrom(submitted, configuration, { estimator: input.tokenEstimator, database: input.database });
 	return { ...toCapturedGeneration(preparation, derivation, configuration, plan), humanContent: content, reuseHumanMessageId };
 }
 
@@ -819,7 +824,7 @@ export async function captureContinuationGenerationAsync(
 		throw new ContinuationUnavailableError("assistant-prefill-requires-visible-text");
 	}
 	const intent = continuationIntentFor(configuration.settings);
-	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator });
+	const plan = compilePlanFrom(derivation, configuration, { intent, estimator: input.tokenEstimator, database: input.database });
 	return {
 		...toCapturedGeneration(preparation, derivation, configuration, plan),
 		precedingMessageId: latest.id,
@@ -846,6 +851,6 @@ export async function captureSiblingGenerationAsync(
 	});
 	const { derivation } = preparation;
 	const configuration = captureConfigurationFromPreparation(preparation);
-	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator });
+	const plan = compilePlanFrom(derivation, configuration, { intent: { type: "sibling" }, estimator: input.tokenEstimator, database: input.database });
 	return toCapturedGeneration(preparation, derivation, configuration, plan);
 }

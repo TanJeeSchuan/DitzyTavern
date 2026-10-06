@@ -8,6 +8,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Collapsible } from "radix-ui";
+import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import { type ReactNode, useEffect, useState } from "react";
 import {
 	type StoryMessage,
@@ -17,6 +18,7 @@ import {
 import { formatTimestamp } from "../lib/format";
 import { GenerationSphere } from "./GenerationSphere";
 import { Portrait } from "./Portrait";
+import { ProseEditor } from "../editor/ProseEditor";
 import { Prose } from "./prose";
 
 // ==[HUMAN APPROVED]== The story renders one native Message from the paginated read model: the
@@ -32,6 +34,7 @@ export function StoryMessageView({
 	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
+	portrait,
 	onMoveSwipe,
 	onEdit,
 	canContinue = false,
@@ -45,6 +48,7 @@ export function StoryMessageView({
 	generationControls,
 }: {
 	message: StoryMessage;
+	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
 	// ==[HUMAN APPROVED]== Preview mode supplies a local Variant id for its one target Message.
 	// Persisted activeSwipe remains untouched until Confirm Change succeeds.
@@ -145,7 +149,7 @@ export function StoryMessageView({
 			}}
 		>
 			<header className="message-header">
-				<Portrait name={authorName} size="medium" />
+				<Portrait name={authorName} portrait={portrait} size="medium" />
 				<div className="message-author">
 					<strong>{authorName}</strong>
 					{generationActive && <GenerationSphere authorName={authorName} />}
@@ -191,13 +195,8 @@ export function StoryMessageView({
 			</header>
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
-					<label htmlFor={`edit-${message.id}`}>Edit Message</label>
-					<textarea
-						id={`edit-${message.id}`}
-						value={editText}
-						onChange={(event) => setEditText(event.target.value)}
-						autoFocus
-					/>
+					<span>Edit Message</span>
+					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus />
 					<div>
 						<button
 							className="secondary-button"

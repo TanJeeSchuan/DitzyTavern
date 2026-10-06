@@ -20,7 +20,7 @@ import {
 	type GenerationSessionRunner,
 } from "../generation-session-runner";
 import {
-	firstActiveGenerationSessionError,
+	firstActiveGenerationSessionFailure,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
 	type GenerationSessionStoryEffect,
@@ -172,7 +172,9 @@ export function useGenerationController({
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
-	const sessionError = firstActiveGenerationSessionError(sessions);
+	const sessionFailure = firstActiveGenerationSessionFailure(sessions);
+	const sessionError = sessionFailure?.reason ?? null;
+	const failedImageModel = sessionFailure?.imageModel ?? null;
 
 	useEffect(() => {
 		dispatchPendingStarts({
@@ -220,6 +222,7 @@ export function useGenerationController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
+		retryGeneration,
 		directStartError,
 		acknowledgeDirectStartError,
 	} = assemblyController;
@@ -332,6 +335,8 @@ export function useGenerationController({
 		isGenerating,
 		stopPending,
 		generationError,
+		generationImageModel: directStartError === null ? failedImageModel : null,
+		retryGeneration,
 		acknowledgeGenerationError,
 		assembly,
 		editPromptPlanPreview,

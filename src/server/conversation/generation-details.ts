@@ -113,6 +113,7 @@ const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
 	continuationStrategy: (source) => generationJsonString(source?.continuationStrategy),
 	continuationInstruction: (source) => generationJsonString(source?.continuationInstruction),
 	continuationPrefillSuffix: (source) => generationJsonString(source?.continuationPrefillSuffix),
+	repeatedImagePlacement: (source) => generationJsonString(source?.repeatedImagePlacement),
 };
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
@@ -132,6 +133,7 @@ const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSet
 		continuationStrategy: inspectionSettingsFieldValue.continuationStrategy(source),
 		continuationInstruction: inspectionSettingsFieldValue.continuationInstruction(source),
 		continuationPrefillSuffix: inspectionSettingsFieldValue.continuationPrefillSuffix(source),
+		repeatedImagePlacement: inspectionSettingsFieldValue.repeatedImagePlacement(source),
 	};
 };
 

@@ -6,10 +6,12 @@ import { openInitializedDatabase } from "./database/database";
 import { initializeConnectionSecretKey } from "./connection-secrets";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
+import { sweepOrphanedImages } from "./image";
 
 registerWireFormats();
 initializeConnectionSecretKey();
 const database = openInitializedDatabase();
+sweepOrphanedImages(database);
 const stopMemoryWorker = startMemoryWorker(database, {
 	process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, undefined, signal, trace),
 });

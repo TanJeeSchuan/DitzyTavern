@@ -108,6 +108,7 @@ export const effectiveGenerationSettingsFor = (
 	// this attempt and must not appear as an effective value.
 	siblingGenerationLimit: null,
 	...continuationOperands(intent),
+	repeatedImagePlacement: settings.repeatedImagePlacement,
 	// ==[HUMAN APPROVED]== Only the namespace matching the selected Connection Profile's format is
 	// merged into a request; the other namespaces stay editable and are never
 	// transmitted. Without a selected Profile no namespace applies.
@@ -158,6 +159,7 @@ export const compileGenerationPlan = (
 			lore,
 			memory,
 			attempt,
+			images: input.images,
 		});
 		return intent === undefined ? compiled : { ...compiled, intent };
 	};
@@ -231,7 +233,7 @@ export const estimateDynamicBlockTokens = (
 	estimator: (transcript: string) => number = tokenxEstimator,
 ): number => content.length === 0
 	? 0
-	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [] }))));
+	: Math.max(0, Math.ceil(estimator(toEstimationTranscript({ blocks: [{ kind, role, content }], warnings: [], images: [] }))) - Math.ceil(estimator(toEstimationTranscript({ blocks: [], warnings: [], images: [] }))));
 
 const withMemoryBudgetEvidence = (
 	record: NonNullable<CompileGenerationPlanInput["memoryActivation"]>,

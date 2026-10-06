@@ -20,6 +20,7 @@ const profile = (id: number, displayName: string, pinnedModels: string[] = ["mod
 	timeoutMs: 120_000,
 	pinnedModels,
 	discoveryCatalog: [...pinnedModels, "discovered-model"],
+	textOnlyModels: [],
 	credentialConfigured: true,
 	headers: [{ name: "X-Client", configured: true }],
 });

@@ -26,6 +26,7 @@ const validSettings = (): CanonicalGenerationSettings => ({
 	continuationInstruction:
 		"Continue the narrative naturally without repeating the previous text.",
 	continuationPrefillSuffix: "",
+	repeatedImagePlacement: "last",
 	requestOverrides: {
 		"chat-completions": {},
 		responses: {},
@@ -198,6 +199,7 @@ describe("generationProvenanceSettingsWire", () => {
 			continuationStrategy: settings.continuationStrategy,
 			continuationInstruction: settings.continuationInstruction,
 			continuationPrefillSuffix: settings.continuationPrefillSuffix,
+			repeatedImagePlacement: "last",
 		} satisfies GenerationProvenanceSettings;
 		expect(Value.Check(generationProvenanceSettingsWire, captured)).toBe(true);
 		// Every retained field is nullable: an unconfigured value decodes as

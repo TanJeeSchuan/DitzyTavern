@@ -235,6 +235,7 @@ describe("Continuation Generation", () => {
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "This must be ignored.",
 					continuationPrefillSuffix: "\n",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -297,6 +298,7 @@ describe("Continuation Generation", () => {
 			continuationInstruction:
 				"Continue the narrative naturally without repeating the previous text.",
 			continuationPrefillSuffix: null,
+			repeatedImagePlacement: "last",
 		});
 	});
 
@@ -322,6 +324,7 @@ describe("Continuation Generation", () => {
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "This instruction is not applicable.",
 					continuationPrefillSuffix: "\n",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -346,6 +349,7 @@ describe("Continuation Generation", () => {
 			continuationStrategy: "assistant-prefill",
 			continuationInstruction: null,
 			continuationPrefillSuffix: "\n",
+			repeatedImagePlacement: "last",
 		});
 	});
 
@@ -394,6 +398,7 @@ describe("Continuation Generation", () => {
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "Ignored.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},

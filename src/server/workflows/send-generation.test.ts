@@ -269,6 +269,7 @@ describe("Send through provisional Tail Generation", () => {
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "Never used by this Tail attempt.",
 					continuationPrefillSuffix: "\n",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": { provider_extension: { enabled: true } },
 						responses: { metadata: { unused: true } },
@@ -324,6 +325,7 @@ describe("Send through provisional Tail Generation", () => {
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,
+			repeatedImagePlacement: "last",
 		});
 		expect(details?.budget.safetyAllowance).toBe(777);
 

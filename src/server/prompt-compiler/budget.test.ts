@@ -20,7 +20,7 @@ const planFor = (context: readonly PromptContextEntry[]): PromptPlan => ({
 		...context.map(({ kind: _kind, ...rest }) => ({ kind: "history" as const, ...rest })),
 		{ kind: "post-history-instruction", role: "system", content: "Fixed post-history prompt." },
 	],
-	warnings: [],
+	warnings: [], images: [],
 });
 
 describe("Prompt Plan budget", () => {

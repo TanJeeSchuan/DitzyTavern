@@ -84,3 +84,8 @@ export async function refreshDiscoveryCatalog(profileId: number): Promise<Discov
 	if (data !== undefined && data !== null) return data;
 	return { outcome: "invalid", reason: "Model discovery request failed." };
 }
+
+export async function setTextOnlyModel(profileId: number, modelId: string, textOnly: boolean): Promise<ConnectionSettings | null> {
+	const { data } = await api.api["connection-settings"]["text-only-model"].post({ profileId, modelId, textOnly });
+	return data?.outcome === "applied" ? data.settings : null;
+}

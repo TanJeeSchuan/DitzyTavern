@@ -37,6 +37,7 @@ const completeSettings = (
 	continuationInstruction:
 		"Continue the narrative naturally without repeating the previous text.",
 	continuationPrefillSuffix: "",
+	repeatedImagePlacement: "last",
 	requestOverrides: {
 		"chat-completions": {},
 		responses: {},
@@ -158,6 +159,7 @@ describe("Conversation Generation Settings", () => {
 			continuationStrategy: "assistant-prefill",
 			continuationInstruction: "Keep the voice.",
 			continuationPrefillSuffix: "\n",
+			repeatedImagePlacement: "last",
 			requestOverrides: {
 				"chat-completions": { stop: ["\n\nHuman:"] },
 				responses: { max_output_tokens: 64 },

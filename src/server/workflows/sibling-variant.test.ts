@@ -554,6 +554,7 @@ describe("Historical sibling Variant generation", () => {
 					continuationStrategy: "assistant-prefill",
 					continuationInstruction: "Unused by a Sibling attempt.",
 					continuationPrefillSuffix: "\n",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -595,6 +596,7 @@ describe("Historical sibling Variant generation", () => {
 			continuationStrategy: null,
 			continuationInstruction: null,
 			continuationPrefillSuffix: null,
+			repeatedImagePlacement: "last",
 		});
 	});
 

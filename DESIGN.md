@@ -6,7 +6,7 @@ This document is the visual and interaction design source of truth for the first
 
 The initial scope excludes group-chat orchestration, a dedicated co-writer response role, automatic identification of individual speakers inside generated prose, and logo design.
 
-Amendments to the initial direction (replacing earlier single-identity composer guidance): the composer exposes **two editable Cast-only Control selectors** — `Writing as <human>` and `Responding as <model>` — reflecting the current human and model Control assignments. Selecting the opposite seat's occupant is described as an atomic swap. Portraits (character artwork) are **deferred**: identity is rendered with names, initials, and badges only in this scope. Active/inactive Cast membership and group-chat turn-taking remain out of scope; the Cast is an ordered roster of active Participants with append-only positioning.
+Amendments to the initial direction (replacing earlier single-identity composer guidance): the composer exposes **two editable Cast-only Control selectors** — `Writing as <human>` and `Responding as <model>` — reflecting the current human and model Control assignments. Selecting the opposite seat's occupant is described as an atomic swap. Portraits show uploaded artwork wherever identity is rendered, falling back to initials when a Definition has none; character-derived ambient color remains **deferred**. Active/inactive Cast membership and group-chat turn-taking remain out of scope; the Cast is an ordered roster of active Participants with append-only positioning.
 
 ## Project and page intent
 
@@ -168,6 +168,17 @@ Character artwork is contextual:
 - Larger portraits appear in participant panels and focused author details.
 - A new empty Chat begins with a quiet portrait row introducing the active cast.
 - Portraits should preserve as much of imported character artwork as the available crop permits.
+
+### Images in writing
+
+Images placed in Messages, Prompt channels, Openings, and Macro Variable values stay part of the text:
+
+- **Editor chips:** every editor that accepts Images draws each Image Reference as one chip: a 1.5rem rounded-square thumbnail beside the Image name, on a faint translucent tint (so a selection shows through) with a hairline border and a modest radius. The chip is centered on the text beside it, and the caret on either side stays text-height. Chips are not pills. The cursor and Backspace treat it as one unit, the text under it stays exactly what was typed, and clicking it opens the Image full size.
+- **Adding Images:** a quiet icon button sits at the bottom right of each such editor and is visible without hover. Paste and drop insert at the cursor. Prompt Preset and Lore Entry editors have no such button.
+- **Inline thumbnails:** in the story, a Reference is a compact thumbnail (at most 14rem by 6rem) with a hairline border, the same softness as panels, a zoom cursor, and a coral hover border and focus ring.
+- **Full size:** activating a thumbnail opens a Dialog on the standard opaque popover surface. The Image name is the title, the picture is fitted to the viewport, and Escape or the close control returns to the same story position.
+- **Missing Images:** a Reference whose Image is gone shows its `[Image: name]` anchor as muted inline text with no border and no interaction. In an editor the chip keeps its shape with a dashed border and no thumbnail.
+- **Other image URLs:** an image URL that is not an Image Reference never loads and shows only its alt text.
 
 The application shell uses abstract ambient light rather than literal environmental artwork. Soft, low-contrast color fields suggest a shared room around the writing desk. Do not depict a literal tavern, fireplace, wooden table, parchment, candles, or medieval ornament as recurring interface material.
 

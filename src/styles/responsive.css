@@ -221,7 +221,7 @@ body > .details-panel > .panel-body {
 		border-radius: 1rem;
 	}
 
-	.composer > textarea {
+	.composer > .prose-editor {
 		min-height: 2.75rem;
 		padding-top: 0.65rem;
 		font-size: 0.88rem;

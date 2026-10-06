@@ -11,6 +11,7 @@ import { createMemorySettingsModule } from "./settings";
 import { createTypesafeSettingsModule, jevRequest, largestFittingBatch, requestJev } from "../typesafe";
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
+import { projectImageAnchors } from "../../shared/image-reference";
 import type { ModelFetch } from "../model-client/types";
 import { embedMemoryQuery, readCachedMemoryVectors, readMemoryEmbeddingConfiguration, readMemoryIndexReadinessBatch, type MemoryEmbeddingConfiguration } from "./indexing";
 import { readMemoryAllowance } from "./collections";
@@ -58,10 +59,10 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 	const pendingAlreadySelected = pendingHumanText !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pendingHumanText;
 	const scene = messages.slice(-(pendingHumanText !== undefined && !pendingAlreadySelected ? 3 : 4)).map((message) => ({
 		messageId: message.messageId,
-		text: `${message.speakerName ?? (message.role === "human" ? humanName : "Story")}: ${message.content}`,
+		text: `${message.speakerName ?? (message.role === "human" ? humanName : "Story")}: ${projectImageAnchors(message.content)}`,
 	}));
 	if (pendingHumanText !== undefined && !pendingAlreadySelected) {
-		scene.push({ messageId: 0, text: `${humanName}: ${pendingHumanText}` });
+		scene.push({ messageId: 0, text: `${humanName}: ${projectImageAnchors(pendingHumanText)}` });
 	}
 	let truncated = false;
 	const render = () => scene.map((message) => message.text).join("\n\n");

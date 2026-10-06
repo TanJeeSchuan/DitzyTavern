@@ -18,6 +18,7 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	GenerationIntent,
+	PromptImageResolution,
 	PromptBudgetResult,
 	PromptContextEntry,
 	PromptPlan,
@@ -91,4 +92,7 @@ export interface CompileGenerationPlanInput {
 	// Tests and calibration work may replace the default project-owned
 	// estimator; budgeting policy itself stays application-owned.
 	readonly estimator?: TokenEstimator | undefined;
+	// Where a Reference's Image is stored, and how large it is. Resolution runs
+	// after macro expansion, so any hash the text holds may be asked about.
+	readonly images: PromptImageResolution;
 }

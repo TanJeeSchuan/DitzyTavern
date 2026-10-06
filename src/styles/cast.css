@@ -111,7 +111,7 @@
 
 .model-selector-option {
 	display: grid;
-	grid-template-columns: 1fr auto;
+	grid-template-columns: 1fr auto auto;
 	align-items: center;
 	gap: 0.3rem;
 	border-radius: 0.45rem;
@@ -133,6 +133,20 @@
 .model-pin-button:hover,
 .model-pin-button:focus-visible {
 	color: var(--accent);
+}
+
+.model-pin-button[data-active="true"] {
+	color: var(--accent);
+}
+
+.model-text-only-tag {
+	flex: none;
+	margin-left: auto;
+	padding: 0 0.4rem;
+	border-radius: 999px;
+	background: var(--surface-muted);
+	color: var(--text-muted);
+	font-size: 0.65rem;
 }
 
 .model-pin-button svg {

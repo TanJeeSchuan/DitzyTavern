@@ -648,6 +648,7 @@ describe("Generation runtime behavior", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -783,6 +784,7 @@ describe("Generation runtime behavior", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},
@@ -874,6 +876,7 @@ describe("Generation runtime behavior", () => {
 					continuationStrategy: "instruction",
 					continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 					continuationPrefillSuffix: "",
+					repeatedImagePlacement: "last",
 					requestOverrides: {
 						"chat-completions": {},
 						responses: {},

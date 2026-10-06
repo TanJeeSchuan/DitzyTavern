@@ -14,7 +14,8 @@ import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
-import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition, type Definition } from "./DefinitionEditor";
+import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
+import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
 export function CharacterEditor({
 	characterId,
@@ -32,7 +33,7 @@ export function CharacterEditor({
 	onClosed: (notice: string | null) => void;
 }) {
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
-	const [draft, setDraft] = useState<Definition | null>(null);
+	const [draft, setDraft] = useState<ParticipantDefinition | null>(null);
 	const [conflict, setConflict] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | null>(null);
@@ -81,10 +82,13 @@ export function CharacterEditor({
 					setNotice(LIBRARY_UNREACHABLE_NOTICE);
 					return false;
 			}
+		} catch (cause) {
+			setNotice(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
+			return false;
 		} finally {
 			setPendingAction(null);
 		}
-	}, [onChanged, onClosed]);
+	}, [onChanged, onClosed, snapshot]);
 
 	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
 	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft) });

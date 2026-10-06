@@ -4,9 +4,10 @@
 // never provider payloads, URLs, headers, credentials, or request overrides.
 
 import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
-import type {
-	CanonicalGenerationSettings,
-	GenerationSettingsField,
+import {
+	REPEATED_IMAGE_PLACEMENTS,
+	type CanonicalGenerationSettings,
+	type GenerationSettingsField,
 } from "./contract/generation-settings";
 
 // ==[HUMAN APPROVED]== The generation-owned JSON vocabulary is declared in the shared leaf module
@@ -179,6 +180,8 @@ const decodeProvenanceSettingsField: ProvenanceSettingsDecoder = {
 	continuationInstruction: (source) => provenanceString(source.continuationInstruction),
 	continuationPrefillSuffix: (source) =>
 		closedProvenanceLiteral(source.continuationPrefillSuffix, ["", " ", "\n", "\n\n"] as const),
+	repeatedImagePlacement: (source) =>
+		closedProvenanceLiteral(source.repeatedImagePlacement, REPEATED_IMAGE_PLACEMENTS),
 };
 
 const provenanceSettings = (
@@ -199,6 +202,7 @@ const provenanceSettings = (
 		continuationStrategy: decodeProvenanceSettingsField.continuationStrategy(source),
 		continuationInstruction: decodeProvenanceSettingsField.continuationInstruction(source),
 		continuationPrefillSuffix: decodeProvenanceSettingsField.continuationPrefillSuffix(source),
+		repeatedImagePlacement: decodeProvenanceSettingsField.repeatedImagePlacement(source),
 	};
 };
 

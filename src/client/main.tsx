@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "../index.css";
 import { registerWireFormats } from "../shared/contract/wire-formats";
 import { App } from "./App";
+import { ImageDialogProvider } from "./ImageDialog";
 
 registerWireFormats();
 
@@ -20,4 +21,4 @@ const root = document.getElementById("root");
 if (!root) {
 	throw new Error("Root element not found");
 }
-createRoot(root).render(<QueryClientProvider client={queryClient}><App /></QueryClientProvider>);
+createRoot(root).render(<QueryClientProvider client={queryClient}><ImageDialogProvider><App /></ImageDialogProvider></QueryClientProvider>);

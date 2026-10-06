@@ -1,3 +1,4 @@
+import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import {
@@ -67,7 +68,7 @@ export function executeCharacterCommand(
 				const name = requireCommandName(command.definition.name);
 				const openings = requireCommandOpenings(command.definition.openings);
 				db.update(characterTable).set({ name }).where(eq(characterTable.id, character.id)).run();
-				const promptRow = toPromptChannelRow(command.definition.prompt);
+				const promptRow = { ...toPromptChannelRow(command.definition.prompt), ...portraitRow(db, command.definition.portrait) };
 				db.insert(characterPromptTable).values({ character_id: character.id, ...promptRow })
 					.onConflictDoUpdate({ target: characterPromptTable.character_id, set: promptRow }).run();
 				db.delete(characterOpeningTable).where(eq(characterOpeningTable.character_id, character.id)).run();

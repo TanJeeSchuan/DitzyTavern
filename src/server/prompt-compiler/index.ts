@@ -7,6 +7,7 @@ export {
 	compilePrompt,
 	referencedDefinitionBlocks,
 } from "./compiler";
+export { resolvePromptImages, type ImageLookup, type PromptImageResolution } from "./images";
 export {
 	budgetPromptPlan,
 	budgetEditedPromptPlan,
@@ -25,6 +26,7 @@ export type {
 	PromptBlock,
 	PromptContextEntry,
 	PromptHistoryRole,
+	PromptImage,
 	PromptPlan,
 	PromptWarning,
 } from "./types";

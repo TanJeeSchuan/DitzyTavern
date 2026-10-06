@@ -6,6 +6,7 @@ import {
 	effectiveGenerationSettings,
 } from "./generation-settings";
 import { genericDataNamespacePattern } from "../import-data";
+import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
 	invalidOutcome,
@@ -94,6 +95,15 @@ const generationIntent = Type.Union([
 	}),
 ]);
 
+const promptImage = Type.Object({
+	block: Type.Integer(),
+	start: Type.Integer(),
+	hash: Type.String(),
+	name: Type.String(),
+	disposition: Type.Union([Type.Literal("send"), Type.Literal("anchor"), Type.Literal("text-only"), Type.Literal("missing")]),
+	tokens: Type.Integer(),
+});
+
 // The persisted capture is the provider-neutral PromptPlan, kept typed at
 // the storage and transport boundary so inspection cannot silently discard
 // authorship or continuation intent.
@@ -103,12 +113,14 @@ export const promptPlan = Type.Object({
 		block: Type.String(),
 		macro: Type.String(),
 	})),
+	images: Type.Array(promptImage),
 	intent: Type.Optional(generationIntent),
 });
 
 export type PromptPlan = Static<typeof promptPlan>;
 export type PromptBlock = PromptPlan["blocks"][number];
 export type PromptWarning = PromptPlan["warnings"][number];
+export type PromptImage = PromptPlan["images"][number];
 export type GenerationIntent = NonNullable<PromptPlan["intent"]>;
 export type PromptHistoryRole = Extract<
 	PromptBlock,
@@ -121,6 +133,7 @@ const castParticipant = Type.Object({
 	name: Type.String(),
 	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
+	portrait: Type.Optional(portrait),
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 	sourceCharacterName: Type.Union([Type.Null(), Type.String()]),
 	// Derived fields so clients never reproduce Cast rules.
@@ -275,6 +288,10 @@ const provenanceSettingsWireSchemas = {
 		Type.Literal(" "),
 		Type.Literal("\n"),
 		Type.Literal("\n\n"),
+	]),
+	repeatedImagePlacement: Type.Union([
+		Type.Null(),
+		canonicalGenerationSettings.properties.repeatedImagePlacement,
 	]),
 } as const satisfies { readonly [K in ProvenanceSettingsField]: TSchema };
 
@@ -462,6 +479,7 @@ const participantDefinition = Type.Object({
 	name: Type.String(),
 	prompt: promptChannels,
 	openings: Type.Array(Type.String()),
+	portrait: Type.Optional(portrait),
 });
 
 export type ParticipantDefinition = Static<typeof participantDefinition>;

@@ -1,5 +1,6 @@
 import { applyConversationCommand, loadConversation, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
+import type { Portrait } from "../shared/contract/image";
 
 export type ThemePreference = "system" | "daylight" | "evening";
 
@@ -7,7 +8,7 @@ export type ChatSummary = {
 	id: string;
 	title: string;
 	updatedAt: string;
-	castNames: string[];
+	cast: { name: string; portrait: Portrait | null }[];
 	excerpt: string;
 };
 
@@ -45,7 +46,7 @@ const fetchWorkspace = async () => {
 			id: String(chat.id),
 			title: chat.name,
 			updatedAt: chat.lastMessageTime,
-			castNames: chat.castNames,
+			cast: chat.cast,
 			excerpt: chat.excerpt,
 		})),
 	};

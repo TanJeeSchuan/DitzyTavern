@@ -3,9 +3,11 @@ import { Value } from "@sinclair/typebox/value";
 import {
 	budgetEditedPromptPlan,
 	PromptBudgetExceededError,
+	resolvePromptImages,
 	type PromptPlan,
 	type TokenEstimator,
 } from "../prompt-compiler";
+import { promptImageResolutionFor } from "./prompt-image-resolution";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelClientConnectionSnapshot } from "../model-client";
 import type { ModelFetch } from "../model-client/types";
@@ -216,17 +218,19 @@ export const createGenerationPreviewAsync = async (
 };
 
 const acceptedEditedPlan = (
+	database: Database,
 	record: GenerationPreviewRecord,
-	editedPlan: PromptPlan,
+	submittedPlan: PromptPlan,
 ) => {
-	if (!Value.Check(promptPlan, editedPlan)) {
+	if (!Value.Check(promptPlan, submittedPlan)) {
 		throw new InvalidConversationCommandError("The edited Prompt Plan has invalid structure.");
 	}
-	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, editedPlan);
+	assertEditedPlanStructure(record.capture.capture.plan.promptPlan, submittedPlan);
+	const settings = record.capture.capture.plan.effectiveSettings;
+	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.capture.connection, settings));
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	const settings = record.capture.capture.plan.effectiveSettings;
 	const budget = budgetEditedPromptPlan({
 		plan: editedPlan,
 		contextLimit: settings.contextLimit,
@@ -314,7 +318,7 @@ export const captureSendGenerationPreview = (
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "send", content });
 	const recorded = preview.record.capture.capture;
-	return { ...recorded, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
+	return { ...recorded, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
 };
 
 export const captureContinuationGenerationPreview = (
@@ -336,7 +340,7 @@ export const captureContinuationGenerationPreview = (
 		};
 	return {
 		...recorded,
-		plan: acceptedEditedPlan(preview.record, preview.editedPlan),
+		plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan),
 		assistantPrefill,
 	};
 };
@@ -353,5 +357,5 @@ export const captureSiblingGenerationPreview = (
 		throw new InvalidConversationCommandError("The target Message changed. Refresh the Prompt Plan before sending.");
 	}
 	assertPreviewCurrent(context, preview.record, { kind: "sibling", messageId });
-	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(preview.record, preview.editedPlan) };
+	return { ...preview.record.capture.capture, plan: acceptedEditedPlan(context.database, preview.record, preview.editedPlan) };
 };

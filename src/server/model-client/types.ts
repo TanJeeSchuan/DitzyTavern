@@ -68,7 +68,13 @@ export interface ModelClientConnectionSnapshot {
 	backend: string;
 	adapter: string;
 	apiFormat: ChatApiFormat;
+	textOnlyModels: readonly string[];
 }
+
+export const shouldSendImages = (
+	connection: ModelClientConnectionSnapshot | null | undefined,
+	modelId: string,
+): boolean => connection?.textOnlyModels.includes(modelId) !== true;
 
 export interface ModelClient {
 	generate(input: ModelClientGenerationInput): AsyncIterable<ModelClientEvent>;

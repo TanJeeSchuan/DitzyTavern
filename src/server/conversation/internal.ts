@@ -1,3 +1,4 @@
+import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
 import { and, asc, eq, inArray, isNull, max, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -12,11 +13,14 @@ import {
 	participantPromptTable,
 	participantLorebookAttachmentTable,
 	participantTable,
+	fromPortraitColumns,
 	toPromptChannelRow,
 } from "../database/schema";
+import type { Portrait } from "../../shared/contract/image";
 import type { ParticipantDefinition } from "./types";
 import type { ControlAssignment } from "../../shared/cast";
 import { isServerOwnedDataNamespace } from "../../shared/import-data";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import { isMacroDataNamespace } from "../prompt-macros";
 import {
 	InvalidConversationCommandError,
@@ -71,6 +75,7 @@ export interface ActiveCastRow {
 	scenario: string;
 	exampleDialogue: string;
 	postHistoryInstruction: string;
+	portrait: Portrait | undefined;
 }
 
 // ==[HUMAN APPROVED]== Every Conversation read model uses the same active Cast query. The
@@ -94,6 +99,11 @@ export const readActiveCast = (
 			scenario: participantPromptTable.scenario,
 			exampleDialogue: participantPromptTable.example_dialogue,
 			postHistoryInstruction: participantPromptTable.post_history_instruction,
+			portrait: {
+				portrait_hash: participantPromptTable.portrait_hash,
+				portrait_focal_x: participantPromptTable.portrait_focal_x,
+				portrait_focal_y: participantPromptTable.portrait_focal_y,
+			},
 		})
 		.from(participantTable)
 		.innerJoin(participantPromptTable, eq(participantPromptTable.participant_id, participantTable.id))
@@ -108,7 +118,8 @@ export const readActiveCast = (
 			),
 		)
 		.orderBy(asc(participantTable.position))
-		.all();
+		.all()
+		.map(({ portrait, ...row }) => ({ ...row, portrait: fromPortraitColumns(portrait) }));
 
 export const groupRowsByNumber = <Row, Value>(
 	rows: readonly Row[],
@@ -220,6 +231,7 @@ export const requireParticipantDefinition = (
 	name: requireParticipantName(definition.name),
 	prompt: definition.prompt,
 	openings: requireParticipantOpenings(definition.openings),
+	portrait: definition.portrait,
 });
 
 export const requireParticipant = (
@@ -403,6 +415,7 @@ export const insertParticipant = (
 		.values({
 			participant_id: inserted.id,
 			...toPromptChannelRow(definition.prompt),
+			...portraitRow(db, definition.portrait),
 		})
 		.run();
 

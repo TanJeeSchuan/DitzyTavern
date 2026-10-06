@@ -46,6 +46,13 @@ export function useAssemblyController({
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
+	const lastGenerationRef = useRef<{
+		conversationId: number;
+		request: GenerationPreviewBody;
+	} | null>(null);
+
+	const canRetry = conversation !== null && lastGenerationRef.current?.conversationId === conversation.id &&
+		assembly === null && !variantPreviewActive && !isGenerating;
 
 	// ==[HUMAN APPROVED]== Assembly request identity is one monotonic counter: a request stays
 	// current until a newer request, a cancellation, or a Chat switch advances it.
@@ -209,6 +216,7 @@ export function useAssemblyController({
 		const startId = generationStart.begin();
 		dispatchAssembly({ type: "acceptance-started", requestId });
 		const previewInput = { previewId: preview.previewId, promptPlan: preview.promptPlan };
+		lastGenerationRef.current = { conversationId, request };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -226,6 +234,7 @@ export function useAssemblyController({
 		const requestId = issueAssemblyRequestId();
 		const startId = generationStart.begin();
 		setDirectStartError(null);
+		lastGenerationRef.current = { conversationId, request };
 		void startGeneration(
 			startId,
 			conversationId,
@@ -237,6 +246,13 @@ export function useAssemblyController({
 		);
 	};
 
+	const retryLastGeneration = () => {
+		if (!canRetry) return;
+		const lastGeneration = lastGenerationRef.current;
+		if (conversation === null || lastGeneration === null || lastGeneration.conversationId !== conversation.id) return;
+		requestGeneration(lastGeneration.request);
+	};
+
 	const requestGeneration = (request: GenerationPreviewBody) => {
 		setDirectStartError(null);
 		if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(request);
@@ -244,6 +260,7 @@ export function useAssemblyController({
 	};
 
 	const conversationSwitched = () => {
+		lastGenerationRef.current = null;
 		invalidateAssemblyRequests();
 		setDirectStartError(null);
 		dispatchAssembly({ type: "conversation-switched" });
@@ -266,6 +283,7 @@ export function useAssemblyController({
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		requestGeneration,
+		retryGeneration: canRetry ? retryLastGeneration : null,
 		conversationSwitched,
 	};
 }

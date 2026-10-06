@@ -2,18 +2,21 @@ export interface ModelSelectionInput {
 	readonly query: string;
 	readonly discoveryCatalog: readonly string[];
 	readonly pinnedModels: readonly string[];
+	readonly textOnlyModels: readonly string[];
 }
 
 // ==[HUMAN APPROVED]== Opening the combobox is intentionally a small curated view. Once the user
 // types, the complete advisory catalog becomes searchable without turning it
 // into an allowlist; pinned IDs absent from discovery remain available too.
+// Text-only marks stay listed so a mistaken mark is always reachable to undo.
 export function modelSuggestions(input: ModelSelectionInput): string[] {
 	const query = input.query.trim().toLocaleLowerCase();
-	if (query.length === 0) return unique(input.pinnedModels);
+	const curated = unique([...input.pinnedModels, ...input.textOnlyModels]);
+	if (query.length === 0) return curated;
 	const catalog = input.discoveryCatalog.filter((model) =>
 		model.toLocaleLowerCase().includes(query),
 	);
-	const pinnedOnly = input.pinnedModels.filter(
+	const pinnedOnly = curated.filter(
 		(model) => !input.discoveryCatalog.includes(model) && model.toLocaleLowerCase().includes(query),
 	);
 	const matches = unique([...catalog, ...pinnedOnly]);

@@ -5,6 +5,10 @@ import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
 import { createTypesafeSettingsModule } from "../typesafe";
+import { createConnectionSettingsModule } from "../connection-settings";
+import { pngFixture } from "../image/image-fixtures";
+import { uploadImage } from "../image";
+import { formatImageReference } from "../../shared/image-reference";
 import {
 	clearGenerationPreviewRegistry,
 } from "../workflows/generation-preview";
@@ -197,6 +201,71 @@ describe("Prompt Plan inspection", () => {
 		}
 	});
 
+	test("retries a failed edited Send with its plan and a fresh preview token", async () => {
+		const conversation = createChat(database);
+		database.query("UPDATE participant_prompt SET system_instruction = ? WHERE participant_id = ?")
+			.run("Answer briefly.", conversation.cast[1]!.id);
+		withProfile(database);
+		const requests: Array<{ messages: { role: string; content: string }[] }> = [];
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: async (_url, init) => {
+				// SAFETY: the controlled provider receives this test's Chat Completions request.
+				requests.push(JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[] });
+				if (requests.length === 1) {
+					return new Response(JSON.stringify({ error: { message: "unsupported image input" } }), { status: 400 });
+				}
+				return new Response([
+					`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Recovered." }, finish_reason: null }] })}\n\n`,
+					`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
+					"data: [DONE]\n\n",
+				].join(""), { headers: { "content-type": "text/event-stream" } });
+			},
+		});
+		const body: GenerationPreviewBody = { kind: "send", content: "The next scene begins." };
+		const firstPreview = await preview(app, conversation.id, body);
+		const editedPlan = {
+			...firstPreview.promptPlan,
+			blocks: firstPreview.promptPlan.blocks.map((block) => block.kind === "system-instruction"
+				? { ...block, content: "Writer-edited instruction." }
+				: block),
+		};
+		const start = async (previewId: string, promptPlan: typeof editedPlan) => app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: createConversationModule(database).getRevision(conversation.id),
+					content: body.content,
+					previewId,
+					promptPlan,
+				}),
+			},
+		));
+		const failed = await start(firstPreview.previewId, editedPlan);
+		expect(failed.status).toBe(200);
+		// SAFETY: the accepted start response carries the generation identifier.
+		const failedGeneration = await failed.json() as { generationId: number };
+		const failedEvents = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${failedGeneration.generationId}/events`,
+		)).then((response) => response.text());
+		expect(failedEvents).toContain("event: error");
+
+		const retryPreview = await preview(app, conversation.id, body);
+		expect(retryPreview.previewId).not.toBe(firstPreview.previewId);
+		expect(retryPreview.promptPlan.blocks).toHaveLength(firstPreview.promptPlan.blocks.length);
+		const retried = await start(retryPreview.previewId, editedPlan);
+		expect(retried.status).toBe(200);
+		// SAFETY: the accepted start response carries the generation identifier.
+		const retriedGeneration = await retried.json() as { generationId: number };
+		await (await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations/${retriedGeneration.generationId}/events`,
+		))).text();
+		expect(requests).toHaveLength(2);
+		expect(requests[1]?.messages).toContainEqual({ role: "system", content: "Writer-edited instruction." });
+	});
+
 	test("keeps a preview valid after an unrelated cast addition", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
@@ -242,6 +311,62 @@ describe("Prompt Plan inspection", () => {
 			},
 		));
 		expect(rejected.status).toBe(422);
+	});
+
+	test.each(["plain", "missing", "stored"])("accepts an Image added to a %s text-only preview without charging image tokens", async (initial) => {
+		const conversation = createChat(database);
+		const connections = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(11) });
+		const profile = withProfile(database).profiles[0];
+		if (profile === undefined) throw new Error("Connection Profile missing.");
+		connections.setTextOnlyModel({ profileId: profile.id, modelId: "text-only", textOnly: true });
+		const module = createConversationModule(database);
+		const generationSettings = module.getGenerationSettings(conversation.id);
+		if (generationSettings === undefined) throw new Error("Generation settings missing.");
+		module.execute({
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			action: { type: "update-generation-settings", settings: {
+				...generationSettings,
+				modelId: "text-only",
+				contextLimit: 2_000,
+				responseBudget: 100,
+				safetyAllowance: 0,
+			} },
+		});
+		const image = await uploadImage(database, pngFixture({ width: 1568, height: 1568 }));
+		if (image === undefined) throw new Error("Image fixture missing.");
+		const reference = formatImageReference("map", image.hash);
+		const content = initial === "plain" ? "Look" : `Look ${initial === "missing" ? formatImageReference("ghost", "f".repeat(64)) : reference}`;
+		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const app = createConversationRoutes(database, {
+			masterKey: new Uint8Array(32).fill(11),
+			fetch: captureModelFetch((request) => { captured = request; }),
+		});
+		const plan = await preview(app, conversation.id, { kind: "send", content });
+		const edited = {
+			...plan.promptPlan,
+			blocks: plan.promptPlan.blocks.map((block) => block.kind === "history" ? { ...block, content: `${block.content} ${reference}` } : block),
+		};
+
+		const accepted = await app.handle(new Request(
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					expectedRevision: module.getSummary(conversation.id)!.revision,
+					content,
+
+					previewId: plan.previewId,
+					promptPlan: edited,
+				}),
+			},
+		));
+		expect(accepted.status).toBe(200);
+		// SAFETY: the successful generation route validates this accepted response shape.
+		const { generationId } = await accepted.json() as { generationId: number };
+		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
+		expect(captured?.messages.find((message) => message.role === "user")?.content).toBe(`Writer: ${initial === "plain" ? "Look" : `Look [Image: ${initial === "missing" ? "ghost" : "map"}]`} [Image: map]`);
 	});
 
 	test("keeps an inspected plan past the old quarter-hour window", async () => {

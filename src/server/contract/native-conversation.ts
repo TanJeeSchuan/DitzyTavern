@@ -6,7 +6,7 @@ import {
 	StaleCharacterRevisionError,
 } from "../character-library";
 import { InvalidConversationCreationError } from "../conversation";
-
+import { InvalidImageError } from "../image";
 import { createNativeConversation } from "../workflows";
 import { invalidResponse, notFoundResponse, staleCharacterConflictResponse } from "./responses";
 import { toConversationSummary } from "./projections";
@@ -42,7 +42,8 @@ export const createNativeConversationRoutes = (database: Database) =>
 				}
 				if (
 					error instanceof InvalidCharacterDefinitionError ||
-					error instanceof InvalidConversationCreationError
+					error instanceof InvalidConversationCreationError ||
+					error instanceof InvalidImageError
 				) {
 					return invalidResponse(error.message);
 				}

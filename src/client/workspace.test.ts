@@ -9,9 +9,9 @@ Object.defineProperty(globalThis, "window", {
 const { resolveWorkspaceActiveChat } = await import("./workspace");
 
 const chats: ChatSummary[] = [
-	{ id: "1", title: "First Chat", updatedAt: "2024-01-01", castNames: [], excerpt: "" },
-	{ id: "2", title: "Imported Chat", updatedAt: "2024-02-01", castNames: [], excerpt: "" },
-	{ id: "3", title: "Latest Chat", updatedAt: "2024-03-01", castNames: [], excerpt: "" },
+	{ id: "1", title: "First Chat", updatedAt: "2024-01-01", cast: [], excerpt: "" },
+	{ id: "2", title: "Imported Chat", updatedAt: "2024-02-01", cast: [], excerpt: "" },
+	{ id: "3", title: "Latest Chat", updatedAt: "2024-03-01", cast: [], excerpt: "" },
 ];
 
 describe("preferred Chat workspace loading", () => {

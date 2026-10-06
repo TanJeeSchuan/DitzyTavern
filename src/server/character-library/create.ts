@@ -1,3 +1,4 @@
+import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
 import {
 	characterOpeningTable,
@@ -39,6 +40,7 @@ export function createCharacter(
 			.values({
 				character_id: inserted.id,
 				...toPromptChannelRow(definition.prompt),
+				...portraitRow(db, definition.portrait),
 			})
 			.run();
 

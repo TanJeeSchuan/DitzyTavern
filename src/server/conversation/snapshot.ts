@@ -386,6 +386,7 @@ export function readConversationSummaryFromConnection(
 				postHistoryInstruction: participant.postHistoryInstruction,
 			},
 			openings: openingsByParticipant.get(participant.id) ?? [],
+			portrait: participant.portrait,
 			sourceCharacterId: participant.sourceCharacterId ?? null,
 			sourceCharacterName: participant.sourceCharacterName ?? null,
 		}));

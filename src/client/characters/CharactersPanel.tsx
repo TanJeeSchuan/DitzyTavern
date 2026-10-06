@@ -153,7 +153,7 @@ export function CharactersPanel({
 						const preview = promptPreview(participant.prompt.identity);
 						return (
 							<li key={participant.id} className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40">
-								<Portrait name={participant.name} size="medium" />
+								<Portrait name={participant.name} portrait={participant.portrait} size="medium" />
 								<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "participant", id: participant.id, fresh: false })}>
 									<span className="block truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{participant.duplicateLabel}</span>
 									{(seat !== null || preview !== "") && <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">{seat !== null && <span className="shrink-0"><SeatLabel seat={seat} /></span>}{seat !== null && preview !== "" && " · "}{preview !== "" && <span className="truncate">{preview}</span>}</span>}
@@ -176,7 +176,7 @@ export function CharactersPanel({
 					: libraryRows.length === 0 ? <li className="px-3 py-3 text-sm text-muted-foreground">{characters.length === 0 ? "No Characters yet. Create one to reuse it across Chats." : "No Characters match this search."}</li>
 					: libraryRows.map((entry) => (
 						<li key={entry.character.id} className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted/40 focus-within:bg-muted/40">
-							<Portrait name={entry.label} size="medium" />
+							<Portrait name={entry.label} portrait={entry.character.portrait} size="medium" />
 							<button type="button" className="min-w-0 flex-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-3 focus-visible:after:ring-ring/50" onClick={() => setView({ kind: "character", id: entry.character.id, fresh: false })}>
 								<span className="flex items-center gap-1.5 truncate text-[0.9rem] font-semibold tracking-[-0.01em]">{entry.label}{entry.character.pinned && <Pin aria-label="Pinned" className="size-3 shrink-0 fill-current text-muted-foreground" />}</span>
 								{entry.preview !== "" && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{entry.preview}</span>}

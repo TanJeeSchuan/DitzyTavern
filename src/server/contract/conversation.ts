@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { InvalidImageError } from "../image";
 import { Elysia, status, t } from "elysia";
 import { Type } from "@sinclair/typebox";
 import {
@@ -611,7 +612,10 @@ export const createConversationRoutes = (
 							reason: error.reason,
 						});
 					}
-					if (error instanceof InvalidConversationCommandError) {
+					if (
+						error instanceof InvalidConversationCommandError ||
+						error instanceof InvalidImageError
+					) {
 						return invalidResponse(error.message);
 					}
 					throw error;
