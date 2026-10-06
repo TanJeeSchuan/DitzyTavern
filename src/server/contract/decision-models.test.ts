@@ -208,6 +208,25 @@ test("Semantic Triggers use Clef Flash with the Memory profile key, chunk the en
 	expect(await evaluateSemanticLore({ ...input, settings: captureSemanticSettings(database), fetch: async () => { throw new Error("Unexpected decision request"); } })).toMatchObject({ available: false, fallbackReason: expect.stringContaining("turned off") });
 });
 
+test("Semantic Triggers judge the whole scene at a 32,000-token state limit", async () => {
+	configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions(32_000));
+	const scenes: string[][] = [];
+	const result = await evaluateSemanticLore({
+		entries: [{ enabled: true, semanticTriggers: ["ships arrive"] }],
+		messages: [{ content: `oldest ${"a ".repeat(31_980)}` }, { content: `${"b ".repeat(32_000)}newest` }],
+		settings: captureSemanticSettings(database),
+		fetch: async (_url, init) => {
+			const body = JSON.parse(String(init?.body));
+			scenes.push(body.state.scene);
+			return Response.json({ answers: { trigger_0: { type: "noul", noul: body.state.scene.some((text: string) => text.includes("newest")) ? 0.9 : 0.1 } } });
+		},
+	});
+	expect(result).toEqual({ available: true, threshold: 0.5, matches: [{ trigger: "ships arrive", score: 0.9 }] });
+	expect(scenes.length).toBeGreaterThan(1);
+	expect(scenes.flat().join("")).toContain("oldest");
+	expect(scenes.flat().join("")).toContain("newest");
+});
+
 test("an oversized extraction source fails visibly with no partial collection", async () => {
 	configureDecisionModels(database, key, "typesafe/jev-1.13", decisionOptions(2000));
 	const conversation = createChat(database);

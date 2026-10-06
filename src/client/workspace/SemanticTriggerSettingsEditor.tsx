@@ -60,7 +60,11 @@ export function useSemanticTriggerSettings() {
 export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { semanticTriggers: SemanticTriggerSettingsController; onBack: () => void }) {
 	const navigate = useSaveNavigation();
 	const [connections, setConnections] = useState<ConnectionSettings | null>(null);
-	useAsyncEffect(() => { void loadConnectionSettings().then(setConnections); }, []);
+	const [connectionError, setConnectionError] = useState<string | null>(null);
+	const loadConnections = useCallback((isCancelled: () => boolean = () => false) => loadConnectionSettings()
+		.then((settings) => { if (!isCancelled()) { setConnections(settings); setConnectionError(null); } })
+		.catch(() => { if (!isCancelled()) setConnectionError("Connection Settings could not be loaded."); }), []);
+	useAsyncEffect((isCancelled) => { void loadConnections(isCancelled); }, [loadConnections]);
 	useSaveGuard({ dirty: semanticTriggers.dirty, saving: semanticTriggers.pending, save: semanticTriggers.save, discard: semanticTriggers.discard });
 	const { settings, draft } = semanticTriggers;
 	return (
@@ -77,9 +81,12 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 						</div>
 					) : (
 						<div className="grid gap-4">
-							<Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
+							{connectionError !== null ? <div className="grid justify-items-start gap-2">
+								<p className="text-xs text-destructive" role="alert">{connectionError}</p>
+								<Button type="button" size="sm" variant="outline" onClick={() => void loadConnections()}>Try again</Button>
+							</div> : <Field label="Decision Model" helper="System One connections only. Memory has its own selection.">
 								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
-							</Field>
+							</Field>}
 							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
 								<NumberRow id="semantic-state-limit" label="State token limit" min={MIN_DECISION_STATE_TOKEN_LIMIT} step={1} value={draft.decisionStateTokenLimit} onChange={decisionStateTokenLimit => semanticTriggers.update({ decisionStateTokenLimit })} />
 							</NumberGroup>

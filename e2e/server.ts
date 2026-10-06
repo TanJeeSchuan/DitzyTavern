@@ -93,7 +93,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
 	const body = init?.body ? JSON.parse(String(init.body)) : undefined;
 	const kind = new URL(url).pathname.endsWith("/systemone") ? "decision"
-		: url.endsWith("/models") ? "models"
+		: new URL(url).pathname.endsWith("/models") ? "models"
 		: url.endsWith("/embeddings") ? "embeddings"
 		: !url.endsWith("/chat/completions") ? "unknown"
 		: body.messages[0]?.content.startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat";
