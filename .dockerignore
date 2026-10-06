@@ -1,0 +1,10 @@
+**
+!package.json
+!bun.lock
+!index.html
+!vite.config.ts
+!tsconfig.json
+!src/
+!src/**
+src/**/*.test.ts
+src/**/*.test.tsx

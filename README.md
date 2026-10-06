@@ -99,7 +99,9 @@ bun run build
 bun run start        # http://127.0.0.1:3000
 ```
 
-The server listens on loopback only. On first start it writes a `CONNECTION_SECRET_KEY` to `.env`, which encrypts stored API keys; keep that file if you want your keys to survive. The database lives in `data/ditzytavern.sqlite` and migrates itself on start.
+The server listens on loopback by default; `HOST` sets the listening address. On first start it writes a `CONNECTION_SECRET_KEY` to `.env`, which encrypts stored API keys; keep that file if you want your keys to survive. The database lives in `data/ditzytavern.sqlite` and migrates itself on start.
+
+The Docker workflow publishes Intel/AMD and ARM64 images to `ghcr.io/tanjeeschuan/ditzytavern`. See [Docker and GHCR setup](docs/docker.md) for publishing, configuration, and updates.
 
 Add a connection profile under Connections, pick a model from the composer, and write. Memory and Semantic Triggers need extra setup, and it differs:
 

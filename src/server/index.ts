@@ -6,7 +6,7 @@ import { initializeConnectionSecretKey } from "./connection-secrets";
 registerWireFormats();
 initializeConnectionSecretKey();
 const { app, close } = await createApp({ database: openInitializedDatabase() });
-app.listen({ hostname: "127.0.0.1", port: 3000 });
+app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: 3000 });
 
 const shutdown = () => {
 	process.off("SIGINT", shutdown);

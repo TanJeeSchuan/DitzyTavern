@@ -101,7 +101,9 @@ bun run build
 bun run start        # http://127.0.0.1:3000
 ```
 
-服务器只监听本机回环地址。首次启动时，它会把 `CONNECTION_SECRET_KEY` 写入 `.env`，用来加密保存的 API 密钥；想让密钥在重装后仍可用，就保留这个文件。数据库在 `data/ditzytavern.sqlite`，启动时会自动迁移。
+服务器默认监听本机回环地址，可用 `HOST` 设置监听地址。首次启动时，它会把 `CONNECTION_SECRET_KEY` 写入 `.env`，用来加密保存的 API 密钥；想让密钥在重装后仍可用，就保留这个文件。数据库在 `data/ditzytavern.sqlite`，启动时会自动迁移。
+
+Intel/AMD 和 ARM64 的 Docker 镜像发布到 `ghcr.io/tanjeeschuan/ditzytavern`。发布、配置和更新说明见 [Docker 与 GHCR 设置](docs/docker.md)（英文）。
 
 在 Connections 里添加一个连接配置，在输入框里选好模型，就可以开始写了。记忆和语义触发还需要额外设置，两者要求不同：
 
