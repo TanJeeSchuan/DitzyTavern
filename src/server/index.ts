@@ -11,7 +11,7 @@ app.listen({ hostname: process.env.HOST ?? "127.0.0.1", port: 3000 });
 const shutdown = () => {
 	process.off("SIGINT", shutdown);
 	process.off("SIGTERM", shutdown);
-	void close(async () => { await app.stop(); });
+	void close(async () => { await app.stop(); }).then(() => process.exit(0));
 };
 
 process.once("SIGINT", shutdown);

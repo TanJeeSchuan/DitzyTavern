@@ -79,7 +79,8 @@ jobs:
             db.query("INSERT INTO container_probe VALUES (?)").run("persisted");
             db.close();
           '
-          docker stop --time 10 ditzytavern
+          docker stop --timeout 10 ditzytavern
+          docker inspect -f 'Shutdown exit code: {{.State.ExitCode}}' ditzytavern
           test "$(docker inspect -f '{{.State.ExitCode}}' ditzytavern)" = 0
           docker rm ditzytavern
           docker run -d --name ditzytavern -p 127.0.0.1:3000:3000 \
