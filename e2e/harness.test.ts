@@ -69,8 +69,8 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		await server.reset();
 		const { profiles, revision: connectionRevision } = await call("connection-settings");
 		const { presets } = await call("connection-settings/presets");
-		const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
-		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile });
+		const decisionPreset = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
+		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile: decisionPreset });
 		const decision = created.settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "system-one");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
 		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");

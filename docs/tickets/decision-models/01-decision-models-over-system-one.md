@@ -1,6 +1,6 @@
 # Decision Models over the System One wire
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -38,9 +38,9 @@ Replace the Typesafe-only Jev integration with Decision Models reached through S
 - [x] Switch the E2E fake to recognise `/systemone` calls, and the Jev fixture to create and select a System One profile.
 - [x] Add the contract tests in spec Testing Decisions 2–5. Verify the UI manually with playwright-cli.
 - [x] Update the conversation-memory and lorebooks specs, README files and AGENTS.md wording.
-- [ ] Run focused tests, typechecking, the full test suite and `bun run test:e2e`.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit the implementation.
+- [x] Run focused tests, typechecking, the full test suite and `bun run test:e2e`.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
 
@@ -50,3 +50,11 @@ Replace the Typesafe-only Jev integration with Decision Models reached through S
 - Memory admission ignores `confidence` and uses the `retain` probability minimum.
 - Clearing the Semantic Trigger selection produces keyword-only matching with the existing explanation.
 - No code path, setting or route mentions Typesafe except the TypeSafe preset.
+
+## Verification
+
+- Typecheck passed; full unit suite: 1,235 passed; E2E: 21 passed; E2E harness: 3 passed.
+- After the final review cleanup, typecheck, 30 focused tests and all 3 harness tests passed again.
+- Manual playwright-cli verification covered Connections, System One profile editing and resolved URL, filtered model pickers, independent Memory and Semantic Trigger selections, state limits, thresholds, clearing Semantic Triggers, and desktop/narrow layouts.
+- Opus 5.5 high reviewed Standards and Spec independently. All actionable findings and optional cleanup nits were resolved. Vendor-specific Jev fixture names, independent preset catalog assertions and format-specific conditionals were retained with the reviewers' agreement.
+- No spec decisions were skipped. The integration branch tip was merged before final validation; it was already included.
