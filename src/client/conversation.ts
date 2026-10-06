@@ -104,7 +104,10 @@ export async function applyConversationCommand(
 	expectedRevision: number,
 	action: ConversationAction,
 ): Promise<CommandOutcome> {
-	const { data, error } = await api.api.conversations({ id: conversationId }).commands.post({ expectedRevision, action });
+	const { data, error } = await api.api.conversations({ id: conversationId }).commands.post({
+		expectedRevision,
+		action,
+	});
 	if (error) {
 		return commandOutcome(error.value, {
 			conflict: (payload) => ({ status: "conflict", currentConversation: payload.currentConversation }),
@@ -251,7 +254,9 @@ export async function editMacroVariable(
 	} & ({ operation: "set"; name: string; value: MacroValue } | { operation: "delete"; name: string }),
 ): Promise<EditMacroVariablesOutcome> {
 	try {
-		const { data, error } = await api.api.conversations({ id: conversationId })["macro-variables"].post(input);
+		const { data, error } = await api.api
+			.conversations({ id: conversationId })["macro-variables"]
+			.post(input);
 		if (error) {
 			if (error.status === 404) return { status: "not-found" };
 			if (error.status === 409 && "currentConversation" in error.value) {
@@ -414,7 +419,10 @@ export function startConversationSiblingGeneration(
 	preview?: { previewId: string; promptPlan: PromptPlan },
 ): Promise<StartConversationGenerationResult> {
 	return postGenerationStart(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({ ...formatting, ...preview }),
+		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
+			...formatting,
+			...preview,
+		}),
 		"Sibling",
 	);
 }

@@ -20,8 +20,7 @@ import {
 	type GenerationSessionRunner,
 } from "../generation-session-runner";
 import {
-	firstActiveGenerationSessionError,
-	firstActiveGenerationSessionImageModel,
+	firstActiveGenerationSessionFailure,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
 	type GenerationSessionStoryEffect,
@@ -114,7 +113,6 @@ export function useGenerationController({
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
-
 	const [pendingStarts, dispatchPendingStarts] = useReducer(
 		reducePendingGenerationStarts,
 		undefined,
@@ -174,8 +172,9 @@ export function useGenerationController({
 	const hasSessions = hasActiveGenerationSessions(sessions);
 	const isGenerating = pendingStarts.size > 0 || hasSessions;
 	const stopPending = hasPendingGenerationStop(sessions);
-	const sessionError = firstActiveGenerationSessionError(sessions);
-	const failedImageModel = firstActiveGenerationSessionImageModel(sessions);
+	const sessionFailure = firstActiveGenerationSessionFailure(sessions);
+	const sessionError = sessionFailure?.reason ?? null;
+	const failedImageModel = sessionFailure?.imageModel ?? null;
 
 	useEffect(() => {
 		dispatchPendingStarts({
@@ -227,7 +226,6 @@ export function useGenerationController({
 		directStartError,
 		acknowledgeDirectStartError,
 	} = assemblyController;
-	const startRequest = requestGeneration;
 	const generationError = directStartError ?? sessionError;
 	const acknowledgeGenerationError = () => {
 		acknowledgeDirectStartError();
@@ -281,7 +279,7 @@ export function useGenerationController({
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (!assemblyAvailable || conversation === null || draft.trim() === "") return;
-		startRequest({ kind: "send", content: draft, ...clientFormattingContext() });
+		requestGeneration({ kind: "send", content: draft, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -292,7 +290,7 @@ export function useGenerationController({
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		startRequest({ kind: "continuation", ...clientFormattingContext() });
+		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
 	};
 
 	const regenerateResponse = (messageId: number) => {
@@ -305,7 +303,7 @@ export function useGenerationController({
 			content === undefined ||
 			content.trim() === ""
 		) return;
-		startRequest({ kind: "send", content, ...clientFormattingContext() });
+		requestGeneration({ kind: "send", content, ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number) => {
@@ -320,7 +318,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		startRequest({ kind: "sibling", messageId, ...clientFormattingContext() });
+		requestGeneration({ kind: "sibling", messageId, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>

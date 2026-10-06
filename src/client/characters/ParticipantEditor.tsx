@@ -51,7 +51,8 @@ export function ParticipantEditor({
 		try {
 			await runConversationCommand({
 				revision: () => conversation.revision,
-				send: (expectedRevision) => applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }),
+				send: (expectedRevision) =>
+					applyConversationCommand(conversation.id, expectedRevision, { type: "update-participant-definition", participantId: participant.id, definition: submittableDefinition(submitted) }),
 				reconciliation: {
 					adoptSnapshot: onConversationChange,
 					showNotice: setNotice,

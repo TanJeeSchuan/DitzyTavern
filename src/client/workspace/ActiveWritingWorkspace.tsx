@@ -24,6 +24,7 @@ import {
 import { Composer } from "../story/Composer";
 import { StoryHeader } from "../story/StoryHeader";
 import { StoryMessageView } from "../story/StoryMessageView";
+import { ProseImageProvider } from "../story/prose";
 import {
 	EmptyChat,
 	GenerationControls,
@@ -348,62 +349,64 @@ export function ActiveWritingWorkspace({
 							</div>
 						)}
 						{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
-						{story.messages.map((message) => (
-							<StoryMessageView
-								key={message.id}
-								message={message}
-								portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
-								isLatest={latestStoryMessage?.id === message.id}
-								generationActive={generation.activeGenerationTargets.some((target) =>
-									target.messageId === message.id &&
-									target.variantId === displayedVariantId(message, story.preview)
-								)}
-								displayedVariantId={story.preview?.messageId === message.id ? displayedVariantId(message, story.preview) : undefined}
-								mutationsDisabled={story.preview !== null}
-								previewDownstream={isPreviewDownstream(message, story.preview)}
-								previewTarget={story.preview?.messageId === message.id}
-								canContinue={
-									generation.assemblyAvailable &&
-									latestStoryMessage?.id === message.id &&
-									generation.activeGenerationTargets.length === 0 &&
-									isModelAuthoredMessage(message) &&
-									message.continuable === true
-								}
-								canRegenerate={
-									generation.assemblyAvailable &&
-									latestStoryMessage?.id === message.id &&
-									generation.activeGenerationTargets.length === 0 &&
-									message.authorParticipantId === conversation?.control.humanParticipantId
-								}
-								onSibling={generation.canOfferSiblingMessage(message)
-									? (messageId) => {
-										viewport.followLatest(messageId);
-										generation.siblingMessage(messageId);
+						<ProseImageProvider key={story.conversationId}>
+							{story.messages.map((message) => (
+								<StoryMessageView
+									key={message.id}
+									message={message}
+									portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
+									isLatest={latestStoryMessage?.id === message.id}
+									generationActive={generation.activeGenerationTargets.some((target) =>
+										target.messageId === message.id &&
+										target.variantId === displayedVariantId(message, story.preview)
+									)}
+									displayedVariantId={story.preview?.messageId === message.id ? displayedVariantId(message, story.preview) : undefined}
+									mutationsDisabled={story.preview !== null}
+									previewDownstream={isPreviewDownstream(message, story.preview)}
+									previewTarget={story.preview?.messageId === message.id}
+									canContinue={
+										generation.assemblyAvailable &&
+										latestStoryMessage?.id === message.id &&
+										generation.activeGenerationTargets.length === 0 &&
+										isModelAuthoredMessage(message) &&
+										message.continuable === true
 									}
-									: undefined}
-								continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
-								onContinue={generation.continueMessage}
-								onRegenerate={(messageId) => {
-									viewport.followLatest(messageId);
-									generation.regenerateResponse(messageId);
-								}}
-								onInspect={openVariantDetails}
-								generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
-									<GenerationControls
-										showStopAll={generation.activeGenerationTargets.length > 1}
-										pending={generation.stopPending}
-										onStop={() => void generation.stopGeneration(generation.selectedGenerationTarget!.generationId)}
-										onStopAll={() => void generation.stopAllGenerations()}
-										onInspect={openActiveGenerationDetails}
-									/>
-								)}
-								onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
-								onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
-								onDelete={!assemblyActive && !generation.isGenerating
-									? (messageId) => void storyActions.deleteStoryMessage(messageId)
-									: undefined}
-							/>
-						))}
+									canRegenerate={
+										generation.assemblyAvailable &&
+										latestStoryMessage?.id === message.id &&
+										generation.activeGenerationTargets.length === 0 &&
+										message.authorParticipantId === conversation?.control.humanParticipantId
+									}
+									onSibling={generation.canOfferSiblingMessage(message)
+										? (messageId) => {
+											viewport.followLatest(messageId);
+											generation.siblingMessage(messageId);
+										}
+										: undefined}
+									continueLabel={modelParticipant === null ? "Continue" : `Continue as ${modelParticipant.name}`}
+									onContinue={generation.continueMessage}
+									onRegenerate={(messageId) => {
+										viewport.followLatest(messageId);
+										generation.regenerateResponse(messageId);
+									}}
+									onInspect={openVariantDetails}
+									generationControls={generation.isGenerating && generation.selectedGenerationTarget?.messageId === message.id && (
+										<GenerationControls
+											showStopAll={generation.activeGenerationTargets.length > 1}
+											pending={generation.stopPending}
+											onStop={() => void generation.stopGeneration(generation.selectedGenerationTarget!.generationId)}
+											onStopAll={() => void generation.stopAllGenerations()}
+											onInspect={openActiveGenerationDetails}
+										/>
+									)}
+									onMoveSwipe={(messageId, direction) => void storyActions.changeSwipe(messageId, direction)}
+									onEdit={(messageId, content) => void storyActions.editStoryMessage(messageId, content)}
+									onDelete={!assemblyActive && !generation.isGenerating
+										? (messageId) => void storyActions.deleteStoryMessage(messageId)
+										: undefined}
+								/>
+							))}
+						</ProseImageProvider>
 						{story.status === "loading-first" && <HistoryLoading />}
 						{story.status === "error" && (
 							<p className="history-error" role="alert">
