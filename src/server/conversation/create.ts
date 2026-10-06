@@ -380,6 +380,7 @@ export function createConversation(
 		}
 		const defaultProfile = db.select({ id: connectionProfileTable.id })
 			.from(connectionProfileTable)
+			.where(eq(connectionProfileTable.api_format, "chat-completions"))
 			.orderBy(asc(connectionProfileTable.id))
 			.get();
 		const defaultModel = defaultProfile === undefined ? undefined : db

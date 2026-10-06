@@ -17,6 +17,9 @@ const deepSeekProfile: ConnectionProfileDraft = {
 };
 
 const presets: readonly ConnectionPreset[] = [
+	{ id: "openrouter-decisions", label: "OpenRouter Decisions", description: "Decision Models through OpenRouter.", profile: { ...blankConnectionProfileDraft, displayName: "OpenRouter Decisions", apiFormat: "system-one", requestUrl: "https://openrouter.ai/api/v1/", modelsUrl: "https://openrouter.ai/api/v1/models?output_modalities=decisions", timeoutMs: 15_000, pinnedModels: ["typesafe/jev-1.13", "cloudflare/clef", "cloudflare/clef-flash"] } },
+	{ id: "typesafe", label: "TypeSafe", description: "Jev through TypeSafe.", profile: { ...blankConnectionProfileDraft, displayName: "TypeSafe", apiFormat: "system-one", requestUrl: "https://api.typesafe.ai/v1/", timeoutMs: 15_000, pinnedModels: ["jev-1.13.0"] } },
+	{ id: "system-one", label: "System One endpoint", description: "A blank System One profile for local or proxied endpoints.", profile: { ...blankConnectionProfileDraft, apiFormat: "system-one", timeoutMs: 15_000 } },
 	{
 		id: "deepseek",
 		label: "DeepSeek",

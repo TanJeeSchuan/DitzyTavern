@@ -9,7 +9,7 @@ import { initializeConnectionSecretKey } from "../src/server/connection-secrets"
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../src/server/model-client";
 import { toMessages } from "../src/server/model-client/chat-messages";
-import type { ChatReply, JevRule, MemoryClaim, ModelCall } from "./protocol";
+import type { ChatReply, DecisionRule, MemoryClaim, ModelCall } from "./protocol";
 
 const masterKey = new Uint8Array(32).fill(1);
 const directoryRoot = process.env.E2E_ROOT;
@@ -18,7 +18,7 @@ initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.fro
 registerWireFormats();
 
 let chatReplies: ChatReply[] = [];
-let jevRules: JevRule[] = [];
+let decisionRules: DecisionRule[] = [];
 let memoryClaims: MemoryClaim[] | undefined;
 let modelCatalogs: string[][] = [];
 let embeddingMatches: string[] = [];
@@ -74,11 +74,11 @@ const chat = async (call: ModelCall) => {
 	return completion(reply.chunks, call.body.stream, reply.hold, reply.chunkDelayMs, reply.truncate);
 };
 
-const jev = (call: ModelCall) => {
-	const rules = Object.entries(call.body.questions).map(([id, question]) => [id, jevRules.find((rule) => rule.match.every((text) => JSON.stringify(question).includes(text)))] as const);
+const decisions = (call: ModelCall) => {
+	const rules = Object.entries(call.body.questions).map(([id, question]) => [id, decisionRules.find((rule) => rule.match.every((text) => JSON.stringify(question).includes(text)))] as const);
 	if (rules.some(([, rule]) => !rule)) return refuse(call);
 	const failure = rules.find(([, rule]) => rule && "status" in rule)?.[1];
-	if (failure && "status" in failure) return Response.json({ error: "Scripted Jev failure." }, { status: failure.status });
+	if (failure && "status" in failure) return Response.json({ error: "Scripted Decision Model failure." }, { status: failure.status });
 	return Response.json({ answers: Object.fromEntries(rules.map(([id, rule]) => [id, rule && "answer" in rule && rule.answer])) });
 };
 
@@ -92,8 +92,8 @@ const embed = (text: string) => {
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
 	const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-	const kind = url.startsWith("https://api.typesafe.ai/") ? "jev"
-		: url.endsWith("/models") ? "models"
+	const kind = new URL(url).pathname.endsWith("/systemone") ? "decision"
+		: new URL(url).pathname.endsWith("/models") ? "models"
 		: url.endsWith("/embeddings") ? "embeddings"
 		: !url.endsWith("/chat/completions") ? "unknown"
 		: body.messages[0]?.content.startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat";
@@ -102,7 +102,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	writeFileSync(join(current!.directory, "calls.json"), JSON.stringify(calls));
 	if (kind === "chat") return chat(call);
 	if (kind === "extraction") return extraction(call);
-	if (kind === "jev") return jev(call);
+	if (kind === "decision") return decisions(call);
 	if (kind === "models") {
 		const catalog = modelCatalogs.shift();
 		return catalog === undefined ? refuse(call) : Response.json({ data: catalog.map((id) => ({ id })) });
@@ -144,7 +144,7 @@ const reset = async () => {
 		current = undefined;
 	}
 	chatReplies = [];
-	jevRules = [];
+	decisionRules = [];
 	memoryClaims = undefined;
 	modelCatalogs = [];
 	embeddingMatches = [];
@@ -186,7 +186,7 @@ const server = Bun.serve({
 		switch (new URL(request.url).pathname) {
 			case "/__e2e/reset": await reset(); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
-			case "/__e2e/jev": jevRules.push(...await request.json()); break;
+			case "/__e2e/decisions": decisionRules.push(...await request.json()); break;
 			case "/__e2e/memories": memoryClaims = [...memoryClaims ?? [], ...await request.json()]; break;
 			case "/__e2e/models": modelCatalogs.push(...await request.json()); break;
 			case "/__e2e/embeddings": embeddingMatches.push(...await request.json()); break;

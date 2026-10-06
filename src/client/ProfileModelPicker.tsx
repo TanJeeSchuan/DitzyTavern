@@ -2,7 +2,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "@/components/ui/command";
 import { ChevronsUpDown, ImageOff, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { isEmbeddingsProfile, loadConnectionSettings, saveConnectionCommand, setTextOnlyModel, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
+import { loadConnectionSettings, saveConnectionCommand, setTextOnlyModel, type ConnectionProfile, type ConnectionSettings } from "./connection-settings";
 import { commitModelId, modelSuggestions, togglePinnedModel } from "./model-selection";
 
 export interface ProfileModelChoice {
@@ -10,10 +10,10 @@ export interface ProfileModelChoice {
 	modelId: string;
 }
 
-export function ProfileModelPicker({ settings, onSettingsChange, embeddings = false, selected, onSelect, disabled = false, side = "bottom", emptyLabel, label = "Model", children }: {
+export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "chat-completions", selected, onSelect, disabled = false, side = "bottom", emptyLabel, label = "Model", children }: {
 	settings: ConnectionSettings | null;
 	onSettingsChange: (settings: ConnectionSettings) => void;
-	embeddings?: boolean;
+	apiFormat?: ConnectionProfile["apiFormat"];
 	selected: ProfileModelChoice | null;
 	onSelect: (profile: ConnectionProfile, modelId: string) => Promise<void> | void;
 	disabled?: boolean;
@@ -27,7 +27,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, embeddings = fa
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const profiles = useMemo(() => (settings?.profiles ?? []).filter((profile) => isEmbeddingsProfile(profile) === embeddings), [settings, embeddings]);
+	const profiles = useMemo(() => (settings?.profiles ?? []).filter((profile) => profile.apiFormat === apiFormat), [settings, apiFormat]);
 	const groups = useMemo(() => profiles.map((profile) => ({
 		profile,
 		models: modelSuggestions({ query, discoveryCatalog: profile.discoveryCatalog, pinnedModels: profile.pinnedModels, textOnlyModels: profile.textOnlyModels }),
@@ -120,7 +120,7 @@ export function ProfileModelPicker({ settings, onSettingsChange, embeddings = fa
 									{isTextOnly && <span className="model-text-only-tag">text only</span>}
 										{profile.id === selected?.connectionProfileId && modelId === selected.modelId && <span className="sr-only">Current model</span>}
 									</CommandItem>
-									{!embeddings && <button type="button" className="model-pin-button" data-active={isTextOnly} aria-pressed={isTextOnly} aria-label={`${isTextOnly ? "Allow Images for" : "Mark text-only"} ${modelId} in ${profile.displayName}`} title={isTextOnly ? "Text-only: Images send as names. Click to allow Images." : "Mark as text-only: Images send as names."} disabled={busy} onClick={() => void toggleTextOnly(profile, modelId)}>
+									{apiFormat === "chat-completions" && <button type="button" className="model-pin-button" data-active={isTextOnly} aria-pressed={isTextOnly} aria-label={`${isTextOnly ? "Allow Images for" : "Mark text-only"} ${modelId} in ${profile.displayName}`} title={isTextOnly ? "Text-only: Images send as names. Click to allow Images." : "Mark as text-only: Images send as names."} disabled={busy} onClick={() => void toggleTextOnly(profile, modelId)}>
 										<ImageOff aria-hidden="true" />
 									</button>}
 									<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={busy} onClick={() => void togglePin(profile, modelId)}>

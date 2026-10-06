@@ -6,7 +6,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
-import type { ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
+import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
 import type { MemorySettingsCommand } from "../src/shared/contract/memory-settings.ts";
 
 const spawn = childProcess.spawn;
@@ -60,14 +60,18 @@ test("stop resolves when the server has already crashed", async (t) => {
 
 test("unscripted discovery, embeddings and extraction are recorded as failures", async () => {
 	const server = await startE2eServer();
-	const call = async (path: string, body?: ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
+	const call = async (path: string, body?: ConnectionSettingsCommandPayload | ConnectionTestDraftPayload | MemorySettingsCommand | { profileId: number } | Record<string, never>) => (await fetch(`${server.url}/api/${path}`, {
 		method: body === undefined ? "GET" : "POST",
 		headers: { "content-type": "application/json" },
 		body: body === undefined ? undefined : JSON.stringify(body),
 	})).json();
 	try {
 		await server.reset();
-		const { profiles } = await call("connection-settings");
+		const { profiles, revision: connectionRevision } = await call("connection-settings");
+		const { presets } = await call("connection-settings/presets");
+		const decisionPreset = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
+		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile: decisionPreset });
+		const decision = created.settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "system-one");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
 		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
 		await call("connection-settings/discovery", { profileId: chat.id });
@@ -75,6 +79,7 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 		const { revision, ...settings } = await call("memory-settings");
 		await call("memory-settings/commands", {
 			...settings, expectedRevision: revision, enabled: true,
+			decisionProfileId: decision.id, decisionModel: "e2e-decision",
 			extractionProfileId: chat.id, extractionModel: "e2e-model", embeddingProfileId: id, embeddingModel: "e2e-embedding",
 		});
 		const { activeChatId } = await call("workspace");

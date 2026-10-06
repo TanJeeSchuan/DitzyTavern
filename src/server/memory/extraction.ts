@@ -8,8 +8,8 @@ import type { MemorySettingsPayload } from "../../shared/contract/memory-setting
 import { Value } from "@sinclair/typebox/value";
 import { memoryExtractionResponse } from "../../shared/contract/memory";
 import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, MemoryExtractionResponse } from "../../shared/contract/memory";
-import type { JevAnswer } from "../../shared/contract/typesafe";
-import { createTypesafeSettingsModule, jevRequest, packJev, prettyJson, requestJev, type JevTrace } from "../typesafe";
+import type { DecisionAnswer } from "../../shared/contract/decision-model";
+import { decisionRequest, packDecisions, prettyJson, requestDecisions, resolveDecisionSelection, type DecisionTrace, type ResolvedDecisionModel } from "../decision-model";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
 
 const MAX_EVIDENCE = 3;
@@ -17,7 +17,7 @@ const MAX_EXCERPT = 1024;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 
-export type MemoryTrace = JevTrace;
+export type MemoryTrace = DecisionTrace;
 const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
 
@@ -99,20 +99,9 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 const isChoiceLabel = <const Labels extends readonly string[]>(labels: Labels, value: string): value is Labels[number] =>
 	labels.some((label) => label === value);
 
-const parseChoice = <const Labels extends readonly string[]>(answer: JevAnswer | undefined, labels: Labels) => {
-	if (answer?.type !== "choice") throw new Error("Typesafe returned a missing or malformed Memory judgment.");
-	const selected = answer.choice;
-	const probabilities = answer.probabilities;
-	if (!isChoiceLabel(labels, selected) || Object.keys(probabilities).length !== labels.length) throw new Error("Typesafe returned a missing or malformed Memory judgment.");
-	const normalized: Record<string, number> = {};
-	for (const label of labels) {
-		const probability = probabilities[label];
-		if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error("Typesafe returned incomplete Memory judgment probabilities.");
-		normalized[label] = probability;
-	}
-	if (Math.abs(Object.values(normalized).reduce((sum, probability) => sum + probability, 0) - 1) > 0.001) throw new Error("Typesafe returned invalid Memory judgment probabilities.");
-	if (!(answer.confidence >= 0 && answer.confidence <= 1)) throw new Error("Typesafe returned an invalid Memory judgment confidence.");
-	return { label: selected, probabilities: normalized, confidence: answer.confidence };
+const parseChoice = <const Labels extends readonly string[]>(answer: DecisionAnswer | undefined, labels: Labels) => {
+	if (answer?.type !== "choice" || !isChoiceLabel(labels, answer.choice)) throw new Error("Decision Model returned a missing or malformed Memory judgment.");
+	return { label: answer.choice, probabilities: answer.probabilities, confidence: answer.confidence };
 };
 
 const supportCriteria = {
@@ -135,23 +124,21 @@ const candidateQuestions = (candidate: MemoryCandidate) => ({
 	usefulness: { type: "choice", instructions: { memory: { claim: candidate.claim, attribution: candidate.attribution }, question: "Will `memory.claim` still matter to the story after the scene in `source` ends?" }, criteria: usefulnessCriteria },
 });
 
-export async function judgeMemoryCandidates({ source, context, candidates, credential, model, fetch, signal, trace }: {
+export async function judgeMemoryCandidates({ source, context, candidates, selection, fetch, signal, trace }: {
 	source: CapturedMemoryMessage;
 	context: readonly CapturedMemoryMessage[];
 	candidates: readonly MemoryCandidate[];
-	credential: string;
-	model: string;
+	selection: ResolvedDecisionModel;
 	fetch?: ModelFetch;
 	signal?: AbortSignal;
 	trace?: MemoryTrace;
 }): Promise<MemoryCandidateJudgment[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
 	const output: MemoryCandidateJudgment[] = [];
 	const state = { source, context };
-	const batches = packJev(candidates.map((candidate, id) => ({ candidate, id })), (batch) => jevRequest(model, state, Object.fromEntries(batch.flatMap(({ candidate, id }) => Object.entries(candidateQuestions(candidate)).map(([name, question]) => [`candidate_${id}_${name}`, question])))), "Required Typesafe Memory evidence exceeds the bounded Jev request. No partial collection was saved.", 16);
-	for (const { request, items } of batches) {
-		const answers = await requestJev({ request, credential, fetch, signal, trace });
+	const batches = packDecisions(candidates.map((candidate, id) => ({ candidate, id })), (batch) => decisionRequest(selection, state, Object.fromEntries(batch.flatMap(({ candidate, id }) => Object.entries(candidateQuestions(candidate)).map(([name, question]) => [`candidate_${id}_${name}`, question])))), "Required Memory evidence exceeds the bounded Decision Model request. No partial collection was saved.", 16);
+	for (const { request, questions, items } of batches) {
+		const answers = await requestDecisions({ request, questions, selection, fetch, signal, trace });
 		for (const { candidate, id } of items) {
 			const support = parseChoice(answers.get(`candidate_${id}_support`), ["supported", "contradicted", "not_established"] as const);
 			const attribution = parseChoice(answers.get(`candidate_${id}_attribution`), ["correct", "misattributed", "unclear"] as const);
@@ -165,12 +152,13 @@ export async function judgeMemoryCandidates({ source, context, candidates, crede
 
 export async function extractAndJudgeMemorySource(database: Database, source: CapturedMemoryMessage, context: readonly CapturedMemoryMessage[], fetcher?: ModelFetch, signal?: AbortSignal, trace: MemoryTrace = noTrace): Promise<MemoryCandidateJudgment[]> {
 	const settings = createMemorySettingsModule(database).get();
-	const typesafe = createTypesafeSettingsModule(database);
-	const jevModel = typesafe.get().jevModel;
+	const selection = resolveDecisionSelection(database, settings);
+	if (selection === null) throw new Error("Choose a Decision Model in Memory Settings.");
+	if (tokenxEstimator(JSON.stringify({ source, context })) > selection.stateTokenLimit) throw new Error("The Memory source and captured context exceed the Decision Model state token limit. No partial collection was saved.");
 	const extracted = await generatedContent(database, settings, source, context, fetcher, signal, trace);
 	signal?.throwIfAborted();
-	const judgments = await judgeMemoryCandidates({ source, context: extracted.context, candidates: extracted.candidates, credential: typesafe.getCredential() ?? "", model: jevModel, fetch: fetcher, signal, trace });
-	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.confidence.usefulness >= settings.usefulnessConfidenceGate);
-	trace("Kept memories", { rule: `supported, correctly attributed, and retain with confidence >= ${settings.usefulnessConfidenceGate}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
+	const judgments = await judgeMemoryCandidates({ source, context, candidates: extracted.candidates, selection, fetch: fetcher, signal, trace });
+	const kept = judgments.filter(({ judgment }) => judgment.support === "supported" && judgment.attribution === "correct" && judgment.usefulness === "retain" && judgment.probabilities["usefulness:retain"]! >= settings.retainProbabilityMinimum);
+	trace("Kept memories", { rule: `supported, correctly attributed, and retain with probability >= ${settings.retainProbabilityMinimum}`, kept: String(kept.length), dropped: String(judgments.length - kept.length), memories: JSON.stringify(kept, null, 2) });
 	return kept;
 }

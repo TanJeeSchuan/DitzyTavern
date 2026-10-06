@@ -8,7 +8,7 @@ import { matchLoreEntry, type LoreEntryMatch, type LoreScanMessage } from "./mat
 import { captureLoreScanWindow, type LoreScanSourceMessage } from "./scan";
 import { readLoreSettings, readLorebookAttachmentEligibility } from "./attachments";
 import { captureSemanticSettings, evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
-import type { TypesafeSettingsModuleOptions } from "../typesafe";
+import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client";
 
 export interface ScopedLoreEvaluation {
@@ -126,7 +126,7 @@ interface ScopedLoreInput {
 	messages: readonly LoreScanSourceMessage[];
 	pendingHumanText?: string;
 	beforeMessageId?: number;
-	typesafeSettings?: TypesafeSettingsModuleOptions;
+	connectionSettings?: ConnectionSettingsModuleOptions;
 }
 
 export interface ScopedLoreSources {
@@ -138,7 +138,7 @@ export interface ScopedLoreSources {
 }
 
 const collectSources = (input: ScopedLoreInput): ScopedLoreSources => {
-	const semanticSettings = captureSemanticSettings(input.database, input.typesafeSettings);
+	const semanticSettings = captureSemanticSettings(input.database, input.connectionSettings);
 	const settings = readLoreSettings(input.database, input.conversationId);
 	const scan = captureLoreScanWindow({
 		messages: input.messages,

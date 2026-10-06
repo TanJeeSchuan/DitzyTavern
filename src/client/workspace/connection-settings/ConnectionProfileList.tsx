@@ -4,17 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CONNECTION_ADAPTER_LABELS, isEmbeddingsProfile, type ConnectionProfile, type ConnectionSettings } from "../../connection-settings";
-import type { TypesafeSettingsController } from "../TypesafeSettingsEditor";
+import type { SemanticTriggerSettingsController } from "../SemanticTriggerSettingsEditor";
 import type { ConnectionSettingsController } from "./useConnectionSettingsController";
 
 const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
-export function ConnectionProfileList({ controller, settings, activeProfileId, typesafe, onOpenTypesafe }: {
+export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger }: {
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
-	typesafe: TypesafeSettingsController;
-	onOpenTypesafe: () => void;
+	semanticTriggers: SemanticTriggerSettingsController;
+	onOpenSemanticTrigger: () => void;
 }) {
 	const pending = controller.pendingDeletionProfile;
 	const feedback = controller.error ?? controller.notice;
@@ -24,22 +24,10 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, t
 			<section aria-labelledby="connections-title">
 				<div className="flex items-center justify-between gap-3">
 					<h3 id="connections-title">Chat models</h3>
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button type="button" size="sm" variant="outline" aria-label="Add chat connection"><Plus aria-hidden="true" /> Add</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-64">
-							{controller.presets.filter((preset) => preset !== embeddingsPreset).map((preset) => (
-								<DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}>
-									<span className="font-medium">{preset.label}</span>
-									<span className="text-xs text-muted-foreground">{preset.description}</span>
-								</DropdownMenuItem>
-							))}
-						</DropdownMenuContent>
-					</DropdownMenu>
+					<PresetMenu controller={controller} apiFormat="chat-completions" label="Add chat connection" />
 				</div>
 				<p>Write Messages and extract Memories.</p>
-				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => !isEmbeddingsProfile(profile))} controller={controller}
+				<ProfileRows label="Chat connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "chat-completions")} controller={controller}
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
 					empty={<EmptyProfiles title="No connections yet">Add one to start generating. Chats and imports work without it.</EmptyProfiles>} />
@@ -58,11 +46,19 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, t
 				{feedback !== null && <p className={`mt-3 text-xs ${controller.error ? "text-destructive" : "text-muted-foreground"}`} role={controller.error ? "alert" : "status"}>{feedback}</p>}
 			</section>
 
-			<section aria-labelledby="typesafe-title">
-				<h3 id="typesafe-title">Typesafe Jev</h3>
-				<p>Judges Memory and matches Lore Entries by their Semantic Triggers.</p>
-				<button type="button" className="flex w-full items-center justify-between gap-3 rounded-xl border border-border text-left hover:bg-muted/50" onClick={onOpenTypesafe}>
-					<TypesafeSummary typesafe={typesafe} />
+			<section aria-labelledby="decisions-title">
+				<div className="flex items-center justify-between gap-3">
+					<h3 id="decisions-title">Decision Models</h3>
+					<PresetMenu controller={controller} apiFormat="system-one" label="Add Decision Model connection" />
+				</div>
+				<p>Judge Memory and Semantic Triggers. Each role chooses its own model.</p>
+				<ProfileRows label="Decision Model connections" profiles={settings.profiles.filter(profile => profile.apiFormat === "system-one")} controller={controller} describe={profile => hostOf(profile.requestUrl)} badge={() => null} empty={<EmptyProfiles title="No Decision Models yet">Add a System One endpoint, then select it in Memory or Semantic Triggers.</EmptyProfiles>} />
+			</section>
+			<section aria-labelledby="semanticTriggers-title">
+				<h3 id="semanticTriggers-title">Semantic Triggers</h3>
+				<p>Chooses the Decision Model and threshold for Lore matching.</p>
+				<button type="button" className="flex w-full items-center justify-between gap-3 rounded-xl border border-border text-left hover:bg-muted/50" onClick={onOpenSemanticTrigger}>
+					<SemanticTriggerSummary semanticTriggers={semanticTriggers} />
 					<ChevronRight className="mr-4 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
 				</button>
 			</section>
@@ -71,7 +67,7 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, t
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">
 					<DialogHeader>
 						<DialogTitle>Delete {pending?.displayName}?</DialogTitle>
-						<DialogDescription>{pending?.apiFormat === "embeddings" ? "Memory recall stops until you choose another embedding model." : "Chats using it will need another connection before they can generate."}</DialogDescription>
+						<DialogDescription>{pending?.apiFormat === "system-one" ? "Memory and Semantic Triggers using it will need another Decision Model." : pending?.apiFormat === "embeddings" ? "Memory recall stops until you choose another embedding model." : "Chats using it will need another connection before they can generate."}</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button type="button" variant="ghost" onClick={() => controller.setPendingDeletionProfileId(null)}>Cancel</Button>
@@ -132,15 +128,24 @@ function ProfileRows({ label, profiles, controller, describe, badge, empty }: {
 	);
 }
 
-function TypesafeSummary({ typesafe }: { typesafe: TypesafeSettingsController }) {
-	const { settings } = typesafe;
-	if (settings === null) return <span className={rowClass}><span className="text-[0.86rem] font-semibold">{typesafe.loading ? "Loading…" : "Unavailable"}</span><span className="text-xs text-muted-foreground">{typesafe.loading ? "Reading Typesafe settings" : "Open to retry"}</span></span>;
+function SemanticTriggerSummary({ semanticTriggers }: { semanticTriggers: SemanticTriggerSettingsController }) {
+	const { settings } = semanticTriggers;
+	if (settings === null) return <span className={rowClass}><span className="text-[0.86rem] font-semibold">{semanticTriggers.loading ? "Loading…" : "Unavailable"}</span><span className="text-xs text-muted-foreground">{semanticTriggers.loading ? "Reading Semantic Trigger settings" : "Open to retry"}</span></span>;
 	return (
 		<span className={rowClass}>
-			<span className="truncate font-mono text-[0.8rem] font-semibold">{settings.jevModel}</span>
-			<span className="truncate text-xs text-muted-foreground">{settings.credentialConfigured ? `Semantic Triggers ${settings.loreTriggerMode === "jev" ? `by Jev · threshold ${settings.loreTriggerThreshold.toFixed(2)}` : "off"}` : "API key needed"}</span>
+			<span className="truncate font-mono text-[0.8rem] font-semibold">{settings.decisionModel || "Off"}</span>
+			<span className="truncate text-xs text-muted-foreground">{settings.decisionProfileId === null ? "Keyword-only matching" : `Decision Model · threshold ${settings.triggerThreshold.toFixed(2)}`}</span>
 		</span>
 	);
 }
 
 const hostOf = (url: string) => URL.canParse(url) ? new URL(url).host : url;
+
+function PresetMenu({ controller, apiFormat, label }: { controller: ConnectionSettingsController; apiFormat: ConnectionProfile["apiFormat"]; label: string }) {
+	return <DropdownMenu>
+		<DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" aria-label={label}><Plus aria-hidden="true" /> Add</Button></DropdownMenuTrigger>
+		<DropdownMenuContent align="end" className="w-64">
+			{controller.presets.filter(preset => preset.profile.apiFormat === apiFormat).map(preset => <DropdownMenuItem key={preset.id} className="flex-col items-start gap-0.5" onSelect={() => controller.choosePreset(preset)}><span className="font-medium">{preset.label}</span><span className="text-xs text-muted-foreground">{preset.description}</span></DropdownMenuItem>)}
+		</DropdownMenuContent>
+	</DropdownMenu>;
+}

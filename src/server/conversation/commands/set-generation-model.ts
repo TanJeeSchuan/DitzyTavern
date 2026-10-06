@@ -31,6 +31,7 @@ export function setGenerationModel(
 		.get();
 	if (profile === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
 	if (profile.apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
+	if (profile.apiFormat === "system-one") throw new InvalidConversationCommandError("A System One connection cannot write Messages. Choose a chat model.");
 	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
 	return updateConversationModelSelection(db, input.conversationId, {
 		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),

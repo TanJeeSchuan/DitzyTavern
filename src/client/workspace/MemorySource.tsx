@@ -99,11 +99,11 @@ function MemoryClaimRow({ claim, busy, editing, actions, onNavigate, onEdit, onC
 				{([["Support", judgment.support, judgment.confidence.support], ["Attribution", judgment.attribution, judgment.confidence.attribution], ["Usefulness", judgment.usefulness, judgment.confidence.usefulness]] as const).map(([name, value, confidence]) => <div key={name}>
 					<dt>{name}</dt>
 					<dd>{formatJudgment(value)}</dd>
-					<dd className="memory-confidence"><span style={{ width: `${Math.round(confidence * 100)}%` }} /></dd>
-					<dd className="memory-confidence-value">{confidence.toFixed(2)}</dd>
+					{confidence !== undefined && <dd className="memory-confidence"><span style={{ width: `${Math.round(confidence * 100)}%` }} /></dd>}
+					<dd className="memory-confidence-value">{confidence === undefined ? "Not returned" : confidence.toFixed(2)}</dd>
 				</div>)}
 			</dl>
-			<p className="memory-evidence-note">Confidence values are Jev model outputs, not proof of truth.</p>
+			<p className="memory-evidence-note">Confidence values are Decision Model outputs, not proof of truth.</p>
 		</details>
 	</article>;
 }

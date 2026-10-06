@@ -14,7 +14,7 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
 import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/labels";
@@ -154,10 +154,11 @@ describe("Memory recall in Generation preparation", () => {
 		} finally { gate.resolve(); await worker(); }
 	});
 
-	test.each(["settings", "allowance", "labels", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
+	test.each(["settings", "decision-model", "decision-limit", "allowance", "labels", "reset"] as const)("requires a new preview after an explicit Memory %s change", async (change) => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		withProfile(database);
+		if (change === "decision-model" || change === "decision-limit") configureDecisionModels(database, key);
 		if (change === "reset") resetAndReextractMemorySource(database, conversation.id, source.messageId, source.variantId, 0);
 		let writingCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => { writingCalls++; }) });
@@ -166,10 +167,10 @@ describe("Memory recall in Generation preparation", () => {
 		}));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
-		if (change === "settings") {
+		if (change === "settings" || change === "decision-model" || change === "decision-limit") {
 			const memory = createMemorySettingsModule(database);
 			const { revision, ...settings } = memory.get();
-			memory.apply({ ...settings, expectedRevision: revision, recallRelevanceMinimum: 2 });
+			memory.apply({ ...settings, expectedRevision: revision, ...(change === "settings" ? { recallRelevanceMinimum: 2 } : change === "decision-limit" ? { decisionStateTokenLimit: 2000 } : { decisionModel: "cloudflare/clef-flash" }) });
 		} else if (change === "allowance") {
 			setMemoryAllowance(database, conversation.id, readMemoryAllowance(database, conversation.id).revision, 1024);
 		} else if (change === "labels") mergeMemoryLabels(database, conversation.id, { expectedRevision: 0, labels: ["Maren"], destination: "Mary" });
@@ -182,11 +183,42 @@ describe("Memory recall in Generation preparation", () => {
 		expect(writingCalls).toBe(0);
 	});
 
+	test("changing extraction admission keeps inspected Memory without paying for recall again", async () => {
+		const conversation = createChat(database);
+		const source = insertSelectedSource(database, conversation.id);
+		configureDecisionModels(database, key);
+		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
+		withProfile(database);
+		await queueAndIndex(database, conversation.id, source.messageId, source.variantId, memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key."));
+		let recallCalls = 0;
+		const writingFetch = captureModelFetch(() => {});
+		const app = createConversationRoutes(database, { masterKey: key, fetch: async (url, init) => {
+			if (String(url).includes("embedding.test")) return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+			if (!String(url).endsWith("/systemone")) return writingFetch(url, init);
+			recallCalls++;
+			const { questions } = JSON.parse(String(init?.body));
+			return Response.json({ answers: Object.fromEntries(Object.keys(questions).map(id => [id, { type: "score", score: 2, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } }])) });
+		} });
+		const inspect = () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "The next scene begins." }) }));
+		const inspected = await inspect();
+		expect(inspected.status).toBe(200);
+		const preview = Value.Parse(generationPreview, await inspected.json());
+		expect(preview.memoryActivation?.candidates).toMatchObject([{ relevance: "useful", admission: "admitted" }]);
+		const memory = createMemorySettingsModule(database);
+		const { revision, ...settings } = memory.get();
+		memory.apply({ ...settings, expectedRevision: revision, retainProbabilityMinimum: 0.95 });
+		const accepted = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: conversation.revision, content: "The next scene begins.", previewId: preview.previewId, promptPlan: preview.promptPlan }) }));
+		expect(accepted.status).toBe(200);
+		const { generationId } = await accepted.json();
+		await (await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/${generationId}/events`))).text();
+		expect(recallCalls).toBe(1);
+	});
+
 	test("recalls indexed claims into the inspected plan and accepts its edited block without recalling again", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		const alternativeVariantId = insertAlternativeVariant(database, source.messageId);
-		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		const memoryRoutes = createMemoryRoutes(database);
 		await selectVariant(database, conversation.id, source.messageId, alternativeVariantId);
@@ -232,7 +264,7 @@ describe("Memory recall in Generation preparation", () => {
 		if (currentRevision === undefined) throw new Error("Edited Conversation snapshot missing.");
 
 		let embeddingCalls = 0;
-		let jevCalls = 0;
+		let decisionCalls = 0;
 		let writingMessages: { role: string; content: string }[] = [];
 		const writingRequests: { role: string; content: string }[][] = [];
 		let releaseFirstGeneration = () => {};
@@ -251,8 +283,8 @@ describe("Memory recall in Generation preparation", () => {
 				embeddingCalls += 1;
 				return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
 			}
-			if (url.includes("typesafe.ai")) {
-				jevCalls += 1;
+			if (url.endsWith("/systemone")) {
+				decisionCalls += 1;
 				// SAFETY: the application builds a JSON object in `questions`; the fake only uses its own question names to form the response.
 				const request = JSON.parse(String(init?.body)) as { questions: object };
 				const answers = Object.fromEntries(Object.keys(request.questions).map((name) => [name,
@@ -309,7 +341,7 @@ describe("Memory recall in Generation preparation", () => {
 		expect(preview.memorySources.messageIds).toContain(source.messageId);
 		expect(preview.memorySources.variantIds).toContain(source.variantId);
 		expect(embeddingCalls).toBe(1);
-		expect(jevCalls).toBe(1);
+		expect(decisionCalls).toBe(1);
 
 		const editedMemoryText = "Maren still has the key. The writer corrected this one attempt.";
 		const editedPlan: PromptPlan = {
@@ -344,7 +376,7 @@ describe("Memory recall in Generation preparation", () => {
 		releaseFirstGeneration();
 		await generationEvents;
 		expect(embeddingCalls).toBe(1);
-		expect(jevCalls).toBe(1);
+		expect(decisionCalls).toBe(1);
 		expect(writingMessages).toContainEqual({ role: "system", content: editedMemoryText });
 		expect(writingMessages).not.toContainEqual({ role: "system", content: memoryText });
 		const firstTarget = createConversationModule(database).getSnapshot(conversation.id)?.messages.at(-1);
@@ -421,7 +453,7 @@ describe("Memory recall in Generation preparation", () => {
 		const siblingDetails = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/messages/${latest.id}/variants/${siblingGeneration.variantId}/details`));
 		expect(await siblingDetails.json()).toMatchObject({ memoryActivation: { manuallyEdited: false, finalMemoryText: memoryText, candidates: [{ messageId: source.messageId, variantId: source.variantId }] } });
 		expect(embeddingCalls).toBe(3);
-		expect(jevCalls).toBe(3);
+		expect(decisionCalls).toBe(3);
 		const failedApp = createConversationRoutes(database, { masterKey: key, fetch: async () => new Response("provider unavailable", { status: 503 }) });
 		const failedRecall = await failedApp.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations/preview`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "continuation" }),
@@ -449,10 +481,10 @@ describe("Memory recall in Generation preparation", () => {
 		expect(await staleAcceptance.json()).toMatchObject({ outcome: "invalid" });
 	});
 
-	test("empty, queued, and disabled recall skip embedding and Jev calls", async () => {
+	test("empty, queued, and disabled recall skip embedding and Decision Model calls", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
-		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
 		let providerCalls = 0;
@@ -508,7 +540,7 @@ describe("Memory recall in Generation preparation", () => {
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "running")).toBe(true);
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			release();
 			await worker();
 		} finally { release(); await worker(); }

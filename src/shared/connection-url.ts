@@ -1,8 +1,8 @@
-export const resolveChatCompletionsRequestUrl = (requestUrl: string): string => resolveRequestUrl(requestUrl, "chat/completions");
+import type { ConnectionProfileDraftPayload } from "./contract/connection-settings";
 
-export const resolveEmbeddingsRequestUrl = (requestUrl: string): string => resolveRequestUrl(requestUrl, "embeddings");
+const requestPaths = { "chat-completions": "chat/completions", responses: "responses", "anthropic-messages": "messages", embeddings: "embeddings", "system-one": "systemone" } satisfies Record<ConnectionProfileDraftPayload["apiFormat"], string>;
 
-function resolveRequestUrl(requestUrl: string, basePath: string): string {
+export function resolveRequestUrl(requestUrl: string, apiFormat: ConnectionProfileDraftPayload["apiFormat"]): string {
 	const parsed = new URL(requestUrl.trim());
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 		throw new Error("The request URL must use HTTP or HTTPS.");
@@ -11,7 +11,7 @@ function resolveRequestUrl(requestUrl: string, basePath: string): string {
 		throw new Error("The request URL must not contain user information or a fragment.");
 	}
 	if (parsed.pathname.endsWith("/")) {
-		parsed.pathname = `${parsed.pathname}${basePath}`;
+		parsed.pathname = `${parsed.pathname}${requestPaths[apiFormat]}`;
 	}
 	return parsed.toString();
 }

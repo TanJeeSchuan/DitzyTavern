@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import type { ChatReply, JevRule, MemoryClaim, ModelCall } from "./protocol";
+import type { ChatReply, DecisionRule, MemoryClaim, ModelCall } from "./protocol";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -62,7 +62,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: ChatReply[] | JevRule[] | MemoryClaim[] | string[][] | string[] | number) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -71,7 +71,7 @@ export const startE2eServer = async () => {
 		url,
 		reset: () => call("reset"),
 		chat: (...replies: ChatReply[]) => call("chat", replies),
-		jev: (...rules: JevRule[]) => call("jev", rules),
+		decisions: (...rules: DecisionRule[]) => call("decisions", rules),
 		memories: (...claims: MemoryClaim[]) => call("memories", claims),
 		models: (...catalogs: string[][]) => call("models", catalogs),
 		embeddings: (...matches: string[]) => call("embeddings", matches),

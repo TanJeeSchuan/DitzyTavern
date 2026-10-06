@@ -17,8 +17,10 @@ import {
 	DEFAULT_CONTINUATION_STRATEGY,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "../conversation/generation-defaults";
+import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
+import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 
 export const imageTable = sqliteTable("image", {
 	hash: text().primaryKey(),
@@ -251,26 +253,23 @@ export const memorySettingsTable = sqliteTable("memory_settings", {
 	context_limit: int().notNull().default(16384),
 	output_reserve: int().notNull().default(2048),
 	safety_allowance: int().notNull().default(500),
-	usefulness_confidence_gate: real().notNull().default(0.3),
+	retain_probability_minimum: real().notNull().default(0.6),
+	decision_profile_id: int(),
+	decision_model: text().notNull().default(""),
+	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
 	recall_relevance_minimum: real().notNull().default(1.5),
 	embedding_profile_id: int(),
 	embedding_model: text().notNull().default(""),
 });
 
-export const typesafeSettingsTable = sqliteTable("typesafe_settings", {
+export const semanticTriggerSettingsTable = sqliteTable("semantic_trigger_settings", {
 	id: int().primaryKey(),
 	revision: int().notNull().default(0),
-	jev_model: text().notNull().default("jev-1.13.0"),
-	lore_trigger_mode: text().notNull().default("jev"),
-	lore_trigger_threshold: real().notNull().default(0.5),
-	format_version: int(),
-	key_id: text(),
-	nonce: text(),
-	ciphertext: text(),
-	tag: text(),
-}, (table) => [
-	check("typesafe_settings_lore_trigger_mode_check", sql`${table.lore_trigger_mode} IN ('jev', 'off')`),
-]);
+	decision_profile_id: int(),
+	decision_model: text().notNull().default(""),
+	decision_state_token_limit: int().notNull().default(DEFAULT_DECISION_STATE_TOKEN_LIMIT),
+	trigger_threshold: real().notNull().default(0.5),
+});
 
 export const conversationTable = sqliteTable("conversation", {
 	id: int().primaryKey({ autoIncrement: true }),
@@ -823,7 +822,7 @@ export const connectionProfileTable = sqliteTable(
 	{
 		id: int().primaryKey({ autoIncrement: true }),
 		display_name: text().notNull(),
-		api_format: text().notNull(),
+	api_format: text().$type<ConnectionProfileDraftPayload["apiFormat"]>().notNull(),
 		request_url: text().notNull(),
 		models_url: text().notNull().default(""),
 		model_backend: text().notNull(),

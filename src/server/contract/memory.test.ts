@@ -12,7 +12,7 @@ import { extractAndJudgeMemorySource } from "../memory/extraction";
 import type { ModelFetch } from "../model-client";
 import { key, profile } from "./prompt-preset-test-fixtures";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { configureDecisionModels } from "./decision-model-test-fixtures";
 
 const waitFor = async (check: () => boolean) => {
 	const deadline = Date.now() + 4000;
@@ -184,7 +184,8 @@ describe("Memory source public contract", () => {
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
-		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "older-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		configureDecisionModels(database, key);
 		const firstMessageId = insertMessage(database, conversation.id, 1);
 		const firstVariantId = insertVariant(database, firstMessageId, "First source.", true);
 		const secondMessageId = insertMessage(database, conversation.id, 2);
@@ -218,7 +219,7 @@ describe("Memory source public contract", () => {
 			await waitFor(() => models.length === 1 || database.query<{ status: string }, [number]>("SELECT status FROM memory_collection WHERE variant_id = ?").get(firstVariantId)?.status === "failed");
 			expect(database.query<{ status: string; error: string | null }, [number]>("SELECT status, error FROM memory_collection WHERE variant_id = ?").get(firstVariantId)).toMatchObject({ status: "running", error: null });
 			await firstRequest;
-			settings.apply({ expectedRevision: 1, enabled: true, extractionProfileId: profileId, extractionModel: "newer-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, extractionModel: "newer-model" });
 			releaseFirst();
 			expect(await waitFor(() => models.length === 2)).toBe(true);
 			expect(models).toEqual(["older-model", "newer-model"]);
@@ -229,26 +230,26 @@ describe("Memory source public contract", () => {
 	const brassKeyClaim = { claim: "Maren returned the brass key to Writer.", attribution: "Narrated event", people: ["Maren", "Writer"], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: { "support:supported": 0.9, "usefulness:retain": 0.8 }, confidence: { support: 0.85, attribution: 0.9, usefulness: 0.6 } } };
 	test.each([
 		{ gate: 0.3, claims: [brassKeyClaim] },
-		{ gate: 0.7, claims: [] },
-	])("publishes validated claims whose retain confidence meets the $gate usefulness gate", async ({ gate, claims }) => {
+		{ gate: 0.9, claims: [] },
+	])("publishes validated claims whose retain probability meets the $gate probability minimum", async ({ gate, claims }) => {
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 		const conversation = createChat(database);
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-secret" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
 		const settings = createMemorySettingsModule(database);
-		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
-		settings.apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: gate, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		const decision = configureDecisionModels(database, key);
+		settings.apply({ expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: gate, ...decision, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "Maren returned Writer's brass key.", true);
 		const queue = createMemoryRoutes(database);
 		await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories/reextract`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(resetCommand(database, messageId)),
 		}));
-		let typesafeAuthorization: string | null = null;
+		let decisionAuthorization: string | null = null;
 		const fakeFetch: ModelFetch = async (input, init) => {
-			if (String(input).includes("typesafe.ai")) {
-				typesafeAuthorization = new Headers(init?.headers).get("authorization");
+			if (String(input).endsWith("/systemone")) {
+				decisionAuthorization = new Headers(init?.headers).get("authorization");
 				return Response.json({ answers: {
 					candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 0.9, contradicted: 0.05, not_established: 0.05 }, confidence: 0.85 },
 					candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 0.9, misattributed: 0.05, unclear: 0.05 }, confidence: 0.9 },
@@ -266,10 +267,10 @@ describe("Memory source public contract", () => {
 		const stop = startMemoryWorker(database, { process: (source, context, signal) => extractAndJudgeMemorySource(database, source, context, fakeFetch, signal) });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "complete")).toBe(true);
-			expect<string | null>(typesafeAuthorization).toBe("Bearer typesafe-secret");
+			expect<string | null>(decisionAuthorization).toBe("Bearer decision-secret");
 			expect(readConversationMemories(database, conversation.id).sources).toMatchObject([{ variantId, status: "complete", claims: claims.map((claim) => ({ ...claim, evidence: [{ messageId, excerpt: "Maren returned Writer's brass key." }] })) }]);
 			const response = await queue.handle(new Request(`http://localhost/api/conversations/${conversation.id}/memories`));
-			expect(await response.text()).not.toContain("typesafe-secret");
+			expect(await response.text()).not.toContain("decision-secret");
 		} finally { await stop(); }
 	});
 
@@ -279,7 +280,8 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		configureDecisionModels(database, key);
 		const messageId = insertMessage(database, conversation.id, 1);
 		const variantId = insertVariant(database, messageId, "A valid but incomplete response.", true);
 		const queue = createMemoryRoutes(database);
@@ -309,7 +311,8 @@ describe("Memory source public contract", () => {
 		const connectionSettings = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connectionSettings.createProfile({ expectedRevision: 0, profile, credential: "model-credential" }).profiles[0]?.id;
 		if (profileId === undefined) throw new Error("Memory test Connection Profile setup failed.");
-		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: true, extractionProfileId: profileId, extractionModel: "extract-model", contextLimit: 1000, outputReserve: 100, safetyAllowance: 0, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		configureDecisionModels(database, key);
 		insertVariant(database, insertMessage(database, conversation.id, 1), "Oldest context. ".repeat(250), true);
 		insertVariant(database, insertMessage(database, conversation.id, 2), "Recent context.", true);
 		const messageId = insertMessage(database, conversation.id, 3);

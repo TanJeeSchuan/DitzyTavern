@@ -185,7 +185,7 @@ export function useGenerationSettingsDraft({
 	const selectedProfile = connectionProfiles?.find((profile) => profile.id === settings?.connectionProfileId);
 	const transmittingNamespace = settings === null || connectionProfiles === undefined
 		? { status: "loading" as const }
-		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings"
+		: selectedProfile === undefined || selectedProfile.apiFormat === "embeddings" || selectedProfile.apiFormat === "system-one"
 			? { status: "no-active-profile" as const }
 			: { status: "known" as const, namespace: selectedProfile.apiFormat };
 

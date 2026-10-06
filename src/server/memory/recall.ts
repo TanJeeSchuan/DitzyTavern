@@ -8,7 +8,7 @@ import type { MemoryActivationRecord, MemoryRecallCandidateRecord } from "../../
 import { renderMemoryClaim } from "../../shared/memory-text";
 import { activeGenerationTable, memoryCollectionTable } from "../database/schema";
 import { createMemorySettingsModule } from "./settings";
-import { createTypesafeSettingsModule, jevRequest, largestFittingBatch, requestJev } from "../typesafe";
+import { decisionRequest, largestFittingBatch, requestDecisions, tryResolveDecisionSelection, type DecisionSelectionResolution, type ResolvedDecisionModel } from "../decision-model";
 import { cosineSimilarity } from "../model-client/embeddings";
 import { tokenxEstimator } from "../prompt-compiler";
 import { projectImageAnchors } from "../../shared/image-reference";
@@ -18,7 +18,7 @@ import { readMemoryAllowance } from "./collections";
 import { readMemoryLabelState } from "./labels";
 import { sha256 } from "./hash";
 import type { MemoryCandidateJudgment } from "../../shared/contract/memory";
-import type { JevAnswer } from "../../shared/contract/typesafe";
+import type { DecisionAnswer } from "../../shared/contract/decision-model";
 
 export interface MemoryRecallSceneMessage {
 	readonly messageId: number;
@@ -35,13 +35,13 @@ interface IndexedMemoryCandidate {
 	readonly vector: readonly number[];
 }
 
-export interface MemoryRecallSnapshot {
+export type MemoryRecallSnapshot = DecisionSelectionResolution & {
 	readonly freshnessFingerprint: string;
 	readonly activation: MemoryActivationRecord;
 	readonly embedding: MemoryEmbeddingConfiguration;
 	readonly indexed: readonly IndexedMemoryCandidate[];
 	readonly recent: readonly IndexedMemoryCandidate[];
-}
+};
 
 const unjudged = { relevance: null, relevanceScore: null, admission: "request-limit" } as const;
 
@@ -57,7 +57,7 @@ const fitToTokenBudget = (text: string, limit: number) => {
 	return "";
 };
 
-const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string) => {
+const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHumanText: string | undefined, humanName: string, limit: number) => {
 	const pendingAlreadySelected = pendingHumanText !== undefined && messages.at(-1)?.role === "human" && messages.at(-1)?.content === pendingHumanText;
 	const scene = messages.slice(-(pendingHumanText !== undefined && !pendingAlreadySelected ? 3 : 4)).map((message) => ({
 		messageId: message.messageId,
@@ -68,13 +68,16 @@ const sceneTextFor = (messages: readonly MemoryRecallSceneMessage[], pendingHuma
 	}
 	let truncated = false;
 	const render = () => scene.map((message) => message.text).join("\n\n");
-	while (scene.length > 1 && tokenxEstimator(render()) > SCENE_TOKEN_LIMIT) {
+	while (scene.length > 1 && tokenxEstimator(JSON.stringify({ scene: render() })) > limit) {
 		scene.shift();
 		truncated = true;
 	}
 	const [only] = scene;
-	if (only && scene.length === 1 && tokenxEstimator(only.text) > SCENE_TOKEN_LIMIT) {
-		only.text = fitToTokenBudget(only.text, SCENE_TOKEN_LIMIT);
+	if (only && scene.length === 1 && tokenxEstimator(JSON.stringify({ scene: only.text })) > limit) {
+		for (let keep = limit; keep > 0; keep--) {
+			only.text = fitToTokenBudget(only.text, keep);
+			if (tokenxEstimator(JSON.stringify({ scene: only.text })) <= limit) break;
+		}
 		truncated = true;
 	}
 	return {
@@ -96,26 +99,24 @@ const relevanceQuestion = (candidate: MemoryRecallCandidateRecord) => ({
 	],
 });
 
-const parseScore = (answer: JevAnswer | undefined) => {
-	if (answer?.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Typesafe returned a missing or malformed Memory relevance score.");
-	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) throw new Error("Typesafe returned incomplete Memory relevance probabilities.");
+const parseScore = (answer: DecisionAnswer | undefined) => {
+	if (answer?.type !== "score" || !(answer.score >= 0 && answer.score <= scoreLabels.length - 1)) throw new Error("Decision Model returned a missing or malformed Memory relevance score.");
+	if (scoreLabels.some((_, index) => !(answer.probabilities[String(index)]! >= 0 && answer.probabilities[String(index)]! <= 1))) throw new Error("Decision Model returned incomplete Memory relevance probabilities.");
 	return { score: answer.score, label: scoreLabels[Math.round(answer.score)]! };
 };
 
-export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, credential, model, fetch, signal }: {
+export async function judgeMemoryRecallCandidates({ candidates, scene, relevanceMinimum, selection, fetch, signal }: {
 	candidates: readonly MemoryRecallCandidateRecord[];
 	scene: string;
 	relevanceMinimum: number;
-	credential: string;
-	model: string;
+	selection: ResolvedDecisionModel;
 	fetch?: ModelFetch;
 	signal?: AbortSignal;
 }): Promise<MemoryRecallCandidateRecord[]> {
 	if (candidates.length === 0) return [];
-	if (!credential) throw new Error("Configure the Typesafe credential in Connections.");
-	const batch = largestFittingBatch(candidates, (values) => jevRequest(model, { scene }, Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]))));
-	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Jev request.");
-	const answers = await requestJev({ request: batch.request, credential, fetch, signal });
+	const batch = largestFittingBatch(candidates, (values) => decisionRequest(selection, { scene }, Object.fromEntries(values.map((candidate) => [`candidate_${candidate.identity}_relevance`, relevanceQuestion(candidate)]))));
+	if (batch === undefined) throw new Error("Required Memory recall evidence exceeds the bounded Decision Model request.");
+	const answers = await requestDecisions({ request: batch.request, questions: batch.questions, selection, fetch, signal });
 	const judged = new Map<string, MemoryRecallCandidateRecord>();
 	for (const candidate of batch.items) {
 		const relevance = parseScore(answers.get(`candidate_${candidate.identity}_relevance`));
@@ -147,9 +148,9 @@ export const captureMemoryRecallSnapshot = (input: {
 	const { allowance, revision: allowanceRevision } = readMemoryAllowance(input.database, input.conversationId);
 	const memorySettings = createMemorySettingsModule(input.database).get();
 	const { recallRelevanceMinimum } = memorySettings;
-	const typesafe = createTypesafeSettingsModule(input.database).get();
+	const resolution = tryResolveDecisionSelection(input.database, memorySettings);
 	const embedding = readMemoryEmbeddingConfiguration(input.database);
-	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName);
+	const scene = sceneTextFor(input.messages, input.pendingHumanText, input.humanName, Math.min(SCENE_TOKEN_LIMIT, memorySettings.decisionStateTokenLimit));
 	const path = input.messages.map((message) => ({ messageId: message.messageId, variantId: message.variantId, contentHash: sha256(message.content) }));
 	const variantIds = [...new Set(input.messages.map((message) => message.variantId))];
 	const active = variantIds.length === 0 ? new Set<number>() : new Set(db.select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(inArray(activeGenerationTable.variant_id, variantIds)).all().map((row) => row.id));
@@ -201,7 +202,7 @@ export const captureMemoryRecallSnapshot = (input: {
 		state: activationState({ enabled: input.enabled, allowance, ready: indexed.length, unconfigured, ...counts }),
 		allowance, eligibleSourceCount, readyRecordCount: indexed.length,
 		embeddingModel: embedding.model, embeddingDeadlineMs: embedding.deadlineMs,
-		jevModel: typesafe.jevModel, jevConfigured: typesafe.credentialConfigured, relevanceMinimum: recallRelevanceMinimum,
+		decisionProfileName: resolution.kind === "ready" ? resolution.decision.profileName : null, decisionModel: memorySettings.decisionModel, decisionConfigured: resolution.kind === "ready", relevanceMinimum: recallRelevanceMinimum,
 		...counts,
 		sourceSnapshotFingerprint: sha256(JSON.stringify({ path, sources: fingerprintSources })),
 		embeddingConfigurationFingerprint: sha256(JSON.stringify(embedding)),
@@ -210,13 +211,15 @@ export const captureMemoryRecallSnapshot = (input: {
 	};
 	const recent = [...indexed].sort((left, right) => right.record.sourcePosition - left.record.sourcePosition || left.record.identity.localeCompare(right.record.identity)).slice(0, 16);
 	const freshnessFingerprint = sha256(JSON.stringify({
-		settingsRevision: memorySettings.revision,
+		enabled: input.enabled,
+		recallRelevanceMinimum,
+		decisionSelection: { profileId: memorySettings.decisionProfileId, model: memorySettings.decisionModel, stateTokenLimit: memorySettings.decisionStateTokenLimit },
 		allowanceRevision,
 		labelRevision: readMemoryLabelState(input.database, input.conversationId).revision,
 		embedding,
 		collections: collections.map((collection) => ({ variantId: collection.variant_id, revision: collection.revision })),
 	}));
-	return { freshnessFingerprint, activation, embedding, indexed, recent };
+	return { freshnessFingerprint, activation, embedding, indexed, recent, ...resolution };
 };
 
 export const evaluateMemoryRecallSnapshot = async (input: {
@@ -227,6 +230,12 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 }): Promise<MemoryActivationRecord> => {
 	const { activation, indexed, recent } = input.snapshot;
 	if (activation.state === "disabled" || activation.allowance === 0 || indexed.length === 0) return activation;
+	switch (input.snapshot.kind) {
+		case "off": throw new Error("Choose a Decision Model in Memory Settings.");
+		case "unavailable": throw new Error(`${input.snapshot.reason} Check Memory Settings.`);
+		case "ready": break;
+	}
+	const selection = input.snapshot.decision;
 	let semantic: { candidate: IndexedMemoryCandidate; similarity: number }[] = [];
 	if (activation.scene.trim().length > 0) {
 		const queryVector = (await embedMemoryQuery(input.database, activation.scene, input.snapshot.embedding, input.fetch, input.signal))[0];
@@ -243,6 +252,6 @@ export const evaluateMemoryRecallSnapshot = async (input: {
 		shortlist.set(candidate.record.identity, existing ? { ...existing, recentRank: index + 1 } : { ...candidate.record, semanticSimilarity: null, semanticRank: null, recentRank: index + 1, ...unjudged });
 	}
 	input.signal?.throwIfAborted();
-	const candidates = await judgeMemoryRecallCandidates({ candidates: [...shortlist.values()], scene: activation.scene, relevanceMinimum: activation.relevanceMinimum, credential: createTypesafeSettingsModule(input.database).getCredential() ?? "", model: activation.jevModel, fetch: input.fetch, signal: input.signal });
+	const candidates = await judgeMemoryRecallCandidates({ candidates: [...shortlist.values()], scene: activation.scene, relevanceMinimum: activation.relevanceMinimum, selection, fetch: input.fetch, signal: input.signal });
 	return { ...activation, semanticShortlistCount: semantic.length, recentShortlistCount: recent.length, candidates };
 };

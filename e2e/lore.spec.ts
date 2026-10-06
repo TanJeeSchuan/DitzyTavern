@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { test, expect, enableJev, story } from "./fixtures";
+import { test, expect, enableDecisionModels, send, story } from "./fixtures";
 
 const entry = (title: string, content: string, keywords: string[], semanticTriggers: string[]) => ({
 	title, content, keywords, semanticTriggers,
@@ -19,22 +19,20 @@ const attachLorebook = async (request: APIRequestContext) => {
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const { revision } = await (await request.get(`/api/lorebooks/attachments?conversationId=${activeChatId}`)).json();
 	await request.post("/api/lorebooks/attachments/commands", { data: { type: "attach-chat", conversationId: activeChatId, bookId: book.id, expectedRevision: revision } });
-	await enableJev(request);
+	await enableDecisionModels(request);
 };
 
 const sendWithLore = async (page: import("@playwright/test").Page, llm: import("./harness").E2eServer) => {
 	await page.goto("/");
-	await page.getByRole("textbox", { name: "Message draft" }).fill("I was home all night, nowhere near the lighthouse.");
-	await page.getByRole("button", { name: "Generate Variant" }).click();
-	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await send(page, "I was home all night, nowhere near the lighthouse.");
 	await expect(story(page).getByText("The keeper says nothing.")).toBeVisible();
 	const [call] = (await llm.log()).calls.filter((entry) => entry.kind === "chat");
 	return JSON.stringify(call.body.messages);
 };
 
-test("Lore activates by keyword and by Jev-judged meaning", async ({ page, request, llm }) => {
+test("Lore activates by keyword and by Decision Model judgments", async ({ page, request, llm }) => {
 	await attachLorebook(request);
-	await llm.jev(
+	await llm.decisions(
 		{ match: ["somewhere they were not"], answer: { type: "noul", noul: 0.92 } },
 		{ match: ["A dragon appears"], answer: { type: "noul", noul: 0.04 } },
 	);
@@ -43,13 +41,13 @@ test("Lore activates by keyword and by Jev-judged meaning", async ({ page, reque
 	expect(prompt).toContain("LORE-LIGHTHOUSE");
 	expect(prompt).toContain("LORE-ALIBI");
 	expect(prompt).not.toContain("LORE-DRAGON");
-	const [jevCall] = (await llm.log()).calls.filter((entry) => entry.kind === "jev");
-	expect(JSON.stringify(jevCall.body.state)).toContain("I was home all night");
+	const [decisionCall] = (await llm.log()).calls.filter((entry) => entry.kind === "decision");
+	expect(JSON.stringify(decisionCall.body.state)).toContain("I was home all night");
 });
 
-test("Lore falls back to keywords when Jev is unreachable", async ({ page, request, llm }) => {
+test("Lore falls back to keywords when the Decision Model is unreachable", async ({ page, request, llm }) => {
 	await attachLorebook(request);
-	await llm.jev({ match: [], status: 502 });
+	await llm.decisions({ match: [], status: 502 });
 	await llm.chat({ chunks: ["The keeper says nothing."] });
 	const prompt = await sendWithLore(page, llm);
 	expect(prompt).toContain("LORE-LIGHTHOUSE");

@@ -236,7 +236,7 @@ const memoryStateLabel = (state: MemoryActivationRecord["state"]): string => ({
 const admissionLabel = (record: MemoryActivationRecord["candidates"][number], manuallyEdited: boolean): string => {
 	if (record.admission === "admitted") return manuallyEdited ? "Automatic budget admission" : "Included";
 	if (record.admission === "not-retained") return "Below relevance minimum";
-	if (record.admission === "request-limit") return "Omitted from Jev request";
+	if (record.admission === "request-limit") return "Omitted from Decision Model request";
 	if (record.admission === "duplicate-rendering") return "Duplicate rendering";
 	if (record.admission === "allowance") return "Over Memory Allowance";
 	if (record.admission === "oversized") return "Too large for Memory Allowance";
@@ -260,7 +260,7 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 				<div><dt>Failed</dt><dd>{record.failedIndexCount} indexes · {record.failedSourceCount} sources</dd></div>
 				<div><dt>Memory Allowance</dt><dd>{record.allowance.toLocaleString()} estimated tokens</dd></div>
 				<div><dt>Embedding model</dt><dd>{record.embeddingModel || "Not configured"} · {record.embeddingDeadlineMs.toLocaleString()} ms</dd></div>
-				<div><dt>Jev model</dt><dd>{record.jevModel}{record.jevConfigured ? " · credential configured" : " · credential missing"}</dd></div>
+				<div><dt>Decision Model</dt><dd>{record.decisionProfileName ?? "No profile"} · {record.decisionModel || "No model"}{record.decisionConfigured ? " · configured" : " · not configured"}</dd></div>
 				<div><dt>Relevance minimum</dt><dd>{record.relevanceMinimum}</dd></div>
 				<div><dt>Prompt edit</dt><dd>{record.manuallyEdited ? "Manual" : "Automatic"}</dd></div>
 			</dl>
@@ -274,12 +274,12 @@ export function MemoryActivationDetails({ record, memorySources, onNavigateSourc
 					{record.candidates.map((candidate) => <li key={candidate.identity}>
 						<strong>{admissionLabel(candidate, record.manuallyEdited)}</strong>
 						<p>{candidate.claim} (Attribution: {candidate.attribution}){candidate.people.length > 0 ? ` · ${candidate.people.join(", ")}` : ""}</p>
-						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null ? "Not judged" : `Jev relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}</p>
+						<p className="panel-note"><MemorySourceLink messageId={candidate.messageId} variantId={candidate.variantId} sources={memorySources} onNavigateSource={onNavigateSource} /> · Variant {candidate.variantId} · {candidate.ownership === "writer" ? "writer-maintained" : "automatic"}{candidate.sourceChanged ? " · source changed since this Memory was saved" : ""} · collection {candidate.collectionRevision} · claim {candidate.claimIndex + 1} · {candidate.semanticRank === null ? "no semantic rank" : `semantic #${candidate.semanticRank} (${candidate.semanticSimilarity?.toFixed(3)})`}{candidate.recentRank === null ? "" : ` · recent #${candidate.recentRank}`} · {candidate.relevance === null ? "Not judged" : `Decision Model relevance ${candidate.relevance} (${candidate.relevanceScore?.toFixed(2)})`}</p>
 						{candidate.evidence.length > 0 && <details><summary>Supporting excerpts</summary><ul>{candidate.evidence.map((evidence, index) => <li key={`${evidence.messageId}-${index}`}><MemorySourceLink messageId={evidence.messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /><blockquote>{evidence.excerpt}</blockquote></li>)}</ul></details>}
 					</li>)}
 				</ol>}
 			</details>
-			{record.candidates.some((candidate) => candidate.relevance !== null) && <p className="panel-note">Jev relevance is a model judgment about this scene, not proof that a Memory claim is true.</p>}
+			{record.candidates.some((candidate) => candidate.relevance !== null) && <p className="panel-note">Decision Model relevance is a model judgment about this scene, not proof that a Memory claim is true.</p>}
 			<details><summary>Captured recall scene</summary><p className="panel-note">Messages {record.scanMessageIds.length ? record.scanMessageIds.map((messageId, index) => <span key={messageId}>{index > 0 ? ", " : ""}<MemorySourceLink messageId={messageId} variantId={null} sources={memorySources} onNavigateSource={onNavigateSource} /></span>) : "none"}{record.scanTruncated ? " · scene text truncated to fit the scan limit" : ""}</p><pre className="generation-detail-preformatted">{record.scene || "No visible scene text was available."}</pre></details>
 		</section>
 	);

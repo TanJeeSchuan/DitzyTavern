@@ -26,7 +26,7 @@ import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
 import { createMemorySettingsModule } from "../memory/settings";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
 import { runConversationReadTransaction } from "../conversation/commands/transaction";
 import {
 	compileGenerationPlan,
@@ -244,7 +244,7 @@ interface AttemptConfiguration {
 
 interface GenerationPreparationBase {
 	readonly conversationId: number;
-	readonly typesafeRevision: number;
+	readonly semanticTriggerRevision: number;
 	readonly formatting: GenerationFormattingContext;
 	readonly derivation: GenerationDerivation;
 	readonly participation: ParticipatingHistory;
@@ -422,7 +422,7 @@ export function prepareGenerationInputsSnapshot(
 			conversationId: input.conversationId,
 			messages: participation.messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]),
 			pendingHumanText: input.kind === "send" && reuseHumanMessageId === undefined ? input.content : undefined,
-			typesafeSettings: input.connectionSettings,
+			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
 	if (input.kind === "continuation") {
@@ -472,7 +472,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
-		typesafeRevision: createTypesafeSettingsModule(input.database).get().revision,
+		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting,
 		derivation,
 		participation,

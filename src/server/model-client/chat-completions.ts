@@ -6,7 +6,7 @@ import type {
 } from "../connection-settings/types";
 import type { GenerationRequestOverrides } from "../conversation/types";
 import type { GenerationJsonObject } from "../../shared/generation-provenance";
-import { resolveChatCompletionsRequestUrl } from "../../shared/connection-url";
+import { resolveRequestUrl } from "../../shared/connection-url";
 import {
 	OUTPUT_LIMIT_CHAT_COMPLETIONS_WIRE_KEYS,
 	STRUCTURAL_CHAT_COMPLETIONS_WIRE_KEYS,
@@ -91,7 +91,7 @@ function createConfiguredModelClient(
 			`The profile uses ${options.profile.adapter}; expected ${adapter}.`,
 		);
 	}
-	const requestUrl = resolveChatCompletionsRequestUrl(options.profile.requestUrl);
+	const requestUrl = resolveRequestUrl(options.profile.requestUrl, options.profile.apiFormat);
 	const credential = options.secrets?.credential ?? "";
 	const customHeaders = { ...options.secrets?.headers };
 	const actualFetch = options.fetch ?? fetch;

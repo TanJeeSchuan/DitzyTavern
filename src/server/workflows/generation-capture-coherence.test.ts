@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { initializeConnectionSecretKey } from "../connection-secrets";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { createConversationModule } from "../conversation";
 import {
 	importNativePromptPreset,
@@ -37,7 +37,7 @@ const prompt = {
 const setup = () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
-	createTypesafeSettingsModule(database).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+	configureDecisionModels(database);
 	const conversation = createConversationModule(database).create({
 		name: "Capture Coherence",
 		participants: [
@@ -151,7 +151,7 @@ describe("generation capture coherence", () => {
 		databases.push(state.database);
 		const masterKey = new Uint8Array(32).fill(5);
 		createConnectionSettingsModule(state.database, { masterKey }).createProfile({
-			expectedRevision: 0,
+			expectedRevision: createConnectionSettingsModule(state.database, { masterKey }).get().revision,
 			profile: {
 				displayName: "Shutdown", apiFormat: "chat-completions", requestUrl: "http://127.0.0.1:43127/v1/",
 				modelsUrl: "", modelBackend: "automatic", adapter: "deepseek", outputTokenRepresentation: "automatic",

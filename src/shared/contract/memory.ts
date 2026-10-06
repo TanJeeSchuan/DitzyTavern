@@ -4,7 +4,7 @@ import { numericWire } from "./wire";
 export const memoryCandidate = Type.Object({
 	claim: Type.String(), attribution: Type.String(), people: Type.Array(Type.String()),
 	evidence: Type.Array(Type.Object({ messageId: Type.Integer(), excerpt: Type.String() })),
-	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Number(), attribution: Type.Number(), usefulness: Type.Number() }) }),
+	judgment: Type.Object({ support: Type.Union([Type.Literal("supported"), Type.Literal("contradicted"), Type.Literal("not_established")]), attribution: Type.Union([Type.Literal("correct"), Type.Literal("misattributed"), Type.Literal("unclear")]), usefulness: Type.Union([Type.Literal("retain"), Type.Literal("omit")]), probabilities: Type.Record(Type.String(), Type.Number()), confidence: Type.Object({ support: Type.Optional(Type.Number()), attribution: Type.Optional(Type.Number()), usefulness: Type.Optional(Type.Number()) }) }),
 	writerMaintained: Type.Optional(Type.Boolean()),
 });
 export type MemoryCandidateJudgment = Static<typeof memoryCandidate>;

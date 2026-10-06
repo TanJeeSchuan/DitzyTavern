@@ -1,10 +1,13 @@
+import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
-import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
+import { resolveRequestUrl } from "../../shared/connection-url";
 import { EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 import { authenticatedHeaders } from "./authenticated-headers";
+import { DecisionModelError, decisionRequest, requestDecisions, resolveDecisionProfile } from "../decision-model";
 import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
+import { ModelFetchTimeoutError } from "./model-fetch";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
 import {
 	formatProviderError,
@@ -55,6 +58,16 @@ export async function testConnection(
 		return failure("endpoint", "A model ID is required to test the Connection Profile.");
 	}
 	if (input.profile.apiFormat === "embeddings") return testEmbeddings(input.profile, modelId, input.secrets ?? null, options);
+	if (input.profile.apiFormat === "system-one") {
+		try {
+			const selection = resolveDecisionProfile(input.profile, modelId, DEFAULT_DECISION_STATE_TOKEN_LIMIT, input.secrets ?? null);
+			const { request, questions } = decisionRequest(selection, "ping", { ping: { type: "noul", instructions: "Is the state ping?" } });
+			await requestDecisions({ request, questions, selection, fetch: options.fetch });
+			return { outcome: "success", message: "Connection succeeded. The Decision Model answered the test question." };
+		} catch (error) {
+			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : error instanceof DecisionModelError ? error.kind : "endpoint", error instanceof Error ? error.message : "The Decision Model test failed.");
+		}
+	}
 	if (input.profile.apiFormat !== "chat-completions") {
 		return failure("adapter-unavailable", "The selected API Format is unavailable.");
 	}
@@ -67,7 +80,7 @@ export async function testConnection(
 
 	let requestUrl: string;
 	try {
-		requestUrl = resolveChatCompletionsRequestUrl(input.profile.requestUrl);
+		requestUrl = resolveRequestUrl(input.profile.requestUrl, input.profile.apiFormat);
 	} catch (error) {
 		return failure(
 			"endpoint",
@@ -148,7 +161,7 @@ async function testEmbeddings(
 ): Promise<TestConnectionResult> {
 	try {
 		const vectors = await requestEmbeddings(["DitzyTavern embedding test"], {
-			endpoint: resolveEmbeddingsRequestUrl(profile.requestUrl),
+			endpoint: resolveRequestUrl(profile.requestUrl, profile.apiFormat),
 			model: modelId,
 			secrets,
 			timeoutMs: Math.min(profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),

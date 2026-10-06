@@ -4,7 +4,7 @@ import { openInitializedDatabase } from "../database/database";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 import { captureModelFetch, withProfile } from "./prompt-preset-test-fixtures";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
@@ -771,15 +771,13 @@ describe("Prompt Plan inspection", () => {
 		expect(rejected.status).toBe(422);
 	});
 
-	test("requires a refresh after replacing or clearing the Typesafe credential", async () => {
+	test("requires a refresh after replacing or clearing the Decision Model credential", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
 		const masterKey = new Uint8Array(32).fill(11);
-		const typesafe = createTypesafeSettingsModule(database, { masterKey });
-		const saveCredential = (credential: string) => {
-			const { revision, jevModel, loreTriggerMode, loreTriggerThreshold } = typesafe.get();
-			typesafe.apply({ type: "apply", expectedRevision: revision, jevModel, loreTriggerMode, loreTriggerThreshold, credential });
-		};
+		const selection = configureDecisionModels(database, masterKey);
+		const connections = createConnectionSettingsModule(database, { masterKey });
+		const saveCredential = (credential: string) => credential ? connections.setCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, credential }) : connections.resetCredential({ expectedRevision: connections.get().revision, profileId: selection.decisionProfileId, confirmed: true });
 		saveCredential("original-secret");
 		const app = createConversationRoutes(database, { masterKey, fetch: captureModelFetch(() => {}) });
 		for (const credential of ["replacement-secret", ""]) {
