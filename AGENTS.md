@@ -18,28 +18,19 @@ Do not preserve backward compatibility. Remove obsolete paths. Do not create com
 
 Exhaustive declarations should encode information. An exhaustive object whose values are all identical and that has no consumer is just a compiler-enforced attendance sheet. That is usually worth removing.
 
+a structural proposal must identify the machinery removed, machinery introduced, and behavior changed. Pass previous rejected approaches into subsequent reviews. **“I can imagine another architecture” is too cheap an approval blocker.**
+
 ## Code Standards
 - Tautological tests considered harmful.
 - During refactors, tests for **architectural** regressions are not needed, e.g. a set of hand-writen identical declarations being unified into a single declaration doesn't need a test to detect if it regressed into it's initial state
 
 ## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
-- Remember to edit the ticket files to tick the TODOs on the way and update statuses during implementing
-
-
-## Implementer Subagents Orchestration
-- /implement runs /code-review itself at the end (Standards + Spec axes, parallel reviewer subagents), then commits to the current branch
-
-The prompt of each subagent is simple, this verbatim:
-```
- /implement <ticket-path>; use <user-provided-model> for review subagents;
-```
-user-provided-model is muse-spark-1.3-contributor [opencode-go] [max] by default, change on request
+- Remember to edit the tickets to tick the TODOs on the way and update statuses during implementing
 
 ## Database persistance
 - Clearing database tabels is cheap, this is a dev environment, you can just not preserve the data if you find it annoying to mirgrate manually
 
 ## Database seeding and teardown
-
 - `bun run db:seed` inserts test data. It is idempotent: it skips when the `character` table already contains rows.
 - `bun run db:teardown` removes exactly the rows the seed created. It matches on the seed values (never deletes all rows), so user-created data is left untouched.
 - Whenever you add seed data, generate an equivalent teardown script for it. The teardown must:
