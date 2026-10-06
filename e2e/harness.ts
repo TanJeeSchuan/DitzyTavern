@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -24,8 +26,9 @@ const stopChild = async (child: ChildProcess, signal: NodeJS.Signals) => {
 
 export const startE2eServer = async () => {
 	let stderr = "";
+	const directory = mkdtempSync(join(tmpdir(), "ditzy-e2e-"));
 	const launch = async (env: Record<string, string> = {}) => {
-		const child = spawn("bun", ["e2e/server.ts"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
+		const child = spawn("bun", ["e2e/server.ts"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, E2E_ROOT: directory, ...env } });
 		const killOnExit = () => { child.kill("SIGKILL"); };
 		const removeCleanup = () => { process.off("exit", killOnExit); };
 		process.once("exit", killOnExit);
@@ -46,6 +49,7 @@ export const startE2eServer = async () => {
 			return { child, url: await ready.promise };
 		} catch (error) {
 			await stopChild(child, "SIGKILL");
+			rmSync(directory, { recursive: true, force: true });
 			throw error;
 		} finally {
 			clearTimeout(timer);
@@ -86,6 +90,9 @@ export const startE2eServer = async () => {
 			}
 			({ child } = await launch({ E2E_RESUME: directory, E2E_PORT: new URL(url).port }));
 		},
-		stop: () => stopChild(child, "SIGTERM"),
+		stop: async () => {
+			await stopChild(child, "SIGTERM");
+			rmSync(directory, { recursive: true, force: true });
+		},
 	};
 };

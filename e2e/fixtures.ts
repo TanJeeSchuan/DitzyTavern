@@ -31,7 +31,9 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 export const story = (page: Page) => page.getByRole("main", { name: "Active Chat" });
 
 export const send = async (page: Page, text: string) => {
-	await page.getByRole("textbox", { name: "Message draft" }).fill(text);
+	const composer = page.getByRole("textbox", { name: "Message draft" });
+	await expect(composer).toHaveAttribute("contenteditable", "true");
+	await composer.fill(text);
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 };

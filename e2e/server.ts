@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { openInitializedDatabase } from "../src/server/database/database";
@@ -13,6 +12,8 @@ import { toMessages } from "../src/server/model-client/chat-messages";
 import type { ChatReply, JevRule, MemoryClaim, ModelCall } from "./protocol";
 
 const masterKey = new Uint8Array(32).fill(1);
+const directoryRoot = process.env.E2E_ROOT;
+if (directoryRoot === undefined) throw new Error("E2E_ROOT must name the worker's temporary directory.");
 initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(masterKey).toString("base64") } });
 registerWireFormats();
 
@@ -139,11 +140,8 @@ let current: { directory: string; database: ReturnType<typeof provision>; app: A
 const reset = async () => {
 	held.resolve();
 	if (current) {
-		const directory = current.directory;
 		await current.close();
 		current = undefined;
-		Bun.gc(true);
-		rmSync(directory, { recursive: true, force: true });
 	}
 	chatReplies = [];
 	jevRules = [];
@@ -154,7 +152,7 @@ const reset = async () => {
 	calls = [];
 	unscripted = [];
 	held = Promise.withResolvers();
-	const directory = mkdtempSync(join(tmpdir(), "ditzy-e2e-"));
+	const directory = mkdtempSync(join(directoryRoot, "test-"));
 	await open(directory, provision(join(directory, "e2e.sqlite")));
 };
 
@@ -196,19 +194,18 @@ const server = Bun.serve({
 			case "/__e2e/release": held.resolve(); break;
 			case "/__e2e/directory": return Response.json(current!.directory);
 			case "/__e2e/log": return Response.json({ calls, unscripted, unsentPlans: await unsentPlans() });
-			case "/__e2e/shutdown": setTimeout(() => { void shutdown(true); }, 0); break;
+			case "/__e2e/shutdown": setTimeout(() => { void shutdown(); }, 0); break;
 			default: return current!.app.handle(request);
 		}
 		return Response.json(null);
 	},
 });
 
-const shutdown = async (keepFiles: boolean) => {
+const shutdown = async () => {
 	server.stop(true);
 	await current!.close();
-	if (!keepFiles) rmSync(current!.directory, { recursive: true, force: true });
 	process.exit(0);
 };
-process.once("SIGTERM", () => shutdown(false));
+process.once("SIGTERM", () => shutdown());
 
 console.log(`E2E_READY ${server.url}`);
