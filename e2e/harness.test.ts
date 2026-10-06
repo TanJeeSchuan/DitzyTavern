@@ -6,7 +6,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
-import { blankConnectionProfileDraft, type ConnectionSettingsCommandPayload, type ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
+import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
 import type { MemorySettingsCommand } from "../src/shared/contract/memory-settings.ts";
 
 const spawn = childProcess.spawn;
@@ -68,7 +68,9 @@ test("unscripted discovery, embeddings and extraction are recorded as failures",
 	try {
 		await server.reset();
 		const { profiles, revision: connectionRevision } = await call("connection-settings");
-		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile: { ...blankConnectionProfileDraft, displayName: "Local decisions", apiFormat: "system-one", requestUrl: "http://decision.test/v1/", timeoutMs: 15000 } });
+		const { presets } = await call("connection-settings/presets");
+		const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
+		const created = await call("connection-settings/commands", { type: "create-profile", expectedRevision: connectionRevision, profile });
 		const decision = created.settings.profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "system-one");
 		const chat = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
 		const { id, discoveryCatalog: _catalog, credentialConfigured: _credential, headers: _headers, textOnlyModels: _textOnly, ...embedding } = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "embeddings");
