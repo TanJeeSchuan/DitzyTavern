@@ -49,7 +49,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 			<input id="connection-models-url" className="field-input" value={draft.modelsUrl} onChange={(event) => updateDraft({ modelsUrl: event.target.value })} placeholder="https://example.com/v1/models" autoComplete="url" />
 		</Field>
 	</>;
-	const provider = decisions ? "System One" : requiresTimeout ? "Embeddings" : CONNECTION_ADAPTER_LABELS[draft.adapter];
+	const provider = decisions ? "System One" : draft.apiFormat === "embeddings" ? "Embeddings" : CONNECTION_ADAPTER_LABELS[draft.adapter];
 	const title = draft.displayName.trim() || "New connection";
 
 	return (

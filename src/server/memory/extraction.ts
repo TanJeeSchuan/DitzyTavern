@@ -101,10 +101,8 @@ const isChoiceLabel = <const Labels extends readonly string[]>(labels: Labels, v
 
 const parseChoice = <const Labels extends readonly string[]>(answer: DecisionAnswer | undefined, labels: Labels) => {
 	if (answer?.type !== "choice") throw new Error("Decision Model returned a missing or malformed Memory judgment.");
-	const selected = answer.choice;
-	const probabilities = answer.probabilities;
-	if (!isChoiceLabel(labels, selected)) throw new Error("Decision Model returned a missing or malformed Memory judgment.");
-	return { label: selected, probabilities, confidence: answer.confidence };
+	if (!isChoiceLabel(labels, answer.choice)) throw new Error("Decision Model returned a missing or malformed Memory judgment.");
+	return { label: answer.choice, probabilities: answer.probabilities, confidence: answer.confidence };
 };
 
 const supportCriteria = {

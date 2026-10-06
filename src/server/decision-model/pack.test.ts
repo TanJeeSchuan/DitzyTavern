@@ -5,7 +5,7 @@ const build = (batch: readonly { id: string; size: number }[]) => decisionReques
 const items = (sizes: readonly number[]) => sizes.map((size, index) => ({ id: `q${index}`, size }));
 
 describe("packDecisions", () => {
-	test("fills each request to the Jev limits and keeps item order", () => {
+	test("fills each request to the Decision Model limits and keeps item order", () => {
 		const packed = packDecisions(items([40_000, 40_000, 40_000, 40_000, 40_000, 40_000, 40_000]), build, "too big");
 		expect(packed.map((request) => request.items.map((item) => item.id))).toEqual([["q0", "q1", "q2"], ["q3", "q4", "q5"], ["q6"]]);
 	});
