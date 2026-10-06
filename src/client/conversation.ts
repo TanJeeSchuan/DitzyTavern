@@ -38,6 +38,7 @@ import {
 import type { MacroVariables } from "../shared/contract/macro-variables";
 import type { MacroValue } from "../shared/contract/macro-variables";
 import { decodeWirePayload } from "./lib/wire-decode";
+import { NetworkError } from "./lib/network-error";
 
 export type {
 	ActiveGenerationDetails,
@@ -87,9 +88,11 @@ export type AddCharacterOutcome =
 
 export async function loadConversation(
 	conversationId: number,
+	signal?: AbortSignal,
 ): Promise<ConversationSummary | null> {
-	const { data, error } = await api.api.conversations({ id: conversationId }).get();
+	const { data, error, response } = await api.api.conversations({ id: conversationId }).get({ fetch: { signal } });
 	if (error !== null && error !== undefined) {
+		if (response === undefined) throw new NetworkError(`Unable to load Conversation ${conversationId}`);
 		if (error.status === 404) return null;
 		throw new Error(`Unable to load Conversation ${conversationId}`);
 	}

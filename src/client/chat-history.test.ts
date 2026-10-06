@@ -45,6 +45,21 @@ const loadFirstPage = (fetchImpl: (input: RequestInfo | URL) => Promise<Response
 	createChatHistoryTransport({ fetchImpl }).loadHistory(7, { page: 1 });
 
 describe("history transport boundary validation", () => {
+	test("distinguishes a temporary transport outage from a permanent HTTP failure", async () => {
+		expect(await loadFirstPage(async () => { throw new TypeError("Failed to fetch"); })).toEqual({ status: "network" });
+		expect(await loadFirstPage(async () => Response.json({ error: "Unavailable" }, { status: 503 }))).toEqual({ status: "invalid" });
+	});
+
+	test("passes cancellation to the history request", async () => {
+		const controller = new AbortController();
+		let signal: AbortSignal | null | undefined;
+		await createChatHistoryTransport({ fetchImpl: async (_input, init) => {
+			signal = init?.signal;
+			return jsonPage([messagePayload]);
+		} }).loadHistory(7, { page: 1 }, controller.signal);
+		expect(signal).toBe(controller.signal);
+	});
+
 	test("accepts a page carrying the required server-derived capability objects", async () => {
 		const outcome = await loadFirstPage(async () => jsonPage([messagePayload]));
 		expect(outcome.status).toBe("available");
@@ -65,6 +80,6 @@ describe("history transport boundary validation", () => {
 					swipe: { eligible: true, reason: "missing-historical-context" },
 				},
 			]));
-		expect(outcome.status).toBe("network");
+		expect(outcome.status).toBe("invalid");
 	});
 });

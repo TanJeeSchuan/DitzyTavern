@@ -18,6 +18,7 @@ import {
 	type GenerationSessionsAction,
 	type GenerationSessionsState,
 } from "./generation-sessions";
+import { NetworkError } from "./lib/network-error";
 
 // The host surfaces the runner's outward effects. Story effects are mapped
 // ==[HUMAN APPROVED]== by the host (which owns the story reducer boundary); refresh requests go
@@ -25,7 +26,7 @@ import {
 export interface GenerationSessionRunnerHost {
 	adapter: GenerationStreamAdapter;
 	applyStoryEffect: (effect: GenerationSessionStoryEffect) => void;
-	refreshConversation: (conversationId: number) => void;
+	refreshConversation: (conversationId: number, signal: AbortSignal) => Promise<void>;
 }
 
 export interface GenerationSessionRunner {
@@ -43,6 +44,42 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 	const controllers = new Map<number, AbortController>();
 	const listeners = new Set<() => void>();
 	let disposed = false;
+	type Refresh = { controller: AbortController; timer: ReturnType<typeof setTimeout> | null; requested: boolean };
+	let refresh: Refresh | null = null;
+
+	const cancelRefresh = (): void => {
+		if (refresh === null) return;
+		refresh.controller.abort();
+		if (refresh.timer !== null) clearTimeout(refresh.timer);
+		refresh = null;
+	};
+
+	const refreshConversation = (conversationId: number): void => {
+		if (refresh !== null) {
+			refresh.requested = true;
+			return;
+		}
+		const pending: Refresh = { controller: new AbortController(), timer: null, requested: false };
+		refresh = pending;
+		const attempt = async (delay = 250): Promise<void> => {
+			pending.requested = false;
+			try {
+				await host.refreshConversation(conversationId, pending.controller.signal);
+				if (pending.controller.signal.aborted) return;
+				if (pending.requested) void attempt();
+				else refresh = null;
+			} catch (error) {
+				if (pending.controller.signal.aborted) return;
+				if (error instanceof NetworkError) {
+					pending.timer = setTimeout(() => {
+						pending.timer = null;
+						void attempt(Math.min(delay * 2, 2_000));
+					}, delay);
+				} else refresh = null;
+			}
+		};
+		void attempt();
+	};
 
 	const getSnapshot = (): GenerationSessionsState => state;
 
@@ -63,6 +100,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 		if (disposed) return;
 		const transition = reduceGenerationSessions(state, action);
 		if (transition.state === state) return;
+		if (transition.state.activeConversationId !== state.activeConversationId) cancelRefresh();
 		state = transition.state;
 		notify();
 		for (const effect of transition.effects) runEffect(effect);
@@ -133,7 +171,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 				return;
 			}
 			case "refresh-conversation":
-				host.refreshConversation(effect.conversationId);
+				refreshConversation(effect.conversationId);
 				return;
 			case "story-content-delta":
 			case "story-reasoning-delta":
@@ -149,6 +187,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 		subscribe,
 		dispose: () => {
 			if (disposed) return;
+			cancelRefresh();
 			for (const controller of controllers.values()) controller.abort();
 			controllers.clear();
 			// Detach the machine as well: a surface that stops observing loses

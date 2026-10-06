@@ -43,7 +43,7 @@ describe("Generation session wiring", () => {
 				if (action === null) return;
 				storyActions.push(action);
 			},
-			refreshConversation: () => {},
+			refreshConversation: async () => {},
 		});
 
 		runner.dispatch(observe([7]));

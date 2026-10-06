@@ -93,7 +93,7 @@ type GenerationControllerOptions = {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
-	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
+	refreshStory: (conversationId: number, signal?: AbortSignal) => Promise<ConversationSummary | null>;
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
@@ -128,8 +128,8 @@ export function useGenerationController({
 				const action = generationSessionStoryAction(effect);
 				if (action !== null) dispatchStory(action);
 			},
-			refreshConversation: (conversationId) => {
-				void refreshStory(conversationId);
+			refreshConversation: async (conversationId, signal) => {
+				await refreshStory(conversationId, signal);
 			},
 		});
 	}
@@ -210,7 +210,10 @@ export function useGenerationController({
 		generationStart: {
 			begin: beginStart,
 			settle: (startId) => dispatchPendingStarts({ type: "settled", startId }),
-			accepted: (startId, generationId) => dispatchPendingStarts({ type: "accepted", startId, generationId }),
+			accepted: (startId, target) => {
+				dispatchPendingStarts({ type: "accepted", startId, generationId: target.generationId });
+				runner.dispatch({ type: "generation-accepted", target });
+			},
 		},
 		clearDraft: () => setDraft(""),
 	});

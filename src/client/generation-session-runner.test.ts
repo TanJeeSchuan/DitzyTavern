@@ -6,6 +6,7 @@ import type {
 	GenerationStreamSubscription,
 } from "./conversation-stream";
 import { createGenerationSessionRunner } from "./generation-session-runner";
+import { NetworkError } from "./lib/network-error";
 import type {
 	GenerationSessionStoryEffect,
 	GenerationSessionsState,
@@ -86,13 +87,99 @@ const runnerWith = (stream: FakeStream, spy: Host) =>
 	createGenerationSessionRunner({
 		adapter: stream.adapter,
 		applyStoryEffect: (effect) => spy.storyEffects.push(effect),
-		refreshConversation: (conversationId) => spy.refreshes.push(conversationId),
+		refreshConversation: async (conversationId) => { spy.refreshes.push(conversationId); },
 	});
 
 const observeTargets = (generationIds: readonly number[]) =>
 	({ type: "targets-observed", conversationId: 42, targets: generationIds.map(target) }) as const;
 
 describe("the Generation session runner", () => {
+	test("retries transport failures until an authoritative snapshot settles the detached Generation", async () => {
+		const stream = fakeStream();
+		let attempts = 0;
+		const recovered = Promise.withResolvers<void>();
+		const runner = createGenerationSessionRunner({
+			adapter: stream.adapter,
+			applyStoryEffect: () => {},
+			refreshConversation: async () => {
+				if (++attempts < 3) throw new NetworkError("Server is down");
+				runner.dispatch(observeTargets([]));
+				recovered.resolve();
+			},
+		});
+		runner.dispatch(observeTargets([7]));
+		stream.settle(0, { outcome: "interrupted", reason: "Server restarted" });
+		await recovered.promise;
+		expect(attempts).toBe(3);
+		expect(runner.getSnapshot().sessions.has(7)).toBe(false);
+		expect(stream.requests).toHaveLength(1);
+		runner.dispose();
+	});
+
+	test("a recovered active snapshot resumes the saved event cursor", async () => {
+		const stream = fakeStream();
+		let attempts = 0;
+		const recovered = Promise.withResolvers<void>();
+		const runner = createGenerationSessionRunner({
+			adapter: stream.adapter,
+			applyStoryEffect: () => {},
+			refreshConversation: async () => {
+				if (++attempts === 1) throw new NetworkError("Server is down");
+				runner.dispatch(observeTargets([7]));
+				recovered.resolve();
+			},
+		});
+		runner.dispatch(observeTargets([7]));
+		stream.requests[0]!.onEvent({ eventId: 12, event: contentEvent("Saved") });
+		stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
+		await recovered.promise;
+		expect(stream.requests).toHaveLength(2);
+		expect(stream.requests[1]!.afterEventId).toBe(12);
+		runner.dispose();
+	});
+
+	for (const action of ["switch", "implicit-switch", "dispose"] as const) {
+		test(`${action} cancels a pending refresh and its retries`, async () => {
+			const stream = fakeStream();
+			let attempts = 0;
+			let refreshSignal: AbortSignal | undefined;
+			const runner = createGenerationSessionRunner({
+				adapter: stream.adapter,
+				applyStoryEffect: () => {},
+				refreshConversation: async (_conversationId, signal) => {
+					attempts++;
+					refreshSignal = signal;
+					throw new NetworkError("Server is down");
+				},
+			});
+			runner.dispatch(observeTargets([7]));
+			stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
+			await flushSubscriptions();
+			if (action === "dispose") runner.dispose();
+			else if (action === "switch") runner.dispatch({ type: "conversation-switched" });
+			else runner.dispatch({ type: "targets-observed", conversationId: 43, targets: [] });
+			await new Promise((resolve) => setTimeout(resolve, 350));
+			expect(refreshSignal?.aborted).toBe(true);
+			expect(attempts).toBe(1);
+			runner.dispose();
+		});
+	}
+
+	test("does not retry permanent application errors", async () => {
+		const stream = fakeStream();
+		let attempts = 0;
+		const runner = createGenerationSessionRunner({
+			adapter: stream.adapter,
+			applyStoryEffect: () => {},
+			refreshConversation: async () => { attempts++; throw new Error("Invalid Conversation response"); },
+		});
+		runner.dispatch(observeTargets([7]));
+		stream.settle(0, { outcome: "interrupted", reason: "Disconnected" });
+		await new Promise((resolve) => setTimeout(resolve, 350));
+		expect(attempts).toBe(1);
+		runner.dispose();
+	});
+
 	test("opens subscriptions through the adapter and routes observations to story effects", () => {
 		const stream = fakeStream();
 		const spy = host();

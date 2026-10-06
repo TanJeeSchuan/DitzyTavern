@@ -544,10 +544,24 @@ describe("the Generation session collection", () => {
 		]);
 	});
 
+	test.each(["failed", "applied", "stopped"] as const)("a live session missing from a refreshed snapshot still observes its %s terminal outcome", (outcome) => {
+		const accepted = run(createGenerationSessions(), { type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		const refreshed = run(accepted.state, observed([]));
+		expect(refreshed.state.sessions.has(7)).toBe(true);
+		expect(refreshed.effects).toEqual([]);
+		const result = outcome === "failed" ? { outcome, reason: "The provider request failed with HTTP 401." } : { outcome };
+		const settled = run(refreshed.state, { type: "subscription-settled", generationId: 7, result });
+		expect(hasActiveGenerationSessions(settled.state)).toBe(false);
+		expect(firstActiveGenerationSessionFailure(settled.state)?.reason ?? null).toBe(outcome === "failed" ? "The provider request failed with HTTP 401." : null);
+		expect(run(settled.state, { type: "subscription-settled", generationId: 7, result }).state).toBe(settled.state);
+		expect(run(settled.state, { type: "errors-acknowledged" }).state.sessions.get(7)?.error).toBeNull();
+	});
+
 	test("a Conversation switch drops terminal sessions and sessions the server settled elsewhere", () => {
 		let state = sessionOf(42, targetsFor(7, 8, 9));
 		state = run(state, { type: "subscription-settled", generationId: 7, result: { outcome: "applied" } }).state;
-		// Generation 9 vanished from the snapshot without a terminal result.
+		state = run(state, { type: "subscription-settled", generationId: 9, result: { outcome: "interrupted", reason: "Server restarted." } }).state;
+		// Generation 9's disconnected subscription cannot supply a terminal result.
 		state = run(state, observed([7, 8])).state;
 		expect(state.sessions.has(9)).toBe(false);
 

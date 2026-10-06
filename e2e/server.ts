@@ -139,8 +139,11 @@ let current: { directory: string; database: ReturnType<typeof provision>; app: A
 const reset = async () => {
 	held.resolve();
 	if (current) {
+		const directory = current.directory;
 		await current.close();
-		rmSync(current.directory, { recursive: true, force: true });
+		current = undefined;
+		Bun.gc(true);
+		rmSync(directory, { recursive: true, force: true });
 	}
 	chatReplies = [];
 	jevRules = [];
@@ -193,6 +196,7 @@ const server = Bun.serve({
 			case "/__e2e/release": held.resolve(); break;
 			case "/__e2e/directory": return Response.json(current!.directory);
 			case "/__e2e/log": return Response.json({ calls, unscripted, unsentPlans: await unsentPlans() });
+			case "/__e2e/shutdown": setTimeout(() => { void shutdown(true); }, 0); break;
 			default: return current!.app.handle(request);
 		}
 		return Response.json(null);
@@ -206,6 +210,5 @@ const shutdown = async (keepFiles: boolean) => {
 	process.exit(0);
 };
 process.once("SIGTERM", () => shutdown(false));
-process.once("SIGHUP", () => shutdown(true));
 
 console.log(`E2E_READY ${server.url}`);

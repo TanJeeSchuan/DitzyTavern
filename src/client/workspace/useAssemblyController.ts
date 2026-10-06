@@ -8,6 +8,7 @@ import {
 	type GenerationPreviewBody,
 } from "../conversation";
 import type { PromptPlan } from "../../shared/contract/conversation-schema";
+import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
 import {
 	isAssemblyPending,
@@ -18,7 +19,7 @@ import {
 type GenerationStartLifecycle = {
 	begin: () => number;
 	settle: (startId: number) => void;
-	accepted: (startId: number, generationId: number) => void;
+	accepted: (startId: number, target: GenerationAttemptTarget) => void;
 };
 
 type AssemblyControllerOptions = {
@@ -182,25 +183,9 @@ export function useAssemblyController({
 
 		onAccepted();
 		if (clearDraftOnAccepted) clearDraft();
-		let freshConversation: ConversationSummary | null;
-		try {
-			freshConversation = await refreshStory(conversationId);
-		} catch {
-			if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-			generationStart.settle(startId);
-			return;
-		}
+		await refreshStory(conversationId).catch(() => null);
 		if (!canApplyAssemblyEffect(requestId, conversationId)) return;
-		if (
-			freshConversation === null ||
-			!freshConversation.activeGenerations.some(
-				(generation) => generation.generationId === outcome.generationId,
-			)
-		) {
-			generationStart.settle(startId);
-		} else {
-			generationStart.accepted(startId, outcome.generationId);
-		}
+		generationStart.accepted(startId, outcome);
 	};
 
 	const sendPromptPlanPreview = () => {

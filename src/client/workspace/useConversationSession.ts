@@ -8,6 +8,7 @@ import type { StoryAction, StoryState } from "../story";
 import type { ChatSummary, Workspace } from "../workspace";
 import { useAsyncEffect } from "../lib/use-async";
 import { adoptConversationSummary } from "./conversation-session-state";
+import { NetworkError } from "../lib/network-error";
 
 type ConversationSessionOptions = {
 	initialWorkspace: Workspace & { activeChat: ChatSummary };
@@ -107,12 +108,14 @@ export function useConversationSession({
 		}
 	};
 
-	const refreshStory = useCallback(async (conversationId: number) => {
+	const refreshStory = useCallback(async (conversationId: number, signal?: AbortSignal) => {
 		const [freshConversation, freshHistory] = await Promise.all([
-			loadConversation(conversationId),
-			chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+			loadConversation(conversationId, signal),
+			chatHistoryTransport.loadHistory(conversationId, { page: 1 }, signal),
 		]);
-		if (Number(activeChatIdRef.current) !== conversationId) return freshConversation;
+		if (signal?.aborted || Number(activeChatIdRef.current) !== conversationId) return freshConversation;
+		if (freshHistory.status === "network") throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
+		if (freshHistory.status === "invalid") throw new Error(`Unable to load Conversation ${conversationId} history`);
 		if (freshConversation !== null) setConversation(freshConversation);
 		if (freshHistory.status === "available") {
 			dispatchStory({

@@ -81,6 +81,7 @@ export type GenerationSessionsAction =
 	// ==[HUMAN APPROVED]== An authoritative Conversation snapshot was observed; the collection
 	// reconciles against its Active Generation targets.
 	| { type: "targets-observed"; conversationId: number; targets: readonly GenerationSessionTarget[] }
+	| { type: "generation-accepted"; target: GenerationAttemptTarget }
 	// ==[HUMAN APPROVED]== The view is leaving the current Chat: every live local subscription of
 	// the active Conversation detaches (cursors persist), terminal sessions
 	// are collected, and no server-owned Generation is ever stopped.
@@ -190,14 +191,16 @@ const dropTerminalSessions = (
 
 const reconcileTargets = (
 	state: GenerationSessionsState,
-	action: Extract<GenerationSessionsAction, { type: "targets-observed" }>,
+	action: Extract<GenerationSessionsAction, { type: "targets-observed" | "generation-accepted" }>,
 ): GenerationSessionsTransition => {
 	const effects: GenerationSessionEffect[] = [];
 	let sessions: Map<number, GenerationSession> = new Map(state.sessions);
+	const conversationId = action.type === "generation-accepted" ? action.target.conversationId : action.conversationId;
+	const targets: readonly GenerationSessionTarget[] = action.type === "generation-accepted" ? [action.target] : action.targets;
 
 	// ==[HUMAN APPROVED]== Observing a different Conversation is an implicit switch: detach the
 	// previous Conversation's live subscriptions and collect terminal rows.
-	if (state.activeConversationId !== action.conversationId) {
+	if (state.activeConversationId !== conversationId) {
 		if (state.activeConversationId !== null) {
 			const detached = detachConversationSessions(sessions, state.activeConversationId);
 			sessions = detached.sessions;
@@ -207,11 +210,11 @@ const reconcileTargets = (
 	}
 
 	const knownTargets = new Set<number>();
-	let changed = state.activeConversationId !== action.conversationId;
-	for (const target of action.targets) {
+	let changed = state.activeConversationId !== conversationId;
+	for (const target of targets) {
 		knownTargets.add(target.generationId);
 		const existing = sessions.get(target.generationId);
-		if (existing !== undefined && existing.conversationId === action.conversationId) {
+		if (existing !== undefined && existing.conversationId === conversationId) {
 			const initialEventId = target.initialEventId ?? 0;
 			if (
 				existing.terminal === null &&
@@ -231,7 +234,7 @@ const reconcileTargets = (
 				sessions.set(target.generationId, { ...current, phase: "subscribing" });
 				effects.push({
 					kind: "subscribe",
-					conversationId: action.conversationId,
+					conversationId,
 					generationId: target.generationId,
 					messageId: target.messageId,
 					variantId: target.variantId,
@@ -241,7 +244,7 @@ const reconcileTargets = (
 			continue;
 		}
 		sessions.set(target.generationId, {
-			conversationId: action.conversationId,
+			conversationId,
 			generationId: target.generationId,
 			messageId: target.messageId,
 			variantId: target.variantId,
@@ -255,28 +258,26 @@ const reconcileTargets = (
 		changed = true;
 		effects.push({
 			kind: "subscribe",
-			conversationId: action.conversationId,
+			conversationId,
 			generationId: target.generationId,
 			messageId: target.messageId,
 			variantId: target.variantId,
 			afterEventId: target.initialEventId ?? 0,
 		});
 	}
-	// ==[HUMAN APPROVED]== A non-terminal session the snapshot no longer lists was settled
-	// elsewhere; remove it and close any subscription it still holds.
 	for (const [generationId, session] of sessions) {
 		if (
-			session.conversationId === action.conversationId &&
-			session.terminal === null &&
+			action.type === "targets-observed" &&
+			session.conversationId === conversationId &&
+			session.phase === "detached" &&
 			!knownTargets.has(generationId)
 		) {
 			changed = true;
 			sessions.delete(generationId);
-			if (livePhases.has(session.phase)) effects.push({ kind: "unsubscribe", generationId });
 		}
 	}
 	if (!changed) return unchanged(state);
-	return { state: { ...state, activeConversationId: action.conversationId, sessions }, effects };
+	return { state: { ...state, activeConversationId: conversationId, sessions }, effects };
 };
 
 const switchConversation = (state: GenerationSessionsState): GenerationSessionsTransition => {
@@ -550,6 +551,7 @@ export function reduceGenerationSessions(
 ): GenerationSessionsTransition {
 	switch (action.type) {
 		case "targets-observed":
+		case "generation-accepted":
 			return reconcileTargets(state, action);
 		case "conversation-switched":
 			return switchConversation(state);

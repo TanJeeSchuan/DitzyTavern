@@ -52,6 +52,7 @@ export interface ChatHistoryPageRequest {
 export type ChatHistoryOutcome =
 	| { status: "available"; page: ChatHistoryPage }
 	| { status: "not-found" }
+	| { status: "invalid" }
 	| { status: "network" };
 
 export type ChatImportDetailsOutcome =
@@ -76,6 +77,7 @@ export interface ChatHistoryTransport {
 	loadHistory(
 		conversationId: number,
 		request?: ChatHistoryPageRequest,
+		signal?: AbortSignal,
 	): Promise<ChatHistoryOutcome>;
 	// Loads the persisted receipt and source identity for one Chat; a typed
 	// ==[HUMAN APPROVED]== not-found for Chats without import provenance.
@@ -99,10 +101,10 @@ const parseHistoryResponse = async (
 	response: Response,
 ): Promise<ChatHistoryOutcome> => {
 	if (response.status === 404) return { status: "not-found" };
-	if (!response.ok) return { status: "network" };
+	if (!response.ok) return { status: "invalid" };
 	const value: JsonValue = await response.json().catch(() => ({}));
 	const page = parseHistoryPage(value);
-	if (page === null) return { status: "network" };
+	if (page === null) return { status: "invalid" };
 	return { status: "available", page };
 };
 
@@ -168,9 +170,9 @@ export const createChatHistoryTransport = (
 	};
 
 	return {
-		async loadHistory(conversationId, page) {
+		async loadHistory(conversationId, page, signal) {
 			try {
-				const response = await request(historyUrl(conversationId, page));
+				const response = await request(historyUrl(conversationId, page), { signal });
 				return await parseHistoryResponse(response);
 			} catch {
 				return { status: "network" };

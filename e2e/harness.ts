@@ -75,9 +75,15 @@ export const startE2eServer = async () => {
 		release: () => call("release"),
 		log: (): Promise<{ calls: ModelCall[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
-		restart: async (signal: "SIGKILL" | "SIGHUP") => {
+		restart: async (mode: "crash" | "graceful") => {
 			const directory: string = await call("directory");
-			await stopChild(child, signal);
+			if (mode === "crash") await stopChild(child, "SIGKILL");
+			else {
+				const exited = once(child, "exit");
+				await call("shutdown");
+				const [code] = await exited;
+				if (code !== 0) throw new Error(`Graceful E2E shutdown exited ${code}\n${stderr}`);
+			}
 			({ child } = await launch({ E2E_RESUME: directory, E2E_PORT: new URL(url).port }));
 		},
 		stop: () => stopChild(child, "SIGTERM"),
