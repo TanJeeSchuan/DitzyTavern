@@ -118,7 +118,7 @@ bun run db:seed      # 示例数据；db:teardown 只删除它添加的内容
 bun run check        # lint、契约检查、类型检查和测试
 ```
 
-[`CONTEXT.md`](CONTEXT.md) 定义了领域术语，[`DESIGN.md`](DESIGN.md) 记录视觉方向，[`docs/adr`](docs/adr) 记录架构决策（均为英文）。
+[`GLOSSARY.md`](GLOSSARY.md) 定义了领域术语，[`DESIGN.md`](DESIGN.md) 记录视觉方向，[`docs/adr`](docs/adr) 记录架构决策（均为英文）。
 
 ---
 

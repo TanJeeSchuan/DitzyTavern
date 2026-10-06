@@ -4,7 +4,7 @@ Status: all 36 interview decisions and the consolidated [Lorebook design](lorebo
 
 > Q8, Q13, Q21, Q23 and Q33 describe the sentence-embedding matcher, since replaced by Typesafe Jev ([ADR-0044](adr/0044-judge-semantic-triggers-with-jev.md)); the consolidated [Lorebook design](lorebooks.md) is current.
 
-The user requested a lorebook design interview, with SillyTavern as a behavioral reference and an embedding keyword matcher under consideration. This document tracks the decision tree. Resolved domain terms belong in [CONTEXT.md](../CONTEXT.md); durable architectural trade-offs belong in [ADRs](adr/).
+The user requested a lorebook design interview, with SillyTavern as a behavioral reference and an embedding keyword matcher under consideration. This document tracks the decision tree. Resolved domain terms belong in [GLOSSARY.md](../GLOSSARY.md); durable architectural trade-offs belong in [ADRs](adr/).
 
 ## Existing constraints
 

@@ -116,7 +116,7 @@ bun run db:seed      # sample data; db:teardown removes exactly what it added
 bun run check        # lint, contract checks, types and tests
 ```
 
-[`CONTEXT.md`](CONTEXT.md) defines the domain terms, [`DESIGN.md`](DESIGN.md) holds the visual direction, and [`docs/adr`](docs/adr) records the architectural decisions.
+[`GLOSSARY.md`](GLOSSARY.md) defines the domain terms, [`DESIGN.md`](DESIGN.md) holds the visual direction, and [`docs/adr`](docs/adr) records the architectural decisions.
 
 ---
 

@@ -132,4 +132,4 @@ Defer global book activation, recursive matching, probability, inclusion groups,
 - [ADR-0042: send the inspected Prompt Plan](adr/0042-send-the-inspected-prompt-plan-without-reassembly.md)
 - [ADR-0043: permanent Lore Activation Records](adr/0043-retain-lore-activation-records-with-variants.md)
 - [Pinned SillyTavern source research](research/sillytavern-lorebooks.md)
-- [Domain glossary](../CONTEXT.md)
+- [Domain glossary](../GLOSSARY.md)
