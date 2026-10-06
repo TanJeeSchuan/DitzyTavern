@@ -28,7 +28,7 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 			await page.goto("/");
 			await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Chats", exact: true }).click();
 			await page.getByRole("button", { name: "Import", exact: true }).click();
-			await page.locator('input[type="file"]').setInputFiles({ name: filename, mimeType: "application/jsonl", buffer: source });
+			await page.getByRole("complementary").locator('input[type="file"]').setInputFiles({ name: filename, mimeType: "application/jsonl", buffer: source });
 			await expect(page.getByText("Resolve Participants", { exact: true })).toBeVisible();
 			await page.getByPlaceholder("Title this Chat").fill("Lantern House Import");
 			await page.getByRole("button", { name: "Continue to review", exact: true }).click();
