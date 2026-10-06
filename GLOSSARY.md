@@ -187,6 +187,12 @@ _Avoid_: alt text, caption, image description
 A model that a Connection Profile marks as unable to receive Images. Generations using it send each Image Anchor without its Image. The writer applies the mark, usually after a Generation containing Images fails; it is never inferred from a provider error.
 _Avoid_: non-vision model, image fallback
 
+## Decisions
+
+**Decision Model**:
+A model that answers typed questions about a supplied state with probabilities instead of writing text. Memory judgment, Memory recall and Semantic Trigger matching each ask a Decision Model.
+_Avoid_: classifier, classification model, Jev when naming the role rather than one product
+
 ## Memory
 
 **Memory**:
