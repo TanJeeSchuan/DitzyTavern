@@ -9,7 +9,7 @@ const request = (path: string, init?: RequestInit) => new Request(`http://localh
 });
 const apply = (fields: Record<string, boolean | number | string | null>) => request("/api/memory-settings/commands", {
 	method: "POST",
-	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
+	body: JSON.stringify({ expectedRevision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "", ...fields }),
 });
 
 describe("Memory Settings public contract", () => {
@@ -21,9 +21,23 @@ describe("Memory Settings public contract", () => {
 	});
 	afterEach(() => database.close());
 
+	test("selects an independent System One Decision Model and rejects chat profiles", async () => {
+		const insert = (format: string) => database.query<{ id: number }, [string]>("INSERT INTO connection_profile (display_name, api_format, request_url, model_backend, adapter, timeout_ms) VALUES ('Decision test', ?, 'http://localhost:8000/v1/', 'automatic', 'openai-compatible', 15000) RETURNING id").get(format)!.id;
+		const chat = insert("chat-completions");
+		const fields = { decisionProfileId: chat, decisionModel: "clef", decisionStateTokenLimit: 2000, retainProbabilityMinimum: 0.6 };
+		const wrong = await app.handle(apply(fields));
+		expect(wrong.status).toBe(422);
+		expect(await wrong.text()).toContain("System One");
+		database.query("DELETE FROM connection_profile WHERE id = ?").run(chat);
+		const decisions = insert("system-one");
+		const saved = await app.handle(apply({ ...fields, decisionProfileId: decisions }));
+		expect(saved.status).toBe(200);
+		expect(await saved.json()).toMatchObject({ settings: { decisionProfileId: decisions, decisionModel: "clef", decisionStateTokenLimit: 2000, retainProbabilityMinimum: 0.6 } });
+	});
+
 	test("uses independent extraction defaults", async () => {
 		const initial = await app.handle(request("/api/memory-settings"));
-		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+		expect(await initial.json()).toEqual({ revision: 0, enabled: true, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 	});
 
 	test("returns authoritative conflict state, validates limits and reports a deleted chosen Profile", async () => {

@@ -71,6 +71,7 @@ describe("Connection Settings transport adapter", () => {
 		expect(presets.status).toBe(200);
 		const body = await presets.json();
 		expect(body.presets.map((entry: { id: string }) => entry.id)).toEqual([
+			"openrouter-decisions", "typesafe", "system-one",
 			"deepseek",
 			"openrouter",
 			"generic-openai-compatible",

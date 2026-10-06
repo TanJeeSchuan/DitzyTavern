@@ -7,9 +7,10 @@ const loreFingerprintOf = (snapshot: GenerationPreparationSnapshot) => ({
 	semantic: snapshot.lore.sources === undefined
 		? null
 		: {
-				mode: snapshot.lore.sources.semanticSettings.mode,
+				decisionProfileId: snapshot.lore.sources.semanticSettings.decisionProfileId,
 				threshold: snapshot.lore.sources.semanticSettings.threshold,
-				jevModel: snapshot.lore.sources.semanticSettings.jevModel,
+				decisionModel: snapshot.lore.sources.semanticSettings.decisionModel,
+				decisionStateTokenLimit: snapshot.lore.sources.semanticSettings.decisionStateTokenLimit,
 			},
 });
 

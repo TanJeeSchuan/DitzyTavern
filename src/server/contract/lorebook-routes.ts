@@ -52,10 +52,10 @@ import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
-import type { TypesafeSettingsModuleOptions } from "../typesafe";
+import type { ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ModelFetch } from "../model-client/types";
 
-export interface LorebookRouteOptions extends TypesafeSettingsModuleOptions {
+export interface LorebookRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
 

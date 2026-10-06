@@ -38,8 +38,9 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 		setTestModelId(value);
 		updateDraft({ pinnedModels: value.length > 0 ? [value, ...draft.pinnedModels.slice(1)] : [] });
 	};
-	const embeddings = draft.apiFormat === "embeddings";
-	const customEndpoint = embeddings || draft.adapter === "openai-compatible";
+	const decisions = draft.apiFormat === "system-one";
+	const bounded = draft.apiFormat !== "chat-completions";
+	const customEndpoint = bounded || draft.adapter === "openai-compatible";
 	const endpointFields = <>
 		<Field htmlFor="connection-request-url" label="Request URL" helper={resolvedRequestUrl === "" ? "Add a trailing slash to a base URL. Without it, the URL is treated as the exact endpoint." : `Sends to ${resolvedRequestUrl}. Add a trailing slash to a base URL.`}>
 			<input id="connection-request-url" className="field-input" value={draft.requestUrl} onChange={(event) => updateDraft({ requestUrl: event.target.value })} placeholder="https://example.com/v1/" autoComplete="url" />
@@ -48,7 +49,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 			<input id="connection-models-url" className="field-input" value={draft.modelsUrl} onChange={(event) => updateDraft({ modelsUrl: event.target.value })} placeholder="https://example.com/v1/models" autoComplete="url" />
 		</Field>
 	</>;
-	const provider = embeddings ? "Embeddings" : CONNECTION_ADAPTER_LABELS[draft.adapter];
+	const provider = decisions ? "System One" : bounded ? "Embeddings" : CONNECTION_ADAPTER_LABELS[draft.adapter];
 	const title = draft.displayName.trim() || "New connection";
 
 	return (
@@ -61,7 +62,10 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 				</div>
 
 				<div className="grid gap-4">
-					<Field htmlFor="connection-display-name" label="Name">
+					<Field htmlFor="connection-api-format" label="API Format">
+                        <AppSelect id="connection-api-format" className="field-input" value={draft.apiFormat} onValueChange={value => updateDraft({ apiFormat: value === "system-one" || value === "embeddings" ? value : "chat-completions", timeoutMs: value === "system-one" ? 15000 : value === "embeddings" ? 5000 : 120000 })} options={[{ value: "chat-completions", label: "Chat Completions" }, { value: "embeddings", label: "Embeddings" }, { value: "system-one", label: "System One" }]} />
+                    </Field>
+                    <Field htmlFor="connection-display-name" label="Name">
 						<input id="connection-display-name" className="field-input" value={draft.displayName} onChange={(event) => updateDraft({ displayName: event.target.value })} placeholder="e.g. Local model" autoComplete="off" />
 					</Field>
 					{customEndpoint && endpointFields}
@@ -105,7 +109,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
 							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
 						</Field>
-						{!embeddings && <>
+						{!bounded && <>
 						<Field htmlFor="connection-model-backend" label="Model backend">
 							<AppSelect id="connection-model-backend" className="field-input" value={draft.modelBackend} onValueChange={(value) => updateDraft({ modelBackend: value === "ai-sdk" ? "ai-sdk" : "automatic" })} options={[{ value: "automatic", label: "Automatic" }, { value: "ai-sdk", label: "AI SDK" }]} />
 						</Field>
@@ -118,13 +122,13 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						</>}
 						<div className="grid gap-1.5">
 							<div className="flex items-center justify-between gap-3">
-								<label htmlFor="connection-timeout" className="text-[13px] font-medium text-muted-foreground">{embeddings ? "Request timeout" : "Stream inactivity timeout"}</label>
+								<label htmlFor="connection-timeout" className="text-[13px] font-medium text-muted-foreground">{bounded ? "Request timeout" : "Stream inactivity timeout"}</label>
 								<span className="flex items-center gap-2 text-xs text-muted-foreground">
-									<span className="w-20"><input id="connection-timeout" className="field-input text-right tabular-nums" type="number" min="0" step="1" value={draft.timeoutMs === null ? "" : draft.timeoutMs / 1000} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Math.round(Number(event.target.value) * 1000) })} placeholder={embeddings ? "Required" : "Off"} /></span>
+									<span className="w-20"><input id="connection-timeout" className="field-input text-right tabular-nums" type="number" min="0" step="1" value={draft.timeoutMs === null ? "" : draft.timeoutMs / 1000} onChange={(event) => updateDraft({ timeoutMs: event.target.value.length === 0 ? null : Math.round(Number(event.target.value) * 1000) })} placeholder={bounded ? "Required" : "Off"} /></span>
 									seconds
 								</span>
 							</div>
-							<small className="text-xs text-muted-foreground">{embeddings ? "Abandons an embedding request that takes longer than this." : "Aborts a stream that stays quiet this long. Blank or zero disables it."}</small>
+							<small className="text-xs text-muted-foreground">{bounded ? "Abandons a request that takes longer than this." : "Aborts a stream that stays quiet this long. Blank or zero disables it."}</small>
 						</div>
 					</div>
 				</details>

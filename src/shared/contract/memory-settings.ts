@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { decisionSelection } from "./decision-model";
 
-export const memorySettings = Type.Object({
+export const memorySettings = Type.Composite([decisionSelection, Type.Object({
 	revision: Type.Integer(),
 	enabled: Type.Boolean(),
 	extractionProfileId: Type.Union([Type.Integer(), Type.Null()]),
@@ -8,11 +9,11 @@ export const memorySettings = Type.Object({
 	contextLimit: Type.Integer(),
 	outputReserve: Type.Integer(),
 	safetyAllowance: Type.Integer(),
-	usefulnessConfidenceGate: Type.Number(),
+	retainProbabilityMinimum: Type.Number(),
 	recallRelevanceMinimum: Type.Number(),
 	embeddingProfileId: Type.Union([Type.Integer(), Type.Null()]),
 	embeddingModel: Type.String(),
-});
+})]);
 export type MemorySettingsPayload = Static<typeof memorySettings>;
 
 export const memorySettingsResponse = memorySettings;

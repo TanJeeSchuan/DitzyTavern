@@ -73,10 +73,10 @@ describe("lore entry matching", () => {
 	});
 
 	test("uses keyword fallback for AND entries and skips semantic-only entries", () => {
-		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+		const fallback = matchLoreEntry(entry({ keywords: ["Silver Keep"], semanticTriggers: ["a fortified place"], matchOperator: "and" }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7, fallbackReason: "Decision Model request failed with HTTP 503." });
 		expect(fallback.active).toBe(true);
 		expect(fallback.fallback).toBe(true);
-		expect(fallback.semantic.fallbackReason).toBe("Typesafe Jev request failed with HTTP 503.");
+		expect(fallback.semantic.fallbackReason).toBe("Decision Model request failed with HTTP 503.");
 		expect(matchLoreEntry(entry({ keywords: [], semanticTriggers: ["a fortified place"] }), [{ content: "Silver Keep" }], { available: false, threshold: 0.7 }).active).toBe(false);
 	});
 

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateSemanticLore, type SemanticSettingsSnapshot } from "./semantic";
-import { jevRequest } from "../typesafe";
+import { decisionRequest } from "../decision-model";
 
 const entry = { enabled: true, semanticTriggers: ["ships arrive"] };
-const settings: SemanticSettingsSnapshot = { mode: "jev", threshold: 0.5, jevModel: "jev-1.13.0", credential: "typesafe-secret" };
+const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5, connection: { profileId: 1, profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "decision-secret", headers: {}, timeoutMs: 15000 } };
 const unreachable = async (): Promise<Response> => { throw new Error("Jev must not be called."); };
 
 describe("semantic Lore evaluation", () => {
@@ -27,10 +27,10 @@ describe("semantic Lore evaluation", () => {
 	});
 
 	test("reports why the whole pass is unavailable without calling Jev when off or unconfigured", async () => {
-		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, mode: "off" }, fetch: unreachable }))
-			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Typesafe Jev under Connections." });
-		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, credential: null }, fetch: unreachable }))
-			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Typesafe credential") });
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, decisionProfileId: null, connection: null }, fetch: unreachable }))
+			.toMatchObject({ available: false, fallbackReason: "Semantic Triggers are turned off in Semantic Triggers under Connections." });
+		expect(await evaluateSemanticLore({ entries: [entry], messages: [], settings: { ...settings, connection: null, unavailableReason: "Decision Model unavailable" }, fetch: unreachable }))
+			.toMatchObject({ available: false, fallbackReason: expect.stringContaining("Decision Model unavailable") });
 	});
 
 	test("covers the whole scan window within Jev limits, two requests at a time", async () => {
@@ -53,7 +53,7 @@ describe("semantic Lore evaluation", () => {
 				return Response.json({ answers: Object.fromEntries(Object.keys(body.questions).map((id) => [id, { type: "noul", noul: seesOldest && id === "trigger_0" ? 0.9 : 0.1 }])) });
 			},
 		});
-		expect(bodies.every((body) => jevRequest(body.model, body.state, body.questions).fits)).toBe(true);
+		expect(bodies.every((body) => decisionRequest(settings.connection!, body.state, body.questions).fits)).toBe(true);
 		expect(bodies.length).toBeLessThan(triggers.length);
 		expect(peakInFlight).toBe(2);
 		const scanned = bodies.flatMap((body) => body.state.scene).join("");
@@ -65,7 +65,7 @@ describe("semantic Lore evaluation", () => {
 
 	test("uses one unavailable result when Jev fails", async () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
-		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });
 	});
 
 	test("cancels the other request and stops later batches when a parallel request fails", async () => {
@@ -80,7 +80,7 @@ describe("semantic Lore evaluation", () => {
 				return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
 			},
 		});
-		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Typesafe Jev request failed with HTTP 503." });
+		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });
 		expect(requests).toBe(2);
 		expect(cancelled).toBe(true);
 	});

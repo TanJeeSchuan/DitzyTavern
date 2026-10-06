@@ -14,7 +14,7 @@ import { renderMemoryClaim } from "../../shared/memory-text";
 import type { ModelFetch } from "../model-client";
 import type { MemoryActivationRecord } from "../../shared/contract/memory-recall";
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
-import { createTypesafeSettingsModule } from "../typesafe";
+import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
 import { readMemoryAllowance, setMemoryAllowance } from "../memory/collections";
 import { mergeMemoryLabels } from "../memory/labels";
@@ -186,7 +186,7 @@ describe("Memory recall in Generation preparation", () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
 		const alternativeVariantId = insertAlternativeVariant(database, source.messageId);
-		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		const memoryRoutes = createMemoryRoutes(database);
 		await selectVariant(database, conversation.id, source.messageId, alternativeVariantId);
@@ -251,7 +251,7 @@ describe("Memory recall in Generation preparation", () => {
 				embeddingCalls += 1;
 				return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
 			}
-			if (url.includes("typesafe.ai")) {
+			if (url.endsWith("/systemone")) {
 				jevCalls += 1;
 				// SAFETY: the application builds a JSON object in `questions`; the fake only uses its own question names to form the response.
 				const request = JSON.parse(String(init?.body)) as { questions: object };
@@ -452,7 +452,7 @@ describe("Memory recall in Generation preparation", () => {
 	test("empty, queued, and disabled recall skip embedding and Jev calls", async () => {
 		const conversation = createChat(database);
 		const source = insertSelectedSource(database, conversation.id);
-		createTypesafeSettingsModule(database, { masterKey: key }).apply({ type: "apply", expectedRevision: 0, jevModel: "jev-1.13.0", loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "typesafe-secret" });
+		configureDecisionModels(database, key);
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
 		let providerCalls = 0;
@@ -508,7 +508,7 @@ describe("Memory recall in Generation preparation", () => {
 		const worker = startMemoryWorker(database, { process: async () => { await waiting; return [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]; } });
 		try {
 			expect(await waitFor(() => readConversationMemories(database, conversation.id).sources[0]?.status === "running")).toBe(true);
-			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, usefulnessConfidenceGate: 0.3, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
+			createMemorySettingsModule(database).apply({ expectedRevision: 0, enabled: false, extractionProfileId: null, extractionModel: "", contextLimit: 16384, outputReserve: 2048, safetyAllowance: 500, retainProbabilityMinimum: 0.6, decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 16000, recallRelevanceMinimum: 1.5, embeddingProfileId: null, embeddingModel: "" });
 			release();
 			await worker();
 		} finally { release(); await worker(); }

@@ -3,8 +3,10 @@ import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "..
 import { resolveChatCompletionsRequestUrl, resolveEmbeddingsRequestUrl } from "../../shared/connection-url";
 import { EmbeddingServiceError, requestEmbeddings } from "./embeddings";
 import { authenticatedHeaders } from "./authenticated-headers";
+import { decisionRequest, requestDecisions, resolveDecisionProfile } from "../decision-model";
 import { createModelAdapter, isModelAdapter } from "./adapter";
 import type { ModelFetch } from "./model-fetch";
+import { ModelFetchTimeoutError } from "./model-fetch";
 import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
 import {
 	formatProviderError,
@@ -55,6 +57,16 @@ export async function testConnection(
 		return failure("endpoint", "A model ID is required to test the Connection Profile.");
 	}
 	if (input.profile.apiFormat === "embeddings") return testEmbeddings(input.profile, modelId, input.secrets ?? null, options);
+	if (input.profile.apiFormat === "system-one") {
+		try {
+			const selection = resolveDecisionProfile(input.profile, modelId, 16_000, input.secrets ?? null);
+			const { request } = decisionRequest(selection, "ping", { ping: { type: "noul", instructions: "Is the state ping?" } });
+			await requestDecisions({ request, selection, fetch: options.fetch });
+			return { outcome: "success", message: "Connection succeeded. The Decision Model answered the test question." };
+		} catch (error) {
+			return failure(error instanceof ModelFetchTimeoutError ? "timeout" : "malformed-response", error instanceof Error ? error.message : "The Decision Model test failed.");
+		}
+	}
 	if (input.profile.apiFormat !== "chat-completions") {
 		return failure("adapter-unavailable", "The selected API Format is unavailable.");
 	}

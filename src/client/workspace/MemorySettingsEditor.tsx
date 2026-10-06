@@ -51,7 +51,7 @@ export function MemorySettingsEditor() {
 	const profileOf = (id: number | null) => connections?.profiles.find((profile) => profile.id === id);
 	const extractionProfile = profileOf(draft.extractionProfileId);
 	const embeddingProfile = profileOf(draft.embeddingProfileId);
-	const missingProfile = [settings.extractionProfileId, settings.embeddingProfileId].some((id) => id !== null && profileOf(id) === undefined);
+	const missingProfile = [settings.extractionProfileId, settings.embeddingProfileId, settings.decisionProfileId].some((id) => id !== null && profileOf(id) === undefined);
 	return (
 		<><div className="panel-body settings-panel-body">
 			<section aria-labelledby="memory-settings-title">
@@ -61,31 +61,39 @@ export function MemorySettingsEditor() {
 				</div>
 				{!settings.enabled && <p className="settings-feedback" role="status">Memory is off. No Memories are recalled into prompts and no new Memories are extracted.</p>}
 				<p>Extraction runs separately from writing generations.</p>
+				{draft.decisionProfileId === null && <p className="settings-feedback" role="status">Choose a Decision Model to enable Memory judgment and recall.</p>}
 				{missingProfile && <p className="settings-feedback-error" role="alert">A saved Memory connection no longer exists. Choose an available model.</p>}
-				{(!extractionProfile?.credentialConfigured || draft.extractionModel.length === 0) && <p className="settings-feedback" role="status">Memory extraction is not ready. Choose an extraction model whose connection has an API key, and configure the Typesafe credential in Connections.</p>}
+				{(extractionProfile === undefined || draft.extractionModel.length === 0) && <p className="settings-feedback" role="status">Memory extraction is not ready. Choose an extraction model whose connection has an API key, and choose a Decision Model below.</p>}
 				{(embeddingProfile === undefined || draft.embeddingModel.length === 0) && <p className="settings-feedback" role="status">Memory recall is not ready. Choose an embedding model so saved Memories can be recalled.</p>}
 				<div className="grid grid-cols-1 gap-4">
 					<Field label="Extraction model" helper="A chat model that reads each Message and proposes Memories.">
 						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} selected={{ connectionProfileId: draft.extractionProfileId, modelId: draft.extractionModel }} onSelect={(profile, modelId) => update({ extractionProfileId: profile.id, extractionModel: modelId })} emptyLabel="Add a chat connection in Connections to choose a model." label="Extraction model" />
+					</Field>
+					<Field label="Decision Model" helper="Judges proposed Memories and scores saved Memories during recall. System One connections only.">
+						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} decisions selected={{ connectionProfileId: draft.decisionProfileId, modelId: draft.decisionModel }} onSelect={(profile, decisionModel) => update({ decisionProfileId: profile.id, decisionModel })} emptyLabel="Add a System One connection in Connections." label="Memory Decision Model" />
+						{draft.decisionProfileId !== null && <Button type="button" size="sm" variant="ghost" onClick={() => update({ decisionProfileId: null, decisionModel: "" })}>Clear selection</Button>}
 					</Field>
 					<Field label="Embedding model" helper="Shortlists saved Memories for recall. Changing it rebuilds Memory indexes.">
 						<ProfileModelPicker settings={connections} onSettingsChange={setConnections} embeddings selected={{ connectionProfileId: draft.embeddingProfileId, modelId: draft.embeddingModel }} onSelect={(profile, modelId) => update({ embeddingProfileId: profile.id, embeddingModel: modelId })} emptyLabel="Add an Embeddings connection in Connections to choose a model." label="Embedding model" />
 					</Field>
 				</div>
 				<NumberGroup title={<>Extraction budget <Popover>
-					<PopoverTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label="How Jev handles Memory"><CircleHelp className="size-3.5" aria-hidden="true" /></Button></PopoverTrigger>
-					<PopoverContent align="start" aria-label="How Jev handles Memory" className="text-xs leading-relaxed">
+					<PopoverTrigger asChild><Button type="button" variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label="How Decision Models handle Memory"><CircleHelp className="size-3.5" aria-hidden="true" /></Button></PopoverTrigger>
+					<PopoverContent align="start" aria-label="How Decision Models handle Memory" className="text-xs leading-relaxed">
 						<p>Your extraction model proposes Memories using this token budget.</p>
-						<p>Jev then checks whether the source supports each claim, whether it is attributed to the right person, and whether it will matter beyond the current scene. Only claims that pass these checks and the usefulness threshold are kept.</p>
-						<p>During recall, Jev scores saved Memories for relevance to the current scene. Configure Jev in Connections under Typesafe Jev.</p>
+						<p>The Decision Model then checks whether the source supports each claim, whether it is attributed to the right person, and whether it will matter beyond the current scene. Only claims that pass these checks and the retain probability minimum are kept.</p>
+						<p>During recall, the Decision Model scores saved Memories for relevance to the current scene. Choose its System One connection and model here.</p>
 					</PopoverContent>
 				</Popover></>} description="Estimated tokens for each extraction request.">
 					<NumberRow id="memory-context-limit" label="Context limit" min={1} step={1} value={draft.contextLimit} onChange={(contextLimit) => update({ contextLimit })} />
 					<NumberRow id="memory-output-reserve" label="Output reserve" min={1} step={1} value={draft.outputReserve} onChange={(outputReserve) => update({ outputReserve })} />
 					<NumberRow id="memory-safety-allowance" label="Safety allowance" min={0} step={1} value={draft.safetyAllowance} onChange={(safetyAllowance) => update({ safetyAllowance })} />
 				</NumberGroup>
-				<NumberGroup title="Jev thresholds" description="Keep a Memory when Jev is at least this confident it is useful; recall it when Jev scores it at least this relevant.">
-					<NumberRow id="memory-usefulness-gate" label="Usefulness (0–1)" min={0} max={1} step={0.05} value={draft.usefulnessConfidenceGate} onChange={(usefulnessConfidenceGate) => update({ usefulnessConfidenceGate })} />
+				<NumberGroup title="Decision Model state" description="Maximum state sent for judgment and recall. Oversized extraction sources fail visibly.">
+					<NumberRow id="memory-decision-state-limit" label="State token limit" min={1} step={1} value={draft.decisionStateTokenLimit} onChange={(decisionStateTokenLimit) => update({ decisionStateTokenLimit })} />
+				</NumberGroup>
+				<NumberGroup title="Decision thresholds" description="Retain probability controls admission. Relevance score controls recall.">
+					<NumberRow id="memory-usefulness-gate" label="Retain probability minimum (0–1)" min={0} max={1} step={0.05} value={draft.retainProbabilityMinimum} onChange={(retainProbabilityMinimum) => update({ retainProbabilityMinimum })} />
 					<NumberRow id="memory-relevance-minimum" label="Relevance (0–3)" min={0} max={3} step={0.25} value={draft.recallRelevanceMinimum} onChange={(recallRelevanceMinimum) => update({ recallRelevanceMinimum })} />
 				</NumberGroup>
 				{state.notice && <p className="settings-feedback" role="status">{state.notice}</p>}

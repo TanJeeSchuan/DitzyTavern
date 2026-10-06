@@ -1,6 +1,6 @@
 # Decision Models over the System One wire
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: None
 
@@ -24,20 +24,20 @@ Replace the Typesafe-only Jev integration with Decision Models reached through S
 
 ## Work
 
-- [ ] Add the System One API Format to Connection Profiles with positive-timeout validation, the OpenRouter Decisions, TypeSafe and blank presets, and `systemone` URL resolution.
-- [ ] Build the Decision Model client: selection resolution (endpoint, optional Bearer credential, custom headers, profile timeout as deadline), packing with the selection's state token limit, and lenient parsing with exact answer and option keys.
-- [ ] Add Test Connection for System One profiles: one `noul` question on state `"ping"`, parsed by the production parser.
-- [ ] Add the decision selection, state token limit and retain probability minimum to Memory Settings, and replace the usefulness confidence gate. Accept only System One profiles.
-- [ ] Move Memory extraction judgment onto the Memory selection. Fail a source whose state exceeds the limit. Gate admission on the `retain` probability. Keep confidence only when returned.
-- [ ] Move Memory recall onto the Memory selection, trim the scene to the limit, and replace the Jev fields in the Memory Activation Record and Generation Details.
-- [ ] Replace Typesafe Settings with Semantic Trigger Settings (profile, model, state token limit, threshold; no profile means off) and new routes. Chunk the scene to the selection's limit.
-- [ ] Put both selections, their limits and the threshold into the preparation fingerprint and capture revision.
-- [ ] Drop the Typesafe settings table and add the new table and columns through a generated migration.
-- [ ] Replace the Typesafe Jev entry in Connections with a Semantic Triggers entry, add the Decision Model controls to Memory Settings, and rename Jev copy that means the role.
-- [ ] Delete the Typesafe module, routes, editor, client settings and hardcoded endpoint.
-- [ ] Switch the E2E fake to recognise `/systemone` calls, and the Jev fixture to create and select a System One profile.
+- [x] Add the System One API Format to Connection Profiles with positive-timeout validation, the OpenRouter Decisions, TypeSafe and blank presets, and `systemone` URL resolution.
+- [x] Build the Decision Model client: selection resolution (endpoint, optional Bearer credential, custom headers, profile timeout as deadline), packing with the selection's state token limit, and lenient parsing with exact answer and option keys.
+- [x] Add Test Connection for System One profiles: one `noul` question on state `"ping"`, parsed by the production parser.
+- [x] Add the decision selection, state token limit and retain probability minimum to Memory Settings, and replace the usefulness confidence gate. Accept only System One profiles.
+- [x] Move Memory extraction judgment onto the Memory selection. Fail a source whose state exceeds the limit. Gate admission on the `retain` probability. Keep confidence only when returned.
+- [x] Move Memory recall onto the Memory selection, trim the scene to the limit, and replace the Jev fields in the Memory Activation Record and Generation Details.
+- [x] Replace Typesafe Settings with Semantic Trigger Settings (profile, model, state token limit, threshold; no profile means off) and new routes. Chunk the scene to the selection's limit.
+- [x] Put both selections, their limits and the threshold into the preparation fingerprint and capture revision.
+- [x] Drop the Typesafe settings table and add the new table and columns through a generated migration.
+- [x] Replace the Typesafe Jev entry in Connections with a Semantic Triggers entry, add the Decision Model controls to Memory Settings, and rename Jev copy that means the role.
+- [x] Delete the Typesafe module, routes, editor, client settings and hardcoded endpoint.
+- [x] Switch the E2E fake to recognise `/systemone` calls, and the Jev fixture to create and select a System One profile.
 - [ ] Add the contract tests in spec Testing Decisions 2–5. Verify the UI manually with playwright-cli.
-- [ ] Update the conversation-memory and lorebooks specs, README files and AGENTS.md wording.
+- [x] Update the conversation-memory and lorebooks specs, README files and AGENTS.md wording.
 - [ ] Run focused tests, typechecking, the full test suite and `bun run test:e2e`.
 - [ ] Run `/code-review` and resolve its findings.
 - [ ] Set this ticket to DONE and commit the implementation.

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
-import { TypesafeSettingsEditor, useTypesafeSettings } from "./TypesafeSettingsEditor";
+import { SemanticTriggerSettingsEditor, useSemanticTriggerSettings } from "./SemanticTriggerSettingsEditor";
 import {
 	useConnectionSettingsController,
 	type ConnectionSettingsController,
@@ -18,15 +18,15 @@ export function ConnectionSettingsPanel({
 	controller: ConnectionSettingsController;
 	activeProfileId: number | null;
 }) {
-	const typesafe = useTypesafeSettings();
-	const [typesafeOpen, setTypesafeOpen] = useState(false);
+	const semanticTriggers = useSemanticTriggerSettings();
+	const [semanticTriggersOpen, setSemanticTriggerOpen] = useState(false);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
-	if (typesafeOpen) return <TypesafeSettingsEditor typesafe={typesafe} onBack={() => setTypesafeOpen(false)} />;
+	if (semanticTriggersOpen) return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setSemanticTriggerOpen(false)} />;
 	return (
 		<div className="panel-body settings-panel-body">
 			{controller.loading ? <p className="panel-note" role="status">Loading Connections…</p>
 				: controller.settings === null ? <p className="import-problem" role="alert">{controller.error}</p>
-				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} typesafe={typesafe} onOpenTypesafe={() => setTypesafeOpen(true)} />}
+				: <ConnectionProfileList controller={controller} settings={controller.settings} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} onOpenSemanticTrigger={() => setSemanticTriggerOpen(true)} />}
 		</div>
 	);
 }

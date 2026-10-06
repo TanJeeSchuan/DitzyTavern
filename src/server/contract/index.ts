@@ -12,7 +12,7 @@ import { createNativeConversationRoutes } from "./native-conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
 import { createLorebookRoutes } from "./lorebook-routes";
 import { createMemorySettingsRoutes } from "./memory-settings";
-import { createTypesafeSettingsRoutes } from "./typesafe-settings";
+import { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 import { createMemoryRoutes } from "./memory";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
 
@@ -25,7 +25,7 @@ export { createPromptPresetRoutes } from "./prompt-preset-routes";
 export { createLorebookRoutes } from "./lorebook-routes";
 export { createLorebookAttachmentRoutes } from "./lorebook-routes";
 export { createMemorySettingsRoutes } from "./memory-settings";
-export { createTypesafeSettingsRoutes } from "./typesafe-settings";
+export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 export { createMemoryRoutes } from "./memory";
 
 export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory()) => new Elysia()
@@ -38,7 +38,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createPromptPresetRoutes(database))
 	.use(createLorebookRoutes(database, options))
 	.use(createMemorySettingsRoutes(database))
-	.use(createTypesafeSettingsRoutes(database, options))
+	.use(createSemanticTriggerSettingsRoutes(database))
 	.use(createMemoryRoutes(database))
 	.use(createChatImportRoutes(database, artifactDirectory))
 	.use(createConnectionSettingsRoutes(database, options));

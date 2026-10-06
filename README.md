@@ -22,7 +22,7 @@ It runs locally. One Bun process serves the app and keeps everything in SQLite.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/media/memory-evening.gif">
-    <img alt="An extractor proposes four claims from a saved Message. Jev judges each on support, attribution and usefulness. Two are remembered, two are dropped." src="docs/media/memory-daylight.gif" width="100%">
+    <img alt="An extractor proposes four claims from a saved Message. A Decision Model judges each on support, attribution and usefulness. Two are remembered, two are dropped." src="docs/media/memory-daylight.gif" width="100%">
   </picture>
 </p>
 
@@ -31,7 +31,7 @@ Long stories fall out of the context window. Memory keeps compact claims about w
 The hard part is attribution. "Joss says Mara set the fire" and "Mara set the fire" are different stories. So is "Tev heard the accusation" versus "Tev believes it." Memory works in two steps:
 
 1. **An extractor model proposes claims.** Each claim carries its attribution and exact excerpts from the Message. Code checks that every excerpt appears in the source word for word.
-2. **Jev, a model from Typesafe, judges each claim with three separate typed questions.** Is it supported by the whole Message? Is the attribution correct? Is it worth keeping? Memory keeps a claim only when Jev finds it supported, correctly attributed, and useful above a confidence threshold. Jev never writes or rewrites a claim.
+2. **A Decision Model judges each claim with three separate typed questions.** Is it supported by the whole Message? Is the attribution correct? Is it worth keeping? Memory keeps a claim only when it is supported, correctly attributed, and its retain probability meets the minimum, initially 0.6. The Decision Model never writes or rewrites a claim.
 
 In the animation, the extractor overreaches with "Tev believes Mara set the fire." Tev only heard it, so Jev answers `not established` and the claim is dropped.
 
@@ -66,7 +66,7 @@ Lorebooks work the way SillyTavern's World Info does: entries with Keywords, a s
   </picture>
 </p>
 
-Jev decides whether the meaning matches. DitzyTavern sends the scan window to Jev as the `scene` and turns every Semantic Trigger into one question: does this situation happen or get discussed in the scene? Jev answers each with a probability. A long scene or many triggers are split across a bounded number of requests, sent one after another. A trigger matches when its probability meets the threshold, one setting shared by every entry and 0.5 by default. Raise it and the weaker matches drop out. Nothing is cached; every Generation asks again. If Jev is off or unreachable, that Generation falls back to Keywords only, and its details say so.
+The selected Decision Model decides whether the meaning matches. DitzyTavern sends the scan window to the Decision Model as the `scene` and turns every Semantic Trigger into one question: does this situation happen or get discussed in the scene? The Decision Model answers each with a probability. A long scene or many triggers are split across a bounded number of requests, sent at most two concurrently, with each trigger using its highest probability across chunks. A trigger matches when its probability meets the threshold, one setting shared by every entry and 0.5 by default. Raise it and the weaker matches drop out. Nothing is cached; every Generation asks again. If no profile is selected or the endpoint is unreachable, that Generation falls back to Keywords only, and its details say so.
 
 Selected entries go into a Lore Block, capped by a Lore Allowance. Your prompt preset decides where the block goes. Each Generation records which entries it considered and why it kept or skipped each one. Attach a book to a character, a participant or a whole Chat.
 
@@ -103,9 +103,11 @@ The server listens on loopback only. On first start it writes a `CONNECTION_SECR
 
 Add a connection profile under Connections, pick a model from the composer, and write. Memory and Semantic Triggers need extra setup, and it differs:
 
-- **Memory extraction** needs a chat connection profile and an extraction model in Memory Settings, plus a Typesafe credential for Jev to judge each claim.
-- **Memory indexing and recall** need an embeddings connection profile and model in Memory Settings, plus Jev to judge relevance.
-- **Semantic Triggers** need Jev turned on with a Typesafe credential under Connections. They do not use embeddings.
+- **Memory extraction** needs a chat connection profile and an extraction model in Memory Settings, plus a System One Decision Model selection in Memory Settings to judge each claim.
+- **Memory indexing and recall** need an embeddings connection profile and model in Memory Settings, plus the Memory Decision Model selection to judge relevance.
+- **Semantic Triggers** need a System One Decision Model selected in Semantic Triggers under Connections. They do not use embeddings.
+
+Connections include OpenRouter Decisions, TypeSafe and blank System One presets. Memory and Semantic Triggers can choose different models using the same profile and key. Each selection has its own state token limit, initially 16,000; use about 2,000 for Clef. Lore chunks long scenes, recall trims them, and extraction fails visibly on oversized judgment state. Keyless local HTTP endpoints work; custom headers and a positive request timeout belong to the profile.
 
 ### Development
 

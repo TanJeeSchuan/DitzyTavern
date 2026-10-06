@@ -92,7 +92,7 @@ const embed = (text: string) => {
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
 	const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-	const kind = url.startsWith("https://api.typesafe.ai/") ? "jev"
+	const kind = new URL(url).pathname.endsWith("/systemone") ? "jev"
 		: url.endsWith("/models") ? "models"
 		: url.endsWith("/embeddings") ? "embeddings"
 		: !url.endsWith("/chat/completions") ? "unknown"

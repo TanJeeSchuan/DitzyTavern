@@ -61,11 +61,11 @@ export function sharedConnectionHeaderNamesValidationError(
 export function sharedConnectionProfileDraftValidationError(
 	draft: ConnectionProfileDraftPayload,
 ): string | null {
-	if (draft.apiFormat !== "chat-completions" && draft.apiFormat !== "embeddings") {
-		return "Only the Chat Completions and Embeddings API Formats are available.";
+	if (draft.apiFormat !== "chat-completions" && draft.apiFormat !== "embeddings" && draft.apiFormat !== "system-one") {
+		return "Only the Chat Completions, Embeddings and System One API Formats are available.";
 	}
-	if (draft.apiFormat === "embeddings" && !(draft.timeoutMs !== null && draft.timeoutMs > 0)) {
-		return "An Embeddings connection needs a positive timeout.";
+	if (draft.apiFormat !== "chat-completions" && !(draft.timeoutMs !== null && draft.timeoutMs > 0)) {
+		return `An ${draft.apiFormat === "embeddings" ? "Embeddings" : "System One"} connection needs a positive timeout.`;
 	}
 	return (
 		connectionProfileUrlValidationError(draft.requestUrl, "request URL") ??

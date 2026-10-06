@@ -2,6 +2,8 @@ export const resolveChatCompletionsRequestUrl = (requestUrl: string): string => 
 
 export const resolveEmbeddingsRequestUrl = (requestUrl: string): string => resolveRequestUrl(requestUrl, "embeddings");
 
+export const resolveSystemOneRequestUrl = (requestUrl: string): string => resolveRequestUrl(requestUrl, "systemone");
+
 function resolveRequestUrl(requestUrl: string, basePath: string): string {
 	const parsed = new URL(requestUrl.trim());
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {

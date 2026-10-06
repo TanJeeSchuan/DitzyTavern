@@ -35,7 +35,7 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	return {
 		kind: "send",
 		conversationId: 1,
-		typesafeRevision: 0,
+		semanticTriggerRevision: 0,
 		formatting: {},
 		derivation: {
 			human: participant(1, "Writer"),
@@ -82,8 +82,8 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 				readyRecordCount: 0,
 				embeddingModel: "",
 				embeddingDeadlineMs: 1_000,
-				jevModel: "jev-1.13.0",
-				jevConfigured: false,
+				decisionProfileName: null, decisionModel: "jev-1.13.0",
+				decisionConfigured: false,
 				relevanceMinimum: 1.5,
 				pendingSourceCount: 0,
 				pendingIndexCount: 0,
@@ -103,22 +103,17 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			},
 			embedding: { spaceKey: "", endpoint: "", model: "", deadlineMs: 1_000 },
 			indexed: [],
-			recent: [],
+			recent: [], decision: null,
 		},
 		content: "Hello",
 	};
 };
 
-const settings: SemanticSettingsSnapshot = {
-	mode: "jev",
-	threshold: 0.5,
-	jevModel: "jev-1.13.0",
-	credential: "secret",
-};
+const settings: SemanticSettingsSnapshot = { decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5, connection: { profileId: 1, profileName: "Decision test", model: "jev-1.13.0", stateTokenLimit: 16000, endpoint: "http://decision.test/v1/systemone", credential: "secret", headers: {}, timeoutMs: 15000 } };
 
 interface Fingerprint {
 	lore: {
-		semantic: Omit<SemanticSettingsSnapshot, "credential">;
+		semantic: Pick<SemanticSettingsSnapshot, "decisionProfileId" | "decisionModel" | "decisionStateTokenLimit" | "threshold">;
 	};
 }
 
@@ -128,13 +123,13 @@ describe("generation preparation snapshot fingerprint", () => {
 		// this type describes the fields asserted from its JSON projection.
 		const fingerprint = JSON.parse(generationPreparationFingerprint(preparationWithSemanticSettings(settings))) as Fingerprint;
 
-		expect(fingerprint.lore.semantic).toEqual({ mode: settings.mode, threshold: settings.threshold, jevModel: settings.jevModel });
-		expect(JSON.stringify(fingerprint)).not.toContain(settings.credential);
+		expect(fingerprint.lore.semantic).toEqual({ decisionProfileId: 1, decisionModel: "jev-1.13.0", decisionStateTokenLimit: 16000, threshold: 0.5 });
+		expect(JSON.stringify(fingerprint)).not.toContain(settings.connection!.credential!);
 	});
 
 	test("changes when any Semantic Trigger configuration field changes", () => {
 		const baseline = generationPreparationFingerprint(preparationWithSemanticSettings(settings));
-		for (const changed of [{ ...settings, mode: "off" as const }, { ...settings, threshold: 0.8 }, { ...settings, jevModel: "jev-next" }]) {
+		for (const changed of [{ ...settings, decisionProfileId: null }, { ...settings, decisionStateTokenLimit: 2000 }, { ...settings, threshold: 0.8 }, { ...settings, decisionModel: "jev-next" }]) {
 			expect(generationPreparationFingerprint(preparationWithSemanticSettings(changed))).not.toBe(baseline);
 		}
 	});

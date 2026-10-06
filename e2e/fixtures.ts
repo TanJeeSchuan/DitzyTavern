@@ -39,8 +39,14 @@ export const send = async (page: Page, text: string) => {
 };
 
 export const enableJev = async (request: APIRequestContext) => {
-	const { revision, jevModel } = await (await request.get("/api/typesafe-settings")).json();
-	await request.post("/api/typesafe-settings/commands", { data: {
-		type: "apply", expectedRevision: revision, jevModel, loreTriggerMode: "jev", loreTriggerThreshold: 0.5, credential: "e2e-typesafe-key",
-	} });
+    const { revision: connectionRevision } = await (await request.get("/api/connection-settings")).json();
+    const { presets } = await (await request.get("/api/connection-settings/presets")).json();
+    const profile = presets.find((preset: { id: string }) => preset.id === "openrouter-decisions").profile;
+    const created = await (await request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: connectionRevision, profile, credential: "e2e-decision-key" } })).json();
+    const decisionProfileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
+    const selection = { decisionProfileId, decisionModel: "typesafe/jev-1.13", decisionStateTokenLimit: 16000 };
+    const { revision: semanticRevision } = await (await request.get("/api/semantic-trigger-settings")).json();
+    await request.post("/api/semantic-trigger-settings/commands", { data: { type: "apply", expectedRevision: semanticRevision, ...selection, triggerThreshold: 0.5 } });
+    const { revision, ...settings } = await (await request.get("/api/memory-settings")).json();
+    await request.post("/api/memory-settings/commands", { data: { ...settings, expectedRevision: revision, ...selection } });
 };
