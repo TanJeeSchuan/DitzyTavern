@@ -31,7 +31,8 @@ test("a crash keeps the last checkpoint and never retries the provider", async (
 });
 
 test("a crash before any checkpoint removes the provisional reply but keeps the sent message", async ({ page, llm }) => {
-	await llm.chat({ chunks: ["The tide turns against the pier.\n\n", "Then the"], hold: true });
+	await llm.checkpointClock(0);
+	await llm.chat({ chunks: ["The tide turns against the pier.\n\n", "Then the"], firstChunkDelayMs: 1_100, hold: true });
 	await page.goto("/");
 	await send(page, "Wait.");
 	await expect(story(page).getByText("The tide turns against the pier.")).toBeVisible();

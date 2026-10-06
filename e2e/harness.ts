@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -15,28 +15,50 @@ export const buildClient = async () => {
 
 export type E2eServer = Awaited<ReturnType<typeof startE2eServer>>;
 
+const stopChild = async (child: ChildProcess, signal: NodeJS.Signals) => {
+	if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
+	const exited = once(child, "exit");
+	child.kill(signal);
+	await exited;
+};
+
 export const startE2eServer = async () => {
 	let stderr = "";
 	const launch = async (env: Record<string, string> = {}) => {
 		const child = spawn("bun", ["e2e/server.ts"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
+		const killOnExit = () => { child.kill("SIGKILL"); };
+		const removeCleanup = () => { process.off("exit", killOnExit); };
+		process.once("exit", killOnExit);
+		child.once("exit", removeCleanup);
+		child.once("error", removeCleanup);
 		child.stderr.on("data", (chunk) => stderr += chunk);
 		const lines = createInterface({ input: child.stdout });
-		const url = await new Promise<string>((resolve, reject) => {
-			const timer = setTimeout(() => reject(new Error("E2E server did not start within 30 seconds.")), 30_000);
-			child.once("exit", (code) => reject(new Error(`E2E server exited ${code}\n${stderr}`)));
-			lines.on("line", (line) => {
-				if (!line.startsWith("E2E_READY ")) return;
-				clearTimeout(timer);
-				resolve(line.slice("E2E_READY ".length).replace(/\/$/, ""));
-			});
+		const ready = Promise.withResolvers<string>();
+		const timer = setTimeout(() => ready.reject(new Error("E2E server did not start within 30 seconds.")), 30_000);
+		const onExit = (code: number | null) => ready.reject(new Error(`E2E server exited ${code}\n${stderr}`));
+		const onError = (error: Error) => ready.reject(error);
+		child.once("exit", onExit);
+		child.once("error", onError);
+		lines.on("line", (line) => {
+			if (line.startsWith("E2E_READY ")) ready.resolve(line.slice("E2E_READY ".length).replace(/\/$/, ""));
 		});
-		return { child, url };
+		try {
+			return { child, url: await ready.promise };
+		} catch (error) {
+			await stopChild(child, "SIGKILL");
+			throw error;
+		} finally {
+			clearTimeout(timer);
+			lines.close();
+			child.stdout.resume();
+			child.off("exit", onExit);
+			child.off("error", onError);
+		}
 	};
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	process.once("exit", () => child.kill());
-	const call = async (path: string, body?: ChatReply[] | JevRule[] | MemoryClaim[]) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ChatReply[] | JevRule[] | MemoryClaim[] | string[][] | string[] | number) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -47,18 +69,17 @@ export const startE2eServer = async () => {
 		chat: (...replies: ChatReply[]) => call("chat", replies),
 		jev: (...rules: JevRule[]) => call("jev", rules),
 		memories: (...claims: MemoryClaim[]) => call("memories", claims),
+		models: (...catalogs: string[][]) => call("models", catalogs),
+		embeddings: (...matches: string[]) => call("embeddings", matches),
+		checkpointClock: (now: number) => call("checkpoint-clock", now),
 		release: () => call("release"),
 		log: (): Promise<{ calls: ModelCall[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (signal: "SIGKILL" | "SIGHUP") => {
 			const directory: string = await call("directory");
-			child.kill(signal);
-			await once(child, "exit");
+			await stopChild(child, signal);
 			({ child } = await launch({ E2E_RESUME: directory, E2E_PORT: new URL(url).port }));
 		},
-		stop: async () => {
-			child.kill("SIGTERM");
-			await once(child, "exit");
-		},
+		stop: () => stopChild(child, "SIGTERM"),
 	};
 };

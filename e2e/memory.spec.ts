@@ -26,7 +26,7 @@ const judge = (claim: string, verdict: { support: string; attribution: string; u
 
 test("a reply becomes an attributed Memory that the next Generation recalls", async ({ page, request, llm }) => {
 	await enableJev(request);
-	await enableMemory(request);
+	await llm.embeddings("brass key", "Where is the key?", "Show me.");
 	await llm.memories(
 		{ claim: "Theodora hid the brass key under the third map.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "I hid the brass key under the third map." },
 		{ claim: "Theodora fears the dark.", attribution: "Theodora Kline", people: ["Theodora Kline"], excerpt: "The dark presses against the dome." },
@@ -40,6 +40,7 @@ test("a reply becomes an attributed Memory that the next Generation recalls", as
 		{ chunks: ["She leans close. \"I hid the brass key under the third map. The dark presses against the dome.\""] },
 		{ chunks: ["She taps the map twice."] },
 	);
+	await enableMemory(request);
 
 	await page.goto("/");
 	await send(page, "Where is the key?");

@@ -33,6 +33,7 @@ import {
 	type GenerationRuntime,
 	type GenerationRuntimeState,
 } from "../workflows";
+import type { GenerationCheckpointOptions } from "../workflows/generation-runtime";
 import {
 	startServerOwnedContinuationGeneration,
 	startServerOwnedSendGeneration,
@@ -49,6 +50,7 @@ import {
 /** ==[HUMAN APPROVED]== Dependencies needed by the HTTP/application generation adapter. */
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
+	readonly checkpoint?: GenerationCheckpointOptions;
 	/**
 	 * ==[HUMAN APPROVED]== Composition seam for the durable Conversation stop transitions. Production
 	 * resolves the deep Conversation module; composed callers and tests may
@@ -434,6 +436,7 @@ export class GenerationCoordinator {
 						messageId: accepted.messageId,
 						variantId: accepted.provisionalVariantId,
 						startedAt: new Date().toISOString(),
+						checkpoint: this.options.checkpoint,
 						onStop: control.stop,
 						onRetentionExpired: retainedInspectionCleanup(
 							this.database,

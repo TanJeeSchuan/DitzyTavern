@@ -1,7 +1,7 @@
 import type { JevAnswer } from "../src/shared/contract/typesafe";
 
 export type ChatReply =
-	| { chunks: string[]; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
+	| { chunks: string[]; firstChunkDelayMs?: number; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
 
 export type JevRule = { match: string[]; answer: JevAnswer } | { match: string[]; status: number };

@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 
 test("a new connection discovers models and passes a connection test with its saved key", async ({ page, llm }) => {
+	await llm.models(["e2e-model"]);
 	await llm.chat({ chunks: ["pong"] });
 	await page.goto("/");
 	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();

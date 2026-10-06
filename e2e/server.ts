@@ -18,7 +18,10 @@ registerWireFormats();
 
 let chatReplies: ChatReply[] = [];
 let jevRules: JevRule[] = [];
-let memoryClaims: MemoryClaim[] = [];
+let memoryClaims: MemoryClaim[] | undefined;
+let modelCatalogs: string[][] = [];
+let embeddingMatches: string[] = [];
+let checkpointTime: number | undefined;
 let calls: ModelCall[] = [];
 let unscripted: string[] = [];
 let held = Promise.withResolvers<void>();
@@ -53,6 +56,7 @@ const completion = (chunks: readonly string[], stream: boolean, hold = false, ch
 });
 
 const extraction = (call: ModelCall) => {
+	if (memoryClaims === undefined) return refuse(call);
 	const prompt: string = call.body.messages[0].content;
 	const { source } = JSON.parse(prompt.slice(prompt.indexOf("{", prompt.indexOf("Captured source and reference context:"))));
 	const candidates = memoryClaims.filter((memory) => source.content.includes(memory.excerpt)).map(({ excerpt, ...memory }) => ({ ...memory, evidence: [{ messageId: source.messageId, excerpt }] }));
@@ -63,6 +67,7 @@ const chat = async (call: ModelCall) => {
 	const reply = chatReplies[0];
 	if (!reply) return refuse(call);
 	if (!reply.repeat) chatReplies.shift();
+	if ("chunks" in reply && reply.firstChunkDelayMs) await Bun.sleep(reply.firstChunkDelayMs);
 	if ("status" in reply && reply.hold) await held.promise;
 	if ("status" in reply) return Response.json({ error: { message: reply.error } }, { status: reply.status });
 	return completion(reply.chunks, call.body.stream, reply.hold, reply.chunkDelayMs, reply.truncate);
@@ -97,8 +102,15 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	if (kind === "chat") return chat(call);
 	if (kind === "extraction") return extraction(call);
 	if (kind === "jev") return jev(call);
-	if (kind === "models") return Response.json({ data: [{ id: "e2e-model" }] });
-	if (kind === "embeddings") return Response.json({ data: [body.input].flat().map((text: string, index: number) => ({ index, embedding: embed(text) })) });
+	if (kind === "models") {
+		const catalog = modelCatalogs.shift();
+		return catalog === undefined ? refuse(call) : Response.json({ data: catalog.map((id) => ({ id })) });
+	}
+	if (kind === "embeddings") {
+		const texts: string[] = [body.input].flat();
+		if (embeddingMatches.length === 0 || texts.some((text) => !embeddingMatches.some((match) => text.includes(match)))) return refuse(call);
+		return Response.json({ data: texts.map((text, index) => ({ index, embedding: embed(text) })) });
+	}
 	return refuse(call);
 };
 
@@ -132,7 +144,10 @@ const reset = async () => {
 	}
 	chatReplies = [];
 	jevRules = [];
-	memoryClaims = [];
+	memoryClaims = undefined;
+	modelCatalogs = [];
+	embeddingMatches = [];
+	checkpointTime = undefined;
 	calls = [];
 	unscripted = [];
 	held = Promise.withResolvers();
@@ -141,7 +156,7 @@ const reset = async () => {
 };
 
 const open = async (directory: string, database: ReturnType<typeof provision>) => {
-	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, masterKey, artifactDirectory: join(directory, "artifacts") }) };
+	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
 };
 
 const resumed = process.env.E2E_RESUME;
@@ -171,7 +186,10 @@ const server = Bun.serve({
 			case "/__e2e/reset": await reset(); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
 			case "/__e2e/jev": jevRules.push(...await request.json()); break;
-			case "/__e2e/memories": memoryClaims.push(...await request.json()); break;
+			case "/__e2e/memories": memoryClaims = [...memoryClaims ?? [], ...await request.json()]; break;
+			case "/__e2e/models": modelCatalogs.push(...await request.json()); break;
+			case "/__e2e/embeddings": embeddingMatches.push(...await request.json()); break;
+			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
 			case "/__e2e/release": held.resolve(); break;
 			case "/__e2e/directory": return Response.json(current!.directory);
 			case "/__e2e/log": return Response.json({ calls, unscripted, unsentPlans: await unsentPlans() });
