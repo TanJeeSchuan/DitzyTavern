@@ -30,12 +30,11 @@ import {
 import { importSillyTavernChat } from "./import";
 import {
 	STAGED_IMPORT_SESSION_TTL_MS,
-	clearStagedImportRegistry,
 	createChatImportModule,
-	sweepExpiredImportSessions,
 	type ChatImportCommitInput,
 	type ChatImportModule,
 } from "./staged";
+import { processStateFor } from "../application/process-state";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
 	StagedChatImportDuplicateConfirmationError,
@@ -95,12 +94,10 @@ describe("staged SillyTavern chat import commit", () => {
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");
 		module = createChatImportModule(database, { artifactDirectory });
-		clearStagedImportRegistry();
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
-		clearStagedImportRegistry();
 	});
 
 	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
@@ -720,7 +717,7 @@ describe("staged SillyTavern chat import commit", () => {
 
 		// Past the session lifetime the expiring sweep collects the
 		// never-claimed staged path: no orphaned artifact remains.
-		sweepExpiredImportSessions(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		processStateFor(database).sweep(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
 		expect(readdirSync(artifactDirectory)).toEqual([]);
 	});
 });

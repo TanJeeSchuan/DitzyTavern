@@ -22,7 +22,7 @@ import {
 	generateSiblingVariant,
 	sendThroughProvisionalTailGeneration,
 } from ".";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
@@ -103,7 +103,6 @@ describe("Generation runtime behavior", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

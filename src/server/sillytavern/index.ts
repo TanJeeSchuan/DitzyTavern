@@ -56,7 +56,6 @@ export type {
 	ChatImportDetailsModule,
 } from "./import-details";
 export {
-	clearStagedImportRegistry,
 	createChatImportModule,
 } from "./staged";
 export type {

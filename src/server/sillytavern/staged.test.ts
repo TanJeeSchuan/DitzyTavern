@@ -14,11 +14,10 @@ import { artifactTable, conversationTable, participantTable } from "../database/
 import { importSillyTavernChat } from "./import";
 import {
 	STAGED_IMPORT_SESSION_TTL_MS,
-	clearStagedImportRegistry,
 	createChatImportModule,
-	sweepExpiredImportSessions,
 	type ChatImportModule,
 } from "./staged";
+import { processStateFor } from "../application/process-state";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "./import-projection";
 import {
 	StagedChatImportExpiredError,
@@ -62,14 +61,12 @@ describe("staged SillyTavern chat import", () => {
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");
 		module = createChatImportModule(database, { artifactDirectory });
-		// Each test starts with a fresh session registry exactly like a new
-		// server process; the registry is cleared before and after every test.
-		clearStagedImportRegistry();
+		// Each test starts with a fresh session store exactly like a new
+		// server process: the store is keyed to this test's database.
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
-		clearStagedImportRegistry();
 	});
 
 	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
@@ -378,7 +375,7 @@ describe("staged SillyTavern chat import", () => {
 		// draft or resume system exists. Handles become expired, and the
 		// now-unregistered staged file has no GC either (the TTL sweep only
 		// covers sessions the live process still tracks).
-		clearStagedImportRegistry();
+		processStateFor(database).dispose();
 		expect(() => module.preview(token)).toThrow(StagedChatImportExpiredError);
 		expect(() => module.discard(token)).not.toThrow();
 		// The same module instance (and a fresh one) agree: no resume.
@@ -438,7 +435,7 @@ describe("staged SillyTavern chat import", () => {
 
 		// The opportunistic periodic sweep runs without any request touching
 		// the token, so abandoned flows lose their staged bytes too.
-		sweepExpiredImportSessions(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
+		processStateFor(database).sweep(Date.now() + STAGED_IMPORT_SESSION_TTL_MS + 1_000);
 		expect(stagedFiles()).toEqual([]);
 		expect(() => module.preview(token)).toThrow(
 			StagedChatImportExpiredError,

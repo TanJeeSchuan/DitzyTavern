@@ -13,7 +13,6 @@ import { importNativeLorebook, executeLorebookCommand } from "../lorebook/librar
 import { attachLorebookToConversation } from "../lorebook/attachments";
 import { captureGeneration } from "./generate-capture";
 import {
-	clearGenerationPreviewRegistry,
 	createGenerationPreviewAsync,
 	previewRecordFor,
 } from "./generation-preview";
@@ -82,7 +81,7 @@ const loreText = (plan: PromptPlan): string =>
 describe("generation capture coherence", () => {
 	let databases: Database[] = [];
 	afterEach(() => {
-		for (const database of databases) { clearGenerationPreviewRegistry(database); database.close(); }
+		for (const database of databases) database.close();
 		databases = [];
 	});
 

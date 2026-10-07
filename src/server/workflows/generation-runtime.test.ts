@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
+import { processStateFor } from "../application/process-state";
 import { gracefullyShutdownGenerations } from "./generation-recovery";
 import {
 	generationRuntimeFor,
@@ -143,20 +144,11 @@ describe("Generation runtime", () => {
 		expect(checkpoints.at(-1)).toEqual({ content: "onetwo", reasoning: "think", latestEventId: 3 });
 	});
 
-	test("expires terminal replay state on the scheduled boundary while the process is idle", () => {
-		let now = 1_000;
-		let scheduled: (() => void) | undefined;
-		let delay = -1;
+	test("expires terminal replay state while the process is idle", () => {
+		let now = Date.now();
 		let expired = 0;
-		const registry = new GenerationRuntimeRegistry({
-			now: () => now,
-			schedule: (callback, delayMs) => {
-				scheduled = callback;
-				delay = delayMs;
-				return { cancel: () => {} };
-			},
-			cancel: () => {},
-		});
+		const database = openInitializedDatabase({ path: ":memory:" });
+		const registry = generationRuntimeFor(database);
 		const runtime = registry.start({
 			generationId: 12,
 			conversationId: 3,
@@ -168,13 +160,14 @@ describe("Generation runtime", () => {
 		});
 		runtime.complete();
 
-		expect(delay).toBe(GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS);
-		expect(scheduled).toBeDefined();
-		now += GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS;
-		scheduled?.();
+		expect(registry.get(12)).toBeDefined();
+		now += GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS + 1;
+		// The process-state sweep tick is the idle expiry driver; no request touches the registry.
+		processStateFor(database).sweep(now);
 
 		expect(expired).toBe(1);
 		expect(registry.get(12)).toBeUndefined();
+		database.close();
 	});
 
 	test("complete and failed terminals flush sub-cadence output first", () => {

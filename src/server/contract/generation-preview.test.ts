@@ -9,13 +9,11 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
-import {
-	clearGenerationPreviewRegistry,
-} from "../workflows/generation-preview";
 import type {
 	GenerationPreview,
 	GenerationPreviewBody,
 } from "../../shared/contract/conversation-schema";
+import { processStateFor } from "../application/process-state";
 
 const prompt = {
 	systemInstruction: "",
@@ -80,7 +78,6 @@ describe("Prompt Plan inspection", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => {
 		setSystemTime();
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 
@@ -401,7 +398,8 @@ describe("Prompt Plan inspection", () => {
 			fetch: captureModelFetch(() => {}),
 		});
 		const plan = await preview(app, conversation.id, { kind: "send", content: "hello" });
-		clearGenerationPreviewRegistry(database);
+		// Simulates the restart drop through the container's one dispose path.
+		processStateFor(database).dispose();
 		const started = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{

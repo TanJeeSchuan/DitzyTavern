@@ -27,6 +27,7 @@ import type {
 } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 import { memoryActivationWithFinalText, type MemoryActivationRecord } from "../../shared/contract/memory-recall";
+import { processStateFor } from "../application/process-state";
 
 export interface GenerationPreviewRecordFields {
 	readonly id: string;
@@ -58,35 +59,31 @@ export type GenerationPreviewAcceptance = GenerationPreviewAcceptanceFor<Generat
 export type GenerationPreviewRequest = GenerationCaptureOptions & GenerationTarget;
 
 export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
-const stores = new WeakMap<Database, ReturnType<typeof createPreviewStore>>();
 
-const createPreviewStore = () => {
+export interface GenerationPreviewStore {
+	previews: Map<number, GenerationPreviewRecord>;
+	versions: Map<number, number>;
+	/** Evicts preview records past their expiry; the process-state tick drives this while idle. */
+	sweep(now?: number): void;
+	dispose(): void;
+}
+
+// ==[HUMAN APPROVED]== The expiring per-conversation inspection store. The process-state
+// container owns its lifecycle; this factory owns only the store's behavior.
+export const createGenerationPreviewStore = (): GenerationPreviewStore => {
 	const previews = new Map<number, GenerationPreviewRecord>();
 	const versions = new Map<number, number>();
-	const sweep = () => {
-		for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
-	};
-	const timer = setInterval(sweep, 60_000);
-	timer.unref();
 	return {
 		previews,
 		versions,
-		sweep,
-		dispose: () => { clearInterval(timer); previews.clear(); versions.clear(); },
+		sweep: (now: number = Date.now()) => {
+			for (const [conversationId, preview] of previews) if (preview.expiresAt <= now) previews.delete(conversationId);
+		},
+		dispose: () => { previews.clear(); versions.clear(); },
 	};
 };
 
-const previewStore = (database: Database) => {
-	let store = stores.get(database);
-	if (store === undefined) { store = createPreviewStore(); stores.set(database, store); }
-	return store;
-};
-
-/** Dispose and forget this database's preview store; no-op if it never created one. */
-export const clearGenerationPreviewRegistry = (database: Database): void => {
-	stores.get(database)?.dispose();
-	stores.delete(database);
-};
+const previewStore = (database: Database): GenerationPreviewStore => processStateFor(database).generationPreviews;
 
 const ensureRecord = (database: Database, id: string, conversationId: number): GenerationPreviewRecord => {
 	const store = previewStore(database);

@@ -16,7 +16,7 @@ import {
 	sendThroughProvisionalTailGeneration,
 } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
@@ -62,7 +62,6 @@ describe("Generation capture and provenance", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 

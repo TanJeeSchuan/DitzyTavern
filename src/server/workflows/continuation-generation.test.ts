@@ -8,7 +8,7 @@ import type { PromptPlan } from "../prompt-compiler";
 import { continueGeneration } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
-import { clearGenerationPreviewRegistry, createGenerationPreviewAsync } from "./generation-preview";
+import { createGenerationPreviewAsync } from "./generation-preview";
 
 const definition = (name: string): ParticipantDefinition => ({
 	name,
@@ -49,7 +49,6 @@ describe("Continuation Generation", () => {
 	});
 
 	afterEach(() => {
-		clearGenerationPreviewRegistry(database);
 		database.close();
 	});
 
