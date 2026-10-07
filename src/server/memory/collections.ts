@@ -188,9 +188,6 @@ export function readConversationMemories(database: Database, conversationId: num
 	return { revision: readConversationRevision(database, conversationId) ?? 0, cursor, sources, path, identities: state.identities, cast: state.cast, labelMerges: state.merges, labelRevision: state.revision };
 }
 
-// ==[HUMAN APPROVED]== Bounded refresh read for the Memories panel: only collections changed at or after
-// the caller's cursor, plus any collection with work registered as running in this process. The
-// returned cursor is taken before the read, so a write racing it is sent again rather than lost.
 export function readConversationMemoryChanges(database: Database, conversationId: number, since: string) {
 	const cursor = new Date().toISOString();
 	const db = drizzle(database);

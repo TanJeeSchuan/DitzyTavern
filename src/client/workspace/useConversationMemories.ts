@@ -21,10 +21,6 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			return { memories, catchup, settings };
 		},
 	});
-	// ==[HUMAN APPROVED]== While background work is in flight, poll the bounded change feed instead of the full
-	// collection view. The feed request carries the cached cursor, and its result is merged only when that
-	// cursor is still the cached one: a full reload that landed meanwhile is always newer, so a stale
-	// response cannot overwrite it. Inside one cursor generation a feed view is never older than the cache.
 	const refresh = useCallback(() => client.invalidateQueries({ queryKey }), [client, queryKey]);
 	useQuery({
 		queryKey: ["memory-changes", conversationId],
