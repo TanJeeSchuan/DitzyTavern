@@ -46,6 +46,7 @@ export default defineConfig({
 				],
 			},
 		],
+		"anti-slop/no-overlong-code-lines": "warn",
 		"anti-slop/no-widen-then-assert": "error",
 		"anti-slop/require-safety-comment-for-type-assertion": "error",
 		"ditzy/no-contract-definition-outside-contract": "error",
