@@ -148,8 +148,8 @@ interface ProvisionalModelTargetInput {
 	timestamp: string;
 	humanParticipantId: number;
 	modelParticipantId: number;
-	/** ==[HUMAN APPROVED]== Supply the next position when it was already read as part of validation. */
-	position?: number;
+	/** ==[HUMAN APPROVED]== The next Message position, read once by the lifecycle's validation. */
+	position: number;
 }
 
 interface ProvisionalModelTarget {
@@ -167,15 +167,10 @@ const createProvisionalModelTarget = (
 	db: ConversationDatabase,
 	input: ProvisionalModelTargetInput,
 ): ProvisionalModelTarget => {
-	const nextPosition = input.position ?? ((db
-		.select({ value: max(messageTable.position) })
-		.from(messageTable)
-		.where(eq(messageTable.conversation_id, input.conversationId))
-		.get()?.value ?? 0) + 1);
 	const model = requireParticipant(db, input.conversationId, input.modelParticipantId);
 	const modelMessageId = insertMessage(db, {
 		conversationId: input.conversationId,
-		position: nextPosition,
+		position: input.position,
 		timestamp: input.timestamp,
 		author: { participantId: model.id, name: model.name },
 		context: {
@@ -243,7 +238,7 @@ function hasReasoningData(
 // the current tail).
 interface AcceptGenerationValidation {
 	humanMessageId: number | null;
-	position?: number | undefined;
+	position: number;
 }
 
 type AcceptGenerationParticipant = ReturnType<typeof requireParticipant>;
@@ -429,7 +424,7 @@ export function acceptConversationTailGeneration(
 						"The unanswered human Message cannot be reused for this Send.",
 					);
 				}
-				return { humanMessageId: reused.id };
+				return { humanMessageId: reused.id, position: (latestPosition ?? 0) + 1 };
 			}
 			const humanMessageId = insertMessage(db, {
 		conversationId: input.conversationId,
@@ -445,7 +440,10 @@ export function acceptConversationTailGeneration(
 				timestamp: input.timestamp,
 				selected: true,
 			});
-			return { humanMessageId };
+			// ==[HUMAN APPROVED]== The provisional model target follows the just-inserted Human
+			// Message, so its position is the one this validation created plus one —
+			// derived from the position read here instead of re-reading max(position).
+			return { humanMessageId, position: (latestPosition ?? 0) + 2 };
 		},
 	});
 	return {
