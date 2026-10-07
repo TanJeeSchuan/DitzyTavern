@@ -22,6 +22,11 @@ import type { Portrait } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 
+export const updateSettingsTable = sqliteTable("update_settings", {
+	id: int().primaryKey().default(1),
+	automatic_checks: int({ mode: "boolean" }).notNull().default(true),
+}, (table) => [check("update_settings_singleton", sql`${table.id} = 1`)]);
+
 export const imageTable = sqliteTable("image", {
 	hash: text().primaryKey(),
 	bytes: blob({ mode: "buffer" }).notNull(),

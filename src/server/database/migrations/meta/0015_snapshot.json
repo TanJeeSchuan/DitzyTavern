@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fe4dffa6-6e10-4e4b-88ad-6864ad366232",
-  "prevId": "21508f4b-1d7e-48bb-a979-353401f0e62c",
+  "id": "21508f4b-1d7e-48bb-a979-353401f0e62c",
+  "prevId": "02dbd28c-bb2b-439b-8c81-568044aa83f3",
   "tables": {
     "active_generation": {
       "name": "active_generation",
@@ -1477,14 +1477,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": 2048
-        },
-        "memory_note": {
-          "name": "memory_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
         },
         "revision": {
           "name": "revision",
@@ -3492,6 +3484,37 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "update_settings": {
+      "name": "update_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "automatic_checks": {
+          "name": "automatic_checks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "update_settings_singleton": {
+          "name": "update_settings_singleton",
+          "value": "\"update_settings\".\"id\" = 1"
+        }
+      }
     }
   },
   "views": {},
