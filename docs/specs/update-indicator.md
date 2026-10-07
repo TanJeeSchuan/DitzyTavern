@@ -1,6 +1,6 @@
 # Update indicator
 
-Status: Design accepted. Implementation authorized through the three local update-indicator tickets.
+Status: Implemented. All three local update-indicator tickets are complete.
 
 Source: [GitHub issue #29](https://github.com/TanJeeSchuan/DitzyTavern/issues/29).
 
@@ -67,7 +67,7 @@ These states describe behavior, not a requirement for one flat enum. `checking` 
 
 Persist only the automatic-check preference. Results, attempt times, and errors remain server runtime state and clear on restart. Startup checks remain conditional on the preference. Concurrent requests share one in-flight check; opening Settings or opening another browser does not create another independent polling schedule.
 
-## Current behavior
+## Baseline before implementation
 
 The documented distribution is a Docker image published to GHCR. Successful master builds publish `latest`; version-tag builds publish the exact tag without moving `latest`. The workflow does not create GitHub Releases. On 2026-10-07, the upstream repository had no Releases or tags.
 
@@ -81,7 +81,7 @@ The existing GitHub Actions workflow has an increasing run number. PRs and faile
 
 ## Final review
 
-The product design, executable publication guarantees, deterministic build identity, checker state, and workflow-numbering caveat are accepted. Q19 closes the final decision by accepting temporary promotion lag and repair through rerunning the publication job. During ticket review, the user superseded Q18: PRs must neither build nor publish Docker images. The user subsequently approved all three local tickets and authorized implementation, commits, a pull request, and fixes in response to review.
+The product design, executable publication guarantees, deterministic build identity, checker state, and workflow-numbering caveat are accepted. Q19 closes the final decision by accepting temporary promotion lag and repair through rerunning the publication job. During ticket review, the user superseded Q18: PRs must neither build nor publish Docker images. All three tickets are implemented. Standards review identified duplicated official-index validation, resolved by sharing its existing schema; spec review found no mismatches. Docker image execution remains a master-CI check because Docker was unavailable locally. The existing unnumbered registry alias requires the explicit operator transition documented in the Docker guide.
 
 ## Proposals discussed, not accepted
 

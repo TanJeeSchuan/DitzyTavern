@@ -82,6 +82,8 @@ Provider URLs are resolved from inside the container. `127.0.0.1` in a connectio
 
 ## Updates and backups
 
+Official builds check for updates after server startup and every 24 hours. Settings offers Check now and an installation-wide automatic-check toggle; the toggle survives container replacement through the data volume. Disabling it leaves manual checks available. A failed refresh retains the last successful result with a failure notice, while restarting clears cached results. Custom builds do not contact the registry.
+
 Settings only reports update availability and links here. DitzyTavern does not pull images or restart itself. Pull the desired `build-N` tag or `latest`, stop the old container with a 10-second grace period, remove that stopped container, and recreate it using the reference run command with the same data volume, port mapping, and encryption key. Starting the new image migrates the database automatically. Back up before upgrading; returning to an older image does not undo database migrations.
 
 Back up all of `/app/data` and the encryption key. Stop the container before copying the directory so SQLite, including any WAL files, and imported artifacts are consistent. Losing the key makes saved provider credentials unreadable. Deleting the data volume deletes your stories.
