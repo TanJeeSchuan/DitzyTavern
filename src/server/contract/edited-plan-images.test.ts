@@ -28,6 +28,7 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 };
 
 const createChat = (database: Database) => createConversationModule(database).create({
+	authorNote: "",
 	name: "Images", participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
 		{ definition: { name: "Maren", prompt, openings: [] } },

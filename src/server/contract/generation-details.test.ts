@@ -24,6 +24,7 @@ describe("Generation detail transport", () => {
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Details Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

@@ -85,6 +85,7 @@ describe("Generation runtime behavior", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
+			authorNote: "",
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -244,6 +245,7 @@ describe("Generation runtime behavior", () => {
 
 	test("generates through either Control order using identities, not positions", async () => {
 		const swapped = createConversationModule(database).create({
+			authorNote: "",
 			name: "Swapped Chat",
 			participants: [
 				{ definition: adHoc("Maren Voss", ["Held by the model seat."]) },
@@ -267,6 +269,7 @@ describe("Generation runtime behavior", () => {
 
 	test("rejects unplayable Conversations with a typed result before the transport", async () => {
 		const incomplete = createConversationModule(database).create({
+			authorNote: "",
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -922,6 +925,7 @@ describe("Prompt Comments", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		conversationId = createConversationModule(database).create({
+			authorNote: "",
 			name: "Annotated Chat",
 			participants: [
 				{ definition: adHoc("Writer") },

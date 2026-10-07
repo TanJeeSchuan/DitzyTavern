@@ -216,6 +216,7 @@ describe("Lorebook library transport", () => {
 	test("reads attachment eligibility and Chat Lore settings", async () => {
 		const created = await postCommand(app, { type: "create", name: "World" });
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -246,6 +247,7 @@ describe("Lorebook library transport", () => {
 			},
 		});
 		createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -275,6 +277,7 @@ describe("Lorebook library transport", () => {
 			},
 		});
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -315,6 +318,7 @@ describe("Lorebook library transport", () => {
 			},
 		});
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -343,6 +347,7 @@ describe("Lorebook library transport", () => {
 			},
 		});
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
@@ -385,6 +390,7 @@ describe("Lorebook library transport", () => {
 			},
 		});
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Story",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

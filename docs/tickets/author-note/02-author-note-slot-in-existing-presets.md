@@ -24,7 +24,7 @@ A writer whose Chat uses an older preset sees that the note is inactive, adds th
 - [x] Contract tests: add action on a preset without the slot; add action refused when one exists; export/import round trip keeps position, role and enablement; duplicate rejection.
 - [x] Verify the inactive explanation manually with playwright-cli. No UI tests.
 - [x] Run focused tests, typechecking, and the full test suite.
-- [x] Skip `/code-review` as instructed; branch-wide review follows later.
+- [x] Resolve branch-wide review findings for shared single-use reference rules and labels, Duplicate availability, and the inactive-note Alert.
 - [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
@@ -38,3 +38,9 @@ A writer whose Chat uses an older preset sees that the note is inactive, adds th
 - `bun run test:e2e`: 24 passed.
 - Manual `playwright-cli`: blank note stays quiet; a saved note on an older recipe offers Add Author Note Block; a disabled slot offers Enable Author Note Block. Both actions remove the inactive explanation and retain the note.
 - Native interchange and duplicate validation already shipped with ticket 01; this ticket verifies them through the HTTP contract.
+
+## Review-fix verification
+
+- Branch: `author-note-review`. All assigned review findings resolved.
+- `bun run check`: passed (1,282 tests and 3 E2E harness tests).
+- `bun run test:e2e`: 24 passed.

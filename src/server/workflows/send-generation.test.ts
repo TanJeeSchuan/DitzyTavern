@@ -27,6 +27,7 @@ describe("Send through provisional Tail Generation", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Send Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

@@ -25,6 +25,7 @@ describe("Chat list summaries", () => {
 
 	const createChat = (name: string, names: string[]) =>
 		module.create({
+			authorNote: "",
 			name,
 			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, openings: [] } })),
 			control: { human: 0, model: 1 },
@@ -95,7 +96,7 @@ describe("Chat list summaries", () => {
 	});
 
 	test("a Chat without Participants has no Portraits", () => {
-		const chat = module.create({ name: "No Cast" });
+		const chat = module.create({ authorNote: "", name: "No Cast" });
 		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

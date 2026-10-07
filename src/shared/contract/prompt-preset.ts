@@ -30,9 +30,19 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 export const promptAuthorNoteReference = Type.Literal("author-note");
+export type PromptAuthorNoteReference = Static<typeof promptAuthorNoteReference>;
 
 export const promptMemoryReference = Type.Literal("memory");
 export type PromptMemoryReference = Static<typeof promptMemoryReference>;
+
+export const singleUseReferenceLabels = {
+	lore: "Lore",
+	memory: "Memory",
+	"author-note": "Author Note",
+} as const satisfies Record<PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, string>;
+
+export const isSingleUseReference = (reference: string): reference is keyof typeof singleUseReferenceLabels =>
+	Object.hasOwn(singleUseReferenceLabels, reference);
 
 // ==[HUMAN APPROVED]== The outgoing presentation role a Definition slot's content is sent as.
 // It controls model-request presentation only: it never changes which
@@ -59,7 +69,7 @@ export const defaultOutgoingRoles = {
 	lore: "system",
 	memory: "system",
 	"author-note": "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | "author-note", PromptOutgoingRole>;
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | PromptAuthorNoteReference, PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,

@@ -126,6 +126,30 @@ describe("Chat import transport adapters", () => {
 		return { authorNote: committed.conversation.authorNote, warnings: receipt.warnings };
 	};
 
+	test("maps imported participant macros regardless of case", async () => {
+		expect((await importNoteWarnings({ ...header.chat_metadata, note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." })).authorNote).toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
+	});
+
+	test.each([
+		{ note_prompt: "Keep quiet." },
+		{ ...header.chat_metadata, note_position: undefined },
+		{ ...header.chat_metadata, note_depth: undefined },
+		{ ...header.chat_metadata, note_role: undefined },
+		{ ...header.chat_metadata, note_interval: undefined },
+	])("imports a note with absent settings without false warnings (%#)", async (metadata) => {
+		const { authorNote, warnings } = await importNoteWarnings(metadata);
+		expect(authorNote).not.toBe("");
+		expect(warnings).toEqual([]);
+	});
+
+	test.each([
+		{ metadata: { note_prompt: "Keep quiet.", note_position: 2 }, setting: "position 2" },
+		{ metadata: { note_prompt: "Keep quiet.", note_depth: 4 }, setting: "depth 4" },
+	])("warns about supplied placement settings without inventing missing values (%#)", async ({ metadata, setting }) => {
+		const { warnings } = await importNoteWarnings(metadata);
+		expect(warnings).toEqual([`Author's Note placement (${setting}) was not kept; the default Author Note slot is after history.`]);
+	});
+
 	test.each([
 		{ position: 0, depth: 0, warning: "Author's Note placement (position 0, depth 0) was not kept; the default Author Note slot is after history." },
 		{ position: 2, depth: 4, warning: "Author's Note placement (position 2, depth 4) was not kept; the default Author Note slot is after history." },
@@ -153,6 +177,7 @@ describe("Chat import transport adapters", () => {
 
 	test.each([
 		{ description: "empty", note: "" },
+		{ description: "whitespace-only", note: " \n\t " },
 		{ description: "missing", note: undefined },
 	])("imports an $description Author's Note as blank without note warnings", async ({ note }) => {
 		expect(await importNoteWarnings({ note_prompt: note, note_position: 2, note_depth: 4, note_role: 2, note_interval: 3 })).toEqual({ authorNote: "", warnings: [] });
@@ -161,15 +186,6 @@ describe("Chat import transport adapters", () => {
 	test("imports supported Author's Note settings without warnings", async () => {
 		const { warnings } = await importNoteWarnings(header.chat_metadata);
 		expect(warnings).toEqual([]);
-	});
-
-	test("reports every changed Author's Note setting together", async () => {
-		const { warnings } = await importNoteWarnings({ ...header.chat_metadata, note_position: 2, note_depth: 4, note_role: 2, note_interval: 3 });
-		expect(warnings).toEqual([
-			"Author's Note placement (position 2, depth 4) was not kept; the default Author Note slot is after history.",
-			"Author's Note role (2) was not kept; the default Author Note slot uses the system role.",
-			"Author's Note interval (3) was not kept; the Author Note applies to every Generation.",
-		]);
 	});
 
 	const sha256Of = (bytes: Uint8Array) =>

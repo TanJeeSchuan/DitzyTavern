@@ -20,6 +20,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 
 	test("threads recipe writes and carries only the selected Variant's resolved journal", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Macro variables",
 			participants: [
 				{
@@ -86,6 +87,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 
 	test("records one-time opening writes on the selected greeting Variant", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Macro greeting",
 			participants: [
 				{
@@ -119,6 +121,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 
 	test("retains pending writes when restart recovery terminalizes checkpointed output", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Recover macro writes",
 			participants: [
 				{

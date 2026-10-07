@@ -28,6 +28,7 @@ const prompt = {
 const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 
 const createChat = (database: Database) => createConversationModule(database).create({
+	authorNote: "",
 	name: "Preview Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },
@@ -87,6 +88,7 @@ describe("Prompt Plan inspection", () => {
 	test("presents recoverable preview failures with their domain reason", async () => {
 		const module = createConversationModule(database);
 		const incomplete = module.create({
+			authorNote: "",
 			name: "Incomplete Preview Chat",
 			messages: [{
 				timestamp: "2026-09-13T00:00:00.000Z",
@@ -99,6 +101,7 @@ describe("Prompt Plan inspection", () => {
 		});
 		const playable = createChat(database);
 		const siblingUnavailable = module.create({
+			authorNote: "",
 			name: "Imported Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -505,6 +508,7 @@ describe("Prompt Plan inspection", () => {
 
 	test("consumes a Sibling preview token after acceptance", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -548,6 +552,7 @@ describe("Prompt Plan inspection", () => {
 
 	test("keeps a Sibling preview token retryable after acceptance fails", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Retryable Sibling Preview Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

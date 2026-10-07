@@ -62,6 +62,7 @@ export const createChat = (
 	names: { name?: string; human?: string; model?: string } = {},
 ) =>
 	createConversationModule(database).create({
+		authorNote: "",
 		name: names.name ?? "Preset Chat",
 		participants: [
 			{

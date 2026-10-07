@@ -5,7 +5,7 @@
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
 
-import type { PromptOutgoingRole, PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+import { singleUseReferenceLabels, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
 
 // ==[HUMAN APPROVED]== One vocabulary for both the recipe editor and the SillyTavern import
 // review, so a slot label or outgoing-role label can never drift between
@@ -18,9 +18,7 @@ export const slotLabels = {
 	"model-example-dialogue": "Example Dialogue",
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
-	lore: "Lore",
-	memory: "Memory",
-	"author-note": "Author Note",
+	...singleUseReferenceLabels,
 	instruction: "Instruction",
 } as const satisfies Record<PromptPresetBlockReference, string>;
 

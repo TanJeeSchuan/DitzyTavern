@@ -4,6 +4,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationPromptPresetTable, promptPresetBlockTable } from "../database/schema";
 import {
 	defaultOutgoingRoles,
+	isSingleUseReference,
+	singleUseReferenceLabels,
 	type PromptPresetBlockPatch,
 	type PromptBlockReference,
 	type PromptPresetBlockOccurrence,
@@ -33,12 +35,8 @@ export class InvalidPromptPresetOperationError extends Error {
 	}
 }
 
-const uniqueBlockName = (reference: string) =>
-	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : reference === "author-note" ? "Author Note" : null;
-
 const assertNoSecondUniqueBlock = (reference: string, exists: boolean) => {
-	const name = uniqueBlockName(reference);
-	if (name !== null && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${name} block.`);
+	if (isSingleUseReference(reference) && exists) throw new InvalidPromptPresetOperationError(`A Prompt Preset may contain at most one ${singleUseReferenceLabels[reference]} block.`);
 };
 
 const validateBlockPatches = (
@@ -295,7 +293,7 @@ export const duplicatePromptPresetBlock = (
 	blockId: number,
 ): PromptPresetRecipe =>
 	writePromptPresetBlock(database, presetId, blockId, (db, original) => {
-		assertNoSecondUniqueBlock(original.reference, uniqueBlockName(original.reference) !== null);
+		assertNoSecondUniqueBlock(original.reference, true);
 		// ==[HUMAN APPROVED]== The copy's row is placed by renumbering, not by its stored
 		// position: the ordered list is read before the insert so the copy is
 		// spliced in exactly once, right after the original.

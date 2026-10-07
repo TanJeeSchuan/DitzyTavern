@@ -12,10 +12,11 @@ import {
 	type ActiveCastRow,
 } from "./internal";
 import { runConversationReadTransaction } from "./commands/transaction";
-import type {
-	ConversationPromptPreset,
-	PromptPresetRecipe,
-	ResolvedPromptPresetSlot,
+import {
+	isSingleUseReference,
+	type ConversationPromptPreset,
+	type PromptPresetRecipe,
+	type ResolvedPromptPresetSlot,
 } from "../../shared/contract/prompt-preset";
 
 // ==[HUMAN APPROVED]== The Chat's selected recipe with each Referenced Prompt Block resolved
@@ -56,7 +57,7 @@ const projectPromptPreset = (
 				content: slot.content,
 			};
 		}
-		if (slot.reference === "lore" || slot.reference === "memory" || slot.reference === "author-note") {
+		if (isSingleUseReference(slot.reference)) {
 			return {
 				id: slot.id,
 				reference: slot.reference,

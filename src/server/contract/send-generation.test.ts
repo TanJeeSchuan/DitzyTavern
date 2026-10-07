@@ -70,6 +70,7 @@ describe("Send generation transport", () => {
 
 	test("accepts the draft with its revision and exposes the authoritative human/model pair", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -116,6 +117,7 @@ describe("Send generation transport", () => {
 
 	test("persists partial provider output as an interrupted Variant through the HTTP routes", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Partial Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -171,6 +173,7 @@ describe("Send generation transport", () => {
 
 	test("zero output retries only on an explicit second start and never duplicates the human Message", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Zero-output retry contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -235,6 +238,7 @@ describe("Send generation transport", () => {
 
 	test("provider response bodies and request details never enter Generation HTTP or SSE errors", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Safe provider failure contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -287,6 +291,7 @@ describe("Send generation transport", () => {
 
 	test("raw provider finish reasons are normalized before Generation SSE", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Safe finish contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -328,6 +333,7 @@ describe("Send generation transport", () => {
 
 	test("persists a length-limited terminal outcome through the HTTP routes", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Length-limited Send contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

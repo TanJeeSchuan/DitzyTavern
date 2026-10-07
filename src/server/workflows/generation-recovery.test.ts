@@ -31,6 +31,7 @@ describe("generation recovery diagnostics", () => {
 	test("continues recovering healthy rows and reports a corrupt row with its identity", () => {
 		const conversation = createConversationModule(database);
 		const created = conversation.create({
+			authorNote: "",
 			name: "Recovery Diagnostics Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

@@ -40,6 +40,7 @@ const adHoc = (
 const inputWith = (
 	overrides: Partial<ConversationCreationInput> = {},
 ): ConversationCreationInput => ({
+	authorNote: "",
 	name: "Native Conversation",
 	participants: [
 		{ definition: adHoc("Writer") },
@@ -356,6 +357,7 @@ describe("Conversation creation", () => {
 	test("preservation-style creation without Participants commits as incomplete", () => {
 		const conversation = createConversationModule(database);
 		const snapshot = conversation.create({
+			authorNote: "",
 			name: "Imported Conversation",
 			data: [{ namespace: "archive", key: "source", value: "chat-export.json" }],
 			messages: [

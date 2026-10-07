@@ -39,6 +39,7 @@ describe("Resumable generation transport", () => {
 
 	test("separates acceptance from subscription and replays buffered events", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Resumable Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -139,6 +140,7 @@ describe("Resumable generation transport", () => {
 
 	test("keeps other HTTP routes responsive while provider events are buffered", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Responsive Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -229,6 +231,7 @@ describe("Resumable generation transport", () => {
 
 	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -298,6 +301,7 @@ describe("Resumable generation transport", () => {
 
 	test("disconnecting the initiating stream leaves the controlled provider running", async () => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Disconnect Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -371,6 +375,7 @@ describe("Resumable generation transport", () => {
 	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
 		const conversationModule = createConversationModule(database);
 		const conversation = conversationModule.create({
+			authorNote: "",
 			name: "Restart Recovery Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

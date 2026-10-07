@@ -28,6 +28,7 @@ const defaultRecipe: CompilePromptInput["recipe"] = [
 ];
 
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
+	authorNote: "",
 	recipe: defaultRecipe,
 	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	human: {
