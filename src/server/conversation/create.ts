@@ -368,6 +368,7 @@ export function createConversation(
 			.insert(conversationTable)
 			.values({
 				name: input.name,
+				author_note: input.authorNote ?? "",
 				creation_time: creationTime,
 				last_message_time: lastMessageTime,
 			})

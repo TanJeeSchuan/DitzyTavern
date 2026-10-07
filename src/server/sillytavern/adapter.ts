@@ -148,8 +148,13 @@ export function decodeSillyTavernImportSource(
 		throw new SillyTavernImportError("The source contains no records.");
 	}
 	const header = decodeHeader(headerRecord);
+	const metadata = isJsonObject(header.chat_metadata) ? header.chat_metadata : null;
+	const authorNote = isJsonString(metadata?.note_prompt) ? metadata.note_prompt.replaceAll("{{user}}", "{{self}}").replaceAll("{{char}}", "{{other}}") : "";
 	const integrity = sourceIntegrity(header);
 	const { messages, warnings, authors } = decodeMessages(messageRecords);
+	if (authorNote !== "" && (metadata?.note_position !== 1 || metadata?.note_depth !== 0)) warnings.push(`Author's Note placement (position ${metadata?.note_position}, depth ${metadata?.note_depth}) was not kept; the default Author Note slot is after history.`);
+	if (authorNote !== "" && metadata?.note_role !== 0) warnings.push(`Author's Note role (${metadata?.note_role}) was not kept; the default Author Note slot uses the system role.`);
+	if (authorNote !== "" && metadata?.note_interval !== 1) warnings.push(`Author's Note interval (${metadata?.note_interval}) was not kept; the Author Note applies to every Generation.`);
 	const variantCount = messages.reduce(
 		(total, message) => total + message.variants.length,
 		0,
@@ -180,7 +185,7 @@ export function decodeSillyTavernImportSource(
 		warnings,
 	};
 
-	return { messages, authors, data, report };
+	return { authorNote, messages, authors, data, report };
 }
 
 // ==[HUMAN APPROVED]== The sealed adapter parse surface: decode plus the Default Import Policy
