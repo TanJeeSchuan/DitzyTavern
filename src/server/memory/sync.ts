@@ -6,7 +6,7 @@ import type { ConversationMemoryChange } from "../../shared/contract/conversatio
 import { invalidateMemoryWorkForConversation } from "./cancellation";
 import { invalidateMemoryWorkForVariant, queueMemorySource, queueMemoryTail } from "./collections";
 import { sha256 } from "./hash";
-import { abortMemoryWork, registeredMemoryVariants } from "./work";
+import { abortMemoryWork } from "./work";
 
 export function refreshMemoryForConversation(database: Database, conversationId: number, reason?: string): void {
 	invalidateMemoryWorkForConversation(database, conversationId, reason);
@@ -22,8 +22,10 @@ export function refreshMemoryForConversation(database: Database, conversationId:
 // join Memory's collection table for the staleness check.
 export function syncMemorySources(database: Database, change: ConversationMemoryChange): void {
 	if (change.removedVariantIds.length > 0) {
-		const removed = new Set(change.removedVariantIds);
-		abortMemoryWork(database, registeredMemoryVariants(database).filter((id) => removed.has(id)));
+		// ==[HUMAN APPROVED]== Exactly the reported removals are abandoned: the report names
+		// the Variant rows this write deleted, so no registered-variant scan is
+		// needed to rediscover them.
+		abortMemoryWork(database, change.removedVariantIds);
 	}
 	if (change.touchedVariantIds.length > 0) {
 		const rows = new Map(
