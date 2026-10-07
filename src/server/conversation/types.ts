@@ -273,6 +273,7 @@ export type ChatHistoryMessage = SharedChatHistoryMessage;
 export type ChatHistoryPage = SharedChatHistoryPage;
 
 export interface ChatHistoryPageRequest {
+	aroundMessageId?: number;
 	// 1-based page within the stable position-ordered chronology, counted
 	// backward from the newest Message (page 1 = latest window).
 	page?: number;

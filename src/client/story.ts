@@ -66,6 +66,7 @@ export interface PreviewSelectionRequest {
 
 export interface StoryPaging {
 	index: number;
+	newestIndex: number;
 	pageSize: number;
 	totalMessages: number;
 	totalPages: number;
@@ -80,7 +81,8 @@ export interface StoryState {
 	// revisioned command seam needs it when the full snapshot is not loaded.
 	revision: number | null;
 	// ==[HUMAN APPROVED]== Accumulated stable chronological Messages, deduplicated by Message id.
-	// The first page is the latest window; older pages prepend above it.
+	// One contiguous page window: older pages prepend and newer pages append.
+	// The window is attached to the latest Message only when newestIndex is 1.
 	messages: StoryMessage[];
 	page: StoryPaging | null;
 	status: "idle" | "loading-first" | "loading-more" | "ready" | "error";
@@ -91,13 +93,14 @@ export type StoryAction =
 	// ==[HUMAN APPROVED]== A different Chat is being opened (or the current one re-requested);
 	// the reader resets and loads the first page fresh.
 	| { type: "chat-opened"; conversationId: number }
-	// ==[HUMAN APPROVED]== The first page arrives: the latest window of history. It replaces any
+	// ==[HUMAN APPROVED]== The first page of a requested window arrives. It replaces any
 	// accumulated messages.
 	| { type: "first-page"; page: ChatHistoryPage; activeGenerationIds?: readonly number[] }
-	// ==[HUMAN APPROVED]== An older page arrives; its Messages prepend to the accumulated
-	// sequence with no overlap.
+	// ==[HUMAN APPROVED]== An adjacent page arrives; its Messages extend the window
+	// chronologically with no overlap.
 	| { type: "next-page-arrived"; page: ChatHistoryPage }
-	// ==[HUMAN APPROVED]== The view requested an older page; further requests are ignored until
+	| { type: "history-refreshed"; page: ChatHistoryPage; activeGenerationIds?: readonly number[] }
+	// ==[HUMAN APPROVED]== The view requested an adjacent page; further requests are ignored until
 	// it arrives or fails.
 	| { type: "load-more-started" }
 	| { type: "history-failed" }
@@ -247,13 +250,13 @@ export const canOfferSiblingGeneration = ({
 	!previewActive &&
 	activeGenerationMessageIds.every((messageId) => messageId === message.id);
 
-const prependUnique = (
+const mergeUnique = (
 	existing: readonly StoryMessage[],
 	incoming: readonly StoryMessage[],
 ): StoryMessage[] => {
 	const known = new Set(existing.map((message) => message.id));
 	const fresh = incoming.filter((message) => !known.has(message.id));
-	return [...fresh, ...existing];
+	return [...fresh, ...existing].sort((a, b) => a.position - b.position);
 };
 
 const updateStoryVariant = (
@@ -305,36 +308,53 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					state.messages.find((entry) => entry.id === message.id),
 					activeGenerationIds,
 				)),
-				page: { ...action.page.page },
+				page: { ...action.page.page, newestIndex: action.page.page.index },
 				status: "ready",
 				preview: null,
 			};
-		case "next-page-arrived":
+		case "history-refreshed":
 			if (state.conversationId !== action.page.conversationId) return state;
 			return {
 				...state,
 				revision: action.page.revision,
-				messages: prependUnique(
-					state.messages,
-					action.page.messages.map((message) => toStoryMessage(message)),
-				),
-				page: { ...action.page.page },
+				messages: state.messages.map((message) => {
+					const fresh = action.page.messages.find((entry) => entry.id === message.id);
+					return fresh ? toStoryMessage(fresh, message, new Set(action.activeGenerationIds ?? [])) : message;
+				}),
+			};
+		case "next-page-arrived": {
+			if (state.conversationId !== action.page.conversationId || state.page === null) return state;
+			const messages = mergeUnique(state.messages, action.page.messages.map((message) => toStoryMessage(message)));
+			const { pageSize, totalMessages } = action.page.page;
+			const edge = action.page.messages.at(-1);
+			const newerMessages = Math.max(0, (action.page.page.index - 1) * pageSize - messages.filter((message) => edge && message.position > edge.position).length);
+			const newestIndex = Math.floor(newerMessages / pageSize) + 1;
+			return {
+				...state,
+				revision: action.page.revision,
+				messages,
+				page: {
+					...action.page.page,
+					index: Math.max(newestIndex, Math.ceil((newerMessages + messages.length) / pageSize)),
+					newestIndex,
+					hasOlder: newerMessages + messages.length < totalMessages,
+					hasNewer: newestIndex > 1,
+				},
 				status: "ready",
 			};
+		}
 		case "load-more-started":
-			return state.status === "ready" && state.page?.hasOlder === true
+			return state.status === "ready" && (state.page?.hasOlder === true || state.page?.hasNewer === true)
 				? { ...state, status: "loading-more" }
 				: state;
 		case "history-failed":
-			return state.status === "loading-first" || state.status === "loading-more"
-				? { ...state, status: "error" }
-				: state;
+			return { ...state, status: "error" };
 		case "message-deleted": {
 			const messages = state.messages.filter((message) => message.id !== action.messageId);
 			if (messages.length === state.messages.length) return state;
 			if (state.page === null) return { ...state, revision: action.revision, messages };
 			const totalMessages = Math.max(0, state.page.totalMessages - 1);
-			const index = Math.max(0, state.page.index - 1);
+			const index = Math.max(state.page.newestIndex, Math.ceil(((state.page.newestIndex - 1) * state.page.pageSize + messages.length) / state.page.pageSize));
 			return {
 				...state,
 				revision: action.revision,
@@ -343,9 +363,9 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					...state.page,
 					index,
 					totalMessages,
-					totalPages: Math.ceil(totalMessages / state.page.pageSize),
-					hasOlder: messages.length < totalMessages,
-					hasNewer: index > 1,
+					totalPages: Math.max(1, Math.ceil(totalMessages / state.page.pageSize)),
+					hasOlder: state.page.hasOlder,
+					hasNewer: state.page.newestIndex > 1,
 				},
 			};
 		}
@@ -483,7 +503,7 @@ export type StoryVariantSelection =
 	| { kind: "immediate"; messageId: number; variantId: number }
 	| { kind: "preview"; messageId: number; variantId: number };
 
-// ==[HUMAN APPROVED]== A Swipe previews when later Messages exist.
+// ==[HUMAN APPROVED]== A Swipe previews when later Messages exist, including outside the window.
 // The final Message can switch immediately because there is nothing to dim.
 export const classifyVariantSelection = (
 	state: StoryState,
@@ -496,7 +516,7 @@ export const classifyVariantSelection = (
 	const target = message.swipes.find((variant) => variant.id === variantId);
 	if (target === undefined) return { kind: "blocked" };
 	if (message.swipes[message.activeSwipe]?.id === target.id) return { kind: "noop" };
-	return state.messages.some((later) => later.position > message.position)
+	return state.page?.hasNewer || state.messages.some((later) => later.position > message.position)
 		? { kind: "preview", messageId, variantId }
 		: { kind: "immediate", messageId, variantId };
 };

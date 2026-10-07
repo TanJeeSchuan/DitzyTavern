@@ -106,6 +106,24 @@ describe("Conversation paginated history", () => {
 		expect(allPositions).toEqual([3, 4, 5, 6, 1, 2]);
 	});
 
+	test("aroundMessageId selects the fixed tail-counted page, including boundaries and sparse positions", () => {
+		const chat = createHistoryChat(11);
+		const other = createHistoryChat(1);
+		database.run("UPDATE messages SET position = position * 3 + 100 WHERE conversation_id = ?", [chat.id]);
+		const all = conversation.readHistory(chat.id, { pageSize: 20 })!.messages;
+		for (const [offset, index, positions] of [
+			[0, 3, [103, 106, 109]], [2, 3, [103, 106, 109]], [3, 2, [112, 115, 118, 121]],
+			[6, 2, [112, 115, 118, 121]], [7, 1, [124, 127, 130, 133]], [10, 1, [124, 127, 130, 133]],
+		] as const) {
+			const around = conversation.readHistory(chat.id, { aroundMessageId: all[offset]!.id, pageSize: 4 });
+			expect(around?.page.index).toBe(index);
+			expect(around?.messages.map((message) => message.position)).toEqual([...positions]);
+			expect(around).toEqual(conversation.readHistory(chat.id, { page: index, pageSize: 4 }));
+		}
+		expect(conversation.readHistory(chat.id, { aroundMessageId: -1 })).toBeUndefined();
+		expect(conversation.readHistory(chat.id, { aroundMessageId: conversation.readHistory(other.id)!.messages[0]!.id })).toBeUndefined();
+	});
+
 	test("bounds an oversized page request to the final page and clamps the page size", () => {
 		const chat = createHistoryChat(5);
 
