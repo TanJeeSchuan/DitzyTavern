@@ -26,9 +26,10 @@ const identityInstructions = (database: Database, messageId: number) => {
 	const message = database.query<{ conversation_id: number }, [number]>("SELECT conversation_id FROM messages WHERE id = ?").get(messageId);
 	if (!message) return "";
 	const { cast, identities } = readMemoryLabelState(database, message.conversation_id);
-	return cast.flatMap(({ id, name }) => {
+	return cast.flatMap(({ id, names }) => {
 		const identity = identities[id];
-		return identity?.kind === "excluded" ? [`${name} directs the story and is not a character in it. Never use ${name} as a person.`] : identity?.kind === "plays" ? [`First person in ${name}'s Messages refers to ${identity.person}.`] : [];
+		const [name, ...former] = names;
+		return identity?.kind === "excluded" ? [`${name}${former.length ? ` (also ${former.join(", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`] : identity?.kind === "plays" ? [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`] : [];
 	}).join("\n");
 };
 

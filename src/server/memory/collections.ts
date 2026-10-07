@@ -183,7 +183,7 @@ export function readConversationMemories(database: Database, conversationId: num
 		if (collection) return [toView(collection, variant, readiness.get(variant.variantId)!)];
 		return variant.content.trim().length === 0 ? [] : [unprocessedView(variant, enabled)];
 	});
-	return { sources, path, identities: state.identities, labelMerges: state.merges, labelRevision: state.revision };
+	return { sources, path, identities: state.identities, cast: state.cast, labelMerges: state.merges, labelRevision: state.revision };
 }
 
 export function correctMemorySource(database: Database, conversationId: number, command: MemoryCorrectionCommand): MemoryCollectionView {

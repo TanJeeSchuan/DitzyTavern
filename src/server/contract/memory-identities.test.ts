@@ -14,7 +14,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createMemorySettingsModule } from "../memory/settings";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { sha256 } from "../memory/hash";
-import { memoryLabelsConflict, memoryLabelsMerged, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryIdentity } from "../../shared/contract/memory";
+import { conversationMemories, memoryLabelsConflict, memoryLabelsMerged, type CapturedMemoryMessage, type MemoryCandidateJudgment, type MemoryIdentity } from "../../shared/contract/memory";
 
 const claim = (messageId: number, people: string[]): MemoryCandidateJudgment => ({ claim: "Maren promised a key.", attribution: "Narrated event", people, evidence: [{ messageId, excerpt: "I promised a key." }], judgment: { support: "supported", attribution: "correct", usefulness: "retain", probabilities: {}, confidence: {} } });
 const source = (database: Database, conversationId: number, position: number, author: { id: number; name: string }, people?: string[], selected = true) => {
@@ -35,6 +35,21 @@ describe("Cast Memory identities", () => {
 	let database: Database;
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
+
+	test("exposes current and captured Memory names in first-seen order for each participant", async () => {
+		const chat = createChat(database);
+		const writer = chat.cast[0]!;
+		source(database, chat.id, 4, writer);
+		source(database, chat.id, 1, { ...writer, name: "Guide" });
+		source(database, chat.id, 2, writer);
+		database.run("UPDATE participant SET name = 'Director' WHERE id = ?", [writer.id]);
+		source(database, chat.id, 3, { ...writer, name: "Director" });
+		const unknown = source(database, chat.id, 5, writer);
+		database.run("UPDATE messages SET author_name = NULL WHERE id = ?", [unknown.messageId]);
+		const response = await createMemoryRoutes(database).handle(new Request(`http://localhost/api/conversations/${chat.id}/memories`));
+		expect(response.status).toBe(200);
+		expect(Value.Parse(conversationMemories, await response.json()).cast).toEqual([{ id: writer.id, names: ["Director", "Guide", "Writer"] }, { id: chat.cast[1]!.id, names: ["Maren"] }]);
+	});
 
 	test("skips guidance in catch-up, tail, direct and reset queues while retaining reference context", async () => {
 		const chat = createChat(database);
@@ -86,7 +101,7 @@ describe("Cast Memory identities", () => {
 		expect(startMemoryCatchup(database, chat.id).pending).toBe(1);
 	});
 
-	test("Plays rewrites and deduplicates saved labels and corrections, using the participant's current name", async () => {
+	test("Plays rewrites and deduplicates saved labels and corrections across participant renames", async () => {
 		const chat = createChat(database);
 		const writer = chat.cast[0]!;
 		const story = source(database, chat.id, 1, writer, ["Writer", "Tanjs", "Maren"]);
@@ -97,10 +112,11 @@ describe("Cast Memory identities", () => {
 		const corrected = correctMemorySource(database, chat.id, { ...story, expectedRevision: 2, operation: "edit", index: 0, claim: "A promise.", attribution: "Narrated event", people: ["Writer", "Tanjs"] });
 		expect(corrected.claims[0]?.people).toEqual(["Tanjs"]);
 		database.run("UPDATE participant SET name = 'Director' WHERE id = ?", [writer.id]);
+		expect(correctMemorySource(database, chat.id, { ...story, expectedRevision: corrected.revision, operation: "edit", index: 0, claim: "A promise.", attribution: "Narrated event", people: ["Director", "Writer", "Tanjs"] }).claims[0]?.people).toEqual(["Tanjs"]);
 		const next = source(database, chat.id, 2, { ...writer, name: "Director" });
 		expect(queueMemorySource(database, chat.id, next.messageId)).toBe(true);
 		const stop = startMemoryWorker(database, { process: async (captured) => [claim(captured.messageId, ["Director", "Tanjs", "Writer"])] });
-		try { await waitFor(() => readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === next.messageId)?.status === "complete"); expect(readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === next.messageId)?.claims[0]?.people).toEqual(["Tanjs", "Writer"]); }
+		try { await waitFor(() => readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === next.messageId)?.status === "complete"); expect(readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === next.messageId)?.claims[0]?.people).toEqual(["Tanjs"]); }
 		finally { await stop(); }
 	});
 
@@ -202,18 +218,22 @@ describe("Cast Memory identities", () => {
 		expect(corrected.claims[0]?.people).toEqual(["Tan"]);
 	});
 
-	test.each(["excluded", "plays"] as const)("sends %s instructions only to extraction and enforces labels on publication", async (kind) => {
+	test.each([["excluded", false], ["plays", false], ["excluded", true], ["plays", true]] as const)("sends identity instructions only to extraction and enforces saved and published labels: %p", async (kind, renamed) => {
 		initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(key).toString("base64") } });
 		const chat = createChat(database);
 		const writer = chat.cast[0]!;
 		const guidance = source(database, chat.id, 1, writer);
-		const story = source(database, chat.id, 2, chat.cast[1]!);
+		if (renamed) database.run("UPDATE participant SET name = 'Director' WHERE id = ?", [writer.id]);
+		const nextGuidance = source(database, chat.id, 2, { ...writer, name: renamed ? "Director" : "Writer" });
+		const saved = source(database, chat.id, 3, chat.cast[1]!, renamed ? ["Writer", "Director", "Tanjs", "Maren"] : ["Writer", "Tanjs", "Maren"]);
+		const story = source(database, chat.id, 4, chat.cast[1]!);
 		const connections = createConnectionSettingsModule(database, { masterKey: key });
 		const profileId = connections.createProfile({ expectedRevision: 0, profile, credential: "fake-secret" }).profiles[0]!.id;
 		const settings = createMemorySettingsModule(database);
 		settings.apply({ ...settings.get(), expectedRevision: settings.get().revision, enabled: true, extractionProfileId: profileId, extractionModel: "fake-extraction" });
 		configureDecisionModels(database, key);
 		await save(database, chat.id, writer.id, kind === "plays" ? { kind, person: "Tanjs" } : { kind });
+		expect(readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === saved.messageId)?.claims[0]?.people).toEqual(["Tanjs", "Maren"]);
 		queueMemorySource(database, chat.id, story.messageId);
 		const requests = { extraction: new Array<string>(), decisions: new Array<string>() };
 		const stop = startMemoryWorker(database, { process: (captured, context, signal) => extractAndJudgeMemorySource(database, captured, context, async (input, init) => {
@@ -223,17 +243,18 @@ describe("Cast Memory identities", () => {
 				return Response.json({ answers: { candidate_0_support: { type: "choice", choice: "supported", probabilities: { supported: 1, contradicted: 0, not_established: 0 } }, candidate_0_attribution: { type: "choice", choice: "correct", probabilities: { correct: 1, misattributed: 0, unclear: 0 } }, candidate_0_usefulness: { type: "choice", choice: "retain", probabilities: { retain: 1, omit: 0 } } } });
 			}
 			requests.extraction.push(body);
-			const content = JSON.stringify({ candidates: [{ claim: "Maren promised a key.", attribution: "Narrated event", people: ["Writer", "Tanjs", "Maren"], evidence: [{ messageId: captured.messageId, excerpt: captured.content }] }] });
+			const content = JSON.stringify({ candidates: [{ claim: "Maren promised a key.", attribution: "Narrated event", people: renamed ? ["Writer", "Director", "Tanjs", "Maren"] : ["Writer", "Tanjs", "Maren"], evidence: [{ messageId: captured.messageId, excerpt: captured.content }] }] });
 			return new Response([{ choices: [{ index: 0, delta: { content }, finish_reason: null }] }, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
 		}, signal) });
 		try {
 			await waitFor(() => readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === story.messageId)?.status === "complete");
-			const sentence = kind === "excluded" ? "Writer directs the story and is not a character in it. Never use Writer as a person." : "First person in Writer's Messages refers to Tanjs.";
+			const sentence = renamed ? kind === "excluded" ? "Director (also Writer) directs the story and is not a character in it. Never use Director or Writer as a person." : "First person in Director's (also Writer's) Messages refers to Tanjs." : kind === "excluded" ? "Writer directs the story and is not a character in it. Never use Writer as a person." : "First person in Writer's Messages refers to Tanjs.";
 			expect(requests.extraction).toHaveLength(1);
 			expect(requests.extraction[0]).toContain(sentence);
 			expect(requests.decisions).toHaveLength(1);
 			expect(requests.decisions[0]).not.toContain(sentence);
-			expect(JSON.parse(requests.decisions[0]!).state.context).toMatchObject([{ messageId: guidance.messageId, speaker: "Writer" }]);
+			expect(requests.decisions[0]).not.toContain("(also ");
+			expect(JSON.parse(requests.decisions[0]!).state.context.slice(0, 2)).toMatchObject([{ messageId: guidance.messageId, speaker: "Writer" }, { messageId: nextGuidance.messageId, speaker: renamed ? "Director" : "Writer" }]);
 			expect(readConversationMemories(database, chat.id).sources.find((entry) => entry.messageId === story.messageId)?.claims[0]?.people).toEqual(["Tanjs", "Maren"]);
 		} finally { await stop(); }
 	});

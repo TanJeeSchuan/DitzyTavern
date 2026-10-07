@@ -6,10 +6,9 @@ import type { MemoryIdentity } from "../../shared/contract/memory";
 import { applyMemoryPeople } from "../../shared/memory-identity";
 import { saveMemoryIdentity, type ConversationMemories } from "../memories";
 
-export function MemoryIdentityDialog({ conversationId, participant, cast, memories, initialKind, onClose, onSaved }: {
+export function MemoryIdentityDialog({ conversationId, participant, memories, initialKind, onClose, onSaved }: {
 	conversationId: number;
 	participant: { id: number; name: string };
-	cast: { id: number; name: string }[];
 	memories: ConversationMemories;
 	initialKind?: MemoryIdentity["kind"];
 	onClose: () => void;
@@ -25,12 +24,12 @@ export function MemoryIdentityDialog({ conversationId, participant, cast, memori
 	const target = person.trim();
 	const identity: MemoryIdentity = kind === "plays" ? { kind, person: target } : { kind };
 	const identities = { ...snapshot.identities, [participant.id]: identity };
-	const personLabel = applyMemoryPeople([participant.name], cast, identities, snapshot.labelMerges)[0];
+	const personLabel = applyMemoryPeople([participant.name], snapshot.cast, identities, snapshot.labelMerges)[0];
 	const ownMessages = new Set(snapshot.path.filter((entry) => entry.authorParticipantId === participant.id).map((entry) => entry.messageId));
 	const names = [...new Set(snapshot.sources.flatMap((source) => source.claims.flatMap((claim) => claim.people)))].sort((a, b) => a.localeCompare(b));
 	const affected = snapshot.sources.flatMap((source) => source.claims.flatMap((claim, index) => {
 		const removed = kind === "excluded" && ownMessages.has(source.messageId);
-		const people = applyMemoryPeople(claim.people, cast, identities, snapshot.labelMerges);
+		const people = applyMemoryPeople(claim.people, snapshot.cast, identities, snapshot.labelMerges);
 		return removed || JSON.stringify(people) !== JSON.stringify(claim.people) ? [{ source, claim, index, removed, people }] : [];
 	}));
 	const save = async (event: FormEvent) => {

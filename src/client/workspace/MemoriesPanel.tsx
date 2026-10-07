@@ -1,6 +1,6 @@
 import { ChevronDown, Ellipsis, Search } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { useDeferredValue, useState, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -40,11 +40,12 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 	const alternatives = memories?.sources.filter((source) => !source.selected) ?? [];
 	const awaitingEmbedding = selected.filter((source) => source.indexing.status === "unconfigured").length;
 	const needle = useDeferredValue(query).trim().toLowerCase();
+	const memoryCast = cast.map((participant) => ({ ...participant, names: memories?.cast.find(({ id }) => id === participant.id)?.names ?? [] }));
 	const entries = (sources: Source[]) => sources
 		.filter((source) => focus === null || source.messageId === focus)
 		.sort((a, b) => (position.get(b.messageId) ?? -1) - (position.get(a.messageId) ?? -1))
 		.flatMap((source) => source.claims.flatMap((claim, index) => !needle || [claim.claim, claim.attribution, ...claim.people].some((text) => text.toLowerCase().includes(needle)) ? [{ source, index }] : []));
-	const rank = (name: string) => cast.findIndex((participant) => participant.name === name) >>> 0;
+	const rank = (name: string) => memoryCast.findIndex((participant) => participant.names.includes(name)) >>> 0;
 	const byPeople = (list: Entry[]) => {
 		const groups = new Map<string, { people: string[]; entries: Entry[] }>();
 		for (const entry of list) {
@@ -56,7 +57,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 		return [...groups].sort(([a, x], [b, y]) => order(x) - order(y) || x.people.length - y.people.length || y.entries.length - x.entries.length || a.localeCompare(b));
 	};
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={`${key}:${needle !== "" || focus !== null}`} people={people} cast={cast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])} onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}>
+	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={`${key}:${needle !== "" || focus !== null}`} people={people} cast={memoryCast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])} onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}>
 		{({ source, index }) => <MemoryClaimRow
 			key={`${source.variantId}:${index}`}
 			source={source}
@@ -114,7 +115,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 			</>}
 		</div>
 		{merging && memories && <MemoryLabelMergeDialog conversationId={conversationId} memories={memories} initialLabels={merging} onClose={() => setMerging(null)} onMerged={(updated, destination) => { labelsMerged(updated, destination); setMerging(null); }} />}
-		{identityTarget && memories && <MemoryIdentityDialog conversationId={conversationId} participant={identityTarget.participant} cast={cast} memories={memories} initialKind={identityTarget.kind} onClose={() => setIdentityTarget(null)} onSaved={(updated) => { void identitySaved(updated); setIdentityTarget(null); }} />}
+		{identityTarget && memories && <MemoryIdentityDialog conversationId={conversationId} participant={identityTarget.participant} memories={memories} initialKind={identityTarget.kind} onClose={() => setIdentityTarget(null)} onSaved={(updated) => { void identitySaved(updated); setIdentityTarget(null); }} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) cancelReset(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
@@ -130,14 +131,14 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 	</aside>;
 }
 
-function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children }: { people: string[]; cast: CastMember[]; entries: Entry[]; cap: number; onMerge: (person: string) => void; onIdentity: (participant: CastMember, kind: MemoryIdentity["kind"]) => void; children: (entry: Entry) => ReactNode }) {
+function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children }: { people: string[]; cast: (CastMember & { names: string[] })[]; entries: Entry[]; cap: number; onMerge: (person: string) => void; onIdentity: (participant: CastMember, kind: MemoryIdentity["kind"]) => void; children: (entry: Entry) => ReactNode }) {
 	const [shown, setShown] = useState(entries.length <= cap + 3 ? entries.length : cap);
 	const name = people.length ? people.join(" & ") : "Unlabelled";
-	const participants = cast.filter((participant) => people.includes(participant.name));
+	const participants = cast.filter((participant) => participant.names.some((name) => people.includes(name)));
 	return <Collapsible.Root defaultOpen asChild><section className="memory-person" aria-label={name}>
 		<header className="memory-person-header">
 			<Collapsible.Trigger className="memory-person-trigger group">
-				{people.length > 0 && <span className="memory-person-portraits">{people.slice(0, 3).map((person) => <Portrait key={person} name={person} size="small" portrait={cast.find((participant) => participant.name === person)?.portrait} />)}</span>}
+				{people.length > 0 && <span className="memory-person-portraits">{people.slice(0, 3).map((person) => <Portrait key={person} name={person} size="small" portrait={cast.find((participant) => participant.names.includes(person))?.portrait} />)}</span>}
 				<span className="memory-person-name">{name}</span>
 				<span className="memory-person-count">{entries.length}</span>
 				<ChevronDown className="size-3.5 shrink-0 group-data-[state=closed]:-rotate-90" aria-hidden="true" />
@@ -147,7 +148,7 @@ function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children
 				<DropdownMenuContent align="end" className="min-w-44">
 					{people.map((person) => <DropdownMenuItem key={person} onSelect={() => onMerge(person)}>Rename or merge {person}…</DropdownMenuItem>)}
 					{participants.length > 0 && <DropdownMenuSeparator />}
-					{participants.map((participant) => <div key={participant.id}><DropdownMenuItem onSelect={() => onIdentity(participant, "excluded")}>{participant.name} isn't in the story…</DropdownMenuItem><DropdownMenuItem onSelect={() => onIdentity(participant, "plays")}>{participant.name} plays…</DropdownMenuItem></div>)}
+					{participants.map((participant) => <Fragment key={participant.id}><DropdownMenuItem onSelect={() => onIdentity(participant, "excluded")}>{participant.name} isn't in the story…</DropdownMenuItem><DropdownMenuItem onSelect={() => onIdentity(participant, "plays")}>{participant.name} plays…</DropdownMenuItem></Fragment>)}
 				</DropdownMenuContent>
 			</DropdownMenu>}
 		</header>

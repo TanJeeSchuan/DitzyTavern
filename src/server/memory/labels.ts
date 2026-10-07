@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, min } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { conversationMemorySettingsTable, conversationTable, memoryCollectionTable, messageTable, participantTable } from "../database/schema";
@@ -16,8 +16,13 @@ const parseMerges = (json: string): MemoryLabelMerge[] => {
 export const readMemoryLabelState = (database: Database, conversationId: number) => {
 	const db = drizzle(database);
 	const row = db.select().from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
-	const cast = db.select({ id: participantTable.id, name: participantTable.name }).from(participantTable).where(eq(participantTable.conversation_id, conversationId)).all();
-	return { revision: row?.label_revision ?? 0, merges: parseMerges(row?.label_merges ?? "[]"), identities: Value.Parse(memoryIdentities, JSON.parse(row?.identities ?? "{}")), cast };
+	const cast = new Map<number, { id: number; names: string[] }>();
+	for (const { id, name, formerName } of db.select({ id: participantTable.id, name: participantTable.name, formerName: messageTable.author_name }).from(participantTable).leftJoin(messageTable, and(eq(messageTable.author_participant_id, participantTable.id), eq(messageTable.conversation_id, participantTable.conversation_id))).where(eq(participantTable.conversation_id, conversationId)).groupBy(participantTable.id, messageTable.author_name).orderBy(asc(participantTable.position), asc(participantTable.id), min(messageTable.position), min(messageTable.id)).all()) {
+		const participant = cast.get(id) ?? { id, names: [name] };
+		if (formerName !== null && !participant.names.includes(formerName)) participant.names.push(formerName);
+		cast.set(id, participant);
+	}
+	return { revision: row?.label_revision ?? 0, merges: parseMerges(row?.label_merges ?? "[]"), identities: Value.Parse(memoryIdentities, JSON.parse(row?.identities ?? "{}")), cast: [...cast.values()] };
 };
 
 export const applyMemoryLabelRules = (claims: readonly MemoryCandidateJudgment[], state: ReturnType<typeof readMemoryLabelState>): MemoryCandidateJudgment[] =>
