@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { openInitializedDatabase } from "../database/database";
@@ -121,6 +122,15 @@ describe("Memory change feed public contract", () => {
 			const delta = await changes(chat.id, full.cursor);
 			expect(delta.sources).toEqual([expect.objectContaining({ variantId: source.variantId, indexing: { status: "ready", pendingCount: 0, error: null } })]);
 		} finally { await stop(); }
+	});
+
+	test("keeps feeding collections with a recorded index failure so a shared vector can make them ready", async () => {
+		const chat = createChat(database);
+		const failed = addSource(database, chat.id, 1, ["Alice"]);
+		addSource(database, chat.id, 2, ["Maren"]);
+		drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: JSON.stringify({ spaceKey: "earlier", error: "Embedding endpoint refused." }) }).where(eq(memoryCollectionTable.variant_id, failed.variantId)).run();
+		const { cursor } = await read(chat.id);
+		expect((await changes(chat.id, cursor)).sources.map(({ variantId }) => variantId)).toEqual([failed.variantId]);
 	});
 
 	test("feeds every collection a label merge rewrites", async () => {

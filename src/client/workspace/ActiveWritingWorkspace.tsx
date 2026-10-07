@@ -423,6 +423,13 @@ export function ActiveWritingWorkspace({
 									: undefined}
 							/>
 						))}
+						{story.page?.hasNewer === true && (
+							<div className="history-load-more">
+								<button className="secondary-button" type="button" disabled={story.status === "loading-more"} onClick={() => void session.loadMoreHistory("newer")}>
+									{story.status === "loading-more" ? "Loading newer Messages…" : "Load newer Messages"}
+								</button>
+							</div>
+						)}
 						{story.status === "loading-first" && <HistoryLoading />}
 						{story.status === "error" && (
 							<p className="history-error" role="alert">

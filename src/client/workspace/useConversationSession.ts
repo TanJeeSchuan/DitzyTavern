@@ -92,7 +92,7 @@ export function useConversationSession({
 		const current = storyRef.current;
 		const conversationId = current.conversationId;
 		const edge = direction === "older" ? current.messages[0] : current.messages.at(-1);
-		if (conversationId === null || !edge || current.status !== "ready" || pagingRef.current || navigatingRef.current ||
+		if (conversationId === null || !edge || (current.status !== "ready" && current.status !== "error") || pagingRef.current || navigatingRef.current ||
 			!(direction === "older" ? current.page?.hasOlder : current.page?.hasNewer)) return;
 		const navigation = navigationRef.current;
 		pagingRef.current = true;

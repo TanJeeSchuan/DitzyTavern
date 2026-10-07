@@ -338,13 +338,13 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 					index: Math.max(newestIndex, Math.ceil((newerMessages + messages.length) / pageSize)),
 					newestIndex,
 					hasOlder: newerMessages + messages.length < totalMessages,
-					hasNewer: newestIndex > 1,
+					hasNewer: newerMessages > 0,
 				},
 				status: "ready",
 			};
 		}
 		case "load-more-started":
-			return state.status === "ready" && (state.page?.hasOlder === true || state.page?.hasNewer === true)
+			return (state.status === "ready" || state.status === "error") && (state.page?.hasOlder === true || state.page?.hasNewer === true)
 				? { ...state, status: "loading-more" }
 				: state;
 		case "history-failed":

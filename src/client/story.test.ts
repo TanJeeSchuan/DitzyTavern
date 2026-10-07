@@ -808,6 +808,15 @@ describe("detached story windows", () => {
 		expect(state.page).toMatchObject({ newestIndex: 3, index: 4, hasNewer: true });
 	});
 
+	test("a Message added elsewhere before an older page keeps the window detached until it is loaded", () => {
+		const older = reduceStory(open(), { type: "next-page-arrived", page: history(2, [6, 7], 9) });
+		expect(older.messages.map(({ id }) => id)).toEqual([6, 7, 8]);
+		expect(older.page).toMatchObject({ hasNewer: true });
+		const latest = reduceStory(older, { type: "next-page-arrived", page: history(1, [8, 9], 9) });
+		expect(latest.messages.map(({ id }) => id)).toEqual([6, 7, 8, 9]);
+		expect(latest.page).toMatchObject({ newestIndex: 1, hasNewer: false });
+	});
+
 	test("live observations outside the window never insert Messages and visible observations still apply", () => {
 		const state = detach();
 		const outside = reduceStory(state, { type: "generation-state", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });

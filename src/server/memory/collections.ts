@@ -195,7 +195,7 @@ export function readConversationMemoryChanges(database: Database, conversationId
 	const running = [...new Set([...registeredMemoryVariants(database), ...indexingVariants(database, configuration.spaceKey)])];
 	const rows = db.select({ messageId: messageTable.id, authorParticipantId: messageTable.author_participant_id, variantId: messageVariantTable.id, selected: messageVariantTable.selected, content: messageVariantTable.content, collection: memoryCollectionTable })
 		.from(memoryCollectionTable).innerJoin(messageVariantTable, eq(messageVariantTable.id, memoryCollectionTable.variant_id)).innerJoin(messageTable, eq(messageTable.id, memoryCollectionTable.message_id))
-		.where(and(eq(memoryCollectionTable.conversation_id, conversationId), running.length === 0 ? gte(memoryCollectionTable.updated_at, since) : or(gte(memoryCollectionTable.updated_at, since), inArray(memoryCollectionTable.variant_id, running))))
+		.where(and(eq(memoryCollectionTable.conversation_id, conversationId), or(gte(memoryCollectionTable.updated_at, since), sql`json_extract(${memoryCollectionTable.index_attempt_json}, '$.error') IS NOT NULL`, running.length === 0 ? undefined : inArray(memoryCollectionTable.variant_id, running))))
 		.orderBy(desc(messageVariantTable.selected), asc(messageTable.position), asc(messageVariantTable.position)).all();
 	const enabled = isMemoryEnabledForConversation(database, conversationId);
 	const state = readMemoryLabelState(database, conversationId);

@@ -37,7 +37,9 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			const current = client.getQueryData<MemoryData>(queryKey);
 			if (current?.memories.cursor !== since) return null;
 			if (changes.revision !== current.memories.revision || changes.labelRevision !== current.memories.labelRevision) { await refresh(); return null; }
-			const sources = [...new Map([...current.memories.sources, ...changes.sources].map((source) => [source.variantId, source])).values()];
+			const merged = new Map(current.memories.sources.map((source) => [source.variantId, source]));
+			for (const source of changes.sources) if (source.revision >= (merged.get(source.variantId)?.revision ?? 0)) merged.set(source.variantId, source);
+			const sources = [...merged.values()];
 			client.setQueryData<MemoryData>(queryKey, { ...current, catchup, memories: { ...current.memories, cursor: changes.cursor, sources } });
 			return null;
 		},

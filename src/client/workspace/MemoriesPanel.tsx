@@ -33,7 +33,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, focu
 	const { status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, settingsSaved, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversationRevision);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<number | null>(null);
-	useEffect(() => { if (focusRequest) setFocus(focusRequest.messageId); }, [focusRequest]);
+	useEffect(() => { setFocus(focusRequest?.messageId ?? null); }, [focusRequest]);
 	const [merging, setMerging] = useState<string[] | null>(null);
 	const [identityTarget, setIdentityTarget] = useState<{ participant: CastMember; kind: MemoryIdentity["kind"] } | null>(null);
 	const [noteOpen, setNoteOpen] = useState(false);
