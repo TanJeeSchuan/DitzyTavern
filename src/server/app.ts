@@ -3,10 +3,11 @@ import { staticPlugin } from "@elysiajs/static";
 import { createContract } from "./contract";
 import type { ConversationRouteOptions } from "./contract/conversation";
 import { defaultArtifactDirectory } from "./artifact";
+import { observeConversationWrites } from "./conversation";
 import { shutdownApplication } from "./application/shutdown";
 import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
-import { embedMemoryTexts, extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
+import { embedMemoryTexts, extractAndJudgeMemorySource, startMemoryWorker, syncMemorySources } from "./memory";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
 
 export interface AppOptions extends ConversationRouteOptions {
@@ -17,6 +18,10 @@ export interface AppOptions extends ConversationRouteOptions {
 
 export async function createApp(options: AppOptions) {
 	const { database, fetch, artifactDirectory = defaultArtifactDirectory() } = options;
+	// ==[HUMAN APPROVED]== The application layer consumes Conversation's reported changes:
+	// Memory sync runs as the last statement of the Conversation transaction
+	// wrapper, so its reads see exactly the committed write.
+	observeConversationWrites(syncMemorySources);
 	sweepOrphanedImages(database);
 	const stopMemoryWorker = startMemoryWorker(database, {
 		process: (source, context, signal, trace) => extractAndJudgeMemorySource(database, source, context, fetch, signal, trace),

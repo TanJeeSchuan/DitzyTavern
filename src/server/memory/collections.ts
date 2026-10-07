@@ -1,8 +1,7 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { readSelectedHistory } from "../conversation/selected-history";
 import { activeGenerationTable, conversationMemorySettingsTable, memoryCatchupRunTable, memoryCollectionTable, messageTable, messageVariantTable } from "../database/schema";
 import type { MemoryTrace } from "./extraction";
 import { claimMemoryIndexJob, embedMemoryTexts, readMemoryIndexReadiness, readMemoryIndexReadinessBatch, runMemoryIndexJob, type MemoryEmbed } from "./indexing";
@@ -33,11 +32,23 @@ const captured = (source: CapturedMemoryMessage, context: readonly CapturedMemor
 };
 
 const capture = (database: Database, conversationId: number, messageId: number): CapturedMemorySource => {
-	const source = database.query<{ position: number; variant_id: number; speaker: string | null; content: string }, [number, number]>("SELECT m.position, m.author_name AS speaker, v.id AS variant_id, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.id=?").get(conversationId, messageId);
+	const db = drizzle(database);
+	const source = db.select({ position: messageTable.position, speaker: messageTable.author_name, variantId: messageVariantTable.id, content: messageVariantTable.content })
+		.from(messageTable)
+		.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
+		.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, messageId)))
+		.get();
 	if (!source) throw new InvalidMemorySourceError("Memory can only process a retained selected Variant.");
-	if (database.query<{ id: number }, [number]>("SELECT id FROM active_generation WHERE variant_id=?").get(source.variant_id)) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
-	const previous = database.query<CapturedMemoryMessage, [number, number]>("SELECT m.id AS messageId, v.id AS variantId, m.author_name AS speaker, v.content FROM messages m JOIN message_variant v ON v.message_id=m.id AND v.selected=1 WHERE m.conversation_id=? AND m.position<? ORDER BY m.position DESC LIMIT 4").all(conversationId, source.position).reverse();
-	return captured({ messageId, variantId: source.variant_id, speaker: source.speaker, content: source.content }, previous);
+	if (db.select({ id: activeGenerationTable.id }).from(activeGenerationTable).where(eq(activeGenerationTable.variant_id, source.variantId)).get()) throw new InvalidMemorySourceError("A provisional Generation is not eligible for Memory yet.");
+	const previous = db.select({ messageId: messageTable.id, variantId: messageVariantTable.id, speaker: messageTable.author_name, content: messageVariantTable.content })
+		.from(messageTable)
+		.innerJoin(messageVariantTable, and(eq(messageVariantTable.message_id, messageTable.id), eq(messageVariantTable.selected, true)))
+		.where(and(eq(messageTable.conversation_id, conversationId), lt(messageTable.position, source.position)))
+		.orderBy(desc(messageTable.position))
+		.limit(4)
+		.all()
+		.reverse();
+	return captured({ messageId, variantId: source.variantId, speaker: source.speaker, content: source.content }, previous);
 };
 
 const parseClaims = (claimsJson: string): MemoryCandidateJudgment[] | null => {
@@ -112,22 +123,24 @@ export function queueMemorySource(database: Database, conversationId: number, me
 }
 
 export function queueMemoryTail(database: Database, conversationId: number): boolean {
-	const tail = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ? ORDER BY position DESC LIMIT 1").get(conversationId);
+	const tail = drizzle(database).select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, conversationId)).orderBy(desc(messageTable.position)).limit(1).get();
 	return tail ? queueMemorySource(database, conversationId, tail.id) : false;
 }
 
-export function startMemoryCatchup(database: Database, conversationId: number): MemoryCatchup {
+// ==[HUMAN APPROVED]== Queue selected source work from an authoritative write transaction.
+// The selected history arrives through a reader the caller owns (the Memory
+// route composes it from Conversation's own read model), invoked inside this
+// transaction so the path snapshot is consistent with the queued work.
+export function startMemoryCatchup(database: Database, conversationId: number, readSources: () => readonly CapturedMemoryMessage[] | undefined): MemoryCatchup {
 	return database.transaction(() => {
 		if (!isMemoryEnabledForConversation(database, conversationId)) throw new InvalidMemorySourceError("Turn on Memory and enable it in the selected Prompt Preset before remembering history.");
-		const history = readSelectedHistory(database, conversationId);
-		if (!history) throw new InvalidMemorySourceError("This Chat no longer exists.");
+		const sources = readSources();
+		if (!sources) throw new InvalidMemorySourceError("This Chat no longer exists.");
 		const run = drizzle(database).insert(memoryCatchupRunTable).values({ conversation_id: conversationId, created_at: new Date().toISOString() }).returning().get();
 		const activeVariants = new Set(drizzle(database).select({ id: activeGenerationTable.variant_id }).from(activeGenerationTable).where(eq(activeGenerationTable.conversation_id, conversationId)).all().map(({ id }) => id));
 		const previous: CapturedMemoryMessage[] = [];
-		for (const message of history.messages) {
-			if (!message.variant) continue;
-			const source = { messageId: message.id, variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content };
-			if (source.content.trim().length > 0 && !activeVariants.has(source.variantId)) queueMemorySource(database, conversationId, message.id, run.id, captured(source, [...previous]));
+		for (const source of sources) {
+			if (source.content.trim().length > 0 && !activeVariants.has(source.variantId)) queueMemorySource(database, conversationId, source.messageId, run.id, captured(source, [...previous]));
 			previous.push(source);
 			if (previous.length > 4) previous.shift();
 		}
@@ -281,7 +294,7 @@ const claimNextMemoryJob = (database: Database) => database.transaction(() => {
 const runMemoryExtraction = async (database: Database, job: CollectionRow, process: MemoryWorkerOptions["process"], shutdown: AbortSignal) => {
 	const db = drizzle(database);
 	const current = and(eq(memoryCollectionTable.variant_id, job.variant_id), eq(memoryCollectionTable.work_epoch, job.work_epoch), eq(memoryCollectionTable.status, "running"));
-	if (job.catchup_run_id !== null && !database.query<{ selected: number }, [number]>("SELECT selected FROM message_variant WHERE id=?").get(job.variant_id)?.selected) {
+	if (job.catchup_run_id !== null && db.select({ selected: messageVariantTable.selected }).from(messageVariantTable).where(eq(messageVariantTable.id, job.variant_id)).get()?.selected !== true) {
 		db.delete(memoryCollectionTable).where(current).run();
 		return;
 	}

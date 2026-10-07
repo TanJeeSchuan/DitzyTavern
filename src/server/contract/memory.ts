@@ -2,7 +2,8 @@ import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 
 import { mergeMemoryLabels, StaleMemoryLabelsError } from "../memory/labels";
-import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
+import { cancelMemoryCatchup, correctMemorySource, InvalidMemorySourceError, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
+import { createConversationModule } from "../conversation";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
@@ -63,7 +64,17 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 	}, { params: memoryConversationIdParams, body: memorySourceTarget, response: { 200: memoryQueued, 409: memoryCollectionConflict, 422: invalidOutcome } })
 	.get("/api/conversations/:id/memories/catchup", ({ params }) => ({ run: readLatestMemoryCatchup(database, Number(params.id)) }), { params: memoryConversationIdParams, response: memoryCatchupRead })
 	.post("/api/conversations/:id/memories/catchup", ({ params }) => {
-		try { return { outcome: "queued" as const, run: startMemoryCatchup(database, Number(params.id)) }; }
+		try {
+			const conversationId = Number(params.id);
+			// ==[HUMAN APPROVED]== The selected path is composed here from Conversation's own
+			// read model, invoked inside startMemoryCatchup's transaction, and
+			// mapped onto Memory's captured-message contract.
+			const run = startMemoryCatchup(database, conversationId, () => {
+				const history = createConversationModule(database).readSelectedHistory(conversationId);
+				return history === undefined ? undefined : history.messages.flatMap((message) => message.variant === null ? [] : [{ messageId: message.id, variantId: message.variant.id, speaker: message.author?.capturedName ?? null, content: message.variant.content }]);
+			});
+			return { outcome: "queued" as const, run };
+		}
 		catch (error) { return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "History catch-up could not be started." }); }
 	}, { params: memoryConversationIdParams, body: memoryCatchupCommand, response: { 200: memoryCatchupQueued, 422: invalidOutcome } })
 	.delete("/api/conversations/:id/memories/catchup/:runId", ({ params }) => {

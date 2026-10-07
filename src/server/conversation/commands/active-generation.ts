@@ -42,7 +42,7 @@ import {
 	MEMORY_ACTIVATION_NAMESPACE,
 	parseMemoryActivationRecord,
 } from "../../../shared/contract/memory-recall";
-import { syncMemorySources } from "../../memory";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 
 // ==[HUMAN APPROVED]== Terminal lifecycle of the server-owned Generations: resolve, remove,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
@@ -320,7 +320,7 @@ export function resolveConversationGeneration(
 	database: Database,
 	input: ResolveGenerationInput,
 ): ConversationSummary {
-	return runConversationTransaction(database, (db) => {
+	return runConversationTransaction(database, (db, reportChange) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) {
 			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
@@ -331,7 +331,14 @@ export function resolveConversationGeneration(
 			timestamp: input.timestamp,
 			suppliedData: input.data ?? [],
 		});
-		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
+		// ==[HUMAN APPROVED]== The terminal Variant content is committed; Memory re-derives
+		// its collection from the resolved source.
+		reportChange({
+			conversationId: input.conversationId,
+			touchedVariantIds: [active.variant_id],
+			removedVariantIds: [],
+			promptPresetChanged: false,
+		});
 		return advanceConversationRevision(db, input.conversationId, input.timestamp);
 	});
 }
@@ -577,7 +584,7 @@ export function stopConversationGeneration(
 	input: StopGenerationInput,
 ): ConversationSummary {
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	return runConversationTransaction(database, (db) => {
+	return runConversationTransaction(database, (db, reportChange) => {
 		const active = readActiveGeneration(db, input.conversationId, input.generationId);
 		if (active === undefined) {
 			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
@@ -590,7 +597,20 @@ export function stopConversationGeneration(
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
-		syncMemorySources(db.$client, input.conversationId, [active.variant_id]);
+		// ==[HUMAN APPROVED]== A durable Stop commits the terminal Variant content; a
+		// zero-output Stop deletes the target whole, so its in-flight Memory
+		// work is abandoned through the removed record.
+		reportChange(transition.durableOutput ? {
+			conversationId: input.conversationId,
+			touchedVariantIds: [active.variant_id],
+			removedVariantIds: [],
+			promptPresetChanged: false,
+		} : {
+			conversationId: input.conversationId,
+			touchedVariantIds: [],
+			removedVariantIds: [active.variant_id],
+			promptPresetChanged: false,
+		});
 		return advanceConversationRevision(
 			db,
 			input.conversationId,
@@ -608,7 +628,7 @@ export function stopConversationGenerations(
 	database: Database,
 	input: StopGenerationsInput,
 ): StoppedGenerations {
-	return runConversationTransaction(database, (db) => {
+	return runConversationTransaction(database, (db, reportChange) => {
 		const conversation = db
 			.select({ id: conversationTable.id })
 			.from(conversationTable)
@@ -626,14 +646,23 @@ export function stopConversationGenerations(
 		}
 		const timestamp = input.timestamp ?? new Date().toISOString();
 		const removedSiblings: StoppedSiblingTarget[] = [];
+		const touchedVariantIds: number[] = [];
+		const removedVariantIds: number[] = [];
 		let durableOutput = false;
 		for (const active of activeRows) {
 			const transition = stopActiveGenerationInTransaction(db, active, timestamp);
 			durableOutput ||= transition.durableOutput;
 			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
+			if (transition.durableOutput) touchedVariantIds.push(active.variant_id);
+			else removedVariantIds.push(active.variant_id);
 		}
 		restoreStoppedSiblingSelection(db, removedSiblings);
-		syncMemorySources(db.$client, input.conversationId, activeRows.map((active) => active.variant_id));
+		reportChange({
+			conversationId: input.conversationId,
+			touchedVariantIds,
+			removedVariantIds,
+			promptPresetChanged: false,
+		});
 		const snapshot = advanceConversationRevision(
 			db,
 			input.conversationId,
