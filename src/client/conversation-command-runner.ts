@@ -78,7 +78,7 @@ export interface ConversationCommandCallbacks<TOperation = never> {
 // runner forwards the wrapped value to the `onOperation` typed callback,
 // which alone decides its presentation and recovery.
 export interface ConversationOperationOutcome<TOperation> {
-	status: "operation";
+	outcome: "operation";
 	operation: TOperation;
 }
 
@@ -121,15 +121,15 @@ export async function runConversationCommand<TOperation = never>(
 	try {
 		outcome = await options.send(expectedRevision);
 	} catch {
-		outcome = { status: "network" };
+		outcome = { outcome: "network" };
 	}
-	switch (outcome.status) {
+	switch (outcome.outcome) {
 		case "operation":
 			options.callbacks.onOperation?.(outcome.operation);
 			return;
-		case "applied":
-			options.reconciliation.adoptSnapshot(outcome.conversation);
-			options.callbacks.onApplied?.(outcome.conversation);
+		case "available":
+			options.reconciliation.adoptSnapshot(outcome.value.conversation);
+			options.callbacks.onApplied?.(outcome.value.conversation);
 			return;
 		case "conflict":
 			options.reconciliation.adoptSnapshot(outcome.currentConversation);

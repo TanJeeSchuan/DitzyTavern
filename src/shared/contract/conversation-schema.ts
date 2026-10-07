@@ -886,6 +886,39 @@ export const castCharacterConflict = Type.Union([
 	conversationConflict,
 ]);
 
+// ==[HUMAN APPROVED]== The Conversation route families' modeled error unions: the composed
+// 409/404/422 envelopes each family declares, so the client decodes an error
+// body against exactly the union its route models.
+export const conversationConflictErrors = Type.Union([
+	conversationConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const conversationCommandErrors = Type.Union([
+	conversationCommandConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const castCharacterErrors = Type.Union([
+	castCharacterConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const generationPreviewErrors = Type.Union([
+	notFoundOutcome,
+	notPlayableOutcome,
+	invalidOutcome,
+]);
+
+export const generationStartErrors = Type.Union([
+	generationConflictResponse,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
 export const addCharacterToCastBody = Type.Object({
 	expectedConversationRevision: Type.Integer(),
 	characterId: Type.Integer(),

@@ -54,6 +54,21 @@ const attachmentSelectionEvidence = (source: Pick<ScopedLoreBookSource, "selecte
 		: "The only eligible use was selected for this book.",
 });
 
+// ==[HUMAN APPROVED]== The persisted lore evidence. The book strip drops its entries array
+// (the entry is carried beside it), the stored entry passes through as the
+// JSON value it already is, and the per-condition spread keeps the
+// interface-typed match evidence assignable to the closed JSON type; the
+// semantic projection closes an absent fallbackReason to null exactly as
+// the match stores it.
+const semanticEvidence = (semantic: LoreEntryMatch["semantic"]): GenerationJsonValue => {
+	const { fallbackReason, ...available } = semantic;
+	return {
+		...available,
+		matches: semantic.matches.map((match) => ({ ...match })),
+		fallbackReason: fallbackReason ?? null,
+	};
+};
+
 const evidenceFor = (input: {
 	book: Lorebook;
 	entry: Lorebook["entries"][number];
@@ -61,63 +76,26 @@ const evidenceFor = (input: {
 	attachmentIds: readonly number[];
 	attachmentSelection: LoreBookAttachmentSelectionEvidence;
 	messages: readonly LoreScanMessage[];
-}) => {
-	const semantic: GenerationJsonValue = {
-		available: input.match.semantic.available,
-		matched: input.match.semantic.matched,
-		threshold: input.match.semantic.threshold,
-		matches: input.match.semantic.matches.map((match) => ({ trigger: match.trigger, score: match.score })),
-		fallbackReason: input.match.semantic.fallbackReason ?? null,
-	};
+}): GenerationJsonValue => {
+	const { entries: _entries, ...book } = input.book;
 	return {
-	book: {
-		id: input.book.id,
-		name: input.book.name,
-		description: input.book.description,
-		revision: input.book.revision,
-	},
-	entry: {
-		id: input.entry.id,
-		position: input.entry.position,
-		title: input.entry.title,
-		content: input.entry.content,
-		keywords: [...input.entry.keywords],
-		semanticTriggers: [...input.entry.semanticTriggers],
-		matchOperator: input.entry.matchOperator,
-		always: input.entry.always,
-		requireAny: [...input.entry.requireAny],
-		requireAll: [...input.entry.requireAll],
-		excludeAny: [...input.entry.excludeAny],
-		excludeAll: [...input.entry.excludeAll],
-		caseSensitive: input.entry.caseSensitive,
-		wholeWord: input.entry.wholeWord,
-		keywordMode: input.entry.keywordMode,
-		regexFlags: input.entry.regexFlags,
-		priority: input.entry.priority,
-		enabled: input.entry.enabled,
-	},
-	attachmentIds: [...input.attachmentIds],
-	attachmentSelection: input.attachmentSelection,
-	messages: input.messages.map((message) => ({ id: message.id ?? null, content: message.content })),
-	match: {
-		active: input.match.active,
-		skipped: input.match.skipped,
-		fallback: input.match.fallback,
-		primary: {
-			matched: input.match.primary.matched,
-			matchedExpressions: [...input.match.primary.matchedExpressions],
-			missingExpressions: [...input.match.primary.missingExpressions],
+		book,
+		entry: { ...input.entry },
+		attachmentIds: input.attachmentIds,
+		attachmentSelection: input.attachmentSelection,
+		messages: input.messages.map((message) => ({ id: message.id ?? null, content: message.content })),
+		match: {
+			...input.match,
+			primary: { ...input.match.primary },
+			secondary: {
+				requireAny: { ...input.match.secondary.requireAny },
+				requireAll: { ...input.match.secondary.requireAll },
+				excludeAny: { ...input.match.secondary.excludeAny },
+				excludeAll: { ...input.match.secondary.excludeAll },
+			},
+			semantic: semanticEvidence(input.match.semantic),
 		},
-		secondary: {
-			requireAny: { matched: input.match.secondary.requireAny.matched, matchedExpressions: [...input.match.secondary.requireAny.matchedExpressions], missingExpressions: [...input.match.secondary.requireAny.missingExpressions] },
-			requireAll: { matched: input.match.secondary.requireAll.matched, matchedExpressions: [...input.match.secondary.requireAll.matchedExpressions], missingExpressions: [...input.match.secondary.requireAll.missingExpressions] },
-			excludeAny: { matched: input.match.secondary.excludeAny.matched, matchedExpressions: [...input.match.secondary.excludeAny.matchedExpressions], missingExpressions: [...input.match.secondary.excludeAny.missingExpressions] },
-			excludeAll: { matched: input.match.secondary.excludeAll.matched, matchedExpressions: [...input.match.secondary.excludeAll.matchedExpressions], missingExpressions: [...input.match.secondary.excludeAll.missingExpressions] },
-		},
-		semantic,
-		reasons: [...input.match.reasons],
-	},
-};
+	} satisfies GenerationJsonValue;
 };
 
 interface ScopedLoreInput {

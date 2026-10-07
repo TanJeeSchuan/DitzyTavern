@@ -1,16 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import type {
-	GenerationConversationLifecycle,
-	GenerationRuntimeHandle,
-	GenerationRuntimeLifecycle,
-} from "../application/generation-coordinator";
-import {
-	InvalidConversationCommandError,
-	createConversationModule,
-	type ConversationSnapshot,
-} from "../conversation";
+import { createConversationModule } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
+import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
 const prompt = {
@@ -23,60 +15,9 @@ const prompt = {
 
 // Route tests own one responsibility only: mapping typed Generation lifecycle
 // outcomes onto transport responses. Ordering, races, and settlement belong to
-// the Coordinator tests; the scripted adapters here return outcomes without
-// reproducing any lifecycle behavior.
-
-const scriptedRuntime = (
-	generationId: number,
-	conversationId: number,
-	options: { markStoppedError?: Error } = {},
-): GenerationRuntimeHandle => ({
-	state: {
-		generationId,
-		conversationId,
-		messageId: 0,
-		variantId: 0,
-		startedAt: "2026-08-27T00:00:00.000Z",
-		content: "",
-		reasoning: "",
-		latestEventId: 0,
-		status: "active",
-		terminalReason: null,
-	},
-	stop: () => {},
-	markStopped: () => {
-		if (options.markStoppedError !== undefined) throw options.markStoppedError;
-	},
-	releaseStopRequest: () => {},
-});
-
-const scriptedRuntimes = (
-	entries: readonly GenerationRuntimeHandle[],
-): GenerationRuntimeLifecycle => {
-	const byId = new Map(entries.map((runtime) => [runtime.state.generationId, runtime]));
-	return {
-		get: (generationId) => byId.get(generationId),
-		flushAll: () => {},
-	};
-};
-
-const scriptedConversation = (
-	snapshot: ConversationSnapshot,
-	fake: { invalidStop?: boolean; invalidStopAll?: boolean; generationIds?: number[] } = {},
-): GenerationConversationLifecycle => ({
-	stopGeneration: () => {
-		if (fake.invalidStop === true) {
-			throw new InvalidConversationCommandError("The Active Generation is no longer available.");
-		}
-		return snapshot;
-	},
-	stopGenerations: () => {
-		if (fake.invalidStopAll === true) {
-			throw new InvalidConversationCommandError("The Conversation has no active Generations to stop.");
-		}
-		return { generationIds: fake.generationIds ?? [], conversation: snapshot };
-	},
-});
+// the Coordinator tests; these routes run against the real deep Conversation
+// module and the real process runtime registry, so every mapped response is
+// produced by the production lifecycle itself.
 
 describe("Generation Stop route mapping", () => {
 	let database: Database;
@@ -87,8 +28,9 @@ describe("Generation Stop route mapping", () => {
 
 	afterEach(() => database.close());
 
-	const snapshot = (): ConversationSnapshot =>
-		createConversationModule(database).create({
+	const setup = () => {
+		const module = createConversationModule(database);
+		const conversation = module.create({
 			name: "Stop mapping",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -96,38 +38,75 @@ describe("Generation Stop route mapping", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
+		const human = conversation.cast[0];
+		const model = conversation.cast[1];
+		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
+		return { module, conversation, human, model };
+	};
 
-	const stopRoute = async (
-		conversationLifecycle: GenerationConversationLifecycle,
-		runtimeLifecycle: GenerationRuntimeLifecycle,
-		conversationId: number,
-		generationId: number,
-	) => createConversationRoutes(database, { conversationLifecycle, runtimeLifecycle }).handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/generations/${generationId}/stop`, {
-			method: "POST",
-			body: "{}",
-		}),
-	);
+	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
+		input.module.acceptTailGeneration({
+			conversationId: input.conversation.id,
+			expectedRevision: input.conversation.revision,
+			timestamp: "2026-08-27T00:00:00.000Z",
+			humanContent: content,
+			humanParticipantId: input.human.id,
+			modelParticipantId: input.model.id,
+			capturedModelName: input.model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: {},
+		});
 
-	const stopAllRoute = async (
-		conversationLifecycle: GenerationConversationLifecycle,
-		runtimeLifecycle: GenerationRuntimeLifecycle,
+	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
+		input.module.acceptSiblingGeneration({
+			conversationId: input.conversation.id,
+			messageId,
+			timestamp,
+			humanParticipantId: input.human.id,
+			modelParticipantId: input.model.id,
+			capturedModelName: input.model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			promptContext: [],
+			generationSettings: {},
+			connection: {},
+		});
+
+	const startRuntime = (
 		conversationId: number,
-	) => createConversationRoutes(database, { conversationLifecycle, runtimeLifecycle }).handle(
-		new Request(`http://localhost/api/conversations/${conversationId}/generations/stop-all`, {
-			method: "POST",
-			body: "{}",
-		}),
-	);
+		accepted: { generationId: number; messageId: number; provisionalVariantId: number },
+	) =>
+		generationRuntimeFor(database).start({
+			generationId: accepted.generationId,
+			conversationId,
+			messageId: accepted.messageId,
+			variantId: accepted.provisionalVariantId,
+			startedAt: "2026-08-27T00:00:00.000Z",
+		});
+
+	const stopRoute = (conversationId: number, generationId: number) =>
+		createConversationRoutes(database).handle(
+			new Request(`http://localhost/api/conversations/${conversationId}/generations/${generationId}/stop`, {
+				method: "POST",
+				body: "{}",
+			}),
+		);
+
+	const stopAllRoute = (conversationId: number) =>
+		createConversationRoutes(database).handle(
+			new Request(`http://localhost/api/conversations/${conversationId}/generations/stop-all`, {
+				method: "POST",
+				body: "{}",
+			}),
+		);
 
 	test("maps a stopped Generation onto the stopped transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopRoute(
-			scriptedConversation(conversation),
-			scriptedRuntimes([scriptedRuntime(7, conversation.id)]),
-			conversation.id,
-			7,
-		);
+		const input = setup();
+		const accepted = acceptTail(input, "Write something.");
+		startRuntime(input.conversation.id, accepted);
+
+		const response = await stopRoute(input.conversation.id, accepted.generationId);
 		// SAFETY: this test controls the mapped response shape.
 		const body = await response.json() as {
 			outcome: string;
@@ -137,18 +116,14 @@ describe("Generation Stop route mapping", () => {
 
 		expect(response.status).toBe(200);
 		expect(body.outcome).toBe("stopped");
-		expect(body.generationId).toBe(7);
-		expect(body.conversation.id).toBe(conversation.id);
+		expect(body.generationId).toBe(accepted.generationId);
+		expect(body.conversation.id).toBe(input.conversation.id);
 	});
 
 	test("maps a missing Generation onto the not-found transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopRoute(
-			scriptedConversation(conversation, { invalidStop: true }),
-			scriptedRuntimes([]),
-			conversation.id,
-			13,
-		);
+		const input = setup();
+
+		const response = await stopRoute(input.conversation.id, 404_404);
 		// SAFETY: this test controls the mapped not-found response shape.
 		const body = await response.json() as { outcome: string };
 
@@ -157,67 +132,54 @@ describe("Generation Stop route mapping", () => {
 	});
 
 	test("maps a conflicting runtime ownership onto the not-found transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopRoute(
-			scriptedConversation(conversation),
-			scriptedRuntimes([scriptedRuntime(15, conversation.id + 500)]),
-			conversation.id,
-			15,
-		);
+		const addressed = setup();
+		const owner = setup();
+		const accepted = acceptTail(owner, "Owned elsewhere.");
+		startRuntime(owner.conversation.id, accepted);
+
+		const response = await stopRoute(addressed.conversation.id, accepted.generationId);
 		// SAFETY: this test controls the mapped not-found response shape.
 		const body = await response.json() as { outcome: string };
 
 		expect(response.status).toBe(404);
 		expect(body.outcome).toBe("not-found");
+		// The foreign attempt survives untouched: durable state is never
+		// consulted under another Conversation's name.
+		expect(owner.module.getSnapshot(owner.conversation.id)?.activeGenerations).toHaveLength(1);
 	});
 
 	test("maps an already-terminal race onto the not-found transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopRoute(
-			scriptedConversation(conversation, { invalidStop: true }),
-			scriptedRuntimes([scriptedRuntime(16, conversation.id)]),
-			conversation.id,
-			16,
-		);
+		const input = setup();
+		const accepted = acceptTail(input, "Finish first.");
+		const runtime = startRuntime(input.conversation.id, accepted);
+		// The provider wins: the Generation resolves durably and the runtime
+		// settles complete while still retained for its replay window.
+		input.module.resolveGeneration({
+			conversationId: input.conversation.id,
+			generationId: accepted.generationId,
+			timestamp: "2026-08-27T00:00:05.000Z",
+			content: "Provider won.",
+		});
+		runtime.complete();
+
+		const response = await stopRoute(input.conversation.id, accepted.generationId);
 		// SAFETY: this test controls the mapped not-found response shape.
 		const body = await response.json() as { outcome: string };
 
 		expect(response.status).toBe(404);
 		expect(body.outcome).toBe("not-found");
-	});
-
-	test("maps an incomplete settlement onto the stopped transport response with the authoritative snapshot", async () => {
-		const conversation = snapshot();
-		const response = await stopRoute(
-			scriptedConversation(conversation),
-			scriptedRuntimes([scriptedRuntime(17, conversation.id, {
-				markStoppedError: new Error("Runtime settlement exploded."),
-			})]),
-			conversation.id,
-			17,
-		);
-		// SAFETY: this test controls the mapped response shape.
-		const body = await response.json() as {
-			outcome: string;
-			generationId: number;
-			conversation: { id: number };
-		};
-
-		// The durable transition committed, so the authoritative Conversation
-		// snapshot is the transport truth even though runtime settlement failed.
-		expect(response.status).toBe(200);
-		expect(body.outcome).toBe("stopped");
-		expect(body.generationId).toBe(17);
-		expect(body.conversation.id).toBe(conversation.id);
 	});
 
 	test("maps a stopped Stop All onto the stopped transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopAllRoute(
-			scriptedConversation(conversation, { generationIds: [5, 6] }),
-			scriptedRuntimes([scriptedRuntime(5, conversation.id), scriptedRuntime(6, conversation.id)]),
-			conversation.id,
-		);
+		const input = setup();
+		const target = input.conversation.messages[0];
+		if (target === undefined) throw new Error("Opening target missing.");
+		const first = acceptSibling(input, target.id, "2026-08-27T00:00:01.000Z");
+		const second = acceptSibling(input, target.id, "2026-08-27T00:00:02.000Z");
+		startRuntime(input.conversation.id, first);
+		startRuntime(input.conversation.id, second);
+
+		const response = await stopAllRoute(input.conversation.id);
 		// SAFETY: this test controls the mapped response shape.
 		const body = await response.json() as {
 			outcome: string;
@@ -227,44 +189,18 @@ describe("Generation Stop route mapping", () => {
 
 		expect(response.status).toBe(200);
 		expect(body.outcome).toBe("stopped");
-		expect(body.generationIds).toEqual([5, 6]);
-		expect(body.conversation.id).toBe(conversation.id);
+		expect(body.generationIds).toEqual([first.generationId, second.generationId]);
+		expect(body.conversation.id).toBe(input.conversation.id);
 	});
 
 	test("maps a missing Stop All onto the not-found transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopAllRoute(
-			scriptedConversation(conversation, { invalidStopAll: true }),
-			scriptedRuntimes([]),
-			conversation.id,
-		);
+		const input = setup();
+
+		const response = await stopAllRoute(input.conversation.id);
 		// SAFETY: this test controls the mapped not-found response shape.
 		const body = await response.json() as { outcome: string };
 
 		expect(response.status).toBe(404);
 		expect(body.outcome).toBe("not-found");
-	});
-
-	test("maps an incomplete Stop All settlement onto the stopped transport response", async () => {
-		const conversation = snapshot();
-		const response = await stopAllRoute(
-			scriptedConversation(conversation, { generationIds: [5, 6] }),
-			scriptedRuntimes([
-				scriptedRuntime(5, conversation.id),
-				scriptedRuntime(6, conversation.id, { markStoppedError: new Error("Runtime 6 stuck.") }),
-			]),
-			conversation.id,
-		);
-		// SAFETY: this test controls the mapped response shape.
-		const body = await response.json() as {
-			outcome: string;
-			generationIds: number[];
-			conversation: { id: number };
-		};
-
-		expect(response.status).toBe(200);
-		expect(body.outcome).toBe("stopped");
-		expect(body.generationIds).toEqual([5, 6]);
-		expect(body.conversation.id).toBe(conversation.id);
 	});
 });

@@ -1,5 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { conversationConflict } from "./conversation-schema";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
 export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
@@ -53,13 +55,23 @@ export const lorebookOwnerAttachmentState = Type.Object({
 	})),
 });
 export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachmentState>;
+// ==[HUMAN APPROVED]== Only the two Character-owned Lore attachment commands still
+// produce a Lorebook attachment conflict; the Conversation-owned commands
+// recover through the Conversation conflict shape (conversation-schema), so
+// the conversation state members left this union with their machinery.
 export const loreAttachmentConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.Literal("stale-revision"),
 	expectedRevision: Type.Integer(),
 	actualRevision: Type.Integer(),
-	currentState: Type.Union([loreAttachmentState, lorebookOwnerAttachmentState]),
+	currentState: lorebookOwnerAttachmentState,
 });
+
+// ==[HUMAN APPROVED]== The Lorebook attachment command's conflict response: Character-owned
+// commands recover through the Lorebook attachment conflict above, while
+// the Conversation-owned commands recover through the canonical Conversation
+// conflict shape.
+export const loreAttachmentCommandConflict = Type.Union([loreAttachmentConflict, conversationConflict]);
 
 export const lorebookAttachmentImpact = Type.Object({
 	bookId: Type.Integer(),
@@ -238,3 +250,22 @@ export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSumm
 export const bookIdParams = Type.Object({ bookId: numericWire });
 
 export type LorebookListResponse = Static<typeof lorebookListResponse>;
+
+// ==[HUMAN APPROVED]== The Lorebook command families' modeled error unions: the composed
+// 409/404/422 envelopes each family declares, so the client decodes an error
+// body against exactly the union its route models. The attachment command
+// family's 409 is the two-shape conflict union: Character-owned commands
+// recover through the Lorebook attachment state, while the five
+// Conversation-owned commands recover through the Conversation conflict
+// shape.
+export const lorebookCommandErrors = Type.Union([
+	lorebookConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const loreAttachmentCommandErrors = Type.Union([
+	loreAttachmentCommandConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);

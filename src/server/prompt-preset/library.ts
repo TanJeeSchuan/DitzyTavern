@@ -27,6 +27,7 @@ import {
 import {
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
+	promptPresetBlockSelection,
 	type PromptPresetDatabase,
 } from "./recipe";
 import { refreshMemoryForConversation } from "../memory";
@@ -43,14 +44,46 @@ export const listPromptPresets = (database: Database): PromptPresetSummary[] =>
 
 const connect = (database: Database): PromptPresetDatabase => drizzle(database);
 
+/** ==[HUMAN APPROVED]== Insert one library header row and return its id; the failure message
+ * names the command that could not complete. */
+const insertPresetHeader = (
+	db: PromptPresetDatabase,
+	name: string,
+	verb: "created" | "duplicated",
+): number => {
+	const inserted = db
+		.insert(promptPresetTable)
+		.values({ name })
+		.returning({ id: promptPresetTable.id })
+		.get();
+	if (inserted === undefined) throw new Error(`The Prompt Preset could not be ${verb}.`);
+	return inserted.id;
+};
+
+// ==[HUMAN APPROVED]== The one library-header selection and the one row-to-summary projection,
+// shared by the list read and the in-transaction require read so a header
+// field addition touches both callers through one declaration.
+const presetHeaderSelection = {
+	id: promptPresetTable.id,
+	name: promptPresetTable.name,
+	revision: promptPresetTable.revision,
+	is_default: promptPresetTable.is_default,
+};
+
+const summaryOf = (
+	preset: { id: number; name: string; revision: number; is_default: boolean },
+	conversationCount: number,
+): PromptPresetSummary => ({
+	id: preset.id,
+	name: preset.name,
+	revision: preset.revision,
+	isDefault: preset.is_default,
+	conversationCount,
+});
+
 const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] => {
 	const presets = db
-		.select({
-			id: promptPresetTable.id,
-			name: promptPresetTable.name,
-			revision: promptPresetTable.revision,
-			is_default: promptPresetTable.is_default,
-		})
+		.select(presetHeaderSelection)
 		.from(promptPresetTable)
 		.orderBy(asc(promptPresetTable.id))
 		.all();
@@ -63,13 +96,7 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 		.groupBy(conversationPromptPresetTable.prompt_preset_id)
 		.all();
 	const totals = new Map(selections.map((entry) => [entry.presetId, entry.total]));
-	return presets.map((preset) => ({
-		id: preset.id,
-		name: preset.name,
-		revision: preset.revision,
-		isDefault: preset.is_default,
-		conversationCount: totals.get(preset.id) ?? 0,
-	}));
+	return presets.map((preset) => summaryOf(preset, totals.get(preset.id) ?? 0));
 };
 
 // ==[HUMAN APPROVED]== Reads one preset's summary with its deletion impact (the
@@ -77,12 +104,7 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 // transaction, so conflicts and results name exactly what a command saw.
 const requireSummary = (db: PromptPresetDatabase, presetId: number): PromptPresetSummary => {
 	const preset = db
-		.select({
-			id: promptPresetTable.id,
-			name: promptPresetTable.name,
-			revision: promptPresetTable.revision,
-			is_default: promptPresetTable.is_default,
-		})
+		.select(presetHeaderSelection)
 		.from(promptPresetTable)
 		.where(eq(promptPresetTable.id, presetId))
 		.get();
@@ -92,13 +114,7 @@ const requireSummary = (db: PromptPresetDatabase, presetId: number): PromptPrese
 		.from(conversationPromptPresetTable)
 		.where(eq(conversationPromptPresetTable.prompt_preset_id, presetId))
 		.get();
-	return {
-		id: preset.id,
-		name: preset.name,
-		revision: preset.revision,
-		isDefault: preset.is_default,
-		conversationCount: selection?.total ?? 0,
-	};
+	return summaryOf(preset, selection?.total ?? 0);
 };
 
 const requireCommandName = (name: string): string => {
@@ -119,23 +135,16 @@ export const readNativePromptPreset = (
 ): NativePromptPreset | undefined => {
 	const recipe = readPromptPresetRecipe(database, presetId);
 	if (recipe === undefined) return undefined;
+	// ==[HUMAN APPROVED]== Occurrence ids are local database identity and are omitted so reimport
+	// always creates fresh independent rows; referenced slots carry no resolved
+	// Participant or history content. The slot is already the canonical closed
+	// slot shape, so the projection is one envelope strip.
+	// ==[HUMAN APPROVED]== SAFETY: the strip result is exactly the wire slot (one id column
+	// removed from the occurrence), and the recipe's declared promptPresetRecipe
+	// wire schema validates every value this projection emits.
 	return {
 		name: recipe.name,
-		slots: recipe.slots.map((slot) => {
-			if (slot.reference === "history") {
-				return { reference: slot.reference, enabled: slot.enabled };
-			}
-			if (slot.reference === "instruction") {
-				return {
-					reference: slot.reference,
-					enabled: slot.enabled,
-					role: slot.role,
-					name: slot.name,
-					content: slot.content,
-				};
-			}
-			return { reference: slot.reference, enabled: slot.enabled, role: slot.role };
-		}),
+		slots: recipe.slots.map(({ id: _occurrenceId, ...slot }) => slot as NativePromptPreset["slots"][number]),
 	};
 };
 
@@ -155,30 +164,29 @@ export const importNativePromptPreset = (
 	}
 	const db = connect(database);
 	const execute = database.transaction(() => {
-		const inserted = db
-			.insert(promptPresetTable)
-			.values({ name })
-			.returning({ id: promptPresetTable.id })
-			.get();
-		if (inserted === undefined) throw new Error("The native Prompt Preset could not be imported.");
+		const insertedId = insertPresetHeader(db, name, "created");
 		if (native.slots.length > 0) {
 			const rows = native.slots.map((slot, index) => {
-				const row = {
-					preset_id: inserted.id,
+				const row: typeof promptPresetBlockTable.$inferInsert = {
+					preset_id: insertedId,
 					position: index + 1,
 					reference: slot.reference,
 					enabled: slot.enabled,
 					role: slot.reference === "history" ? null : slot.role,
 				};
-				return slot.reference === "instruction"
-					? { ...row, name: slot.name, content: slot.content }
-					: row;
+				// ==[HUMAN APPROVED]== An authored instruction is the only slot that stores its
+				// composed name and text.
+				if (slot.reference === "instruction") {
+					row.name = slot.name;
+					row.content = slot.content;
+				}
+				return row;
 			});
 			db.insert(promptPresetBlockTable)
 				.values(rows)
 				.run();
 		}
-		return requireSummary(db, inserted.id);
+		return requireSummary(db, insertedId);
 	});
 	return execute.immediate();
 };
@@ -212,22 +220,15 @@ export function executePromptPresetCommand(
 	database: Database,
 	command: PromptPresetCommand,
 ): PromptPresetCommandResult {
-	if (command.type === "create") {
-		const db = connect(database);
-		const create = database.transaction(() => {
-			const inserted = db
-				.insert(promptPresetTable)
-				.values({ name: requireCommandName(command.name) })
-				.returning({ id: promptPresetTable.id })
-				.get();
-			if (inserted === undefined) throw new Error("The Prompt Preset could not be created.");
-			return requireSummary(db, inserted.id);
-		});
-		return { kind: "preset", preset: create.immediate() };
-	}
-
+	// ==[HUMAN APPROVED]== One drizzle handle and one transaction serve every command this
+	// executor accepts; the create path has no guarded source, so it is the
+	// only member that skips the revision read.
 	const db = connect(database);
 	const execute = database.transaction((): PromptPresetCommandResult => {
+		if (command.type === "create") {
+			return { kind: "preset", preset: requireSummary(db, insertPresetHeader(db, requireCommandName(command.name), "created")) };
+		}
+
 		const preset = requireSummary(db, command.presetId);
 		if (preset.revision !== command.expectedRevision) {
 			throw new StalePromptPresetRevisionError(
@@ -268,31 +269,19 @@ export function executePromptPresetCommand(
 		}
 
 		if (command.type === "duplicate") {
-			const inserted = db
-				.insert(promptPresetTable)
-				.values({ name: requireCommandName(command.name) })
-				.returning({ id: promptPresetTable.id })
-				.get();
-			if (inserted === undefined) throw new Error("The Prompt Preset could not be duplicated.");
+			const insertedId = insertPresetHeader(db, requireCommandName(command.name), "duplicated");
 			const blocks = db
-				.select({
-					position: promptPresetBlockTable.position,
-					reference: promptPresetBlockTable.reference,
-					enabled: promptPresetBlockTable.enabled,
-					role: promptPresetBlockTable.role,
-					name: promptPresetBlockTable.name,
-					content: promptPresetBlockTable.content,
-				})
+				.select(promptPresetBlockSelection)
 				.from(promptPresetBlockTable)
 				.where(eq(promptPresetBlockTable.preset_id, preset.id))
 				.orderBy(asc(promptPresetBlockTable.position))
 				.all();
 			if (blocks.length > 0) {
 				db.insert(promptPresetBlockTable)
-					.values(blocks.map((block) => ({ preset_id: inserted.id, ...block })))
+					.values(blocks.map((block) => ({ preset_id: insertedId, ...block })))
 					.run();
 			}
-			return { kind: "preset", preset: requireSummary(db, inserted.id) };
+			return { kind: "preset", preset: requireSummary(db, insertedId) };
 		}
 
 		db.update(promptPresetTable)

@@ -9,9 +9,24 @@ const presetChanged = "The selected Prompt Preset changed. Reset and re-extract 
 
 export function invalidateMemoryWorkForConversation(database: Database, conversationId: number, reason = presetChanged) {
 	const db = drizzle(database);
-	const superseded = db.update(memoryCollectionTable).set({ work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`, status: "failed", error: reason, updated_at: new Date().toISOString() })
-		.where(and(eq(memoryCollectionTable.conversation_id, conversationId), eq(memoryCollectionTable.ownership, "automatic"), inArray(memoryCollectionTable.status, ["pending", "running"])))
-		.returning({ id: memoryCollectionTable.variant_id }).all();
+	const superseded = db
+		.update(memoryCollectionTable)
+		.set({
+			work_epoch: sql`${memoryCollectionTable.work_epoch} + 1`,
+			status: "failed",
+			error: reason,
+			updated_at: new Date().toISOString(),
+		})
+		.where(and(
+			eq(memoryCollectionTable.conversation_id, conversationId),
+			eq(memoryCollectionTable.ownership, "automatic"),
+			inArray(memoryCollectionTable.status, ["pending", "running"]),
+		))
+		.returning({ id: memoryCollectionTable.variant_id })
+		.all();
 	abortMemoryWork(database, superseded.map(({ id }) => id));
-	if (!isMemoryEnabledForConversation(database, conversationId)) abortMemoryWork(database, db.select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all().map(({ id }) => id));
+	if (!isMemoryEnabledForConversation(database, conversationId)) {
+		const all = db.select({ id: memoryCollectionTable.variant_id }).from(memoryCollectionTable).where(eq(memoryCollectionTable.conversation_id, conversationId)).all();
+		abortMemoryWork(database, all.map(({ id }) => id));
+	}
 }

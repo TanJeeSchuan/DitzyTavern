@@ -52,12 +52,21 @@ const decodeVector = (bytes: Uint8Array): number[] => [...new Float32Array(new U
 
 export const readCachedMemoryVectors = (database: Database, spaceKey: string, texts: readonly string[]): Map<string, number[]> => {
 	const byHash = new Map(texts.map((text) => [sha256(text), text]));
-	const rows = queryBatches([...byHash.keys()]).flatMap((batch) => drizzle(database).select({ hash: memoryEmbeddingCacheTable.text_hash, vector: memoryEmbeddingCacheTable.vector }).from(memoryEmbeddingCacheTable).where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch))).all());
+	const rows = queryBatches([...byHash.keys()]).flatMap((batch) => drizzle(database)
+		.select({ hash: memoryEmbeddingCacheTable.text_hash, vector: memoryEmbeddingCacheTable.vector })
+		.from(memoryEmbeddingCacheTable)
+		.where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch)))
+		.all());
 	return new Map(rows.map(({ hash, vector }) => [byHash.get(hash)!, decodeVector(vector)]));
 };
 
 const cachedHashes = (database: Database, spaceKey: string, texts: readonly string[]): Set<string> =>
-	new Set(queryBatches([...new Set(texts.map(sha256))]).flatMap((batch) => drizzle(database).select({ hash: memoryEmbeddingCacheTable.text_hash }).from(memoryEmbeddingCacheTable).where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch))).all().map(({ hash }) => hash)));
+	new Set(queryBatches([...new Set(texts.map(sha256))]).flatMap((batch) => drizzle(database)
+		.select({ hash: memoryEmbeddingCacheTable.text_hash })
+		.from(memoryEmbeddingCacheTable)
+		.where(and(eq(memoryEmbeddingCacheTable.space_key, spaceKey), inArray(memoryEmbeddingCacheTable.text_hash, batch)))
+		.all()
+		.map(({ hash }) => hash)));
 
 const renderedClaims = (claimsJson: string): string[] => Value.Parse(memoryCandidates, JSON.parse(claimsJson)).map(renderMemoryClaim);
 
@@ -99,7 +108,11 @@ export interface MemoryIndexJob {
 }
 
 const markIndexed = (database: Database, job: Pick<MemoryIndexJob, "variantId" | "workEpoch" | "configuration">, error: string | null) =>
-	drizzle(database).update(memoryCollectionTable).set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }) }).where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch))).run();
+	drizzle(database)
+		.update(memoryCollectionTable)
+		.set({ index_attempt_json: JSON.stringify({ spaceKey: job.configuration.spaceKey, error }) })
+		.where(and(eq(memoryCollectionTable.variant_id, job.variantId), eq(memoryCollectionTable.work_epoch, job.workEpoch)))
+		.run();
 
 export const claimMemoryIndexJob = (database: Database): MemoryIndexJob | undefined => {
 	if (!createMemorySettingsModule(database).get().enabled) return undefined;
@@ -131,7 +144,13 @@ export const runMemoryIndexJob = async (database: Database, job: MemoryIndexJob,
 		signal.throwIfAborted();
 		if (vectors.length !== missing.length || vectors.some((vector) => vector.length === 0)) throw new Error("The embedding endpoint returned an incomplete Memory index.");
 		database.transaction(() => {
-			for (const [index, text] of missing.entries()) drizzle(database).insert(memoryEmbeddingCacheTable).values({ space_key: job.configuration.spaceKey, text_hash: sha256(text), vector: encodeVector(vectors[index]!) }).onConflictDoNothing().run();
+			for (const [index, text] of missing.entries()) {
+				drizzle(database)
+					.insert(memoryEmbeddingCacheTable)
+					.values({ space_key: job.configuration.spaceKey, text_hash: sha256(text), vector: encodeVector(vectors[index]!) })
+					.onConflictDoNothing()
+					.run();
+			}
 			markIndexed(database, job, null);
 		}).immediate();
 	} catch (error) {

@@ -8,7 +8,6 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
@@ -23,6 +22,7 @@ import {
 } from "../../shared/contract/memory-recall";
 import {
 	connectConversationDatabase,
+	findConversation,
 	readActiveCast,
 	type ConversationDatabase,
 } from "./internal";
@@ -93,7 +93,8 @@ type SafeGenerationSettings = {
 
 // ==[HUMAN APPROVED]== The decoded value for each inspection field. Compile-locked: adding a
 // canonical field (outside the exclusion) fails typecheck until inspection
-// states how it decodes.
+// states how it decodes — and the projection below maps the table, so that
+// one line is the whole change.
 type InspectionSettingsDecoder = {
 	readonly [K in InspectionSettingsField]: (
 		source: Record<string, ConversationJsonValue> | null,
@@ -118,23 +119,19 @@ const inspectionSettingsFieldValue: InspectionSettingsDecoder = {
 
 const safeGenerationSettings = (value: ConversationJsonValue): SafeGenerationSettings => {
 	// ==[HUMAN APPROVED]== SAFETY: a non-object source decodes as an empty record, and every field
-	// decoder then resolves its own intentional null.
+	// decoder then resolves its own intentional null. The projection maps the
+	// decoder table itself, so the table's declaration order is the field
+	// order and a new field cannot be forgotten in the projection.
 	const source = generationJsonObject(value);
-	return {
-		modelId: inspectionSettingsFieldValue.modelId(source),
-		temperature: inspectionSettingsFieldValue.temperature(source),
-		topP: inspectionSettingsFieldValue.topP(source),
-		frequencyPenalty: inspectionSettingsFieldValue.frequencyPenalty(source),
-		presencePenalty: inspectionSettingsFieldValue.presencePenalty(source),
-		contextLimit: inspectionSettingsFieldValue.contextLimit(source),
-		responseBudget: inspectionSettingsFieldValue.responseBudget(source),
-		safetyAllowance: inspectionSettingsFieldValue.safetyAllowance(source),
-		siblingGenerationLimit: inspectionSettingsFieldValue.siblingGenerationLimit(source),
-		continuationStrategy: inspectionSettingsFieldValue.continuationStrategy(source),
-		continuationInstruction: inspectionSettingsFieldValue.continuationInstruction(source),
-		continuationPrefillSuffix: inspectionSettingsFieldValue.continuationPrefillSuffix(source),
-		repeatedImagePlacement: inspectionSettingsFieldValue.repeatedImagePlacement(source),
-	};
+	// ==[HUMAN APPROVED]== SAFETY: the key list is the decoder table's own keys in declared
+	// order and every value is that table's decode of the same field, so the
+	// record is exactly the mapped SafeGenerationSettings shape.
+	return Object.fromEntries(
+		(Object.keys(inspectionSettingsFieldValue) as InspectionSettingsField[]).map((field) => [
+			field,
+			inspectionSettingsFieldValue[field](source),
+		]),
+	) as SafeGenerationSettings;
 };
 
 const safeProvenance = (
@@ -195,8 +192,7 @@ export function readActiveGenerationDetailsFromConnection(
 	}
 	const row = active ?? retained;
 	if (row === undefined) return undefined;
-	const conversation = db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get();
-	if (conversation === undefined) return undefined;
+	if (findConversation(db, conversationId) === undefined) return undefined;
 	const humanName = row.captured_human_name.length > 0
 		? row.captured_human_name
 		: db.select({ name: participantTable.name }).from(participantTable)
@@ -311,11 +307,35 @@ const readMemorySourceAvailabilityFromConnection = (
 	conversationId: number,
 	activation: ActiveGenerationDetails["memoryActivation"],
 ): ActiveGenerationDetails["memorySources"] => {
-	const messageIds = [...new Set([...activation?.scanMessageIds ?? [], ...activation?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? []])];
+	const messageIds = [...new Set([
+		...(activation?.scanMessageIds ?? []),
+		...(activation?.candidates.flatMap((candidate) => [candidate.messageId, ...candidate.evidence.map(({ messageId }) => messageId)]) ?? []),
+	])];
 	const variantIds = [...new Set(activation?.candidates.map(({ variantId }) => variantId) ?? [])];
 	return {
-		messageIds: messageIds.length === 0 ? [] : db.select({ id: messageTable.id }).from(messageTable).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageTable.id, messageIds))).all().map(({ id }) => id),
-		variantIds: variantIds.length === 0 ? [] : db.select({ id: messageVariantTable.id }).from(messageVariantTable).innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, variantIds))).all().map(({ id }) => id),
+		messageIds: messageIds.length === 0
+			? []
+			: db
+				.select({ id: messageTable.id })
+				.from(messageTable)
+				.where(and(
+					eq(messageTable.conversation_id, conversationId),
+					inArray(messageTable.id, messageIds),
+				))
+				.all()
+				.map(({ id }) => id),
+		variantIds: variantIds.length === 0
+			? []
+			: db
+				.select({ id: messageVariantTable.id })
+				.from(messageVariantTable)
+				.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+				.where(and(
+					eq(messageTable.conversation_id, conversationId),
+					inArray(messageVariantTable.id, variantIds),
+				))
+				.all()
+				.map(({ id }) => id),
 	};
 };
 

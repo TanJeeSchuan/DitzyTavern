@@ -12,7 +12,6 @@ import {
 	stopAllConversationGenerations,
 	stopConversationGeneration,
 	type ConversationSummary,
-	type StopConversationGenerationResult,
 } from "../conversation";
 import { generationStreamAdapter } from "../conversation-stream";
 import {
@@ -73,11 +72,15 @@ export function generationSessionStoryAction(
 }
 
 // ==[HUMAN APPROVED]== Maps a transport Stop outcome onto the machine's stop-command vocabulary.
+// The transport's network outcome is the machine's failed stop; the reason is
+// owned here because the transport no longer words per-route failures.
 const stopCommandOutcome = (
-	result: StopConversationGenerationResult,
+	result:
+		| Awaited<ReturnType<typeof stopConversationGeneration>>
+		| Awaited<ReturnType<typeof stopAllConversationGenerations>>,
 ): GenerationStopCommandOutcome => {
-	if (result.outcome === "failed") return { outcome: "failed", reason: result.reason };
 	if (result.outcome === "not-found") return { outcome: "not-found" };
+	if (result.outcome === "network") return { outcome: "failed", reason: "Generation could not be stopped." };
 	return { outcome: "stopped" };
 };
 
@@ -238,16 +241,9 @@ export function useGenerationController({
 		if (conversationId === undefined || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-started", generationId });
-		try {
-			const outcome = await stopConversationGeneration(conversationId, generationId);
-			runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
-		} catch {
-			runner.dispatch({
-				type: "stop-settled",
-				generationId,
-				outcome: { outcome: "failed", reason: "Generation could not be stopped." },
-			});
-		}
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		const outcome = await stopConversationGeneration(conversationId, generationId);
+		runner.dispatch({ type: "stop-settled", generationId, outcome: stopCommandOutcome(outcome) });
 	};
 
 	const stopAllGenerations = async () => {
@@ -255,15 +251,9 @@ export function useGenerationController({
 		if (conversationId === undefined || activeGenerationTargets.length < 2 || stopPending) return;
 		runner.dispatch({ type: "errors-acknowledged" });
 		runner.dispatch({ type: "stop-all-started" });
-		try {
-			const outcome = await stopAllConversationGenerations(conversationId);
-			runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
-		} catch {
-			runner.dispatch({
-				type: "stop-all-settled",
-				outcome: { outcome: "failed", reason: "Generations could not be stopped." },
-			});
-		}
+		// ==[HUMAN APPROVED]== The transport classifies every failure itself; it never rejects.
+		const outcome = await stopAllConversationGenerations(conversationId);
+		runner.dispatch({ type: "stop-all-settled", outcome: stopCommandOutcome(outcome) });
 	};
 
 	const cancelGeneration = () => {

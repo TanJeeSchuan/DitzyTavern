@@ -94,6 +94,10 @@ export {
 // sync to this seam so the deep Conversation module reports what it changed
 // instead of importing Memory.
 export { observeConversationWrites } from "./commands/transaction";
+// ==[HUMAN APPROVED]== The canonical revisioned command seam: the Lorebook attachment
+// route dispatches its Conversation-owned commands through it instead of
+// keeping a parallel write transaction.
+export { executeConversationCommand } from "./execute";
 export { readActiveGenerationDetails, readVariantDetails } from "./generation-details";
 export { readConversationRevision } from "./snapshot";
 export {

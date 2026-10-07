@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { notRemovableOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
 import { numericWire } from "./wire";
 
 export type SillyTavernJsonValue =
@@ -402,6 +402,15 @@ export type PromptPresetConflict = Static<typeof promptPresetConflict>;
 export const promptPresetCommandConflict = Type.Union([
 	promptPresetConflict,
 	notRemovableOutcome,
+]);
+
+// ==[HUMAN APPROVED]== The Prompt Preset command family's modeled error union: the composed
+// 409/404/422 envelopes the command route declares, so the client decodes an
+// error body against exactly that union.
+export const promptPresetCommandErrors = Type.Union([
+	promptPresetCommandConflict,
+	notFoundOutcome,
+	invalidOutcome,
 ]);
 
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each operation

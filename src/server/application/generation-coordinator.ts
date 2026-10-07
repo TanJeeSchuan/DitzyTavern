@@ -6,9 +6,6 @@ import {
 	createConversationModule,
 	removeRetainedGenerationInspection,
 	type ConversationSummary,
-	type StopGenerationInput,
-	type StopGenerationsInput,
-	type StoppedGenerations,
 } from "../conversation";
 import {
 	connectionSnapshotOf,
@@ -31,7 +28,7 @@ import {
 	type AcceptedGenerationRecord,
 	type GenerationStartInput,
 	type GenerationRuntime,
-	type GenerationRuntimeState,
+	type ServerOwnedGeneration,
 	type ServerOwnedGenerationControl,
 } from "../workflows";
 import type { GenerationCheckpointOptions } from "../workflows/generation-runtime";
@@ -40,42 +37,6 @@ import type { GenerationCheckpointOptions } from "../workflows/generation-runtim
 export interface GenerationCoordinatorOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 	readonly checkpoint?: GenerationCheckpointOptions;
-	/**
-	 * ==[HUMAN APPROVED]== Composition seam for the durable Conversation stop transitions. Production
-	 * resolves the deep Conversation module; composed callers and tests may
-	 * substitute their own adapter.
-	 */
-	readonly conversationLifecycle?: GenerationConversationLifecycle;
-	/** ==[HUMAN APPROVED]== Composition seam for the process runtime registry used by Stop and Stop All. */
-	readonly runtimeLifecycle?: GenerationRuntimeLifecycle;
-}
-
-/**
- * ==[HUMAN APPROVED]== The durable Conversation stop transitions the Coordinator composes with
- * runtime mechanics. The deep Conversation module owns these atomic durable
- * transitions and their database invariants; it never learns runtime mechanics.
- */
-export interface GenerationConversationLifecycle {
-	stopGeneration(input: StopGenerationInput): ConversationSummary;
-	stopGenerations(input: StopGenerationsInput): StoppedGenerations;
-}
-
-/** ==[HUMAN APPROVED]== The process runtime entry the Coordinator settles on Stop. */
-export interface GenerationRuntimeHandle {
-	readonly state: GenerationRuntimeState;
-	/** ==[HUMAN APPROVED]== Aborts the provider attempt and flushes the latest runtime checkpoint. */
-	stop(): void;
-	/** ==[HUMAN APPROVED]== Marks the runtime terminal after the durable Stop transition committed. */
-	markStopped(): void;
-	/** ==[HUMAN APPROVED]== Returns terminal ownership to the provider after a losing Stop race. */
-	releaseStopRequest(): void;
-}
-
-/** ==[HUMAN APPROVED]== The process runtime registry seam the Coordinator consults for Stop. */
-export interface GenerationRuntimeLifecycle {
-	get(generationId: number): GenerationRuntimeHandle | undefined;
-	/** ==[HUMAN APPROVED]== Forces a checkpoint on every runtime of one Conversation without aborting. */
-	flushAll(conversationId: number): void;
 }
 
 /**
@@ -189,12 +150,7 @@ interface ManagedGenerationInput<TAccepted extends AcceptedGeneration, TResult> 
 	conversationId: number;
 	start: (
 		context: GenerationStartContext<TAccepted>,
-	) => ServerOwnedGenerationHandle<TAccepted, TResult>;
-}
-
-interface ServerOwnedGenerationHandle<TAccepted, TResult> {
-	readonly accepted: Promise<TAccepted>;
-	readonly result: Promise<TResult>;
+	) => ServerOwnedGeneration<TAccepted, TResult>;
 }
 
 interface ResolvedGenerationTransport {
@@ -246,7 +202,7 @@ export class GenerationCoordinator {
 	 */
 	async stopGeneration(conversationId: number, generationId: number): Promise<GenerationStopOutcome> {
 		const database = this.database;
-		const runtimes = this.runtimeLifecycle();
+		const runtimes = generationRuntimeFor(database);
 		const runtime = runtimes.get(generationId);
 		// ==[HUMAN APPROVED]== The runtime registry knows which Conversation owns this Generation.
 		// A mismatch means the addressed Conversation has no such Generation;
@@ -256,7 +212,7 @@ export class GenerationCoordinator {
 		}
 		// ==[HUMAN APPROVED]== A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.stop();
-		const conversation = this.conversationLifecycle(database);
+		const conversation = createConversationModule(database);
 		try {
 			const snapshot = conversation.stopGeneration({ conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
@@ -286,12 +242,12 @@ export class GenerationCoordinator {
 	 */
 	async stopAllGenerations(conversationId: number): Promise<GenerationStopAllOutcome> {
 		const database = this.database;
-		const runtimes = this.runtimeLifecycle();
+		const runtimes = generationRuntimeFor(database);
 		// ==[HUMAN APPROVED]== Forced checkpoints without aborting first. The durable transition
 		// below owns the complete target set; runtimes are settled only after
 		// its commit succeeds.
 		runtimes.flushAll(conversationId);
-		const conversation = this.conversationLifecycle(database);
+		const conversation = createConversationModule(database);
 		try {
 			const stopped = conversation.stopGenerations({ conversationId });
 			const unsettled: number[] = [];
@@ -329,7 +285,7 @@ export class GenerationCoordinator {
 
 	private settleStoppedGeneration(
 		generationId: number,
-		runtime: GenerationRuntimeHandle | undefined,
+		runtime: GenerationRuntime | undefined,
 		snapshot: ConversationSummary,
 	): GenerationStopOutcome {
 		let unsettledReason: string | null = null;
@@ -345,22 +301,6 @@ export class GenerationCoordinator {
 		return { outcome: "stopped", generationId, conversation: snapshot, unsettledReason };
 	}
 
-	/**
-	 * ==[HUMAN APPROVED]== Resolves the durable Conversation stop adapter: the composed seam when
-	 * provided, otherwise constructs the deep Conversation module with the
-	 * Coordinator's database.
-	 */
-	private conversationLifecycle(database: Database): GenerationConversationLifecycle {
-		if (this.options.conversationLifecycle !== undefined) return this.options.conversationLifecycle;
-		return createConversationModule(database);
-	}
-
-	/** ==[HUMAN APPROVED]== The runtime lifecycle seam for Stop and Stop All: the composed seam when provided. */
-	private runtimeLifecycle(): GenerationRuntimeLifecycle {
-		if (this.options.runtimeLifecycle !== undefined) return this.options.runtimeLifecycle;
-		return generationRuntimeFor(this.database);
-	}
-
 	private async coordinate<
 		TAccepted extends AcceptedGeneration,
 		TResult,
@@ -370,9 +310,6 @@ export class GenerationCoordinator {
 		const database = this.database;
 		const runtimeRegistry = generationRuntimeFor(database);
 		runtimeRegistry.assertAccepting();
-		if (!createConversationModule(database).exists(input.conversationId)) {
-			throw new ConversationNotFoundError(input.conversationId);
-		}
 		const generationSettings = createConversationModule(database).getGenerationSettings(input.conversationId);
 		if (generationSettings === undefined) throw new ConversationNotFoundError(input.conversationId);
 		const transport = this.resolveTransport(database, generationSettings.connectionProfileId);

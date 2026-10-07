@@ -66,8 +66,8 @@ describe("Generation details client", () => {
 			installFetch(async () => Response.json(retainedInspection(status)));
 
 			expect(await loadActiveGenerationDetails(3, 7)).toEqual({
-				status: "available",
-				details: retainedInspection(status),
+				outcome: "available",
+				value: retainedInspection(status),
 			});
 		});
 	}
@@ -75,14 +75,14 @@ describe("Generation details client", () => {
 	test("maps an expired retained inspection to not-found", async () => {
 		installFetch(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
 
-		expect(await loadActiveGenerationDetails(3, 7)).toEqual({ status: "not-found" });
+		expect(await loadActiveGenerationDetails(3, 7)).toEqual({ outcome: "not-found" });
 	});
 
 	test("reports a corrupt retained inspection with the server reason", async () => {
 		installFetch(async () => Response.json({ outcome: "invalid", reason: "Stored Lore activation evidence is invalid." }, { status: 422 }));
 
 		expect(await loadActiveGenerationDetails(3, 7)).toEqual({
-			status: "invalid",
+			outcome: "invalid",
 			reason: "Stored Lore activation evidence is invalid.",
 		});
 	});
@@ -91,7 +91,7 @@ describe("Generation details client", () => {
 		installFetch(async () => Response.json({ outcome: "invalid", reason: "Stored Lore activation evidence is invalid." }, { status: 422 }));
 
 		expect(await loadVariantDetails(3, 11, 13)).toEqual({
-			status: "invalid",
+			outcome: "invalid",
 			reason: "Stored Lore activation evidence is invalid.",
 		});
 	});

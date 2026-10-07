@@ -59,7 +59,6 @@ import {
 	type GenerationProvenanceRecord,
 	type GenerationProvenanceSettings,
 } from "../../shared/generation-provenance";
-import { type GenerationSettingsField } from "../../shared/contract/generation-settings";
 import { hasEnabledLoreSlot, hasEnabledMemorySlot } from "../../shared/contract/prompt-preset";
 import {
 	createAttemptEnvironment,
@@ -662,9 +661,9 @@ export function capturedAcceptanceFields(
 		capturedModelName: capture.author.capturedName,
 		promptPlan: capture.plan.promptPlan,
 		promptInspection: promptInspectionJson(capture.plan.budget),
-		promptContext: promptContextJson(capture.context),
-		generationSettings: generationSettingsJson(capture.plan.effectiveSettings),
-		connection: connectionJson(capture.connection),
+		promptContext: capture.context,
+		generationSettings: capture.plan.effectiveSettings,
+		connection: connectionIdentityOf(capture.connection),
 		loreActivation: capture.plan.loreActivation,
 		memoryActivation: capture.plan.memoryActivation,
 		provenance: capture.provenance,
@@ -753,48 +752,20 @@ function resolveConnectionSnapshot(
 	return connectionSnapshotOf(settings, profile);
 }
 
-// ==[HUMAN APPROVED]== The persisted writing context: one closed JSON projection of the ordered
-// entries, each carrying its own role. Nothing aligns a second list against
-// it, so a stored context cannot be read back misaligned.
-const promptContextJson = (
-	context: readonly PromptContextEntry[],
-): ConversationJsonValue => context.map((entry) => ({
-	kind: entry.kind,
-	speakerName: entry.speakerName,
-	content: entry.content,
-	role: entry.role,
-}));
-
-// ==[HUMAN APPROVED]== Active Generation persistence stores only a closed JSON projection of the
-// provider-neutral captures. These explicit projections keep provider and
-// class instances out of the Conversation domain boundary.
-type PersistedGenerationSettings = {
-	readonly [K in GenerationSettingsField]: ConversationJsonValue;
-};
-
-const generationSettingsJson = (
-	effective: EffectiveGenerationSettings,
-): PersistedGenerationSettings => effective;
-
-const connectionJson = (
-	connection: ModelClientConnectionSnapshot | null,
-): ConversationJsonValue => connectionIdentityOf(connection);
-
 // ==[HUMAN APPROVED]== Active inspection keeps the exact budget decision made at Generation
-// start, including the whole history entries omitted during preflight. It is
-// deliberately not copied into terminal Variant provenance.
+// start, including the whole history entries omitted during preflight. The
+// retained writing context and the Effective Generation Settings pass
+// through as the closed JSON values they already are, and the connection
+// identity projection strips the provider snapshot's runtime-only model
+// list at the Conversation domain boundary. Inspection is deliberately not
+// copied into terminal Variant provenance.
 const promptInspectionJson = (budget: PromptBudgetResult): ConversationJsonValue => ({
 	tokenEstimate: budget.tokenEstimate,
 	responseBudget: budget.responseBudget,
 	safetyAllowance: budget.safetyAllowance,
 	contextLimit: budget.contextLimit,
 	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedContext: budget.omittedContext.map((entry) => ({
-		kind: entry.kind,
-		speakerName: entry.speakerName,
-		content: entry.content,
-		role: entry.role,
-	})),
+	omittedContext: budget.omittedContext,
 });
 
 /** ==[HUMAN APPROVED]==
