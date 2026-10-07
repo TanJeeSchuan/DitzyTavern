@@ -15,6 +15,7 @@ import {
 	InvalidLorebookCommandError,
 	LorebookEntryNotFoundError,
 	LorebookNotFoundError,
+	StaleLoreAttachmentOwnerRevisionError,
 	StaleLorebookRevisionError,
 } from "../lorebook/errors";
 import {
@@ -31,7 +32,7 @@ import {
 	sillyTavernLorebookImportBody,
 	loreAttachmentCommandBody,
 	loreAttachmentCommandResponse,
-	loreAttachmentConflict,
+	loreAttachmentCommandConflict,
 	loreAttachmentQuery,
 	loreAttachmentState,
 	lorebookAttachmentImpact,
@@ -40,14 +41,23 @@ import {
 } from "../../shared/contract/lorebook";
 import {
 	executeLorebookAttachmentCommand,
-	StaleLoreAttachmentRevisionError,
 	LoreAttachmentOwnerNotFoundError,
-	InvalidLoreAttachmentCommandError,
 	readLorebookAttachmentState,
 	readLorebookAttachmentImpact,
 	readCharacterLorebookAttachments,
 	readParticipantLorebookAttachments,
+	readParticipantConversationId,
 } from "../lorebook/attachments";
+import {
+	createConversationModule,
+	executeConversationCommand,
+	ConversationNotFoundError,
+	InvalidConversationCommandError,
+	ParticipantNotFoundError,
+	StaleConversationRevisionError,
+	type ConversationCommand,
+} from "../conversation";
+import { toConversationSummary } from "./projections";
 import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -152,6 +162,43 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 	}, { body: loreMatchTestBody, response: { 200: loreMatchTestResponse, 404: notFoundOutcome } })
 	.use(createLorebookAttachmentRoutes(database));
 
+// ==[HUMAN APPROVED]== Maps a stale Conversation revision from a Conversation-owned Lore
+// attachment command onto the canonical Conversation conflict response: the
+// authoritative summary rides inside the 409, or a 404 when the
+// Conversation disappeared between the conflict and the recovery read.
+const staleConversationConflictResponse = (
+	database: Database,
+	conversationId: number,
+	error: StaleConversationRevisionError,
+) => {
+	const current = createConversationModule(database).getSummary(conversationId);
+	if (current === undefined) return notFoundResponse();
+	return status(409, {
+		outcome: "conflict" as const,
+		expectedRevision: error.expectedRevision,
+		actualRevision: error.actualRevision,
+		currentConversation: toConversationSummary(current),
+	});
+};
+
+// ==[HUMAN APPROVED]== The Conversation-owned Lore attachment commands dispatch through the
+// canonical Conversation command seam, inheriting its revision guard,
+// post-write summary, and conflict shape. Chat-targeted commands carry the
+// conversation id on the wire; Participant commands derive it from the
+// Participant's own Chat reference, so the dispatch can never target a
+// foreign Chat.
+const executeConversationOwnedLoreAttachment = (database: Database, command: ConversationCommand) => {
+	try {
+		executeConversationCommand(database, command);
+		return { outcome: "applied" as const };
+	} catch (error) {
+		if (error instanceof StaleConversationRevisionError) return staleConversationConflictResponse(database, command.conversationId, error);
+		if (error instanceof ConversationNotFoundError || error instanceof ParticipantNotFoundError) return notFoundResponse();
+		if (error instanceof InvalidConversationCommandError) return invalidResponse(error.message);
+		throw error;
+	}
+};
+
 export const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments", ({ query }) => {
 		const state = readLorebookAttachmentState(database, query.conversationId);
@@ -170,30 +217,58 @@ export const createLorebookAttachmentRoutes = (database: Database) => new Elysia
 		return state ?? notFoundResponse();
 	}, { query: lorebookOwnerAttachmentQuery, response: { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome } })
 	.post("/api/lorebooks/attachments/commands", ({ body }) => {
-		try {
-			executeLorebookAttachmentCommand(database, body);
-			return { outcome: "applied" as const };
-		} catch (error) {
-			if (error instanceof StaleLoreAttachmentRevisionError) {
-				let currentState: ReturnType<typeof readLorebookAttachmentState | typeof readCharacterLorebookAttachments | typeof readParticipantLorebookAttachments>;
-				switch (error.command.type) {
-					case "attach-character":
-					case "detach-character": currentState = readCharacterLorebookAttachments(database, error.command.characterId); break;
-					case "attach-participant":
-					case "detach-participant": currentState = readParticipantLorebookAttachments(database, error.command.participantId); break;
-					default: currentState = readLorebookAttachmentState(database, error.command.conversationId);
+		if (body.type === "attach-character" || body.type === "detach-character") {
+			try {
+				executeLorebookAttachmentCommand(database, body);
+				return { outcome: "applied" as const };
+			} catch (error) {
+				if (error instanceof StaleLoreAttachmentOwnerRevisionError) {
+					const currentState = readCharacterLorebookAttachments(database, error.characterId);
+					if (currentState === undefined) return notFoundResponse();
+					return status(409, {
+						outcome: "conflict" as const,
+						reason: "stale-revision" as const,
+						expectedRevision: error.expectedRevision,
+						actualRevision: error.actualRevision,
+						currentState,
+					});
 				}
-				if (currentState === undefined) return notFoundResponse();
-				return status(409, {
-					outcome: "conflict" as const,
-					reason: "stale-revision" as const,
-					expectedRevision: error.expectedRevision,
-					actualRevision: error.actualRevision,
-					currentState,
-				});
+				if (error instanceof LoreAttachmentOwnerNotFoundError) return notFoundResponse();
+				throw error;
 			}
-			if (error instanceof LoreAttachmentOwnerNotFoundError) return notFoundResponse();
-			if (error instanceof InvalidLoreAttachmentCommandError) return invalidResponse(error.message);
-			throw error;
 		}
-	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentConflict, 422: invalidOutcome } });
+		if (body.type === "attach-participant" || body.type === "detach-participant") {
+			const conversationId = readParticipantConversationId(database, body.participantId);
+			if (conversationId === undefined) return notFoundResponse();
+			return body.type === "attach-participant"
+				? executeConversationOwnedLoreAttachment(database, {
+					conversationId,
+					expectedRevision: body.expectedRevision,
+					action: { type: "attach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope, enabled: body.enabled },
+				})
+				: executeConversationOwnedLoreAttachment(database, {
+					conversationId,
+					expectedRevision: body.expectedRevision,
+					action: { type: "detach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope },
+				});
+		}
+		if (body.type === "attach-chat") {
+			return executeConversationOwnedLoreAttachment(database, {
+				conversationId: body.conversationId,
+				expectedRevision: body.expectedRevision,
+				action: { type: "attach-chat", bookId: body.bookId, enabled: body.enabled },
+			});
+		}
+		if (body.type === "detach-chat") {
+			return executeConversationOwnedLoreAttachment(database, {
+				conversationId: body.conversationId,
+				expectedRevision: body.expectedRevision,
+				action: { type: "detach-chat", bookId: body.bookId },
+			});
+		}
+		return executeConversationOwnedLoreAttachment(database, {
+			conversationId: body.conversationId,
+			expectedRevision: body.expectedRevision,
+			action: { type: "save-settings", scanDepth: body.scanDepth, allowance: body.allowance },
+		});
+	}, { body: loreAttachmentCommandBody, response: { 200: loreAttachmentCommandResponse, 404: notFoundOutcome, 409: loreAttachmentCommandConflict, 422: invalidOutcome } });
