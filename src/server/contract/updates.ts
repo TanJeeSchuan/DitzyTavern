@@ -6,8 +6,9 @@ function subscribe(checker: UpdateChecker, request: Request) {
 	const encoder = new TextEncoder();
 	let unsubscribe: (() => void) | undefined;
 	let removeAbort: (() => void) | undefined;
+	let heartbeat: ReturnType<typeof setInterval> | undefined;
 	let closed = false;
-	const cleanup = () => { unsubscribe?.(); removeAbort?.(); };
+	const cleanup = () => { clearInterval(heartbeat); unsubscribe?.(); removeAbort?.(); };
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			const abort = () => { if (closed) return; closed = true; cleanup(); controller.close(); };
@@ -15,7 +16,10 @@ function subscribe(checker: UpdateChecker, request: Request) {
 			removeAbort = () => request.signal.removeEventListener("abort", abort);
 			if (closed) cleanup();
 			else if (request.signal.aborted) abort();
-			else request.signal.addEventListener("abort", abort, { once: true });
+			else {
+				request.signal.addEventListener("abort", abort, { once: true });
+				heartbeat = setInterval(() => controller.enqueue(encoder.encode(": keep-alive\n\n")), 5_000);
+			}
 		},
 		cancel: () => { closed = true; cleanup(); },
 	});
