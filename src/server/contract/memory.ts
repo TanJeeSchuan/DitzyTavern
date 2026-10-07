@@ -1,20 +1,29 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 
-import { mergeMemoryLabels, StaleMemoryLabelsError } from "../memory/labels";
+import { mergeMemoryLabels, setMemoryIdentity, StaleMemoryLabelsError } from "../memory/labels";
 import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
 	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
 	memoryQueued, memoryCollectionConflict, memorySourceTarget,
 	memoryCorrectionCommand, memoryCorrectionApplied,
-	memoryLabelMergeCommand, memoryLabelsMerged, memoryLabelsConflict,
+	memoryIdentityCommand, memoryLabelMergeCommand, memoryLabelsMerged, memoryLabelsConflict,
 	memoryCatchupQueued, memoryCatchupCancelled, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead, memoryTrace, memoryTraceParams,
 } from "../../shared/contract/memory";
 import { invalidOutcome } from "../../shared/contract/outcomes";
 
 export const createMemoryRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, Number(params.id)), { params: memoryConversationIdParams, response: conversationMemories })
+	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
+		try {
+			setMemoryIdentity(database, Number(params.id), body);
+			return { outcome: "applied" as const, memories: readConversationMemories(database, Number(params.id)) };
+		} catch (error) {
+			if (error instanceof StaleMemoryLabelsError) return status(409, { outcome: "conflict" as const, memories: readConversationMemories(database, Number(params.id)) });
+			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory identity could not be saved." });
+		}
+	}, { params: memoryConversationIdParams, body: memoryIdentityCommand, response: { 200: memoryLabelsMerged, 409: memoryLabelsConflict, 422: invalidOutcome } })
 	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => {
 		try {
 			mergeMemoryLabels(database, Number(params.id), body);

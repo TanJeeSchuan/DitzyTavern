@@ -363,6 +363,7 @@ export const conversationMemorySettingsTable = sqliteTable("conversation_memory_
 	revision: int().notNull().default(0),
 	label_revision: int().notNull().default(0),
 	label_merges: text().notNull().default("[]"),
+	identities: text().notNull().default("{}"),
 });
 
 export const memoryCatchupRunTable = sqliteTable("memory_catchup_run", {

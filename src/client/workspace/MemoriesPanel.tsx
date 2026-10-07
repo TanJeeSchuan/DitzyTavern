@@ -3,7 +3,8 @@ import { Collapsible } from "radix-ui";
 import { useDeferredValue, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import type { MemoryIdentity } from "../../shared/contract/memory";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { ConversationMemories } from "../memories";
 import { PanelHeader } from "../PanelHeader";
@@ -11,24 +12,27 @@ import { Portrait } from "../story/Portrait";
 import { MemoryAllowancePopover } from "./MemoryAllowancePopover";
 import { MemoryCoverage } from "./MemoryCoverage";
 import { MemoryLabelMergeDialog } from "./MemoryLabelMergeDialog";
+import { MemoryIdentityDialog } from "./MemoryIdentityDialog";
 import { MemoryClaimRow, MemorySourceCard } from "./MemorySource";
 import { useConversationMemories } from "./useConversationMemories";
 
 type Source = ConversationMemories["sources"][number];
 type Entry = { source: Source; index: number };
+type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
 export function MemoriesPanel({ conversationId, conversationRevision, cast, onClose, onNavigateSource, onOpenPanel }: {
 	conversationId: number;
 	conversationRevision: number;
-	cast: { name: string; portrait?: PortraitImage }[];
+	cast: CastMember[];
 	onClose: () => void;
 	onNavigateSource: (messageId: number) => void;
 	onOpenPanel: (panel: "memory" | "prompts") => void;
 }) {
-	const { status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, setAllowance, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged } = useConversationMemories(conversationId, conversationRevision);
+	const { status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, setAllowance, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversationRevision);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<number | null>(null);
 	const [merging, setMerging] = useState<string[] | null>(null);
+	const [identityTarget, setIdentityTarget] = useState<{ participant: CastMember; kind: MemoryIdentity["kind"] } | null>(null);
 	const [alternativesOpen, setAlternativesOpen] = useState(false);
 
 	const position = new Map(memories?.path.map((entry, index) => [entry.messageId, index]));
@@ -52,7 +56,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 		return [...groups].sort(([a, x], [b, y]) => order(x) - order(y) || x.people.length - y.people.length || y.entries.length - x.entries.length || a.localeCompare(b));
 	};
 	const select = (messageId: number) => { setFocus(focus === messageId ? null : messageId); if (focus !== messageId) onNavigateSource(messageId); };
-	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={`${key}:${needle !== "" || focus !== null}`} people={people} cast={cast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])}>
+	const render = (list: Entry[]) => byPeople(list).map(([key, { people, entries: group }]) => <PeopleGroup key={`${key}:${needle !== "" || focus !== null}`} people={people} cast={cast} entries={group} cap={needle !== "" || focus !== null ? 20 : 6} onMerge={(person) => setMerging([person])} onIdentity={(participant, kind) => setIdentityTarget({ participant, kind })}>
 		{({ source, index }) => <MemoryClaimRow
 			key={`${source.variantId}:${index}`}
 			source={source}
@@ -110,6 +114,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 			</>}
 		</div>
 		{merging && memories && <MemoryLabelMergeDialog conversationId={conversationId} memories={memories} initialLabels={merging} onClose={() => setMerging(null)} onMerged={(updated, destination) => { labelsMerged(updated, destination); setMerging(null); }} />}
+		{identityTarget && memories && <MemoryIdentityDialog conversationId={conversationId} participant={identityTarget.participant} cast={cast} memories={memories} initialKind={identityTarget.kind} onClose={() => setIdentityTarget(null)} onSaved={(updated) => { void identitySaved(updated); setIdentityTarget(null); }} />}
 		<Dialog open={resetTarget !== null} onOpenChange={(open) => { if (!open) cancelReset(); }}>
 			<DialogContent showCloseButton={false} className="sm:max-w-sm">
 				<DialogHeader>
@@ -125,9 +130,10 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 	</aside>;
 }
 
-function PeopleGroup({ people, cast, entries, cap, onMerge, children }: { people: string[]; cast: { name: string; portrait?: PortraitImage }[]; entries: Entry[]; cap: number; onMerge: (person: string) => void; children: (entry: Entry) => ReactNode }) {
+function PeopleGroup({ people, cast, entries, cap, onMerge, onIdentity, children }: { people: string[]; cast: CastMember[]; entries: Entry[]; cap: number; onMerge: (person: string) => void; onIdentity: (participant: CastMember, kind: MemoryIdentity["kind"]) => void; children: (entry: Entry) => ReactNode }) {
 	const [shown, setShown] = useState(entries.length <= cap + 3 ? entries.length : cap);
 	const name = people.length ? people.join(" & ") : "Unlabelled";
+	const participants = cast.filter((participant) => people.includes(participant.name));
 	return <Collapsible.Root defaultOpen asChild><section className="memory-person" aria-label={name}>
 		<header className="memory-person-header">
 			<Collapsible.Trigger className="memory-person-trigger group">
@@ -140,6 +146,8 @@ function PeopleGroup({ people, cast, entries, cap, onMerge, children }: { people
 				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${name}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="min-w-44">
 					{people.map((person) => <DropdownMenuItem key={person} onSelect={() => onMerge(person)}>Rename or merge {person}…</DropdownMenuItem>)}
+					{participants.length > 0 && <DropdownMenuSeparator />}
+					{participants.map((participant) => <div key={participant.id}><DropdownMenuItem onSelect={() => onIdentity(participant, "excluded")}>{participant.name} isn't in the story…</DropdownMenuItem><DropdownMenuItem onSelect={() => onIdentity(participant, "plays")}>{participant.name} plays…</DropdownMenuItem></div>)}
 				</DropdownMenuContent>
 			</DropdownMenu>}
 		</header>

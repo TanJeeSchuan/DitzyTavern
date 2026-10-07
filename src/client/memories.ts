@@ -1,7 +1,12 @@
-import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryIdentityCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
 import { api, domainOutcome } from "./lib/eden";
 
 const conversation = (conversationId: number) => api.api.conversations({ id: String(conversationId) });
+
+export async function saveMemoryIdentity(conversationId: number, command: MemoryIdentityCommand) {
+	const { data, error } = await conversation(conversationId).memories.identity.post(command);
+	return error === null ? data : domainOutcome(error.value, "Memory identity could not be saved.");
+}
 
 export async function mergeMemoryLabels(conversationId: number, command: MemoryLabelMergeCommand) {
 	const { data, error } = await conversation(conversationId).memories["merge-labels"].post(command);

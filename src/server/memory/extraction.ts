@@ -11,6 +11,7 @@ import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, M
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import { decisionRequest, packDecisions, prettyJson, requestDecisions, resolveDecisionSelection, type DecisionTrace, type ResolvedDecisionModel } from "../decision-model";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
+import { readMemoryLabelState } from "./labels";
 
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
@@ -20,6 +21,16 @@ const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 export type MemoryTrace = DecisionTrace;
 const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
+
+const identityInstructions = (database: Database, messageId: number) => {
+	const message = database.query<{ conversation_id: number }, [number]>("SELECT conversation_id FROM messages WHERE id = ?").get(messageId);
+	if (!message) return "";
+	const { cast, identities } = readMemoryLabelState(database, message.conversation_id);
+	return cast.flatMap(({ id, name }) => {
+		const identity = identities[id];
+		return identity?.kind === "excluded" ? [`${name} directs the story and is not a character in it. Never use ${name} as a person.`] : identity?.kind === "plays" ? [`First person in ${name}'s Messages refers to ${identity.person}.`] : [];
+	}).join("\n");
+};
 
 const candidateProblem = (candidate: MemoryExtractionResponse["candidates"][number], messages: ReadonlyMap<number, string>, sourceMessageId: number): string | null => {
 	if (!hasValidMemoryClaimText(candidate.claim, candidate.attribution)) return "needs a nonblank claim and attribution totaling at most 1,024 characters";
@@ -62,7 +73,8 @@ const generatedContent = async (database: Database, memory: MemorySettingsPayloa
 	const profile = settings.profiles.find((item) => item.id === memory.extractionProfileId);
 	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
 	const instructions = `Extract durable, attributed story Memories from the supplied selected source. Preceding messages are reference only. Each message's speaker is its captured author name, or null when unknown. Use that name to resolve first-person references when appropriate; an author can narrate or quote other people, so do not assume every claim concerns the author. Use consistent person names in people, not transport roles such as user or assistant unless those are actual names in the story. Preserve uncertainty, negation, attribution, hearing and witnessing. Do not turn out-of-character directions into story facts. Return exactly one JSON object: {"candidates":[{"claim":"...","attribution":"...","people":["..."],"evidence":[{"messageId":1,"excerpt":"exact source text"}]}]}. Return at most 16 candidates. Each candidate must cite at least one exact excerpt from owning source message ${source.messageId}; cite only supplied message IDs; use one to three excerpts, each at most 1024 characters. Claim plus attribution may total at most 1024 characters. Empty candidates are valid. Do not use Markdown.`;
-	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
+	const identities = identityInstructions(database, source.messageId);
+	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}${identities ? `\n${identities}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
 	const retainedContext = [...context];
 	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) retainedContext.shift();

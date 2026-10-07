@@ -21,11 +21,17 @@ export const memoryCollection = Type.Object({
 	error: Type.Union([Type.String(), Type.Null()]), revision: Type.Integer(), ownership: Type.Union([Type.Literal("automatic"), Type.Literal("writer")]), sourceChanged: Type.Boolean(), claims: Type.Array(memoryCandidate), indexing: memoryIndexing,
 });
 export type MemoryCollectionView = Static<typeof memoryCollection>;
-export const conversationMemories = Type.Object({ labelRevision: Type.Integer(), sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]) })) });
-export type ConversationMemories = Static<typeof conversationMemories>;
+export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
+export type MemoryIdentity = Static<typeof memoryIdentity>;
+export const memoryIdentities = Type.Record(Type.String(), memoryIdentity);
+export type MemoryIdentities = Static<typeof memoryIdentities>;
+export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.Integer(), participantId: Type.Integer(), identity: memoryIdentity });
+export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
 export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
 export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
 export const memoryLabelMerges = Type.Array(memoryLabelMerge);
+export const conversationMemories = Type.Object({ labelRevision: Type.Integer(), identities: memoryIdentities, labelMerges: memoryLabelMerges, sources: Type.Array(memoryCollection), path: Type.Array(Type.Object({ messageId: Type.Integer(), author: Type.Union([Type.String(), Type.Null()]), authorParticipantId: Type.Union([Type.Integer(), Type.Null()]) })) });
+export type ConversationMemories = Static<typeof conversationMemories>;
 export const memoryLabelMergeCommand = Type.Object({ expectedRevision: Type.Integer(), labels: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }), destination: Type.String({ minLength: 1, maxLength: 1024 }) });
 export type MemoryLabelMergeCommand = Static<typeof memoryLabelMergeCommand>;
 export const memoryLabelsMerged = Type.Object({ outcome: Type.Literal("applied"), memories: conversationMemories });

@@ -90,6 +90,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 		cancelCatchup: () => catchup && catchupAction(() => cancelMemoryCatchup(conversationId, catchup.id)),
 		confirmReset: () => { if (resetTarget) void reextract(resetTarget); setResetTarget(null); },
 		cancelReset: () => setResetTarget(null),
+		identitySaved: async (updated: ConversationMemories) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(null); await refresh(); },
 		labelsMerged: async (updated: ConversationMemories, destination: string) => { await update((current) => ({ ...current, memories: updated })); setEditing(null); setNotice(`Labels merged into ${destination}.`); },
 	};
 }
