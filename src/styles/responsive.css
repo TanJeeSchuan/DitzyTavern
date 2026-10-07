@@ -85,6 +85,11 @@ body > .details-panel > .panel-body {
 		transform: translateX(100%);
 	}
 
+	/* Settings, the only primary panel reachable during inspection, layers above the Prompt Plan. */
+	.prompt-plan-preview-panel {
+		z-index: 34;
+	}
+
 	.primary-panel[data-open="true"],
 	.details-panel[data-open="true"] {
 		transform: translateX(0);

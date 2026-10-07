@@ -14,9 +14,11 @@ import type { PrimaryPanel } from "./types";
 
 export function NavigationRail({
 	activePanel,
+	inspecting,
 	onOpenPanel,
 }: {
 	activePanel: PrimaryPanel;
+	inspecting: boolean;
 	onOpenPanel: (panel: Exclude<PrimaryPanel, null>) => void;
 }) {
 	return (
@@ -26,6 +28,7 @@ export function NavigationRail({
 			</div>
 			<div className="rail-actions">
 				<RailButton
+					disabled={inspecting}
 					label="Chats"
 					active={activePanel === "chats"}
 					onClick={() => onOpenPanel("chats")}
@@ -33,6 +36,7 @@ export function NavigationRail({
 					<MessageSquare aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Characters"
 					active={activePanel === "characters"}
 					onClick={() => onOpenPanel("characters")}
@@ -40,6 +44,7 @@ export function NavigationRail({
 					<Users aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Lorebooks"
 					active={activePanel === "lorebooks"}
 					onClick={() => onOpenPanel("lorebooks")}
@@ -47,6 +52,7 @@ export function NavigationRail({
 					<BookMarked aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Prompt Presets"
 					active={activePanel === "prompts"}
 					onClick={() => onOpenPanel("prompts")}
@@ -54,6 +60,7 @@ export function NavigationRail({
 					<ListOrdered aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Connections"
 					active={activePanel === "connections"}
 					onClick={() => onOpenPanel("connections")}
@@ -61,6 +68,7 @@ export function NavigationRail({
 					<Cable aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Generation"
 					active={activePanel === "generation"}
 					onClick={() => onOpenPanel("generation")}
@@ -68,6 +76,7 @@ export function NavigationRail({
 					<SlidersHorizontal aria-hidden="true" />
 				</RailButton>
 				<RailButton
+					disabled={inspecting}
 					label="Memory"
 					active={activePanel === "memory"}
 					onClick={() => onOpenPanel("memory")}
@@ -91,11 +100,13 @@ export function NavigationDrawer({
 	open,
 	onOpenChange,
 	activePanel,
+	inspecting,
 	onOpenPanel,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	activePanel: PrimaryPanel;
+	inspecting: boolean;
 	onOpenPanel: (panel: Exclude<PrimaryPanel, null>) => void;
 }) {
 	return (
@@ -106,6 +117,7 @@ export function NavigationDrawer({
 					<Dialog.Title className="sr-only">Workspace navigation</Dialog.Title>
 					<NavigationRail
 						activePanel={activePanel}
+						inspecting={inspecting}
 						onOpenPanel={(panel) => {
 							onOpenChange(false);
 							onOpenPanel(panel);

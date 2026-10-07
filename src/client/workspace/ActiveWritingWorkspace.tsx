@@ -194,8 +194,9 @@ export function ActiveWritingWorkspace({
 		};
 	}, [theme]);
 
+	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
 	const togglePanel = (panel: Exclude<PrimaryPanel, null>) => {
-		if (assemblyActive) return;
+		if (assemblyActive && panel !== "settings") return;
 		setGenerationDetailsTarget(null);
 		dispatchPanel({ type: "primary-toggled", panel });
 	};
@@ -271,13 +272,13 @@ export function ActiveWritingWorkspace({
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
-			<NavigationDrawer open={navigationOpen} onOpenChange={setNavigationOpen} activePanel={assemblyActive ? null : panelState.primaryPanel} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
+			<NavigationRail activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
+			<NavigationDrawer open={navigationOpen} onOpenChange={setNavigationOpen} activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => requestNavigation(() => togglePanel(panel))} />
 
 			<SaveGuardContext.Provider value={registerSaveGuard}>
 			<SaveNavigationContext.Provider value={requestNavigation}>
 			<PrimaryPanelView
-				panel={assemblyActive ? null : panelState.primaryPanel}
+				panel={panelState.primaryPanel}
 				workspace={initialWorkspace}
 				activeChat={session.activeChat}
 				theme={theme}
@@ -446,6 +447,7 @@ export function ActiveWritingWorkspace({
 					onSend={generation.sendPromptPlanPreview}
 					onNavigateSource={session.navigateToSourceMessage}
 					onClose={generation.cancelPromptPlanPreview}
+					onOpenSettings={() => requestNavigation(() => togglePanel("settings"))}
 				/>
 			)}
 
