@@ -169,6 +169,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	if (input.recipe.filter((slot) => slot.reference === "memory").length > 1) {
 		throw new Error("A Prompt Preset may contain at most one Memory block.");
 	}
+	if (input.recipe.filter((slot) => slot.reference === "author-note").length > 1) throw new Error("A Prompt Preset may contain at most one Author Note block.");
 	const memory = input.memory ?? [];
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
@@ -217,6 +218,12 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			if (content.length > 0) {
 				blocks.push({ kind: "memory", role: planRoleFor[slot.role], content });
 			}
+			continue;
+		}
+		if (slot.reference === "author-note") {
+			const start = blocks.length;
+			expandInto(blocks, warnings, { kind: "author-note" }, planRoleFor[slot.role], input.authorNote ?? "", { self: input.human.name, other: input.model.name }, "Author Note", macroEnvironment, macroAttemptState, `slot:${slotIndex}`);
+			if (blocks[start]?.content.trim() === "") blocks.splice(start, 1);
 			continue;
 		}
 		if (slot.reference === "instruction") {

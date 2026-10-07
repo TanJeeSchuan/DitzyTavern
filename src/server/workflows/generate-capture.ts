@@ -179,6 +179,7 @@ const selectedHistoryFrom = (
 export const compilePlanFrom = (
 	derivation: GenerationDerivation,
 	configuration: {
+		authorNote: string;
 		settings: ConversationGenerationSettings;
 		slots: readonly PromptPresetSlot[];
 		attempt: AttemptEnvironment;
@@ -193,6 +194,7 @@ export const compilePlanFrom = (
 	},
 ): GenerationPlan => {
 	const compiled = compileGenerationPlan({
+		authorNote: configuration.authorNote,
 		human: toCompilerDefinition(derivation.human),
 		model: toCompilerDefinition(derivation.model),
 		context: derivation.context,
@@ -233,6 +235,7 @@ export const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 });
 
 interface AttemptConfiguration {
+	authorNote: string;
 	settings: ConversationGenerationSettings;
 	slots: readonly PromptPresetSlot[];
 	promptPresetId: number;
@@ -243,6 +246,7 @@ interface AttemptConfiguration {
 }
 
 interface GenerationPreparationBase {
+	readonly authorNote: string;
 	readonly conversationId: number;
 	readonly semanticTriggerRevision: number;
 	readonly formatting: GenerationFormattingContext;
@@ -472,6 +476,7 @@ export function prepareGenerationInputsSnapshot(
 	});
 	const preparation = {
 		conversationId: input.conversationId,
+		authorNote: summary.authorNote,
 		semanticTriggerRevision: createSemanticTriggerSettingsModule(input.database).get().revision,
 		formatting,
 		derivation,
@@ -540,6 +545,7 @@ export const captureConfigurationFromPreparation = (
 		variables: preparation.macroState,
 	});
 	return {
+		authorNote: preparation.authorNote,
 		settings: preparation.settings,
 		slots: preparation.recipe.slots,
 		promptPresetId: preparation.recipe.id,

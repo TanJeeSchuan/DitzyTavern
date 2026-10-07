@@ -29,6 +29,8 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
+export const promptAuthorNoteReference = Type.Literal("author-note");
+
 export const promptMemoryReference = Type.Literal("memory");
 export type PromptMemoryReference = Static<typeof promptMemoryReference>;
 
@@ -56,13 +58,15 @@ export const defaultOutgoingRoles = {
 	"model-post-history-instruction": "system",
 	lore: "system",
 	memory: "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference, PromptOutgoingRole>;
+	"author-note": "system",
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptMemoryReference | "author-note", PromptOutgoingRole>;
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
 	promptMemoryReference,
+	promptAuthorNoteReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
 
@@ -94,7 +98,7 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: Type.Union([promptLoreReference, promptMemoryReference]),
+		reference: Type.Union([promptLoreReference, promptMemoryReference, promptAuthorNoteReference]),
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
 	}),
@@ -187,6 +191,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
+	Type.Object({ id: Type.Integer(), reference: promptAuthorNoteReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({ id: Type.Integer(), reference: promptMemoryReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({

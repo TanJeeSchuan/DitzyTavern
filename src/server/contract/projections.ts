@@ -21,6 +21,7 @@ export const toConversationSummary = (
 	conversation: ConversationSnapshot | ConversationSummary,
 ) => ({
 	id: conversation.id,
+	authorNote: conversation.authorNote,
 	name: conversation.name,
 	revision: conversation.revision,
 	cast: conversation.cast,

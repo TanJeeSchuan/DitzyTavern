@@ -155,6 +155,7 @@ export const importNativePromptPreset = (
 	if (native.slots.filter((slot) => slot.reference === "memory").length > 1) {
 		throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Memory block.");
 	}
+	if (native.slots.filter((slot) => slot.reference === "author-note").length > 1) throw new InvalidPromptPresetCommandError("A Prompt Preset may contain at most one Author Note block.");
 	const db = connect(database);
 	const execute = database.transaction(() => {
 		const inserted = db

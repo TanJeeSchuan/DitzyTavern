@@ -60,6 +60,7 @@ const promptDefinitionBlockKind = Type.Union([
 	Type.Literal("instruction"),
 	Type.Literal("lore"),
 	Type.Literal("memory"),
+	Type.Literal("author-note"),
 ]);
 
 const promptBlock = Type.Union([
@@ -214,6 +215,7 @@ const activeGenerations = Type.Array(Type.Object({
 // operations, and a 92-byte Cast command must not re-serialize the entire
 // Chat archive across the wire.
 export const conversationSummary = Type.Object({
+	authorNote: Type.String(),
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -606,6 +608,8 @@ const replaceParticipantOpeningsAction = Type.Object({
 	openings: Type.Array(Type.String()),
 });
 
+const setAuthorNoteAction = Type.Object({ type: Type.Literal("set-author-note"), content: Type.String() });
+
 const renameConversationAction = Type.Object({
 	type: Type.Literal("rename-conversation"),
 	name: Type.String(),
@@ -655,6 +659,7 @@ const conversationCommandAction = Type.Union([
 	removeParticipantAction,
 	selectPromptPresetAction,
 	renameConversationAction,
+	setAuthorNoteAction,
 ]);
 
 export type ConversationAction = Static<typeof conversationCommandAction>;

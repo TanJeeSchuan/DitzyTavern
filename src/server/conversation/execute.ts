@@ -159,6 +159,11 @@ export const conversationCommandPolicy = {
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
+	"set-author-note": {
+		handler: (db, input) => { db.update(conversationTable).set({ author_note: input.content }).where(eq(conversationTable.id, input.conversationId)).run(); },
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
 	"rename-conversation": {
 		handler: renameConversation,
 		requiresPlayable: false,

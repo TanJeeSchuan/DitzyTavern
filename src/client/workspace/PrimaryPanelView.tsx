@@ -1,3 +1,4 @@
+import { AuthorNotePanel } from "../AuthorNotePanel";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
 import { PanelHeader } from "../PanelHeader";
@@ -23,6 +24,7 @@ import type { PrimaryPanel } from "./types";
 // unsaved-edit close guard), so they are excluded by the type rather than by a
 // branch at the render site.
 const sharedHeaderTitles = {
+	"author-note": "Author Note",
 	characters: "Characters",
 	connections: "Connections",
 	generation: "Generation Settings",
@@ -99,6 +101,7 @@ export function PrimaryPanelView({
 					{headerTitle !== undefined && (
 						<PanelHeader title={headerTitle} onClose={onClose} />
 					)}
+					{panel === "author-note" && conversation !== null && <AuthorNotePanel key={conversation.id} conversation={conversation} onConversationChange={onConversationChange} disabled={mutationsDisabled} />}
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharactersPanel
