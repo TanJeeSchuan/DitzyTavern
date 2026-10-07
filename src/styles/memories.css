@@ -270,6 +270,12 @@
 	min-width: 0;
 }
 
+.memory-source-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
 .memory-source-error {
 	display: grid;
 	justify-items: start;

@@ -1,6 +1,6 @@
 import { ChevronDown, Ellipsis, Search } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { Fragment, useDeferredValue, useState, type ReactNode } from "react";
+import { Fragment, useDeferredValue, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -21,10 +21,11 @@ type Source = ConversationMemories["sources"][number];
 type Entry = { source: Source; index: number };
 type CastMember = { id: number; name: string; portrait?: PortraitImage };
 
-export function MemoriesPanel({ conversationId, conversationRevision, cast, onClose, onNavigateSource, onOpenPanel }: {
+export function MemoriesPanel({ conversationId, conversationRevision, cast, focusRequest, onClose, onNavigateSource, onOpenPanel }: {
 	conversationId: number;
 	conversationRevision: number;
 	cast: CastMember[];
+	focusRequest: { messageId: number } | null;
 	onClose: () => void;
 	onNavigateSource: (messageId: number) => void;
 	onOpenPanel: (panel: "memory" | "prompts") => void;
@@ -32,6 +33,7 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 	const { status, memories, catchup, settings, notice, busy, catchupBusy, editing, resetTarget, actions, refresh, settingsSaved, startCatchup, cancelCatchup, confirmReset, cancelReset, labelsMerged, identitySaved } = useConversationMemories(conversationId, conversationRevision);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<number | null>(null);
+	useEffect(() => { if (focusRequest) setFocus(focusRequest.messageId); }, [focusRequest]);
 	const [merging, setMerging] = useState<string[] | null>(null);
 	const [identityTarget, setIdentityTarget] = useState<{ participant: CastMember; kind: MemoryIdentity["kind"] } | null>(null);
 	const [noteOpen, setNoteOpen] = useState(false);
@@ -102,6 +104,8 @@ export function MemoriesPanel({ conversationId, conversationRevision, cast, onCl
 					source={selected.find((source) => source.messageId === focus)}
 					label={actions.label(focus)}
 					busy={busy.has(selected.find((source) => source.messageId === focus)?.variantId ?? -1)}
+					enabled={settings?.enabled ?? false}
+					excluded={memories.identities[memories.path.find((entry) => entry.messageId === focus)?.authorParticipantId ?? -1]?.kind === "excluded"}
 					actions={actions}
 					onNavigate={() => onNavigateSource(focus)}
 					onStep={memories.path.length > 1 ? (offset) => { const next = memories.path[Math.min(memories.path.length - 1, Math.max(0, (position.get(focus) ?? 0) + offset))]!.messageId; setFocus(next); onNavigateSource(next); } : null}
