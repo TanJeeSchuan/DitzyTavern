@@ -94,7 +94,16 @@ export function CharacterEditor({
 	}, [onChanged, onClosed, snapshot]);
 
 	const dirty = snapshot !== null && draft !== null && !sameDefinition(draft, definitionOf(snapshot));
-	const save = async () => snapshot !== null && draft !== null && dirty && run("save", { type: "update-definition", characterId: snapshot.id, expectedRevision: snapshot.revision, definition: submittableDefinition(draft) });
+	const save = async () =>
+		snapshot !== null &&
+		draft !== null &&
+		dirty &&
+		run("save", {
+			type: "update-definition",
+			characterId: snapshot.id,
+			expectedRevision: snapshot.revision,
+			definition: submittableDefinition(draft),
+		});
 	useSaveGuard({ dirty, saving: pendingAction === "save", save, discard: () => undefined });
 
 	if (snapshot === null || draft === null) return <p className="panel-body text-sm text-muted-foreground" role="status">Loading the Character…</p>;
@@ -114,11 +123,32 @@ export function CharacterEditor({
 				onSave={() => void save()}
 				onBack={() => onClosed(null)}
 				actions={<>
-					<Button type="button" size="icon-sm" variant="ghost" className="text-muted-foreground aria-pressed:text-foreground" aria-pressed={snapshot.pinned} aria-label={snapshot.pinned ? "Unpin" : "Pin to the top of the Library"} title={snapshot.pinned ? "Pinned" : "Pin"} disabled={pendingAction !== null} onClick={() => void run("pin", { type: "set-pinned", characterId: snapshot.id, expectedRevision: snapshot.revision, pinned: !snapshot.pinned })}>
+					<Button
+						type="button"
+						size="icon-sm"
+						variant="ghost"
+						className="text-muted-foreground aria-pressed:text-foreground"
+						aria-pressed={snapshot.pinned}
+						aria-label={snapshot.pinned ? "Unpin" : "Pin to the top of the Library"}
+						title={snapshot.pinned ? "Pinned" : "Pin"}
+						disabled={pendingAction !== null}
+						onClick={() =>
+							void run("pin", {
+								type: "set-pinned",
+								characterId: snapshot.id,
+								expectedRevision: snapshot.revision,
+								pinned: !snapshot.pinned,
+							})
+						}
+						>
 						<Pin aria-hidden="true" className={snapshot.pinned ? "fill-current" : undefined} />
 					</Button>
 					<DropdownMenu>
-						<DropdownMenuTrigger asChild><Button type="button" size="icon-sm" variant="ghost" aria-label={`Actions for ${snapshot.name}`} disabled={pendingAction !== null}><MoreHorizontal aria-hidden="true" /></Button></DropdownMenuTrigger>
+						<DropdownMenuTrigger asChild>
+							<Button type="button" size="icon-sm" variant="ghost" aria-label={`Actions for ${snapshot.name}`} disabled={pendingAction !== null}>
+								<MoreHorizontal aria-hidden="true" />
+							</Button>
+						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-48">
 							<DropdownMenuItem disabled={!canAddToChat} onSelect={() => onAddToChat(snapshot)}><Plus aria-hidden="true" /> Add to this Chat</DropdownMenuItem>
 							<DropdownMenuSeparator />
@@ -146,7 +176,17 @@ export function CharacterEditor({
 					</DialogHeader>
 					<DialogFooter>
 						<Button type="button" variant="ghost" onClick={() => setConfirmingDelete(false)}>Keep Character</Button>
-						<Button type="button" variant="destructive" disabled={pendingAction !== null} onClick={() => { setConfirmingDelete(false); void run("delete", { type: "delete", characterId: snapshot.id, expectedRevision: snapshot.revision }); }}>{deleteCopy.confirmLabel}</Button>
+						<Button
+							type="button"
+							variant="destructive"
+							disabled={pendingAction !== null}
+							onClick={() => {
+								setConfirmingDelete(false);
+								void run("delete", { type: "delete", characterId: snapshot.id, expectedRevision: snapshot.revision });
+							}}
+						>
+							{deleteCopy.confirmLabel}
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
