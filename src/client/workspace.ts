@@ -62,13 +62,13 @@ export async function deleteChat(chatId: string): Promise<string | null> {
 
 // ==[HUMAN APPROVED]== Renames any Chat, not only the open one, so the current revision is read
 // first; a revision that moved in between is retried once.
-export async function renameChat(chatId: string, name: string): Promise<{ status: "renamed"; conversation: ConversationSummary } | { status: "failed"; reason: string }> {
+export async function renameChat(chatId: string, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
 	const current = await loadConversation(Number(chatId)).catch(() => null);
-	if (current === null) return { status: "failed", reason: "The Chat could not be reached." };
+	if (current === null) return { outcome: "failed", reason: "The Chat could not be reached." };
 	let outcome = await applyConversationCommand(current.id, current.revision, { type: "rename-conversation", name });
-	if (outcome.status === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
-	if (outcome.status === "applied") return { status: "renamed", conversation: outcome.conversation };
-	return { status: "failed", reason: outcome.status === "invalid" ? outcome.reason : "The Chat could not be renamed." };
+	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(current.id, outcome.currentConversation.revision, { type: "rename-conversation", name });
+	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
+	return { outcome: "failed", reason: outcome.outcome === "invalid" ? outcome.reason : "The Chat could not be renamed." };
 }
 
 export const workspaceClient: WorkspaceClient = {

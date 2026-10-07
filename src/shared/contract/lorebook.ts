@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
 export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
@@ -238,3 +239,18 @@ export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSumm
 export const bookIdParams = Type.Object({ bookId: numericWire });
 
 export type LorebookListResponse = Static<typeof lorebookListResponse>;
+
+// ==[HUMAN APPROVED]== The Lorebook command families' modeled error unions: the composed
+// 409/404/422 envelopes each family declares, so the client decodes an error
+// body against exactly the union its route models.
+export const lorebookCommandErrors = Type.Union([
+	lorebookConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);
+
+export const loreAttachmentCommandErrors = Type.Union([
+	loreAttachmentConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);

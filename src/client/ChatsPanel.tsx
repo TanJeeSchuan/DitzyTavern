@@ -51,7 +51,7 @@ export function ChatsPanel({
 		setPending(true);
 		const outcome = await renameChat(chat.id, name);
 		setPending(false);
-		if (outcome.status === "failed") return setNotice(outcome.reason);
+		if (outcome.outcome === "failed") return setNotice(outcome.reason);
 		setNotice(null);
 		setChats((current) => current.map((item) => item.id === chat.id ? { ...item, title: outcome.conversation.name } : item));
 		if (chat.id === activeId) onConversationChange(outcome.conversation);

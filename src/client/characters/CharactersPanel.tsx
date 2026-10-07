@@ -6,7 +6,7 @@ import { libraryPickerEntries } from "../cast";
 import { removalConfirmationCopy } from "../cast-remove";
 import { applyCommand, listCharacters, type CharacterSummary } from "../character-library";
 import type { ConversationSummary } from "../conversation";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/notices";
 import { emptyPromptChannels, promptPreview } from "../../shared/definition";
 import { Portrait } from "../story/Portrait";
 import { AddParticipantMenu } from "./AddParticipantMenu";
@@ -65,10 +65,10 @@ export function CharactersPanel({
 		setCreating(true);
 		const outcome = await applyCommand({ type: "create", definition: { name: "New Character", prompt: emptyPromptChannels(), openings: [] } });
 		setCreating(false);
-		if (outcome.status !== "applied") return setLibraryNotice(outcome.status === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
+		if (outcome.outcome !== "available" || "result" in outcome.value) return setLibraryNotice(outcome.outcome === "invalid" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
 		setLibraryNotice(null);
 		loadCharacters();
-		setView({ kind: "character", id: outcome.character.id, fresh: true });
+		setView({ kind: "character", id: outcome.value.character.id, fresh: true });
 	};
 
 	const menuFor = (participant: CastParticipant, className?: string) => (

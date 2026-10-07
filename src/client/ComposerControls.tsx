@@ -8,7 +8,7 @@ import {
 	type ConversationSummary,
 } from "./conversation";
 import { runConversationCommand } from "./conversation-command-runner";
-import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/command-outcome";
+import { CONVERSATION_UNREACHABLE_NOTICE } from "./lib/notices";
 import { ModelSelector } from "./ModelSelector";
 
 // ==[HUMAN APPROVED]== Cast-only Control selectors on the composer toolbar: `Writing as` for the
