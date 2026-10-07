@@ -7,10 +7,12 @@ import { shutdownApplication } from "./application/shutdown";
 import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { embedMemoryTexts, extractAndJudgeMemorySource, startMemoryWorker } from "./memory";
+import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
 	artifactDirectory?: string;
+	updates?: UpdateCheckerOptions;
 }
 
 export async function createApp(options: AppOptions) {
@@ -25,7 +27,8 @@ export async function createApp(options: AppOptions) {
 	reportRecovery("Startup", recoverActiveGenerations(database));
 
 	const serveIndex = () => Bun.file("dist/index.html");
-	const app = createContract(database, options, artifactDirectory)
+	const updates = createUpdateChecker(options.updates);
+	const app = createContract(database, options, artifactDirectory, updates)
 		.get("/", serveIndex)
 		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true }))
 		.onError(({ code, path }) => {
@@ -33,7 +36,7 @@ export async function createApp(options: AppOptions) {
 		});
 
 	const close = (stopHttp: () => Promise<void> = async () => {}) =>
-		shutdownApplication(database, stopHttp, stopMemoryWorker);
+		shutdownApplication(database, async () => { await updates.stop(); await stopHttp(); }, stopMemoryWorker);
 	return { app, close };
 }
 

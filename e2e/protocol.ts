@@ -1,4 +1,8 @@
 import type { DecisionAnswer } from "../src/shared/contract/decision-model";
+import type { BuildMetadata } from "../src/server/build-metadata";
+
+export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
+export type UpdateScenario = { build: BuildMetadata; replies: RegistryReply[] };
 
 export type ChatReply =
 	| { chunks: string[]; firstChunkDelayMs?: number; chunkDelayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }

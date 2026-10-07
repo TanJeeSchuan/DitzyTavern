@@ -92,6 +92,10 @@
 	border-top: 1px solid var(--border);
 }
 
+.update-settings-body { display: grid; gap: 0.65rem; margin-top: 0.75rem; }
+.update-settings-body [role="status"] { display: grid; gap: 0.35rem; }
+.update-settings-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
 .settings-feedback,
 .settings-feedback-error {
 	margin: 0;

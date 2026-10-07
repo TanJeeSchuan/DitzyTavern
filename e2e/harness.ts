@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import type { ChatReply, DecisionRule, MemoryClaim, ModelCall } from "./protocol";
+import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -62,7 +62,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -76,8 +76,9 @@ export const startE2eServer = async () => {
 		models: (...catalogs: string[][]) => call("models", catalogs),
 		embeddings: (...matches: string[]) => call("embeddings", matches),
 		checkpointClock: (now: number) => call("checkpoint-clock", now),
+		updates: (scenario: UpdateScenario) => call("updates", scenario),
 		release: () => call("release"),
-		log: (): Promise<{ calls: ModelCall[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
+		log: (): Promise<{ calls: ModelCall[]; registryCalls: string[]; unscripted: string[]; unsentPlans: string[] }> => call("log"),
 		takeStderr: () => [stderr, stderr = ""][0],
 		restart: async (mode: "crash" | "graceful") => {
 			const directory: string = await call("directory");
