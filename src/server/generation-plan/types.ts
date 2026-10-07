@@ -65,7 +65,7 @@ export interface CompileGenerationPlanInput {
 	// Captured Conversation state: the resolved Participant Definitions and
 	// the ordered writing context for this one attempt. Each entry carries
 	// its own role, so nothing aligns a second list against this one.
-	readonly authorNote?: string;
+	readonly authorNote: string;
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];

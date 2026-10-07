@@ -139,6 +139,7 @@ const defaultRecipe: Parameters<typeof compileGenerationPlan>[0]["recipe"] = [
 const compile = (
 	overrides: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ): GenerationPlan => compileGenerationPlan({
+	authorNote: "",
 	human,
 	model,
 	recipe: defaultRecipe,

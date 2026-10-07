@@ -51,6 +51,7 @@ describe("Generation capture and provenance", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
+			authorNote: "",
 			name: "Generating Chat",
 			participants: [
 				{ definition: adHoc("Writer") },

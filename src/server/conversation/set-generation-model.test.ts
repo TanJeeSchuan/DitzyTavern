@@ -23,6 +23,7 @@ const prompt = {
 
 const createConversation = (database: Database, name: string) =>
 	createConversationModule(database).create({
+		authorNote: "",
 		name,
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },

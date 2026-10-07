@@ -52,6 +52,7 @@ describe("Cast and Control management", () => {
 	const setup = () => {
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Cast Conversation",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -252,6 +253,7 @@ describe("Cast and Control management", () => {
 	test("rejects edits referencing a Participant outside the Conversation", () => {
 		const { module, snapshot } = setup();
 		const other = createConversationModule(database).create({
+			authorNote: "",
 			name: "Other",
 			participants: [
 				{ definition: adHoc("Outsider") },
@@ -436,6 +438,7 @@ describe("Cast and Control management", () => {
 
 		// An incomplete Conversation derives the missing-seat reason.
 		const incomplete = createConversationModule(database).create({
+			authorNote: "",
 			name: "Incomplete",
 			participants: [{ definition: adHoc("Solo") }],
 		});
@@ -457,6 +460,7 @@ describe("Cast and Control management", () => {
 		// preserve record instead, then assign one seat.
 		const module = createConversationModule(database);
 		const preserved = module.create({
+			authorNote: "",
 			name: "Preserved Import",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -531,6 +535,7 @@ describe("Cast and Control management", () => {
 
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Forked",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -586,6 +591,7 @@ describe("Cast and Control management", () => {
 	test("an incomplete Conversation keeps configuration commands available", () => {
 		const module = createConversationModule(database);
 		const preserved = module.create({
+			authorNote: "",
 			name: "Preserved",
 			messages: [
 				{
@@ -665,6 +671,7 @@ describe("Cast and Control management", () => {
 	test("adding the missing Participant completes an incomplete Conversation while preserving the existing seat", () => {
 		const module = createConversationModule(database);
 		const oneSeat = module.create({
+			authorNote: "",
 			name: "Preserved",
 			participants: [{ definition: adHoc("Writer") }],
 			// The incomplete-import exception reserves the first resolved

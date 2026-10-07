@@ -17,6 +17,7 @@ import {
 } from "./commands/edit-participant";
 import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
+import { setAuthorNote } from "./commands/set-author-note";
 import { renameConversation } from "./commands/rename-conversation";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
@@ -160,7 +161,7 @@ export const conversationCommandPolicy = {
 		blockedByActiveGeneration: false,
 	},
 	"set-author-note": {
-		handler: (db, input) => { db.update(conversationTable).set({ author_note: input.content }).where(eq(conversationTable.id, input.conversationId)).run(); },
+		handler: setAuthorNote,
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},

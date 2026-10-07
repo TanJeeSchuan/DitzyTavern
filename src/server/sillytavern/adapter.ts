@@ -149,12 +149,17 @@ export function decodeSillyTavernImportSource(
 	}
 	const header = decodeHeader(headerRecord);
 	const metadata = isJsonObject(header.chat_metadata) ? header.chat_metadata : null;
-	const authorNote = isJsonString(metadata?.note_prompt) ? metadata.note_prompt.replaceAll("{{user}}", "{{self}}").replaceAll("{{char}}", "{{other}}") : "";
+	const authorNote = isJsonString(metadata?.note_prompt) && metadata.note_prompt.trim() !== "" ? metadata.note_prompt.replaceAll(/{{user}}/gi, "{{self}}").replaceAll(/{{char}}/gi, "{{other}}") : "";
 	const integrity = sourceIntegrity(header);
 	const { messages, warnings, authors } = decodeMessages(messageRecords);
-	if (authorNote !== "" && (metadata?.note_position !== 1 || metadata?.note_depth !== 0)) warnings.push(`Author's Note placement (position ${metadata?.note_position}, depth ${metadata?.note_depth}) was not kept; the default Author Note slot is after history.`);
-	if (authorNote !== "" && metadata?.note_role !== 0) warnings.push(`Author's Note role (${metadata?.note_role}) was not kept; the default Author Note slot uses the system role.`);
-	if (authorNote !== "" && metadata?.note_interval !== 1) warnings.push(`Author's Note interval (${metadata?.note_interval}) was not kept; the Author Note applies to every Generation.`);
+	if (authorNote !== "") {
+		if ((metadata?.note_position !== undefined && metadata.note_position !== 1) || (metadata?.note_depth !== undefined && metadata.note_depth !== 0)) {
+			const placement = [metadata?.note_position === undefined ? null : `position ${metadata.note_position}`, metadata?.note_depth === undefined ? null : `depth ${metadata.note_depth}`].filter((setting) => setting !== null).join(", ");
+			warnings.push(`Author's Note placement (${placement}) was not kept; the default Author Note slot is after history.`);
+		}
+		if (metadata?.note_role !== undefined && metadata.note_role !== 0) warnings.push(`Author's Note role (${metadata.note_role}) was not kept; the default Author Note slot uses the system role.`);
+		if (metadata?.note_interval !== undefined && metadata.note_interval !== 1) warnings.push(`Author's Note interval (${metadata.note_interval}) was not kept; the Author Note applies to every Generation.`);
+	}
 	const variantCount = messages.reduce(
 		(total, message) => total + message.variants.length,
 		0,

@@ -69,6 +69,7 @@ describe("Participant removal", () => {
 	const setup = () => {
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Removal Conversation",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -162,6 +163,7 @@ describe("Participant removal", () => {
 		).toThrow(StaleConversationRevisionError);
 
 		const other = createConversationModule(database).create({
+			authorNote: "",
 			name: "Other",
 			participants: [
 				{ definition: adHoc("Outsider") },
@@ -284,6 +286,7 @@ describe("Participant removal", () => {
 
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Forked Removal",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -364,6 +367,7 @@ describe("Participant removal", () => {
 		// Writer will be the composed Message's Author Stamp.
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Composed History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -637,6 +641,7 @@ describe("Participant removal", () => {
 		});
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Source Deleted",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -698,6 +703,7 @@ describe("Participant removal", () => {
 		});
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Final Reference",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -750,6 +756,7 @@ describe("Participant removal", () => {
 		});
 		const module = createConversationModule(database);
 		const snapshot = module.create({
+			authorNote: "",
 			name: "Collected Source",
 			participants: [
 				{ definition: adHoc("Writer") },

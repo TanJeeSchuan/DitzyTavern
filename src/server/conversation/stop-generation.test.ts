@@ -38,6 +38,7 @@ describe("explicit Conversation Generation Stop", () => {
 	const setup = () => {
 		const module = createConversationModule(database);
 		const created = module.create({
+			authorNote: "",
 			name: "Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

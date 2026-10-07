@@ -55,4 +55,5 @@ PRAGMA foreign_keys=ON;--> statement-breakpoint
 CREATE UNIQUE INDEX `prompt_preset_block_position_unique` ON `prompt_preset_block` (`preset_id`,`position`);--> statement-breakpoint
 CREATE UNIQUE INDEX `prompt_preset_single_lore_block` ON `prompt_preset_block` (`preset_id`) WHERE "prompt_preset_block"."reference" = 'lore';--> statement-breakpoint
 CREATE UNIQUE INDEX `prompt_preset_single_memory_block` ON `prompt_preset_block` (`preset_id`) WHERE "prompt_preset_block"."reference" = 'memory';--> statement-breakpoint
-CREATE UNIQUE INDEX `prompt_preset_single_author_note_block` ON `prompt_preset_block` (`preset_id`) WHERE "prompt_preset_block"."reference" = 'author-note';
+CREATE UNIQUE INDEX `prompt_preset_single_author_note_block` ON `prompt_preset_block` (`preset_id`) WHERE "prompt_preset_block"."reference" = 'author-note';--> statement-breakpoint
+ALTER TABLE `conversation` ADD `author_note` text DEFAULT '' NOT NULL;

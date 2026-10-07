@@ -307,6 +307,7 @@ describe("graduated Chat history and Import Details", () => {
 
 		// A Chat without import provenance has no Import Details.
 		const native = createConversationModule(database).create({
+			authorNote: "",
 			name: "Native Chat",
 			participants: [{ definition: { name: "Writer", prompt: {
 				systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "",
@@ -375,6 +376,7 @@ describe("graduated Chat history and Import Details", () => {
 	test("corrupt persisted provenance is explicit and never makes a Chat a prior import", () => {
 		const conversations = createConversationModule(database);
 		const corrupt = conversations.create({
+			authorNote: "",
 			name: "Corrupt Import",
 			participants: [{
 				definition: {

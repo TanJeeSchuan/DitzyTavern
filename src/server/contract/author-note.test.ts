@@ -10,7 +10,7 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationRoutes } from "./conversation";
 import { generationPreview, chatHistoryPage, type ConversationAction } from "../../shared/contract/conversation-schema";
-import { createChat, readConversation, readPreset, toggleBlock, saveBlockRole, readOperation, withProfile, key, captureModelFetch, startGeneration, completeGeneration, gatedProvider, readInspection, moveBlock, duplicateBlock, addBlock } from "./prompt-preset-test-fixtures";
+import { createChat, readConversation, readPreset, toggleBlock, saveBlockRole, readOperation, withProfile, key, captureModelFetch, startGeneration, completeGeneration, gatedProvider, readInspection, moveBlock } from "./prompt-preset-test-fixtures";
 
 let database: Database;
 beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
@@ -181,9 +181,12 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 	const planned = await preview(app, chat.id);
 	expect(planned.promptPlan.blocks.find((block) => block.kind === "author-note")?.content).toBe("Include a dragon.");
 	expect(planned.promptPlan.blocks.some((block) => block.kind === "lore")).toBe(false);
+	expect((await command(app, chat.id, current.revision + 1, { type: "create-message", timestamp: "2026-10-07T00:00:00.000Z", variantContents: ["A dragon opens the door."], authorParticipantId: current.control.humanParticipantId! })).status).toBe(200);
+	const story = await preview(app, chat.id);
+	expect(story.promptPlan.blocks.find((block) => block.kind === "lore")?.content).toBe("A dragon sleeps here.");
 });
 
-test("Author Note slot is movable and cannot be duplicated even while disabled", async () => {
+test("Author Note slot is movable", async () => {
 	const chat = createChat(database);
 	const app = createConversationRoutes(database);
 	await saveNote(app, chat.id, chat.revision, "Standing guidance");
@@ -191,7 +194,4 @@ test("Author Note slot is movable and cannot be duplicated even while disabled",
 	const slot = preset.slots.find((entry) => entry.reference === "author-note")!;
 	await readOperation(moveBlock(database, preset.id, slot.id, 1));
 	expect((await preview(app, chat.id)).promptPlan.blocks[0]).toEqual({ kind: "author-note", role: "system", content: "Standing guidance" });
-	await readOperation(toggleBlock(database, preset.id, slot.id, false));
-	expect((await duplicateBlock(database, preset.id, slot.id)).status).toBe(422);
-	expect((await addBlock(database, preset.id, "author-note")).status).toBe(422);
 });

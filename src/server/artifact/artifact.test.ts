@@ -47,6 +47,7 @@ describe("Conversation artifacts", () => {
 		root = mkdtempSync(join(tmpdir(), "ditzytavern-artifact-"));
 		module = createArtifactModule(database, { directory: root });
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Artifact Holder",
 		});
 		chatId = created.id;
@@ -65,6 +66,7 @@ describe("Conversation artifacts", () => {
 		// exactly as the import orchestration does before creation.
 		writeFileSync(join(root, seed.relativePath), bytes);
 		return createConversationModule(database).create({
+			authorNote: "",
 			name: "Artifact Conversation",
 			artifacts: [seed],
 		});
@@ -82,6 +84,7 @@ describe("Conversation artifacts", () => {
 		writeFileSync(join(root, seed.relativePath), bytes);
 
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Artifact Conversation",
 			artifacts: [seed],
 		});
@@ -132,6 +135,7 @@ describe("Conversation artifacts", () => {
 		const seed = artifactSeed();
 		expect(() =>
 			createConversationModule(database).create({
+				authorNote: "",
 				name: "Duplicate Artifacts",
 				artifacts: [seed, { ...seed, relativePath: uniqueManagedRelativePath("other.jsonl") }],
 			}),
@@ -173,6 +177,7 @@ describe("Conversation artifacts", () => {
 		for (const tweak of cases) {
 			expect(() =>
 				createConversationModule(database).create({
+					authorNote: "",
 					name: "Invalid Artifact",
 					artifacts: [artifactSeed(tweak)],
 				}),
@@ -206,6 +211,7 @@ describe("Conversation artifacts", () => {
 		});
 		writeFileSync(join(root, seed.relativePath), bytes);
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Exact Round Trip",
 			artifacts: [seed],
 		});
@@ -296,6 +302,7 @@ describe("Conversation artifacts", () => {
 		});
 		writeFileSync(join(root, seed.relativePath), bytes);
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Download Me",
 			artifacts: [seed],
 		});
@@ -320,6 +327,7 @@ describe("Conversation artifacts", () => {
 		// read outside the managed directory, with or without a file there.
 		const seed = artifactSeed({ relativePath: "../escape.bin" });
 		const created = createConversationModule(database).create({
+			authorNote: "",
 			name: "Escaping Artifact",
 			artifacts: [seed],
 		});

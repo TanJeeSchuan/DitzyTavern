@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { applyConversationCommand, loadConversationPromptPreset, type ConversationSummary } from "./conversation";
 import { runConversationCommand } from "./conversation-command-runner";
@@ -58,17 +59,17 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	useSaveGuard({ dirty, saving: pending, save, discard });
 	return <div className="panel-fill overflow-y-auto p-5">
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
-		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <div className="mb-4 flex flex-col gap-2 rounded-lg bg-muted/50 px-3 py-3 text-sm text-muted-foreground">
-			<p>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</p>
-			<Button type="button" size="sm" variant="outline" className="self-start" disabled={pending || disabled || activate.isPending} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
-		</div>}
-		{preset.isError && <p className="mb-3 text-sm text-destructive" role="alert">The selected Prompt Preset could not be loaded.</p>}
-		{activate.isError && <p className="mb-3 text-sm text-destructive" role="alert">{activate.error.message}</p>}
+		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
+			<AlertDescription>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</AlertDescription>
+			<Button type="button" size="sm" variant="outline" className="mt-2 w-fit" disabled={pending || disabled || activate.isPending} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
+		</Alert>}
+		{preset.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>The selected Prompt Preset could not be loaded.</AlertDescription></Alert>}
+		{activate.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>{activate.error.message}</AlertDescription></Alert>}
 		<ProseEditor value={draft} onChange={setDraft} ariaLabel="Author Note text" placeholder="Write guidance for future Generations…" disabled={pending || disabled} className="prose-editor-field h-56" />
-		{notice !== null && <div className="mt-3 text-sm" role="alert">
+		{notice !== null && <Alert className="mt-3"><AlertDescription>
 			<p>{notice}</p>
 			{saved !== draft && <><p className="mt-2 text-muted-foreground">Current saved note</p><pre className="mt-1 whitespace-pre-wrap font-inherit">{saved || "Empty"}</pre></>}
-		</div>}
+		</AlertDescription></Alert>}
 		<div className="mt-4 flex items-center justify-between gap-2">
 			<Button variant="ghost" disabled={pending || disabled || draft === ""} onClick={() => setDraft("")}>Clear</Button>
 			<Button disabled={pending || disabled || !dirty} onClick={() => void save()}>{pending ? "Saving…" : "Save Author Note"}</Button>

@@ -31,7 +31,7 @@ A writer opens the Author Note panel from the composer, writes text and Images, 
 - [x] e2e: write a note in the panel, send, assert the fake received it after history.
 - [x] Verify the panel manually with playwright-cli. No UI tests.
 - [x] Run focused tests, typechecking, and the full test suite.
-- [x] Run `/code-review` and resolve its findings. Skipped as requested; branch-wide review follows later.
+- [x] Resolve branch-wide review findings: require explicit Author Note inputs, consolidate single-use reference labels and validation, make Duplicate consistent, extract the save handler, use shadcn Alert, consolidate migrations, and add the lore positive control.
 - [x] Set this ticket to DONE and commit the implementation.
 
 ## Acceptance
@@ -46,3 +46,10 @@ A writer opens the Author Note panel from the composer, writes text and Images, 
 - `bun run test:e2e`: 24 passed. An earlier run failed the existing inactivity-timeout test; the full rerun passed.
 - Manual playwright-cli: desktop/mobile, daylight/evening, exact-text save, Image chips, clear, unsaved-edit guard, and stale-save draft preservation.
 - Implementation branch: `author-note-01`; Git cannot create `author-note/01` while the `author-note` branch exists.
+
+## Review-fix verification
+
+- Branch: `author-note-review`. All assigned review findings resolved.
+- `bun run check`: passed (1,282 tests and 3 E2E harness tests).
+- `bun run test:e2e`: 24 passed.
+- The regenerated single migration contains exactly the SQL statements from the original two migrations. Default-recipe seeding is unchanged.

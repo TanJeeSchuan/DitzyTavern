@@ -53,6 +53,7 @@ describe("Text-only Models", () => {
 
 	const chat = (modelId: string) => {
 		const conversation = createConversationModule(database).create({
+			authorNote: "",
 			name: "Chat",
 			participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
 			control: { human: 0, model: 1 },

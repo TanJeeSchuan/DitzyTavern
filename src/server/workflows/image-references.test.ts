@@ -38,6 +38,7 @@ describe("Image Reference lifetime", () => {
 	const library = () => createCharacterLibraryModule(database);
 
 	const chat = () => conversations().create({
+		authorNote: "",
 		name: "Chat",
 		participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }],
 		control: { human: 0, model: 1 },
@@ -129,7 +130,7 @@ describe("Image Reference lifetime", () => {
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
-			const target = owner === "Participant" ? conversations().create({ name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
+			const target = owner === "Participant" ? conversations().create({ authorNote: "", name: "Chat", participants: [{ definition: writer }, { definition }], control: { human: 0, model: 1 } }) : undefined;
 			const now = Date.now() + 2 * 24 * 60 * 60 * 1000;
 			sweepOrphanedImages(database, now);
 			expect(stored().sort()).toEqual(pictures.map(({ hash }) => hash).sort());
@@ -367,6 +368,7 @@ describe("Image Reference lifetime", () => {
 	test("Macro State written by setvar during a Generation holds its Image after the Definition lets go", async () => {
 		const art = await picture(4);
 		const target = conversations().create({
+			authorNote: "",
 			name: "Chat",
 			participants: [
 				{ definition: writer },
