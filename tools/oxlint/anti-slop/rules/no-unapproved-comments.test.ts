@@ -66,7 +66,7 @@ tester.run("no-unapproved-comments", noUnapprovedCommentsRule, {
 			// Rendered message includes the comment preview and both approval
 			// spellings.
 			code: "// prose\nconst x = 1;",
-			errors: [{ message: /not marked as human-approved \("prose"\)\. Add "==\[HUMAN APPROVED\]==" inline, or a "\/\/ @approved" line directly above the block/ }],
+			errors: [{ message: /not marked as human-approved \("prose"\)\. Add "==\[HUMAN APPROVED\]==" inline, or put "\/\/ @approved" first in a standalone line-comment block/ }],
 		},
 		{
 			code: "// one\nconst x = 1;\n// two",

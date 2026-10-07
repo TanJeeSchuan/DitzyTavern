@@ -43,7 +43,7 @@ export const noUnapprovedCommentsRule = defineRule({
 		},
 		messages: {
 			unapprovedComment:
-				'Comment is not marked as human-approved ("{{preview}}"). Add "{{marker}}" inline, or a "// @approved" line directly above the block, or trim/remove it.',
+				'Comment is not marked as human-approved ("{{preview}}"). Add "{{marker}}" inline, or put "// @approved" first in a standalone line-comment block, or trim/remove it.',
 		},
 		schema: [
 			{
