@@ -20,7 +20,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	const slot = selectedPreset?.slots.find((slot) => slot.reference === "author-note");
 	const activate = useMutation({
 		mutationFn: async () => {
-			if (!selectedPreset) return;
+			if (!selectedPreset || preset.isFetching || preset.isError) return;
 			const outcome = slot === undefined
 				? await addPromptPresetReference(selectedPreset.id, "author-note")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, slot.id, true);
@@ -33,6 +33,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 	const [saved, setSaved] = useState(conversation.authorNote);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
+	if (conversation.revision > expectedRevision && conversation.authorNote === saved) setExpectedRevision(conversation.revision);
 	const dirty = draft !== saved;
 	const save = async (): Promise<boolean> => {
 		if (pending || disabled) return false;
@@ -61,7 +62,7 @@ export function AuthorNotePanel({ conversation, onConversationChange, disabled }
 		<p className="mb-4 text-sm text-muted-foreground">Standing guidance for every branch of this Chat.</p>
 		{conversation.authorNote.trim() !== "" && selectedPreset && !slot?.enabled && <Alert className="mb-4">
 			<AlertDescription>The selected Prompt Preset has no enabled Author Note block, so this note is not sent to the model.</AlertDescription>
-			<Button type="button" size="sm" variant="outline" className="mt-2 w-fit" disabled={pending || disabled || activate.isPending} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
+			<Button type="button" size="sm" variant="outline" className="mt-2 w-fit" disabled={pending || disabled || activate.isPending || preset.isFetching || preset.isError} onClick={() => activate.mutate()}>{slot === undefined ? "Add Author Note Block" : "Enable Author Note Block"}</Button>
 		</Alert>}
 		{preset.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>The selected Prompt Preset could not be loaded.</AlertDescription></Alert>}
 		{activate.isError && <Alert variant="destructive" className="mb-3"><AlertDescription>{activate.error.message}</AlertDescription></Alert>}

@@ -198,7 +198,7 @@ const diagnostic = (code: string, message: string, identifier?: string): SillyTa
 // are replaced by source span, so nested supported macros are translated without rebuilding
 // and reparsing an outer expression. Prompt Comments remain opaque, exactly as they are to
 // expansion; malformed input is returned by the parser as literal text.
-const translateCommentsAndMacros = (source: string): string => {
+export const translateCommentsAndMacros = (source: string): string => {
 	const nodes = parseMacroDocument(source);
 	const translated = (node: MacroNode): string => {
 		const normalized = node.name.toLowerCase();

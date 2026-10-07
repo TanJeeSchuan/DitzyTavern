@@ -130,6 +130,11 @@ describe("Chat import transport adapters", () => {
 		expect((await importNoteWarnings({ ...header.chat_metadata, note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." })).authorNote).toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
 	});
 
+	test("maps spaced participant macros in an imported note while preserving Prompt Comments", async () => {
+		const { authorNote } = await importNoteWarnings({ note_prompt: "{{ user }} guides {{ char }}. {{// Keep {{char}} as a reminder. }}" });
+		expect(authorNote).toBe("{{self}} guides {{other}}. {{// Keep {{char}} as a reminder. }}");
+	});
+
 	test.each([
 		{ note_prompt: "Keep quiet." },
 		{ ...header.chat_metadata, note_position: undefined },

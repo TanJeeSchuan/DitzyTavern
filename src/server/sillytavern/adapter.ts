@@ -22,6 +22,7 @@
 // imported Message receives a native immutable Author Stamp for its
 // resolved Participant; no historical Control pair is ever fabricated.
 import type { ConversationDataEntry } from "../conversation/types";
+import { translateCommentsAndMacros } from "../prompt-preset/sillytavern";
 import { SillyTavernImportError } from "./errors";
 import {
 	defaultImportResolution,
@@ -149,7 +150,7 @@ export function decodeSillyTavernImportSource(
 	}
 	const header = decodeHeader(headerRecord);
 	const metadata = isJsonObject(header.chat_metadata) ? header.chat_metadata : null;
-	const authorNote = isJsonString(metadata?.note_prompt) && metadata.note_prompt.trim() !== "" ? metadata.note_prompt.replaceAll(/{{user}}/gi, "{{self}}").replaceAll(/{{char}}/gi, "{{other}}") : "";
+	const authorNote = isJsonString(metadata?.note_prompt) && metadata.note_prompt.trim() !== "" ? translateCommentsAndMacros(metadata.note_prompt) : "";
 	const integrity = sourceIntegrity(header);
 	const { messages, warnings, authors } = decodeMessages(messageRecords);
 	if (authorNote !== "") {
