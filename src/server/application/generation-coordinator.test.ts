@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { processStateFor } from "../application/process-state";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	ConversationNotFoundError,
@@ -52,7 +53,7 @@ describe("GenerationCoordinator", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
-	afterEach(() => database.close());
+	afterEach(() => { processStateFor(database).dispose(); database.close(); });
 
 	// Generation results carry the Conversation header; Message assertions
 	// re-read the full snapshot immediately after the attempt they follow.
@@ -255,7 +256,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
-	afterEach(() => database.close());
+	afterEach(() => { processStateFor(database).dispose(); database.close(); });
 
 	const setup = () => {
 		const module = createConversationModule(database);
@@ -516,7 +517,7 @@ describe("Generation Coordinator terminal races", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 	});
 
-	afterEach(() => database.close());
+	afterEach(() => { processStateFor(database).dispose(); database.close(); });
 
 	const setup = () => {
 		const module = createConversationModule(database);

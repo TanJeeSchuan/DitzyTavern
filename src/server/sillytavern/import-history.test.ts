@@ -18,7 +18,6 @@ import {
 import { IMPORT_KEYS, IMPORT_NAMESPACE } from "./adapter";
 import { findPriorImportsBySource } from "./prior-imports";
 import {
-	clearStagedImportRegistry,
 	createChatImportModule,
 	type ChatImportCommitInput,
 	type ChatImportModule,
@@ -62,12 +61,10 @@ describe("graduated Chat history and Import Details", () => {
 		artifactDirectory = join(directory, "managed-artifacts");
 		module = createChatImportModule(database, { artifactDirectory });
 		details = createChatImportDetailsModule(database, artifactDirectory);
-		clearStagedImportRegistry();
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
-		clearStagedImportRegistry();
 	});
 
 	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>

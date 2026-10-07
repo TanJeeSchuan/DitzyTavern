@@ -4,7 +4,6 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createContract } from ".";
 import { createConversationModule } from "../conversation";
-import { clearGenerationPreviewRegistry } from "../workflows/generation-preview";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { formatImageReference } from "../../shared/image-reference";
@@ -37,7 +36,7 @@ const createChat = (database: Database) => createConversationModule(database).cr
 describe("Edited Prompt Plan Images", () => {
 	let database: Database;
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
-	afterEach(() => { clearGenerationPreviewRegistry(database); database.close(); });
+	afterEach(() => { database.close(); });
 
 	test("sends a copied Image unknown to the original preview once the edited plan is accepted", async () => {
 		const source = createChat(database);

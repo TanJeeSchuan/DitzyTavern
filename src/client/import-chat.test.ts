@@ -11,7 +11,6 @@ import {
 	rulershipFixture,
 	writerFixture as writer,
 } from "../server/sillytavern/fixtures";
-import { clearStagedImportRegistry } from "../server/sillytavern/staged";
 import { openInitializedDatabase } from "../server/database/database";
 import {
 	createChatImportTransport,
@@ -51,12 +50,10 @@ describe("Chat import client boundary", () => {
 				return app.handle(new Request(input, init));
 			},
 		});
-		clearStagedImportRegistry();
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
-		clearStagedImportRegistry();
 	});
 
 	const bytes = (records: unknown[]) => Buffer.from(jsonl(records), "utf8");

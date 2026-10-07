@@ -1,7 +1,29 @@
 import { expect, test } from "bun:test";
 import { Elysia } from "elysia";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
+import { headerFixture, jsonl, writerFixture } from "../sillytavern/fixtures";
+import { createChatImportModule } from "../sillytavern/staged";
+import { StagedChatImportExpiredError } from "../sillytavern/errors";
+import { processStateFor } from "./process-state";
 import { shutdownApplication } from "./shutdown";
+
+test("the sweep reaps a container whose database has closed", () => {
+	const directory = mkdtempSync(join(tmpdir(), "process-state-reap-"));
+	try {
+		const database = openInitializedDatabase({ path: ":memory:" });
+		const state = processStateFor(database);
+		database.close();
+		// The closed database's tick: the container reaps itself, so a test
+		// that skips dispose() cannot keep a timer past one sweep.
+		state.sweep();
+		const replacement = processStateFor(database);
+		expect(replacement).not.toBe(state);
+		replacement.dispose();
+	} finally { rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("shutdown starts worker cancellation while joining HTTP handlers and closes the database last", async () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
@@ -65,3 +87,25 @@ test("one process deadline bounds unfinished HTTP, worker, and generation work w
 		child.kill();
 	}
 }, 10_000);
+
+test("graceful shutdown drops the staged import session store, keeping the restart contract", async () => {
+	const database = openInitializedDatabase({ path: ":memory:" });
+	const directory = mkdtempSync(join(tmpdir(), "ditzytavern-shutdown-"));
+	try {
+		const staged = createChatImportModule(database, { artifactDirectory: join(directory, "managed-artifacts") });
+		const { token } = await staged.stageFile({
+			bytes: new Blob([new Uint8Array(Buffer.from(jsonl([headerFixture, writerFixture]), "utf8"))]).stream(),
+			originalFilename: "lantern-house.jsonl",
+		});
+		expect(processStateFor(database).stagedImports.sessions.has(token)).toBe(true);
+
+		await shutdownApplication(database, async () => {}, async () => {});
+
+		// The staged handle is gone with the process-local store; a later access
+		// sees a fresh store (a real restart), so the flow requires reselection.
+		expect(() => staged.preview(token)).toThrow(StagedChatImportExpiredError);
+		expect(processStateFor(database).stagedImports.sessions.size).toBe(0);
+	} finally {
+		rmSync(directory, { recursive: true, force: true });
+	}
+});

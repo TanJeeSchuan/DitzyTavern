@@ -6,10 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
 import { importSillyTavernChat } from "../sillytavern";
-import {
-	clearStagedImportRegistry,
-	createChatImportModule,
-} from "../sillytavern/staged";
+import { createChatImportModule } from "../sillytavern/staged";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
 import { createChatImportRoutes } from "./chat-import";
 import { createConversationRoutes } from "./conversation";
@@ -30,12 +27,10 @@ describe("Chat import transport adapters", () => {
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");
 		app = createChatImportRoutes(database, artifactDirectory);
-		clearStagedImportRegistry();
 	});
 	afterEach(() => {
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
-		clearStagedImportRegistry();
 	});
 
 	const stage = (bytes: Buffer, filename = "lantern-house.jsonl") =>

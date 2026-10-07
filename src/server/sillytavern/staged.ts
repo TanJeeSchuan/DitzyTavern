@@ -11,14 +11,15 @@
 // source stays session-bound at its managed path until commit.
 //
 // Staging is session-bound by construction: staged handles and committed
-// receipts live in one process-level expiring session store. A server
-// restart naturally expires every staged flow and requires file reselection;
-// no durable import draft or resume system is added. Every session also
-// expires on its own after the documented TTL: a lazy sweep on every module
-// access plus an opportunistic periodic sweep evicts expired sessions and
-// deletes their staged files, so abandoned flows never pin memory or
-// unclaimed artifact bytes. Discard (explicit cancellation) removes only
-// the uncommitted staged bytes of that one flow.
+// receipts live in one expiring session store owned by the per-database
+// process-state container. A server restart (graceful shutdown included)
+// clears it wholesale (the expiry contract); no durable import draft or
+// resume system is added. Every session also expires on its own after the
+// documented TTL: a lazy sweep on every module access plus the container's
+// periodic sweep tick evicts expired sessions and deletes their staged
+// files, so abandoned flows never pin memory or unclaimed artifact bytes.
+// Discard (explicit cancellation) removes only the uncommitted staged bytes
+// of that one flow.
 //
 // Commit is atomic across filesystem and SQLite without a finalization step:
 // the immutable staged managed path becomes the final artifact path, and the
@@ -60,6 +61,7 @@ import {
 	SillyTavernImportError,
 } from "./errors";
 import { chatNameFromFilename } from "./import";
+import { processStateFor } from "../application/process-state";
 
 import { buildPreview } from "./staged/preview";
 import type {
@@ -79,53 +81,45 @@ export * from "./staged/types";
 // map, and every entry carries its own absolute expiry: the staged handle
 // from its staging time, and the compact committed receipt kept for
 // idempotent retry from its commit.
-type StagedImportSession =
+export type StagedImportSession =
 	| { phase: "staged"; expiresAt: number; record: StagedRecord }
 	| { phase: "committed"; expiresAt: number; receipt: ChatImportReceipt };
-
-const stagedImportSessions = new Map<string, StagedImportSession>();
 
 // ==[HUMAN APPROVED]== An interactive staging flow (upload, resolve Participants, confirm, commit)
 // fits comfortably inside this window; anything older is abandoned work that
 // must not keep staged bytes or receipts alive.
 export const STAGED_IMPORT_SESSION_TTL_MS = 60 * 60 * 1000;
 
-// ==[HUMAN APPROVED]== The scheduled sweep is the safety net for sessions whose tokens are never
-// touched again: lazy sweeps run only when some request arrives, so a flow
-// abandoned mid-resolution would otherwise keep its staged file forever.
-const STAGED_IMPORT_SWEEP_INTERVAL_MS = 60 * 1000;
+export interface StagedImportStore {
+	sessions: Map<string, StagedImportSession>;
+	/** ==[HUMAN APPROVED]== Evicts every session past its expiry and deletes the staged file of each evicted staged
+	 * handle; an evicted committed receipt leaves nothing on disk, so only the map entry goes.
+	 * Driven lazily on module access and by the process-state sweep tick while idle. */
+	sweep(now?: number): void;
+	dispose(): void;
+}
 
-// ==[HUMAN APPROVED]== Evicts every session past its expiry and deletes the staged file of each
-// evicted staged handle; an evicted committed receipt leaves nothing on
-// disk, so only the map entry goes. `now` is injectable for tests.
-export const sweepExpiredImportSessions = (now: number = Date.now()): void => {
-	for (const [token, session] of stagedImportSessions) {
-		if (session.expiresAt > now) continue;
-		if (session.phase === "staged") {
-			rmSync(session.record.stagedPath, { force: true });
-		}
-		stagedImportSessions.delete(token);
-	}
+// ==[HUMAN APPROVED]== The expiring import-session store. The process-state container owns its
+// lifecycle; this factory owns only the store's behavior. `now` is injectable for tests.
+export const createStagedImportStore = (): StagedImportStore => {
+	const sessions = new Map<string, StagedImportSession>();
+	return {
+		sessions,
+		sweep: (now: number = Date.now()) => {
+			for (const [token, session] of sessions) {
+				if (session.expiresAt <= now) {
+					if (session.phase === "staged") {
+						rmSync(session.record.stagedPath, { force: true });
+					}
+					sessions.delete(token);
+				}
+			}
+		},
+		dispose: () => sessions.clear(),
+	};
 };
 
-let sweepTimer: ReturnType<typeof setInterval> | undefined;
-const ensureScheduledImportSweep = (): void => {
-	if (sweepTimer !== undefined) return;
-	// Unref'd: the sweep must never keep a process (or a test run) alive. ==[HUMAN APPROVED]==
-	sweepTimer = setInterval(
-		sweepExpiredImportSessions,
-		STAGED_IMPORT_SWEEP_INTERVAL_MS,
-	);
-	sweepTimer.unref();
-};
-
-// ==[HUMAN APPROVED]== Simulates the restart expiry for tests: drops every staged handle and
-// every retained committed receipt without touching the already staged or
-// committed files (a real restart runs no cleanup either; orphaned files
-// are an accepted lifecycle tradeoff with no GC).
-export const clearStagedImportRegistry = (): void => {
-	stagedImportSessions.clear();
-};
+const stagedImportStore = (database: Database): StagedImportStore => processStateFor(database).stagedImports;
 
 // ==[HUMAN APPROVED]== Streams the uploaded bytes into their staged managed path while hashing
 // them in flight, so neither the HTTP boundary nor this module buffers the
@@ -344,8 +338,7 @@ export function createChatImportModule(
 
 	return {
 		async stageFile({ bytes, originalFilename }) {
-			ensureScheduledImportSweep();
-			sweepExpiredImportSessions();
+			stagedImportStore(database).sweep();
 			const filename = basename(originalFilename);
 			// ==[HUMAN APPROVED]== The upload lands directly at its final unique managed path; the
 			// commit transaction claims this exact path in place.
@@ -387,7 +380,7 @@ export function createChatImportModule(
 				inspection,
 			);
 			const token = randomUUID();
-			stagedImportSessions.set(token, {
+			stagedImportStore(database).sessions.set(token, {
 				phase: "staged",
 				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
 				record: {
@@ -405,8 +398,8 @@ export function createChatImportModule(
 		},
 
 		preview(token, expectedSha256) {
-			sweepExpiredImportSessions();
-			const session = stagedImportSessions.get(token);
+			stagedImportStore(database).sweep();
+			const session = stagedImportStore(database).sessions.get(token);
 			if (session === undefined || session.phase !== "staged") {
 				throw new StagedChatImportExpiredError();
 			}
@@ -419,8 +412,8 @@ export function createChatImportModule(
 		},
 
 		commit(token, input) {
-			sweepExpiredImportSessions();
-			const session = stagedImportSessions.get(token);
+			stagedImportStore(database).sweep();
+			const session = stagedImportStore(database).sessions.get(token);
 			// ==[HUMAN APPROVED]== A consumed token is a committed token: its compact receipt serves
 			// the idempotent retry after a lost response. The authoritative
 			// Conversation snapshot is re-read through the Conversation seam
@@ -432,7 +425,7 @@ export function createChatImportModule(
 				if (conversation === undefined) {
 					// ==[HUMAN APPROVED]== The committed Chat no longer exists, so the receipt can
 					// never be served again and is evicted with it.
-					stagedImportSessions.delete(token);
+					stagedImportStore(database).sessions.delete(token);
 					throw new Error(
 						`The Chat committed by this import (Conversation ${session.receipt.conversationId}) no longer exists.`,
 					);
@@ -531,7 +524,7 @@ export function createChatImportModule(
 			};
 			// ==[HUMAN APPROVED]== Consume the token once while retaining the compact receipt for
 			// idempotent retry within the same session lifetime.
-			stagedImportSessions.set(token, {
+			stagedImportStore(database).sessions.set(token, {
 				phase: "committed",
 				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
 				receipt,
@@ -540,10 +533,10 @@ export function createChatImportModule(
 		},
 
 		discard(token) {
-			sweepExpiredImportSessions();
-			const session = stagedImportSessions.get(token);
+			stagedImportStore(database).sweep();
+			const session = stagedImportStore(database).sessions.get(token);
 			if (session === undefined || session.phase !== "staged") return;
-			stagedImportSessions.delete(token);
+			stagedImportStore(database).sessions.delete(token);
 			// ==[HUMAN APPROVED]== Removes only this flow's uncommitted temporary staging bytes;
 			// committed artifacts are never touched here.
 			rmSync(session.record.stagedPath, { force: true });
