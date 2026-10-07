@@ -22,7 +22,7 @@ function registry() {
 			const tag = url.pathname.split("/").at(-1)!;
 			const manifest = tags.get(tag);
 			return manifest
-				? Response.json({ mediaType: "application/vnd.oci.image.index.v1+json", annotations: manifest.annotations }, { headers: { "docker-content-digest": manifest.digest } })
+				? Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: manifest.annotations }, { headers: { "docker-content-digest": manifest.digest } })
 				: Response.json({ errors: [{ code: "MANIFEST_UNKNOWN" }] }, { status: 404 });
 		},
 		run: async (command: string[]) => {
@@ -111,6 +111,26 @@ test("a numbered tag cannot claim a different build identity", async () => {
 	remote.tags.set("build-10", { digest: digest10, annotations: annotations(9) });
 	await expect(publishDockerBuild(build, remote)).rejects.toThrow("identity");
 	expect(remote.commands).toEqual([]);
+});
+
+test("missing or unsupported index schema versions prevent publication", async () => {
+	for (const tag of ["build-10", "latest"]) {
+		for (const schemaVersion of [undefined, 1, "2"]) {
+			const remote = registry();
+			remote.tags.set("build-10", { digest: digest10, annotations: annotations(10) });
+			remote.tags.set("latest", { digest: `sha256:${"9".repeat(64)}`, annotations: annotations(9) });
+			const fetchRegistry = remote.fetch;
+			remote.fetch = async (input, init) => {
+				const response = await fetchRegistry(input, init);
+				return String(input).endsWith(`/manifests/${tag}`)
+					? Response.json({ ...await response.json(), schemaVersion }, { headers: response.headers })
+					: response;
+			};
+			await expect(publishDockerBuild(build, remote)).rejects.toThrow("metadata");
+			expect(remote.commands).toEqual([]);
+			expect(remote.tags.get("latest")?.annotations["io.ditzytavern.build-number"]).toBe("9");
+		}
+	}
 });
 
 test("PR and tag execution performs no Docker work or registry requests", async () => {

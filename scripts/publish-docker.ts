@@ -1,3 +1,6 @@
+import { Value } from "@sinclair/typebox/value";
+import { publishedBuildIndex } from "../src/shared/contract/update-registry";
+
 type Build = {
 	image: string;
 	runNumber: number;
@@ -28,18 +31,13 @@ export async function publishDockerBuild(build: Build, commands: Commands) {
 			if (body.errors?.some(error => error.code === "MANIFEST_UNKNOWN" || error.code === "NAME_UNKNOWN")) return null;
 		}
 		if (!response.ok) throw new Error(`Registry lookup ${tag} failed: ${response.status}`);
-		const manifest: { mediaType: string; annotations?: Record<string, string> } = await response.json();
-		const annotations = manifest.annotations;
-		const number = Number(annotations?.["io.ditzytavern.build-number"]);
+		const manifest: unknown = await response.json();
 		const digest = response.headers.get("docker-content-digest");
-		if (!["application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"].includes(manifest.mediaType)
-			|| annotations?.["io.ditzytavern.distribution"] !== "official"
-			|| !/^[1-9]\d*$/.test(annotations["io.ditzytavern.build-number"] ?? "") || !Number.isSafeInteger(number)
-			|| annotations["io.ditzytavern.build-number"] !== String(number)
-			|| !/^[a-f0-9]{40}$/.test(annotations["org.opencontainers.image.revision"] ?? "") || !/^sha256:[a-f0-9]{64}$/.test(digest ?? "")) {
+		if (!Value.Check(publishedBuildIndex, manifest) || !Number.isSafeInteger(Number(manifest.annotations["io.ditzytavern.build-number"]))) {
 			throw new Error(`Invalid official index metadata for ${tag}; unnumbered latest requires an explicit registry transition`);
 		}
-		return { digest: digest!, number, revision: annotations["org.opencontainers.image.revision"] };
+		if (!digest || !/^sha256:[a-f0-9]{64}$/.test(digest)) throw new Error(`Invalid official index digest for ${tag}`);
+		return { digest, number: Number(manifest.annotations["io.ditzytavern.build-number"]), revision: manifest.annotations["org.opencontainers.image.revision"] };
 	};
 	const numbered = `build-${build.runNumber}`;
 	let candidate = await read(numbered);
