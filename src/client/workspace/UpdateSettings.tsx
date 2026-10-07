@@ -29,19 +29,57 @@ export function UpdateSettings() {
 					<strong id="automatic-update-checks-label">Automatic update checks</strong>
 					<span id="automatic-update-checks-description">Check at server startup and every 24 hours. Applies to everyone using this installation.</span>
 				</div>
-				<Switch checked={state?.automaticChecks ?? false} disabled={!state || saving} onCheckedChange={(enabled) => void toggle(enabled)} aria-labelledby="automatic-update-checks-label" aria-describedby="automatic-update-checks-description" />
+				<Switch
+					checked={state?.automaticChecks ?? false}
+					disabled={!state || saving}
+					onCheckedChange={(enabled) => void toggle(enabled)}
+					aria-labelledby="automatic-update-checks-label"
+					aria-describedby="automatic-update-checks-description"
+				/>
 			</div>
 			{state && <p className="settings-feedback">Running build {state.build.buildNumber}</p>}
 			<div role="status" aria-live="polite">
-				{result ? <p className="settings-feedback">{available ? `Build ${result.buildNumber} available` : result.comparison === "current" ? "Up to date" : `No newer build available · running build ${state?.build.buildNumber}, published build ${result.buildNumber}`}</p> : <p className="settings-feedback">{checking ? "Checking…" : failed ? "Couldn't check for updates" : state ? "Not checked" : "Loading update status…"}</p>}
+				{result ? (
+					<p className="settings-feedback">
+						{available
+							? `Build ${result.buildNumber} available`
+							: result.comparison === "current"
+								? "Up to date"
+								: `No newer build available · running build ${state?.build.buildNumber}, published build ${result.buildNumber}`}
+					</p>
+				) : (
+					<p className="settings-feedback">
+						{checking ? "Checking…" : failed ? "Couldn't check for updates" : state ? "Not checked" : "Loading update status…"}
+					</p>
+				)}
 				{result && <p className="settings-feedback">{failed || checking ? "Last successful check" : "Checked"} <time dateTime={result.checkedAt}>{new Date(result.checkedAt).toLocaleString()}</time></p>}
 				{checking && result && <p className="settings-feedback">Checking…</p>}
 			</div>
 			{failed && <p className="settings-feedback-error" role="alert">{result ? "Last refresh failed" : "Check failed"}. {state?.attempt?.error}</p>}
 			<div className="update-settings-actions">
 				<Button variant="outline" size="sm" disabled={!state || checking} onClick={() => void check()}>{failed ? "Retry" : "Check now"}</Button>
-				{available && <Button asChild variant="link" size="sm"><a href="https://github.com/TanJeeSchuan/DitzyTavern/blob/master/docs/docker.md#updates-and-backups" target="_blank" rel="noreferrer">Update instructions</a></Button>}
-				{available && state?.build.revision !== result.revision && <Button asChild variant="link" size="sm"><a href={`https://github.com/TanJeeSchuan/DitzyTavern/compare/${state?.build.revision}...${result.revision}`} target="_blank" rel="noreferrer">View changes</a></Button>}
+				{available && (
+					<Button asChild variant="link" size="sm">
+						<a
+							href="https://github.com/TanJeeSchuan/DitzyTavern/blob/master/docs/docker.md#updates-and-backups"
+							target="_blank"
+							rel="noreferrer"
+						>
+							Update instructions
+						</a>
+					</Button>
+				)}
+				{available && state?.build.revision !== result.revision && (
+					<Button asChild variant="link" size="sm">
+						<a
+							href={`https://github.com/TanJeeSchuan/DitzyTavern/compare/${state?.build.revision}...${result.revision}`}
+							target="_blank"
+							rel="noreferrer"
+						>
+							View changes
+						</a>
+					</Button>
+				)}
 			</div>
 		</div>}
 		{error && <p className="settings-feedback-error" role="alert">{error}</p>}
