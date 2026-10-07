@@ -55,6 +55,7 @@ describe("Memory change feed public contract", () => {
 		const chat = createChat(database);
 		const first = addSource(database, chat.id, 1, ["assistant"]);
 		const second = addSource(database, chat.id, 2, ["Maren"]);
+		await Bun.sleep(2);
 		const full = await read(chat.id);
 		expect(full.cursor).toEqual(expect.any(String));
 		expect(full.revision).toBe(0);
@@ -65,6 +66,7 @@ describe("Memory change feed public contract", () => {
 
 		const current = readConversationMemories(database, chat.id).sources.find(({ variantId }) => variantId === first.variantId)!;
 		const corrected = correctMemorySource(database, chat.id, { messageId: first.messageId, variantId: first.variantId, expectedRevision: current.revision, index: 0, operation: "edit", claim: "Bob returned the key.", attribution: "Alice said it.", people: ["Alice"] });
+		await Bun.sleep(2);
 		const delta = await changes(chat.id, full.cursor);
 		expect(delta.cursor > full.cursor).toBe(true);
 		expect(delta.sources).toEqual([expect.objectContaining({ variantId: first.variantId, ownership: "writer", revision: corrected.revision, claims: [expect.objectContaining({ claim: "Bob returned the key.", people: ["Alice"] })] })]);
