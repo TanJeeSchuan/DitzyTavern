@@ -8,7 +8,6 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq, inArray } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	generationReplayTable,
 	messageTable,
 	messageVariantDataTable,
@@ -23,6 +22,7 @@ import {
 } from "../../shared/contract/memory-recall";
 import {
 	connectConversationDatabase,
+	findConversation,
 	readActiveCast,
 	type ConversationDatabase,
 } from "./internal";
@@ -195,8 +195,7 @@ export function readActiveGenerationDetailsFromConnection(
 	}
 	const row = active ?? retained;
 	if (row === undefined) return undefined;
-	const conversation = db.select({ id: conversationTable.id }).from(conversationTable).where(eq(conversationTable.id, conversationId)).get();
-	if (conversation === undefined) return undefined;
+	if (findConversation(db, conversationId) === undefined) return undefined;
 	const humanName = row.captured_human_name.length > 0
 		? row.captured_human_name
 		: db.select({ name: participantTable.name }).from(participantTable)

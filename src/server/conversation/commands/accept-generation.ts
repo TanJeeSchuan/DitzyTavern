@@ -2,26 +2,25 @@ import type { Database } from "bun:sqlite";
 import { and, eq, max, sql } from "drizzle-orm";
 import {
 	activeGenerationTable,
-	conversationTable,
 	conversationGenerationSettingsTable,
 	messageTable,
 	messageVariantDataTable,
 	messageVariantTable,
 } from "../../database/schema";
 import {
-	ConversationNotFoundError,
 	ConversationNotPlayableError,
 	InvalidConversationCommandError,
 	SiblingVariantUnavailableError,
-	StaleConversationRevisionError,
 } from "../errors";
 import {
 	appendSelectedVariant,
-	hasActiveGeneration,
+	hasActiveGenerationFromConnection,
 	insertMessage,
 	insertVariant,
 	readActiveCast,
 	readControlAssignment,
+	requireConversation,
+	requireConversationRevision,
 	requireMessage,
 	requireParticipant,
 	type ConversationDatabase,
@@ -71,23 +70,6 @@ const jsonText = (
 			`The captured ${label} could not be persisted as JSON.`,
 		);
 	}
-};
-
-const ensureConversationRevision = (
-	db: ConversationDatabase,
-	conversationId: number,
-	expectedRevision: number,
-) => {
-	const conversation = db
-		.select({ id: conversationTable.id, revision: conversationTable.revision })
-		.from(conversationTable)
-		.where(eq(conversationTable.id, conversationId))
-		.get();
-	if (conversation === undefined) throw new ConversationNotFoundError(conversationId);
-	if (conversation.revision !== expectedRevision) {
-		throw new StaleConversationRevisionError(expectedRevision, conversation.revision);
-	}
-	return conversation;
 };
 
 type GenerationAcceptanceFields = Pick<AcceptTailGenerationInput,
@@ -332,7 +314,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 	input: AcceptGenerationTargetInput<Validation>,
 ): AcceptedGenerationTarget<Validation> {
 	return runConversationTransaction(database, (db, reportChange) => {
-		ensureConversationRevision(db, input.conversationId, input.expectedRevision);
+		requireConversationRevision(db, input.conversationId, input.expectedRevision);
 		input.preflight?.();
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(
@@ -355,7 +337,7 @@ function acceptConversationGenerationTarget<Validation extends AcceptGenerationV
 				"The captured model Author Stamp is no longer authoritative.",
 			);
 		}
-		if (hasActiveGeneration(database, input.conversationId)) {
+		if (hasActiveGenerationFromConnection(db, input.conversationId)) {
 			throw new InvalidConversationCommandError(
 				"This Conversation already has an Active Generation.",
 			);
@@ -544,13 +526,8 @@ export function acceptConversationSiblingGeneration(
 	database: Database,
 	input: AcceptSiblingGenerationInput,
 ): AcceptedSiblingGeneration {
-	return runConversationTransaction(database, (db, reportChange) => {
-		const conversation = db
-			.select({ id: conversationTable.id })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, input.conversationId))
-			.get();
-		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
+	return runConversationTransaction(database, (db) => {
+		requireConversation(db, input.conversationId);
 		if (input.humanParticipantId === input.modelParticipantId) {
 			throw new InvalidConversationCommandError(
 				"A Sibling Generation requires distinct historical Participants.",
