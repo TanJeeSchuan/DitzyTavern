@@ -104,14 +104,32 @@ export const readLorebookAttachmentEligibility = (
 	const rows: LoreAttachmentEligibility[] = [];
 	for (const row of db.select().from(conversationLorebookAttachmentTable)
 		.where(eq(conversationLorebookAttachmentTable.conversation_id, conversationId)).all()) {
-		rows.push({ id: row.id, owner: "conversation", ownerId: conversationId, bookId: row.lorebook_id, scope: "chat", enabled: row.enabled, eligible: row.enabled, reason: row.enabled ? "eligible" : "disabled" });
+		rows.push({
+			id: row.id,
+			owner: "conversation",
+			ownerId: conversationId,
+			bookId: row.lorebook_id,
+			scope: "chat",
+			enabled: row.enabled,
+			eligible: row.enabled,
+			reason: row.enabled ? "eligible" : "disabled",
+		});
 	}
 	for (const row of db.select().from(participantLorebookAttachmentTable)
 		.innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id))
 		.where(and(eq(participantTable.conversation_id, conversationId), isNull(participantTable.deleted_at))).all()) {
 		const attachment = row.participant_lorebook_attachment;
 		const eligible = attachment.enabled && (attachment.scope === "cast" ? cast.has(attachment.participant_id) : controlled.has(attachment.participant_id));
-		rows.push({ id: attachment.id, owner: "participant", ownerId: attachment.participant_id, bookId: attachment.lorebook_id, scope: participantScope(attachment.scope), enabled: attachment.enabled, eligible, reason: !attachment.enabled ? "disabled" : eligible ? "eligible" : attachment.scope === "cast" ? "not-in-cast" : "not-controlled" });
+		rows.push({
+			id: attachment.id,
+			owner: "participant",
+			ownerId: attachment.participant_id,
+			bookId: attachment.lorebook_id,
+			scope: participantScope(attachment.scope),
+			enabled: attachment.enabled,
+			eligible,
+			reason: !attachment.enabled ? "disabled" : eligible ? "eligible" : attachment.scope === "cast" ? "not-in-cast" : "not-controlled",
+		});
 	}
 	return rows;
 };
@@ -142,14 +160,43 @@ export const readLorebookAttachmentImpact = (
 	return {
 		bookId,
 		attachments: [
-			...db.select({ id: characterLorebookAttachmentTable.id, ownerId: characterLorebookAttachmentTable.character_id, ownerName: characterTable.name, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
-				.from(characterLorebookAttachmentTable).innerJoin(characterTable, eq(characterTable.id, characterLorebookAttachmentTable.character_id)).where(eq(characterLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db
+				.select({
+					id: characterLorebookAttachmentTable.id,
+					ownerId: characterLorebookAttachmentTable.character_id,
+					ownerName: characterTable.name,
+					scope: characterLorebookAttachmentTable.scope,
+					enabled: characterLorebookAttachmentTable.enabled,
+				})
+				.from(characterLorebookAttachmentTable)
+				.innerJoin(characterTable, eq(characterTable.id, characterLorebookAttachmentTable.character_id))
+				.where(eq(characterLorebookAttachmentTable.lorebook_id, bookId))
+				.all()
 				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "character" as const })),
-			...db.select({ id: participantLorebookAttachmentTable.id, ownerId: participantLorebookAttachmentTable.participant_id, ownerName: participantTable.name, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
-				.from(participantLorebookAttachmentTable).innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id)).where(eq(participantLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db
+				.select({
+					id: participantLorebookAttachmentTable.id,
+					ownerId: participantLorebookAttachmentTable.participant_id,
+					ownerName: participantTable.name,
+					scope: participantLorebookAttachmentTable.scope,
+					enabled: participantLorebookAttachmentTable.enabled,
+				})
+				.from(participantLorebookAttachmentTable)
+				.innerJoin(participantTable, eq(participantTable.id, participantLorebookAttachmentTable.participant_id))
+				.where(eq(participantLorebookAttachmentTable.lorebook_id, bookId))
+				.all()
 				.map((row) => ({ ...row, scope: participantScope(row.scope), owner: "participant" as const })),
-			...db.select({ id: conversationLorebookAttachmentTable.id, ownerId: conversationLorebookAttachmentTable.conversation_id, ownerName: conversationTable.name, enabled: conversationLorebookAttachmentTable.enabled })
-				.from(conversationLorebookAttachmentTable).innerJoin(conversationTable, eq(conversationTable.id, conversationLorebookAttachmentTable.conversation_id)).where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId)).all()
+			...db
+				.select({
+					id: conversationLorebookAttachmentTable.id,
+					ownerId: conversationLorebookAttachmentTable.conversation_id,
+					ownerName: conversationTable.name,
+					enabled: conversationLorebookAttachmentTable.enabled,
+				})
+				.from(conversationLorebookAttachmentTable)
+				.innerJoin(conversationTable, eq(conversationTable.id, conversationLorebookAttachmentTable.conversation_id))
+				.where(eq(conversationLorebookAttachmentTable.lorebook_id, bookId))
+				.all()
 				.map((row) => ({ ...row, scope: "chat" as const, owner: "conversation" as const })),
 		],
 	};
@@ -157,14 +204,27 @@ export const readLorebookAttachmentImpact = (
 
 export const readCharacterLorebookAttachments = (database: Database, characterId: number) => {
 	const db = connect(database);
-	const character = db.select({ id: characterTable.id, revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at))).get();
+	const character = db
+		.select({ id: characterTable.id, revision: characterTable.revision })
+		.from(characterTable)
+		.where(and(eq(characterTable.id, characterId), isNull(characterTable.deleted_at)))
+		.get();
 	if (character === undefined) return undefined;
 	return {
 		owner: "character" as const,
 		ownerId: characterId,
 		revision: character.revision,
-		attachments: db.select({ id: characterLorebookAttachmentTable.id, bookId: characterLorebookAttachmentTable.lorebook_id, scope: characterLorebookAttachmentTable.scope, enabled: characterLorebookAttachmentTable.enabled })
-			.from(characterLorebookAttachmentTable).where(eq(characterLorebookAttachmentTable.character_id, characterId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
+		attachments: db
+			.select({
+				id: characterLorebookAttachmentTable.id,
+				bookId: characterLorebookAttachmentTable.lorebook_id,
+				scope: characterLorebookAttachmentTable.scope,
+				enabled: characterLorebookAttachmentTable.enabled,
+			})
+			.from(characterLorebookAttachmentTable)
+			.where(eq(characterLorebookAttachmentTable.character_id, characterId))
+			.all()
+			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
 	};
 };
 
@@ -178,7 +238,11 @@ export const readParticipantConversationId = (database: Database, participantId:
 
 export const readParticipantLorebookAttachments = (database: Database, participantId: number) => {
 	const db = connect(database);
-	const participant = db.select({ id: participantTable.id, conversationId: participantTable.conversation_id }).from(participantTable).where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at))).get();
+	const participant = db
+		.select({ id: participantTable.id, conversationId: participantTable.conversation_id })
+		.from(participantTable)
+		.where(and(eq(participantTable.id, participantId), isNull(participantTable.deleted_at)))
+		.get();
 	if (participant === undefined) return undefined;
 	const conversation = findConversation(db, participant.conversationId);
 	if (conversation === undefined) return undefined;
@@ -186,8 +250,17 @@ export const readParticipantLorebookAttachments = (database: Database, participa
 		owner: "participant" as const,
 		ownerId: participantId,
 		revision: conversation.revision,
-		attachments: db.select({ id: participantLorebookAttachmentTable.id, bookId: participantLorebookAttachmentTable.lorebook_id, scope: participantLorebookAttachmentTable.scope, enabled: participantLorebookAttachmentTable.enabled })
-			.from(participantLorebookAttachmentTable).where(eq(participantLorebookAttachmentTable.participant_id, participantId)).all().map((row) => ({ ...row, scope: participantScope(row.scope) })),
+		attachments: db
+			.select({
+				id: participantLorebookAttachmentTable.id,
+				bookId: participantLorebookAttachmentTable.lorebook_id,
+				scope: participantLorebookAttachmentTable.scope,
+				enabled: participantLorebookAttachmentTable.enabled,
+			})
+			.from(participantLorebookAttachmentTable)
+			.where(eq(participantLorebookAttachmentTable.participant_id, participantId))
+			.all()
+			.map((row) => ({ ...row, scope: participantScope(row.scope) })),
 	};
 };
 
@@ -231,9 +304,15 @@ export const executeLorebookAttachmentCommand = (
 ): void => {
 	const db = connect(database);
 	database.transaction(() => {
-		const owner = db.select({ revision: characterTable.revision }).from(characterTable).where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at))).get();
+		const owner = db
+			.select({ revision: characterTable.revision })
+			.from(characterTable)
+			.where(and(eq(characterTable.id, command.characterId), isNull(characterTable.deleted_at)))
+			.get();
 		if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
-		if (owner.revision !== command.expectedRevision) throw new StaleLoreAttachmentOwnerRevisionError(command.characterId, command.expectedRevision, owner.revision);
+		if (owner.revision !== command.expectedRevision) {
+			throw new StaleLoreAttachmentOwnerRevisionError(command.characterId, command.expectedRevision, owner.revision);
+		}
 		if (command.type === "attach-character") attachLorebookToCharacter(database, command);
 		else detachLorebookFromCharacter(database, command.characterId, command.bookId, command.scope);
 		advanceCharacterRevision(db, command.characterId, command.expectedRevision);

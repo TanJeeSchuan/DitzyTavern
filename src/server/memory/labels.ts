@@ -12,7 +12,11 @@ const parseMerges = (json: string): MemoryLabelMerge[] => {
 };
 
 export const readMemoryLabelState = (database: Database, conversationId: number) => {
-	const row = drizzle(database).select({ revision: conversationMemorySettingsTable.label_revision, merges: conversationMemorySettingsTable.label_merges }).from(conversationMemorySettingsTable).where(eq(conversationMemorySettingsTable.conversation_id, conversationId)).get();
+	const row = drizzle(database)
+		.select({ revision: conversationMemorySettingsTable.label_revision, merges: conversationMemorySettingsTable.label_merges })
+		.from(conversationMemorySettingsTable)
+		.where(eq(conversationMemorySettingsTable.conversation_id, conversationId))
+		.get();
 	return { revision: row?.revision ?? 0, merges: parseMerges(row?.merges ?? "[]") };
 };
 
@@ -42,6 +46,12 @@ export function mergeMemoryLabels(database: Database, conversationId: number, co
 			if (JSON.stringify(claims) === JSON.stringify(updated)) continue;
 			db.update(memoryCollectionTable).set({ claims_json: JSON.stringify(updated), revision: row.revision + 1, updated_at: new Date().toISOString() }).where(eq(memoryCollectionTable.variant_id, row.variant_id)).run();
 		}
-		db.insert(conversationMemorySettingsTable).values({ conversation_id: conversationId, label_merges: JSON.stringify(next), label_revision: state.revision + 1 }).onConflictDoUpdate({ target: conversationMemorySettingsTable.conversation_id, set: { label_merges: JSON.stringify(next), label_revision: state.revision + 1 } }).run();
+		db.insert(conversationMemorySettingsTable)
+			.values({ conversation_id: conversationId, label_merges: JSON.stringify(next), label_revision: state.revision + 1 })
+			.onConflictDoUpdate({
+				target: conversationMemorySettingsTable.conversation_id,
+				set: { label_merges: JSON.stringify(next), label_revision: state.revision + 1 },
+			})
+			.run();
 	}).immediate();
 }

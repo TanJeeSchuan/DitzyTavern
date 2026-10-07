@@ -1,6 +1,6 @@
 # Two dialects in one server (density cleanup)
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -31,33 +31,47 @@ Removed:
 
 - The 85-line `captureMemoryRecallSnapshot` assembler: read / scan-count /
   assemble now live in separate seam functions.
-- (Deferred to the final conversion sweep: the `==[HUMAN APPROVED]==`
-  markers in the owned files are intentionally NOT converted here.)
+- The one-liner dialect in the owned files: drizzle chains are broken onto
+  lines, whole-expression object literals are extracted to locals, long
+  multi-statement lines are one statement per line. (Deferred to the final
+  conversion sweep: the `==[HUMAN APPROVED]==` markers in the owned files
+  are intentionally NOT converted here.)
 
 Introduced:
 
-- `readRecallInputs` / `scanMemorySources` / `assembleRecallActivation`
-  (plus two local readonly record types) in `memory/recall.ts`; private,
-  no exports added.
+- In `memory/recall.ts` (private, no exports added): `readRecallInputs`,
+  `scanMemorySources`, `assembleRecallActivation`, `readRecallFreshness`,
+  plus the `RecallSceneInput`, `ReadRecallInputs`, `RecallSourceScan`,
+  `RecallAssembly`, `UnprocessedRecallSource`, `ScannedRecallSource`
+  record types and the `CollectionRow`/`RecallCandidateBase` aliases.
+- In `client/workspace/`: `LorebookPanelEditors.tsx` (the match tester,
+  entry editor, chat-lore settings/loading components — moved verbatim from
+  the file bottom) and `lorebook-entry-fields.ts` (the `EntryListKey`
+  vocabulary, field tables, and the newline list separator pair with its
+  human-approved note). `LorebookPanel` keeps its name and export; the
+  only external import site (`PrimaryPanelView.tsx`) is untouched.
 
-Behavior: none.
+Behavior: none. `captureMemoryRecallSnapshot`'s public signature, record
+shape, and evaluation order are identical; LorebookPanel's DOM is unchanged.
 
 ## Work
 
-- [ ] Split `captureMemoryRecallSnapshot` into read / count / assemble.
-- [ ] Reformat `memory/recall.ts`, `memory/collections.ts`, `memory/extraction.ts`, `memory/sync.ts`, `memory/cancellation.ts`.
-- [ ] Reformat `lorebook/attachments.ts`.
-- [ ] Reformat `decision-model/index.ts`.
-- [ ] Reformat `client/workspace/LorebookPanel.tsx`.
-- [ ] Verification: typecheck, lint, tests, contracts, e2e; long-line scan; marker count unchanged; file-size guard.
+- [x] Split `captureMemoryRecallSnapshot` into read / count / assemble.
+- [x] Reformat `memory/recall.ts`, `memory/collections.ts`, `memory/extraction.ts`, `memory/sync.ts`, `memory/cancellation.ts`, `memory/work.ts`, `memory/labels.ts`, `memory/indexing.ts`, `memory/settings.ts`, `memory/index.ts`.
+- [x] Reformat `lorebook/attachments.ts`.
+- [x] Reformat `decision-model/index.ts`.
+- [x] Reformat `client/workspace/LorebookPanel.tsx`.
+- [x] Verification: typecheck, lint, tests, contracts, e2e; long-line scan; marker count unchanged; file-size guard.
 
 ## Acceptance
 
 - No production file ≥ 1,000 lines after reformatting growth.
 - `bun run check` (incl. e2e + harness) passes with zero fixture changes.
-- `rg -n '.{240,}'` across the owned files returns only documented long SQL/URL exceptions.
-- `HUMAN APPROVED` marker count across `src` unchanged.
+- `rg -n '.{240,}'` across the owned files returns only documented long-prose exceptions.
+- `HUMAN APPROVED` marker count across `src` unchanged (1198 occurrences, same as base 1f5dbc7).
 
-## Leftover risks
+## Leftover risks (pre-existing, out of scope)
 
-- None known; long string literals (SQL, instruction prose) stay single-line where wrapping would change their value.
+- `src/styles/story.css` is 1,232 lines on master (already over the guard at base 1f5dbc7); it is not part of this ticket's dialect list and was not touched. Needs routing to a styles owner.
+- `extraction.ts`'s extracted-instruction template literal is a single ~1,200-character prose line; wrapping it would change the string value sent to the model, so it stays. Same class of exception for any long SQL/URL literals.
+- One flaky restart-timing e2e (`updates.spec.ts:55`) failed once across four full-suite runs and passes in isolation and on retry; unrelated files.
