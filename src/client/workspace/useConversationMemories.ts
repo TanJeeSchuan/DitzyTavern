@@ -57,11 +57,9 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			if (result.outcome === "invalid") setNotice(result.reason); else { await update((current) => ({ ...current, catchup: result.run })); await refresh(); }
 		} catch { setNotice("History catch-up could not be changed."); } finally { setCatchupBusy(false); }
 	};
+	const labels = useMemo(() => new Map(memories?.path.map((entry, index) => [entry.messageId, `${entry.author ?? "Unknown author"} · #${index + 1}`])), [memories?.path]);
 	const actions = useMemo(() => ({
-		label: (messageId: number) => {
-			const index = memories?.path.findIndex((entry) => entry.messageId === messageId) ?? -1;
-			return index < 0 ? "Earlier Message" : `${memories?.path[index]?.author ?? "Unknown author"} · #${index + 1}`;
-		},
+		label: (messageId: number) => labels.get(messageId) ?? "Earlier Message",
 		retry: (source: Source) => { if (source.ownership === "writer") setResetTarget(source); else void reextract(source); },
 		retryIndex: (source: Source) => void act(source, async () => {
 			const result = await retryMemoryIndex(conversationId, targetOf(source));
@@ -83,7 +81,7 @@ export function useConversationMemories(conversationId: number, conversationRevi
 			await replace(result.collection);
 			return result.outcome === "conflict" ? conflictNotice : null;
 		}),
-	}), [act, conversationId, editing, memories, reextract, refresh, replace]);
+	}), [act, conversationId, editing, labels, reextract, refresh, replace]);
 
 	return {
 		status, memories, catchup, allowance, notice, busy, catchupBusy, editing, resetTarget, actions, refresh,

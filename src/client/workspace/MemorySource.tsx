@@ -1,6 +1,6 @@
-import { Check, ChevronDown, Ellipsis, Pencil, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Ellipsis, Pencil, Trash2, X } from "lucide-react";
 import { Collapsible } from "radix-ui";
-import { memo, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatJudgment, formatTimestamp } from "../lib/format";
@@ -12,100 +12,90 @@ import type { ClaimDraft, ConversationMemoryActions } from "./useConversationMem
 type Source = ConversationMemories["sources"][number];
 type Claim = Source["claims"][number];
 
-type GroupProps = {
+export function MemorySourceCard({ conversationId, source, label, busy, actions, onNavigate, onStep, onClear }: {
 	conversationId: number;
-	source: Source;
-	claims: { claim: Claim; index: number }[];
+	source: Source | undefined;
+	label: string;
 	busy: boolean;
-	editingIndex: number | null;
 	actions: ConversationMemoryActions;
-	onNavigate: (messageId: number) => void;
-};
-
-export const MemorySourceGroup = memo(function MemorySourceGroup({ conversationId, source, claims, busy, editingIndex, actions, onNavigate }: GroupProps) {
+	onNavigate: () => void;
+	onStep: ((offset: -1 | 1) => void) | null;
+	onClear: () => void;
+}) {
 	const [traceOpen, setTraceOpen] = useState(false);
 	const { kind, text } = memorySourceState(source);
-	const working = kind === "working";
-	const notes = [!source.selected && "Alternative", source.ownership === "writer" && "Writer-maintained", source.sourceChanged && "Source changed", working && text].filter(Boolean).join(" · ");
-	return <Collapsible.Root defaultOpen asChild><section className="memory-source" data-selected={source.selected}>
-		<header className="memory-source-header">
-			<Collapsible.Trigger className="memory-source-label group flex items-center gap-1.5 py-1"><ChevronDown className="size-3.5 shrink-0 group-data-[state=closed]:-rotate-90" aria-hidden="true" />{actions.label(source.messageId)}</Collapsible.Trigger>
-			{notes && <span className="memory-source-notes" data-working={working}>{notes}</span>}
-			<DropdownMenu>
-				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${actions.label(source.messageId)}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
+	const notes = [text, source?.ownership === "writer" && "Writer-maintained", source?.sourceChanged && "Source changed"].filter(Boolean).join(" · ");
+	const error = source?.indexing.status === "failed" && source.status !== "failed" ? source.indexing.error ?? "Memory indexing failed." : source?.error;
+	return <section className="memory-source-card" aria-label={`Memories from ${label}`} data-kind={kind}>
+		<header>
+			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Previous Message" onClick={() => onStep(-1)}><ChevronLeft aria-hidden="true" /></Button>}
+			<button type="button" className="memory-source-link" onClick={onNavigate}>{label}</button>
+			{onStep && <Button type="button" variant="ghost" size="icon-xs" aria-label="Next Message" onClick={() => onStep(1)}><ChevronRight aria-hidden="true" /></Button>}
+			<span className="memory-source-notes" data-working={kind === "working"}>{notes}</span>
+			{source && <DropdownMenu>
+				<DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={`Actions for ${label}`}><Ellipsis aria-hidden="true" /></Button></DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="min-w-48">
-					<DropdownMenuItem onSelect={() => onNavigate(source.messageId)}>Go to Message</DropdownMenuItem>
 					{source.status !== "unprocessed" && <DropdownMenuItem onSelect={() => setTraceOpen(!traceOpen)}>{traceOpen ? "Hide pipeline trace" : "Show pipeline trace"}</DropdownMenuItem>}
 					{source.indexing.status === "failed" && <DropdownMenuItem disabled={busy} onSelect={() => actions.retryIndex(source)}>Retry indexing</DropdownMenuItem>}
 					<DropdownMenuSeparator />
-					<DropdownMenuItem disabled={busy || working || !source.selected} onSelect={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset and re-extract…" : "Retry extraction"}</DropdownMenuItem>
+					<DropdownMenuItem disabled={busy || kind === "working"} onSelect={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset and re-extract…" : "Retry extraction"}</DropdownMenuItem>
 				</DropdownMenuContent>
-			</DropdownMenu>
+			</DropdownMenu>}
+			<Button type="button" variant="ghost" size="icon-xs" aria-label="Show every Message" onClick={onClear}><X aria-hidden="true" /></Button>
 		</header>
-		<Collapsible.Content forceMount className="grid gap-[0.1rem] data-[state=closed]:hidden">
-		{traceOpen && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={working} onClose={() => setTraceOpen(false)} />}
-		{working && claims.length === 0 && <div className="memory-claim-skeleton" aria-hidden="true"><span /><span /></div>}
-		{source.status === "complete" && source.ownership === "writer" && source.claims.length === 0 && <p className="memory-source-empty">All Memories were removed. Automatic updates are paused for this source.</p>}
-		{claims.map(({ claim, index }) => <MemoryClaimRow
-			key={index}
-			claim={claim}
-			busy={busy}
-			editing={editingIndex === index}
-			actions={actions}
-			onNavigate={onNavigate}
-			onEdit={() => actions.edit(source, index)}
-			onCancel={() => actions.edit(source, null)}
-			onSave={(draft) => actions.save(source, index, draft)}
-			onRemove={() => actions.remove(source, index)}
-		/>)}
-		</Collapsible.Content>
-	</section></Collapsible.Root>;
-}, (previous, next) => previous.source === next.source && previous.busy === next.busy && previous.editingIndex === next.editingIndex && previous.actions === next.actions && previous.onNavigate === next.onNavigate && previous.conversationId === next.conversationId
-	&& previous.claims.length === next.claims.length && previous.claims.every(({ claim, index }, position) => claim === next.claims[position]!.claim && index === next.claims[position]!.index));
+		{kind === "failed" && source && <div className="memory-source-error">
+			<p>{error ?? "Memory extraction failed."}</p>
+			{source.indexing.status === "failed" && source.status !== "failed"
+				? <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.retryIndex(source)}>Retry indexing</Button>
+				: <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => actions.retry(source)}>{source.ownership === "writer" ? "Reset…" : "Retry"}</Button>}
+		</div>}
+		{source?.status === "complete" && source.ownership === "writer" && source.claims.length === 0 && <p className="memory-source-empty">All Memories were removed. Automatic updates are paused for this source.</p>}
+		{traceOpen && source && <MemoryTraceView conversationId={conversationId} variantId={source.variantId} live={kind === "working"} onClose={() => setTraceOpen(false)} />}
+	</section>;
+}
 
-function MemoryClaimRow({ claim, busy, editing, actions, onNavigate, onEdit, onCancel, onSave, onRemove }: {
-	claim: Claim;
+export function MemoryClaimRow({ source, index, group, busy, editing, actions, onSelectSource, onNavigate }: {
+	source: Source;
+	index: number;
+	group: string;
 	busy: boolean;
 	editing: boolean;
 	actions: ConversationMemoryActions;
+	onSelectSource: (source: Source) => void;
 	onNavigate: (messageId: number) => void;
-	onEdit: () => void;
-	onCancel: () => void;
-	onSave: (draft: ClaimDraft) => void;
-	onRemove: () => void;
 }) {
+	const claim = source.claims[index]!;
 	const [confirming, setConfirming] = useState(false);
 	const editButton = useRef<HTMLButtonElement>(null);
 	const wasEditing = useRef(editing);
 	useEffect(() => { if (wasEditing.current && !editing) editButton.current?.focus(); wasEditing.current = editing; }, [editing]);
-	if (editing) return <article className="memory-claim" data-editing="true"><MemoryClaimEditor claim={claim} busy={busy} onCancel={onCancel} onSave={onSave} /></article>;
+	if (editing) return <article className="memory-claim" data-editing="true"><MemoryClaimEditor claim={claim} busy={busy} onCancel={() => actions.edit(source, null)} onSave={(draft) => actions.save(source, index, draft)} /></article>;
 	const { judgment } = claim;
-	return <article className="memory-claim">
-		<p className="memory-claim-text">{claim.claim}</p>
-		<p className="memory-claim-meta">{claim.attribution}{claim.people.length > 0 && <span> · {claim.people.join(", ")}</span>}{claim.writerMaintained && <span> · Edited</span>}</p>
+	return <Collapsible.Root asChild><article className="memory-claim">
+		<Collapsible.Trigger className="memory-claim-text">{claim.claim}</Collapsible.Trigger>
+		<p className="memory-claim-meta">
+			<button type="button" className="memory-source-link" onClick={() => onSelectSource(source)}>{actions.label(source.messageId)}</button>
+			{claim.attribution !== group && <span> · {claim.attribution}</span>}
+			{claim.writerMaintained && <span> · Edited</span>}
+			{source.sourceChanged && <span> · Source changed</span>}
+		</p>
 		<div className="memory-claim-actions" data-confirming={confirming} onKeyDown={(event) => { if (event.key === "Escape") setConfirming(false); }}>
 			{confirming
-				? <><Button type="button" size="xs" variant="ghost" onClick={() => setConfirming(false)}>Keep</Button><Button type="button" size="xs" variant="destructive" autoFocus disabled={busy} onClick={() => { setConfirming(false); onRemove(); }}>Remove Memory</Button></>
-				: <><Button ref={editButton} type="button" size="icon-xs" variant="ghost" aria-label="Edit Memory" disabled={busy} onClick={onEdit}><Pencil aria-hidden="true" /></Button><Button type="button" size="icon-xs" variant="ghost" aria-label="Remove Memory" disabled={busy} onClick={() => setConfirming(true)}><Trash2 aria-hidden="true" /></Button></>}
+				? <><Button type="button" size="xs" variant="ghost" onClick={() => setConfirming(false)}>Keep</Button><Button type="button" size="xs" variant="destructive" autoFocus disabled={busy} onClick={() => { setConfirming(false); actions.remove(source, index); }}>Remove Memory</Button></>
+				: <><Button ref={editButton} type="button" size="icon-xs" variant="ghost" aria-label="Edit Memory" disabled={busy} onClick={() => actions.edit(source, index)}><Pencil aria-hidden="true" /></Button><Button type="button" size="icon-xs" variant="ghost" aria-label="Remove Memory" disabled={busy} onClick={() => setConfirming(true)}><Trash2 aria-hidden="true" /></Button></>}
 		</div>
-		<details className="memory-evidence">
-			<summary>Evidence</summary>
+		<Collapsible.Content className="memory-evidence">
 			{claim.writerMaintained && <p className="memory-evidence-note">Original extraction evidence is provenance for the first wording; it does not prove the corrected text.</p>}
-			{claim.evidence.map((evidence, index) => <figure key={index}>
+			{claim.evidence.map((evidence, position) => <figure key={position}>
 				<blockquote>{evidence.excerpt}</blockquote>
-				<figcaption><button type="button" onClick={() => onNavigate(evidence.messageId)}>{actions.label(evidence.messageId)}</button></figcaption>
+				{evidence.messageId !== source.messageId && <figcaption><button type="button" className="memory-source-link" onClick={() => onNavigate(evidence.messageId)}>{actions.label(evidence.messageId)}</button></figcaption>}
 			</figure>)}
-			<dl className="memory-judgment">
-				{([["Support", judgment.support, judgment.confidence.support], ["Attribution", judgment.attribution, judgment.confidence.attribution], ["Usefulness", judgment.usefulness, judgment.confidence.usefulness]] as const).map(([name, value, confidence]) => <div key={name}>
-					<dt>{name}</dt>
-					<dd>{formatJudgment(value)}</dd>
-					{confidence !== undefined && <dd className="memory-confidence"><span style={{ width: `${Math.round(confidence * 100)}%` }} /></dd>}
-					<dd className="memory-confidence-value">{confidence === undefined ? "Not returned" : confidence.toFixed(2)}</dd>
-				</div>)}
-			</dl>
-			<p className="memory-evidence-note">Confidence values are Decision Model outputs, not proof of truth.</p>
-		</details>
-	</article>;
+			<p className="memory-evidence-note" title="Confidence values are Decision Model outputs, not proof of truth.">
+				{([["Support", judgment.support, judgment.confidence.support], ["Attribution", judgment.attribution, judgment.confidence.attribution], ["Usefulness", judgment.usefulness, judgment.confidence.usefulness]] as const)
+					.map(([name, value, confidence]) => `${name} ${formatJudgment(value).toLowerCase()}${confidence === undefined ? "" : ` ${confidence.toFixed(2)}`}`).join(" · ")}
+			</p>
+		</Collapsible.Content>
+	</article></Collapsible.Root>;
 }
 
 function MemoryClaimEditor({ claim, busy, onCancel, onSave }: { claim: Claim; busy: boolean; onCancel: () => void; onSave: (draft: ClaimDraft) => void }) {

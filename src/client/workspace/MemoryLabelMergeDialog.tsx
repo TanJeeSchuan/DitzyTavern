@@ -4,14 +4,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { mergeMemoryLabels, type ConversationMemories } from "../memories";
 
-export function MemoryLabelMergeDialog({ conversationId, memories, onClose, onMerged }: {
+export function MemoryLabelMergeDialog({ conversationId, memories, initialLabels, onClose, onMerged }: {
 	conversationId: number;
 	memories: ConversationMemories;
+	initialLabels: string[];
 	onClose: () => void;
 	onMerged: (memories: ConversationMemories, destination: string) => void;
 }) {
 	const [snapshot, setSnapshot] = useState(memories);
-	const [labels, setLabels] = useState<string[]>([]);
+	const [labels, setLabels] = useState(initialLabels);
 	const [destination, setDestination] = useState("");
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
