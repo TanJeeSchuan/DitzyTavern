@@ -194,7 +194,7 @@ const writePromptPresetBlock = (
 	}).immediate();
 };
 
-/** ==[HUMAN APPROVED]== Appends one reference occurrence with its default outgoing role. */
+/** Adds one reference with its default role; Author Note follows the last history slot. */
 export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
@@ -204,16 +204,21 @@ export const addPromptPresetBlock = (
 	return database.transaction(() => {
 		const recipe = requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 		assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
-		const count = orderedIdsOf(db, presetId).length;
-		db.insert(promptPresetBlockTable)
+		const ordered = orderedIdsOf(db, presetId);
+		const inserted = db.insert(promptPresetBlockTable)
 			.values({
 				preset_id: presetId,
-				position: count + 1,
+				position: ordered.length + 1,
 				reference,
 				enabled: true,
 				role: reference === "history" ? null : defaultOutgoingRoles[reference],
 			})
-			.run();
+			.returning({ id: promptPresetBlockTable.id }).get()!;
+		if (reference === "author-note") {
+			const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
+			ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted.id);
+			renumber(db, presetId, ordered);
+		}
 		refreshSelectedMemoryTails(database, presetId, recipe);
 		return requireRecipe(readPromptPresetRecipe(database, presetId), presetId);
 	}).immediate();
