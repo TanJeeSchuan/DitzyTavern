@@ -129,7 +129,10 @@ describe("Memory label merging", () => {
 		const prior = addSource(database, chat.id, 1, []);
 		const source = addSource(database, chat.id, 2, []);
 		database.run("DELETE FROM memory_collection WHERE conversation_id = ?", [chat.id]);
-		startMemoryCatchup(database, chat.id);
+		startMemoryCatchup(database, chat.id, () => [
+			{ messageId: prior.messageId, variantId: prior.variantId, speaker: "Alice", content: "I promised Bob a key." },
+			{ messageId: source.messageId, variantId: source.variantId, speaker: "Alice", content: "I promised Bob a key." },
+		]);
 		const row = database.query<{ source_snapshot_json: string }, [number]>("SELECT source_snapshot_json FROM memory_collection WHERE variant_id = ?").get(source.variantId)!;
 		const snapshot = Value.Parse(memoryWorkSnapshot, JSON.parse(row.source_snapshot_json));
 		expect(snapshot.source.speaker).toBe("Alice");

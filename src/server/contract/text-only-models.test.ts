@@ -165,7 +165,7 @@ describe("Text-only Models", () => {
 			masterKey: key,
 			fetch: () => { requested.resolve(); return response.promise; },
 		});
-		const started = await coordinator.startSendGeneration({
+		const started = await coordinator.startGeneration({
 			conversationId,
 			expectedRevision: createConversationModule(database).getRevision(conversationId)!,
 			content: formatImageReference("map", art.hash),
@@ -207,7 +207,7 @@ describe("Text-only Models", () => {
 		const started = await createGenerationCoordinator(database, {
 			masterKey: key,
 			fetch: async () => { requests += 1; return stream(); },
-		}).startContinuationGeneration({ conversationId, expectedRevision: configured.revision });
+		}).startGeneration({ conversationId, expectedRevision: configured.revision });
 		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
 		expect(requests).toBe(0);
 		expect(started.runtime.state.imageModel).toBeUndefined();

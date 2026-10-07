@@ -39,9 +39,7 @@ describe("Generation session wiring", () => {
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
 			applyStoryEffect: (effect) => {
-				const action = generationSessionStoryAction(effect);
-				if (action === null) return;
-				storyActions.push(action);
+				storyActions.push(generationSessionStoryAction(effect));
 			},
 			refreshConversation: async () => {},
 		});

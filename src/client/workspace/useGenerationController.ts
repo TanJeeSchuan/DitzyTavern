@@ -40,43 +40,36 @@ import {
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
-// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
-// deltas append into the story read model (the one accumulated story owner)
-// and authoritative snapshots replace it. Reasoning Content follows a
-// separate action path so it remains visible without joining authored prose.
+// ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's single observation
+// vocabulary. An authoritative snapshot replaces both accumulated fields
+// atomically; content and reasoning deltas each append to the stream they
+// belong to, so Reasoning Content stays visible without joining authored
+// prose.
 export function generationSessionStoryAction(
 	effect: GenerationSessionStoryEffect,
-): StoryAction | null {
-	switch (effect.kind) {
-		case "story-content-delta":
-			return {
-				type: "generation-content-delta",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				text: effect.text,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
-		case "story-state":
-			return {
-				type: "generation-state",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				content: effect.content,
-				reasoning: effect.reasoning,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
-		case "story-reasoning-delta":
-			return {
-				type: "generation-reasoning-delta",
-				messageId: effect.messageId,
-				variantId: effect.variantId,
-				text: effect.text,
-				generationId: effect.generationId,
-				eventId: effect.eventId,
-			};
+): StoryAction {
+	const shared = {
+		messageId: effect.messageId,
+		variantId: effect.variantId,
+		generationId: effect.generationId,
+		eventId: effect.eventId,
+	} as const;
+	if (effect.kind === "story-state") {
+		return {
+			type: "generation-observed",
+			mode: "replace",
+			content: effect.content,
+			reasoning: effect.reasoning,
+			...shared,
+		};
 	}
+	return {
+		type: "generation-observed",
+		stream: effect.kind === "story-content-delta" ? "content" : "reasoning",
+		mode: "append",
+		text: effect.text,
+		...shared,
+	};
 }
 
 // ==[HUMAN APPROVED]== Maps a transport Stop outcome onto the machine's stop-command vocabulary.
@@ -125,8 +118,7 @@ export function useGenerationController({
 		runnerRef.current = createGenerationSessionRunner({
 			adapter: generationStreamAdapter,
 			applyStoryEffect: (effect) => {
-				const action = generationSessionStoryAction(effect);
-				if (action !== null) dispatchStory(action);
+				dispatchStory(generationSessionStoryAction(effect));
 			},
 			refreshConversation: async (conversationId, signal) => {
 				await refreshStory(conversationId, signal);
