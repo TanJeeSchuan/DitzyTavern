@@ -1,12 +1,13 @@
 import { api } from "./lib/eden";
-import { commandOutcome } from "./lib/command-outcome";
-import type {
-	CharacterCommand,
-	CharacterDeletionImpact,
-	CharacterDeletionMode,
-	CharacterDeletionResult,
-	CharacterLibrarySummary as CharacterSummary,
-	CharacterSnapshot,
+import { requestOutcome } from "./lib/request-outcome";
+import {
+	characterCommandApplied,
+	type CharacterCommand,
+	type CharacterDeletionImpact,
+	type CharacterDeletionMode,
+	type CharacterDeletionResult,
+	type CharacterLibrarySummary as CharacterSummary,
+	type CharacterSnapshot,
 } from "../shared/contract/character-library";
 
 // ==[HUMAN APPROVED]== Typed client for the Character Library transport adapters. Outcomes mirror
@@ -24,15 +25,11 @@ export type {
 	CharacterSummary,
 };
 
-export type CommandOutcome =
-	| { status: "applied"; character: CharacterSnapshot }
-	// A confirmed deletion returns the derived mode instead of a snapshot:
-	// ==[HUMAN APPROVED]== neither a hard-deleted nor a tombstoned Character remains readable.
-	| { status: "deleted"; result: CharacterDeletionResult }
-	| { status: "conflict"; currentCharacter: CharacterSnapshot }
-	| { status: "not-found" }
-	| { status: "invalid"; reason: string }
-	| { status: "network" };
+// The Character command route's outcome is the wire's own: the applied
+// ==[HUMAN APPROVED]== response (applied snapshot or derived deletion result) under `available`,
+// the typed 409/404/422 envelopes verbatim, and network for everything the
+// seam could not classify.
+export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;
 
 export async function listCharacters(): Promise<CharacterSummary[]> {
 	const { data, error } = await api.api.characters.get();
@@ -57,19 +54,9 @@ export async function getCharacter(
 
 export async function applyCommand(
 	command: CharacterCommand,
-): Promise<CommandOutcome> {
-	const { data, error } = await api.api.characters.commands.post(command);
-	if (error) {
-		return commandOutcome(error.value, {
-			conflict: (payload) => ({ status: "conflict", currentCharacter: payload.currentCharacter }),
-			invalid: (payload) => ({ status: "invalid", reason: payload.reason }),
-		});
-	}
-	// Deletion returns the typed result instead of a snapshot; every other
-	// ==[HUMAN APPROVED]== command returns the authoritative updated Character. The payload is a
-	// union discriminated by the result-only `result` field.
-	if ("result" in data) {
-		return { status: "deleted", result: data.result };
-	}
-	return { status: "applied", character: data.character };
+) {
+	return requestOutcome(
+		api.api.characters.commands.post(command),
+		characterCommandApplied,
+	);
 }

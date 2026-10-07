@@ -403,6 +403,7 @@ export const promptPresetCommandConflict = Type.Union([
 	promptPresetConflict,
 	notRemovableOutcome,
 ]);
+export type PromptPresetCommandConflict = Static<typeof promptPresetCommandConflict>;
 
 // ==[HUMAN APPROVED]== The authoritative recipe operations the popup composes. Each operation
 // persists the smallest change it names: adding one reference, moving one

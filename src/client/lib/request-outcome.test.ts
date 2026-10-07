@@ -1,0 +1,74 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { macroVariables } from "../../shared/contract/macro-variables";
+import type { WirePayload } from "./wire-decode";
+
+const originalFetch = globalThis.fetch;
+Object.defineProperty(globalThis, "window", {
+	configurable: true,
+	// SAFETY: the test supplies the minimal browser location read by Eden.
+	value: { location: { origin: "http://localhost" } } as Window,
+});
+const { api } = await import("./eden");
+const { requestOutcome } = await import("./request-outcome");
+
+// The macro-variables read is a stand-in route: its 200 payload is an object
+// schema and its modeled errors are the shared not-found/invalid envelopes.
+const macroVariablesRequest = () =>
+	api.api.conversations({ id: 3 })["macro-variables"].get({ query: {} });
+
+const json = (body: WirePayload, status: number): Response =>
+	new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
+
+describe("requestOutcome", () => {
+	test("a 200 payload that satisfies the contract is available with its decoded value", async () => {
+		installFetch(async () => json({
+			conversationId: 3,
+			promptPresetId: 5,
+			promptPresetName: "Default",
+			position: 0,
+			target: { type: "initial" },
+			variables: [],
+		}, 200));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({
+			outcome: "available",
+			value: {
+				conversationId: 3,
+				promptPresetId: 5,
+				promptPresetName: "Default",
+				position: 0,
+				target: { type: "initial" },
+				variables: [],
+			},
+		});
+	});
+
+	test("a modeled error body passes through verbatim", async () => {
+		installFetch(async () => json({ outcome: "not-found" }, 404));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "not-found" });
+	});
+
+	test("an error body without the wire outcome tag is network, never a modeled outcome", async () => {
+		installFetch(async () => json({ type: "validation", on: "body" }, 422));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+	});
+
+	test("a 200 body that fails the contract is network", async () => {
+		installFetch(async () => json({ unexpected: true }, 200));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+	});
+
+	test("a rejected request is network", async () => {
+		installFetch(async () => {
+			throw new TypeError("fetch failed");
+		});
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+	});
+});
+
+function installFetch(handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
+	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
+}

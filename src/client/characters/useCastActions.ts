@@ -3,7 +3,7 @@ import {
 	CONVERSATION_CONFLICT_RELOAD_NOTICE,
 	CONVERSATION_UNREACHABLE_NOTICE,
 	LIBRARY_UNREACHABLE_NOTICE,
-} from "../lib/command-outcome";
+} from "../lib/notices";
 import {
 	addCharacterToCast,
 	applyConversationCommand,
@@ -155,22 +155,22 @@ export function useCastActions({
 						characterId,
 						expectedCharacterRevision,
 					});
-					if (outcome.status === "conflict") {
-						if (outcome.currentConversation === undefined) {
-							// ==[HUMAN APPROVED]== A library conflict names the changed Character instead of
-							// carrying a Conversation snapshot: the runner must not
-							// adopt or word it, so it is forwarded as an operation
-							// outcome for the drawer's typed callback.
-							return {
-								status: "operation",
-								operation: {
-									kind: "character-changed",
-									currentCharacterName: outcome.currentCharacterName,
-								},
-							};
+					if (outcome.outcome === "conflict") {
+						if ("currentConversation" in outcome) {
+							// ==[HUMAN APPROVED]== A conversation conflict carries the authoritative snapshot.
+							return outcome;
 						}
-						// ==[HUMAN APPROVED]== A conversation conflict carries the authoritative snapshot.
-						return { status: "conflict", currentConversation: outcome.currentConversation };
+						// ==[HUMAN APPROVED]== A library conflict names the changed Character instead of
+						// carrying a Conversation snapshot: the runner must not
+						// adopt or word it, so it is forwarded as an operation
+						// outcome for the drawer's typed callback.
+						return {
+							outcome: "operation",
+							operation: {
+								kind: "character-changed",
+								currentCharacterName: outcome.currentCharacter.name,
+							},
+						};
 					}
 					return outcome;
 				},
@@ -281,10 +281,10 @@ export function useCastActions({
 					// ==[HUMAN APPROVED]== The save workflow leaves the Conversation untouched: the
 					// applied outcome carries the new Character and no snapshot
 					// to adopt, so it is forwarded as an operation outcome.
-					if (outcome.status === "applied") {
+					if (outcome.outcome === "available") {
 						return {
-							status: "operation",
-							operation: { kind: "participant-saved", character: outcome.character },
+							outcome: "operation",
+							operation: { kind: "participant-saved", character: outcome.value.character },
 						};
 					}
 					return outcome;

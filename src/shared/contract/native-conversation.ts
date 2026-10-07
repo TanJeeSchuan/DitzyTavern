@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { conversationSummary, generationFormattingContext } from "./conversation-schema";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
@@ -36,3 +36,5 @@ export const nativeConversationResponse = Type.Object({
 	outcome: Type.Literal("created"),
 	conversation: conversationSummary,
 });
+
+export type NativeConversationResponse = Static<typeof nativeConversationResponse>;

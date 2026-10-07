@@ -158,3 +158,6 @@ export const characterConflict = Type.Object({
 	actualRevision: Type.Integer(),
 	currentCharacter: characterSnapshot,
 });
+
+export type CharacterConflict = Static<typeof characterConflict>;
+export type CharacterCommandApplied = Static<typeof characterCommandApplied>;

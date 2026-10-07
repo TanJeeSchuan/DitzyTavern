@@ -212,13 +212,13 @@ export function NewChatPanel({
 				humanSeat,
 				modelSeat,
 			});
-			switch (outcome.status) {
-				case "created":
-					onCreated(outcome.conversationId);
+			switch (outcome.outcome) {
+				case "available":
+					onCreated(outcome.value.conversation.id);
 					break;
 				case "conflict":
 					setProblem(
-						`${outcome.currentCharacterName} changed while you were setting up. Re-select it to fork the current version.`,
+						`${outcome.currentCharacter.name} changed while you were setting up. Re-select it to fork the current version.`,
 					);
 					break;
 				case "not-found":

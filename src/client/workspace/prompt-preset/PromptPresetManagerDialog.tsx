@@ -181,8 +181,8 @@ export function PromptPresetManagerDialog({
 											presetId: managed.id,
 											expectedRevision: managed.revision,
 											expectedConversationCount: managed.conversationCount,
-										}, (outcome) => outcome.status === "deleted"
-											? presetDeletionResultNotice(managed.name, outcome.result)
+										}, (outcome) => outcome.outcome === "available" && outcome.value.outcome === "deleted"
+											? presetDeletionResultNotice(managed.name, outcome.value.result)
 											: null);
 										return;
 									}

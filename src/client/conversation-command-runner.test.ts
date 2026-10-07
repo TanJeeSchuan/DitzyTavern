@@ -80,7 +80,7 @@ const callbacks = (events: string[], overrides: Partial<ConversationCommandCallb
 const run = (events: string[], overrides: Partial<ConversationCommandOptions> = {}): Promise<void> =>
 	runConversationCommand({
 		revision: () => 7,
-		send: fakeSend(events, { status: "applied", conversation: summary() }),
+		send: fakeSend(events, { outcome: "available", value: { outcome: "applied", conversation: summary() } }),
 		reconciliation: fakeReconciliation(events),
 		notices,
 		callbacks: callbacks(events),
@@ -91,7 +91,7 @@ describe("runConversationCommand", () => {
 	test("an unavailable revision refuses to send and shows the revision notice", async () => {
 		const events: string[] = [];
 		const revision: ConversationRevisionSource = () => null;
-		await run(events, { revision, send: fakeSend(events, { status: "network" }) });
+		await run(events, { revision, send: fakeSend(events, { outcome: "network" }) });
 		expect(events).toEqual([`notice:${CONVERSATION_REVISION_UNAVAILABLE_NOTICE}`]);
 	});
 
@@ -105,7 +105,7 @@ describe("runConversationCommand", () => {
 		const events: string[] = [];
 		const applied = summary({ revision: 8 });
 		await run(events, {
-			send: fakeSend(events, { status: "applied", conversation: applied }),
+			send: fakeSend(events, { outcome: "available", value: { outcome: "applied", conversation: applied } }),
 			callbacks: callbacks(events, {
 				onApplied: (conversation) => {
 					events.push("applied-callback");
@@ -126,7 +126,7 @@ describe("runConversationCommand", () => {
 		const events: string[] = [];
 		const current = summary({ revision: 9 });
 		await run(events, {
-			send: fakeSend(events, { status: "conflict", currentConversation: current }),
+			send: fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: current }),
 			callbacks: callbacks(events, {
 				onConflict: (conversation) => {
 					events.push("conflict-callback");
@@ -140,7 +140,7 @@ describe("runConversationCommand", () => {
 	test("a conflict without a conflict callback still adopts and shows the notice", async () => {
 		const events: string[] = [];
 		await run(events, {
-			send: fakeSend(events, { status: "conflict", currentConversation: summary({ revision: 9 }) }),
+			send: fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: summary({ revision: 9 }) }),
 			callbacks: callbacks(events, { onConflict: undefined }),
 		});
 		expect(events).toEqual(["send:7", "adopt:9", "notice:conflict notice"]);
@@ -149,20 +149,20 @@ describe("runConversationCommand", () => {
 	test("an invalid outcome shows the server reason without adopting any snapshot", async () => {
 		const events: string[] = [];
 		await run(events, {
-			send: fakeSend(events, { status: "invalid", reason: "Continuation instruction is required." }),
+			send: fakeSend(events, { outcome: "invalid", reason: "Continuation instruction is required." }),
 		});
 		expect(events).toEqual(["send:7", "notice:Continuation instruction is required."]);
 	});
 
 	test("a not-found outcome shows the caller-owned not-found notice", async () => {
 		const events: string[] = [];
-		await run(events, { send: fakeSend(events, { status: "not-found" }) });
+		await run(events, { send: fakeSend(events, { outcome: "not-found" }) });
 		expect(events).toEqual(["send:7", "notice:not-found notice"]);
 	});
 
 	test("a network outcome shows the caller-owned unreachable notice", async () => {
 		const events: string[] = [];
-		await run(events, { send: fakeSend(events, { status: "network" }) });
+		await run(events, { send: fakeSend(events, { outcome: "network" }) });
 		expect(events).toEqual(["send:7", "notice:unreachable notice"]);
 	});
 
@@ -175,7 +175,7 @@ describe("runConversationCommand", () => {
 	test("not-playable keeps its precise meaning through the typed callback", async () => {
 		const events: string[] = [];
 		await run(events, {
-			send: fakeSend(events, { status: "not-playable", reason: "The Conversation is not playable." }),
+			send: fakeSend(events, { outcome: "not-playable", reason: "The Conversation is not playable." }),
 		});
 		expect(events).toEqual(["send:7", "not-playable:The Conversation is not playable."]);
 	});
@@ -183,7 +183,7 @@ describe("runConversationCommand", () => {
 	test("not-removable keeps its precise meaning through the typed callback", async () => {
 		const events: string[] = [];
 		await run(events, {
-			send: fakeSend(events, { status: "not-removable", reason: "This Participant is seated." }),
+			send: fakeSend(events, { outcome: "not-removable", reason: "This Participant is seated." }),
 		});
 		expect(events).toEqual(["send:7", "not-removable:This Participant is seated."]);
 	});
@@ -202,7 +202,7 @@ describe("runConversationCommand", () => {
 			revision: () => 7,
 			send: async (expectedRevision) => {
 				events.push(`send:${expectedRevision}`);
-				return { status: "operation", operation };
+				return { outcome: "operation", operation };
 			},
 			reconciliation: fakeReconciliation(events),
 			notices,
@@ -224,7 +224,7 @@ describe("runConversationCommand", () => {
 			revision: () => 7,
 			send: async (expectedRevision) => {
 				events.push(`send:${expectedRevision}`);
-				return { status: "operation", operation: { kind: "character-changed" } };
+				return { outcome: "operation", operation: { kind: "character-changed" } };
 			},
 			reconciliation: fakeReconciliation(events),
 			notices,

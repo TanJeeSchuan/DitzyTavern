@@ -886,6 +886,13 @@ export const castCharacterConflict = Type.Union([
 	conversationConflict,
 ]);
 
+export type ConversationAppliedResponse = Static<typeof conversationAppliedResponse>;
+export type CharacterAppliedResponse = Static<typeof characterAppliedResponse>;
+export type ConversationConflict = Static<typeof conversationConflict>;
+export type GenerationConflictResponse = Static<typeof generationConflictResponse>;
+export type ConversationCommandConflict = Static<typeof conversationCommandConflict>;
+export type CastCharacterConflict = Static<typeof castCharacterConflict>;
+
 export const addCharacterToCastBody = Type.Object({
 	expectedConversationRevision: Type.Integer(),
 	characterId: Type.Integer(),

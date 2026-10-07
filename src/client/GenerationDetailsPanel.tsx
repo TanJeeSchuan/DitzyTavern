@@ -56,20 +56,20 @@ export function GenerationDetailsPanel({
 		if (target.type === "active") {
 			void loadActiveGenerationDetails(target.conversationId, target.generationId).then((outcome) => {
 				if (isCancelled()) return;
-				if (outcome.status === "available") {
-					setState({ status: "inspection", details: outcome.details });
+				if (outcome.outcome === "available") {
+					setState({ status: "inspection", details: outcome.value });
 					return;
 				}
-				showError(outcome.status, outcome.status === "invalid" ? outcome.reason : undefined);
+				showError(outcome.outcome, outcome.outcome === "invalid" ? outcome.reason : undefined);
 			});
 		} else {
 			void loadVariantDetails(target.conversationId, target.messageId, target.variantId).then((outcome) => {
 				if (isCancelled()) return;
-				if (outcome.status === "available") {
-					setState({ status: "variant", details: outcome.details });
+				if (outcome.outcome === "available") {
+					setState({ status: "variant", details: outcome.value });
 					return;
 				}
-				showError(outcome.status, outcome.status === "invalid" ? outcome.reason : undefined);
+				showError(outcome.outcome, outcome.outcome === "invalid" ? outcome.reason : undefined);
 			});
 		}
 	}, [target]);

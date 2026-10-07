@@ -10,7 +10,7 @@ import {
 	type CharacterSnapshot,
 } from "../character-library";
 import { deletionConfirmationCopy, deletionResultNotice, usedCountLabel } from "../character-delete";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/command-outcome";
+import { LIBRARY_UNREACHABLE_NOTICE } from "../lib/notices";
 import { useAsyncEffect } from "../lib/use-async";
 import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
@@ -55,19 +55,22 @@ export function CharacterEditor({
 		setPendingAction(action);
 		try {
 			const outcome = await applyCommand(command);
-			switch (outcome.status) {
-				case "applied":
-					setSnapshot(outcome.character);
+			switch (outcome.outcome) {
+				case "available": {
+					const applied = outcome.value;
+					if ("result" in applied) {
+						onChanged();
+						onClosed(deletionResultNotice(applied.result));
+						return false;
+					}
+					setSnapshot(applied.character);
 					// ==[HUMAN APPROVED]== Only a save adopts the saved Definition, and only when nothing was typed meanwhile.
-					if (command.type === "update-definition") setDraft((current) => current === submitted ? definitionOf(outcome.character) : current);
+					if (command.type === "update-definition") setDraft((current) => current === submitted ? definitionOf(applied.character) : current);
 					setConflict(null);
 					setNotice(null);
 					onChanged();
 					return draftRef.current === submitted;
-				case "deleted":
-					onChanged();
-					onClosed(deletionResultNotice(outcome.result));
-					return false;
+				}
 				case "conflict":
 					setConflict(outcome.currentCharacter);
 					return false;

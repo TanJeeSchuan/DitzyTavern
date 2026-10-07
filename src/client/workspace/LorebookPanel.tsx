@@ -227,17 +227,17 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		let current = book;
 		if (bookDirty) {
 			const result = await applyLorebookCommand({ type: "update-book", bookId: current.id, expectedRevision: current.revision, name, description });
-			if (result.status !== "applied") {
+			if (result.outcome !== "available" || result.value.outcome !== "applied") {
 				if (!isCurrentView(token, initialBookId)) return false;
-				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
-				if (result.status === "conflict") {
+				setNotice(result.outcome === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.outcome === "invalid" ? result.reason : "The Lorebook operation failed.");
+				if (result.outcome === "conflict") {
 					setBook(result.currentBook);
 				}
 				return false;
 			}
-			refreshBookCaches(result.book);
+			refreshBookCaches(result.value.book);
 			if (!isCurrentView(token, initialBookId)) return false;
-			current = result.book;
+			current = result.value.book;
 			setBook(current);
 			if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(current.name); setDescription(current.description); }
 		}
@@ -247,17 +247,17 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			// explicit save instead.
 			if (!isCurrentView(token, initialBookId) || entryDraftVersionRef.current !== initialEntryDraftVersion) return false;
 			const result = await applyLorebookCommand({ type: "save-entry", bookId: current.id, entryId: entryId ?? undefined, expectedRevision: current.revision, entry: entryDraft });
-			if (result.status !== "applied") {
+			if (result.outcome !== "available" || result.value.outcome !== "applied") {
 				if (!isCurrentView(token, initialBookId)) return false;
-				setNotice(result.status === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.status === "invalid" ? result.reason : "The Lorebook operation failed.");
-				if (result.status === "conflict") setBook(result.currentBook);
+				setNotice(result.outcome === "conflict" ? "This Lorebook changed elsewhere. Your saved view was refreshed." : result.outcome === "invalid" ? result.reason : "The Lorebook operation failed.");
+				if (result.outcome === "conflict") setBook(result.currentBook);
 				return false;
 			}
-			refreshBookCaches(result.book);
+			refreshBookCaches(result.value.book);
 			if (!isCurrentView(token, initialBookId)) return false;
-			setBook(result.book);
+			setBook(result.value.book);
 			if (entryId === null && entryDraftVersionRef.current === initialEntryDraftVersion) {
-				const saved = result.book.entries.at(-1);
+				const saved = result.value.book.entries.at(-1);
 				if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
 			}
 		}
@@ -291,28 +291,29 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		setPending(true);
 		try {
 			const result = await applyLorebookCommand(command);
-			if (result.status === "applied") refreshBookCaches(result.book);
-			else if (result.status === "deleted") {
+			if (result.outcome === "available" && result.value.outcome === "applied") refreshBookCaches(result.value.book);
+			else if (result.outcome === "available" && result.value.outcome === "deleted") {
 				refreshLibrary();
-				client.removeQueries({ queryKey: ["lorebook", result.bookId] });
+				client.removeQueries({ queryKey: ["lorebook", result.value.bookId] });
 				void client.invalidateQueries({ queryKey: ["lorebook-attachments"] });
 			}
 			if (!isCurrentView(token, commandBookId)) return;
-			if (result.status === "applied") {
-				setBook(result.book); if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(result.book.name); setDescription(result.book.description); } setNotice(success ?? null);
+			if (result.outcome === "available" && result.value.outcome === "applied") {
+				const appliedBook = result.value.book;
+				setBook(appliedBook); if (bookDraftVersionRef.current === initialBookDraftVersion) { setName(appliedBook.name); setDescription(appliedBook.description); } setNotice(success ?? null);
 				if (command.type === "save-entry" && command.entryId === undefined && entryDraftVersionRef.current === initialEntryDraftVersion) {
-					const saved = result.book.entries.at(-1);
+					const saved = appliedBook.entries.at(-1);
 					if (saved !== undefined) { setEntryId(saved.id); setEntryDraft(fieldsOf(saved)); }
 				}
 				if (command.type === "set-entry-enabled" && command.entryId === initialEntryId && entryDraftVersionRef.current === initialEntryDraftVersion) setEntryDraft((draft) => ({ ...draft, enabled: command.enabled }));
-			} else if (result.status === "deleted") {
+			} else if (result.outcome === "available" && result.value.outcome === "deleted") {
 				setBook(null); setEntryId(null); setNotice("Lorebook deleted.");
-			} else if (result.status === "conflict") {
+			} else if (result.outcome === "conflict") {
 				const preserveBookDraft = bookDraftVersionRef.current !== initialBookDraftVersion;
 				setBook(result.currentBook);
 				if (!preserveBookDraft) { setName(result.currentBook.name); setDescription(result.currentBook.description); }
 				setNotice("This Lorebook changed elsewhere. Your saved view was refreshed.");
-			} else setNotice(result.status === "invalid" ? result.reason : result.status === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed.");
+			} else setNotice(result.outcome === "invalid" ? result.reason : result.outcome === "not-found" ? "That Lorebook no longer exists." : "The Lorebook operation failed.");
 		} finally { if (token === viewTokenRef.current) setPending(false); }
 	};
 
@@ -366,8 +367,8 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 		try {
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
-			if (result.status === "conflict" && "conversationId" in result.currentState) client.setQueryData(["lorebook-attachments", requestConversationId], result.currentState);
-			if (result.status !== "applied") throw new Error(result.status === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
+			if (result.outcome === "conflict" && "conversationId" in result.currentState) client.setQueryData(["lorebook-attachments", requestConversationId], result.currentState);
+			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			await client.invalidateQueries({ queryKey: ["lorebook-attachments", requestConversationId] });
 			return true;
 		} catch (error) { if (isCurrentRequest()) setNotice(error instanceof Error ? error.message : "Lorebook attachment settings could not be saved."); return false; }
@@ -384,7 +385,7 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			const outcome = lore === undefined
 				? await addPromptPresetReference(selectedPreset.id, "lore")
 				: await setPromptPresetBlockEnabled(selectedPreset.id, lore.id, true);
-			if (outcome.status !== "applied") throw new Error("The Prompt Preset rejected the Lore block change.");
+			if (outcome.outcome !== "available") throw new Error("The Prompt Preset rejected the Lore block change.");
 			if (!isCurrentRequest()) return;
 			await client.invalidateQueries({ queryKey: ["conversation-preset", requestConversationId] });
 			if (!isCurrentRequest()) return;
@@ -427,13 +428,14 @@ export function LorebookPanel({ conversationId, cast, onClose, mutationsDisabled
 			const native = parseNativeLorebook(JSON.stringify(parsed));
 			// ==[HUMAN APPROVED]== SAFETY: JSON.parse returns the JSON value accepted by the SillyTavern import adapter.
 			const result = native !== null ? await importNativeLorebook(native) : await importSillyTavernLorebook(parsed as SillyTavernJsonValue);
-			if (result.status === "applied") refreshBookCaches(result.book);
+			if (result.outcome === "available" && result.value.outcome === "applied") refreshBookCaches(result.value.book);
 			if (request !== importRequestRef.current || token !== viewTokenRef.current) return;
-			if (result.status === "applied") {
+			if (result.outcome === "available" && result.value.outcome === "applied") {
+				const imported = result.value.book;
 				invalidateView();
-				setBook(result.book); setName(result.book.name); setDescription(result.book.description); selectFirstEntry(result.book); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.warnings.length === 0 ? "Lorebook imported." : result.warnings.join(" "));
+				setBook(imported); setName(imported.name); setDescription(imported.description); selectFirstEntry(imported); bookDraftVersionRef.current += 1; entryDraftVersionRef.current += 1; setNotice(result.value.warnings.length === 0 ? "Lorebook imported." : result.value.warnings.join(" "));
 			}
-			else setNotice(result.status === "invalid" ? result.reason : "The Lorebook import failed.");
+			else setNotice(result.outcome === "invalid" ? result.reason : "The Lorebook import failed.");
 		} catch { if (request === importRequestRef.current && token === viewTokenRef.current) setNotice("The selected file is not valid JSON."); } finally { if (request === importRequestRef.current && token === viewTokenRef.current) setPending(false); }
 	};
 

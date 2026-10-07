@@ -35,11 +35,11 @@ const RECIPE_OPERATION_EFFECTS: OperationStartEffects = {
 };
 
 const promptPresetOperationProblem = (
-	outcome: Exclude<PromptPresetOperationOutcome, { status: "applied" }>,
+	outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>,
 	fallback: string,
-): string => outcome.status === "invalid"
+): string => outcome.outcome === "invalid"
 	? outcome.reason
-	: outcome.status === "not-found"
+	: outcome.outcome === "not-found"
 		? "The selected preset no longer exists."
 		: fallback;
 
@@ -74,7 +74,7 @@ export function usePromptPresetRecipe({
 		await runOperation(RECIPE_OPERATION_EFFECTS, async (claim) => {
 			const outcome = await run();
 			if (!ownsOperation(claim)) return;
-			if (outcome.status !== "applied") {
+			if (outcome.outcome !== "available") {
 				dispatch({
 					type: "problem-changed",
 					problem: promptPresetOperationProblem(outcome, "The Prompt Preset change could not be reached."),
@@ -114,7 +114,7 @@ export function usePromptPresetRecipe({
 		const { patches, submitted } = dirtyBlockPatches(preset, current().drafts);
 		const outcome = await savePromptPresetBlockPatches(preset.id, patches);
 		if (!ownsOperation(claim)) return { status: "aborted" };
-		if (outcome.status !== "applied") {
+		if (outcome.outcome !== "available") {
 			return {
 				status: "failed",
 				problem: promptPresetOperationProblem(outcome, "The Prompt Preset change could not be saved."),

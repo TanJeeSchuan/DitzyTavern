@@ -238,3 +238,5 @@ export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSumm
 export const bookIdParams = Type.Object({ bookId: numericWire });
 
 export type LorebookListResponse = Static<typeof lorebookListResponse>;
+export type LoreAttachmentConflict = Static<typeof loreAttachmentConflict>;
+export type LorebookConflict = Static<typeof lorebookConflict>;
