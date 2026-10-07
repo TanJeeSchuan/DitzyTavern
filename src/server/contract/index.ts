@@ -15,6 +15,8 @@ import { createMemorySettingsRoutes } from "./memory-settings";
 import { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 import { createMemoryRoutes } from "./memory";
 import { healthResponse, workspaceResponse } from "../../shared/contract/workspace";
+import { createUpdateChecker, type UpdateChecker } from "../updates";
+import { createUpdateRoutes } from "./updates";
 
 export { createChatImportRoutes } from "./chat-import";
 export { createCharacterLibraryRoutes } from "./character-library";
@@ -28,9 +30,10 @@ export { createMemorySettingsRoutes } from "./memory-settings";
 export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
 export { createMemoryRoutes } from "./memory";
 
-export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory()) => new Elysia()
+export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database)) => new Elysia()
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
+	.use(createUpdateRoutes(updates))
 	.use(createCharacterLibraryRoutes(database))
 	.use(createImageRoutes(database))
 	.use(createNativeConversationRoutes(database))

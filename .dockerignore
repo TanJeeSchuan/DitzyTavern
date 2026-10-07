@@ -4,6 +4,8 @@
 !index.html
 !vite.config.ts
 !tsconfig.json
+!scripts/
+!scripts/write-build-metadata.ts
 !src/
 !src/**
 src/**/*.test.ts

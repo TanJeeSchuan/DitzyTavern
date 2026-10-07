@@ -9,7 +9,7 @@ import { initializeConnectionSecretKey } from "../src/server/connection-secrets"
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import type { ModelFetch } from "../src/server/model-client";
 import { toMessages } from "../src/server/model-client/chat-messages";
-import type { ChatReply, DecisionRule, MemoryClaim, ModelCall } from "./protocol";
+import type { ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
 
 const masterKey = new Uint8Array(32).fill(1);
 const directoryRoot = process.env.E2E_ROOT;
@@ -26,6 +26,27 @@ let checkpointTime: number | undefined;
 let calls: ModelCall[] = [];
 let unscripted: string[] = [];
 let held = Promise.withResolvers<void>();
+let updateScenario: UpdateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
+let registryCalls: string[] = [];
+let updateDirectory: string;
+const fakeRegistryFetch = async (url: string, init?: RequestInit) => {
+	registryCalls.push(url);
+	if (url.startsWith("https://ghcr.io/token?")) return Response.json({ token: "e2e-public" });
+	const reply = updateScenario.replies.shift();
+	writeFileSync(join(updateDirectory, "updates.json"), JSON.stringify(updateScenario));
+	if (!reply) { unscripted.push(`registry ${url}`); return new Response("Unscripted registry request", { status: 500 }); }
+	if ("status" in reply) return new Response("Scripted registry failure", { status: reply.status });
+	if (reply.hold) {
+		const signal = init?.signal;
+		signal?.throwIfAborted();
+		const pending = Promise.withResolvers<void>();
+		const abort = () => pending.reject(signal?.reason);
+		signal?.addEventListener("abort", abort, { once: true });
+		held.promise.then(pending.resolve);
+		try { await pending.promise; } finally { signal?.removeEventListener("abort", abort); }
+	}
+	return Response.json({ schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", annotations: { "io.ditzytavern.distribution": "official", "io.ditzytavern.build-number": String(reply.buildNumber), "org.opencontainers.image.revision": reply.revision } });
+};
 
 const refuse = (call: ModelCall) => {
 	unscripted.push(`${call.kind} ${call.url}\n${JSON.stringify(call.body, null, 2)}`);
@@ -151,17 +172,21 @@ const reset = async () => {
 	checkpointTime = undefined;
 	calls = [];
 	unscripted = [];
+	updateScenario = { build: { distribution: "custom", buildNumber: null, revision: null }, replies: [] };
+	registryCalls = [];
 	held = Promise.withResolvers();
 	const directory = mkdtempSync(join(directoryRoot, "test-"));
 	await open(directory, provision(join(directory, "e2e.sqlite")));
 };
 
 const open = async (directory: string, database: ReturnType<typeof provision>) => {
-	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
+	updateDirectory = directory;
+	current = { directory, database, ...await createApp({ database, fetch: fakeFetch, updates: { build: updateScenario.build, registryFetch: fakeRegistryFetch }, masterKey, checkpoint: { now: () => checkpointTime ?? Date.now() }, artifactDirectory: join(directory, "artifacts") }) };
 };
 
 const resumed = process.env.E2E_RESUME;
 if (resumed) {
+	if (existsSync(join(resumed, "updates.json"))) updateScenario = JSON.parse(readFileSync(join(resumed, "updates.json"), "utf8"));
 	if (existsSync(join(resumed, "calls.json"))) calls = JSON.parse(readFileSync(join(resumed, "calls.json"), "utf8"));
 	await open(resumed, openInitializedDatabase({ path: join(resumed, "e2e.sqlite") }));
 } else await reset();
@@ -191,9 +216,18 @@ const server = Bun.serve({
 			case "/__e2e/models": modelCatalogs.push(...await request.json()); break;
 			case "/__e2e/embeddings": embeddingMatches.push(...await request.json()); break;
 			case "/__e2e/checkpoint-clock": checkpointTime = await request.json(); break;
+			case "/__e2e/updates": {
+				updateScenario = await request.json();
+				if (updateScenario.automaticChecks !== undefined) await current!.app.handle(new Request("http://localhost/api/updates/automatic", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: updateScenario.automaticChecks }) }));
+				const directory = current!.directory;
+				writeFileSync(join(directory, "updates.json"), JSON.stringify(updateScenario));
+				await current!.close();
+				await open(directory, openInitializedDatabase({ path: join(directory, "e2e.sqlite") }));
+				break;
+			}
 			case "/__e2e/release": held.resolve(); break;
 			case "/__e2e/directory": return Response.json(current!.directory);
-			case "/__e2e/log": return Response.json({ calls, unscripted, unsentPlans: await unsentPlans() });
+			case "/__e2e/log": return Response.json({ calls, registryCalls, unscripted, unsentPlans: await unsentPlans() });
 			case "/__e2e/shutdown": setTimeout(() => { void shutdown(); }, 0); break;
 			default: return current!.app.handle(request);
 		}
