@@ -12,26 +12,39 @@ import {
 	writerFixture as writer,
 } from "../server/sillytavern/fixtures";
 import { openInitializedDatabase } from "../server/database/database";
-import {
-	createChatImportTransport,
-	type ChatImportCommitInput,
-	type ChatImportTransport,
-} from "./import-chat";
+import type { ChatImportCommitInput } from "./import-chat";
+import type { WirePayload } from "./lib/wire-decode";
 import type { JsonValue } from "./lib/json-guards";
 
 // Narrow client-boundary tests for the transport's own concerns only:
-// uploading exactly once, parsing wire responses into typed outcomes, and
+// uploading exactly once, decoding wire responses into typed outcomes, and
 // best-effort cancellation. The wire contract (statuses, reasons, receipts)
 // is pinned by shared/chat-import-routes.test.ts and the domain matrix by
 // the SillyTavern module seam tests, so no ground-truth payloads are
 // re-asserted here.
 
-const base = "http://localhost";
+Object.defineProperty(globalThis, "window", {
+	configurable: true,
+	// SAFETY: the test supplies the minimal browser location read by Eden.
+	value: { location: { origin: "http://localhost" } } as Window,
+});
+const originalFetch = globalThis.fetch;
+const { commitImport, discardImport, discardStagedImport, previewImport, stageImport } = await import("./import-chat");
+
+const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
+	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
+};
+
+const json = (status: number, payload: JsonValue): Response =>
+	new Response(JSON.stringify(payload), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
+
 describe("Chat import client boundary", () => {
 	let database: Database;
 	let files: string[];
 	let artifactDirectory: string;
-	let transport: ChatImportTransport;
 	let stageRequestCount: number;
 
 	beforeEach(() => {
@@ -41,17 +54,15 @@ describe("Chat import client boundary", () => {
 		artifactDirectory = join(directory, "managed-artifacts");
 		const app = createChatImportRoutes(database, artifactDirectory);
 		stageRequestCount = 0;
-		transport = createChatImportTransport({
-			base,
-			fetchImpl: (input, init) => {
-				if (String(input).includes("/stage")) {
-					stageRequestCount += 1;
-				}
-				return app.handle(new Request(input, init));
-			},
+		installFetch((input, init) => {
+			if (String(input).includes("/stage")) {
+				stageRequestCount += 1;
+			}
+			return app.handle(new Request(input, init));
 		});
 	});
 	afterEach(() => {
+		globalThis.fetch = originalFetch;
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
@@ -80,29 +91,30 @@ describe("Chat import client boundary", () => {
 				openings: [],
 			},
 		});
-		const stageOutcome = await transport.stage(
+		const stageOutcome = await stageImport(
 			file([header, writer]),
 			"lantern-house.jsonl",
 		);
-		expect(stageOutcome.status).toBe("staged");
-		if (stageOutcome.status !== "staged") return;
+		expect(stageOutcome.outcome).toBe("available");
+		if (stageOutcome.outcome !== "available") return;
+		const staged = stageOutcome.value;
 		expect(stageRequestCount).toBe(1);
-		expect(stageOutcome.preview.groups[0]?.suggestion?.confirmed).toBe(false);
+		expect(staged.preview.groups[0]?.suggestion?.confirmed).toBe(false);
 
 		// A recoverable refresh reuses the token and hash; the file is never
 		// re-uploaded.
-		const refreshed = await transport.preview(
-			stageOutcome.token,
-			stageOutcome.preview.sha256,
+		const refreshed = await previewImport(
+			staged.token,
+			staged.preview.sha256,
 		);
-		expect(refreshed.status).toBe("available");
-		if (refreshed.status !== "available") return;
-		expect(refreshed.preview).toEqual(stageOutcome.preview);
+		expect(refreshed.outcome).toBe("available");
+		if (refreshed.outcome !== "available") return;
+		expect(refreshed.value.preview).toEqual(staged.preview);
 		expect(stageRequestCount).toBe(1);
 	});
 
 	test("maps stage and preview rejections to typed outcomes and cancels idempotently", async () => {
-		const broken = await transport.stage(
+		const broken = await stageImport(
 			// SAFETY: the copy into a fresh Uint8Array carries the exact bytes
 			// while satisfying Blob's ArrayBuffer typing at the test boundary.
 			new Blob([
@@ -110,36 +122,36 @@ describe("Chat import client boundary", () => {
 			]),
 			"broken.jsonl",
 		);
-		expect(broken.status).toBe("invalid");
+		expect(broken.outcome).toBe("invalid");
 
-		const staged = await transport.stage(file([header, writer]), "a.jsonl");
-		expect(staged.status).toBe("staged");
-		if (staged.status !== "staged") return;
+		const staged = await stageImport(file([header, writer]), "a.jsonl");
+		expect(staged.outcome).toBe("available");
+		if (staged.outcome !== "available") return;
 		expect(stageRequestCount).toBe(2);
 
-		const wrongHash = await transport.preview(staged.token, "0000");
-		expect(wrongHash.status).toBe("invalid");
+		const wrongHash = await previewImport(staged.value.token, "0000");
+		expect(wrongHash.outcome).toBe("invalid");
 
-		const unknown = await transport.preview("never-staged", staged.preview.sha256);
-		expect(unknown.status).toBe("expired");
+		const unknown = await previewImport("never-staged", staged.value.preview.sha256);
+		expect(unknown.outcome).toBe("expired");
 
-		await transport.discard(staged.token);
-		await transport.discard(staged.token);
+		await discardImport(staged.value.token);
+		await discardImport(staged.value.token);
 
-		const afterDiscard = await transport.preview(
-			staged.token,
-			staged.preview.sha256,
+		const afterDiscard = await previewImport(
+			staged.value.token,
+			staged.value.preview.sha256,
 		);
-		expect(afterDiscard.status).toBe("expired");
+		expect(afterDiscard.outcome).toBe("expired");
 	});
 
 	test("commits the resolved plan, retries a lost response, and maps commit failures to typed outcomes", async () => {
-		const staged = await transport.stage(
+		const staged = await stageImport(
 			file([header, writer, rulershipFixture]),
 			"two.jsonl",
 		);
-		expect(staged.status).toBe("staged");
-		if (staged.status !== "staged") return;
+		expect(staged.outcome).toBe("available");
+		if (staged.outcome !== "available") return;
 
 		const commitPlan = (messagePositions: number[]): ChatImportCommitInput => ({
 			title: "Two",
@@ -154,64 +166,61 @@ describe("Chat import client boundary", () => {
 		});
 
 		// A plan skipping a Message is a recoverable invalid outcome.
-		const invalidPlan = await transport.commit(
-			staged.token,
-			staged.preview.sha256,
+		const invalidPlan = await commitImport(
+			staged.value.token,
+			staged.value.preview.sha256,
 			commitPlan([1]),
 		);
-		expect(invalidPlan.status).toBe("invalid");
+		expect(invalidPlan.outcome).toBe("invalid");
 
 		// The corrected plan commits, and a lost response retried with the
 		// same token and payload returns the same committed Chat instead of
 		// a second one.
-		const committed = await transport.commit(
-			staged.token,
-			staged.preview.sha256,
+		const committed = await commitImport(
+			staged.value.token,
+			staged.value.preview.sha256,
 			commitPlan([1, 2]),
 		);
-		expect(committed.status).toBe("committed");
-		if (committed.status !== "committed") return;
-		expect(committed.conversationId).toBe(committed.receipt.conversationId);
+		expect(committed.outcome).toBe("available");
+		if (committed.outcome !== "available") return;
+		expect(committed.value.receipt.conversationId).toBe(committed.value.receipt.conversationId);
 
-		const retry = await transport.commit(
-			staged.token,
-			staged.preview.sha256,
+		const retry = await commitImport(
+			staged.value.token,
+			staged.value.preview.sha256,
 			commitPlan([1, 2]),
 		);
-		expect(retry.status).toBe("committed");
-		if (retry.status !== "committed") return;
-		expect(retry.conversationId).toBe(committed.conversationId);
-		expect(retry.receipt).toEqual(committed.receipt);
+		expect(retry.outcome).toBe("available");
+		if (retry.outcome !== "available") return;
+		expect(retry.value.receipt.conversationId).toBe(committed.value.receipt.conversationId);
+		expect(retry.value.receipt).toEqual(committed.value.receipt);
 
-		const unknown = await transport.commit(
+		const unknown = await commitImport(
 			"never-staged",
-			staged.preview.sha256,
+			staged.value.preview.sha256,
 			commitPlan([1, 2]),
 		);
-		expect(unknown.status).toBe("expired");
+		expect(unknown.outcome).toBe("expired");
 	});
 
 	test("surfaces network failures without losing the typed outcome shape", async () => {
-		const failing = createChatImportTransport({
-			base,
-			fetchImpl: () => {
-				throw new Error("connection refused");
-			},
+		installFetch(async () => {
+			throw new Error("connection refused");
 		});
 		expect(
 			(
-				await failing.stage(
+				await stageImport(
 					// SAFETY: the copy into a fresh Uint8Array carries the exact
 					// bytes while satisfying Blob's ArrayBuffer typing at the
 					// test boundary.
 					new Blob([new Uint8Array(bytes([header, writer]))]),
 					"x.jsonl",
 				)
-			).status,
+			).outcome,
 		).toBe("network");
-		expect((await failing.preview("tok", "sha")).status).toBe("network");
+		expect((await previewImport("tok", "sha")).outcome).toBe("network");
 		// Discard is best-effort: a lost request never rejects the caller.
-		await expect(failing.discard("tok")).resolves.toBeUndefined();
+		await expect(discardImport("tok")).resolves.toBeUndefined();
 	});
 });
 
@@ -221,6 +230,10 @@ describe("Chat import client boundary", () => {
 // — without standing up the server. A payload that fails its contract must
 // normalize to a recoverable outcome instead of entering the import flow.
 describe("Chat import response decoding", () => {
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
 	const previewGroup = {
 		key: "Writer",
 		isBlank: false,
@@ -288,88 +301,80 @@ describe("Chat import response decoding", () => {
 	// The canned-body payload union: every shape the crafted responses
 	// need, including deliberately malformed wire bodies (missing fields,
 	// wrong literals) that the decoder must reject.
-	const json = (status: number, payload: JsonValue) =>
-		new Response(JSON.stringify(payload), {
-			status,
-			headers: { "content-type": "application/json" },
-		});
-
-	const transportFor = (respond: (url: string) => Response) =>
-		createChatImportTransport({
-			base,
-			fetchImpl: (input) => Promise.resolve(respond(String(input))),
-		});
+	const installResponder = (respond: (url: string) => Response): void => {
+		installFetch((input) => Promise.resolve(respond(String(input))));
+	};
 
 	test("decodes a valid staged response into the typed staged outcome", async () => {
-		const transport = transportFor((url) =>
+		installResponder((url) =>
 			url.endsWith("/stage")
-				? json(200, { outcome: "staged", token: "tok_1", preview })
+				? json(200, { outcome: "staged", token: "tok_1", preview } satisfies WirePayload)
 				: json(500, {}),
 		);
-		const outcome = await transport.stage(new Blob([new Uint8Array(4)]), "lantern-house.jsonl");
-		expect(outcome.status).toBe("staged");
-		if (outcome.status !== "staged") return;
-		expect(outcome.token).toBe("tok_1");
-		expect(outcome.preview.title).toBe("Lantern House");
-		expect(outcome.preview.groups[0]?.suggestion?.match).toBe("case-insensitive");
-		expect(outcome.preview.duplicates.related).toEqual([
+		const outcome = await stageImport(new Blob([new Uint8Array(4)]), "lantern-house.jsonl");
+		expect(outcome.outcome).toBe("available");
+		if (outcome.outcome !== "available") return;
+		expect(outcome.value.token).toBe("tok_1");
+		expect(outcome.value.preview.title).toBe("Lantern House");
+		expect(outcome.value.preview.groups[0]?.suggestion?.match).toBe("case-insensitive");
+		expect(outcome.value.preview.duplicates.related).toEqual([
 			{ id: 5, name: "Lantern House" },
 		]);
 	});
 
 	test("decodes a valid preview response into the typed available outcome", async () => {
-		const transport = transportFor((url) =>
+		installResponder((url) =>
 			url.includes("/preview")
-				? json(200, { outcome: "available", preview })
+				? json(200, { outcome: "available", preview } satisfies WirePayload)
 				: json(500, {}),
 		);
-		const outcome = await transport.preview("tok_1", "abc123");
-		expect(outcome.status).toBe("available");
-		if (outcome.status !== "available") return;
-		expect(outcome.preview.sha256).toBe("abc123");
-		expect(outcome.preview.groups[0]?.messagePositions).toEqual([1, 2]);
+		const outcome = await previewImport("tok_1", "abc123");
+		expect(outcome.outcome).toBe("available");
+		if (outcome.outcome !== "available") return;
+		expect(outcome.value.preview.sha256).toBe("abc123");
+		expect(outcome.value.preview.groups[0]?.messagePositions).toEqual([1, 2]);
 	});
 
 	test("decodes a valid committed response with its receipt", async () => {
-		const transport = transportFor((url) =>
+		installResponder((url) =>
 			url.includes("/commit")
-				? json(200, { outcome: "committed", conversation: conversationSummary, receipt })
+				? json(200, { outcome: "committed", conversation: conversationSummary, receipt } satisfies WirePayload)
 				: json(500, {}),
 		);
-		const outcome = await transport.commit("tok_1", "abc123", {
+		const outcome = await commitImport("tok_1", "abc123", {
 			title: "Lantern House",
 			duplicateConfirmed: true,
 			participants: [],
 		});
-		expect(outcome.status).toBe("committed");
-		if (outcome.status !== "committed") return;
-		expect(outcome.conversationId).toBe(7);
-		expect(outcome.receipt.participants[0]?.outcome).toBe("new-character");
+		expect(outcome.outcome).toBe("available");
+		if (outcome.outcome !== "available") return;
+		expect(outcome.value.receipt.conversationId).toBe(7);
+		expect(outcome.value.receipt.participants[0]?.outcome).toBe("new-character");
 	});
 
 	test("maps typed invalid outcomes with their contextual reason", async () => {
 		const invalid = (reason: string) => json(422, { outcome: "invalid", reason });
-		const staged = transportFor((url) =>
+		installResponder((url) =>
 			url.endsWith("/stage") ? invalid("A file name is required with this upload.") : json(500, {}),
 		);
-		const stageOutcome = await staged.stage(new Blob([new Uint8Array(4)]), "x.jsonl");
+		const stageOutcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
 		expect(stageOutcome).toEqual({
-			status: "invalid",
+			outcome: "invalid",
 			reason: "A file name is required with this upload.",
 		});
 
-		const preview = transportFor(() => invalid("Token hash mismatch."));
-		const previewOutcome = await preview.preview("tok_1", "0000");
-		expect(previewOutcome).toEqual({ status: "invalid", reason: "Token hash mismatch." });
+		installResponder(() => invalid("Token hash mismatch."));
+		const previewOutcome = await previewImport("tok_1", "0000");
+		expect(previewOutcome).toEqual({ outcome: "invalid", reason: "Token hash mismatch." });
 
-		const commit = transportFor(() => invalid("A Message position is not covered."));
-		const commitOutcome = await commit.commit("tok_1", "abc123", {
+		installResponder(() => invalid("A Message position is not covered."));
+		const commitOutcome = await commitImport("tok_1", "abc123", {
 			title: "T",
 			duplicateConfirmed: false,
 			participants: [],
 		});
 		expect(commitOutcome).toEqual({
-			status: "invalid",
+			outcome: "invalid",
 			reason: "A Message position is not covered.",
 		});
 	});
@@ -377,9 +382,9 @@ describe("Chat import response decoding", () => {
 	test("normalizes unexpected top-level response bodies to the network outcome", async () => {
 		const unexpectedBodies: JsonValue[] = [null, "staged", 42, [], {}, "<html>"];
 		for (const payload of unexpectedBodies) {
-			const transport = transportFor(() => json(200, payload));
-			const outcome = await transport.stage(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ status: "network" });
+			installResponder(() => json(200, payload));
+			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
+			expect(outcome).toEqual({ outcome: "network" });
 		}
 	});
 
@@ -404,10 +409,10 @@ describe("Chat import response decoding", () => {
 				duplicates: { exact: [], related: [{ id: 5 }] },
 			},
 		] satisfies JsonValue[]) {
-			const transport = transportFor(() =>
-				json(200, { outcome: "staged", token: "tok_1", preview: broken }));
-			const outcome = await transport.stage(new Blob([new Uint8Array(4)]), "x.jsonl");
-			expect(outcome).toEqual({ status: "network" });
+			installResponder(() =>
+				json(200, { outcome: "staged", token: "tok_1", preview: broken } satisfies WirePayload));
+			const outcome = await stageImport(new Blob([new Uint8Array(4)]), "x.jsonl");
+			expect(outcome).toEqual({ outcome: "network" });
 		}
 
 		// The same holds for a committed receipt: a participant outcome
@@ -423,39 +428,39 @@ describe("Chat import response decoding", () => {
 				participants: [{ ...receipt.participants[0], sourceCharacterId: "3" }],
 			},
 		] satisfies JsonValue[]) {
-			const transport = transportFor(() =>
-				json(200, { outcome: "committed", conversation: conversationSummary, receipt: brokenReceipt }));
-			const outcome = await transport.commit("tok_1", "abc123", {
+			installResponder(() =>
+				json(200, { outcome: "committed", conversation: conversationSummary, receipt: brokenReceipt } satisfies WirePayload));
+			const outcome = await commitImport("tok_1", "abc123", {
 				title: "T",
 				duplicateConfirmed: false,
 				participants: [],
 			});
-			expect(outcome).toEqual({ status: "network" });
+			expect(outcome).toEqual({ outcome: "network" });
 		}
 	});
 
 	test("maps gone outcomes for preview and commit requests", async () => {
-		const expired = transportFor(() => json(410, { outcome: "expired" }));
-		expect(await expired.preview("gone", "abc123")).toEqual({ status: "expired" });
+		installResponder(() => json(410, { outcome: "expired" }));
+		expect(await previewImport("gone", "abc123")).toEqual({ outcome: "expired" });
 		expect(
-			await expired.commit("gone", "abc123", {
+			await commitImport("gone", "abc123", {
 				title: "T",
 				duplicateConfirmed: false,
 				participants: [],
 			}),
-		).toEqual({ status: "expired" });
+		).toEqual({ outcome: "expired" });
 
 		for (const reason of ["missing", "corrupt"] as const) {
-			const unavailable = transportFor(() =>
+			installResponder(() =>
 				json(410, { outcome: "unavailable", reason }));
-			expect(await unavailable.preview("tok", "abc123")).toEqual({
-				status: "unavailable",
+			expect(await previewImport("tok", "abc123")).toEqual({
+				outcome: "unavailable",
 				reason,
 			});
 		}
 	});
 
-	test("fails closed when a gone response cannot be decoded", async () => {
+	test("fails closed to network when a gone response cannot be decoded", async () => {
 		const malformedGone: JsonValue[] = [
 			{},
 			{ outcome: "unavailable" },
@@ -463,10 +468,11 @@ describe("Chat import response decoding", () => {
 			{ outcome: "deleted" },
 		];
 		for (const payload of malformedGone) {
-			const transport = transportFor(() => json(410, payload));
-			// The handle is gone regardless of how the body failed; reselect
-			// is the only recovery a malformed gone-state supports.
-			expect(await transport.preview("tok", "abc123")).toEqual({ status: "expired" });
+			installResponder(() => json(410, payload));
+			// An error body outside the modeled unicode is a network-class
+			// seam failure, symmetric with the 200 path: the view retries,
+			// and the next gone response carries the typed recovery.
+			expect(await previewImport("tok", "abc123")).toEqual({ outcome: "network" });
 		}
 	});
 
@@ -477,9 +483,13 @@ describe("Chat import response decoding", () => {
 			{ outcome: "boom" },
 		];
 		for (const payload of malformedInvalid) {
-			const transport = transportFor(() => json(422, payload));
-			const outcome = await transport.preview("tok_1", "abc123");
-			expect(outcome).toEqual({ status: "network" });
+			installResponder(() => json(422, payload));
+			const outcome = await previewImport("tok_1", "abc123");
+			expect(outcome).toEqual({ outcome: "network" });
 		}
+	});
+
+	test("cancellation through every Back/Cancel path is a no-op without a handle", () => {
+		expect(() => discardStagedImport(null)).not.toThrow();
 	});
 });
