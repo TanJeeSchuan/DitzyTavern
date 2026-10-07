@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationModule } from "../conversation";
-import { startMemoryWorker } from "../memory";
+import { createConversationModule, observeConversationWrites } from "../conversation";
+import { startMemoryWorker, syncMemorySources } from "../memory";
 import { createConversationRoutes } from "./conversation";
 import { createMemoryRoutes } from "./memory";
 import { createChat, readOperation, readPreset, toggleBlock } from "./prompt-preset-test-fixtures";
@@ -44,7 +44,11 @@ const createWriterCollection = async (database: Database, memories: ReturnType<t
 
 describe("Memory source lifecycle public operations", () => {
 	let database: Database;
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		// The test composition installs Memory's sync on Conversation's write stream.
+		observeConversationWrites(syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("returns an explicit empty catch-up envelope before the first run", async () => {

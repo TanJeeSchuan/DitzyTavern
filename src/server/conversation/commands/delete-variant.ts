@@ -1,6 +1,6 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import { abandonMemoryWorkForRemovedVariants, syncMemorySources } from "../../memory";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import { InvalidConversationCommandError } from "../errors";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
@@ -36,7 +36,10 @@ function compactVariantPositions(
 	}
 }
 
-export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInput) {
+export function deleteVariant(
+	db: ConversationDatabase,
+	input: DeleteVariantInput,
+): ConversationMemoryChange | void {
 	const variant = requireVariant(
 		db,
 		input.conversationId,
@@ -79,6 +82,21 @@ export function deleteVariant(db: ConversationDatabase, input: DeleteVariantInpu
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
 	compactVariantPositions(db, input.messageId, variant.position);
-	if (replacementId === undefined) abandonMemoryWorkForRemovedVariants(db.$client);
-	else syncMemorySources(db.$client, input.conversationId, [replacementId]);
+	// ==[HUMAN APPROVED]== The replacing Swipe re-derives its Memory collection; the
+	// removed Variant's in-flight work is abandoned in both cases so a deleted
+	// source never keeps a provider call or a Memory worker slot alive.
+	if (replacementId === undefined) {
+		return {
+			conversationId: input.conversationId,
+			touchedVariantIds: [],
+			removedVariantIds: [input.variantId],
+			promptPresetChanged: false,
+		};
+	}
+	return {
+		conversationId: input.conversationId,
+		touchedVariantIds: [replacementId],
+		removedVariantIds: [input.variantId],
+		promptPresetChanged: false,
+	};
 }

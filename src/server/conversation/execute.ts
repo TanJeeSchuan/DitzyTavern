@@ -45,6 +45,7 @@ import type {
 	ConversationCommand,
 	ConversationSummary,
 } from "./types";
+import type { ConversationMemoryChange } from "../../shared/contract/conversation-memory-change";
 
 // ==[HUMAN APPROVED]== The per-command gate policy: each command declares whether it
 // requires a playable Conversation and whether an Active Generation blocks
@@ -55,7 +56,10 @@ import type {
 // one place a command's gates are stated, so a new command cannot silently
 // skip the shared gates.
 export interface ConversationCommandPolicy<K extends ConversationAction["type"]> {
-	handler: (db: ConversationDatabase, input: ConversationCommandInput<K>) => void;
+	handler: (
+		db: ConversationDatabase,
+		input: ConversationCommandInput<K>,
+	) => ConversationMemoryChange | void;
 	requiresPlayable: boolean;
 	blockedByActiveGeneration: boolean;
 }
@@ -148,7 +152,9 @@ export const conversationCommandPolicy = {
 		blockedByActiveGeneration: false,
 	},
 	"set-generation-model": {
-		handler: setGenerationModel,
+		handler: (db, input) => {
+			setGenerationModel(db, input);
+		},
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
@@ -179,7 +185,7 @@ function executeConversationCommandWithResult<T>(
 	command: ConversationCommand,
 	readResult: (db: ConversationDatabase, conversationId: number) => T,
 ): T {
-	return runConversationTransaction(database, (db) => {
+	return runConversationTransaction(database, (db, reportChange) => {
 		const conversation = db
 			.select({ revision: conversationTable.revision })
 			.from(conversationTable)
@@ -215,7 +221,7 @@ function executeConversationCommandWithResult<T>(
 		// guarantees each entry's handler accepts exactly its own command's
 		// input shape, so indexing the table by input.type is sound; the cast
 		// only recovers that correlation for the compiler.
-		(
+		const reportedChange = (
 			conversationCommandPolicy[input.type] as ConversationCommandPolicy<
 				typeof input.type
 			>
@@ -227,6 +233,7 @@ function executeConversationCommandWithResult<T>(
 			command.expectedRevision,
 			conversation.revision,
 		);
+		if (reportedChange !== undefined) reportChange(reportedChange);
 		return readResult(db, command.conversationId);
 	});
 }

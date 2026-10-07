@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
-import { syncMemorySources } from "../../memory";
+import type { ConversationMemoryChange } from "../../../shared/contract/conversation-memory-change";
 import type { ConversationDatabase } from "../internal";
 import { requireVariant } from "../internal";
 
@@ -10,7 +10,10 @@ export interface SelectVariantInput {
 	variantId: number;
 }
 
-export function selectVariant(db: ConversationDatabase, input: SelectVariantInput) {
+export function selectVariant(
+	db: ConversationDatabase,
+	input: SelectVariantInput,
+): ConversationMemoryChange | void {
 	const selected = requireVariant(db, input.conversationId, input.messageId, input.variantId);
 	if (selected.selected) return;
 	db.update(messageVariantTable)
@@ -21,5 +24,10 @@ export function selectVariant(db: ConversationDatabase, input: SelectVariantInpu
 		.set({ selected: true })
 		.where(eq(messageVariantTable.id, input.variantId))
 		.run();
-	syncMemorySources(db.$client, input.conversationId, [input.variantId]);
+	return {
+		conversationId: input.conversationId,
+		touchedVariantIds: [input.variantId],
+		removedVariantIds: [],
+		promptPresetChanged: false,
+	};
 }
