@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import {
 	ConversationNotFoundError,
+	checkpointConversationGeneration,
 	createConversationModule,
 } from "../conversation";
 import { requireSnapshot } from "../conversation/test-fixtures";
@@ -401,15 +402,34 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const second = acceptSibling(input, target.id, "2026-08-27T00:00:02.000Z");
 		const activeAtAbort: number[] = [];
 		const firstRuntime = startRuntime(input.conversation.id, first, {
+			// The real Conversation checkpoint write, mirroring the Coordinator's
+			// own wiring: Stop All's flushAll becomes load-bearing through it.
+			onCheckpoint: (output) =>
+				checkpointConversationGeneration(database, {
+					conversationId: input.conversation.id,
+					generationId: first.generationId,
+					...output,
+				}),
 			onStop: () => {
 				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
 		const secondRuntime = startRuntime(input.conversation.id, second, {
+			onCheckpoint: (output) =>
+				checkpointConversationGeneration(database, {
+					conversationId: input.conversation.id,
+					generationId: second.generationId,
+					...output,
+				}),
 			onStop: () => {
 				activeAtAbort.push(input.module.getSnapshot(input.conversation.id)?.activeGenerations.length ?? -1);
 			},
 		});
+		// Un-checkpointed provider output on both runtimes: Stop All's forced
+		// flush must secure it into the stopped Variants, so removing flushAll
+		// or moving it after the durable stop fails this test.
+		firstRuntime.publish({ type: "content", text: "First keeps this." });
+		secondRuntime.publish({ type: "content", text: "Second keeps this." });
 		const coordinator = createGenerationCoordinator(database);
 
 		const outcome = await coordinator.stopAllGenerations(input.conversation.id);
@@ -425,6 +445,11 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		expect(activeAtAbort).toEqual([0, 0]);
 		expect(firstRuntime.state.status).toBe("stopped");
 		expect(secondRuntime.state.status).toBe("stopped");
+		// The flushed pending output survives in the stopped Variants.
+		const snapshot = input.module.getSnapshot(input.conversation.id);
+		const contents = (snapshot?.messages ?? []).flatMap((message) => message.variants.map((variant) => variant.content));
+		expect(contents).toContain("First keeps this.");
+		expect(contents).toContain("Second keeps this.");
 	});
 
 	test("Stop All settles only runtimes owned by the addressed Conversation", async () => {
