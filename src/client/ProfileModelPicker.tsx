@@ -102,10 +102,33 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 				void loadConnectionSettings().then(onSettingsChange).catch(() => setError("Connection Settings could not be loaded."));
 			}
 		}}>
-			<PopoverTrigger asChild>{children ?? <button type="button" disabled={busy} aria-label={`${label}: ${selectedProfile ? `${selectedProfile.displayName} / ${selected?.modelId}` : "Choose a model"}`} className="field-input flex min-w-0 items-center justify-between gap-2 text-left">
-				<span className={selectedProfile ? "min-w-0 truncate" : "text-muted-foreground"}>{selectedProfile ? <>{selectedProfile.displayName} · <span className="font-mono text-[0.78rem]">{selected?.modelId}</span></> : selected !== null && selected.connectionProfileId !== null ? "Unavailable connection" : "Choose a model"}</span>
+			<PopoverTrigger asChild>
+			{children ?? (
+				<button
+					type="button"
+					disabled={busy}
+					aria-label={`${label}: ${
+						selectedProfile
+							? `${selectedProfile.displayName} / ${selected?.modelId}`
+							: "Choose a model"
+					}`}
+					className="field-input flex min-w-0 items-center justify-between gap-2 text-left"
+				>
+				<span className={selectedProfile ? "min-w-0 truncate" : "text-muted-foreground"}>
+					{selectedProfile ? (
+						<>
+							{selectedProfile.displayName} · <span className="font-mono text-[0.78rem]">{selected?.modelId}</span>
+						</>
+					) : selected !== null && selected.connectionProfileId !== null ? (
+						"Unavailable connection"
+					) : (
+						"Choose a model"
+					)}
+				</span>
 				<ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-			</button>}</PopoverTrigger>
+				</button>
+		)}
+			</PopoverTrigger>
 			<PopoverContent side={side} align="start" className="w-[min(24rem,calc(100vw-2rem))] p-0" onOpenAutoFocus={(event) => event.preventDefault()}>
 				<Command shouldFilter={false}>
 					<CommandInput aria-label="Search models" value={query} disabled={busy} autoFocus placeholder="Search or enter a model ID" onValueChange={setQuery} />
@@ -120,10 +143,31 @@ export function ProfileModelPicker({ settings, onSettingsChange, apiFormat = "ch
 									{isTextOnly && <span className="model-text-only-tag">text only</span>}
 										{profile.id === selected?.connectionProfileId && modelId === selected.modelId && <span className="sr-only">Current model</span>}
 									</CommandItem>
-									{apiFormat === "chat-completions" && <button type="button" className="model-pin-button" data-active={isTextOnly} aria-pressed={isTextOnly} aria-label={`${isTextOnly ? "Allow Images for" : "Mark text-only"} ${modelId} in ${profile.displayName}`} title={isTextOnly ? "Text-only: Images send as names. Click to allow Images." : "Mark as text-only: Images send as names."} disabled={busy} onClick={() => void toggleTextOnly(profile, modelId)}>
-										<ImageOff aria-hidden="true" />
-									</button>}
-									<button type="button" className="model-pin-button" aria-label={`${isPinned ? "Unstar" : "Star"} ${modelId} in ${profile.displayName}`} disabled={busy} onClick={() => void togglePin(profile, modelId)}>
+									{apiFormat === "chat-completions" && (
+										<button
+											type="button"
+											className="model-pin-button"
+											data-active={isTextOnly}
+											aria-pressed={isTextOnly}
+											aria-label={`${isTextOnly ? "Allow Images for" : "Mark text-only"} ${modelId} in ${profile.displayName}`}
+											title={
+												isTextOnly
+													? "Text-only: Images send as names. Click to allow Images."
+													: "Mark as text-only: Images send as names."
+											}
+											disabled={busy}
+										onClick={() => void toggleTextOnly(profile, modelId)}
+										>
+											<ImageOff aria-hidden="true" />
+										</button>
+									)}
+									<button
+										type="button"
+										className="model-pin-button"
+										aria-label={`{isPinned ? "Unstar" : "Star"} {modelId} in {profile.displayName}`}
+										disabled={busy}
+										onClick={() => void togglePin(profile, modelId)}
+									>
 										<Star aria-hidden="true" fill={isPinned ? "currentColor" : "none"} />
 									</button>
 								</div>;
