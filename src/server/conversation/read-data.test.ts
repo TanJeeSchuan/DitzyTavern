@@ -16,7 +16,6 @@ describe("readConversationData", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const created = module().create({
-			authorNote: "",
 			name: "Read Data Conversation",
 			participants: [
 				{

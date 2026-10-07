@@ -39,7 +39,6 @@ describe("scoped Lore activation", () => {
 		});
 		attachLorebookToCharacter(database, { characterId: character.id, bookId: book.id, scope: "controlled-participant" });
 		const chat = createConversationModule(database).create({
-			authorNote: "",
 			name: "Story",
 			participants: [
 				{ sourceCharacterId: character.id, definition: { name: "Keeper", prompt, openings: [] } },

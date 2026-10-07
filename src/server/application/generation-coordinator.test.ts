@@ -65,7 +65,6 @@ describe("GenerationCoordinator", () => {
 
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Coordinator Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -126,7 +125,6 @@ describe("GenerationCoordinator", () => {
 
 	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Shutdown Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -168,7 +166,6 @@ describe("GenerationCoordinator", () => {
 
 	test("stops a running attempt through one application entrance", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Coordinator Stop Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -342,7 +339,6 @@ describe("Generation Coordinator Stop lifecycle outcomes", () => {
 
 	const conversationSnapshot = (name: string): ConversationSnapshot =>
 		createConversationModule(database).create({
-			authorNote: "",
 			name,
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -650,7 +646,6 @@ describe("Generation Coordinator terminal races", () => {
 	const setup = () => {
 		const module = createConversationModule(database);
 		const conversation = module.create({
-			authorNote: "",
 			name: "Terminal race",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

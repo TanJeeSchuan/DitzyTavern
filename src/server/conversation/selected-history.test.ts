@@ -20,7 +20,6 @@ describe("Conversation selected history", () => {
 
 	test("returns only the bounded selected path and requested Variant data", () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Focused history",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

@@ -32,7 +32,6 @@ describe("permanent Lore Activation Records", () => {
 
 	test("are copied to Variant data and remain readable after replay expiry", async () => {
 		const created = createConversationModule(database).create({
-			authorNote: "",
 			name: "Lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -75,7 +74,6 @@ describe("permanent Lore Activation Records", () => {
 
 	test("rejects generic writes to the server-owned namespace", () => {
 		const created = createConversationModule(database).create({
-			authorNote: "",
 			name: "Lore namespace",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -99,7 +97,6 @@ describe("permanent Lore Activation Records", () => {
 
 	test("reports corrupt persisted records through detail contracts", async () => {
 		const created = createConversationModule(database).create({
-			authorNote: "",
 			name: "Corrupt lore details",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -159,7 +156,6 @@ describe("permanent Lore Activation Records", () => {
 
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
 		const created = createConversationModule(database).create({
-			authorNote: "",
 			name: "Interrupted lore",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

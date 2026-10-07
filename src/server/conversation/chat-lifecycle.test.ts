@@ -37,7 +37,6 @@ describe("Chat rename and deletion", () => {
 
 	const createChat = (name: string) =>
 		module.create({
-			authorNote: "",
 			name,
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

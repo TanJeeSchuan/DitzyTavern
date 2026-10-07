@@ -46,7 +46,6 @@ const adHoc = (
 const setup = (database: Database) => {
 	const module = createConversationModule(database);
 	const snapshot = module.create({
-		authorNote: "",
 		name: "Swipe Chat",
 		participants: [
 			{ definition: adHoc("Writer") },
@@ -96,7 +95,6 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	test("an imported Message without captured context is ineligible with the typed reason even in a playable Conversation", () => {
 		const module = createConversationModule(database);
 		const imported = module.create({
-			authorNote: "",
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -128,7 +126,6 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	test("every Message in an incomplete Conversation is ineligible with the playability reason", () => {
 		const module = createConversationModule(database);
 		const incomplete = module.create({
-			authorNote: "",
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -188,7 +185,6 @@ describe("Per-Message targeted Swipe eligibility", () => {
 	test("ineligible Messages keep their existing Variants selectable and editable", () => {
 		const module = createConversationModule(database);
 		const imported = module.create({
-			authorNote: "",
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -442,7 +438,6 @@ describe("Sibling Generation acceptance and resolution", () => {
 	test("denies sibling acceptance in an incomplete Conversation with the typed playability result", () => {
 		const module = createConversationModule(database);
 		const incomplete = module.create({
-			authorNote: "",
 			name: "Incomplete Import",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -481,7 +476,6 @@ describe("Sibling Generation acceptance and resolution", () => {
 	test("denies sibling acceptance for a Message without captured historical context", () => {
 		const module = createConversationModule(database);
 		const imported = module.create({
-			authorNote: "",
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },

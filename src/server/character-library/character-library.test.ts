@@ -461,7 +461,6 @@ describe("Character deletion", () => {
 			throw new Error("Expected the Character to exist before forking.");
 		}
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Deletion Cast",
 			participants: [
 				{

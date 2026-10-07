@@ -62,7 +62,6 @@ describe("Historical sibling Variant generation", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
-			authorNote: "",
 			name: "Sibling Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -416,7 +415,6 @@ describe("Historical sibling Variant generation", () => {
 
 	test("missing historical context denies new sibling generation with the typed reason before the transport", async () => {
 		const imported = module().create({
-			authorNote: "",
 			name: "Mixed Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -482,7 +480,6 @@ describe("Historical sibling Variant generation", () => {
 
 	test("an unplayable Conversation denies sibling generation with the typed playability result", async () => {
 		const incomplete = module().create({
-			authorNote: "",
 			name: "Incomplete Import",
 			messages: [
 				{

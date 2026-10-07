@@ -25,7 +25,6 @@ describe("Chat list summaries", () => {
 
 	const createChat = (name: string, names: string[]) =>
 		module.create({
-			authorNote: "",
 			name,
 			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, openings: [] } })),
 			control: { human: 0, model: 1 },

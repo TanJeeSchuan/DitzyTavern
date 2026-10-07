@@ -59,7 +59,6 @@ describe("Conversation Generation Settings", () => {
 
 	test("persists the default and configured Safety allowance", () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -85,7 +84,6 @@ describe("Conversation Generation Settings", () => {
 
 	test("persists and validates the parallel Sibling Generation limit", () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Sibling limit settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -108,7 +106,6 @@ describe("Conversation Generation Settings", () => {
 
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Invalid budget settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -140,7 +137,6 @@ describe("Conversation Generation Settings", () => {
 
 	test("round-trips every canonical field through the settings write and read", () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Round-trip settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

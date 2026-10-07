@@ -138,7 +138,6 @@ describe("Portraits", () => {
 	test("a removed Participant's Messages fall back to the stamped name and its Portrait is orphaned", async () => {
 		const carried = await art(4);
 		const chat = conversations().create({
-			authorNote: "",
 			name: "Chat",
 			participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }, { definition: { ...writer, name: "Guest", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },
@@ -158,7 +157,6 @@ describe("Portraits", () => {
 	test("a Portrait never enters a Prompt Plan", async () => {
 		const carried = await art(4);
 		const chat = conversations().create({
-			authorNote: "",
 			name: "Chat",
 			participants: [{ definition: { ...writer, portrait: carried.portrait } }, { definition: { ...writer, name: "Maren", portrait: carried.portrait } }],
 			control: { human: 0, model: 1 },

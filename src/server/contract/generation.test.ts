@@ -78,7 +78,6 @@ describe("Generation transport contract", () => {
 
 	test("persists Conversation settings and returns one streamed generated Variant with safe provenance", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -196,7 +195,6 @@ describe("Generation transport contract", () => {
 		// Sibling Generation limit — persists field for field instead of
 		// being silently dropped by the transport boundary.
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Canonical Settings Update",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -260,7 +258,6 @@ describe("Generation transport contract", () => {
 
 	test("does not contact a provider when the Conversation has no selected Profile", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Unconfigured Generation",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -290,7 +287,6 @@ describe("Generation transport contract", () => {
 
 	test("maps a known prompt budget failure to the invalid contract", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Budget-bound Generation",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -329,7 +325,6 @@ describe("Generation transport contract", () => {
 
 	test("does not hide malformed persisted generation settings as invalid input", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Malformed Generation Settings",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -365,7 +360,6 @@ describe("Generation transport contract", () => {
 
 	test("streams normalized generation events and completion over the live SSE route", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Live Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -408,7 +402,6 @@ describe("Generation transport contract", () => {
 
 	test("generates through a generic exact endpoint with custom authentication", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Generic Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -461,7 +454,6 @@ describe("Generation transport contract", () => {
 
 	test("generates through the dedicated OpenRouter adapter", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "OpenRouter Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -513,7 +505,6 @@ describe("Generation transport contract", () => {
 
 	test("streams a server-owned Sibling Generation on the target Message", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Sibling Generation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
@@ -552,7 +543,6 @@ describe("Generation transport contract", () => {
 
 	test("runs parallel Sibling Generations as independent accepted outcomes", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Parallel Sibling Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

@@ -55,7 +55,6 @@ describe("Conversation paginated history", () => {
 		overrides: Partial<ConversationCreationInput> = {},
 	) =>
 		conversation.create({
-			authorNote: "",
 			name: "History Chat",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -127,7 +126,6 @@ describe("Conversation paginated history", () => {
 
 	test("exposes resolved Author Stamps and preserves Variant order and selected state", () => {
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Stamped History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -185,7 +183,6 @@ describe("Conversation paginated history", () => {
 
 	test("keeps empty and duplicate Variants as distinct positions with exact content", () => {
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Variant History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -213,7 +210,6 @@ describe("Conversation paginated history", () => {
 
 	test("returns persisted Generation Reasoning Content in authoritative history", () => {
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Reasoning History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{
@@ -256,7 +252,6 @@ describe("Conversation paginated history", () => {
 
 	test("excludes heavy provenance from ordinary reads: no message, variant, or Chat data", () => {
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Lightweight",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [
@@ -309,7 +304,6 @@ describe("Conversation paginated history", () => {
 		// Messages carry no pair and stay ineligible with the typed reason.
 		// The client never reconstructs either capability.
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Capability History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -332,7 +326,6 @@ describe("Conversation paginated history", () => {
 		);
 
 		const unpaired = conversation.create({
-			authorNote: "",
 			name: "Unpaired History",
 			participants: [
 				{ definition: adHoc("Writer") },
@@ -354,7 +347,6 @@ describe("Conversation paginated history", () => {
 		// the canonical conversation-not-playable block, and the empty selected
 		// Variant is not continuable.
 		const chat = conversation.create({
-			authorNote: "",
 			name: "Unplayable History",
 			participants: [{ definition: adHoc("Writer") }],
 			messages: [{

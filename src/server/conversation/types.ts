@@ -581,7 +581,7 @@ export interface ConversationControlSeed {
 
 export interface ConversationCreationInput {
 	name: string;
-	authorNote: string;
+	authorNote?: string;
 	participants?: readonly ConversationParticipantSeed[];
 	control?: ConversationControlSeed | undefined;
 	messages?: readonly ConversationCreationMessage[];

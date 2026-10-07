@@ -389,7 +389,6 @@ describe("SillyTavern Prompt Preset import transport", () => {
 	test("a committed imported recipe survives selection and reaches the captured model request", async () => {
 		const library = createPromptPresetRoutes(database);
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Imported preset chat",
 			participants: [
 				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },

@@ -46,7 +46,6 @@ describe("Continuation transport contract", () => {
 
 	test("accepts Continue without a human Message and uses the instruction strategy", async () => {
 		const conversation = createConversationModule(database).create({
-			authorNote: "",
 			name: "Continuation Contract",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

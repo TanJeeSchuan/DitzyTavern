@@ -39,7 +39,6 @@ const setup = () => {
 	initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString("base64") } });
 	configureDecisionModels(database);
 	const conversation = createConversationModule(database).create({
-		authorNote: "",
 		name: "Capture Coherence",
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },

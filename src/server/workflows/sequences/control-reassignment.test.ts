@@ -77,7 +77,6 @@ describe("Control reassignment between commands", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		conversation = createConversationModule(database);
 		const created = conversation.create({
-			authorNote: "",
 			name: "Cast change",
 			participants: [
 				{ definition: definition("Writer") },

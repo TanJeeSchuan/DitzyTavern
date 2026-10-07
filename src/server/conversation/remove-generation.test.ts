@@ -30,7 +30,6 @@ describe("canonical Conversation Generation removal", () => {
 	const setup = () => {
 		const module = createConversationModule(database);
 		const created = module.create({
-			authorNote: "",
 			name: "Removal Chat",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },

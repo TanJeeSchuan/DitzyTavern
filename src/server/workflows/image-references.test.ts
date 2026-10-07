@@ -38,7 +38,6 @@ describe("Image Reference lifetime", () => {
 	const library = () => createCharacterLibraryModule(database);
 
 	const chat = () => conversations().create({
-		authorNote: "",
 		name: "Chat",
 		participants: [{ definition: writer }, { definition: { ...writer, name: "Maren" } }],
 		control: { human: 0, model: 1 },
@@ -368,7 +367,6 @@ describe("Image Reference lifetime", () => {
 	test("Macro State written by setvar during a Generation holds its Image after the Definition lets go", async () => {
 		const art = await picture(4);
 		const target = conversations().create({
-			authorNote: "",
 			name: "Chat",
 			participants: [
 				{ definition: writer },

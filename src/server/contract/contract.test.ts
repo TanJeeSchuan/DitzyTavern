@@ -630,7 +630,6 @@ describe("Conversation Cast/Control transport adapters", () => {
 
 	test("maps play-gated actions in incomplete Conversations to not-playable", async () => {
 		const created = createConversationModule(database).create({
-			authorNote: "",
 			name: "Incomplete Transport",
 			messages: [
 				{

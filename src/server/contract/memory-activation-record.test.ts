@@ -68,7 +68,6 @@ const activation = (
 const createChat = (database: Database) => {
 	const module = createConversationModule(database);
 	const created = module.create({
-		authorNote: "",
 		name: "Memory evidence",
 		participants: [
 			{ definition: { name: "Writer", prompt, openings: [] } },

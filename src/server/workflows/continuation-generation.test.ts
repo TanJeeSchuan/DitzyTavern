@@ -31,7 +31,6 @@ describe("Continuation Generation", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const snapshot = createConversationModule(database).create({
-			authorNote: "",
 			name: "Continuation Chat",
 			participants: [
 				{ definition: definition("Writer") },

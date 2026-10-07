@@ -26,7 +26,6 @@ const prompt = {
 };
 
 const createChat = (database: Database) => createConversationModule(database).create({
-	authorNote: "",
 	name: "Variables Chat",
 	participants: [
 		{ definition: { name: "Writer", prompt, openings: [] } },

@@ -35,7 +35,6 @@ describe("Conversation module", () => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		const module = createConversationModule(database);
 		const snapshot = module.create({
-			authorNote: "",
 			name: "Test Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -276,7 +275,6 @@ describe("Conversation module", () => {
 	test("does not fabricate historical Control from a partial persisted pair", () => {
 		const module = createConversationModule(database);
 		const conversation = module.create({
-			authorNote: "",
 			name: "Partial Context",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -348,7 +346,6 @@ describe("Conversation module", () => {
 
 	test("rejects authorship referencing a Participant outside the Conversation", () => {
 		const other = createConversationModule(database).create({
-			authorNote: "",
 			name: "Other Conversation",
 			participants: [
 				{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
@@ -463,7 +460,6 @@ describe("Conversation module", () => {
 	test("gates Compose and Swipe behind derived playability while edits stay available", () => {
 		const module = createConversationModule(database);
 		const incomplete = module.create({
-			authorNote: "",
 			name: "Incomplete Import",
 			messages: [
 				{
@@ -578,7 +574,6 @@ describe("Conversation module", () => {
 			warnings: [],
 		});
 		const imported = conversation.create({
-			authorNote: "",
 			name: "Imported Conversation",
 			participants: [
 				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
@@ -883,7 +878,6 @@ describe("Conversation module", () => {
 
 		test("rejects pairs referencing Participants outside the Conversation", () => {
 			const other = createConversationModule(database).create({
-				authorNote: "",
 				name: "Other Conversation",
 				participants: [
 					{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },

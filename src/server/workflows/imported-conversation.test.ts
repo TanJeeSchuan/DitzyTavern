@@ -29,7 +29,6 @@ describe("Chat Import workflow", () => {
 
 	test("creates a requested Character and the Conversation together", () => {
 		const conversation = createImportedConversation(database, {
-			authorNote: "",
 			name: "Imported watch",
 			participants: [{ definition, createCharacter: true }],
 			control: { human: 0 },

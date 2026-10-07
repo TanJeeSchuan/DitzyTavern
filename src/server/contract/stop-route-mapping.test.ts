@@ -89,7 +89,6 @@ describe("Generation Stop route mapping", () => {
 
 	const snapshot = (): ConversationSnapshot =>
 		createConversationModule(database).create({
-			authorNote: "",
 			name: "Stop mapping",
 			participants: [
 				{ definition: { name: "Writer", prompt, openings: [] } },
