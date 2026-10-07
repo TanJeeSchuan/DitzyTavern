@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type Dispatch } from "react";
-import { chatHistoryTransport } from "../chat-history";
+import { loadHistoryPage } from "../chat-history";
 import {
 	loadConversation,
 	type ConversationSummary,
@@ -63,14 +63,14 @@ export function useConversationSession({
 		dispatchStory({ type: "chat-opened", conversationId });
 		void Promise.all([
 			loadConversation(conversationId),
-			chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+			loadHistoryPage(conversationId, { page: 1 }),
 		]).then(([loaded, outcome]) => {
 			if (isCancelled()) return;
 			setConversation(loaded);
-			if (outcome.status === "available") {
+			if (outcome.outcome === "available") {
 				dispatchStory({
 					type: "first-page",
-					page: outcome.page,
+					page: outcome.value,
 					activeGenerationIds: loaded?.activeGenerations.map(({ generationId }) => generationId),
 				});
 			} else {
@@ -98,15 +98,15 @@ export function useConversationSession({
 		pagingRef.current = true;
 		applyStory({ type: "load-more-started" });
 		try {
-			const anchor = await chatHistoryTransport.loadHistory(conversationId, { aroundMessageId: edge.id });
+			const anchor = await loadHistoryPage(conversationId, { aroundMessageId: edge.id });
 			if (navigation !== navigationRef.current) return;
-			if (anchor.status !== "available") { applyStory({ type: "history-failed" }); return; }
-			const extendsWindow = anchor.page.messages.some((message) => direction === "older" ? message.position < edge.position : message.position > edge.position);
-			const outcome = extendsWindow ? anchor : await chatHistoryTransport.loadHistory(conversationId, {
-				page: anchor.page.page.index + (direction === "older" ? 1 : -1),
+			if (anchor.outcome !== "available") { applyStory({ type: "history-failed" }); return; }
+			const extendsWindow = anchor.value.messages.some((message) => direction === "older" ? message.position < edge.position : message.position > edge.position);
+			const outcome = extendsWindow ? anchor : await loadHistoryPage(conversationId, {
+				page: anchor.value.page.index + (direction === "older" ? 1 : -1),
 			});
 			if (navigation !== navigationRef.current) return;
-			if (outcome.status === "available") applyStory({ type: "next-page-arrived", page: outcome.page });
+			if (outcome.outcome === "available") applyStory({ type: "next-page-arrived", page: outcome.value });
 			else applyStory({ type: "history-failed" });
 		} catch {
 			if (navigation === navigationRef.current) applyStory({ type: "history-failed" });
@@ -121,10 +121,10 @@ export function useConversationSession({
 		navigatingRef.current = true;
 		try {
 			if (!loaded) {
-				const outcome = await chatHistoryTransport.loadHistory(conversationId, { aroundMessageId: messageId });
+				const outcome = await loadHistoryPage(conversationId, { aroundMessageId: messageId });
 				if (navigation !== navigationRef.current) return;
-				if (outcome.status !== "available") { applyStory({ type: "history-failed" }); return; }
-				applyStory({ type: "first-page", page: outcome.page, activeGenerationIds: conversationRef.current?.activeGenerations.map(({ generationId }) => generationId) });
+				if (outcome.outcome !== "available") { applyStory({ type: "history-failed" }); return; }
+				applyStory({ type: "first-page", page: outcome.value, activeGenerationIds: conversationRef.current?.activeGenerations.map(({ generationId }) => generationId) });
 			}
 			await afterRender();
 			if (navigation !== navigationRef.current) return;
@@ -143,13 +143,12 @@ export function useConversationSession({
 			? current.messages.filter((_, index) => index % current.page!.pageSize === 0 || index === current.messages.length - 1).map((message) => ({ aroundMessageId: message.id }))
 			: [{ page: 1 }];
 		for (const request of requests) {
-			const history = await chatHistoryTransport.loadHistory(conversationId, request, signal);
+			const history = await loadHistoryPage(conversationId, request, signal);
 			if (signal?.aborted || navigation !== navigationRef.current || Number(activeChatIdRef.current) !== conversationId) return freshConversation;
-			if (history.status === "network") throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
-			if (history.status === "invalid") throw new Error(`Unable to load Conversation ${conversationId} history`);
-			if (history.status === "available") applyStory({
+			if (history.outcome === "network") throw new NetworkError(`Unable to load Conversation ${conversationId} history`);
+			if (history.outcome === "available") applyStory({
 				type: detached ? "history-refreshed" : "first-page",
-				page: history.page,
+				page: history.value,
 				activeGenerationIds: freshConversation?.activeGenerations.map(({ generationId }) => generationId),
 			});
 		}
@@ -165,11 +164,11 @@ export function useConversationSession({
 		try {
 			const [loaded, outcome] = await Promise.all([
 				loadConversation(conversationId),
-				chatHistoryTransport.loadHistory(conversationId, { page: 1 }),
+				loadHistoryPage(conversationId, { page: 1 }),
 			]);
-			if (navigation !== navigationRef.current || loaded === null || outcome.status !== "available") throw new Error("The latest Messages could not be loaded.");
+			if (navigation !== navigationRef.current || loaded === null || outcome.outcome !== "available") throw new Error("The latest Messages could not be loaded.");
 			setConversation(loaded);
-			applyStory({ type: "first-page", page: outcome.page, activeGenerationIds: loaded.activeGenerations.map(({ generationId }) => generationId) });
+			applyStory({ type: "first-page", page: outcome.value, activeGenerationIds: loaded.activeGenerations.map(({ generationId }) => generationId) });
 			await afterRender();
 			if (navigation !== navigationRef.current) throw new Error("The Chat changed.");
 			const root = document.querySelector<HTMLElement>(".story-scroll");

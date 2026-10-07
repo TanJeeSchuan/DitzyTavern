@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { createChatHistoryTransport } from "./chat-history";
+import { afterEach, describe, expect, test } from "bun:test";
+import type { WirePayload } from "./lib/wire-decode";
 
 // The history wire boundary validates every page against the canonical
 // shared contract before the view may trust it. The server-derived
@@ -7,6 +7,24 @@ import { createChatHistoryTransport } from "./chat-history";
 // fields, so a payload without them can never masquerade as trusted
 // history: the server always emits them and the client never reconstructs
 // them from optional hints.
+
+Object.defineProperty(globalThis, "window", {
+	configurable: true,
+	// SAFETY: the test supplies the minimal browser location read by Eden.
+	value: { location: { origin: "http://localhost" } } as Window,
+});
+const originalFetch = globalThis.fetch;
+const { loadHistoryPage } = await import("./chat-history");
+
+const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
+	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
+};
+
+const json = (payload: WirePayload, status: number): Response =>
+	new Response(JSON.stringify(payload), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
 
 const messagePayload = {
 	id: 10,
@@ -41,45 +59,48 @@ const jsonPage = (messages: readonly object[]): Response =>
 		{ status: 200, headers: { "content-type": "application/json" } },
 	);
 
-const loadFirstPage = (fetchImpl: (input: RequestInfo | URL) => Promise<Response>) =>
-	createChatHistoryTransport({ fetchImpl }).loadHistory(7, { page: 1 });
+const loadFirstPage = () => loadHistoryPage(7, { page: 1 });
 
 describe("history transport boundary validation", () => {
-	test("distinguishes a temporary transport outage from a permanent HTTP failure", async () => {
-		expect(await loadFirstPage(async () => { throw new TypeError("Failed to fetch"); })).toEqual({ status: "network" });
-		expect(await loadFirstPage(async () => Response.json({ error: "Unavailable" }, { status: 503 }))).toEqual({ status: "invalid" });
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	test("a regression into an unmodeled read outcome can never escape the canonical network class", async () => {
+		installFetch(async () => json({ error: "Unavailable" }, 503));
+		expect(await loadFirstPage()).toEqual({ outcome: "network" });
 	});
 
 	test("passes cancellation to the history request", async () => {
 		const controller = new AbortController();
 		let signal: AbortSignal | null | undefined;
-		await createChatHistoryTransport({ fetchImpl: async (_input, init) => {
+		installFetch(async (_input, init) => {
 			signal = init?.signal;
 			return jsonPage([messagePayload]);
-		} }).loadHistory(7, { page: 1 }, controller.signal);
+		});
+		await loadHistoryPage(7, { page: 1 }, controller.signal);
 		expect(signal).toBe(controller.signal);
 	});
 
-	test("accepts a page carrying the required server-derived capability objects", async () => {
-		const outcome = await loadFirstPage(async () => jsonPage([messagePayload]));
-		expect(outcome.status).toBe("available");
-		if (outcome.status === "available") {
-			expect(outcome.page.messages[0]?.swipe).toEqual({
+	test("trusts a contract-valid page and normalizes a fabricated Swipe state to network", async () => {
+		installFetch(async () => jsonPage([messagePayload]));
+		const outcome = await loadFirstPage();
+		expect(outcome.outcome).toBe("available");
+		if (outcome.outcome === "available") {
+			expect(outcome.value.messages[0]?.swipe).toEqual({
 				eligible: true,
 				reason: null,
 			});
-			expect(outcome.page.messages[0]?.continuable).toBe(true);
+			expect(outcome.value.messages[0]?.continuable).toBe(true);
 		}
-	});
 
-	test("rejects a page whose Swipe eligibility fabricates an impossible state", async () => {
-		const outcome = await loadFirstPage(async () =>
+		installFetch(async () =>
 			jsonPage([
 				{
 					...messagePayload,
 					swipe: { eligible: true, reason: "missing-historical-context" },
 				},
 			]));
-		expect(outcome.status).toBe("invalid");
+		expect(await loadFirstPage()).toEqual({ outcome: "network" });
 	});
 });
