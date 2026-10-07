@@ -88,14 +88,33 @@ export function SemanticTriggerSettingsEditor({ semanticTriggers, onBack }: { se
 								<DecisionModelPicker settings={connections} onSettingsChange={setConnections} selection={draft} onChange={semanticTriggers.update} label="Semantic Trigger Decision Model" />
 							</Field>}
 							<NumberGroup title="Decision Model state" description="Long scenes are split so the model reads the whole Lore Scan Window.">
-								<NumberRow id="semantic-state-limit" label="State token limit" min={MIN_DECISION_STATE_TOKEN_LIMIT} step={1} value={draft.decisionStateTokenLimit} onChange={decisionStateTokenLimit => semanticTriggers.update({ decisionStateTokenLimit })} />
+								<NumberRow
+									id="semantic-state-limit"
+									label="State token limit"
+									min={MIN_DECISION_STATE_TOKEN_LIMIT}
+									step={1}
+									value={draft.decisionStateTokenLimit}
+									onChange={(decisionStateTokenLimit) => semanticTriggers.update({ decisionStateTokenLimit })}
+								/>
 							</NumberGroup>
 							<div className="grid gap-1.5">
 								<div className="flex items-center justify-between gap-3">
 									<label htmlFor="semanticTriggers-threshold" className="text-[13px] font-medium text-muted-foreground">Trigger threshold</label>
 									<span className="text-[13px] tabular-nums">{draft.triggerThreshold.toFixed(2)}</span>
 								</div>
-								<Slider id="semanticTriggers-threshold" className="py-1.5 [&_[data-slot=slider-track]]:bg-foreground/15" min={0} max={1} step={0.05} disabled={draft.decisionProfileId === null} value={[draft.triggerThreshold]} onValueChange={([triggerThreshold]) => { if (triggerThreshold !== undefined) semanticTriggers.update({ triggerThreshold }); }} aria-label="Trigger threshold" />
+								<Slider
+									id="semanticTriggers-threshold"
+									className="py-1.5 [&_[data-slot=slider-track]]:bg-foreground/15"
+									min={0}
+									max={1}
+									step={0.05}
+									disabled={draft.decisionProfileId === null}
+									value={[draft.triggerThreshold]}
+									onValueChange={([triggerThreshold]) => {
+										if (triggerThreshold !== undefined) semanticTriggers.update({ triggerThreshold });
+									}}
+									aria-label="Trigger threshold"
+								/>
 								<small className="text-xs text-muted-foreground">The Decision Model's probability that a trigger's situation happens in the scene. Starts at 0.50.</small>
 							</div>
 						</div>
