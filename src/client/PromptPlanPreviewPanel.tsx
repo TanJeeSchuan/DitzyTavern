@@ -78,7 +78,7 @@ export function PromptPlanPreviewPanel({
 					{groupHistoryRuns(preview.promptPlan.blocks).map((run) => {
 						const fields = run.map(({ block, index }) => (
 							<div key={index} className="prompt-plan-block">
-								<span>{block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
+								<span>{block.kind === "author-note" ? "Author Note" : block.kind}{block.role === null || block.role === undefined ? "" : ` · ${block.role}`}</span>
 								<ProseEditor
 									className="prose-editor-field"
 									ariaLabel={`${block.kind} block ${index + 1}`}

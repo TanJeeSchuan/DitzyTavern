@@ -152,6 +152,7 @@ export const compileGenerationPlan = (
 		memory: readonly MemoryRecallCandidateRecord[],
 	): PromptPlan => {
 		const compiled = compilePrompt({
+			authorNote: input.authorNote,
 			human: input.human,
 			model: input.model,
 			context,

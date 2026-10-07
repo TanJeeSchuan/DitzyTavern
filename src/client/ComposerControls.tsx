@@ -1,6 +1,7 @@
-import { Sparkles, UserRound } from "lucide-react";
+import { NotebookPen, Sparkles, UserRound } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { controlChangeDescription } from "./cast";
 import {
 	applyConversationCommand,
@@ -17,6 +18,7 @@ import { ModelSelector } from "./ModelSelector";
 // only Cast Participants can be referenced.
 
 interface ComposerControlSelectorsProps {
+	onAuthorNote: () => void;
 	conversation: ConversationSummary;
 	disabled?: boolean;
 	disabledReason?: string;
@@ -25,6 +27,7 @@ interface ComposerControlSelectorsProps {
 }
 
 export function ComposerControlSelectors({
+	onAuthorNote,
 	conversation,
 	disabled = false,
 	disabledReason,
@@ -113,6 +116,7 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
+			<Button type="button" variant="ghost" size="icon-sm" aria-label="Author Note" title="Author Note" disabled={disabled} onClick={onAuthorNote}><NotebookPen aria-hidden="true" /></Button>
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector
 				conversation={conversation}

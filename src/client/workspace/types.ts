@@ -1,4 +1,5 @@
 export type PrimaryPanel =
+	| "author-note"
 	| "chats"
 	| "characters"
 	| "lorebooks"

@@ -426,6 +426,7 @@ export function ActiveWritingWorkspace({
 					writerName={conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId)?.duplicateLabel}
 					controlSelectors={session.conversation !== null ? (
 						<ComposerControlSelectors
+							onAuthorNote={() => requestNavigation(() => dispatchPanel({ type: "primary-toggled", panel: "author-note" }))}
 							conversation={session.conversation}
 							disabled={story.preview !== null || assemblyActive}
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}

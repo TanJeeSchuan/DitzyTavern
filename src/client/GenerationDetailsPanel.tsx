@@ -166,7 +166,7 @@ function PromptPlan({ plan }: { plan: GenerationJsonValue }) {
 						const item = generationJsonObject(block);
 						const kind = generationJsonString(item?.kind);
 						const content = generationJsonString(item?.content);
-						return <li key={index}><span>{kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
+						return <li key={index}><span>{kind === "author-note" ? "Author Note" : kind ?? "block"}</span><p>{projectImageAnchors(content ?? "")}</p></li>;
 					})}
 				</ol>
 			)}

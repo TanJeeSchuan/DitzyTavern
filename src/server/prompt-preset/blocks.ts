@@ -34,7 +34,7 @@ export class InvalidPromptPresetOperationError extends Error {
 }
 
 const uniqueBlockName = (reference: string) =>
-	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : null;
+	reference === "lore" ? "Lore" : reference === "memory" ? "Memory" : reference === "author-note" ? "Author Note" : null;
 
 const assertNoSecondUniqueBlock = (reference: string, exists: boolean) => {
 	const name = uniqueBlockName(reference);
