@@ -28,7 +28,11 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 			if (result.outcome === "invalid") setError(result.reason);
 			else if (result.outcome === "conflict") {
 				onSettings(result.currentSettings); setRevision(result.currentSettings.revision);
-				setError(result.currentSettings.note === settings.note ? "Memory settings changed elsewhere. Save again to keep this note." : "The note changed elsewhere. Saving again replaces it with this text.");
+				setError(
+					result.currentSettings.note === settings.note
+						? "Memory settings changed elsewhere. Save again to keep this note."
+						: "The note changed elsewhere. Saving again replaces it with this text.",
+				);
 			} else { onSettings(result.settings); onSaved(); }
 		} catch { setError("The Memory note could not be saved. Try again."); }
 		finally { setPending(false); }
@@ -41,7 +45,16 @@ export function MemoryNoteDialog({ conversationId, settings, onClose, onSettings
 				<DialogDescription>Used for new extraction. Saved Memories keep their wording until you retry a Message.</DialogDescription>
 			</DialogHeader>
 			<form className="memory-merge-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-				<Textarea autoFocus aria-label="Memory note" className="memory-editor-claim" placeholder="Write guidance for new extraction…" value={note} onChange={(event) => setNote(event.target.value)} onKeyDown={onKeyDown} disabled={pending} />
+				<Textarea
+					autoFocus
+					aria-label="Memory note"
+					className="memory-editor-claim"
+					placeholder="Write guidance for new extraction…"
+					value={note}
+					onChange={(event) => setNote(event.target.value)}
+					onKeyDown={onKeyDown}
+					disabled={pending}
+				/>
 				{length >= COUNT_AT && <p className={overLimit ? "text-xs text-destructive" : "text-xs text-muted-foreground"} aria-live="polite">{length} of 2,000 characters</p>}
 				{error && <p className="import-problem" role="alert">{error}</p>}
 				<DialogFooter>
