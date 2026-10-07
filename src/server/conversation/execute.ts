@@ -19,6 +19,13 @@ import { putData } from "./commands/put-data";
 import { removeParticipant } from "./commands/remove-participant";
 import { setAuthorNote } from "./commands/set-author-note";
 import { renameConversation } from "./commands/rename-conversation";
+import {
+	attachConversationLorebook,
+	attachParticipantLorebook,
+	detachConversationLorebook,
+	detachParticipantLorebook,
+	saveConversationLoreSettings,
+} from "./commands/lore-attachments";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
@@ -173,6 +180,36 @@ export const conversationCommandPolicy = {
 	},
 	"rename-conversation": {
 		handler: renameConversation,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	// ==[HUMAN APPROVED]== Lore attachment and Chat Lore settings changes are configuration
+	// writes. The Lorebook attachment seam they replace enforced only the
+	// revision guard, so they need no playable Conversation (an incomplete
+	// Chat can still select its Lorebooks) and never disturb an Active
+	// Generation's captured plan (like select-prompt-preset).
+	"attach-chat": {
+		handler: attachConversationLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"detach-chat": {
+		handler: detachConversationLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"attach-participant": {
+		handler: attachParticipantLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"detach-participant": {
+		handler: detachParticipantLorebook,
+		requiresPlayable: false,
+		blockedByActiveGeneration: false,
+	},
+	"save-settings": {
+		handler: saveConversationLoreSettings,
 		requiresPlayable: false,
 		blockedByActiveGeneration: false,
 	},
