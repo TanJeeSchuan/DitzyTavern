@@ -15,6 +15,7 @@
         "@elysiajs/eden": "^1.4.9",
         "@elysiajs/static": "^1.4.10",
         "@fontsource-variable/geist": "^5.3.0",
+        "@fontsource/alegreya-sans": "^5.3.0",
         "@openrouter/ai-sdk-provider": "3.0.0",
         "@sinclair/typebox": "^0.34.52",
         "@tanstack/react-query": "^5.104.0",
@@ -222,6 +223,8 @@
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
 
     "@fontsource-variable/geist": ["@fontsource-variable/geist@5.3.0", "", {}, "sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA=="],
+
+    "@fontsource/alegreya-sans": ["@fontsource/alegreya-sans@5.3.0", "", {}, "sha512-Uf0RbuwzhSS3NQrBFcRzEUm7TxDQW3qdAbQ6JIOhsIW6V+YN2dqlR99lhfEE38R3GHgMCMJBzqSp7aJxhNXSOw=="],
 
     "@hono/node-server": ["@hono/node-server@2.1.1", "", { "peerDependencies": { "hono": "^4" } }, "sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg=="],
 
