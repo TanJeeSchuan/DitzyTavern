@@ -4,11 +4,13 @@ import { requestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import {
 	lorebook,
+	lorebookCommandErrors,
 	lorebookCommandResponse,
 	lorebookImportApplied,
 	lorebookListResponse,
 	loreMatchTestResponse,
 	loreAttachmentState,
+	loreAttachmentCommandErrors,
 	loreAttachmentCommandResponse,
 	lorebookAttachmentImpact,
 	lorebookOwnerAttachmentState,
@@ -23,6 +25,7 @@ import {
 	type Lorebook as LorebookValue,
 	type LorebookListResponse,
 } from "../shared/contract/lorebook";
+import { readOutcomeErrors } from "../shared/contract/outcomes";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
@@ -43,6 +46,7 @@ export async function applyLorebookAttachmentCommand(command: LoreAttachmentComm
 	return requestOutcome(
 		api.api.lorebooks.attachments.commands.post(command),
 		loreAttachmentCommandResponse,
+		loreAttachmentCommandErrors,
 	);
 }
 
@@ -105,6 +109,7 @@ export async function applyLorebookCommand(command: LorebookCommand) {
 	return requestOutcome(
 		api.api.lorebooks.commands.post(command),
 		lorebookCommandResponse,
+		lorebookCommandErrors,
 	);
 }
 
@@ -120,6 +125,7 @@ export async function importNativeLorebook(native: NativeLorebook) {
 	return requestOutcome(
 		api.api.lorebooks.import.post(native),
 		lorebookImportApplied,
+		readOutcomeErrors,
 	);
 }
 
@@ -127,6 +133,7 @@ export async function importSillyTavernLorebook(source: SillyTavernJsonValue) {
 	return requestOutcome(
 		api.api.lorebooks.import.sillytavern.post({ source }),
 		lorebookImportApplied,
+		readOutcomeErrors,
 	);
 }
 

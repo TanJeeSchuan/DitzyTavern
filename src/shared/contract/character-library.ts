@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -159,5 +160,11 @@ export const characterConflict = Type.Object({
 	currentCharacter: characterSnapshot,
 });
 
-export type CharacterConflict = Static<typeof characterConflict>;
-export type CharacterCommandApplied = Static<typeof characterCommandApplied>;
+// ==[HUMAN APPROVED]== The Character command family's modeled error union: the composed
+// 409/404/422 envelopes the library command and native-creation routes
+// declare, so the client decodes an error body against exactly that union.
+export const characterCommandErrors = Type.Union([
+	characterConflict,
+	notFoundOutcome,
+	invalidOutcome,
+]);

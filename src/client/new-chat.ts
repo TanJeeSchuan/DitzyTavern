@@ -2,6 +2,7 @@ import { api } from "./lib/eden";
 import { requestOutcome } from "./lib/request-outcome";
 import { clientFormattingContext } from "./lib/formatting-context";
 import { nativeConversationResponse } from "../shared/contract/native-conversation";
+import { characterCommandErrors } from "../shared/contract/character-library";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { emptyPromptChannels } from "../shared/definition";
 
@@ -50,5 +51,6 @@ export async function createNativeConversation(input: {
 			...formatting,
 		}),
 		nativeConversationResponse,
+		characterCommandErrors,
 	);
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { macroVariables } from "../../shared/contract/macro-variables";
+import { readOutcomeErrors } from "../../shared/contract/outcomes";
 import type { WirePayload } from "./wire-decode";
 
 const originalFetch = globalThis.fetch;
@@ -33,7 +34,7 @@ describe("requestOutcome", () => {
 			target: { type: "initial" },
 			variables: [],
 		}, 200));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
 			outcome: "available",
 			value: {
 				conversationId: 3,
@@ -48,24 +49,42 @@ describe("requestOutcome", () => {
 
 	test("a modeled error body passes through verbatim", async () => {
 		installFetch(async () => json({ outcome: "not-found" }, 404));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "not-found" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "not-found" });
+	});
+
+	test("an error body with an unmodeled outcome tag is network, never a modeled outcome", async () => {
+		installFetch(async () => json({ outcome: "conflict" }, 409));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
+	});
+
+	test("a modeled tag with missing required fields is network", async () => {
+		installFetch(async () => json({ outcome: "invalid" }, 422));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
 	});
 
 	test("an error body without the wire outcome tag is network, never a modeled outcome", async () => {
 		installFetch(async () => json({ type: "validation", on: "body" }, 422));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
 	});
 
 	test("a 200 body that fails the contract is network", async () => {
 		installFetch(async () => json({ unexpected: true }, 200));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
 	});
 
 	test("a rejected request is network", async () => {
 		installFetch(async () => {
 			throw new TypeError("fetch failed");
 		});
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables)).toEqual({ outcome: "network" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
+	});
+
+	test("a modeled invalid envelope passes through with its reason", async () => {
+		installFetch(async () => json({ outcome: "invalid", reason: "Nope" }, 422));
+		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+			outcome: "invalid",
+			reason: "Nope",
+		});
 	});
 });
 

@@ -1,5 +1,4 @@
 import { Type } from "@sinclair/typebox";
-import type { Static } from "@sinclair/typebox";
 
 // Transport outcome envelopes shared by every route family: the typed
 // not-found, invalid, not-playable, not-removable, and reason-only conflict
@@ -26,8 +25,6 @@ export const conflictReasonOutcome = Type.Object({
 	reason: Type.String(),
 });
 
-export type NotFound = Static<typeof notFoundOutcome>;
-export type Invalid = Static<typeof invalidOutcome>;
-export type NotPlayable = Static<typeof notPlayableOutcome>;
-export type NotRemovable = Static<typeof notRemovableOutcome>;
-export type ConflictReason = Static<typeof conflictReasonOutcome>;
+// ==[HUMAN APPROVED]== The read family's modeled error union: every typed read route declares
+// the shared not-found and invalid envelopes as its only error responses.
+export const readOutcomeErrors = Type.Union([notFoundOutcome, invalidOutcome]);

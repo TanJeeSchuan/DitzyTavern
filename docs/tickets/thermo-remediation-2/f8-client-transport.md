@@ -29,12 +29,15 @@ Implemented on `fix/thermo-f8-client-transport`.
 
 **Machinery introduced**
 
-- One helper: `requestOutcome(request, schema)` in `src/client/lib/request-outcome.ts`,
+- One helper: `requestOutcome(request, schema, errors)` in `src/client/lib/request-outcome.ts`,
   returning `{ outcome: "available"; value } | <the route's modeled wire error union verbatim> | { outcome: "network" }`.
-  The route's error union is derived from the Treaty request type itself, so no per-function
-  outcome vocabulary exists anywhere else. Error bodies are classified by the wire `outcome`
-  tag; unmodeled bodies (Elysia's validation envelope, a server 500, a rejected fetch) are
-  network-class. Consumer-facing aliases, where a callback signature needs a name, are
+  The route's error union is derived from the Treaty request type itself, and the third
+  parameter pins the decoding schema to exactly that derived union in both directions, so a
+  wrong-family or under-declared error schema is a type error at the call site. The error body
+  is decoded against the route family's modeled error-union schema (`readOutcomeErrors` for the
+  shared read family; per-family unions next to their conflict members in `src/shared/contract/**`)
+  — an unmodeled tag, a missing field, or a validation envelope is network-class, symmetric with
+  the 200 path. Consumer-facing aliases, where a callback signature needs a name, are
   `Awaited<ReturnType<…>>` derivations that cannot drift.
 
 **Behavior**

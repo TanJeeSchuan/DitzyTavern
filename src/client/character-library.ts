@@ -2,6 +2,7 @@ import { api } from "./lib/eden";
 import { requestOutcome } from "./lib/request-outcome";
 import {
 	characterCommandApplied,
+	characterCommandErrors,
 	type CharacterCommand,
 	type CharacterDeletionImpact,
 	type CharacterDeletionMode,
@@ -58,5 +59,6 @@ export async function applyCommand(
 	return requestOutcome(
 		api.api.characters.commands.post(command),
 		characterCommandApplied,
+		characterCommandErrors,
 	);
 }

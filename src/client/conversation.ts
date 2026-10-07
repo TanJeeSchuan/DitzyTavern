@@ -10,18 +10,24 @@ import type {
 } from "../shared/contract/conversation-schema";
 import {
 	activeGenerationDetails,
+	castCharacterErrors,
 	characterAppliedResponse,
 	conversationAppliedResponse,
+	conversationCommandErrors,
+	conversationConflictErrors,
 	conversationGenerationSettings,
 	conversationSummary,
 	generationAccepted,
 	generationPreview,
+	generationPreviewErrors,
+	generationStartErrors,
 	generationStopped,
 	generationsStopped,
 	variantDetails,
 } from "../shared/contract/conversation-schema";
 import { macroVariables, macroVariablesAppliedResponse } from "../shared/contract/macro-variables";
 import type { MacroValue } from "../shared/contract/macro-variables";
+import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import { conversationPromptPreset } from "../shared/contract/prompt-preset";
 import { decodeWirePayload } from "./lib/wire-decode";
@@ -85,6 +91,7 @@ export async function applyConversationCommand(
 			action,
 		}),
 		conversationAppliedResponse,
+		conversationCommandErrors,
 	);
 }
 
@@ -103,6 +110,7 @@ export async function addCharacterToCast(input: {
 				expectedCharacterRevision: input.expectedCharacterRevision,
 			}),
 		conversationAppliedResponse,
+		castCharacterErrors,
 	);
 }
 
@@ -117,6 +125,7 @@ export async function saveParticipantAsCharacter(input: {
 			.cast.participants({ participantId: input.participantId })
 			.characters.post({ expectedConversationRevision: input.expectedConversationRevision }),
 		characterAppliedResponse,
+		conversationConflictErrors,
 	);
 }
 
@@ -156,6 +165,7 @@ export async function loadMacroVariables(
 			.conversations({ id: conversationId })["macro-variables"]
 			.get({ query: input }),
 		macroVariables,
+		readOutcomeErrors,
 	);
 }
 
@@ -172,6 +182,7 @@ export async function editMacroVariable(
 			.conversations({ id: conversationId })["macro-variables"]
 			.post(input),
 		macroVariablesAppliedResponse,
+		conversationConflictErrors,
 	);
 }
 
@@ -185,6 +196,7 @@ export async function loadActiveGenerationDetails(
 			.generations({ generationId })
 			.inspection.get(),
 		activeGenerationDetails,
+		readOutcomeErrors,
 	);
 }
 
@@ -200,6 +212,7 @@ export async function loadVariantDetails(
 			.variants({ variantId })
 			.details.get(),
 		variantDetails,
+		readOutcomeErrors,
 	);
 }
 
@@ -210,6 +223,7 @@ export async function previewConversationGeneration(
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations.preview.post(input),
 		generationPreview,
+		generationPreviewErrors,
 	);
 }
 
@@ -226,6 +240,7 @@ export async function startConversationGeneration(
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations.post({ expectedRevision, content, ...formatting, ...preview }),
 		generationAccepted,
+		generationStartErrors,
 	);
 }
 
@@ -241,6 +256,7 @@ export async function startConversationSiblingGeneration(
 			...preview,
 		}),
 		generationAccepted,
+		generationPreviewErrors,
 	);
 }
 
@@ -253,6 +269,7 @@ export async function startConversationContinuationGeneration(
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).continue.generations.post({ expectedRevision, ...formatting, ...preview }),
 		generationAccepted,
+		generationStartErrors,
 	);
 }
 
@@ -263,6 +280,7 @@ export async function stopConversationGeneration(conversationId: number, generat
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations({ generationId }).stop.post({}),
 		generationStopped,
+		notFoundOutcome,
 	);
 }
 
@@ -270,5 +288,6 @@ export async function stopAllConversationGenerations(conversationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations["stop-all"].post({}),
 		generationsStopped,
+		notFoundOutcome,
 	);
 }

@@ -1,11 +1,13 @@
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
 import type { EdenResponse } from "./lib/eden";
+import { invalidOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import { requestOutcome } from "./lib/request-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import {
 	nativePromptPreset,
 	promptPresetCommandApplied,
+	promptPresetCommandErrors,
 	promptPresetListResponse,
 	promptPresetRecipeApplied,
 	sillyTavernImportApplied,
@@ -60,6 +62,7 @@ export async function applyPromptPresetCommand(
 	return requestOutcome(
 		api.api["prompt-presets"].commands.post(command),
 		promptPresetCommandApplied,
+		promptPresetCommandErrors,
 	);
 }
 
@@ -97,6 +100,7 @@ export async function importNativePromptPreset(
 	return requestOutcome(
 		api.api["prompt-presets"].import.post(native),
 		promptPresetCommandApplied,
+		invalidOutcome,
 	);
 }
 
@@ -109,6 +113,7 @@ export async function reviewSillyTavernPromptPreset(
 	return requestOutcome(
 		api.api["prompt-presets"].import.sillytavern.review.post(request),
 		sillyTavernImportPreview,
+		invalidOutcome,
 	);
 }
 
@@ -121,6 +126,7 @@ export async function commitSillyTavernPromptPreset(
 	return requestOutcome(
 		api.api["prompt-presets"].import.sillytavern.post(request),
 		sillyTavernImportApplied,
+		invalidOutcome,
 	);
 }
 
@@ -142,7 +148,7 @@ type RecipeOperationRequest = EdenResponse<
 >;
 
 const applyRecipeOperation = (request: RecipeOperationRequest) =>
-	requestOutcome(request, promptPresetRecipeApplied);
+	requestOutcome(request, promptPresetRecipeApplied, readOutcomeErrors);
 
 export function addPromptPresetReference(
 	presetId: number,
