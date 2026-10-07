@@ -354,7 +354,7 @@ export const removeConversationGeneration = (
 	database: Database,
 	input: RemoveGenerationInput,
 ): ConversationSummary => {
-	return runConversationTransaction(database, (db) => {
+	return runConversationTransaction(database, (db, reportChange) => {
 		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
 		if (active.checkpoint_content.length > 0 || active.checkpoint_reasoning.length > 0) {
 			throw new InvalidConversationCommandError("A Generation with durable output must be resolved or stopped.");
@@ -363,6 +363,21 @@ export const removeConversationGeneration = (
 		if (transition.removedSibling !== undefined) {
 			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
 		}
+		// ==[HUMAN APPROVED]== Removal deletes the provisional target — the sibling Variant
+		// alone, or the whole provisional Message for a Tail or Continuation
+		// target — so its removed Variant id is reported and Memory abandons the
+		// in-flight work the write just deleted. The removed sibling Variant is
+		// the Active Generation's tracked variant, and a provisional Message
+		// owns exactly that one Variant: Sibling acceptance is denied while a
+		// non-sibling Active Generation exists, and a provisional target Message
+		// carries no captured historical Control pair to serve as a sibling
+		// target.
+		reportChange({
+			conversationId: input.conversationId,
+			touchedVariantIds: [],
+			removedVariantIds: [active.variant_id],
+			promptPresetChanged: false,
+		});
 		return advanceConversationRevision(db, input.conversationId);
 	});
 };
