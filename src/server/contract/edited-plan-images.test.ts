@@ -11,6 +11,8 @@ import { generationPreview, generationAccepted } from "../../shared/contract/con
 import type { GenerationPreview, GenerationPreviewBody, GenerationBody, PromptPlan } from "../../shared/contract/conversation-schema";
 import { captureModelFetch, key, withProfile } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const post = (app: ReturnType<typeof createContract>, path: string, body: GenerationPreviewBody | GenerationBody) => app.handle(new Request(`http://localhost/api${path}`, {
 	method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -35,7 +37,10 @@ const createChat = (database: Database) => createConversationModule(database).cr
 
 describe("Edited Prompt Plan Images", () => {
 	let database: Database;
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => { database.close(); });
 
 	test("sends a copied Image unknown to the original preview once the edited plan is accepted", async () => {

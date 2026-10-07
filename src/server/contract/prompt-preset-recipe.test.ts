@@ -32,12 +32,17 @@ import {
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // ==[HUMAN APPROVED]== The owning module guards a move target the transport schema cannot
 // deliver, so a direct caller cannot displace an occurrence either.
 describe("Prompt Preset move bounds", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("rejects a move to position 0 with the typed invalid outcome", () => {
@@ -51,7 +56,10 @@ describe("Prompt Preset move bounds", () => {
 describe("Prompt Preset stored contract boundary", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("keeps empty authored text and rejects invalid instruction rows", () => {
@@ -98,7 +106,10 @@ describe("Prompt Preset stored contract boundary", () => {
 describe("Prompt Preset transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("resolves the Default recipe against this Chat's own Participants", async () => {
@@ -476,7 +487,10 @@ describe("Prompt Preset transport", () => {
 describe("Prompt Preset block patch batch", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	// ==[HUMAN APPROVED]== The batch route addresses stored occurrences, so the fixture seeds one
@@ -625,7 +639,10 @@ describe("Prompt Preset block patch batch", () => {
 describe("Prompt Preset shared Default", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("two Chats resolve their own Participant content through the same shared Default", async () => {

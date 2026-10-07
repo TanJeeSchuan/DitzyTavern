@@ -12,8 +12,13 @@ import { createConversationRoutes } from "./conversation";
 import { generationPreview, chatHistoryPage, type ConversationAction } from "../../shared/contract/conversation-schema";
 import { createChat, readConversation, readPreset, toggleBlock, saveBlockRole, readOperation, withProfile, key, captureModelFetch, startGeneration, completeGeneration, gatedProvider, readInspection, moveBlock } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 let database: Database;
-beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+beforeEach(() => {
+	database = openInitializedDatabase({ path: ":memory:" });
+	observeConversationWrites(database, syncMemorySources);
+});
 afterEach(() => database.close());
 
 const command = (app: ReturnType<typeof createConversationRoutes>, id: number, revision: number, action: ConversationAction) => app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {

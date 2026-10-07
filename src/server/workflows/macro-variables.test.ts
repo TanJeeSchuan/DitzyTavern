@@ -12,10 +12,15 @@ import {
 } from "./generate-capture";
 import { recoverActiveGenerations } from "./generation-recovery";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 describe("Conversation-persistent prompt macro variables", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("threads recipe writes and carries only the selected Variant's resolved journal", async () => {

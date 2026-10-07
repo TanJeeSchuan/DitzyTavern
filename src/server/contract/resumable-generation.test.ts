@@ -11,6 +11,8 @@ import {
 import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
@@ -34,7 +36,10 @@ const profile = {
 describe("Resumable generation transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("separates acceptance from subscription and replays buffered events", async () => {

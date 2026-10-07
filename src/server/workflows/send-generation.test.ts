@@ -11,7 +11,9 @@ import { requireSnapshot } from "../conversation/test-fixtures";
 import { createMemorySettingsModule } from "../memory/settings";
 import { createConversationRoutes } from "../contract/conversation";
 import { readOperation, readPreset, toggleBlock } from "../contract/prompt-preset-test-fixtures";
-const prompt = {
+
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
 	scenario: "The room is quiet.",
@@ -26,6 +28,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const created = createConversationModule(database).create({
 			name: "Send Chat",
 			participants: [

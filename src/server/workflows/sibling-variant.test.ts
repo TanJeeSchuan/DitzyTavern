@@ -21,6 +21,8 @@ import {
 import { generateTerminalTailFixture } from "./test-fixtures";
 import { applyCommand, requireSnapshot } from "../conversation/test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 // Targeted Swipe workflow: a new sibling Variant for an existing native
 // Message is generated from the target Message's captured historical Control
 // pair — its current Definitions and names, the current generation settings,
@@ -61,6 +63,7 @@ describe("Historical sibling Variant generation", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const snapshot = createConversationModule(database).create({
 			name: "Sibling Chat",
 			participants: [

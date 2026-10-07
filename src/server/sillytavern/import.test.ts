@@ -44,6 +44,8 @@ import {
 	writerFixture as first,
 } from "./fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const findEntry = (
 	entries: { namespace: string; key: string; value: string }[] | undefined,
 	namespace: string,
@@ -57,6 +59,7 @@ describe("SillyTavern chat import", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
 		files = [directory];
 		artifactDirectory = join(directory, "managed-artifacts");

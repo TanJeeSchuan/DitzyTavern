@@ -3,8 +3,13 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { addBlock, createRoutes, exportPreset, importPreset, readOperation, saveBlockRole, toggleBlock, listPresets, createChat, selectPreset, readPreset } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 let database: Database;
-beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+beforeEach(() => {
+	database = openInitializedDatabase({ path: ":memory:" });
+	observeConversationWrites(database, syncMemorySources);
+});
 afterEach(() => database.close());
 
 test("Add Author Note Block preserves the recipe and inserts after its last history slot", async () => {

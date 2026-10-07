@@ -42,7 +42,7 @@ describe("Memory source public contract", () => {
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
 		// The test composition installs Memory's sync on Conversation's write stream.
-		observeConversationWrites(syncMemorySources);
+		observeConversationWrites(database, syncMemorySources);
 	});
 	afterEach(() => database.close());
 

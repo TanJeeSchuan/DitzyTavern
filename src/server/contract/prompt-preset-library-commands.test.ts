@@ -14,10 +14,15 @@ import {
 	selectPreset,
 } from "./prompt-preset-test-fixtures";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 describe("Prompt Preset library transport", () => {
 	let database: Database;
 
-	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
+	beforeEach(() => {
+		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
+	});
 	afterEach(() => database.close());
 
 	test("lists the library with the Default preset first and its Conversation count", async () => {

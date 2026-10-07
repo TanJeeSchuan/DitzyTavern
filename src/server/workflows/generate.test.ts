@@ -29,6 +29,8 @@ import { importNativePromptPreset, selectConversationPromptPreset } from "../pro
 import { attachLorebookToConversation, saveLoreSettings } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
@@ -84,6 +86,7 @@ describe("Generation runtime behavior", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		const snapshot = createConversationModule(database).create({
 			name: "Generating Chat",
 			participants: [
@@ -920,6 +923,7 @@ describe("Prompt Comments", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 		conversationId = createConversationModule(database).create({
 			name: "Annotated Chat",
 			participants: [

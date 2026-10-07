@@ -5,6 +5,8 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationModule } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
+import { observeConversationWrites } from "../conversation";
+import { syncMemorySources } from "../memory";
 const key = new Uint8Array(32).fill(23);
 const prompt = {
 	systemInstruction: "Answer briefly.",
@@ -70,6 +72,7 @@ describe("Generation transport contract", () => {
 
 	beforeEach(() => {
 		database = openInitializedDatabase({ path: ":memory:" });
+		observeConversationWrites(database, syncMemorySources);
 	});
 
 	afterEach(() => {

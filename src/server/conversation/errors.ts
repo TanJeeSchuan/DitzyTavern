@@ -111,6 +111,22 @@ export type ContinuationUnavailableReason =
 	| "not-terminal-model-message"
 	| "assistant-prefill-requires-visible-text";
 
+// ==[HUMAN APPROVED]== The composition contract, thrown instead of silently dropping a
+// reported write change: a Conversation write reported its
+// ConversationMemoryChange, but the composition owning the write's database
+// never registered an observer with observeConversationWrites(database,
+// observer). The throwing transaction rolls back so the missing wiring cannot
+// pass unnoticed; app.ts installs the sync for the application database and
+// every test composition installs it for its own database.
+export class ConversationWriteObserverMissingError extends Error {
+	constructor() {
+		super(
+			"A Conversation write reported a change, but no write observer is registered for this database. Install one with observeConversationWrites(database, observer).",
+		);
+		this.name = "ConversationWriteObserverMissingError";
+	}
+}
+
 // ==[HUMAN APPROVED]== Typed denial for Continue. Existing history remains untouched and callers
 // can present the reason without reproducing the terminal-position rule.
 export class ContinuationUnavailableError extends Error {
