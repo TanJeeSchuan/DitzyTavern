@@ -72,19 +72,12 @@ export interface GenerationRuntimeScheduler {
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
-interface MutableRuntimeState {
-	generationId: number;
-	conversationId: number;
-	messageId: number;
-	variantId: number;
-	startedAt: string;
-	content: string;
-	reasoning: string;
-	latestEventId: number;
-	status: GenerationRuntimeState["status"];
-	terminalReason: string | null;
-	imageModel?: GenerationImageModel;
-}
+// ==[HUMAN APPROVED]== The runtime's own mutable view of GenerationRuntimeState: one field
+// derivation from the published state, so a field addition touches one
+// declaration and cannot drift between the two.
+type MutableRuntimeState = {
+	-readonly [K in keyof GenerationRuntimeState]: GenerationRuntimeState[K];
+};
 
 interface GenerationRuntimeFailure {
 	readonly reason: string;
