@@ -42,7 +42,7 @@ import { useAssemblyController } from "./useAssemblyController";
 
 // ==[HUMAN APPROVED]== Maps a machine story effect onto the story reducer's vocabulary. Content
 // deltas append into the story read model (the one accumulated story owner)
-// and authoritative snapshots replace it. Reasoning Content follows a
+// and authoritative snapshots reconcile its current window. Reasoning Content follows a
 // separate action path so it remains visible without joining authored prose.
 export function generationSessionStoryAction(
 	effect: GenerationSessionStoryEffect,
@@ -94,6 +94,7 @@ type GenerationControllerOptions = {
 	dispatchStory: Dispatch<StoryAction>;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number, signal?: AbortSignal) => Promise<ConversationSummary | null>;
+	ensureLatest: () => Promise<ConversationSummary | null>;
 	inspectPromptPlanBeforeGenerating: boolean;
 };
 
@@ -110,6 +111,7 @@ export function useGenerationController({
 	dispatchStory,
 	activeChatIdRef,
 	refreshStory,
+	ensureLatest,
 	inspectPromptPlanBeforeGenerating,
 }: GenerationControllerOptions) {
 	const [draft, setDraft] = useState("");
@@ -204,6 +206,7 @@ export function useGenerationController({
 		conversation,
 		activeChatIdRef,
 		refreshStory,
+		ensureLatest,
 		isGenerating,
 		variantPreviewActive: story.preview !== null,
 		inspectPromptPlanBeforeGenerating,
@@ -287,7 +290,7 @@ export function useGenerationController({
 
 	const continueMessage = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.messages.at(-1);
+		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
 		if (
 			latest?.id !== messageId ||
 			latest.continuable !== true ||
@@ -298,7 +301,7 @@ export function useGenerationController({
 
 	const regenerateResponse = (messageId: number) => {
 		if (!assemblyAvailable || conversation === null) return;
-		const latest = story.messages.at(-1);
+		const latest = story.page?.hasNewer ? undefined : story.messages.at(-1);
 		const content = latest?.swipes[latest.activeSwipe]?.content;
 		if (
 			latest?.id !== messageId ||

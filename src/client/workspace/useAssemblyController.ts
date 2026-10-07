@@ -26,6 +26,7 @@ type AssemblyControllerOptions = {
 	conversation: ConversationSummary | null;
 	activeChatIdRef: RefObject<string>;
 	refreshStory: (conversationId: number) => Promise<ConversationSummary | null>;
+	ensureLatest: () => Promise<ConversationSummary | null>;
 	isGenerating: boolean;
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
@@ -37,6 +38,7 @@ export function useAssemblyController({
 	conversation,
 	activeChatIdRef,
 	refreshStory,
+	ensureLatest,
 	isGenerating,
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
@@ -44,6 +46,8 @@ export function useAssemblyController({
 	clearDraft,
 }: AssemblyControllerOptions) {
 	const [assembly, dispatchAssembly] = useReducer(reduceAssemblySession, null);
+	const [preparing, setPreparing] = useState(false);
+	const preparingRef = useRef(false);
 	const [directStartError, setDirectStartError] = useState<string | null>(null);
 	const nextAssemblyRequestIdRef = useRef(1);
 	const assemblyMountedRef = useRef(true);
@@ -141,16 +145,18 @@ export function useAssemblyController({
 		dispatchAssembly({ type: "plan-edited", requestId: assembly.requestId, promptPlan });
 	};
 
-	const generationRequest = (
+	const generationRequest = async (
 		conversationId: number,
 		request: GenerationPreviewBody,
 		preview?: { previewId: string; promptPlan: PromptPlan },
 	) => {
+		const latest = await ensureLatest();
+		if (latest === null || Number(activeChatIdRef.current) !== conversationId) throw new Error("The Chat changed.");
 		const formatting = { timeZone: request.timeZone, locale: request.locale };
 		return request.kind === "send"
-			? startConversationGeneration(conversationId, conversation!.revision, request.content, formatting, preview)
+			? startConversationGeneration(conversationId, latest.revision, request.content, formatting, preview)
 			: request.kind === "continuation"
-				? startConversationContinuationGeneration(conversationId, conversation!.revision, formatting, preview)
+				? startConversationContinuationGeneration(conversationId, latest.revision, formatting, preview)
 				: startConversationSiblingGeneration(conversationId, request.messageId, formatting, preview);
 	};
 
@@ -239,9 +245,19 @@ export function useAssemblyController({
 	};
 
 	const requestGeneration = (request: GenerationPreviewBody) => {
+		if (preparingRef.current || conversation === null) return;
+		const conversationId = conversation.id;
+		preparingRef.current = true;
+		setPreparing(true);
 		setDirectStartError(null);
-		if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(request);
-		else startWithoutPreview(request);
+		void ensureLatest().then(() => {
+			if (!assemblyMountedRef.current || Number(activeChatIdRef.current) !== conversationId) return;
+			if (inspectPromptPlanBeforeGenerating) openPromptPlanPreview(request);
+			else startWithoutPreview(request);
+		}).catch(() => setDirectStartError("The latest Messages could not be loaded.")).finally(() => {
+			preparingRef.current = false;
+			setPreparing(false);
+		});
 	};
 
 	const conversationSwitched = () => {
@@ -253,7 +269,7 @@ export function useAssemblyController({
 
 	const assemblyAvailable = canStartAssembly({
 		playable: conversation?.playable === true,
-		isGenerating,
+		isGenerating: isGenerating || preparing,
 		assemblyActive: assembly !== null,
 		variantPreviewActive,
 	});

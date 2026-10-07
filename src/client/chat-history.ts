@@ -44,6 +44,7 @@ export type {
 };
 
 export interface ChatHistoryPageRequest {
+	aroundMessageId?: number;
 	// 1-based page within the stable position-ordered chronology, counted
 	// ==[HUMAN APPROVED]== backward from the newest Message (page 1 = latest window).
 	page?: number;
@@ -165,6 +166,7 @@ export const createChatHistoryTransport = (
 	const historyUrl = (conversationId: number, page?: ChatHistoryPageRequest) => {
 		const query = new URLSearchParams();
 		if (page?.page !== undefined) query.set("page", String(page.page));
+		if (page?.aroundMessageId !== undefined) query.set("aroundMessageId", String(page.aroundMessageId));
 		const suffix = query.size > 0 ? `?${query.toString()}` : "";
 		return `${base}/api/conversations/${conversationId}/history${suffix}`;
 	};

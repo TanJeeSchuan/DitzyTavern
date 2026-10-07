@@ -12,7 +12,7 @@
 // Variant-selection command, never a second source representation.
 
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import {
 	conversationTable,
 	conversationGenerationSettingsTable,
@@ -72,7 +72,8 @@ const isContinuable = (
 // requested page is bounded into the available range (a page beyond the end
 // serves the final, oldest page), matching how an accumulation client treats
 // repeated reads. A missing Conversation is undefined; there is no partial
-// page.
+// page. An aroundMessageId selects the same fixed page containing that Message;
+// a missing Message in this Conversation is undefined.
 export function readChatHistory(
 	database: Database,
 	conversationId: number,
@@ -99,7 +100,15 @@ export function readChatHistory(
 
 	const pageSize = boundedPageSize(request.pageSize);
 	const totalPages = Math.max(1, Math.ceil(totalMessages / pageSize));
-	const requested = request.page ?? 1;
+	let requested = request.page ?? 1;
+	if (request.aroundMessageId !== undefined) {
+		const target = db.select({ position: messageTable.position }).from(messageTable)
+			.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.id, request.aroundMessageId))).get();
+		if (target === undefined) return undefined;
+		const newer = db.select({ count: sql<number>`count(*)` }).from(messageTable)
+			.where(and(eq(messageTable.conversation_id, conversationId), gt(messageTable.position, target.position))).get()!.count;
+		requested = Math.floor(newer / pageSize) + 1;
+	}
 	const pageIndex = Math.min(
 		totalPages,
 		Math.max(1, Number.isInteger(requested) ? requested : 1),
