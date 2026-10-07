@@ -1,21 +1,30 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, status } from "elysia";
 
-import { mergeMemoryLabels, StaleMemoryLabelsError } from "../memory/labels";
-import { cancelMemoryCatchup, correctMemorySource, InvalidMemorySourceError, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, startMemoryCatchup, StaleMemoryAllowanceError, StaleMemoryCollectionError } from "../memory/collections";
+import { mergeMemoryLabels, setMemoryIdentity, StaleMemoryLabelsError } from "../memory/labels";
+import { cancelMemoryCatchup, correctMemorySource, readConversationMemories, readLatestMemoryCatchup, readMemoryAllowance, readMemoryTrace, resetAndReextractMemorySource, retryMemorySourceIndex, setMemoryAllowance, setMemoryNote, startMemoryCatchup, StaleMemoryCollectionError, StaleMemorySettingsError } from "../memory/collections";
 import { createConversationModule } from "../conversation";
 import {
 	conversationMemories, conversationMemoryAllowance, conversationMemoryAllowanceApplied, memoryConversationIdParams,
-	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict,
+	conversationMemoryAllowanceCommand, conversationMemoryAllowanceConflict, conversationMemoryNoteCommand,
 	memoryQueued, memoryCollectionConflict, memorySourceTarget,
 	memoryCorrectionCommand, memoryCorrectionApplied,
-	memoryLabelMergeCommand, memoryLabelsMerged, memoryLabelsConflict,
+	memoryIdentityCommand, memoryLabelMergeCommand, memoryLabelsMerged, memoryLabelsConflict,
 	memoryCatchupQueued, memoryCatchupCancelled, memoryCatchupCommand, memoryCatchupParams, memoryCatchupRead, memoryTrace, memoryTraceParams,
 } from "../../shared/contract/memory";
 import { invalidOutcome } from "../../shared/contract/outcomes";
 
 export const createMemoryRoutes = (database: Database) => new Elysia()
 	.get("/api/conversations/:id/memories", ({ params }) => readConversationMemories(database, Number(params.id)), { params: memoryConversationIdParams, response: conversationMemories })
+	.post("/api/conversations/:id/memories/identity", ({ params, body }) => {
+		try {
+			setMemoryIdentity(database, Number(params.id), body);
+			return { outcome: "applied" as const, memories: readConversationMemories(database, Number(params.id)) };
+		} catch (error) {
+			if (error instanceof StaleMemoryLabelsError) return status(409, { outcome: "conflict" as const, memories: readConversationMemories(database, Number(params.id)) });
+			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory identity could not be saved." });
+		}
+	}, { params: memoryConversationIdParams, body: memoryIdentityCommand, response: { 200: memoryLabelsMerged, 409: memoryLabelsConflict, 422: invalidOutcome } })
 	.post("/api/conversations/:id/memories/merge-labels", ({ params, body }) => {
 		try {
 			mergeMemoryLabels(database, Number(params.id), body);
@@ -31,10 +40,18 @@ export const createMemoryRoutes = (database: Database) => new Elysia()
 		try {
 			return { outcome: "applied" as const, settings: setMemoryAllowance(database, Number(params.id), body.expectedRevision, body.allowance) };
 		} catch (error) {
-			if (error instanceof StaleMemoryAllowanceError) return status(409, { outcome: "conflict" as const, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision, currentSettings: error.currentSettings });
+			if (error instanceof StaleMemorySettingsError) return status(409, { outcome: "conflict" as const, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision, currentSettings: error.currentSettings });
 			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "Memory Allowance could not be saved." });
 		}
 	}, { params: memoryConversationIdParams, body: conversationMemoryAllowanceCommand, response: { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: invalidOutcome } })
+	.post("/api/conversations/:id/memory-note", ({ params, body }) => {
+		try {
+			return { outcome: "applied" as const, settings: setMemoryNote(database, Number(params.id), body.expectedRevision, body.note) };
+		} catch (error) {
+			if (error instanceof StaleMemorySettingsError) return status(409, { outcome: "conflict" as const, expectedRevision: error.expectedRevision, actualRevision: error.actualRevision, currentSettings: error.currentSettings });
+			return status(422, { outcome: "invalid" as const, reason: error instanceof Error ? error.message : "The Memory note could not be saved." });
+		}
+	}, { params: memoryConversationIdParams, body: conversationMemoryNoteCommand, response: { 200: conversationMemoryAllowanceApplied, 409: conversationMemoryAllowanceConflict, 422: invalidOutcome } })
 	.post("/api/conversations/:id/memories/reextract", ({ params, body }) => {
 		try {
 			const collection = resetAndReextractMemorySource(database, Number(params.id), body.messageId, body.variantId, body.expectedRevision);

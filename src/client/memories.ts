@@ -1,7 +1,12 @@
-import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
+import type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup, MemoryCorrectionCommand, MemoryIdentityCommand, MemoryLabelMergeCommand, MemorySourceTarget, MemoryTraceStep } from "../shared/contract/memory";
 import { api, domainOutcome } from "./lib/eden";
 
 const conversation = (conversationId: number) => api.api.conversations({ id: String(conversationId) });
+
+export async function saveMemoryIdentity(conversationId: number, command: MemoryIdentityCommand) {
+	const { data, error } = await conversation(conversationId).memories.identity.post(command);
+	return error === null ? data : domainOutcome(error.value, "Memory identity could not be saved.");
+}
 
 export async function mergeMemoryLabels(conversationId: number, command: MemoryLabelMergeCommand) {
 	const { data, error } = await conversation(conversationId).memories["merge-labels"].post(command);
@@ -60,6 +65,11 @@ export async function cancelMemoryCatchup(conversationId: number, runId: number)
 export async function saveMemoryAllowance(conversationId: number, expectedRevision: number, allowance: number) {
 	const { data, error } = await conversation(conversationId)["memory-allowance"].post({ expectedRevision, allowance });
 	return error === null ? data : domainOutcome(error.value, "Memory Allowance could not be saved.");
+}
+
+export async function saveMemoryNote(conversationId: number, expectedRevision: number, note: string) {
+	const { data, error } = await conversation(conversationId)["memory-note"].post({ expectedRevision, note });
+	return error === null ? data : domainOutcome(error.value, "The Memory note could not be saved.");
 }
 
 export type { ConversationMemories, ConversationMemoryAllowance, MemoryCatchup };

@@ -464,6 +464,7 @@ export function ActiveWritingWorkspace({
 					key={session.conversation.id}
 					conversationId={session.conversation.id}
 					conversationRevision={session.conversation.revision}
+					cast={session.conversation.cast}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 					onNavigateSource={session.navigateToSourceMessage}
 					onOpenPanel={(panel) => requestNavigation(() => dispatchPanel({ type: "primary-opened", panel }))}

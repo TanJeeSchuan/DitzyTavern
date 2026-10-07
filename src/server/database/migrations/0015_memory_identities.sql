@@ -1,0 +1,1 @@
+ALTER TABLE `conversation_memory_settings` ADD `identities` text DEFAULT '{}' NOT NULL;

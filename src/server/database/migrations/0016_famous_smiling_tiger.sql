@@ -1,0 +1,1 @@
+ALTER TABLE `conversation_memory_settings` ADD `memory_note` text DEFAULT '' NOT NULL;

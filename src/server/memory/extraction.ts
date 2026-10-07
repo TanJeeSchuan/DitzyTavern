@@ -11,6 +11,7 @@ import type { CapturedMemoryMessage, MemoryCandidate, MemoryCandidateJudgment, M
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import { decisionRequest, packDecisions, prettyJson, requestDecisions, resolveDecisionSelection, type DecisionTrace, type ResolvedDecisionModel } from "../decision-model";
 import { hasValidMemoryClaimText, hasValidMemoryPeople } from "./claim-validation";
+import { readMemoryLabelState } from "./labels";
 
 const MAX_EVIDENCE = 3;
 const MAX_EXCERPT = 1024;
@@ -20,6 +21,26 @@ const EXTRACTION_DEADLINE_MS = 10 * 60 * 1000;
 export type MemoryTrace = DecisionTrace;
 const noTrace: MemoryTrace = () => {};
 const seconds = (startedAt: number) => `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
+
+const identityInstructions = (database: Database, messageId: number) => {
+	const message = database.query<{ conversation_id: number }, [number]>("SELECT conversation_id FROM messages WHERE id = ?").get(messageId);
+	if (!message) return "";
+	const { cast, identities } = readMemoryLabelState(database, message.conversation_id);
+	return cast.flatMap(({ id, names }) => {
+		const identity = identities[id];
+		const [name, ...former] = names;
+		if (identity?.kind === "excluded") return [`${name}${former.length ? ` (also ${former.join(", ")})` : ""} directs the story and is not a character in it. Never use ${names.join(" or ")} as a person.`];
+		if (identity?.kind === "plays") return [`First person in ${name}'s${former.length ? ` (also ${former.map((name) => `${name}'s`).join(", ")})` : ""} Messages refers to ${identity.person}.`];
+		return [];
+	}).join("\n");
+};
+
+const noteInstructions = (database: Database, messageId: number) => {
+	const note = database.query<{ memory_note: string }, [number]>(`
+		SELECT s.memory_note FROM messages m JOIN conversation_memory_settings s ON s.conversation_id = m.conversation_id
+		WHERE m.id = ?`).get(messageId)?.memory_note ?? "";
+	return note ? `Chat note (guidance only, never a source of facts):\n${note}` : "";
+};
 
 const candidateProblem = (
 	candidate: MemoryExtractionResponse["candidates"][number],
@@ -85,7 +106,10 @@ const generatedContent = async (
 	const profile = settings.profiles.find((item) => item.id === memory.extractionProfileId);
 	if (profile === undefined) throw new Error("The selected Memory extraction Connection Profile is unavailable. Choose an available profile in Memory Settings.");
 	const instructions = extractionInstructions(source.messageId);
-	const promptOf = (retained: readonly CapturedMemoryMessage[]) => `${instructions}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
+	const identities = identityInstructions(database, source.messageId);
+	const note = noteInstructions(database, source.messageId);
+	const promptOf = (retained: readonly CapturedMemoryMessage[]) =>
+		`${instructions}${identities ? `\n${identities}` : ""}${note ? `\n\n${note}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
 	const retainedContext = [...context];
 	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext))) {

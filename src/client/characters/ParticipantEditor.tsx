@@ -9,6 +9,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
+import { ParticipantMemory } from "./ParticipantMemory";
 
 // ==[HUMAN APPROVED]== The wording this surface shows for each standard command failure; the
 // runner owns when each notice is shown, the editor owns what it says.
@@ -92,6 +93,7 @@ export function ParticipantEditor({
 			onSave={() => void apply()}
 			onBack={onBack}
 		>
+			<ParticipantMemory conversation={conversation} participant={participant} />
 			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={pending} />
 		</DefinitionEditor>
 	);

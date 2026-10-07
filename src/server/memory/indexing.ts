@@ -141,6 +141,7 @@ export const runMemoryIndexJob = async (database: Database, job: MemoryIndexJob,
 		const cached = cachedHashes(database, job.configuration.spaceKey, texts);
 		const missing = texts.filter((text) => !cached.has(sha256(text)));
 		const vectors = missing.length === 0 ? [] : await embed(missing, job.configuration, AbortSignal.any([shutdown, signal]));
+		signal.throwIfAborted();
 		if (vectors.length !== missing.length || vectors.some((vector) => vector.length === 0)) throw new Error("The embedding endpoint returned an incomplete Memory index.");
 		database.transaction(() => {
 			for (const [index, text] of missing.entries()) {

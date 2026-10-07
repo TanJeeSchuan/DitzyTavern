@@ -207,6 +207,10 @@ _Avoid_: Lore Entry when referring to information learned from Conversation hist
 A statement retained in a Memory about a story event, fact, relationship, or fictional person's perspective. Its attribution distinguishes what the story establishes from what someone says, witnesses, or believes.
 _Avoid_: verified fact when the source only establishes an assertion or belief
 
+**Memory Identity**:
+A per-Cast-member rule for how that Participant's Messages and author names contribute to one Chat's Memories: Themselves, Not in the story, or Plays a person.
+_Avoid_: Person label, alias when referring to the rule rather than a name
+
 **Memory Evidence**:
 The Conversation passages supporting a Memory Claim, including who says or experiences what they describe.
 _Avoid_: model confidence
@@ -226,6 +230,10 @@ _Avoid_: history summary, Lore Block
 **Memory Allowance**:
 The maximum estimated token space allocated to a Memory Block, distinct from Conversation history; available prompt space can restrict it further.
 _Avoid_: context limit, history window
+
+**Memory Note**:
+Writer-authored, Chat-local guidance appended to Memory extraction instructions only. It is never a source of facts, never reaches a Decision Model, and does not change saved Memories.
+_Avoid_: Author Note when referring to extraction guidance, Lore Entry
 
 ## Lorebooks
 
