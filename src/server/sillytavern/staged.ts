@@ -487,6 +487,7 @@ export function createChatImportModule(
 
 			const conversation = createImportedConversation(database, {
 				name: input.title.trim(),
+				authorNote: projected.input.authorNote,
 				participants: projected.input.participants,
 				control: projected.input.control,
 				messages: projected.input.messages,
